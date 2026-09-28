@@ -64,6 +64,7 @@ interface MentionPluginProps {
   /** 已有 Session 的 id；null/undefined = 新建草稿。决定 Plugins 分组的 catalog authority。 */
   sessionId?: string | null;
   disabled?: boolean;
+  skillsOnly?: boolean;
   onWhiteboardMentionSelected?: (boardId: string) => void | Promise<void>;
 }
 
@@ -136,6 +137,7 @@ export function MentionPlugin({
   provider,
   container,
   disabled = false,
+  skillsOnly = false,
   onWhiteboardMentionSelected,
 }: MentionPluginProps & { provider: ZCodeProvider }) {
   const [editor] = useLexicalComposerContext();
@@ -157,11 +159,10 @@ export function MentionPlugin({
   );
   const isOpen =
     !disabled &&
-    (activeTrigger?.trigger === "@" ||
-      activeTrigger?.trigger === "$" ||
-      activeTrigger?.trigger === "#");
-  const isContextTrigger = activeTrigger?.trigger === "@";
-  const isSessionTrigger = activeTrigger?.trigger === "#";
+    (activeTrigger?.trigger === "$" ||
+      (!skillsOnly && (activeTrigger?.trigger === "@" || activeTrigger?.trigger === "#")));
+  const isContextTrigger = !skillsOnly && activeTrigger?.trigger === "@";
+  const isSessionTrigger = !skillsOnly && activeTrigger?.trigger === "#";
   const isSkillTrigger = activeTrigger?.trigger === "$";
 
   // 修复说明：之前把 @ 面板拆成了两层，导致用户输入 query 后还要再确认一次，
@@ -176,6 +177,7 @@ export function MentionPlugin({
     false,
     intl.formatMessage({ id: "chat.mention.skills.empty" }),
     intl.formatMessage({ id: "chat.mention.skills.title" }),
+    skillsOnly ? "settings" : "runtime",
   );
   const fileDefaultPreviewLimit = !hasActiveQuery
     ? MENTION_FILES_ONLY_DEFAULT_PREVIEW_LIMIT

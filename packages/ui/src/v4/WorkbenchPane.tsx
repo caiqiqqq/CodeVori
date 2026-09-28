@@ -40,6 +40,10 @@ import type {
 import { SessionPane } from "@/v4/SessionPane.js";
 import type { PaneWorkspaceBadge } from "@/v4/ConversationHeader.js";
 import type { ConversationDropTargetController } from "@/v4/composer/conversationDropTarget.js";
+import type {
+  AcpConversationOpenRequest,
+  AcpConversationProjection,
+} from "@/lib/acpSidebarSessions.js";
 import { V4PaneConversationProvider } from "@/v4/V4ConversationContext.js";
 import {
   paneWorkspaceKey,
@@ -177,6 +181,7 @@ interface PaneRestoredGuardProps {
   paneId: string;
   scope: PaneWorkspaceScope;
   sessionId: string;
+  kind?: "acp" | "native";
   onConfirmed: (paneId: string) => void;
   onMissing: (paneId: string) => void;
 }
@@ -197,14 +202,37 @@ function PaneRestoredGuard({
   paneId,
   scope,
   sessionId,
+  kind = "native",
   onConfirmed,
   onMissing,
 }: PaneRestoredGuardProps) {
   const services = useServices();
   const agentService = services.zcodeAgentService;
+  const acpService = services.acpService;
   const { workspacePath, workspaceIdentity, remoteSessionId } = scope;
 
   useEffect(() => {
+    if (kind === "acp") {
+      let disposed = false;
+      // 修复原因：ACP Host id 不存在于 CLI sessions-index；断线时也不能误删已恢复 pane。
+      void acpService
+        .read({
+          workspacePath,
+          ...(workspaceIdentity ? { workspaceIdentity } : {}),
+          ...(remoteSessionId ? { remoteSessionId } : {}),
+          id: sessionId,
+        })
+        .then(() => {
+          if (!disposed) onConfirmed(paneId);
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          if (!disposed && /ENOENT|no such file|does not belong/i.test(message)) onMissing(paneId);
+        });
+      return () => {
+        disposed = true;
+      };
+    }
     if (!agentService) {
       return;
     }
@@ -238,6 +266,8 @@ function PaneRestoredGuard({
     };
   }, [
     agentService,
+    acpService,
+    kind,
     paneId,
     sessionId,
     workspacePath,
@@ -269,6 +299,8 @@ export interface WorkbenchShellBinding {
   onPrimaryDraftDropTargetControllerChange?: (
     controller: ConversationDropTargetController | null,
   ) => void;
+  onPrimaryAcpSessionChange?: (session: AcpConversationProjection | null) => void;
+  acpOpenRequest?: AcpConversationOpenRequest | null;
   gitSummary?: GitRepositorySummary | null;
   gitDirtyFileCount?: number;
   gitWorktreeReviewSourceId?: GitChangeSourceId | null;
@@ -511,14 +543,43 @@ export function WorkbenchLeafPane({
   const sessionId = isPrimary
     ? (primaryBinding?.sessionId ?? shell.sessionId)
     : (binding?.sessionId ?? null);
+  const candidateBinding = isPrimary ? primaryBinding : binding;
+  // 修复原因：损坏/旧布局可能缺少 Agent 或 Host id，不能把它当原生 task 渲染。
+  const acpBinding =
+    candidateBinding?.kind === "acp" && candidateBinding.sessionId && candidateBinding.agent
+      ? { sessionId: candidateBinding.sessionId, agent: candidateBinding.agent }
+      : null;
+  const acpOpenRequest = acpBinding
+    ? {
+        requestId: 1,
+        session: {
+          id: acpBinding.sessionId,
+          agent: acpBinding.agent,
+          title: "",
+          status: "idle" as const,
+          workspacePath: scope.workspacePath,
+          ...(scope.workspaceIdentity ? { workspaceIdentity: scope.workspaceIdentity } : {}),
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      }
+    : null;
   const readOnly = Boolean(
     (isPrimary ? primaryBinding?.readOnly : binding?.readOnly) ||
     (isShellWorkspace && shell.readOnly),
   );
   const shouldUseShellStatusPanel = isShellWorkspace;
+  const requestedHighlight = shell.searchResultHighlightRequest;
+  const sameHighlightWorkspace =
+    requestedHighlight?.workspacePath === scope.workspacePath &&
+    (requestedHighlight.workspaceIdentity?.trim() || requestedHighlight.workspacePath) ===
+      (scope.workspaceIdentity?.trim() || scope.workspacePath);
   const paneSearchResultHighlightRequest =
-    sessionId === shell.searchResultHighlightRequest?.taskId
-      ? shell.searchResultHighlightRequest
+    sameHighlightWorkspace &&
+    (requestedHighlight?.kind === "acp"
+      ? isPrimary && sessionId === null
+      : sessionId === requestedHighlight?.taskId)
+      ? requestedHighlight
       : null;
 
   return (
@@ -541,6 +602,7 @@ export function WorkbenchLeafPane({
             paneId={paneId}
             scope={scope}
             sessionId={sessionId}
+            kind={acpBinding ? "acp" : "native"}
             onConfirmed={onConfirmRestoredSession}
             onMissing={onClosePane}
           />
@@ -548,7 +610,8 @@ export function WorkbenchLeafPane({
         <SessionPane
           paneId={paneId}
           readOnly={readOnly}
-          sessionId={sessionId}
+          sessionId={acpBinding ? null : sessionId}
+          acpBoundSessionId={acpBinding?.sessionId ?? undefined}
           openTrigger={isPrimary ? "sidebar" : "split"}
           activeSelectionSideChatSessionId={resolvePaneActiveSelectionSideChatSessionId(
             sessionId,
@@ -572,6 +635,13 @@ export function WorkbenchLeafPane({
             isPrimary && !primaryBinding
               ? shell.onPrimaryDraftDropTargetControllerChange
               : undefined
+          }
+          acpOpenRequest={
+            acpOpenRequest ??
+            (isPrimary && !primaryBinding && isShellWorkspace ? shell.acpOpenRequest : null)
+          }
+          onAcpSessionChange={
+            isPrimary && isShellWorkspace ? shell.onPrimaryAcpSessionChange : undefined
           }
           gitSummary={shouldUseShellStatusPanel ? shell.gitSummary : undefined}
           gitDirtyFileCount={shouldUseShellStatusPanel ? shell.gitDirtyFileCount : undefined}

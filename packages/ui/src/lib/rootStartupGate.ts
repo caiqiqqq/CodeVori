@@ -40,8 +40,8 @@ export function shouldShowRootStartupLoading(state: RootStartupLoadingVisibility
   return Boolean(state.isDesktop) && !state.welcomeScreenOpen && shouldBlockRootRender(state);
 }
 
-export function shouldEnableProviderAvailabilityLoginEntryGuard(): boolean {
-  return true;
+export function shouldRequireStartupLogin(isDesktop: boolean | undefined): boolean {
+  return !isDesktop;
 }
 
 export function shouldResolveProviderStartupState(state: ProviderStartupResolutionState): boolean {

@@ -190,7 +190,7 @@ export function ProviderFamilyPlanModeSwitch({
           <SelectValue
             className="min-w-0 flex-1"
             placeholder={intl.formatMessage({
-              id: "settings.modelProvider.codingPlan.purchase.selectPlan",
+              id: "settings.modelProvider.catalogProviderSelect",
             })}
           >
             {selectedOption ? (

@@ -72,6 +72,8 @@ export interface ConversationTurnRenderUnit {
 interface BuildConversationTurnRenderUnitsOptions {
   nowMs?: number;
   sessionPhase?: SessionPhase;
+  /** 外部智能体只提供消息和状态，未提供权威工时。 */
+  workDurationAvailable?: boolean;
 }
 
 interface DraftTurnRenderUnit {
@@ -295,7 +297,10 @@ function materializeDraftUnit(
   const latestAssistantTextRow =
     actionAssistantTextRow ??
     (!isRunning && lastFlowRow && isAssistantTextRow(lastFlowRow) ? lastFlowRow : undefined);
-  const workDurationMs = resolveConversationTurnWorkDurationMs(draft.header, options, isRunning);
+  const workDurationMs =
+    options.workDurationAvailable === false
+      ? undefined
+      : resolveConversationTurnWorkDurationMs(draft.header, options, isRunning);
   const workStatus = resolveConversationTurnWorkStatus(
     draft.header,
     bodyRows,
@@ -321,6 +326,7 @@ function materializeDraftUnit(
     forceOpenHistory,
     timelineOnly,
     nowMs: options.nowMs,
+    workDurationAvailable: options.workDurationAvailable,
   });
   const orderedAssistantHistoryRows = workSegments.flatMap(
     (segment) => segment.assistantHistoryRows,

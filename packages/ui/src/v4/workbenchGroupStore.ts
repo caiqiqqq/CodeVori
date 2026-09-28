@@ -3,7 +3,7 @@
 // 这里是 renderer-local 壳子状态：只管 session 到 pane/group 的归属与本地持久化，
 // 不下沉到协议、agent、main process 或 web-remote replayable 状态。
 import { create } from "zustand";
-import type { ZCodeTaskClientMode } from "@zcode/shared";
+import { acpAgentSchema, type AcpAgent, type ZCodeTaskClientMode } from "@zcode/shared";
 import {
   INITIAL_PANE_LAYOUT,
   MAX_WORKBENCH_PANES,
@@ -27,13 +27,17 @@ import {
 
 const WORKBENCH_GROUP_STORAGE_KEY = "zcode-v4-session-workbench-groups:v1";
 
-export interface WorkbenchSessionBinding {
+interface WorkbenchBindingBase {
   readonly workspaceScope: PaneWorkspaceScope;
-  readonly sessionId: string;
   /** subagent 行内侧开的 child session 只读，不渲染 composer/input。 */
   readonly readOnly?: boolean;
   /** 从持久化恢复、尚未经当前 scope sessions-index 验证。只存在于内存态。 */
   readonly restoredUnvalidated?: boolean;
+}
+export interface WorkbenchSessionBinding extends WorkbenchBindingBase {
+  readonly sessionId: string;
+  readonly kind?: "native" | "acp";
+  readonly agent?: AcpAgent;
 }
 
 export interface WorkbenchGroup {
@@ -88,12 +92,16 @@ function workbenchGroupsEnabled(): boolean {
   return workbenchGroupClientMode !== "web-remote-replayable";
 }
 
-export function buildWorkbenchSessionKey(scope: PaneWorkspaceScope, sessionId: string): string {
-  return `${paneWorkspaceKey(scope)}::${sessionId}`;
+export function buildWorkbenchSessionKey(
+  scope: PaneWorkspaceScope,
+  sessionId: string,
+  kind: "native" | "acp" = "native",
+): string {
+  return `${paneWorkspaceKey(scope)}::${kind === "acp" ? "acp::" : ""}${sessionId}`;
 }
 
 function bindingSessionKey(binding: WorkbenchSessionBinding): string {
-  return buildWorkbenchSessionKey(binding.workspaceScope, binding.sessionId);
+  return buildWorkbenchSessionKey(binding.workspaceScope, binding.sessionId, binding.kind);
 }
 
 function sameSessionBinding(a: WorkbenchSessionBinding, b: WorkbenchSessionBinding): boolean {
@@ -104,6 +112,7 @@ function paneBinding(binding: WorkbenchSessionBinding): PaneBinding {
   return {
     workspaceScope: binding.workspaceScope,
     sessionId: binding.sessionId,
+    ...(binding.kind === "acp" ? { kind: "acp" as const, agent: binding.agent } : {}),
     ...(binding.readOnly ? { readOnly: true } : {}),
     ...(binding.restoredUnvalidated ? { restoredUnvalidated: true } : {}),
   };
@@ -114,6 +123,7 @@ function workbenchBinding(binding: PaneBinding): WorkbenchSessionBinding | null 
     ? {
         workspaceScope: binding.workspaceScope,
         sessionId: binding.sessionId,
+        ...(binding.kind === "acp" ? { kind: "acp" as const, agent: binding.agent } : {}),
         ...(binding.readOnly ? { readOnly: true } : {}),
         ...(binding.restoredUnvalidated ? { restoredUnvalidated: true } : {}),
       }
@@ -440,7 +450,7 @@ function bindPaneSessionInSnapshot(
 ): WorkbenchGroupSnapshot {
   const group = state.groups[groupId];
   const binding = group ? selectWorkbenchGroupPaneBinding(group, paneId) : null;
-  if (!group || !binding || binding.sessionId === sessionId) {
+  if (!group || !binding || binding.kind === "acp" || binding.sessionId === sessionId) {
     return state;
   }
 
@@ -534,10 +544,13 @@ function sanitizeBinding(value: unknown): WorkbenchSessionBinding | null {
     return null;
   }
   const workspaceScope = sanitizeWorkspaceScope(value.workspaceScope);
+  const acpAgent = value.kind === "acp" ? acpAgentSchema.safeParse(value.agent) : null;
+  if (value.kind === "acp" && !acpAgent?.success) return null;
   return workspaceScope
     ? {
         workspaceScope,
         sessionId: value.sessionId,
+        ...(acpAgent?.success ? { kind: "acp" as const, agent: acpAgent.data } : {}),
         // group 恢复过去绕过了 paneLayout 的 sessions-index 守卫，已删除
         // session 会永久留下空 pane；恢复 binding 必须显式进入待验证态。
         restoredUnvalidated: true,

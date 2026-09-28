@@ -2103,8 +2103,7 @@ export function parseEntryStoreListing(
   if (examplePrompts && examplePrompts.length > 0) listing.examplePrompts = examplePrompts;
   const examplePromptsI18n = readStringListMap("examplePrompts_i18n");
   if (examplePromptsI18n) listing.examplePromptsI18n = examplePromptsI18n;
-  // 付费套餐提示只认显式布尔 true；字符串 "true"、1 等歧义写法一律按无需套餐处理，
-  // 避免目录写错就给免费插件挂上付费提示。
+  // 旧目录字段只在显式布尔 true 时保留，以免改变已有快照协议；商店不再展示此字段。
   if (entry.requiresPaidPlan === true) listing.requiresPaidPlan = true;
   return Object.keys(listing).length > 0 ? listing : undefined;
 }

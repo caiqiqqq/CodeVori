@@ -529,6 +529,7 @@ export function getSidePaneTabTitle(
   }
 
   if (tab.type === "model-trajectory") {
+    if (tab.source === "acp") return formatMessage({ id: "acpTrace.title" });
     return tab.title?.trim() || formatMessage({ id: "modelTrajectory.title" });
   }
 

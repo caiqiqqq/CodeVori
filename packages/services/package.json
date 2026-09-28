@@ -17,6 +17,7 @@
     "lint:fix": "oxlint --fix"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "1.5.0",
     "@larksuiteoapi/node-sdk": "1.64.0",
     "@zcode/provider": "workspace:*",
     "@zcode/provider-node": "workspace:*",
@@ -28,14 +29,17 @@
     "node-forge": "^1.4.0",
     "node-pty": "^1.0.0",
     "smol-toml": "^1.6.1",
+    "tar": "7.5.13",
     "undici": "^6.23.0",
     "yaml": "^2.9.0",
+    "yauzl": "3.3.0",
     "yazl": "^3.3.1",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@pierre/diffs": "^1.1.22",
     "@types/node": "^25.5.0",
+    "@types/yauzl": "2.10.3",
     "esbuild": "^0.25.0",
     "typescript": "^6.0.2"
   }

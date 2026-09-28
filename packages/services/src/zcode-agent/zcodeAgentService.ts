@@ -3131,11 +3131,11 @@ export function createZCodeAgentService(
     return client;
   }
 
-  // 全局工作流的载体运行时选择：
-  // 调用方只给 `{ scope: "global" }` 不带 workspace 时，先复用任一已活跃的**本地** runtime
+  // 全局工作流和应用用量的只读载体运行时选择：
+  // 查询不带 workspace 时，先复用任一已活跃的**本地** runtime
   // （existing-only 语义：只看 activeClientsByWorkspaceKey，绝不为此拉起新进程），否则回落到
   // 管理面 workspace——照 getPluginManagementClient 先例用专用 pluginProcessManager 拉一个控制面
-  // runtime。选它而非 getOrStartReadOnlyClient 的理由：workflows/* 是无会话、不依赖 provider/model
+  // runtime。选它而非 getOrStartReadOnlyClient 的理由：workflows/* 和 v4/usage/stats 无会话、不依赖 provider/model
   // 就绪的 workspace 级方法，管理面进程正是为这种「不寄居真实项目」的控制面能力准备的，且不会因
   // 真实 workspace 生命周期被 watchdog 回收；getOrStartReadOnlyClient 反而会把这个合成 workspace
   // 塞进 activeClientsByWorkspaceKey 并跑一遍交互偏好同步，污染会话 client map。两条路径都在本机，
@@ -3148,7 +3148,7 @@ export function createZCodeAgentService(
     );
   }
 
-  async function resolveGlobalSavedWorkflowCarrier(): Promise<{
+  async function resolveGlobalReadOnlyCarrier(): Promise<{
     client: ZCodeProtocolClient;
     workspace: ZCodeWorkspaceRef;
   }> {
@@ -3176,7 +3176,7 @@ export function createZCodeAgentService(
     if (savedWorkflowTargetHasWorkspace(params)) {
       return { client: await getReadOnlyClient(params), workspace: buildWorkspaceRef(params) };
     }
-    return resolveGlobalSavedWorkflowCarrier();
+    return resolveGlobalReadOnlyCarrier();
   }
 
   // mcp/list 专用：与插件管理命令隔离进程，见 mcpStatusProcessManager 处的说明。
@@ -3648,14 +3648,12 @@ export function createZCodeAgentService(
     },
 
     async getAppUsageStats(params: ZCodeAgentAppUsageParams) {
-      // usage 表位于全局 session 库；复用任意已连接的 workspace client 即可拿到全应用范围数据。
-      const active = activeClientsByWorkspaceKey.values().next().value;
-      if (!active) {
-        throw new Error("no_active_workspace");
-      }
+      // 修复原因：冷启动后仅使用 ACP 时没有原生聊天连接，但 usage 历史仍在全局库中。
+      // 复用全局只读载体读取真实数据，不要求创建 API 会话；同时排除已失效和其它远端连接。
+      const { client } = await resolveGlobalReadOnlyCarrier();
       // usage/stats → v4/usage/stats（additive query，事实源在 CLI usage store，
       // 载荷同形；旧词消费清零，CLI 旧 case 留到旧词删除之时）。
-      return active.client.request(
+      return client.request(
         V4_METHODS.usageStats,
         { range: params.range, timeZone: params.timeZone },
         v4UsageStatsResultSchema,

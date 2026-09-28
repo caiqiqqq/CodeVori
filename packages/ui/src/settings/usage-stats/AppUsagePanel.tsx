@@ -1,11 +1,12 @@
 import { RefreshCcw } from "lucide-react";
 import { Fragment, lazy, useState } from "react";
-import { APP_USAGE_RANGES } from "@zcode/shared";
+import { APP_USAGE_RANGES, acpAgentDefinition } from "@zcode/shared";
 import type { AppUsageRange, AppUsageSnapshot } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useAppUsageStats } from "@/hooks/useUsageStats.js";
+import { AcpUsageSourceDetails } from "@/settings/usage-stats/AcpUsageSourceDetails.js";
 import { UsageChartLoadBoundary } from "@/settings/usage-stats/UsageChartLoadBoundary.js";
 import { UsageHeatmap } from "@/settings/usage-stats/UsageHeatmap.js";
 import { UsageStatsErrorNotice } from "@/settings/usage-stats/UsageStatsErrorNotice.js";
@@ -34,8 +35,28 @@ const AppUsageModelUsagePieChart = lazy(() =>
 export function AppUsagePanel() {
   const { intl, locale } = useZCodeIntl();
   const [range, setRange] = useState<AppUsageRange>("7d");
+  const [source, setSource] = useState("all");
   const { snapshot: lifetimeSnapshot, refresh: refreshLifetime } = useAppUsageStats("all");
   const { snapshot, loading, error, refresh } = useAppUsageStats(range);
+  const acpAgents = snapshot?.acpAgents ?? [];
+  const availableAgents = lifetimeSnapshot?.acpAgents ?? acpAgents;
+  const historicalAgent = availableAgents.find((item) => source === `acp:${item.agent}`);
+  const selectedAgent =
+    acpAgents.find((item) => source === `acp:${item.agent}`) ??
+    (historicalAgent
+      ? {
+          ...historicalAgent,
+          sessions: 0,
+          turns: 0,
+          measuredTurns: 0,
+          unknownTurns: 0,
+          totalTokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          models: [],
+        }
+      : undefined);
+  const showNativeCharts = source === "all" || source === "native";
 
   if (loading && !snapshot) {
     return (
@@ -82,9 +103,6 @@ export function AppUsagePanel() {
   return (
     <div className="space-y-5">
       <AppUsageLifetimeSummaryStrip snapshot={lifetimeSnapshot} />
-      {lifetimeSnapshot?.heatmap.weeks.length ? (
-        <UsageHeatmap locale={locale} intl={intl} weeks={lifetimeSnapshot.heatmap.weeks} />
-      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-ui-base font-medium text-foreground">
           {intl.formatMessage({ id: "settings.usage.appUsageRangeTitle" })}
@@ -92,25 +110,58 @@ export function AppUsagePanel() {
         <AppUsageRangeTabs range={range} onRangeChange={setRange} />
       </div>
       {error ? <UsageStatsErrorNotice error={error} /> : null}
-
-      <UsageChartLoadBoundary
-        scope="settings.usage.app-daily-model-chart"
-        resetKeys={[snapshot.range, snapshot.generatedAt]}
-        loadingDescription={intl.formatMessage({
-          id: "settings.usage.appUsageLoadingDescription",
-        })}
-      >
-        <AppUsageDailyModelTrendChart snapshot={snapshot} />
-      </UsageChartLoadBoundary>
-      <UsageChartLoadBoundary
-        scope="settings.usage.app-model-pie-chart"
-        resetKeys={[snapshot.range, snapshot.generatedAt, "model-pie"]}
-        loadingDescription={intl.formatMessage({
-          id: "settings.usage.appUsageLoadingDescription",
-        })}
-      >
-        <AppUsageModelUsagePieChart snapshot={snapshot} />
-      </UsageChartLoadBoundary>
+      <Tabs value={source} onValueChange={setSource} data-testid="app-usage-sources">
+        {/* 智能体数量不固定，窄屏换行时列表需随内容增高，固定 h-7 会覆盖下方统计。 */}
+        <TabsList
+          className={`${USAGE_STATS_TABS_LIST_CLASS} h-auto max-w-full flex-wrap gap-1 group-data-horizontal/tabs:h-auto`}
+        >
+          <TabsTrigger value="all" className={USAGE_STATS_TABS_TRIGGER_CLASS}>
+            {intl.formatMessage({ id: "settings.usage.sourceAll" })}
+          </TabsTrigger>
+          <TabsTrigger value="native" className={USAGE_STATS_TABS_TRIGGER_CLASS}>
+            {intl.formatMessage({ id: "settings.usage.sourceNative" })}
+          </TabsTrigger>
+          {availableAgents.map((item) => (
+            <TabsTrigger
+              key={item.agent}
+              value={`acp:${item.agent}`}
+              className={USAGE_STATS_TABS_TRIGGER_CLASS}
+            >
+              {acpAgentDefinition(item.agent).name}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+      {selectedAgent ? <AcpUsageSourceDetails agent={selectedAgent} /> : null}
+      {showNativeCharts ? (
+        <section className="space-y-5" data-testid="app-usage-native-charts">
+          <h3 className="text-ui-base font-medium text-foreground">
+            {intl.formatMessage({ id: "settings.usage.nativeModelCharts" })}
+          </h3>
+          <AppUsageLifetimeSummaryStrip snapshot={lifetimeSnapshot} nativeOnly />
+          {lifetimeSnapshot?.heatmap.weeks.length ? (
+            <UsageHeatmap locale={locale} intl={intl} weeks={lifetimeSnapshot.heatmap.weeks} />
+          ) : null}
+          <UsageChartLoadBoundary
+            scope="settings.usage.app-daily-model-chart"
+            resetKeys={[snapshot.range, snapshot.generatedAt]}
+            loadingDescription={intl.formatMessage({
+              id: "settings.usage.appUsageLoadingDescription",
+            })}
+          >
+            <AppUsageDailyModelTrendChart snapshot={snapshot} />
+          </UsageChartLoadBoundary>
+          <UsageChartLoadBoundary
+            scope="settings.usage.app-model-pie-chart"
+            resetKeys={[snapshot.range, snapshot.generatedAt, "model-pie"]}
+            loadingDescription={intl.formatMessage({
+              id: "settings.usage.appUsageLoadingDescription",
+            })}
+          >
+            <AppUsageModelUsagePieChart snapshot={snapshot} />
+          </UsageChartLoadBoundary>
+        </section>
+      ) : null}
 
       <div className="flex justify-end">
         <Button
@@ -130,35 +181,76 @@ export function AppUsagePanel() {
   );
 }
 
-function AppUsageLifetimeSummaryStrip({ snapshot }: { snapshot: AppUsageSnapshot | null }) {
+function AppUsageLifetimeSummaryStrip({
+  snapshot,
+  nativeOnly = false,
+}: {
+  snapshot: AppUsageSnapshot | null;
+  nativeOnly?: boolean;
+}) {
   const { intl, locale } = useZCodeIntl();
-  const items = [
-    {
-      label: intl.formatMessage({ id: "settings.usage.lifetimeTotalTokens" }),
-      value: snapshot ? formatSummaryCompactTokenUsage(locale, snapshot.summary.totalTokens) : "--",
-    },
-    {
-      label: intl.formatMessage({ id: "settings.usage.lifetimePeakTokens" }),
-      value: snapshot
-        ? formatSummaryCompactTokenUsage(locale, snapshot.summary.peakDayTokens)
-        : "--",
-    },
-    {
-      label: intl.formatMessage({ id: "settings.usage.longestSession" }),
-      value: snapshot ? formatAppUsageDuration(snapshot.summary.longestSessionMs, intl) : "--",
-    },
-    {
-      label: intl.formatMessage({ id: "settings.usage.currentStreak" }),
-      value: snapshot ? formatAppUsageDays(snapshot.summary.currentStreakDays, intl, locale) : "--",
-    },
-    {
-      label: intl.formatMessage({ id: "settings.usage.longestStreak" }),
-      value: snapshot ? formatAppUsageDays(snapshot.summary.longestStreakDays, intl, locale) : "--",
-    },
-  ];
+  const agents = snapshot?.acpAgents ?? [];
+  const acpTokens = agents.reduce((total, agent) => total + agent.totalTokens, 0);
+  const unknownTurns = agents.reduce((total, agent) => total + agent.unknownTurns, 0);
+  const items = nativeOnly
+    ? [
+        {
+          label: intl.formatMessage({ id: "settings.usage.lifetimeTotalTokens" }),
+          value: snapshot
+            ? formatSummaryCompactTokenUsage(locale, snapshot.summary.totalTokens)
+            : "--",
+        },
+        {
+          label: intl.formatMessage({ id: "settings.usage.lifetimePeakTokens" }),
+          value: snapshot
+            ? formatSummaryCompactTokenUsage(locale, snapshot.summary.peakDayTokens)
+            : "--",
+        },
+        {
+          label: intl.formatMessage({ id: "settings.usage.longestSession" }),
+          value: snapshot ? formatAppUsageDuration(snapshot.summary.longestSessionMs, intl) : "--",
+        },
+        {
+          label: intl.formatMessage({ id: "settings.usage.currentStreak" }),
+          value: snapshot
+            ? `${formatCompactNumber(locale, snapshot.summary.currentStreakDays)} ${intl.formatMessage({ id: "settings.usage.duration.day" })}`
+            : "--",
+        },
+        {
+          label: intl.formatMessage({ id: "settings.usage.longestStreak" }),
+          value: snapshot
+            ? `${formatCompactNumber(locale, snapshot.summary.longestStreakDays)} ${intl.formatMessage({ id: "settings.usage.duration.day" })}`
+            : "--",
+        },
+      ]
+    : [
+        {
+          label: intl.formatMessage({ id: "settings.usage.lifetimeTotalTokens" }),
+          value: snapshot
+            ? formatSummaryCompactTokenUsage(locale, snapshot.summary.totalTokens + acpTokens)
+            : "--",
+        },
+        {
+          label: intl.formatMessage({ id: "settings.usage.sourceNative" }),
+          value: snapshot
+            ? formatSummaryCompactTokenUsage(locale, snapshot.summary.totalTokens)
+            : "--",
+        },
+        {
+          label: intl.formatMessage({ id: "settings.usage.sourceAcp" }),
+          value: snapshot ? formatSummaryCompactTokenUsage(locale, acpTokens) : "--",
+        },
+        {
+          label: intl.formatMessage({ id: "settings.usage.unknownTurns" }),
+          value: snapshot ? formatCompactNumber(locale, unknownTurns) : "--",
+        },
+      ];
 
   return (
-    <section className="flex flex-col overflow-hidden rounded-xl bg-surface sm:flex-row sm:items-center">
+    <section
+      className="flex flex-col overflow-hidden rounded-xl bg-surface sm:flex-row sm:items-center"
+      data-testid={nativeOnly ? "app-usage-native-summary" : "app-usage-lifetime-summary"}
+    >
       {items.map((item, index) => (
         <Fragment key={item.label}>
           {index > 0 ? (
@@ -172,16 +264,6 @@ function AppUsageLifetimeSummaryStrip({ snapshot }: { snapshot: AppUsageSnapshot
       ))}
     </section>
   );
-}
-
-function formatAppUsageDays(
-  days: number,
-  intl: ReturnType<typeof useZCodeIntl>["intl"],
-  locale: string,
-): string {
-  return `${formatCompactNumber(locale, days)} ${intl.formatMessage({
-    id: "settings.usage.duration.day",
-  })}`;
 }
 
 export function formatAppUsageDuration(
@@ -220,7 +302,7 @@ function AppUsageRangeTabs({
       className="shrink-0"
     >
       <TabsList className={USAGE_STATS_TABS_LIST_CLASS}>
-        {APP_USAGE_RANGES.filter((option) => option !== "all").map((option) => (
+        {APP_USAGE_RANGES.map((option) => (
           <TabsTrigger key={option} value={option} className={USAGE_STATS_TABS_TRIGGER_CLASS}>
             {intl.formatMessage({ id: `settings.usage.range.${option}` })}
           </TabsTrigger>

@@ -136,8 +136,7 @@ export async function clearCodingPlanWebviewStorage(options: {
   };
 }) {
   try {
-    // Coding Plan webview 使用独立持久 partition，默认窗口 session.clearStorageData()
-    // 不会覆盖它；退出登录/清理数据时必须显式清除，避免旧账号 token 被下一次官网首屏读到。
+    // 旧版购买 webview 曾使用独立持久 partition；“清除所有数据”仍需清理这份遗留数据。
     await session.fromPartition(CODING_PLAN_WEBVIEW_PARTITION).clearStorageData();
     options.logger.info("[coding-plan-webview] cleared persistent partition storage");
   } catch (error) {
@@ -678,9 +677,6 @@ export async function executeDesktopCommand(options: {
         credentialsDir: options.credentialsDir,
         logger: options.logger,
       });
-      return;
-    case DesktopCommandIds.ClearCodingPlanWebviewStorage:
-      await clearCodingPlanWebviewStorage({ logger: options.logger });
       return;
     case DesktopCommandIds.GetCuaOsSupport:
       return resolveCuaOsSupport();

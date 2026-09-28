@@ -36,8 +36,7 @@ export type ProviderBusinessErrorUiAction =
   | "login"
   | "refresh-quota"
   | "switch-model"
-  | "retry-later"
-  | "upgrade";
+  | "retry-later";
 
 const PROVIDER_BUSINESS_ERROR_MESSAGE_IDS: Record<ProviderBusinessErrorCode, string> = {
   "1006": "zcode.error.providerBusiness.1006",
@@ -64,10 +63,10 @@ const PROVIDER_BUSINESS_ERROR_UI_ACTIONS: Record<
   "3001": null,
   // 3007 安全校验拒绝：客户端无法完成安全校验，没有可执行的恢复动作。
   "3007": null,
-  // 3008/3009/3010 并发上限：Start Plan 下走升级横幅，非 Start Plan 走 upgrade 动作
-  "3008": "upgrade",
-  "3009": "upgrade",
-  "3010": "upgrade",
+  // 并发上限只提示切模型或稍后再试；购买入口已移除。
+  "3008": "switch-model",
+  "3009": "switch-model",
+  "3010": "switch-model",
   "3002": "retry-later",
   // 3102 闲时票据不可用：只能新建闲时任务续跑，横幅里的重试/切模型都救不回来。
   "3102": null,

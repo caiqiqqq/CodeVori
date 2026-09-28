@@ -1,6 +1,7 @@
 // Descriptors & collection (browser-safe)
 export { type ServiceDescriptor, createServiceDescriptor } from "./descriptors.js";
 export { ServiceCollection } from "./collection.js";
+export { IAcpService } from "./acp/acpService.js";
 export {
   IModelSelectionService,
   IProviderSettingsService,

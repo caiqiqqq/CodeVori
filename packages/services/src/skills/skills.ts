@@ -16,6 +16,7 @@ export interface ISkillsService {
     skillId: string;
     enabled: boolean;
   }): Promise<void>;
+  /** 从目标环境当前启用技能构造显式 `$` 引用的临时上下文；不改写用户原文或 Agent 原生配置。 */
   buildPromptContext(params: {
     workspacePath: string;
     workspaceIdentity?: string;

@@ -47,7 +47,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import type { Locale, RemoteTarget, UserInfo, ZCodeTaskMeta } from "@zcode/shared";
-import { BUILTIN_MODEL_PROVIDER_IDS } from "@zcode/shared";
+import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
 import {
   TID_CONVERSATION_NEW_TASK,
   TID_CONVERSATION_SECTION,
@@ -129,7 +129,6 @@ import {
 } from "@/WorkspaceSidebar/taskGroupTogglePresentation.js";
 import { WorkspacePurposeSection } from "@/WorkspaceSidebar/WorkspacePurposeSection.js";
 import { cn } from "@/components/lib/utils.js";
-import { useCodingPlanUpgradeDialog } from "@/settings/CodingPlanUpgradeDialogProvider.js";
 import {
   resolveWorkspaceDragGlobalIndices,
   resolveWorkspaceDragExpanded,
@@ -225,6 +224,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   workspaceRemoteSessionId,
   activePreviewPath,
   onSelectTask,
+  onSelectAcpSession,
+  activeAcpSessionId,
   onStartDraftInWorkspace,
   onOpenCodeViewer,
   onOpenBrowserUrl,
@@ -239,7 +240,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   onCancelRemoteProject: _onCancelRemoteProject,
   onReconnectRemoteWorkspace,
   onLogout,
-  onLogin,
   user,
   reconnectingRemoteWorkspaceKeys,
   remoteWorkspaceErrorByWorkspaceKey,
@@ -273,6 +273,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     targetRemoteSessionId?: string,
     expectedUnreadAt?: number,
   ) => void;
+  onSelectAcpSession?: (session: AcpSidebarSession) => void;
+  activeAcpSessionId?: string | null;
   onStartDraftInWorkspace: (targetWorkspacePath: string, targetWorkspaceIdentity?: string) => void;
   onOpenCodeViewer?: (source: CodeViewerSource) => void;
   onOpenBrowserUrl?: (url: string) => void;
@@ -291,7 +293,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   onCancelRemoteProject: (sessionId: string) => Promise<void>;
   onReconnectRemoteWorkspace: (workspaceKey: string) => Promise<void>;
   onLogout?: () => void;
-  onLogin?: () => void;
   user?: UserInfo | null;
   reconnectingRemoteWorkspaceKeys: string[];
   remoteWorkspaceErrorByWorkspaceKey: Record<string, string>;
@@ -335,7 +336,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     },
     [onSelectTask],
   );
-  const { openCodingPlanUpgrade } = useCodingPlanUpgradeDialog();
   const bumpTaskListVersion = useZCodeSessionStore((state) => state.bumpTaskListVersion);
   const workspaceIdentity = useTabStore((state) => {
     if (!state.activeTabId) {
@@ -755,18 +755,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   const handleOpenAutomationsMain = useCallback(() => {
     onOpenAutomations?.();
   }, [onOpenAutomations]);
-  const handleOpenCodingPlanUpgrade = useCallback(
-    (
-      providerId: string,
-      funnelContext?: import("@/lib/codingPlanFunnelTelemetry.js").CodingPlanFunnelContext,
-    ) => {
-      openCodingPlanUpgrade({
-        providerId,
-        funnelContext,
-      });
-    },
-    [openCodingPlanUpgrade],
-  );
   const activeTaskId = useZCodeSessionStore(
     (state) =>
       // Web 远程控制从全局 task 入口进入远端 workspace 时，会先按
@@ -1367,8 +1355,10 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                   activeWorkspacePath={workspacePath}
                   activeWorkspaceIdentity={workspaceIdentity}
                   activeTaskId={activeTaskId}
+                  activeAcpSessionId={activeAcpSessionId}
                   taskSortBy={taskSortBy}
                   onSelectTask={handleTaskRowSelect}
+                  onSelectAcpSession={onSelectAcpSession}
                   onOpenFileTree={(target) => {
                     setFileTreeTarget(target);
                     setIsFileTreeOpen(true);
@@ -1383,8 +1373,10 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                     activeWorkspacePath={workspacePath}
                     activeWorkspaceIdentity={workspaceIdentity}
                     activeTaskId={activeTaskId}
+                    activeAcpSessionId={activeAcpSessionId}
                     sortBy={taskSortBy}
                     onSelectTask={onSelectTask}
+                    onSelectAcpSession={onSelectAcpSession}
                   />
                 ) : taskViewMode === "grouped" ? (
                   <WorkspaceGroupedTasksSection
@@ -1412,8 +1404,10 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                     activeWorkspacePath={workspacePath}
                     activeWorkspaceIdentity={workspaceIdentity}
                     activeTaskId={activeTaskId}
+                    activeAcpSessionId={activeAcpSessionId}
                     taskSortBy={taskSortBy}
                     onSelectTask={handleTaskRowSelect}
+                    onSelectAcpSession={onSelectAcpSession}
                   />
                 ) : (
                   <DndContext
@@ -1533,6 +1527,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                             closeTab={closeTab}
                                             toggleWorkspaceExpanded={toggleWorkspaceExpanded}
                                             onSelectTask={onSelectTask}
+                                            onSelectAcpSession={onSelectAcpSession}
+                                            activeAcpSessionId={activeAcpSessionId}
                                             onStartDraftInWorkspace={onStartDraftInWorkspace}
                                             taskItems={
                                               taskGroup?.items ?? EMPTY_WORKSPACE_TASK_ITEMS
@@ -1622,6 +1618,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                 activeWorkspacePath={workspacePath}
                                 activeWorkspaceIdentity={workspaceIdentity}
                                 activeTaskId={activeTaskId}
+                                activeAcpSessionId={activeAcpSessionId}
                                 taskSortBy={taskSortBy}
                                 groupByDate={false}
                                 // conversation backing workspace 只是内部执行路径；用户文案改成“任务”不改变 purpose 语义。
@@ -1630,6 +1627,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                   id: "workspaceSidebar.noConversations",
                                 })}
                                 onSelectTask={handleTaskRowSelect}
+                                onSelectAcpSession={onSelectAcpSession}
                               />
                             </WorkspacePurposeSection>
                           ),
@@ -1644,14 +1642,13 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
 
           <WorkspaceSidebarFooter
             className="pr-3"
+            showProfileMenu={false}
             theme={theme}
             localeMenuValue={localeMenuValue}
             onLocaleChange={handleLocaleChange}
             onThemeChange={handleThemeChange}
             onSettingsButtonClick={openSettingsTab}
             onUsageClick={openSettingsTab}
-            onUpgradeClick={handleOpenCodingPlanUpgrade}
-            onLogin={onLogin}
             onLogout={onLogout}
             user={user}
             workspacePath={workspacePath}

@@ -21,6 +21,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { MentionPanel, type MentionPanelSection } from "@/mentions/components/MentionPanel.js";
 import { PluginMentionOptionContent } from "@/mentions/components/PluginMentionOptionContent.js";
 import { usePluginsMentionProvider } from "@/mentions/providers/pluginsMentionProvider.js";
+import { AcpGoalEditor } from "@/prompt-editor/AcpGoalEditor.js";
 
 /**
  * 「添加」分区里紧随附件之后的命令快捷项，选中即插入与 `/` 面板相同的命令标签。
@@ -35,6 +36,9 @@ type QuickCommand = keyof typeof QUICK_COMMANDS;
 export function ChatPromptActionMenu({
   actionMenuTitle,
   attachmentAction,
+  acpMode = false,
+  acpGoal,
+  onSetAcpGoal,
   disabled,
   disabledReason,
   inputApiRef,
@@ -52,6 +56,9 @@ export function ChatPromptActionMenu({
     testId?: string;
     menuItemTestId?: string;
   };
+  acpMode?: boolean;
+  acpGoal?: string | null;
+  onSetAcpGoal?: (goal: string | null) => Promise<void>;
   disabled?: boolean;
   disabledReason?: string;
   inputApiRef: MutableRefObject<LexicalChatInputHandle | null>;
@@ -66,6 +73,7 @@ export function ChatPromptActionMenu({
   const [open, setOpen] = useState(false);
   const [quickCommands, setQuickCommands] = useState<QuickCommand[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [goalEditing, setGoalEditing] = useState(false);
   const selectionStateRef = useRef<EditorState | undefined>(undefined);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const restoreEditorFocusRef = useRef(false);
@@ -82,7 +90,7 @@ export function ChatPromptActionMenu({
     workspaceIdentity,
     sessionId,
     "",
-    open && !disabled && showPlugins,
+    open && !disabled && showPlugins && !acpMode,
     intl.formatMessage({ id: "chat.mention.plugins.empty" }),
     intl.formatMessage({ id: "chat.mention.plugins.title" }),
   );
@@ -102,7 +110,7 @@ export function ChatPromptActionMenu({
     workspacePath,
     workspaceIdentity,
     "",
-    open && !disabled && showPlugins,
+    open && !disabled && showPlugins && !acpMode,
     getSessionMentionWorkspaceScope("@"),
     intl.formatMessage({ id: "chat.mention.sessions.empty" }),
     intl.formatMessage({ id: "chat.mention.sessions.title" }),
@@ -120,7 +128,7 @@ export function ChatPromptActionMenu({
   const attachmentCount = attachmentAction ? 1 : 0;
   const options = [
     ...(attachmentAction ? [{ disabled: false }] : []),
-    ...quickCommands.map(() => ({ disabled: false })),
+    ...quickCommands.map((command) => ({ disabled: acpMode && command === "workflow" })),
     ...mentionItems,
   ];
   const sections: MentionPanelSection[] = [
@@ -156,12 +164,17 @@ export function ChatPromptActionMenu({
             id,
             label,
             description: "",
-            content: (
-              <>
-                <Icon className="size-4 shrink-0" />
-                <span className="truncate text-ui-base font-medium">{label}</span>
-              </>
-            ),
+            disabled: acpMode && command === "workflow",
+            disabledReason: acpMode
+              ? intl.formatMessage({ id: "acp.workflowUnavailable" })
+              : undefined,
+            content:
+              acpMode && command === "workflow" ? undefined : (
+                <>
+                  <Icon className="size-4 shrink-0" />
+                  <span className="truncate text-ui-base font-medium">{label}</span>
+                </>
+              ),
           };
         }),
       ],
@@ -169,7 +182,7 @@ export function ChatPromptActionMenu({
     {
       id: "plugins",
       title: plugins.title,
-      emptyText: plugins.emptyText,
+      emptyText: acpMode ? intl.formatMessage({ id: "acp.pluginsUnavailable" }) : plugins.emptyText,
       loading: plugins.loading,
       loadingText: intl.formatMessage({ id: "chat.mention.category.loading" }),
       errorText: plugins.error?.message,
@@ -201,6 +214,11 @@ export function ChatPromptActionMenu({
       return;
     }
     const command = quickCommands[index - attachmentCount];
+    if (acpMode && command === "goal") {
+      setGoalEditing(true);
+      setOpen(true);
+      return;
+    }
     const item = command
       ? buildSlashApplyMentionPayload({
           id: `slash:${command}`,
@@ -229,10 +247,14 @@ export function ChatPromptActionMenu({
           const offered = (command: QuickCommand, available: boolean) =>
             emptyDraft && available && !excludedSlashCommandNames?.includes(command);
           setQuickCommands([
-            ...(offered("goal", sessionId === null) ? (["goal"] as const) : []),
+            ...(acpMode || offered("goal", sessionId === null) ? (["goal"] as const) : []),
+            ...(acpMode ? (["workflow"] as const) : []),
             ...(offered(
               "workflow",
-              slashCommands.some((entry) => normalizeSlashCommandValue(entry.name) === "workflow"),
+              !acpMode &&
+                slashCommands.some(
+                  (entry) => normalizeSlashCommandValue(entry.name) === "workflow",
+                ),
             )
               ? (["workflow"] as const)
               : []),
@@ -240,6 +262,7 @@ export function ChatPromptActionMenu({
           selectionStateRef.current = inputApiRef.current?.getEditorState();
           setSelectedIndex(0);
         }
+        if (!nextOpen) setGoalEditing(false);
         setOpen(nextOpen);
       }}
     >
@@ -269,7 +292,11 @@ export function ChatPromptActionMenu({
         side="top"
         sideOffset={0}
         // Radix 将虚拟锚点尺寸也写入 trigger-width；使用不存在的 anchor-width 会让虚拟列表塌缩。
-        className="w-(--radix-popover-trigger-width) max-w-[calc(100vw-1rem)] gap-0 overflow-visible border-0 bg-transparent p-0 shadow-none"
+        className={
+          goalEditing
+            ? "w-80 max-w-[calc(100vw-1rem)] border-popover-border bg-popover p-3 text-foreground shadow-md"
+            : "w-(--radix-popover-trigger-width) max-w-[calc(100vw-1rem)] gap-0 overflow-visible border-0 bg-transparent p-0 shadow-none"
+        }
         tabIndex={-1}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
@@ -283,6 +310,10 @@ export function ChatPromptActionMenu({
           }
         }}
         onKeyDown={(event) => {
+          if (goalEditing) {
+            event.stopPropagation();
+            return;
+          }
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
             event.stopPropagation();
@@ -301,39 +332,53 @@ export function ChatPromptActionMenu({
           }
         }}
       >
-        <MentionPanel
-          title={actionMenuTitle}
-          description=""
-          listMaxHeight="min(24rem, max(8rem, calc(var(--radix-popover-content-available-height, 32rem) - 6rem)))"
-          footer={
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-ui-sm text-foreground-subtle">
-              {(
-                [
-                  ["@", "chat.composer.contextShortcut"],
-                  ["/", "chat.composer.capabilityShortcut"],
-                  ["$", "chat.composer.skillShortcut"],
-                ] as const
-              ).map(([trigger, id]) => (
-                <div key={trigger} className="flex shrink-0 items-center gap-1.5">
-                  <code className="flex size-5 shrink-0 items-center justify-center rounded bg-tooltip-tag font-mono text-foreground">
-                    {trigger}
-                  </code>
-                  <span>{intl.formatMessage({ id })}</span>
+        {goalEditing ? (
+          <AcpGoalEditor
+            initialGoal={acpGoal}
+            onSave={onSetAcpGoal}
+            onCancel={() => setGoalEditing(false)}
+            onSaved={() => {
+              setGoalEditing(false);
+              setOpen(false);
+            }}
+          />
+        ) : (
+          <MentionPanel
+            title={actionMenuTitle}
+            description=""
+            listMaxHeight="min(24rem, max(8rem, calc(var(--radix-popover-content-available-height, 32rem) - 6rem)))"
+            footer={
+              acpMode ? undefined : (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-ui-sm text-foreground-subtle">
+                  {(
+                    [
+                      ["@", "chat.composer.contextShortcut"],
+                      ["/", "chat.composer.capabilityShortcut"],
+                      ["$", "chat.composer.skillShortcut"],
+                    ] as const
+                  ).map(([trigger, id]) => (
+                    <div key={trigger} className="flex shrink-0 items-center gap-1.5">
+                      <code className="flex size-5 shrink-0 items-center justify-center rounded bg-tooltip-tag font-mono text-foreground">
+                        {trigger}
+                      </code>
+                      <span>{intl.formatMessage({ id })}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-1.5">
+                    <Info className="size-4 shrink-0" />
+                    <span>{intl.formatMessage({ id: "chat.composer.contextSearchHint" })}</span>
+                  </div>
                 </div>
-              ))}
-              <div className="flex items-center gap-1.5">
-                <Info className="size-4 shrink-0" />
-                <span>{intl.formatMessage({ id: "chat.composer.contextSearchHint" })}</span>
-              </div>
-            </div>
-          }
-          trigger="+"
-          sections={sections}
-          emptyText=""
-          selectedIndex={selectedIndex}
-          hasActiveQuery={false}
-          onSelect={selectOption}
-        />
+              )
+            }
+            trigger="+"
+            sections={sections}
+            emptyText=""
+            selectedIndex={selectedIndex}
+            hasActiveQuery={false}
+            onSelect={selectOption}
+          />
+        )}
       </PopoverContent>
     </Popover>
   );

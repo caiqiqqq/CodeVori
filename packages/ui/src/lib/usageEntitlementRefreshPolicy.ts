@@ -15,7 +15,7 @@ export interface UsageEntitlementRequestOptions {
   allowEnvApiKey?: boolean;
 }
 
-export type UsageEntitlementRefreshReason = "initial" | "access" | "manual" | "purchase" | "auth";
+export type UsageEntitlementRefreshReason = "initial" | "access" | "manual" | "auth";
 
 export const USAGE_ENTITLEMENT_ACCESS_REFRESH_MS = 60_000;
 
@@ -42,7 +42,7 @@ const entitlementFailureBackoff = new WeakMap<
 >();
 const entitlementAccessRequests = new WeakMap<IUsageStatsService, Map<string, number>>();
 
-// 购买使同一身份的所有旧请求失效，不能仅依赖单个 hook 的 requestVersion。
+// 授权变化或手动刷新使同一身份的旧请求失效，不能仅依赖单个 hook 的 requestVersion。
 const entitlementGenerations = new WeakMap<IUsageStatsService, Map<string, number>>();
 
 export function beginSharedEntitlementRequest(params: {

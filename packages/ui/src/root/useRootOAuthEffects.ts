@@ -104,6 +104,7 @@ export function useRootOAuthEffects({
   setOAuthPollingActive,
   markOAuthSuccess,
   onReauthenticationRequired,
+  requireStartupLogin,
 }: {
   accountIntentKey: string;
   platform: IPlatformService;
@@ -117,6 +118,7 @@ export function useRootOAuthEffects({
   setOAuthPollingActive: (active: boolean) => void;
   markOAuthSuccess: (provider?: OAuthProviderId) => void;
   onReauthenticationRequired: () => void;
+  requireStartupLogin: boolean;
 }) {
   useAccountConnectionLossNotification(services, accountIntentKey, refreshAppSettings);
   const requestAlert = useAlertDialog();
@@ -145,6 +147,7 @@ export function useRootOAuthEffects({
           setUser,
           requestAlert,
           onReauthenticationRequired,
+          requireStartupLogin,
           copy: {
             title: intl.formatMessage({ id: "login.expired.title" }),
             description: intl.formatMessage({ id: "login.expired.description" }),
@@ -195,6 +198,7 @@ export function useRootOAuthEffects({
     refreshAppSettings,
     refreshProviderState,
     requestAlert,
+    requireStartupLogin,
     services,
     setIsRestoringOAuthSession,
     setUser,

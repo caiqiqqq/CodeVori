@@ -34,6 +34,7 @@ import type { RemoteConnectionLogEntry } from "@/hooks/useRemoteConnectionLogs.j
 import type { Theme } from "@/useTheme.js";
 import type {
   ChatSearchResultHighlightRequest,
+  ChatSearchResultHighlightInput,
   ChatViewSummaryPanelVariant,
   ConversationFindMatchState,
 } from "@/v4/legacyChatViewTypes.js";
@@ -42,6 +43,8 @@ import type {
   GroupedDraftTaskPlacement,
 } from "@/store/zcodeSessionStoreTypes.js";
 import type { TaskFindDialogProps } from "@/quickpick/TaskFindDialog.js";
+import type { QuickPickCommand } from "@/quickpick/quickPickCommands.js";
+import type { WorkspaceTabState } from "@/store/tabStore.js";
 import type { AutomationsNavigationTab, OpenAutomationsMain } from "@/lib/taskNavigationHistory.js";
 
 export interface WorkspaceShellZCodeState {
@@ -120,6 +123,12 @@ export interface GitChangeSummary {
 export type WorkspaceMainView = "chat" | "automations" | "plugin-store";
 
 export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackService"> {
+  commandCenterOpen: boolean;
+  commandCenterCommands: QuickPickCommand[];
+  commandCenterWorkspaceTabs: WorkspaceTabState[];
+  onCommandCenterOpenChange: (open: boolean) => void;
+  onCommandCenterSearchResultHighlightRequest: (request: ChatSearchResultHighlightInput) => void;
+  onCommandCenterOpenCodeViewer: (source: CodeViewerSource) => void;
   workspaceReadOnlyReason?: string;
   workspaceMainView: WorkspaceMainView;
   pluginStoreOpenVersion: number;

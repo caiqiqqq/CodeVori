@@ -116,7 +116,7 @@ function LoginPanel({ active, onComplete }: LoginPanelProps) {
     ) => {
       const activeAttempt = activeLoginEntryAttemptRef.current;
       if (activeAttempt && activeAttempt.id !== loginEntryAttemptId) {
-        // 用户在统一登录页开始另一条登录流程时，旧购买意图不能继续等待。
+        // 用户开始另一条登录流程时，旧连接意图不能继续等待。
         finishActiveLoginEntryAttempt("cancelled");
       }
       // 上一次失败遗留的 store oauthError 若不清掉，新流程进入等待态后
@@ -198,7 +198,7 @@ function LoginPanel({ active, onComplete }: LoginPanelProps) {
         attempt: activeLoginEntryAttemptRef.current,
       })
     ) {
-      // 全局 user 可能来自另一个 Provider，不能把刚发起的购买登录
+      // 全局 user 可能来自另一个 Provider，不能把刚发起的连接登录
       // 误判为成功；Provider-specific attempt 只由匹配的 OAuth success 完成。
       reset();
       setOAuthError(null);

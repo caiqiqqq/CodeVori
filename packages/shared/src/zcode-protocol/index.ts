@@ -3016,11 +3016,7 @@ export const zcodePluginStoreListingSchema = z
     heroImage: z.string().optional(),
     examplePrompts: z.array(z.string()).optional(),
     examplePromptsI18n: z.record(z.string(), z.array(z.string())).optional(),
-    /**
-     * 需要付费套餐才好用的插件：市场目录条目声明 `requiresPaidPlan: true`，
-     * UI 在标题右侧展示提示图标。描述的是「使用条件」而非「插件是收费商品」——
-     * 不参与安装门禁与计费，命名也不绑定具体套餐商品名。
-     */
+    /** 兼容旧市场目录快照；插件市场忽略此展示字段，不参与安装门禁。 */
     requiresPaidPlan: z.boolean().optional(),
   })
   .strict();
@@ -3718,3 +3714,4 @@ export * from "../localTtft.js";
 
 // 桌面本地 TTFT 的严格事实合同；检查点不能替代实际内容帧。
 export { localTtftFactsSchema } from "../localTtft.js";
+export * from "./acp.js";

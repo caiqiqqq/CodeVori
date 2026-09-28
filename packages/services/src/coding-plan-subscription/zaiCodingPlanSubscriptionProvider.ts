@@ -20,15 +20,8 @@ import {
  *   - OAuth token → loadZaiAuthorization()（oauth:zai:access_token，复用父类）
  *   - 鉴权头     → createZaiLoginAuthHeaders()
  *
- * 覆盖范围：仅 getEnterprisePricing + enrichEnterprisePricingTeamProjects 相关的
- * family 维度（通过 protected 虚方法）。企业购买闭环（balance/order/pending/cancel/
- * continue/status）仍由父类走 bigmodel 域，符合 zai Team Plan "仅读定价+团队上下文" 的产品边界。
- *
- * 其余方法（batchPreview/preview/productInfo/checkPayment/checkPendingOrders/
- * Stripe/PayPal/createSign/updateSign/staticConfigs）全部复用父类：
- *   - 购买类已通过 request.providerId 在父类 resolveEndpointConfig 内动态路由
- *     （zai 走 /api/pay + zai host + zai token，bigmodel 走 /api/biz + bigmodel host + bigmodel token）。
- *   - staticConfigs 是平台级 client/configs，与 family 无关。
+ * 覆盖范围：getEnterprisePricing + enrichEnterprisePricingTeamProjects 相关的
+ * family 维度（通过 protected 虚方法）；client/configs 是平台级，与 family 无关。
  */
 export class ZaiCodingPlanSubscriptionProvider extends BigModelCodingPlanSubscriptionProvider {
   protected codingPlanProviderId(): CodingPlanSubscriptionProviderId {
@@ -50,9 +43,7 @@ export class ZaiCodingPlanSubscriptionProvider extends BigModelCodingPlanSubscri
 }
 
 /**
- * zai 业务域名（/api/biz 与 /api/pay）。
- * 与父类 file-scoped 的 resolveZaiCodingPlanHost 等价；这里独立保留是因为父类该函数未 export。
- * 必须与父类实现保持一致：跟随产品环境（测试 配置的 ZAI Business origin / 线上 api.z.ai）。
+ * zai 业务域名：跟随产品环境（测试配置的 ZAI Business origin / 线上 api.z.ai）。
  */
 function resolveZaiCodingPlanHost(): string {
   return resolveZaiBusinessBaseUrl(process.env);

@@ -143,6 +143,7 @@ export function buildConversationTurnWorkSegments(options: {
   forceOpenHistory: boolean;
   timelineOnly: boolean;
   nowMs?: number;
+  workDurationAvailable?: boolean;
 }): ConversationTurnWorkSegment[] {
   const visualDrafts = splitVisualWorkSegments(options.orderedRows);
   const tailRowIds = new Set(options.assistantTailRows.map((row) => row.rowId));
@@ -172,15 +173,18 @@ export function buildConversationTurnWorkSegments(options: {
     const segmentFollowingRows =
       visibleAssistantIndex < 0 ? [] : segmentFlowRows.slice(visibleAssistantIndex + 1);
     const segmentRunning = segmentIndex === visualDrafts.length - 1 && options.isRunning;
-    const segmentDurationMs = resolveSegmentDurationMs({
-      header: options.header,
-      segmentIndex,
-      triggerRow: segment.triggerRow,
-      nextTriggerRow: visualDrafts[segmentIndex + 1]?.triggerRow,
-      segmentRunning,
-      segmentCount: visualDrafts.length,
-      nowMs: options.nowMs,
-    });
+    const segmentDurationMs =
+      options.workDurationAvailable === false
+        ? undefined
+        : resolveSegmentDurationMs({
+            header: options.header,
+            segmentIndex,
+            triggerRow: segment.triggerRow,
+            nextTriggerRow: visualDrafts[segmentIndex + 1]?.triggerRow,
+            segmentRunning,
+            segmentCount: visualDrafts.length,
+            nowMs: options.nowMs,
+          });
     const segmentWorkStatus = resolveConversationTurnWorkStatus(
       options.header,
       segmentFlowRows,

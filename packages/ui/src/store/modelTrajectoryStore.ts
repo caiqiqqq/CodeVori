@@ -12,6 +12,7 @@ interface ModelTrajectoryOpenRequest {
   /** 唯一请求 id，保证同一 task 连续点击也能触发消费。 */
   requestId: string;
   taskId: string;
+  source?: "native" | "acp";
   /** workspaceIdentity?.trim() || workspacePath，用于定位目标 workspace 侧边栏。 */
   workspaceKey: string;
   title?: string | null;

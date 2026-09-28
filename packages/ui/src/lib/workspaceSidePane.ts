@@ -74,6 +74,8 @@ export interface ModelTrajectorySidePaneTab {
   openedAt?: number;
   /** 目标 task/session id；model-io 按该 id 匹配。 */
   taskId: string;
+  source?: "native" | "acp";
+  remoteSessionId?: string;
   title?: string | null;
 }
 
@@ -653,13 +655,17 @@ function createGitSidePaneTab(): GitSidePaneTab {
 function createModelTrajectorySidePaneTab(options: {
   taskId: string;
   title?: string | null;
+  source?: "native" | "acp";
+  remoteSessionId?: string;
 }): ModelTrajectorySidePaneTab {
   return {
     // 同一个 task 复用同一个 tab，避免重复打开多份相同轨迹。
-    id: `model-trajectory:${options.taskId}`,
+    id: `model-trajectory:${options.source === "acp" ? "acp:" : ""}${options.taskId}`,
     type: "model-trajectory",
     openedAt: Date.now(),
     taskId: options.taskId,
+    ...(options.source === "acp" ? { source: "acp" as const } : {}),
+    ...(options.remoteSessionId ? { remoteSessionId: options.remoteSessionId } : {}),
     title: options.title ?? null,
   };
 }
@@ -1575,6 +1581,8 @@ export function openModelTrajectorySidePane(
   options: {
     taskId: string;
     title?: string | null;
+    source?: "native" | "acp";
+    remoteSessionId?: string;
   },
 ): WorkspaceSidePaneState {
   return activateSidePaneTab(current, createModelTrajectorySidePaneTab(options));

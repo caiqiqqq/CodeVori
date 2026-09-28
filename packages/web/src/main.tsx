@@ -258,7 +258,6 @@ function createWebPlatform(): IPlatformService {
     openExternalFile: () => Promise.resolve({ success: false, error: "Not supported in web mode" }),
     registerOAuthState: (_payload) => {},
     onOAuthCallback: () => () => {},
-    onPaymentCallback: () => () => {},
     onShareImport: () => () => {},
     notifyRendererReady: () => {},
     reportTelemetryEvent: async () => {},

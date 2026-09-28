@@ -39,11 +39,11 @@ export function useTaskListItemContextActions({
   };
   loadTaskPaths?: boolean;
 }): TaskListItemContextActionsResult {
-  const platform = usePlatform();
-  const workspaceOpenTarget = useWorkspaceOpenInEditorTarget({
+  const { fileManagerLabel, openWorkspaceInFileManager } = useWorkspaceFileManagerAction({
     workspacePath,
+    remoteSessionId,
     workspaceIdentity,
-    workspaceRemoteSessionId: remoteSessionId,
+    intl,
   });
   const taskSessionFile = useTaskSessionFilePath(workspacePath, taskId, workspaceIdentity, {
     // task session/log 路径只用于右键菜单项；菜单未打开时不要在列表重排中批量触发 RPC。
@@ -73,7 +73,34 @@ export function useTaskListItemContextActions({
     }
   }, []);
 
-  const handleOpenTaskPathInFileManager = useCallback(async () => {
+  return {
+    taskSessionFile,
+    taskNativeSessionLogFile,
+    fileManagerLabel,
+    handleCopyText,
+    handleOpenTaskPathInFileManager: openWorkspaceInFileManager,
+  };
+}
+
+/** Both native task and ACP rows open the workspace, never a task or Host snapshot file. */
+export function useWorkspaceFileManagerAction({
+  workspacePath,
+  remoteSessionId,
+  workspaceIdentity,
+  intl,
+}: {
+  workspacePath: string;
+  remoteSessionId?: string;
+  workspaceIdentity?: string;
+  intl: { formatMessage: (desc: { id: string }) => string };
+}) {
+  const platform = usePlatform();
+  const workspaceOpenTarget = useWorkspaceOpenInEditorTarget({
+    workspacePath,
+    workspaceIdentity,
+    workspaceRemoteSessionId: remoteSessionId,
+  });
+  const openWorkspaceInFileManager = useCallback(async () => {
     const hasRemoteWorkspaceScope = Boolean(
       remoteSessionId || workspaceIdentity?.trim() || workspaceOpenTarget.isRemoteWorkspace,
     );
@@ -82,7 +109,6 @@ export function useTaskListItemContextActions({
         // 远程项目路径不是宿主机路径。无法精确解析为 WSL 时必须失败关闭，
         // 避免 SSH/Docker 的 Linux 路径误落到原生 Windows、macOS 或 Linux 文件管理器。
         logger.warn("[TaskListItem] 远程 workspace 不支持本机文件管理器", {
-          taskId,
           path: workspacePath,
           remoteKind: workspaceOpenTarget.remoteTarget?.kind ?? "unresolved",
         });
@@ -96,7 +122,6 @@ export function useTaskListItemContextActions({
       });
       if (!result.success) {
         logger.warn("[TaskListItem] 打开 WSL workspace 路径失败", {
-          taskId,
           path: workspacePath,
           error: result.error ?? "unknown-error",
         });
@@ -121,7 +146,6 @@ export function useTaskListItemContextActions({
       // 一旦 session 文件还没解析出来，用户会看到 Finder 入口莫名不可用。
       // 这里统一改成始终打开 workspacePath，让行为和“Copy path=项目路径”保持一致。
       logger.warn("[TaskListItem] 打开 workspace 路径失败", {
-        taskId,
         path: workspacePath,
         error: result.error ?? "unknown-error",
       });
@@ -129,19 +153,19 @@ export function useTaskListItemContextActions({
   }, [
     platform,
     remoteSessionId,
-    taskId,
     workspaceIdentity,
     workspaceOpenTarget.isRemoteWorkspace,
     workspaceOpenTarget.remoteTarget,
     workspacePath,
   ]);
 
+  const canOpenInFileManager =
+    !(remoteSessionId || workspaceIdentity?.trim() || workspaceOpenTarget.isRemoteWorkspace) ||
+    workspaceOpenTarget.remoteTarget?.kind === "wsl";
   return {
-    taskSessionFile,
-    taskNativeSessionLogFile,
     fileManagerLabel: getFileManagerLabel(intl),
-    handleCopyText,
-    handleOpenTaskPathInFileManager,
+    openWorkspaceInFileManager,
+    canOpenInFileManager,
   };
 }
 

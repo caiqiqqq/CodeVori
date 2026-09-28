@@ -38,6 +38,13 @@ import type {
   SessionUsageState,
 } from "@zcode/shared/zcode-protocol-v4";
 import { ModelConfigSelect, type ModelSelectGroup } from "@/ModelConfigSelect.js";
+import {
+  acpAgentFromModelValue,
+  acpModelValue,
+  buildAcpModelSelectGroup,
+} from "@/v4/composer/acpModelSelection.js";
+import { useAvailableAcpAgents } from "@/v4/composer/useAvailableAcpAgents.js";
+import { acpAgentDefinition, type AcpAgent } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { ChatContextUsage } from "@/chat-input-toolbar/display.js";
 import {
@@ -66,19 +73,15 @@ import type { ModelSelectionView } from "@zcode/services";
 import type { ModelSelectionState } from "@/hooks/useModelSelectionView.js";
 import { useProviderSettingsView } from "@/hooks/useProviderSettingsView.js";
 import { useSettings } from "@/hooks/useSettingService.js";
+import { useOptionalServices } from "@/hooks/useServices.js";
 import {
   useUsageEntitlement,
   type UsageEntitlementRefreshOptions,
 } from "@/hooks/useUsageEntitlement.js";
 import { useToolbarConfigOptions } from "@/hooks/useZCodeConfig.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import {
-  createCodingPlanFunnelContext,
-  resolveCodingPlanEntryPlanState,
-} from "@/lib/codingPlanFunnelTelemetry.js";
 import { useShortcutCommandLabel } from "@/shortcuts/useShortcutBindings.js";
 import { logger } from "@/logger.js";
-import { useCodingPlanUpgradeDialog } from "@/settings/CodingPlanUpgradeDialogProvider.js";
 import { useCodingPlanEntitlements } from "@/settings/model-provider-section/useCodingPlanEntitlements.js";
 import { decodeCustomModelValue, encodeCustomModelValue } from "@/lib/zcodeCustomModelValue.js";
 import { buildRegistryModelSelectGroups } from "@/lib/modelSelectionGroups.js";
@@ -338,6 +341,9 @@ export interface V4ComposerToolbarProps {
   draftConfig?: Partial<SessionConfigState>;
   usage: SessionUsageState | null;
   disabled: boolean;
+  acpAgent?: AcpAgent | null;
+  onSelectAcpAgent?: (agent: AcpAgent) => void;
+  modelFocusSelector?: string;
   /** 单个 composer 内的配置 picker 排他 owner；只属于 renderer-local presentation。 */
   activeConfigPicker: V4ComposerConfigPicker | null;
   onConfigPickerOpenChange: (picker: V4ComposerConfigPicker, open: boolean) => void;
@@ -374,6 +380,9 @@ function V4ComposerModelControlsImpl({
   draftConfig,
   usage,
   disabled,
+  acpAgent = null,
+  onSelectAcpAgent,
+  modelFocusSelector,
   activeConfigPicker,
   onConfigPickerOpenChange,
   onSelectModel,
@@ -382,8 +391,12 @@ function V4ComposerModelControlsImpl({
   onRecoverCustomModelSelection,
 }: V4ComposerToolbarProps) {
   const { intl, locale } = useZCodeIntl();
-  const { openCodingPlanUpgrade } = useCodingPlanUpgradeDialog();
   const displayProvider = provider ?? ZCODE_AGENT_PROVIDER;
+  const services = useOptionalServices();
+  const { agents: availableAcpAgents, refresh: refreshAvailableAcpAgents } = useAvailableAcpAgents(
+    services?.acpService ?? null,
+    Boolean(onSelectAcpAgent),
+  );
   // 配置面读取：workspace 缺省目录（taskId=null），不读旧会话态。
   const { error: configOptionsError } = useToolbarConfigOptions(
     workspacePath,
@@ -417,9 +430,10 @@ function V4ComposerModelControlsImpl({
   }, []);
   const handleModelPickerOpenChange = useCallback(
     (open: boolean) => {
+      if (open && onSelectAcpAgent) refreshAvailableAcpAgents();
       onConfigPickerOpenChange("model", open);
     },
-    [onConfigPickerOpenChange],
+    [onConfigPickerOpenChange, onSelectAcpAgent, refreshAvailableAcpAgents],
   );
   const handleThoughtPickerOpenChange = useCallback(
     (open: boolean) => {
@@ -428,16 +442,17 @@ function V4ComposerModelControlsImpl({
     [onConfigPickerOpenChange],
   );
 
-  const modelOption = modelSelectionView?.providers.some((provider) => provider.models.length > 0)
-    ? ({
-        id: "model",
-        name: "Model",
-        category: "model",
-        type: "select",
-        currentValue: "",
-        options: [],
-      } satisfies ZCodeConfigOption)
-    : undefined;
+  const modelOption =
+    onSelectAcpAgent || modelSelectionView?.providers.some((provider) => provider.models.length > 0)
+      ? ({
+          id: "model",
+          name: "Model",
+          category: "model",
+          type: "select",
+          currentValue: "",
+          options: [],
+        } satisfies ZCodeConfigOption)
+      : undefined;
 
   // 空模型/档位曾被 Session 旧值补回，界面显示与实际不可提交状态矛盾。
   // 初始化已经由 Composer owner 完成；显示层只消费它，不能再次补值。
@@ -445,25 +460,6 @@ function V4ComposerModelControlsImpl({
     return resolveDraftDisplayedConfig(draftConfig ?? {});
   }, [draftConfig]);
 
-  const handleOpenStartPlanUpgrade = useCallback(
-    (providerId: string) => {
-      openCodingPlanUpgrade({
-        providerId,
-        funnelContext: createCodingPlanFunnelContext({
-          providerId,
-          upgradeSource: "session_token_usage",
-          eventRegion: "app.session",
-          eventText: intl.formatMessage({ id: "chat.quota.action.upgrade" }),
-          entryPlanState: resolveCodingPlanEntryPlanState({
-            providerId,
-            displayStatus: "purchased",
-            planLevel: "start",
-          }),
-        }),
-      });
-    },
-    [intl, openCodingPlanUpgrade],
-  );
   const handleOpenUsageDetails = useCallback(
     (sourceId?: SidebarUsageCodingPlanSourceId) => {
       if (sourceId) {
@@ -515,7 +511,6 @@ function V4ComposerModelControlsImpl({
             onAccess: () => refreshCodingPlanEntitlements({ silent: true, reason: "access" }),
           }
         : {}),
-      onUpgradeClick: () => handleOpenStartPlanUpgrade(contextPlanConnection.providerId),
       snapshot:
         entitlement?.snapshot?.provider?.id === contextPlanConnection.providerId
           ? entitlement.snapshot
@@ -525,7 +520,6 @@ function V4ComposerModelControlsImpl({
     contextPlanConnection,
     enabledStartPlanProviderIds,
     entitlements,
-    handleOpenStartPlanUpgrade,
     providerSourcesLoading,
     refreshCodingPlanEntitlements,
   ]);
@@ -543,6 +537,7 @@ function V4ComposerModelControlsImpl({
       Boolean(contextAccountProviderAccess),
     authenticated: true,
     family: contextPlanConnection.kind === "teamCoding" ? contextPlanConnection.family : undefined,
+    accountKey: String(providerSettingsView?.revision ?? ""),
   });
   const subscribedTeamProducts = useMemo(
     () =>
@@ -730,32 +725,39 @@ function V4ComposerModelControlsImpl({
   }, [draftMode, effectiveConfig, modelSelectionView?.revision]);
 
   const modelSelectGroups = useMemo<ModelSelectGroup[]>(() => {
-    if (!modelSelectionView) return [];
-    return buildRegistryModelSelectGroups(displayProvider, modelSelectionView, {
-      apiKeyLabel: intl.formatMessage({ id: "settings.modelProvider.apiKey" }),
-      apiKeyBadgeLabel: intl.formatMessage({
-        id: "settings.modelProvider.connectionMode.apiKeyBadge",
-      }),
-      codingPlanLabel: intl.formatMessage({
-        id: "settings.modelProvider.connectionMode.codingPlan",
-      }),
-      codingPlanBadgeLabel: intl.formatMessage({
-        id: "settings.modelProvider.connectionMode.codingPlanBadge",
-      }),
-      startPlanLabel: intl.formatMessage({
-        id: "settings.modelProvider.connectionMode.startPlan",
-      }),
-      startPlanBadgeLabel: intl.formatMessage({
-        id: "settings.modelProvider.connectionMode.startPlanBadge",
-      }),
-      teamPlanBadgeLabel: intl.formatMessage({
-        id: "settings.modelProvider.connectionMode.teamPlanBadge",
-      }),
-      teamPlanFallbackLabel: intl.formatMessage({
-        id: "settings.modelProvider.connectionMode.teamPlan",
-      }),
-    });
-  }, [displayProvider, intl, modelSelectionView]);
+    const apiGroups = modelSelectionView
+      ? buildRegistryModelSelectGroups(displayProvider, modelSelectionView, {
+          apiKeyLabel: intl.formatMessage({ id: "settings.modelProvider.apiKey" }),
+          apiKeyBadgeLabel: intl.formatMessage({
+            id: "settings.modelProvider.connectionMode.apiKeyBadge",
+          }),
+          codingPlanLabel: intl.formatMessage({
+            id: "settings.modelProvider.connectionMode.codingPlan",
+          }),
+          codingPlanBadgeLabel: intl.formatMessage({
+            id: "settings.modelProvider.connectionMode.codingPlanBadge",
+          }),
+          startPlanLabel: intl.formatMessage({
+            id: "settings.modelProvider.connectionMode.startPlan",
+          }),
+          startPlanBadgeLabel: intl.formatMessage({
+            id: "settings.modelProvider.connectionMode.startPlanBadge",
+          }),
+          teamPlanBadgeLabel: intl.formatMessage({
+            id: "settings.modelProvider.connectionMode.teamPlanBadge",
+          }),
+          teamPlanFallbackLabel: intl.formatMessage({
+            id: "settings.modelProvider.connectionMode.teamPlan",
+          }),
+        })
+      : [];
+    if (!onSelectAcpAgent || availableAcpAgents.length === 0) return apiGroups;
+    const group = buildAcpModelSelectGroup(
+      intl.formatMessage({ id: "acp.modelGroup" }),
+      availableAcpAgents,
+    );
+    return group.items.length > 0 ? [...apiGroups, group] : apiGroups;
+  }, [availableAcpAgents, displayProvider, intl, modelSelectionView, onSelectAcpAgent]);
 
   // 修复：恢复「管理模型」入口（老版 onManageModels = 打开设置页并定位模型供应商区）。
   const handleOpenModelProviderSettings = useCallback(() => {
@@ -769,6 +771,7 @@ function V4ComposerModelControlsImpl({
 
   // 当前投影模型的编码值：provider 命中目录则按自定义模型编码，否则回落裸 model id。
   const rawModelValue = useMemo(() => {
+    if (acpAgent) return acpModelValue(acpAgent);
     if (!effectiveConfig || !effectiveConfig.model) return "";
     const providerExists = modelSelectionView?.providers.some(
       (candidate) => candidate.providerId === effectiveConfig.provider,
@@ -777,7 +780,7 @@ function V4ComposerModelControlsImpl({
       return encodeCustomModelValue(effectiveConfig.provider, effectiveConfig.model);
     }
     return effectiveConfig.model;
-  }, [effectiveConfig, modelSelectionView]);
+  }, [acpAgent, effectiveConfig, modelSelectionView]);
 
   // 触发器显示兜底——`<synthetic>`（Claude SDK 恢复合成模型）或当前模型
   // 不在可选组（失效/下线/退登）→ 回落占位/默认「选择模型」，不直显协议内部占位符或失效
@@ -795,6 +798,10 @@ function V4ComposerModelControlsImpl({
   const normalizedModelValue = triggerDisplay.value ?? "";
 
   const modelTriggerDisplay = useMemo(() => {
+    if (acpAgent) {
+      const label = acpAgentDefinition(acpAgent).name;
+      return { fullLabel: label, modelLabel: label };
+    }
     // 非可选值（未选 / synthetic / 不可用）：占位文案或默认「选择模型」。
     const fallbackLabel =
       triggerDisplay.placeholder ?? intl.formatMessage({ id: "chat.toolbar.model.label" });
@@ -810,6 +817,7 @@ function V4ComposerModelControlsImpl({
       providerName,
     });
   }, [
+    acpAgent,
     effectiveConfig?.provider,
     intl,
     modelSelectionView,
@@ -819,6 +827,11 @@ function V4ComposerModelControlsImpl({
   ]);
   const handleModelValueChange = useCallback(
     (value: string) => {
+      const selectedAgent = acpAgentFromModelValue(value);
+      if (selectedAgent) {
+        onSelectAcpAgent?.(selectedAgent);
+        return;
+      }
       const decoded = decodeCustomModelValue(value);
       // 草稿的点击时可见模型可能只存在于 catalog，或已经被最新 draft
       // intent 覆盖，不能让 SessionPane 再从迟到的 prewarm projection 反推。
@@ -881,6 +894,7 @@ function V4ComposerModelControlsImpl({
       effectiveConfig?.provider,
       onRecoverCustomModelSelection,
       onSelectModel,
+      onSelectAcpAgent,
       modelSelectionView,
       workspaceIdentity,
       workspacePath,
@@ -1010,17 +1024,19 @@ function V4ComposerModelControlsImpl({
         data-usage-max={usage?.contextWindow?.maxTokens ?? ""}
         className="hidden"
       />
-      <ChatContextUsage
-        codingPlanUsageRemaining={codingPlanUsageRemaining}
-        taskUsage={taskUsage}
-        startPlanBalance={contextStartPlanBalance}
-        selectedProvider={displayProvider}
-        intl={intl}
-        locale={locale}
-        onSendCompressionCommand={onSendCompressionCommand}
-        compressionDisabled={disabled || recoveryPending}
-      />
-      {modelSelectionState.status === "error" && modelSelectionReload ? (
+      {!acpAgent ? (
+        <ChatContextUsage
+          codingPlanUsageRemaining={codingPlanUsageRemaining}
+          taskUsage={taskUsage}
+          startPlanBalance={contextStartPlanBalance}
+          selectedProvider={displayProvider}
+          intl={intl}
+          locale={locale}
+          onSendCompressionCommand={onSendCompressionCommand}
+          compressionDisabled={disabled || recoveryPending}
+        />
+      ) : null}
+      {!onSelectAcpAgent && modelSelectionState.status === "error" && modelSelectionReload ? (
         <Button
           type="button"
           variant="ghost"
@@ -1030,7 +1046,7 @@ function V4ComposerModelControlsImpl({
         >
           {intl.formatMessage({ id: "chat.toolbar.model.loadFailedRetry" })}
         </Button>
-      ) : modelSelectionState.status === "unavailable" ? (
+      ) : !onSelectAcpAgent && modelSelectionState.status === "unavailable" ? (
         <span className="px-2 text-ui-sm text-foreground-subtle">
           {intl.formatMessage({
             id:
@@ -1050,12 +1066,23 @@ function V4ComposerModelControlsImpl({
           showManageModelsAction={showManageModelsAction}
           manageModelsLabel={manageModelsLabel}
           onManageModels={handleOpenModelProviderSettings}
+          footerActions={
+            onSelectAcpAgent && modelSelectionState.status === "error" && modelSelectionReload
+              ? [
+                  {
+                    key: "retry-api-models",
+                    label: intl.formatMessage({ id: "chat.toolbar.model.loadFailedRetry" }),
+                    onSelect: modelSelectionReload,
+                  },
+                ]
+              : undefined
+          }
           lockReasonMessage={intl.formatMessage({
             id: "chat.toolbar.modelSwitch.lockedByRunningTask",
           })}
           isItemLocked={isModelOptionLocked}
           onValueChange={handleModelValueChange}
-          disabled={disabled || recoveryPending || modelSelectionState.status !== "ready"}
+          disabled={disabled || recoveryPending}
           tooltipTitle={modelTriggerDisplay.fullLabel}
           shortcutLabel={modelShortcutLabel}
           triggerRef={modelTriggerRef}
@@ -1067,11 +1094,11 @@ function V4ComposerModelControlsImpl({
           triggerLabelClassName="block min-w-0 text-left group-data-[composer-model-icon=true]/toolbar:hidden [&>span]:max-w-full [&>span>span]:block [&>span>span]:truncate"
           triggerClassName="composer-model-trigger group-data-[composer-model-icon=true]/toolbar:size-7 group-data-[composer-model-icon=true]/toolbar:p-0 group-data-[composer-model-icon=true]/toolbar:gap-0 group-data-[composer-model-icon=true]/toolbar:justify-center"
           triggerIconClassName="hidden group-data-[composer-model-icon=true]/toolbar:inline-flex"
-          focusSelectorOnClose={V4_COMPOSER_INPUT_SELECTOR}
+          focusSelectorOnClose={modelFocusSelector ?? V4_COMPOSER_INPUT_SELECTOR}
           providerSubmenuClassName={providerSubmenuClassName}
         />
       ) : null}
-      {thoughtOption ? (
+      {!acpAgent && thoughtOption ? (
         <ThoughtLevelCycleControl
           composerCollapsePriority={3}
           labelVisibilityClassName="inline-flex"

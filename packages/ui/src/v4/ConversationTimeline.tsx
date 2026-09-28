@@ -319,6 +319,10 @@ interface ConversationTimelineProps {
   searchResultHighlightRequest?: ChatSearchResultHighlightRequest | null;
   onSearchResultHighlightDone?: (requestId: number) => void;
   sessionPhase?: SessionPhase;
+  /** 外部智能体没有 CLI 权威工时，不通过渲染时钟推算。 */
+  workDurationAvailable?: boolean;
+  /** 消息后的宿主权限或错误操作，与消息共用同一个滚动视口。 */
+  footerSlot?: ReactNode;
   /** 宿主可调用的一次性“滚动到底部”动作；不持有 conversation 或跨 renderer 状态。 */
   scrollToBottomActionRef?: { current: (() => void) | null };
   /** 宿主可调用的一次性 query 定位动作；不改变分享面板 view。 */
@@ -381,6 +385,8 @@ function ConversationTimelineImpl({
   searchResultHighlightRequest,
   onSearchResultHighlightDone,
   sessionPhase,
+  workDurationAvailable = true,
+  footerSlot,
   scrollToBottomActionRef,
   scrollToQueryActionRef,
   selectionActions,
@@ -390,13 +396,16 @@ function ConversationTimelineImpl({
   const { intl } = useZCodeIntl();
   const scrollRef = useRef<HTMLDivElement>(null);
   const headerSlotRef = useRef<HTMLDivElement>(null);
+  const footerSlotRef = useRef<HTMLDivElement>(null);
   // headerSlot 高度参与虚拟窗口换算（scrollMargin），必须随内容与宽度变化实时跟进，
   // 否则只读块加载完成或窗口变宽换行后，虚拟行会整体错位。
   //
   // 依赖必须是「有没有 slot」而不是 headerSlot 本身：后者是 ReactNode，宿主传的是内联 JSX，
   // 每次渲染都是新对象，会让 ResizeObserver 在流式输出期间每帧重建。
   const hasHeaderSlot = Boolean(headerSlot);
+  const hasFooterSlot = Boolean(footerSlot);
   const [headerSlotHeight, setHeaderSlotHeight] = useState(0);
+  const [footerSlotHeight, setFooterSlotHeight] = useState(0);
   useEffect(() => {
     const element = headerSlotRef.current;
     if (!element) {
@@ -413,14 +422,33 @@ function ConversationTimelineImpl({
     observer.observe(element);
     return () => observer.disconnect();
   }, [hasHeaderSlot]);
+  useEffect(() => {
+    const element = footerSlotRef.current;
+    if (!element) {
+      setFooterSlotHeight(0);
+      return;
+    }
+    // 修复原因：权限请求只改变尾部控制块，不改变消息行；要由时间线继续负责贴底，
+    // 不能让 ACP 控件自行滚动，否则用户上滚阅读时会被抢走位置。
+    const sync = () => {
+      const next = element.getBoundingClientRect().height;
+      setFooterSlotHeight((current) => (Math.abs(current - next) < 0.5 ? current : next));
+    };
+    sync();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(sync);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hasFooterSlot]);
   const [liveNowMs, setLiveNowMs] = useState(() => Date.now());
   const renderUnits = useMemo(
     () =>
       buildConversationTurnRenderUnits(rows, {
         nowMs: liveNowMs,
         sessionPhase,
+        workDurationAvailable,
       }),
-    [liveNowMs, rows, sessionPhase],
+    [liveNowMs, rows, sessionPhase, workDurationAvailable],
   );
   const { virtualizedUnits, liveUnit, liveUnitIndex } = useMemo(
     () => splitConversationTimelineLiveTail(renderUnits),
@@ -1648,6 +1676,7 @@ function ConversationTimelineImpl({
     markLayoutScrollGuard,
     commitFollowing,
     headerSlotHeight,
+    footerSlotHeight,
     pendingGuideKey,
     rowCount,
     rows,
@@ -1774,7 +1803,7 @@ function ConversationTimelineImpl({
           // V4 已自管 prepend、吸底和记忆锚点；和其它虚拟列表一致，应从内容子树禁用锚点候选。
           style={{ overflowAnchor: "none" }}
         >
-          {renderUnits.length === 0 && !headerSlot ? (
+          {renderUnits.length === 0 && !headerSlot && !footerSlot ? (
             <div
               className={cn(
                 centeredEmptyLayout
@@ -1899,6 +1928,20 @@ function ConversationTimelineImpl({
                       "pending-guide"
                     }
                   />
+                </div>
+              ) : null}
+              {footerSlot ? (
+                <div
+                  ref={footerSlotRef}
+                  data-v4-timeline-footer-slot="true"
+                  data-v4-timeline-content-column="true"
+                  className={cn(
+                    "relative mx-auto w-full shrink-0",
+                    contentWidthClassName,
+                    summaryPanelInlineOffsetClassName,
+                  )}
+                >
+                  {footerSlot}
                 </div>
               ) : null}
             </div>

@@ -76,7 +76,6 @@ export function ModelProviderSectionLayout({
             <ModelProviderSectionNavigation
               navigationGroups={navigationGroups}
               selectedNodeKey={selectedNodeKey}
-              presetLoading={presetLoading}
               customLoading={customLoading}
               onSelectNavItem={onSelectNavItem}
               onReorderProviderIds={onReorderProviderIds}

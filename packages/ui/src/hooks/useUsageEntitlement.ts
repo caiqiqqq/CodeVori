@@ -265,7 +265,7 @@ export function useUsageEntitlementWithService(
       const sharedRequest = beginSharedEntitlementRequest({
         usageStatsService,
         freshnessKey,
-        invalidate: reason === "purchase",
+        invalidate: reason === "auth",
       });
       const requestVersion = requestVersionRef.current + 1;
       requestVersionRef.current = requestVersion;
@@ -296,10 +296,7 @@ export function useUsageEntitlementWithService(
         const snapshot = await getSharedEntitlementSnapshot({
           usageStatsService,
           requestKey: sharedRequest.requestKey,
-          options:
-            reason === "purchase"
-              ? { ...requestOptions, invalidateBalanceCache: true }
-              : requestOptions,
+          options: reason === "auth" ? { ...requestOptions, invalidateBalanceCache: true } : requestOptions,
         });
         if (requestVersionRef.current !== requestVersion || !sharedRequest.isCurrent()) {
           return;

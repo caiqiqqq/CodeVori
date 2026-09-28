@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useMemo,
   useState,
   type CSSProperties,
   type MouseEvent,
@@ -52,6 +53,9 @@ import {
   formatRemoteWorkspaceDisplayLabel,
 } from "@/lib/remoteWorkspaceHistory.js";
 import { TaskList } from "@/TaskList.js";
+import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
+import { useAcpSidebarSessions } from "@/hooks/useAcpSidebarSessions.js";
+import { buildTaskWorkspaceKey } from "@/lib/taskQueryCache.js";
 import { selectWorkspaceZCodeState, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
 import type { RemoteConnectionLogEntry } from "@/hooks/useRemoteConnectionLogs.js";
@@ -64,7 +68,10 @@ import {
   testId,
 } from "@zcode/shared";
 import type { ZCodeTaskMeta } from "@zcode/shared";
-import { useBaseWorkspaceServices, useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
+import {
+  useBaseWorkspaceServices,
+  useWorkspaceServicesResolution,
+} from "@/hooks/useWorkspaceServices.js";
 import {
   applyTaskQueryCacheMutation,
   invalidateTaskQueryCacheByScopes,
@@ -135,6 +142,8 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   closeTab,
   toggleWorkspaceExpanded,
   onSelectTask,
+  onSelectAcpSession,
+  activeAcpSessionId,
   onStartDraftInWorkspace,
   taskItems,
   taskListLoading,
@@ -163,6 +172,8 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
     taskId: string,
     targetWorkspaceIdentity?: string,
   ) => void;
+  onSelectAcpSession?: (session: AcpSidebarSession) => void;
+  activeAcpSessionId?: string | null;
   onStartDraftInWorkspace: (targetWorkspacePath: string, targetWorkspaceIdentity?: string) => void;
   taskItems: ZCodeTaskMeta[];
   taskListLoading: boolean;
@@ -199,12 +210,40 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
     (state) => state.removeOptimisticTaskListItem,
   );
   const setTaskUnreadIndicator = useZCodeSessionStore((state) => state.setTaskUnreadIndicator);
-  const services = useWorkspaceServices(
+  const serviceResolution = useWorkspaceServicesResolution(
     tab.workspacePath,
     tab.remoteSessionId,
     tab.workspaceIdentity,
     tab.remoteTarget,
   );
+  const services = serviceResolution.services;
+  const acpTabs = useMemo(() => (isExpanded ? [tab] : []), [isExpanded, tab]);
+  const acpServiceLookup = useMemo(
+    () =>
+      new Map(
+        serviceResolution.rpcReady
+          ? [
+              [
+                buildTaskWorkspaceKey(tab.workspacePath, tab.workspaceIdentity),
+                {
+                  services,
+                  ...(serviceResolution.remoteSessionId
+                    ? { remoteSessionId: serviceResolution.remoteSessionId }
+                    : {}),
+                },
+              ],
+            ]
+          : [],
+      ),
+    [
+      serviceResolution.remoteSessionId,
+      serviceResolution.rpcReady,
+      services,
+      tab.workspaceIdentity,
+      tab.workspacePath,
+    ],
+  );
+  const acpSessions = useAcpSidebarSessions(acpTabs, acpServiceLookup);
   const confirmDialog = useConfirmDialog();
   const baseServices = useBaseWorkspaceServices();
   const zcodeTaskService = services.zcodeTaskService;
@@ -1120,6 +1159,10 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
             remoteSessionId={tab.remoteSessionId}
             workspaceIdentity={tab.workspaceIdentity}
             tasks={taskItems}
+            acpSessions={acpSessions}
+            acpService={services.acpService}
+            activeAcpSessionId={isActiveWorkspace ? activeAcpSessionId : null}
+            onSelectAcpSession={onSelectAcpSession}
             pinnedTasks={EMPTY_PINNED_TASKS}
             activeTaskId={isActiveWorkspace ? activeTaskId : null}
             onSelectTask={handleSelectTask}

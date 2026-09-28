@@ -810,20 +810,23 @@ export function useAppPanels(options: {
   ]);
 
   const handleOpenModelTrajectory = useCallback(
-    (params: { taskId: string; title?: string | null }) => {
+    (params: { taskId: string; title?: string | null; source?: "native" | "acp" }) => {
       if (!params.taskId) {
         return;
       }
       revealSidePaneForCurrentOwner();
       commitOpenedSidePaneState((current) => {
-        const next = openModelTrajectorySidePane(current, params);
+        const next = openModelTrajectorySidePane(current, {
+          ...params,
+          ...(workspaceRemoteSessionId ? { remoteSessionId: workspaceRemoteSessionId } : {}),
+        });
         logger.info(
           `[App] 打开右侧面板 mode=model-trajectory workspace=${workspaceAbsPath} taskId=${params.taskId} tabs=${next.tabs.length}`,
         );
         return next;
       });
     },
-    [commitOpenedSidePaneState, revealSidePaneForCurrentOwner, workspaceAbsPath],
+    [commitOpenedSidePaneState, revealSidePaneForCurrentOwner, workspaceAbsPath, workspaceRemoteSessionId],
   );
 
   const handleOpenBackgroundBash = useCallback(

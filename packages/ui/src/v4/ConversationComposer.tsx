@@ -87,6 +87,14 @@ import {
 } from "@/ChatMediaAttachmentPreviewDialog.js";
 import type { LexicalChatInputHandle } from "@/LexicalChatInput.js";
 import { ChatPromptEditor } from "@/prompt-editor/ChatPromptEditor.js";
+import { toast } from "@/components/ui/toast.js";
+import type { AcpAgent, AcpConfigOption, AcpModeState, AcpPromptInput } from "@zcode/shared";
+import { AcpComposerConfigControls } from "@/v4/composer/AcpComposerConfigControls.js";
+import { getAcpComposerBlockingReason } from "@/v4/composer/acpComposerRouting.js";
+import {
+  acpAttachmentsFromComposer,
+  acpWorkspaceFilesFromEditor,
+} from "@/v4/composer/acpPromptDraft.js";
 import { usePromptEditorDragState } from "@/prompt-editor/usePromptEditorDragState.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { advanceComposerDraftRevision } from "@/v4/composer/composerDraftRevision.js";
@@ -386,6 +394,19 @@ interface ConversationComposerProps {
    */
   blockingRequestId?: string | null;
   disabled?: boolean;
+  /** 只改变同一个编辑器的提交目标；ACP 会话与转录由 Host 持有。 */
+  acpAgent?: AcpAgent | null;
+  acpSessionId?: string | null;
+  acpReady?: boolean;
+  acpRunning?: boolean;
+  onSendAcpText?: (input: Omit<AcpPromptInput, "commandId">) => Promise<string>;
+  acpGoal?: string | null;
+  onSetAcpGoal?: (goal: string | null) => Promise<void>;
+  acpConfigOptions?: AcpConfigOption[];
+  acpModeState?: AcpModeState | null;
+  onSetAcpConfigOption?: (configId: string, value: string | boolean) => Promise<void>;
+  /** 会话历史与新建/删除入口仍在这个输入框内，由 SessionPane 绑定 Host 命令。 */
+  acpSessionMenu?: ReactNode;
   /**
    * 是否在新建任务 / 切换会话 / 挂载后自动把光标聚焦到输入框（默认开）。
    * 竖切多 pane 时由宿主传入 SessionPane.focused，仅焦点 pane 聚焦、后台 pane 不抢焦点。
@@ -426,6 +447,7 @@ interface ConversationComposerProps {
     model: string,
     sourceModel: ModelSelectionSource | null,
   ) => void;
+  onSelectAcpAgent?: (agent: import("@zcode/shared").AcpAgent) => void;
   /** 选中思考深度；同时带上用户操作时看到的模型，避免异步回流后把 thought 归到另一模型。 */
   onSelectThought: (thought: string, modelContext: { provider: string; model: string }) => void;
   onSwitchMode: (mode: string) => void;
@@ -449,7 +471,6 @@ interface ConversationComposerProps {
   onDismissError?: () => void;
   /** 无可用模型横幅的恢复动作；由 SessionPane 注入壳层导航，组件不直接操作 tab。 */
   onOpenModelSettings?: () => void;
-  onOpenModelUpgrade?: () => void;
   onOpenCodeViewer?: (source: CodeViewerSource) => void;
   /**
    * 是否监听全局「加入对话」事件（workspace file tree / 画板按钮）。
@@ -497,6 +518,17 @@ function ConversationComposerImpl({
   centered = false,
   blockingRequestId = null,
   disabled = false,
+  acpAgent = null,
+  acpSessionId = null,
+  acpReady = false,
+  acpRunning = false,
+  onSendAcpText,
+  acpGoal,
+  onSetAcpGoal,
+  acpConfigOptions = [],
+  acpModeState = null,
+  onSetAcpConfigOption,
+  acpSessionMenu,
   autoFocusEnabled = true,
   workspacePath,
   workspaceIdentity,
@@ -516,6 +548,7 @@ function ConversationComposerImpl({
   onDraftStateChange,
   onStop,
   onSelectModel,
+  onSelectAcpAgent,
   onSelectThought,
   onSwitchMode,
   onOpenRunningBackgroundWorks,
@@ -526,7 +559,6 @@ function ConversationComposerImpl({
   error,
   onDismissError,
   onOpenModelSettings,
-  onOpenModelUpgrade,
   onOpenCodeViewer,
   listenAddToChatEvents = true,
   externalTextInsertRequest = null,
@@ -594,6 +626,8 @@ function ConversationComposerImpl({
   const textRef = useRef("");
   const contentRevisionRef = useRef(0);
   const pendingRef = useRef(false);
+  const acpTargetRef = useRef({ agent: acpAgent, sessionId: acpSessionId });
+  acpTargetRef.current = { agent: acpAgent, sessionId: acpSessionId };
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
   // 这条线断过一次：composer 原本读一个平行的 sharedContextImport prop，而 SessionPane 从没
@@ -624,7 +658,8 @@ function ConversationComposerImpl({
     workspaceIdentity,
     remoteSessionId,
     scopeId: draftScopeId,
-    attachmentSessionId,
+    attachmentSessionId: acpAgent ? acpSessionId : attachmentSessionId,
+    acpMode: Boolean(acpAgent),
     attachmentPut,
     onRuntimeRestart,
     onRuntimeLifecycle,
@@ -967,6 +1002,7 @@ function ConversationComposerImpl({
     };
 
     const draft = transferredDraft ?? composerDraft;
+    const restoreScheduledRevision = contentRevisionRef.current;
     const restoreDraftInto = (api: LexicalChatInputHandle) => {
       if (!draft) {
         if (textRef.current) {
@@ -988,6 +1024,11 @@ function ConversationComposerImpl({
     const applyDraft = () => {
       const api = inputApiRef.current;
       if (!api) return;
+      // Bug 原因：草稿恢复排到下一帧后，用户可能已在同一编辑器输入；迟到的恢复不能覆盖新正文。
+      if (contentRevisionRef.current !== restoreScheduledRevision) {
+        requestComposerFocus();
+        return;
+      }
       restoreDraftInto(api);
       // 草稿恢复后把光标交还输入框（切会话/切草稿/挂载）；连接中会话待可编辑后兑现。
       requestComposerFocus();
@@ -1092,10 +1133,12 @@ function ConversationComposerImpl({
   }, [workspacePath]);
 
   const mode = snapshot?.inputRouting.mode ?? "startNow";
-  const modifiedEnterSubmits = shouldEnableModifiedEnterSubmit({
-    inputRoutingMode: mode,
-  });
-  const canStop = Boolean(snapshot?.control.canStop);
+  const modifiedEnterSubmits =
+    !acpAgent &&
+    shouldEnableModifiedEnterSubmit({
+      inputRoutingMode: mode,
+    });
+  const canStop = acpAgent ? acpRunning : Boolean(snapshot?.control.canStop);
   const modifiedEnterReversesDelivery = modifiedEnterSubmits && canStop;
   const hasText = text.trim().length > 0;
   const hasDraftToSubmit =
@@ -1125,15 +1168,21 @@ function ConversationComposerImpl({
   // guide 是 CLI 已授权的 busy 输入路由，是否最终 steer 或回退 queue 由命令层裁决。
   const routingAllowsSend = draftMode || (snapshot !== null && mode !== "reject");
   const attachmentsReady = !attachmentsApi.hasUnreadyAttachments;
-  const canSend =
-    !disabled &&
-    !pending &&
-    hasDraftToSubmit &&
-    routingAllowsSend &&
-    attachmentsReady &&
-    submissionReady;
+  const canSend = acpAgent
+    ? !disabled &&
+      !pending &&
+      acpReady &&
+      !acpRunning &&
+      (hasText || hasAttachments) &&
+      attachmentsReady
+    : !disabled &&
+      !pending &&
+      hasDraftToSubmit &&
+      routingAllowsSend &&
+      attachmentsReady &&
+      submissionReady;
   // 旧 UI 状态机：streaming + 空草稿 → Stop；有草稿 → 发送键（入队）。
-  const showStopControl = canStop && !hasDraftToSubmit;
+  const showStopControl = acpAgent ? canStop : canStop && !hasDraftToSubmit;
 
   useEffect(() => {
     if (!canSend) setSendTooltipOpen(false);
@@ -1147,6 +1196,70 @@ function ConversationComposerImpl({
       requestedDelivery?: "startNow" | "queue" | "guide",
     ) => {
       const trimmed = textRef.current.trim();
+      if (acpAgent) {
+        if ((!trimmed && !hasAttachments) || !acpReady || acpRunning || !onSendAcpText) return;
+        // 原生结构化上下文仍需专门的 Host 接口；附件走 ACP 内容块。
+        const blocked = getAcpComposerBlockingReason({
+          codeComments: getCodeCommentContexts().length > 0,
+          webElements: webElementContexts.length > 0,
+          pptxElements: pptxElementReferences.length > 0,
+          selections: conversationSelectionReferences.length > 0,
+          sharedContext: Boolean(pendingShareContext),
+        });
+        if (blocked) {
+          toast(
+            intl.formatMessage({
+              id: "acp.contextUnsupported",
+            }),
+            { variant: "warning" },
+          );
+          return;
+        }
+        const submittedDraft = snapshotDraftOfEditor();
+        const target = acpTargetRef.current;
+        const submittedRevision = contentRevisionRef.current;
+        const submittedAttachmentIds = attachmentsApi.attachments.map((item) => item.id);
+        if (pendingRef.current) return;
+        pendingRef.current = true;
+        setPending(true);
+        try {
+          const attachments = await acpAttachmentsFromComposer(
+            attachmentsApi.attachments,
+            Boolean(remoteSessionId || workspaceIdentity?.trim()),
+          );
+          const workspaceFiles = acpWorkspaceFilesFromEditor(submittedDraft.editorStateJson);
+          const admittedSessionId = await onSendAcpText({
+            text: trimmed,
+            attachments,
+            workspaceFiles,
+          });
+          // 修复原因：Agent 的 prompt RPC 会等整轮结束；Host 接纳用户行即是草稿提交边界。
+          // 清掉仍排队的草稿落盘，避免迟到 debounce 在清空后重新写回已发送正文。
+          if (
+            contentRevisionRef.current === submittedRevision &&
+            acpTargetRef.current.agent === target.agent &&
+            (acpTargetRef.current.sessionId === target.sessionId ||
+              acpTargetRef.current.sessionId === admittedSessionId)
+          ) {
+            if (draftPersistTimerRef.current !== null) {
+              window.clearTimeout(draftPersistTimerRef.current);
+              draftPersistTimerRef.current = null;
+            }
+            inputApiRef.current?.clear();
+            updateText("");
+            updateComposerContent({ text: "", editorStateJson: undefined, mention: undefined });
+          }
+          await attachmentsApi.adoptSentAttachments(submittedAttachmentIds);
+          attachmentsApi.clearAttachments(submittedAttachmentIds);
+        } catch (error) {
+          toast(error instanceof Error ? error.message : String(error), { variant: "warning" });
+          logger.warn(`[v4-composer] ACP 发送失败: ${String(error)}`);
+        } finally {
+          pendingRef.current = false;
+          setPending(false);
+        }
+        return;
+      }
       const submittedQueueItemIds =
         snapshotRef.current?.queue.items.map((item) => item.queueItemId) ?? [];
       const hasPendingAttachments = attachmentsApi.attachments.length > 0;
@@ -1439,12 +1552,23 @@ function ConversationComposerImpl({
     },
     [
       attachmentsApi,
+      acpAgent,
+      acpReady,
+      acpRunning,
+      hasAttachments,
+      remoteSessionId,
+      workspaceIdentity,
       conversationSelectionReferences,
+      getCodeCommentContexts,
+      intl,
+      onSendAcpText,
+      snapshotDraftOfEditor,
+      updateText,
+      updateComposerContent,
       conversationTelemetry,
       draftConfig,
       createSubmissionFromComposer,
       submissionReady,
-      getCodeCommentContexts,
       telemetryDraftConfig,
       modelSelectionView,
       onSendText,
@@ -1456,9 +1580,6 @@ function ConversationComposerImpl({
       removePptxElementReference,
       removeWebElementContext,
       sessionId,
-      snapshotDraftOfEditor,
-      updateText,
-      updateComposerContent,
       webElementContexts,
       pptxElementReferences,
       workspaceIdentity,
@@ -1598,14 +1719,16 @@ function ConversationComposerImpl({
   // 动态 placeholder（旧 chatViewPlaceholder 语义）：无历史 → newTask；
   // 有历史空闲 → followUpAsk；有历史处理中 → followUpQueue。
   const placeholder = intl.formatMessage({
-    id: resolveChatPlaceholderKey({
-      hasHistoryMessages: (snapshot?.rows.totalCount ?? 0) > 0,
-      isTaskProcessing: canStop,
-      compactNewTask: false,
-    }),
+    id: acpAgent
+      ? "acp.prompt"
+      : resolveChatPlaceholderKey({
+          hasHistoryMessages: (snapshot?.rows.totalCount ?? 0) > 0,
+          isTaskProcessing: canStop,
+          compactNewTask: false,
+        }),
   });
   const sendTooltipTitle = intl.formatMessage({
-    id: mode === "enqueue" ? "chat.queue.enqueue" : "chat.send",
+    id: acpAgent ? "acp.send" : mode === "enqueue" ? "chat.queue.enqueue" : "chat.send",
   });
   const modifierTooltip = resolveFollowupModifierTooltip({
     enabled: modifiedEnterReversesDelivery,
@@ -1618,8 +1741,8 @@ function ConversationComposerImpl({
     ? intl.formatMessage({ id: modifierTooltip.titleId })
     : sendTooltipTitle;
   const resolvedSendTooltipShortcut = modifierTooltip?.shortcut ?? sendShortcut;
-  const stopTooltipTitle = intl.formatMessage({ id: "chat.stop" });
-  const visibleError = error && !shouldSuppressChatErrorBanner(error) ? error : null;
+  const stopTooltipTitle = intl.formatMessage({ id: acpAgent ? "acp.stop" : "chat.stop" });
+  const visibleError = !acpAgent && error && !shouldSuppressChatErrorBanner(error) ? error : null;
 
   useEffect(() => {
     if (!visibleError || !conversationTelemetry || !telemetryVisible) return;
@@ -1658,6 +1781,7 @@ function ConversationComposerImpl({
     }),
     [intl, attachmentsApi.openAttachmentPicker],
   );
+  const nativeActionMenu = !acpAgent;
 
   // ── 附件预览网格 ──
   const composerAttachments = attachmentsApi.attachments;
@@ -2052,9 +2176,11 @@ function ConversationComposerImpl({
             draftConfig={draftConfig}
             usage={composerUsage}
             disabled={disabled}
+            acpAgent={acpAgent}
             activeConfigPicker={activeConfigPicker}
             onConfigPickerOpenChange={handleConfigPickerOpenChange}
             onSelectModel={handleSelectModelTrace}
+            onSelectAcpAgent={onSelectAcpAgent}
             onSelectThought={onSelectThought}
             onSwitchMode={onSwitchMode}
             onRecoverCustomModelSelection={onRecoverCustomModelSelection}
@@ -2100,6 +2226,7 @@ function ConversationComposerImpl({
     ),
     [
       canSend,
+      acpAgent,
       activeConfigPicker,
       composerPhase,
       composerUsage,
@@ -2111,6 +2238,7 @@ function ConversationComposerImpl({
       handleConfigPickerOpenChange,
       mode,
       handleSelectModelTrace,
+      onSelectAcpAgent,
       modelSelectionReload,
       modelSelectionState,
       modelSelectionView,
@@ -2139,34 +2267,58 @@ function ConversationComposerImpl({
   const leadingActionsNode = useMemo(
     () => (
       <>
-        <V4ComposerModeSwitch
-          workspacePath={workspacePath}
-          workspaceIdentity={workspaceIdentity}
-          provider={provider}
-          draftConfig={draftConfig}
-          disabled={disabled}
-          activeConfigPicker={activeConfigPicker}
-          onConfigPickerOpenChange={handleConfigPickerOpenChange}
-          onSwitchMode={onSwitchMode}
-        />
+        {acpSessionMenu}
+        {acpAgent ? (
+          <AcpComposerConfigControls
+            agent={acpAgent}
+            sessionId={acpSessionId}
+            options={acpConfigOptions}
+            modes={acpModeState}
+            disabled={disabled || !acpReady || acpRunning}
+            onChange={onSetAcpConfigOption}
+          />
+        ) : (
+          <V4ComposerModeSwitch
+            workspacePath={workspacePath}
+            workspaceIdentity={workspaceIdentity}
+            provider={provider}
+            draftConfig={draftConfig}
+            disabled={disabled}
+            activeConfigPicker={activeConfigPicker}
+            onConfigPickerOpenChange={handleConfigPickerOpenChange}
+            onSwitchMode={onSwitchMode}
+          />
+        )}
         {/* 附件画廊重构曾整段覆盖 leadingActions，误删 CUA 常驻入口。
             入口自身继续负责平台、远程与设置可见性，不在 composer 重复判定。 */}
-        <V4ComposerCuaEntry
-          workspacePath={workspacePath}
-          workspaceIdentity={workspaceIdentity}
-          remoteSessionId={remoteSessionId}
-          currentSessionBusy={canStop}
-        />
-        <ConversationBackgroundWorkTrigger
-          backgroundWorks={snapshot?.backgroundWorks ?? []}
-          runningSubagentCount={runningSubagentCount}
-          onOpen={onOpenRunningBackgroundWorks}
-          openTarget={backgroundWorkOpenTarget}
-        />
+        {!acpAgent ? (
+          <V4ComposerCuaEntry
+            workspacePath={workspacePath}
+            workspaceIdentity={workspaceIdentity}
+            remoteSessionId={remoteSessionId}
+            currentSessionBusy={canStop}
+          />
+        ) : null}
+        {!acpAgent ? (
+          <ConversationBackgroundWorkTrigger
+            backgroundWorks={snapshot?.backgroundWorks ?? []}
+            runningSubagentCount={runningSubagentCount}
+            onOpen={onOpenRunningBackgroundWorks}
+            openTarget={backgroundWorkOpenTarget}
+          />
+        ) : null}
       </>
     ),
     [
       activeConfigPicker,
+      acpAgent,
+      acpSessionMenu,
+      acpSessionId,
+      acpConfigOptions,
+      acpModeState,
+      acpReady,
+      acpRunning,
+      onSetAcpConfigOption,
       canStop,
       disabled,
       draftConfig,
@@ -2198,8 +2350,8 @@ function ConversationComposerImpl({
     <div
       data-testid={TID_V4_COMPOSER}
       data-input-routing={mode}
-      aria-hidden={isBlockedByInteraction ? true : undefined}
-      style={isBlockedByInteraction ? { display: "none" } : undefined}
+      aria-hidden={isBlockedByInteraction && !acpAgent ? true : undefined}
+      style={isBlockedByInteraction && !acpAgent ? { display: "none" } : undefined}
       className={cn(
         "chat-composer-region z-20 w-full shrink-0 @container/composer",
         centered && "max-w-2xl",
@@ -2222,7 +2374,6 @@ function ConversationComposerImpl({
             error={visibleError}
             onDismiss={onDismissError}
             onOpenModelSettings={onOpenModelSettings}
-            onOpenUpgrade={onOpenModelUpgrade}
           />
         </div>
       ) : null}
@@ -2234,7 +2385,12 @@ function ConversationComposerImpl({
       >
         {contextHeader ? (
           // 旧 ChatViewComposer contextHeaderContent 同款包装（workspace 菜单 + Git 分支）。
-          <div className="p-1.5 flex min-w-0 flex-wrap items-center gap-0">{contextHeader}</div>
+          <div
+            data-v4-composer-context-header="true"
+            className="p-1.5 flex min-w-0 flex-wrap items-center gap-0"
+          >
+            {contextHeader}
+          </div>
         ) : null}
         {conversationSelectionLimitReason ? (
           <div
@@ -2252,34 +2408,44 @@ function ConversationComposerImpl({
           taskId={sessionId}
           skillCatalogSessionId={skillCatalogSessionId}
           placeholder={placeholder}
-          disabled={disabled || mode === "reject"}
+          disabled={disabled || (!acpAgent && mode === "reject")}
           submitting={pending}
-          submitDisabled={pending || !routingAllowsSend || !attachmentsReady || !submissionReady}
+          submitDisabled={
+            acpAgent
+              ? !canSend
+              : pending || !routingAllowsSend || !attachmentsReady || !submissionReady
+          }
           allowSubmitWhenEmpty={
             // 发送按钮已把代码评论视为可发送上下文，但这里曾漏掉同一状态，
             // 导致空文本仅附代码评论时 Enter 被编辑器判为空，必须改点发送按钮。
-            hasCodeCommentContexts ||
+            (!acpAgent && hasCodeCommentContexts) ||
             hasAttachments ||
-            hasWebElementContexts ||
-            hasPptxElementReferences ||
-            hasConversationSelectionReferences
+            (!acpAgent && hasWebElementContexts) ||
+            (!acpAgent && hasPptxElementReferences) ||
+            (!acpAgent && hasConversationSelectionReferences)
           }
           enterSubmits={enterSubmits}
           onModifiedSubmit={modifiedEnterSubmits ? handleModifiedEditorSubmit : undefined}
           submitLabel={sendTooltipTitle}
-          showSlashButton
+          showSlashButton={nativeActionMenu}
           // @ 是 Plugin / 文件 / 对话 / 画板主入口；# 会话与 $ / ¥ / ￥ Skills
           // 仍由 MentionPlugin 保留兼容触发，但不在 + 菜单重复展示。
-          showMentionButton
+          showMentionButton={nativeActionMenu}
           topContent={topContentNode}
           attachmentAction={attachmentAction}
+          acpMode={Boolean(acpAgent)}
+          acpAgent={acpAgent}
+          acpSessionId={acpSessionId}
+          acpGoal={acpGoal}
+          onSetAcpGoal={onSetAcpGoal}
           inputTestId={TID_V4_COMPOSER_INPUT}
           inputApiRef={inputApiRef}
           promptHistory={promptHistory}
           // 命令目录必须完整来自 CLI workspace slash catalog；UI 只在
           // secondary pane 按产品能力隐藏 goal，不再追加任何内建命令或别名。
           excludedSlashCommandNames={suppressGoalCommands ? ["goal"] : undefined}
-          appSlashCommands={appSlashCommands}
+          appSlashCommands={acpAgent ? undefined : appSlashCommands}
+          enableSlashCommands={!acpAgent}
           enableMentionPanel
           leadingActions={leadingActionsNode}
           submitControl={submitControlNode}
@@ -2287,7 +2453,9 @@ function ConversationComposerImpl({
           onChange={handleEditorChange}
           onFocus={handleEditorFocus}
           onSubmit={handleEditorSubmit}
-          onWhiteboardMentionSelected={attachmentsApi.handleWhiteboardMentionSelected}
+          onWhiteboardMentionSelected={
+            acpAgent ? undefined : attachmentsApi.handleWhiteboardMentionSelected
+          }
           onPaste={attachmentsApi.handlePaste}
         />
         {attachmentsApi.attachmentError ? (

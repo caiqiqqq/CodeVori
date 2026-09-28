@@ -28,6 +28,7 @@ import type {
 import { DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS } from "@zcode/shared";
 import type { ISkillsService } from "./skills.js";
 import { SKILL_FILE_NAME, walkSkillMarkdownPaths } from "./skillDiscoveryWalk.js";
+import { buildSkillsPromptContext, hasExplicitSkillReference } from "./skillsPromptContext.js";
 import { readInstalledPluginRoots } from "#src/plugins/installedPluginRoots.js";
 
 interface DiscoverResult {
@@ -240,39 +241,6 @@ function buildSkillId(params: {
   path: string;
 }): string {
   return `${params.provider}:${params.scope}:${params.name}:${hashStableIdPart(params.path)}`;
-}
-
-function collectMentionedSkillNames(prompt: string): Set<string> {
-  const names = new Set<string>();
-  for (const match of prompt.matchAll(/\$([a-z0-9]+(?:-[a-z0-9]+)*)/g)) {
-    const name = match[1];
-    if (name) {
-      names.add(name);
-    }
-  }
-  return names;
-}
-
-function escapeXmlAttribute(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
-
-function buildActivatedSkillsPromptBlock(skills: SkillSummary[]): string {
-  return [
-    "<available_skills>",
-    ...skills.map((skill) =>
-      [
-        `<activated_skill name="${escapeXmlAttribute(skill.name)}" path="${escapeXmlAttribute(skill.path)}">`,
-        skill.body,
-        "</activated_skill>",
-      ].join("\n"),
-    ),
-    "</available_skills>",
-  ].join("\n");
 }
 
 async function appendSkillsAuditLog(params: {
@@ -1086,8 +1054,7 @@ export function createSkillsService(options?: SkillsServiceOptions): ISkillsServ
       provider?: ZCodeProvider;
       prompt: string;
     }): Promise<SkillsPromptContext> {
-      const mentionedSkillNames = collectMentionedSkillNames(params.prompt);
-      if (mentionedSkillNames.size === 0) {
+      if (!hasExplicitSkillReference(params.prompt)) {
         return { prompt: params.prompt, activatedSkillNames: [] };
       }
 
@@ -1096,25 +1063,19 @@ export function createSkillsService(options?: SkillsServiceOptions): ISkillsServ
         workspaceIdentity: params.workspaceIdentity,
         provider: params.provider,
       });
-      const activatedSkills = skills.filter(
-        (skill) => skill.enabled && mentionedSkillNames.has(skill.name),
-      );
-      if (activatedSkills.length === 0) {
-        return { prompt: params.prompt, activatedSkillNames: [] };
+      const context = buildSkillsPromptContext(params.prompt, skills);
+      if (context.activatedSkillNames.length === 0) {
+        return context;
       }
 
-      const activatedSkillNames = activatedSkills.map((skill) => skill.name);
       // 技能目录是可见资源，但不能在每次 session 发送时全量注入。
       // 只有用户在 prompt 中显式提到且当前启用的技能才进入上下文，避免技能状态从 UI 列表泄漏到 agent 核心 session。
       await appendSkillsAuditLog({
         workspacePath: params.workspacePath,
         workspaceIdentity: params.workspaceIdentity,
-        activatedSkillNames,
+        activatedSkillNames: context.activatedSkillNames,
       });
-      return {
-        prompt: `${params.prompt}\n\n${buildActivatedSkillsPromptBlock(activatedSkills)}`,
-        activatedSkillNames,
-      };
+      return context;
     },
 
     async copyToCommon(params: {

@@ -34,6 +34,7 @@ export default defineConfig({
     "ssh2",
     "yaml",
     "node-forge",
+    "yauzl",
     "undici",
     "axios",
     "form-data",

@@ -13,7 +13,6 @@ import {
   extractWorkspaceOpenPath,
   extractShareImportCode,
   isOAuthCallbackUrl,
-  isPaymentCallbackUrl,
   isWorkspaceOpenUrl,
   isShareImportUrl,
 } from "./desktopDeepLinkUrl.js";
@@ -42,7 +41,6 @@ interface OAuthRouteTarget {
 const oauthStateToWindow = new Map<string, OAuthRouteTarget>();
 const rendererReadyWebContentsIds = new Set<number>();
 let pendingDeepLinkUrl: string | null = null;
-let pendingPaymentDeepLinkUrl: string | null = null;
 let pendingOpenWorkspaceRequest: {
   path: string;
   targetWebContentsId?: number;
@@ -292,29 +290,6 @@ export function handleDeepLink(
     });
   }
 
-  if (isPaymentCallbackUrl(parsedUrl)) {
-    const targetWindow = options.resolveApplicationWindow
-      ? options.resolveApplicationWindow()
-      : (BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null);
-    if (targetWindow) {
-      targetWindow.webContents.send(PlatformChannels.PaymentCallback, url);
-      focusDeepLinkTargetWindow(targetWindow);
-      logger.info("[deep-link] 支付回调路由成功", {
-        windowId: targetWindow.webContents.id,
-        host: parsedUrl.hostname,
-        path: parsedUrl.pathname,
-      });
-      return true;
-    }
-
-    pendingPaymentDeepLinkUrl = url;
-    logger.warn("[deep-link] 支付回调暂未命中窗口，先缓存等待 renderer ready", {
-      host: parsedUrl.hostname,
-      path: parsedUrl.pathname,
-    });
-    return false;
-  }
-
   if (isShareImportUrl(parsedUrl)) {
     const shareCode = extractShareImportCode(parsedUrl);
     if (!shareCode) {
@@ -470,10 +445,6 @@ export function deliverPendingDeepLink(webContents: WebContents): boolean {
   if (hasPendingOAuthCallback) {
     webContents.send(PlatformChannels.OAuthCallback, pendingDeepLinkUrl);
     pendingDeepLinkUrl = null;
-  }
-  if (pendingPaymentDeepLinkUrl) {
-    webContents.send(PlatformChannels.PaymentCallback, pendingPaymentDeepLinkUrl);
-    pendingPaymentDeepLinkUrl = null;
   }
   if (
     pendingOpenWorkspaceRequest &&

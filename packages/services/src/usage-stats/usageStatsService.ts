@@ -17,6 +17,7 @@ import type {
 } from "@zcode/shared";
 import { isCodingPlanModelProviderId } from "@zcode/shared";
 import type { ICredentialService } from "../credential/credential.js";
+import type { IAcpService } from "../acp/acpService.js";
 import type { IAccountRequestAuthService } from "../model-provider/accountRequestAuthService.js";
 import type { IZCodeAgentService } from "../zcode-agent/zcodeAgent.js";
 import type { IUsageStatsService } from "./usageStats.js";
@@ -40,6 +41,7 @@ interface UsageStatsServiceDependencies {
   env?: NodeJS.ProcessEnv;
   /** App Usage 经 ZCode Protocol 读取 agent 数据库真实统计。 */
   zcodeAgentService: Pick<IZCodeAgentService, "getAppUsageStats">;
+  acpService: Pick<IAcpService, "getUsageStats">;
   /**
    * 官方 Server MCP 额度的凭证来源（与 server MCP 调用同一套 5 个身份头）。
    * 缺省时 entitlement 快照不含 MCP 额度。
@@ -67,12 +69,16 @@ export function createUsageStatsService(
 
   return {
     async getAppUsageSnapshot(request: AppUsageRequest): Promise<AppUsageSnapshot> {
-      // App Usage 现读取 agent 数据库真实统计（model_usage/turn_usage/tool_usage），
-      // 经 ZCode Protocol usage/stats 取回。不再读本地 session JSON 估算。
-      return dependencies.zcodeAgentService.getAppUsageStats({
-        range: request.range,
-        timeZone: request.timeZone,
-      });
+      // 修复原因：CLI usage 库不拥有 ACP 运行时；同一目标 Host 分别读取两位
+      // 事实所有者，再合成设置页投影，不能把 ACP 会话 ID 送入原生 CLI。
+      const [native, acpAgents] = await Promise.all([
+        dependencies.zcodeAgentService.getAppUsageStats({
+          range: request.range,
+          timeZone: request.timeZone,
+        }),
+        dependencies.acpService.getUsageStats(request),
+      ]);
+      return { ...native, acpAgents };
     },
     async getCodingPlanUsageSnapshot(
       request: CodingPlanUsageRequest,

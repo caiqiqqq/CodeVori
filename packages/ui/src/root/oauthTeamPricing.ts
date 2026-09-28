@@ -13,7 +13,6 @@ export async function getEnterprisePricingProducts(
   // 两个账号域均须按自身 Family 查询；失败与明确空列表分开，不能据此自动改掉已有连接。
   try {
     const pricing = await services.codingPlanSubscriptionService.getEnterprisePricing({
-      authenticated: true,
       family: domain,
     });
     return { status: "success", productList: pricing.productList };

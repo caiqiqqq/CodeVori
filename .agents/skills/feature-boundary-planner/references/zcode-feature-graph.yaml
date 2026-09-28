@@ -355,7 +355,80 @@ nodes:
     codeSeeds:
       - file: apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
         symbol: applySubmissionExecutionState
+  - id: capability.acp-agent-sessions
+    kind: capability
+    label: Built-in ACP agent sessions
+    aliases:
+      - ACP
+      - Codex ACP
+      - Claude ACP
+      - Codeg built-in agents
+      - 智能体设置
+      - Codex 原生配置
+      - Codex 官方模型目录
+      - 外部 Agent 会话
+    codeSeeds:
+      - file: packages/services/src/acp/acpServiceImpl.ts
+        symbol: createAcpService
+      - file: packages/services/src/acp/acpStdioConnection.ts
+        symbol: connectAcpAgent
+      - file: packages/shared/src/zcode-protocol/acp.ts
+        symbol: ACP_AGENT_CATALOG
+      - file: packages/services/src/acp/acpAgentManager.ts
+        symbol: createAcpAgentManager
+      - file: packages/services/src/acp/acpCodexConfig.ts
+        symbol: updateCodexNativeConfig
+      - file: packages/services/src/acp/acpCodexModels.ts
+        symbol: listCodexOfficialModels
+      - file: packages/services/src/mcp-sync/mcpSyncService.ts
+        symbol: createMcpSyncService
+      - file: packages/services/src/skills/skillsService.ts
+        symbol: createSkillsService
+    invariants:
+      - The target Host owns ACP mapping and transcript; the ACP Agent owns model context.
+      - ZCode and API Provider sessions use the existing V4 command path.
+      - Codex native credentials and model choices are owned by the target Host's Codex files and apply to new ACP connections.
+      - ACP new and load use enabled MCP settings on the target Host; unsupported authentication and transports fail before session admission.
+      - ACP explicitly named skills use the current settings owner; API and ZCode keep the native runtime catalog.
+  - id: surface.acp-conversation
+    kind: ui-surface
+    label: ACP conversation target inside the existing pane
+    codeSeeds:
+      - file: packages/ui/src/v4/AcpConversationContent.tsx
+        symbol: AcpConversationControls
+      - file: packages/ui/src/v4/SessionPane.tsx
+        symbol: SessionPane
+      - file: packages/ui/src/v4/ConversationComposer.tsx
+        symbol: ConversationComposer
+      - file: packages/ui/src/v4/composer/acpModelSelection.ts
+        symbol: buildAcpModelSelectGroup
+      - file: packages/ui/src/v4/acpPromptAdmission.ts
+        symbol: waitForAcpPromptAdmission
+      - file: packages/ui/src/WorkspaceTimelineTasksSection.tsx
+        symbol: WorkspaceTimelineTasksSection
+      - file: packages/ui/src/TaskList.tsx
+        symbol: TaskList
+      - file: packages/ui/src/hooks/useAcpSidebarSessions.ts
+        symbol: useAcpSidebarSessions
 edges:
+  - from: capability.acp-agent-sessions
+    to: surface.acp-conversation
+    type: renders-in
+    rank: must-inspect
+  - from: surface.acp-conversation
+    to: surface.conversation-model-control
+    type: switches-through
+    rank: must-inspect
+    condition: The existing composer model dropdown selects an ACP Agent or an API model; each keeps its own runtime session.
+  - from: capability.acp-agent-sessions
+    to: boundary.workspace-key
+    type: isolated-by
+    rank: must-inspect
+  - from: capability.acp-agent-sessions
+    to: capability.conversation-runtime
+    type: coexists-with
+    rank: invariant-only
+    condition: ACP and V4 ZCode or API model Provider sessions have independent owners and commands.
   - from: capability.model-selection
     to: surface.conversation-model-control
     type: renders-in

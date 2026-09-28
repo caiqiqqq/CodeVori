@@ -66,6 +66,7 @@ export function useSkillsMentionProvider(
   requireQuery: boolean,
   emptyText: string,
   title: string,
+  source: "runtime" | "settings" = "runtime",
 ): MentionCategoryResult {
   const { locale } = useZCodeIntl();
   const { skills, loading, error } = useSkills({
@@ -73,6 +74,7 @@ export function useSkillsMentionProvider(
     workspaceIdentity,
     sessionId,
     enabled,
+    source,
   });
 
   const allItems = useMemo(

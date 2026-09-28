@@ -20,12 +20,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Loader2Icon } from "lucide-react";
 import { ProviderStatusIndicator } from "./ProviderStatusIndicator.js";
 
-import {
-  resolveModelProviderFamilySpecByProviderId,
-  isStartPlanModelProviderId,
-  TID_MODEL_PROVIDER_NAV_ITEM,
-  testId,
-} from "@zcode/shared";
+import { TID_MODEL_PROVIDER_NAV_ITEM, testId } from "@zcode/shared";
 import { useCallback, useMemo, type KeyboardEvent } from "react";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import type { ModelProviderNavGroup, ModelProviderNavItem } from "./constants.js";
@@ -58,27 +53,6 @@ function resolveReorderedProviderIdsForGroup(params: {
     return [...params.providerIds];
   }
   return arrayMove([...params.providerIds], activeIndex, overIndex);
-}
-
-function shouldShowModelProviderGroupLoadingIndicator(params: {
-  groupId: ModelProviderNavGroup["id"];
-  presetLoading: boolean;
-  customLoading: boolean;
-}): boolean {
-  if (params.groupId === "preset") {
-    return params.presetLoading;
-  }
-  return params.customLoading;
-}
-
-function resolveModelProviderSideNavLabel(item: ModelProviderNavItem): string {
-  if (item.type === "preset") {
-    return resolveModelProviderFamilySpecByProviderId(item.presetId)?.label ?? item.label;
-  }
-  if (item.type === "codingPlan" && isStartPlanModelProviderId(item.presetId)) {
-    return "Start Plan";
-  }
-  return item.label;
 }
 
 function ModelProviderNavigationButton({
@@ -217,30 +191,6 @@ function SortableModelProviderNavigationButton({
   );
 }
 
-function PresetProviderCardNavigation({
-  group,
-  selectedNodeKey,
-  onSelectNavItem,
-}: {
-  group: ModelProviderNavGroup;
-  selectedNodeKey: string | null;
-  onSelectNavItem: (item: ModelProviderNavItem) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2 max-md:items-center max-md:gap-1">
-      {group.items.map((item) => (
-        <ModelProviderNavigationButton
-          key={item.key}
-          item={item}
-          label={resolveModelProviderSideNavLabel(item)}
-          selectedNodeKey={selectedNodeKey}
-          onSelectNavItem={onSelectNavItem}
-        />
-      ))}
-    </div>
-  );
-}
-
 function SortableProviderNavigationGroup({
   group,
   selectedNodeKey,
@@ -362,7 +312,6 @@ function projectItemsToOptimisticProviderOrder({
 export function ModelProviderSectionNavigation({
   navigationGroups,
   selectedNodeKey,
-  presetLoading,
   customLoading,
   onSelectNavItem,
   onReorderProviderIds,
@@ -370,7 +319,6 @@ export function ModelProviderSectionNavigation({
 }: {
   navigationGroups: ModelProviderNavGroup[];
   selectedNodeKey: string | null;
-  presetLoading: boolean;
   customLoading: boolean;
   onSelectNavItem: (item: ModelProviderNavItem) => void;
   onReorderProviderIds?: (providerIds: string[]) => Promise<void>;
@@ -386,39 +334,24 @@ export function ModelProviderSectionNavigation({
   return (
     <aside className="px-1.5 py-3 md:py-2 md:px-2">
       <div className="flex min-h-0 flex-col gap-3 max-md:gap-1">
-        {navigationGroups
-          .filter((group) => group.id !== "custom" || group.items.length > 0)
-          .map((group) => (
-            <div key={group.id} className="flex flex-col gap-2 max-md:gap-1">
-              <div className="flex h-7 items-center justify-between px-2 py-1 max-md:hidden">
-                <h3 className="text-ui-sm font-semibold text-foreground-subtlest">{group.title}</h3>
-                {shouldShowModelProviderGroupLoadingIndicator({
-                  groupId: group.id,
-                  presetLoading,
-                  customLoading,
-                }) ? (
-                  <Loader2Icon className="size-3 animate-spin text-foreground-subtlest" />
-                ) : null}
-              </div>
-
-              {group.id === "preset" ? (
-                <PresetProviderCardNavigation
-                  group={group}
-                  selectedNodeKey={selectedNodeKey}
-                  onSelectNavItem={onSelectNavItem}
-                />
-              ) : (
-                <SortableProviderNavigationGroup
-                  group={group}
-                  selectedNodeKey={selectedNodeKey}
-                  onSelectNavItem={onSelectNavItem}
-                  onReorderProviderIds={onReorderProviderIds}
-                  reorderableProviderIds={reorderableProviderIds}
-                  sensors={sensors}
-                />
-              )}
+        {navigationGroups.map((group) => (
+          <div key={group.id} className="flex flex-col gap-2 max-md:gap-1">
+            <div className="flex h-7 items-center justify-between px-2 py-1 max-md:hidden">
+              <h3 className="text-ui-sm font-semibold text-foreground-subtlest">{group.title}</h3>
+              {customLoading ? (
+                <Loader2Icon className="size-3 animate-spin text-foreground-subtlest" />
+              ) : null}
             </div>
-          ))}
+            <SortableProviderNavigationGroup
+              group={group}
+              selectedNodeKey={selectedNodeKey}
+              onSelectNavItem={onSelectNavItem}
+              onReorderProviderIds={onReorderProviderIds}
+              reorderableProviderIds={reorderableProviderIds}
+              sensors={sensors}
+            />
+          </div>
+        ))}
       </div>
     </aside>
   );

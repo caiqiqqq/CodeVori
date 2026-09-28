@@ -28,6 +28,7 @@ export function DeleteAllArchivedTasksButton({
   actionsContainer,
   onDeleted,
   onRefresh,
+  nativeOnly = false,
 }: {
   workspaces: ArchivedTaskDeletionWorkspace[];
   count: number;
@@ -35,6 +36,8 @@ export function DeleteAllArchivedTasksButton({
   actionsContainer?: HTMLElement | null;
   onDeleted: (target: ArchivedTaskDeletionTarget) => void;
   onRefresh?: () => Promise<void>;
+  /** ACP history is restored/deleted by its own Host service, outside native bulk deletion. */
+  nativeOnly?: boolean;
 }) {
   const { intl } = useZCodeIntl();
   const confirmDialog = useConfirmDialog();
@@ -63,7 +66,11 @@ export function DeleteAllArchivedTasksButton({
       }
       const confirmed = await confirmDialog({
         title: intl.formatMessage(
-          { id: "taskList.deleteAllArchivedTitle" },
+          {
+            id: nativeOnly
+              ? "taskList.deleteAllArchivedNativeTitle"
+              : "taskList.deleteAllArchivedTitle",
+          },
           { count: selection.count },
         ),
         description: [
@@ -72,7 +79,9 @@ export function DeleteAllArchivedTasksButton({
         ]
           .filter(Boolean)
           .join("\n\n"),
-        confirmLabel: intl.formatMessage({ id: "taskList.deleteAllArchived" }),
+        confirmLabel: intl.formatMessage({
+          id: nativeOnly ? "taskList.deleteAllArchivedNative" : "taskList.deleteAllArchived",
+        }),
         confirmVariant: "destructive",
       });
       if (!confirmed) return;
@@ -129,7 +138,10 @@ export function DeleteAllArchivedTasksButton({
       </ControlHintTooltip>
       <DropdownMenuContent align="end">
         <DropdownMenuLabel className="text-ui-sm font-normal text-foreground-subtle">
-          {intl.formatMessage({ id: "taskList.archivedTaskCount" }, { count })}
+          {intl.formatMessage(
+            { id: nativeOnly ? "taskList.archivedNativeTaskCount" : "taskList.archivedTaskCount" },
+            { count },
+          )}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -143,7 +155,11 @@ export function DeleteAllArchivedTasksButton({
           }}
         >
           <Trash2 className="size-3.5" />
-          {intl.formatMessage({ id: "taskList.deleteAllArchivedMenu" })}
+          {intl.formatMessage({
+            id: nativeOnly
+              ? "taskList.deleteAllArchivedNativeMenu"
+              : "taskList.deleteAllArchivedMenu",
+          })}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

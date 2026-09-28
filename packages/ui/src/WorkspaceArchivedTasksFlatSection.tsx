@@ -20,20 +20,26 @@ import { TaskListRemoteSyncHint } from "@/TaskListRemoteSyncHint.js";
 import { TaskListLoadingHint } from "@/TaskListLoadingHint.js";
 import { buildWorkspaceServiceLookup } from "@/lib/workspaceServiceResolver.js";
 import { DeleteAllArchivedTasksButton } from "@/DeleteAllArchivedTasksButton.js";
+import { useAcpSidebarSessions } from "@/hooks/useAcpSidebarSessions.js";
+import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
+import { WorkspaceArchivedAcpSessionItem } from "@/WorkspaceArchivedAcpSessionItem.js";
 
 export function WorkspaceArchivedTasksFlatSection({
   workspaceTabs,
   activeWorkspacePath,
   activeWorkspaceIdentity,
   activeTaskId,
+  activeAcpSessionId,
   sortBy,
   actionsContainer,
   onSelectTask,
+  onSelectAcpSession,
 }: {
   workspaceTabs: WorkspaceTabState[];
   activeWorkspacePath: string;
   activeWorkspaceIdentity?: string;
   activeTaskId: string | null;
+  activeAcpSessionId?: string | null;
   sortBy: "created" | "updated";
   actionsContainer?: HTMLElement | null;
   onSelectTask: (
@@ -41,6 +47,7 @@ export function WorkspaceArchivedTasksFlatSection({
     taskId: string,
     targetWorkspaceIdentity?: string,
   ) => void;
+  onSelectAcpSession?: (session: AcpSidebarSession) => void;
 }) {
   const { intl } = useZCodeIntl();
   const confirmDialog = useConfirmDialog();
@@ -81,6 +88,7 @@ export function WorkspaceArchivedTasksFlatSection({
     () => buildWorkspaceServiceLookup(workspaceTabs, baseServices, serviceResolverState),
     [baseServices, serviceResolverState, workspaceTabs],
   );
+  const acpSessions = useAcpSidebarSessions(workspaceTabs, workspaceServiceLookup);
   const activeWorkspaceKey = buildTaskWorkspaceKey(activeWorkspacePath, activeWorkspaceIdentity);
   const { items, total, loading, syncingRemoteWorkspaces, refresh } = useGlobalTaskList({
     kind: "archived",
@@ -90,13 +98,34 @@ export function WorkspaceArchivedTasksFlatSection({
     expanded: showAllTasks,
     collapsedLimit,
   });
-  const canToggleExpanded = total > collapsedLimit;
+  const archivedAcpSessions = useMemo(
+    () => acpSessions.filter((session) => session.archived),
+    [acpSessions],
+  );
+  const displayItems = useMemo(
+    () =>
+      [
+        ...items.map((task) => ({ kind: "native" as const, task })),
+        ...archivedAcpSessions.map((session) => ({ kind: "acp" as const, session })),
+      ]
+        .sort((left, right) => {
+          const leftTime =
+            left.kind === "acp" ? left.session[`${sortBy}At`] : left.task[`${sortBy}At`];
+          const rightTime =
+            right.kind === "acp" ? right.session[`${sortBy}At`] : right.task[`${sortBy}At`];
+          return rightTime - leftTime;
+        })
+        .slice(0, showAllTasks ? undefined : collapsedLimit),
+    [archivedAcpSessions, items, showAllTasks, sortBy],
+  );
+  const canToggleExpanded = total + archivedAcpSessions.length > collapsedLimit;
 
   return (
     <div>
       <DeleteAllArchivedTasksButton
         actionsContainer={actionsContainer}
         count={total}
+        nativeOnly={archivedAcpSessions.length > 0}
         disabled={loading || total === 0}
         workspaces={workspaceTabs.map((tab) => ({
           workspacePath: tab.workspacePath,
@@ -109,7 +138,7 @@ export function WorkspaceArchivedTasksFlatSection({
         onDeleted={removeTaskFromTaskCaches}
         onRefresh={refresh}
       />
-      {items.length === 0 ? (
+      {displayItems.length === 0 ? (
         loading ? (
           <TaskListLoadingHint />
         ) : (
@@ -119,7 +148,24 @@ export function WorkspaceArchivedTasksFlatSection({
         )
       ) : null}
       <ul className="space-y-1 pb-4">
-        {items.map((task) => {
+        {displayItems.map((entry) => {
+          if (entry.kind === "acp") {
+            const session = entry.session;
+            const key = buildTaskWorkspaceKey(session.workspacePath, session.workspaceIdentity);
+            const resolved = workspaceServiceLookup.get(key);
+            if (!resolved) return null;
+            return (
+              <WorkspaceArchivedAcpSessionItem
+                key={`acp:${key}:${session.id}`}
+                session={session}
+                service={resolved.services.acpService}
+                workspaceLabel={workspaceLabelByKey.get(key) ?? getPathLeaf(session.workspacePath)}
+                active={key === activeWorkspaceKey && session.id === activeAcpSessionId}
+                onSelect={() => onSelectAcpSession?.(session)}
+              />
+            );
+          }
+          const task = entry.task;
           const workspaceServices = workspaceServiceLookup.get(
             buildTaskWorkspaceKey(task.workspacePath, task.workspaceIdentity),
           );

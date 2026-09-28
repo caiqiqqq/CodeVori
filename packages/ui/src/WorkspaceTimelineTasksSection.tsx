@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { ZCodeTaskMeta } from "@zcode/shared";
+import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
+import { useAcpSidebarSessions } from "@/hooks/useAcpSidebarSessions.js";
 import { toast } from "@/components/ui/toast.js";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu.js";
 import { useGlobalTaskList } from "@/hooks/useGlobalTaskList.js";
@@ -11,9 +13,11 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { getTaskTimelineGroupMessage, groupTaskTimelineItems } from "@/lib/taskTimelineGroups.js";
 import { buildTaskWorkspaceKey } from "@/lib/taskQueryCache.js";
 import { compareZCodeTaskListItems } from "@/lib/taskListOrdering.js";
+import { isTaskListRowActive } from "@/v4/taskListRowActivity.js";
 import { buildWorkspaceServiceLookup } from "@/lib/workspaceServiceResolver.js";
 import { logger } from "@/logger.js";
 import { MemoTaskItem, TaskListItemContextMenuContent } from "@/TaskListItem.js";
+import { WorkspaceAcpTaskItem } from "@/WorkspaceAcpTaskItem.js";
 import { TaskListLoadingHint } from "@/TaskListLoadingHint.js";
 import { TaskListRemoteSyncHint } from "@/TaskListRemoteSyncHint.js";
 import { TaskRenameDialog } from "@/TaskRenameDialog.js";
@@ -43,16 +47,19 @@ export function WorkspaceTimelineTasksSection({
   activeWorkspacePath,
   activeWorkspaceIdentity,
   activeTaskId,
+  activeAcpSessionId,
   taskSortBy,
   groupByDate = true,
   taskRowVariant = "timeline",
   emptyMessage,
   onSelectTask,
+  onSelectAcpSession,
 }: {
   workspaceTabs: WorkspaceTabState[];
   activeWorkspacePath: string;
   activeWorkspaceIdentity?: string;
   activeTaskId: string | null;
+  activeAcpSessionId?: string | null;
   taskSortBy: "created" | "updated";
   groupByDate?: boolean;
   taskRowVariant?: "default" | "timeline";
@@ -63,6 +70,7 @@ export function WorkspaceTimelineTasksSection({
     targetWorkspaceIdentity?: string,
     expectedUnreadAt?: number,
   ) => void;
+  onSelectAcpSession?: (session: AcpSidebarSession) => void;
 }) {
   const { intl, locale } = useZCodeIntl();
   const baseServices = useBaseWorkspaceServices();
@@ -124,6 +132,7 @@ export function WorkspaceTimelineTasksSection({
     () => buildWorkspaceServiceLookup(workspaceTabs, baseServices, serviceResolverState),
     [baseServices, serviceResolverState, workspaceTabs],
   );
+  const acpSessions = useAcpSidebarSessions(workspaceTabs, workspaceServiceLookup);
   const activeWorkspaceKey = buildTaskWorkspaceKey(activeWorkspacePath, activeWorkspaceIdentity);
   const workspaceTabsSignature = useMemo(
     () =>
@@ -178,6 +187,36 @@ export function WorkspaceTimelineTasksSection({
     );
   }, [localItems, remoteItems, taskSortBy]);
   const items = sortedItems.slice(0, visibleTaskLimit);
+  const displayItems = useMemo(() => {
+    const combined = [
+      ...sortedItems.map((item) => ({
+        kind: "native" as const,
+        item,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      })),
+      ...acpSessions
+        .filter((item) => !item.pinned && !item.archived)
+        .map((item) => ({
+          kind: "acp" as const,
+          item,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+        })),
+    ];
+    // 原生任务的运行层语义保留；ACP 只用 Host 状态和行时间参与同一列表排序。
+    return combined
+      .sort((left, right) => {
+        const leftRunning =
+          left.kind === "acp" ? left.item.status === "running" : isTaskListRowActive(left.item);
+        const rightRunning =
+          right.kind === "acp" ? right.item.status === "running" : isTaskListRowActive(right.item);
+        if (leftRunning !== rightRunning) return leftRunning ? -1 : 1;
+        const field = leftRunning || taskSortBy === "created" ? "createdAt" : "updatedAt";
+        return right[field] - left[field] || right.createdAt - left.createdAt;
+      })
+      .slice(0, visibleTaskLimit);
+  }, [acpSessions, sortedItems, taskSortBy, visibleTaskLimit]);
   const itemByKey = useMemo(() => {
     const nextItemByKey = new Map<string, ZCodeTaskMeta>();
     for (const item of items) {
@@ -193,27 +232,27 @@ export function WorkspaceTimelineTasksSection({
   itemByKeyRef.current = itemByKey;
   workspaceServiceLookupRef.current = workspaceServiceLookup;
   const timelineGroups = useMemo(() => {
-    const visibleItems = items.filter((item) =>
+    const visibleItems = displayItems.filter(({ item }) =>
       workspaceServiceLookup.has(buildTaskWorkspaceKey(item.workspacePath, item.workspaceIdentity)),
     );
     if (!groupByDate) {
       return [{ key: "all", label: null, items: visibleItems }];
     }
-    return groupTaskTimelineItems(items, {
+    return groupTaskTimelineItems(displayItems, {
       sortBy: taskSortBy,
       now: Date.now(),
       locale,
     })
       .map((group) => ({
         ...group,
-        items: group.items.filter((item) =>
+        items: group.items.filter(({ item }) =>
           workspaceServiceLookup.has(
             buildTaskWorkspaceKey(item.workspacePath, item.workspaceIdentity),
           ),
         ),
       }))
       .filter((group) => group.items.length > 0);
-  }, [groupByDate, items, locale, taskSortBy, workspaceServiceLookup]);
+  }, [groupByDate, displayItems, locale, taskSortBy, workspaceServiceLookup]);
   const remoteTotal = remoteWorkspaceKeys.reduce(
     (sum, workspaceKey) =>
       sum +
@@ -222,7 +261,8 @@ export function WorkspaceTimelineTasksSection({
         0),
     0,
   );
-  const total = localTotal + remoteTotal;
+  const visibleAcpCount = acpSessions.filter((item) => !item.pinned && !item.archived).length;
+  const total = localTotal + remoteTotal + visibleAcpCount;
   const remoteHasMore = remoteWorkspaceKeys.some(
     (workspaceKey) => remoteTimelineHasMoreByWorkspaceKey[workspaceKey],
   );
@@ -237,8 +277,8 @@ export function WorkspaceTimelineTasksSection({
     );
   });
   const loading = localLoading || syncingRemoteWorkspaces;
-  const hasKnownMore = localHasMore || remoteHasMore || total > items.length;
-  const currentLimitFilled = sortedItems.length >= visibleTaskLimit;
+  const hasKnownMore = localHasMore || remoteHasMore || total > displayItems.length;
+  const currentLimitFilled = sortedItems.length + visibleAcpCount >= visibleTaskLimit;
   // 远端/本地 hasMore 偶尔会在下一轮请求完成前保持旧值。
   // 如果当前已加载数量没有填满 limit，说明这轮已经到底了，不能继续显示 show more。
   const canLoadMore = loading ? hasKnownMore : currentLimitFilled && hasKnownMore;
@@ -585,7 +625,7 @@ export function WorkspaceTimelineTasksSection({
     }
   }, [itemByKey]);
 
-  if (items.length === 0 && loading) {
+  if (displayItems.length === 0 && loading) {
     return (
       <div className="flex min-h-0 flex-col px-2">
         <TaskListLoadingHint />
@@ -593,7 +633,7 @@ export function WorkspaceTimelineTasksSection({
     );
   }
 
-  if (items.length === 0) {
+  if (displayItems.length === 0) {
     return (
       <div className="px-3 py-2 text-ui-base text-foreground-subtle">
         {emptyMessage ?? intl.formatMessage({ id: "taskList.noTasks" })}
@@ -682,7 +722,27 @@ export function WorkspaceTimelineTasksSection({
                     </div>
                   ) : null}
                   <ul className="space-y-0.5">
-                    {group.items.map((item) => {
+                    {group.items.map(({ kind, item }) => {
+                      if (kind === "acp") {
+                        const acpServices = workspaceServiceLookup.get(
+                          buildTaskWorkspaceKey(item.workspacePath, item.workspaceIdentity),
+                        );
+                        if (!acpServices) return null;
+                        return (
+                          <WorkspaceAcpTaskItem
+                            key={`acp:${item.id}`}
+                            session={item}
+                            service={acpServices.services.acpService}
+                            active={
+                              item.id === activeAcpSessionId &&
+                              buildTaskWorkspaceKey(item.workspacePath, item.workspaceIdentity) ===
+                                activeWorkspaceKey
+                            }
+                            variant={taskRowVariant}
+                            onSelect={() => onSelectAcpSession?.(item)}
+                          />
+                        );
+                      }
                       const itemKey = buildTimelineItemKey(
                         item.workspacePath,
                         item.taskId,

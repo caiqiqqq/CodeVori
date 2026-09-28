@@ -195,6 +195,12 @@ export function resolveSearchResultHighlightMatch(
     return null;
   }
 
+  // 修复原因：不同 ACP 消息可能有相同摘要，rowId 才能定位点击的稳定 entry。
+  if (request.rowId !== undefined) {
+    const rowMatch = index.matches.find((match) => match.rowId === request.rowId);
+    if (rowMatch) return rowMatch;
+  }
+
   const snippet = request.snippet?.trim();
   if (snippet) {
     const snippetMatch = index.matches.find((match) => includesProbe(match.sourceText, snippet));

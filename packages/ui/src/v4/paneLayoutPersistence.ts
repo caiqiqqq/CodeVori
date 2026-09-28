@@ -13,6 +13,7 @@ import {
   type PaneWorkspaceScope,
   type SplitDirection,
 } from "@/v4/paneLayoutTree.js";
+import { acpAgentSchema, type AcpAgent } from "@zcode/shared";
 
 const PANE_LAYOUT_STORAGE_KEY = "zcode-v4-pane-layout:v2";
 /** 旧版单值分屏的 key（只读迁移，不再写入）。 */
@@ -30,6 +31,8 @@ interface PersistedScopeV2 {
 interface PersistedBindingV2 {
   workspaceScope: PersistedScopeV2;
   sessionId: string | null;
+  kind?: "acp";
+  agent?: AcpAgent;
 }
 
 type PersistedNodeV2 =
@@ -146,9 +149,16 @@ function sanitizePersistedPaneLayout(raw: unknown): PaneLayoutSnapshot | null {
     const rawSessionId = (rawBinding as Partial<PersistedBindingV2>).sessionId;
     const sessionId =
       typeof rawSessionId === "string" && rawSessionId.length > 0 ? rawSessionId : null;
+    const rawKind = (rawBinding as Partial<PersistedBindingV2>).kind;
+    const agent =
+      rawKind === "acp"
+        ? acpAgentSchema.safeParse((rawBinding as Partial<PersistedBindingV2>).agent)
+        : null;
+    if (rawKind === "acp" && (sessionId === null || !agent?.success)) return null;
     panes[paneId] = {
       workspaceScope: scope,
       sessionId,
+      ...(agent?.success ? { kind: "acp" as const, agent: agent.data } : {}),
       ...(sessionId !== null ? { restoredUnvalidated: true as const } : {}),
     };
   }
@@ -262,6 +272,7 @@ export function persistPaneLayout(snapshot: PaneLayoutSnapshot): void {
           : {}),
       },
       sessionId: binding.sessionId,
+      ...(binding.kind === "acp" ? { kind: "acp" as const, agent: binding.agent } : {}),
     };
   }
   const payload: PersistedPaneLayoutV2 = {

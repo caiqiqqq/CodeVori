@@ -12,7 +12,7 @@ export interface WorkspaceHeaderState {
   selectedProvider: ZCodeProvider;
 }
 
-export type WorkspaceHeaderVariant = "task" | "draft";
+export type WorkspaceHeaderVariant = "task" | "draft" | "acp";
 
 export interface WorkspaceHeaderReloadSessionOptions {
   resumeTaskId?: string | null;

@@ -13,6 +13,7 @@ import {
   IZCodeTaskService,
   IZCodeAgentService,
   IZCodeSessionService,
+  IAcpService,
   IConversationShareService,
   IBotsService,
   IFileWatcherService,
@@ -323,6 +324,7 @@ export function createRemoteWorkspaceServiceCollection(params: {
     .register(IZCodeTaskService, remoteZCodeTaskService)
     .register(IZCodeAgentService, params.connectionServices.zcodeAgentService)
     .register(IZCodeSessionService, remoteZCodeSessionService)
+    .register(IAcpService, params.connectionServices.acpService)
     .register(IConversationShareService, conversationShareService)
     .register(
       IBotsService,
@@ -356,6 +358,7 @@ export function createRemoteWorkspaceServiceCollection(params: {
         accountRequestAuthService: localAccountRequestAuthService,
         credentialService: localCredentialService,
         zcodeAgentService: params.connectionServices.zcodeAgentService,
+        acpService: params.connectionServices.acpService,
       }),
     )
     .register(ICodingPlanSubscriptionService, localCodingPlanSubscriptionService)

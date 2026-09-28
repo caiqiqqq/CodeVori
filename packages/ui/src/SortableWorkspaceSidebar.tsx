@@ -5,6 +5,7 @@ import { WorkspaceSidebarItem, type SortableBindings } from "./WorkspaceSidebarI
 import type { WorkspaceTabState } from "@/store/tabStore.js";
 import type { RemoteConnectionLogEntry } from "@/hooks/useRemoteConnectionLogs.js";
 import type { ZCodeTaskMeta } from "@zcode/shared";
+import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
 
 export type { SortableBindings };
 
@@ -19,6 +20,8 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   closeTab,
   toggleWorkspaceExpanded,
   onSelectTask,
+  onSelectAcpSession,
+  activeAcpSessionId,
   onStartDraftInWorkspace,
   taskItems,
   taskListLoading,
@@ -44,6 +47,8 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
     taskId: string,
     targetWorkspaceIdentity?: string,
   ) => void;
+  onSelectAcpSession?: (session: AcpSidebarSession) => void;
+  activeAcpSessionId?: string | null;
   onStartDraftInWorkspace: (targetWorkspacePath: string, targetWorkspaceIdentity?: string) => void;
   taskItems: ZCodeTaskMeta[];
   taskListLoading: boolean;
@@ -113,6 +118,8 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
       closeTab={closeTab}
       toggleWorkspaceExpanded={toggleWorkspaceExpanded}
       onSelectTask={onSelectTask}
+      onSelectAcpSession={onSelectAcpSession}
+      activeAcpSessionId={activeAcpSessionId}
       onStartDraftInWorkspace={onStartDraftInWorkspace}
       taskItems={taskItems}
       taskListLoading={taskListLoading}

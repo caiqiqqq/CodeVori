@@ -39,6 +39,10 @@ import { WorkbenchLeafPane, type WorkbenchShellBinding } from "@/v4/WorkbenchPan
 import { WorkbenchSplitDivider } from "@/v4/WorkbenchSplitDivider.js";
 import type { ConversationDropTargetController } from "@/v4/composer/conversationDropTarget.js";
 import type {
+  AcpConversationOpenRequest,
+  AcpConversationProjection,
+} from "@/lib/acpSidebarSessions.js";
+import type {
   ChatSearchResultHighlightRequest,
   ChatViewSummaryPanelVariant,
   ConversationFindMatchState,
@@ -92,6 +96,9 @@ interface V4WorkspaceChatAreaProps {
   onPrimaryDraftDropTargetControllerChange?: (
     controller: ConversationDropTargetController | null,
   ) => void;
+  /** 主 pane 的只读 ACP 标题投影，壳不得据此执行原生任务操作。 */
+  onPrimaryAcpSessionChange?: (session: AcpConversationProjection | null) => void;
+  acpOpenRequest?: AcpConversationOpenRequest | null;
   gitSummary?: GitRepositorySummary | null;
   gitDirtyFileCount?: number;
   gitWorktreeReviewSourceId?: GitChangeSourceId | null;
@@ -153,6 +160,8 @@ export function V4WorkspaceChatArea({
   onSessionDeleted,
   draftComposerHeader,
   onPrimaryDraftDropTargetControllerChange,
+  onPrimaryAcpSessionChange,
+  acpOpenRequest,
   gitSummary,
   gitDirtyFileCount,
   gitWorktreeReviewSourceId,
@@ -227,6 +236,7 @@ export function V4WorkspaceChatArea({
     }
     return Object.values(paneBindings).some(
       (binding) =>
+        binding.kind !== "acp" &&
         binding.sessionId === sessionId &&
         paneWorkspaceKey(binding.workspaceScope) === shellWorkspaceKey,
     );
@@ -279,6 +289,8 @@ export function V4WorkspaceChatArea({
       onSessionDeleted,
       draftComposerHeader,
       onPrimaryDraftDropTargetControllerChange,
+      onPrimaryAcpSessionChange,
+      acpOpenRequest,
       gitSummary,
       gitDirtyFileCount,
       gitWorktreeReviewSourceId,
@@ -324,6 +336,8 @@ export function V4WorkspaceChatArea({
       onSessionDeleted,
       draftComposerHeader,
       onPrimaryDraftDropTargetControllerChange,
+      onPrimaryAcpSessionChange,
+      acpOpenRequest,
       gitSummary,
       gitDirtyFileCount,
       gitWorktreeReviewSourceId,
@@ -374,6 +388,7 @@ export function V4WorkspaceChatArea({
           ? {
               workspaceScope: binding.workspaceScope,
               sessionId: binding.sessionId,
+              ...(binding.kind === "acp" ? { kind: "acp" as const, agent: binding.agent } : {}),
               ...(binding.readOnly ? { readOnly: true } : {}),
             }
           : null;
@@ -383,7 +398,7 @@ export function V4WorkspaceChatArea({
 
   const syncShellActiveSession = useCallback(
     (binding: WorkbenchSessionBinding | null) => {
-      if (!binding || binding.readOnly) {
+      if (!binding || binding.readOnly || binding.kind === "acp") {
         return;
       }
       // readOnly subagent pane 只是 workbench 内观察视图，不是左侧

@@ -21,6 +21,7 @@ export function buildRemoteWorkspaceSessionServices(
     zcodeAgentService: remoteServices.zcodeAgentService,
     zcodeTaskService: remoteServices.zcodeTaskService,
     zcodeSessionService: remoteServices.zcodeSessionService,
+    acpService: remoteServices.acpService,
     // 分享使用本地登录/API，但 Rows 与文件必须绑定当前远端 connection scope。
     conversationShareService: remoteServices.conversationShareService,
     fileWatcherService: remoteServices.fileWatcherService,

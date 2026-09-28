@@ -1335,6 +1335,9 @@ interface LexicalChatInputProps {
   appSlashCommands?: readonly AppSlashCommand[];
   /** mention（@/#）面板开关。v4 数据面未就绪时显式关闭，入口保留。 */
   enableMentionPanel?: boolean;
+  /** ACP 仅提供已启用的 `$` 技能候选，其他 mention 保持关闭。 */
+  skillsOnlyMentions?: boolean;
+  enableSlashCommands?: boolean;
 }
 
 const EDITOR_THEME = {
@@ -1365,6 +1368,8 @@ export function LexicalChatInput({
   excludedSlashCommandNames,
   appSlashCommands,
   enableMentionPanel = true,
+  skillsOnlyMentions = false,
+  enableSlashCommands = true,
 }: LexicalChatInputProps) {
   const inputMountedAtRef = useRef(Date.now());
   const lastReadyLogKeyRef = useRef<string | null>(null);
@@ -1496,19 +1501,21 @@ export function LexicalChatInput({
           <EditablePlugin editable={!disabled} />
           <E2ELexicalInputBridgePlugin inputTestId={inputTestId} />
           <EditorApiPlugin editorApiRef={editorApiRef} />
-          <LeadingChineseSlashAliasPlugin disabled={disabled} />
+          <LeadingChineseSlashAliasPlugin disabled={disabled || !enableSlashCommands} />
           <PasteCapturePlugin disabled={disabled} onPaste={onPaste} />
         </div>
-        <SlashCommandPlugin
-          workspacePath={workspacePath}
-          workspaceIdentity={workspaceIdentity}
-          sessionId={skillCatalogSessionId ?? taskId}
-          provider={activeTaskProvider}
-          container={triggerPanelContainer}
-          disabled={disabled}
-          excludedCommandNames={excludedSlashCommandNames}
-          appCommands={appSlashCommands}
-        />
+        {enableSlashCommands ? (
+          <SlashCommandPlugin
+            workspacePath={workspacePath}
+            workspaceIdentity={workspaceIdentity}
+            sessionId={skillCatalogSessionId ?? taskId}
+            provider={activeTaskProvider}
+            container={triggerPanelContainer}
+            disabled={disabled}
+            excludedCommandNames={excludedSlashCommandNames}
+            appCommands={appSlashCommands}
+          />
+        ) : null}
         {enableMentionPanel ? (
           <MentionPlugin
             workspacePath={workspacePath}
@@ -1517,6 +1524,7 @@ export function LexicalChatInput({
             provider={activeTaskProvider}
             container={triggerPanelContainer}
             disabled={disabled}
+            skillsOnly={skillsOnlyMentions}
             onWhiteboardMentionSelected={onWhiteboardMentionSelected}
           />
         ) : null}

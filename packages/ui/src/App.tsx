@@ -33,7 +33,6 @@ import {
   navigateTaskFindSelection,
 } from "@/quickpick/taskFindNavigationState.js";
 import { createQuickPickCommands } from "@/quickpick/quickPickCommands.js";
-import { CommandCenterDialog } from "@/command-center/CommandCenterDialog.js";
 import { FeedbackHost } from "@/feedback/FeedbackHost.js";
 import { useFeedbackStore } from "@/feedback/feedbackStore.js";
 import {
@@ -67,6 +66,7 @@ import { useOffPeakTaskNotifications } from "@/hooks/useOffPeakTaskNotifications
 import type { AppProps, WorkspaceMainView } from "@/app-shell/types.js";
 import type {
   ChatSearchResultHighlightRequest,
+  ChatSearchResultHighlightInput,
   ChatViewSummaryPanelVariant,
   ConversationFindMatchState,
 } from "@/v4/legacyChatViewTypes.js";
@@ -634,7 +634,7 @@ export function App({
     [],
   );
   const handleSearchResultHighlightRequest = useCallback(
-    (request: Omit<ChatSearchResultHighlightRequest, "requestId">) => {
+    (request: ChatSearchResultHighlightInput) => {
       searchResultHighlightRequestIdRef.current += 1;
       setSearchResultHighlightRequest({
         ...request,
@@ -1106,23 +1106,16 @@ export function App({
 
   return (
     <>
-      <CommandCenterDialog
-        open={isQuickPickOpen}
-        commands={quickPickCommands}
-        workspaceAbsPath={workspaceAbsPath}
-        workspaceIdentity={workspaceIdentity}
-        activeTaskId={activeTaskId}
-        activeTaskChangeSummary={activeTaskChangeSummary}
-        workspaceTabs={commandCenterWorkspaceTabs}
-        onOpenChange={setIsQuickPickOpen}
-        onSelectTask={handleSelectTask}
-        onSearchResultHighlightRequest={handleSearchResultHighlightRequest}
-        onOpenCodeViewer={handleOpenCodeViewerIfWritable}
-      />
       {/* 反馈是应用级能力，必须固定走本机 base host；SSH session 连接中或断开时，
           workspace-scoped services 会切成断连代理，不能让反馈提交跟随远程 session 失效。 */}
       <FeedbackHost feedbackService={baseFeedbackService} platform={platform} />
       <WorkspaceShellLayout
+        commandCenterOpen={isQuickPickOpen}
+        commandCenterCommands={quickPickCommands}
+        commandCenterWorkspaceTabs={commandCenterWorkspaceTabs}
+        onCommandCenterOpenChange={setIsQuickPickOpen}
+        onCommandCenterSearchResultHighlightRequest={handleSearchResultHighlightRequest}
+        onCommandCenterOpenCodeViewer={handleOpenCodeViewerIfWritable}
         services={services}
         workspaceReadOnlyReason={workspaceReadOnlyReason}
         workspaceMainView={workspaceMainView}

@@ -51,7 +51,6 @@ export interface WorkspaceSettingsLayerProps {
   onCreateTask?: (request?: CreateTaskRequest) => void;
   onOpenWorkspace?: () => void;
   allowOpenWorkspace?: RootProps["allowOpenWorkspace"];
-  onLogin?: () => void;
   onLogout?: () => void;
   user?: UserInfo | null;
 }

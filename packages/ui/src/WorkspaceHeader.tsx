@@ -20,6 +20,7 @@ import type { WorkspaceHeaderVariant } from "@/WorkspaceHeaderSections/shared.js
 
 export function WorkspaceHeader({
   variant = "task",
+  acpTitle,
 
   draftDropTargetController,
   readOnlyReason,
@@ -64,6 +65,8 @@ export function WorkspaceHeader({
   reloadSessionPending,
 }: {
   variant?: WorkspaceHeaderVariant;
+  /** Host 会话标题的只读投影；不作为原生 taskId 或任务菜单的依据。 */
+  acpTitle?: string | null;
   draftDropTargetController?: ConversationDropTargetController | null;
   readOnlyReason?: string;
   workspaceAbsPath: string;
@@ -159,7 +162,7 @@ export function WorkspaceHeader({
           headerWindowControlsPaddingClass,
         )}
       >
-        {variant === "task" ? (
+        {variant !== "draft" ? (
           <WorkspaceHeaderTitleSection
             variant={variant}
             readOnlyReason={readOnlyReason}
@@ -169,13 +172,13 @@ export function WorkspaceHeader({
             remoteTarget={remoteTarget}
             localWorkspacePath={localWorkspacePath}
             projectName={projectName}
-            activeTaskTitle={activeTaskTitle}
+            activeTaskTitle={variant === "acp" ? (acpTitle ?? "") : activeTaskTitle}
             activeTaskChangeSummary={activeTaskChangeSummary}
-            activeTaskId={activeTaskId}
-            activeTraceId={activeTraceId}
-            activeSessionId={activeSessionId}
-            activeTaskProvider={activeTaskProvider}
-            resolvedActiveTaskMeta={resolvedActiveTaskMeta}
+            activeTaskId={variant === "task" ? activeTaskId : null}
+            activeTraceId={variant === "task" ? activeTraceId : null}
+            activeSessionId={variant === "task" ? activeSessionId : null}
+            activeTaskProvider={variant === "task" ? activeTaskProvider : null}
+            resolvedActiveTaskMeta={variant === "task" ? resolvedActiveTaskMeta : null}
             gitSummary={gitSummary}
             gitDirtyFileCount={gitDirtyFileCount}
             sessionLogPath={sessionLogPath}
@@ -199,7 +202,7 @@ export function WorkspaceHeader({
         )}
         <WorkspaceHeaderActionSection
           variant={variant}
-          activeTaskId={activeTaskId}
+          activeTaskId={variant === "task" ? activeTaskId : null}
           user={user}
           readOnlyReason={readOnlyReason}
           workspaceAbsPath={workspaceAbsPath}

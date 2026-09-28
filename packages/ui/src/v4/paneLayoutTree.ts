@@ -16,6 +16,8 @@
 //   tabStore（workspace tab 语义）完全不动。
 // 所有转移函数无副作用；无变化时返回原引用（zustand 免重渲染）。
 
+import type { AcpAgent } from "@zcode/shared";
+
 /** primary pane 固定 id（沿用写死的 paneId，testid 契约不变）。 */
 export const V4_PRIMARY_PANE_ID = "workspace-main";
 
@@ -55,18 +57,18 @@ export function paneBindingMatchesSession(
   binding: PaneBinding | null | undefined,
   scope: PaneWorkspaceScope,
   sessionId: string,
+  kind: "native" | "acp" = "native",
 ): boolean {
   return Boolean(
     binding?.sessionId === sessionId &&
+    (binding?.kind ?? "native") === kind &&
     paneWorkspaceKey(binding.workspaceScope) === paneWorkspaceKey(scope),
   );
 }
 
-export interface PaneBinding {
+interface PaneBindingBase {
   /** = session 归属的主 workspace（连接路由键）；辅助路径不在此。 */
   readonly workspaceScope: PaneWorkspaceScope;
-  /** 绑定的 CLI session；null = draft（空 pane 动线：首发 createSession 后原地绑定）。 */
-  readonly sessionId: string | null;
   /** 只读 pane 不渲染 composer/input；当前用于 subagent 行内侧开的 child session。 */
   readonly readOnly?: boolean;
   /**
@@ -74,6 +76,11 @@ export interface PaneBinding {
    * 在场 → confirmRestoredPaneSession 清除；已删 → closePane 优雅塌缩。
    */
   readonly restoredUnvalidated?: boolean;
+}
+export interface PaneBinding extends PaneBindingBase {
+  readonly sessionId: string | null;
+  readonly kind?: "native" | "acp";
+  readonly agent?: AcpAgent;
 }
 
 export type SplitDirection = "row" | "column";
@@ -360,9 +367,10 @@ export function findPaneIdForSession(
   state: PaneLayoutSnapshot,
   scope: PaneWorkspaceScope,
   sessionId: string,
+  kind: "native" | "acp" = "native",
 ): string | null {
   for (const [paneId, binding] of Object.entries(state.panes)) {
-    if (paneBindingMatchesSession(binding, scope, sessionId)) {
+    if (paneBindingMatchesSession(binding, scope, sessionId, kind)) {
       return paneId;
     }
   }
@@ -406,6 +414,7 @@ export function confirmRestoredPaneSession(
       [paneId]: {
         workspaceScope: binding.workspaceScope,
         sessionId: binding.sessionId,
+        ...(binding.kind === "acp" ? { kind: "acp" as const, agent: binding.agent } : {}),
       },
     },
   };
@@ -423,6 +432,7 @@ export function openSessionInNewPane(
   const workspaceKey = paneWorkspaceKey(scope);
   for (const [paneId, binding] of Object.entries(state.panes)) {
     if (
+      binding.kind !== "acp" &&
       binding.sessionId === sessionId &&
       paneWorkspaceKey(binding.workspaceScope) === workspaceKey
     ) {

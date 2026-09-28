@@ -1,4 +1,5 @@
 import { logger } from "@/logger.js";
+import type { AcpAgent } from "@zcode/shared";
 import {
   V4_PRIMARY_PANE_ID,
   canAddPane,
@@ -19,6 +20,8 @@ import {
 
 export interface WorkbenchSessionTarget extends PaneWorkspaceScope {
   readonly sessionId: string;
+  readonly kind?: "native" | "acp";
+  readonly agent?: AcpAgent;
 }
 
 interface WorkbenchSplitPlacementOptions {
@@ -46,8 +49,10 @@ interface SplitResolution {
 }
 
 function targetBinding(target: WorkbenchSessionTarget): WorkbenchSessionBinding {
-  const { sessionId, ...workspaceScope } = target;
-  return { workspaceScope, sessionId };
+  const { sessionId, kind, agent: _agent, ...workspaceScope } = target;
+  return kind === "acp"
+    ? { workspaceScope, sessionId, kind, agent: target.agent }
+    : { workspaceScope, sessionId };
 }
 
 function draftPrimaryOwnsLayout(shellBinding: WorkbenchSessionBinding | null): boolean {
@@ -58,7 +63,12 @@ function draftPrimaryOwnsLayout(shellBinding: WorkbenchSessionBinding | null): b
   return (
     !shellBinding ||
     Object.values(layout.panes).some((binding) =>
-      paneBindingMatchesSession(binding, shellBinding.workspaceScope, shellBinding.sessionId),
+      paneBindingMatchesSession(
+        binding,
+        shellBinding.workspaceScope,
+        shellBinding.sessionId,
+        shellBinding.kind,
+      ),
     )
   );
 }
@@ -77,7 +87,17 @@ function resolveSplit(
   const focusedBinding = activeGroup
     ? selectWorkbenchGroupActiveBinding(activeGroup)
     : focusedPane?.sessionId
-      ? { workspaceScope: focusedPane.workspaceScope, sessionId: focusedPane.sessionId }
+      ? targetBinding({
+          workspacePath: focusedPane.workspaceScope.workspacePath,
+          ...(focusedPane.workspaceScope.workspaceIdentity
+            ? { workspaceIdentity: focusedPane.workspaceScope.workspaceIdentity }
+            : {}),
+          ...(focusedPane.workspaceScope.remoteSessionId
+            ? { remoteSessionId: focusedPane.workspaceScope.remoteSessionId }
+            : {}),
+          sessionId: focusedPane.sessionId,
+          ...(focusedPane.kind === "acp" ? { kind: "acp" as const, agent: focusedPane.agent } : {}),
+        })
       : shellBinding;
   const binding = targetBinding(target);
   const base = {
@@ -86,13 +106,13 @@ function resolveSplit(
     side: options.side,
   };
 
-  if (paneBindingMatchesSession(focusedBinding, target, target.sessionId)) {
+  if (paneBindingMatchesSession(focusedBinding, target, target.sessionId, target.kind)) {
     return { kind: "blocked", ...base };
   }
-  if (groups.sessionIndex[buildWorkbenchSessionKey(target, target.sessionId)]) {
+  if (groups.sessionIndex[buildWorkbenchSessionKey(target, target.sessionId, target.kind)]) {
     return { kind: "focus-group", ...base };
   }
-  const paneId = findPaneIdForSession(layout, target, target.sessionId);
+  const paneId = findPaneIdForSession(layout, target, target.sessionId, target.kind);
   if (paneId) {
     return { kind: "focus-pane", paneId, ...base };
   }
@@ -156,6 +176,9 @@ export function placeWorkbenchSessionInSplit(
     layout.splitPaneWithBinding(resolution.anchorPaneId, resolution.side, {
       workspaceScope: resolution.binding.workspaceScope,
       sessionId: resolution.binding.sessionId,
+      ...(resolution.binding.kind === "acp"
+        ? { kind: "acp" as const, agent: resolution.binding.agent }
+        : {}),
     });
     logger.debug("[v4-workbench] session split beside primary draft", {
       sessionId: resolution.binding.sessionId,
@@ -192,10 +215,10 @@ export function selectWorkbenchSession(
   const binding = targetBinding(target);
   if (
     !groups.activeGroupId &&
-    !groups.sessionIndex[buildWorkbenchSessionKey(target, target.sessionId)] &&
+    !groups.sessionIndex[buildWorkbenchSessionKey(target, target.sessionId, target.kind)] &&
     draftPrimaryOwnsLayout(shellBinding)
   ) {
-    const existingPaneId = findPaneIdForSession(layout, target, target.sessionId);
+    const existingPaneId = findPaneIdForSession(layout, target, target.sessionId, target.kind);
     const paneId = existingPaneId ?? effectiveFocusedPaneId(layout);
     if (existingPaneId) {
       layout.focusPane(existingPaneId);
@@ -206,6 +229,7 @@ export function selectWorkbenchSession(
       layout.replacePaneBinding(paneId, {
         workspaceScope: binding.workspaceScope,
         sessionId: binding.sessionId,
+        ...(binding.kind === "acp" ? { kind: "acp" as const, agent: binding.agent } : {}),
       });
       logger.debug("[v4-workbench] draft split focused pane replaced", {
         paneId,

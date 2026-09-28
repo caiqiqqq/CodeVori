@@ -86,6 +86,12 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     groupId: "agentCapabilities",
   },
   {
+    id: "acpAgents",
+    icon: Bot,
+    titleId: "settings.acpAgents.title",
+    groupId: "agentCapabilities",
+  },
+  {
     id: "plugin",
     icon: Blocks,
     titleId: "settings.plugins.title",

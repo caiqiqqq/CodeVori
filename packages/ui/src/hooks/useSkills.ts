@@ -33,6 +33,8 @@ interface UseSkillsOptions {
   sessionId: string | null;
   enabled: boolean;
   preferredRemoteSessionId?: string;
+  /** ACP 使用设置服务的当前列表；原生会话保留 runtime catalog 的冻结语义。 */
+  source?: "runtime" | "settings";
 }
 
 /**
@@ -56,10 +58,11 @@ export function useSkills(options: UseSkillsOptions): ConversationSkillCatalogSt
     resolution.remoteSessionId ?? options.preferredRemoteSessionId ?? undefined;
   const services = resolution.services;
   const rpcReady = resolution.rpcReady;
-  const requestKey = `${workspaceKey}|${remoteSessionId ?? "local"}|${options.sessionId ?? "draft"}|runtime:${runtimeRevision}`;
+  const source = options.source ?? "runtime";
+  const requestKey = `${workspaceKey}|${remoteSessionId ?? "local"}|${options.sessionId ?? "draft"}|${source}:${runtimeRevision}`;
 
   useEffect(() => {
-    if (!options.enabled || !options.sessionId || !rpcReady) return;
+    if (!options.enabled || !options.sessionId || !rpcReady || source === "settings") return;
     const subscription = services.zcodeAgentService.onAgentRuntimeRestarted((event) => {
       if (event.workspaceKey !== workspaceKey) return;
       // runtime 重建后 workspace/session key 不变，旧 catalog 会继续命中。
@@ -67,7 +70,7 @@ export function useSkills(options: UseSkillsOptions): ConversationSkillCatalogSt
       setRuntimeRevision((current) => current + 1);
     });
     return () => subscription.dispose();
-  }, [options.enabled, options.sessionId, rpcReady, services, workspaceKey]);
+  }, [options.enabled, options.sessionId, rpcReady, services, source, workspaceKey]);
 
   // 用 scope 身份隔离渲染：key 切换后的 effect 尚未执行时也只返回空态，避免旧 Session
   // 或旧 remote attachment 的 Skill 在一帧内泄漏到新 Composer。
@@ -90,8 +93,33 @@ export function useSkills(options: UseSkillsOptions): ConversationSkillCatalogSt
       ...(remoteSessionId ? { remoteSessionId } : {}),
       ...(options.sessionId ? { sessionId: options.sessionId } : {}),
     };
-    services.zcodeAgentService
-      .getSkillReferenceCatalog(params)
+    // 修复原因：ACP 没有 ZCode runtime catalog，沿用 taskId 会误读原生会话的冻结
+    // 技能。候选与 Host 发送均使用同一个 settings owner 的当前启用配置。
+    const catalog =
+      source === "settings"
+        ? services.skillsService
+            .list({
+              workspacePath: options.workspacePath,
+              ...(options.workspaceIdentity
+                ? { workspaceIdentity: options.workspaceIdentity }
+                : {}),
+            })
+            .then((result) => ({
+              authority: "workspace" as const,
+              skills: result.skills
+                .filter((skill) => skill.enabled)
+                .map((skill) => ({
+                  id: skill.id,
+                  name: skill.name,
+                  description: skill.description,
+                  path: skill.path,
+                  scope: skill.scope,
+                  enabled: true as const,
+                  ...(skill.pluginName ? { pluginName: skill.pluginName } : {}),
+                })),
+            }))
+        : services.zcodeAgentService.getSkillReferenceCatalog(params);
+    catalog
       .then((result) => {
         if (cancelled || seq !== requestSeqRef.current) return;
         setScopedState({
@@ -129,6 +157,7 @@ export function useSkills(options: UseSkillsOptions): ConversationSkillCatalogSt
     requestScope,
     rpcReady,
     services,
+    source,
   ]);
 
   if (

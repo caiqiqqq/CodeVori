@@ -67,18 +67,16 @@ export async function refreshProviderPanelAfterAuthChange({
   refreshModelProviders,
   refreshCodingPlanEntitlements,
   refreshTeamPlanProducts,
-  refreshCodingPlanProducts,
-  refreshPurchaseTokenState,
+  refreshOAuthTokenState,
   refreshPlanSnapshots = true,
 }: {
   refreshModelProviders: () => Promise<void>;
   refreshCodingPlanEntitlements: () => Promise<void>;
   refreshTeamPlanProducts: (options?: { force?: boolean }) => Promise<void>;
-  refreshCodingPlanProducts: () => void;
-  refreshPurchaseTokenState: () => Promise<unknown>;
+  refreshOAuthTokenState: () => Promise<unknown>;
   refreshPlanSnapshots?: boolean;
 }): Promise<void> {
-  await refreshPurchaseTokenState();
+  await refreshOAuthTokenState();
   if (refreshPlanSnapshots) {
     await Promise.all([
       refreshModelProviders(),
@@ -90,5 +88,4 @@ export async function refreshProviderPanelAfterAuthChange({
     // 不能顺手刷新今日余额/套餐快照，否则 Start Plan balance 与 entitlement 查询会并发放大。
     await refreshModelProviders();
   }
-  refreshCodingPlanProducts();
 }

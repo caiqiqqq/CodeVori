@@ -134,8 +134,6 @@ const enUS: Record<string, string> = {
   "bashOutput.error.read_failed": "Could not read the output file",
   "bashOutput.error.query_failed": "Could not connect to the task runtime",
 
-  "purchase.entry.loading": "Loading plans…",
-  "purchase.entry.retry": "Could not load plans. Retry",
   "bots.runtime.deliveryFailed": "Bot reply delivery failed",
   "bots.runtime.deliveryFailedDescription":
     "The message could not be delivered. Share the details below for troubleshooting. This notice clears after the next successful send.",
@@ -508,6 +506,8 @@ const enUS: Record<string, string> = {
   "commandCenter.placeholder": "Search actions, tasks, or files",
   "commandCenter.open": "Search",
   "commandCenter.noResults": "No related results",
+  "commandCenter.acpSearchFailed":
+    "Some agent conversations could not be read. Reopen search to retry.",
   "commandCenter.scopeTabs": "Command center sections",
   "commandCenter.scope.all": "All",
   "commandCenter.scope.commands": "Actions",
@@ -1872,6 +1872,36 @@ const enUS: Record<string, string> = {
   "taskList.pinFailed": "Could not update pinned state",
   "taskList.markAsUnread": "Mark as unread",
   "taskList.openInSplitPane": "Open in split view",
+  "taskList.acpCopySnapshotFailed": "Could not copy task path",
+  "taskList.acpCopyLogFailed": "Could not copy ACP diagnostic log path",
+  "acpTrace.title": "ACP execution trace",
+  "acpTrace.description":
+    "ACP events received by ZCode. Internal Agent model requests and responses are not included.",
+  "acpTrace.empty": "No diagnostic events for this session. Logging for older sessions begins now.",
+  "acpTrace.refresh": "Refresh trace",
+  "acpTrace.loadFailed": "Could not read ACP execution trace",
+  "acpTrace.event.prompt-accepted": "Prompt accepted",
+  "acpTrace.event.tool-update": "Tool updated",
+  "acpTrace.event.permission-requested": "Permission requested",
+  "acpTrace.event.permission-resolved": "Permission resolved",
+  "acpTrace.event.turn-completed": "Turn completed",
+  "acpTrace.event.turn-interrupted": "Turn interrupted",
+  "acpTrace.event.turn-stopped": "Turn stopped",
+  "acpTrace.event.adapter-exited": "Agent adapter exited",
+  "acpTrace.status.pending": "Pending",
+  "acpTrace.status.in_progress": "In progress",
+  "acpTrace.status.completed": "Completed",
+  "acpTrace.status.failed": "Failed",
+  "acpTrace.status.unknown": "Unknown status",
+  "taskList.acpRestoreFailed": "Could not restore Agent session",
+  "taskList.acpDeleteFailed": "Could not delete Agent session",
+  "taskList.acpDeleteDescription":
+    "This Agent session will be removed from ZCode and cannot be restored here.",
+  "taskList.archivedNativeTaskCount":
+    "{count} archived ZCode tasks (manage Agent sessions individually)",
+  "taskList.deleteAllArchivedNative": "Delete all archived ZCode tasks",
+  "taskList.deleteAllArchivedNativeMenu": "Delete all archived ZCode tasks…",
+  "taskList.deleteAllArchivedNativeTitle": "Delete {count} archived ZCode tasks?",
   "chat.toolCall.agent.openInSidePane": "Open in side pane",
   "v4Pane.splitRight": "Split right",
   "v4Pane.renamePlaceholder": "Rename session…",
@@ -2623,7 +2653,7 @@ const enUS: Record<string, string> = {
   "settings.mcp.failure.not_authenticated":
     "You are not signed in. Sign in to ZCode to use this MCP server.",
   "settings.mcp.failure.coding_plan_required":
-    "This account has no Coding Plan. Purchase or configure a Coding Plan to use this MCP server.",
+    "This account has no available Coding Plan entitlement. Check the provider connection and plan status.",
   "settings.mcp.failure.server_not_found":
     "The MCP server was not found. Check the plugin or server configuration.",
   "settings.mcp.failure.server_unavailable":
@@ -2831,12 +2861,6 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.startPlan.compatibility":
     "Supports BYOK and BYOA. Base URL, API format, and API Key are maintained by ZCode automatically.",
   "settings.modelProvider.codingPlan.title": "{provider} - Coding Plan",
-  "settings.modelProvider.codingPlan.webview.title": "Upgrade Plan",
-  "settings.modelProvider.codingPlan.webview.authInjectFailed":
-    "Couldn't sign you into the plan page. Please retry.",
-  "settings.modelProvider.codingPlan.webview.retry": "Retry",
-  "settings.modelProvider.codingPlan.webview.loadFailed": "The plan page failed to load.",
-  "settings.modelProvider.codingPlan.webview.openWebsite": "Buy on the official website",
   "settings.modelProvider.codingPlan.status.loginRequired": "Not signed in",
   "settings.modelProvider.codingPlan.status.disconnected": "Not connected",
   "settings.modelProvider.codingPlan.status.checking": "Checking",
@@ -2868,106 +2892,10 @@ const enUS: Record<string, string> = {
     "This provider does not support Coding Plan status checks yet.",
   "settings.modelProvider.codingPlan.login": "Sign in to {provider}",
   "settings.modelProvider.codingPlan.connect": "Connect to {provider}",
-  "settings.modelProvider.codingPlan.purchaseLoginRequiredShort": "Sign in to purchase",
-  "settings.modelProvider.codingPlan.purchaseConnectRequiredShort": "Connect to purchase",
   "settings.modelProvider.codingPlan.disconnect": "Unlink",
-  "settings.modelProvider.codingPlan.subscribe": "Subscribe",
-  "settings.modelProvider.codingPlan.upgrade": "Upgrade",
-  "settings.modelProvider.codingPlan.renew": "Renew",
   "settings.modelProvider.codingPlan.currentPlan": "Current",
-  "settings.modelProvider.codingPlan.purchased": "Purchased",
   "settings.modelProvider.codingPlan.startPlan.expiredBadge": "Expired",
   "settings.modelProvider.codingPlan.startPlan.expiredAction": "Ended",
-  "settings.modelProvider.codingPlan.cancelUpgrade": "Back",
-  "settings.modelProvider.codingPlan.purchase.title": "Upgrade Coding Plan",
-  "settings.modelProvider.codingPlan.purchase.pricingTitle": "Pricing",
-  "settings.modelProvider.codingPlan.purchase.pricingDescription":
-    "Find the perfect plan for you and kick-start your AI coding journey.",
-  "settings.modelProvider.codingPlan.purchase.moreInfo": "More Info",
-  "settings.modelProvider.codingPlan.purchase.billingCycleTitle": "Choose billing cycle",
-  "settings.modelProvider.codingPlan.purchase.paymentConfirmTitle": "Confirm payment",
-  "settings.modelProvider.codingPlan.purchase.paymentTitle": "Payment",
-  "settings.modelProvider.codingPlan.purchase.personal": "Individuals",
-  "settings.modelProvider.codingPlan.purchase.team": "Teams",
-  "settings.modelProvider.codingPlan.purchase.individualsSectionTitle": "For Individuals",
-  "settings.modelProvider.codingPlan.purchase.teamsSectionTitle": "For Teams",
-  "settings.modelProvider.codingPlan.purchaseBanner.startPlanTitle": "Start Plan",
-  "settings.modelProvider.codingPlan.purchaseBanner.startPlanDescription":
-    "Try platform GLM flagship model quota for free.",
-  "settings.modelProvider.codingPlan.purchaseBanner.personalTitle": "For Individuals",
-  "settings.modelProvider.codingPlan.purchaseBanner.personalDescription":
-    "For individual developers with dedicated Coding Plan quota.",
-  "settings.modelProvider.codingPlan.purchaseBanner.temporarilySoldOut": "Temporarily sold out",
-  "settings.modelProvider.codingPlan.purchaseBanner.teamTitle": "For Teams",
-  "settings.modelProvider.codingPlan.purchaseBanner.teamDescription":
-    "For team collaboration with seats and centralized billing.",
-  "settings.modelProvider.codingPlan.purchaseBanner.teamStandardDescription":
-    "For small teams that need shared quota and seat management.",
-  "settings.modelProvider.codingPlan.purchaseBanner.teamAdvancedDescription":
-    "For high-throughput engineering teams that need more quota and flexible seats.",
-  "settings.modelProvider.codingPlan.purchase.choosePlan": "Choose a plan",
-  "settings.modelProvider.codingPlan.purchase.choosePlanDescription":
-    "Compare plan capacity first. Billing cycle and final payment are confirmed next.",
-  "settings.modelProvider.codingPlan.purchase.selectPlan": "Select",
-  "settings.modelProvider.codingPlan.purchase.select": "Select",
-  "settings.modelProvider.codingPlan.purchase.selected": "Selected",
-  "settings.modelProvider.codingPlan.purchase.fromPrice": "{price}+",
-  "settings.modelProvider.codingPlan.purchase.fromPriceSuffix": "",
-  "settings.modelProvider.codingPlan.purchase.previewLoading": "Calculating payment amount",
-  "settings.modelProvider.codingPlan.purchase.previewLoadingDescription":
-    "Please wait. Confirmation and payment use the same payment details.",
-  "settings.modelProvider.codingPlan.purchase.previewUnavailableDescription":
-    "Payment amount is unavailable. Go back and choose the billing cycle again.",
-  "settings.modelProvider.codingPlan.purchase.teamTitle": "Team plans",
-  "settings.modelProvider.codingPlan.purchase.teamDescription":
-    "Seats, shared quota, and centralized billing are coming later.",
-  "settings.modelProvider.codingPlan.purchase.teamCardDescription":
-    "Shared quota, seat management, and centralized billing.",
-  "settings.modelProvider.codingPlan.purchase.comingSoon": "Coming soon",
-  "settings.modelProvider.codingPlan.purchase.chooseBillingCycle":
-    "Choose billing cycle for {plan}",
-  "settings.modelProvider.codingPlan.purchase.billingCycleDescription":
-    "Prices and discounts are refreshed before payment. Final amount is confirmed in the payment step.",
-  "settings.modelProvider.codingPlan.purchase.continueToPayment": "Continue to payment",
-  "settings.modelProvider.codingPlan.purchase.summaryPlan": "Plan",
-  "settings.modelProvider.codingPlan.purchase.summaryBillingCycle": "Billing cycle",
-  "settings.modelProvider.codingPlan.purchase.summaryDueToday": "Due today",
-  "settings.modelProvider.codingPlan.purchase.summaryStatus": "Status",
-  "settings.modelProvider.codingPlan.purchase.servicePeriod": "Service period",
-  "settings.modelProvider.codingPlan.purchase.durationValue": "{duration} {unit}",
-  "settings.modelProvider.codingPlan.purchase.autoRenewPeriod": "Auto-renews every {period}",
-  "settings.modelProvider.codingPlan.purchase.renewalPolicyTitle": "Renewal policy",
-  "settings.modelProvider.codingPlan.purchase.renewalPolicyCharge":
-    "Your subscription renews automatically at {price}{unit} unless cancelled.",
-  "settings.modelProvider.codingPlan.purchase.renewalPolicyPreview":
-    "Final discounts, credits, and payment amount are confirmed in the next payment preview.",
-  "settings.modelProvider.codingPlan.purchase.renewalPolicyCancel":
-    "You can turn off auto-renewal from plan management before the next renewal.",
-  "settings.modelProvider.codingPlan.purchase.termsAccepted":
-    "I understand and agree to the renewal policy and subscription terms.",
-  "settings.modelProvider.codingPlan.purchase.paymentPreparing": "Preparing payment",
-  "settings.modelProvider.codingPlan.purchase.securityChecking":
-    "Waiting for security verification",
-  "settings.modelProvider.codingPlan.purchase.paymentPolling": "Waiting for payment confirmation",
-  "settings.modelProvider.codingPlan.purchase.paymentStarted":
-    "Complete payment on this payment page",
-  "settings.modelProvider.codingPlan.purchase.paymentStartedDescription":
-    "Keep this panel open while the payment channel finishes. You can go back to the payment confirmation page before payment succeeds.",
-  "settings.modelProvider.codingPlan.purchase.paymentInProgress": "Payment in progress",
-  "settings.modelProvider.codingPlan.purchase.successTitle": "Payment successful",
-  "settings.modelProvider.codingPlan.purchase.successDescription":
-    "Your Coding Plan payment was successful. The provider status will refresh after you close this panel.",
-  "settings.modelProvider.codingPlan.purchase.successRefreshingDescription":
-    "Your payment was successful. We are refreshing plan status; you can close this panel and the provider page will continue refreshing.",
-  "settings.modelProvider.codingPlan.purchase.statusSyncing": "Syncing",
-  "settings.modelProvider.codingPlan.purchase.statusActive": "Active",
-  "settings.modelProvider.codingPlan.purchase.refreshNow": "Refresh now",
-  "settings.modelProvider.codingPlan.purchase.done": "Done",
-  "settings.modelProvider.codingPlan.purchase.teamMemberNoticeTitle":
-    "Assign members to your team plan",
-  "settings.modelProvider.codingPlan.purchase.teamMemberNoticeDescription":
-    "Add yourself or other members on the BigModel team plan management page. Once assigned, the team quota will be available in ZCode.",
-  "settings.modelProvider.codingPlan.purchase.manageTeamPlan": "Manage team plan",
   "settings.modelProvider.codingPlan.manage": "Manage",
   "settings.modelProvider.planCard.codingPlan": "Coding Plan",
   "settings.modelProvider.planCard.startPlan": "Start Plan",
@@ -2997,57 +2925,10 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.codingPlan.unit.cny.month": "/month",
   "settings.modelProvider.codingPlan.unit.cny.quarter": "/quarter",
   "settings.modelProvider.codingPlan.unit.cny.year": "/year",
-  "settings.modelProvider.codingPlan.monthlyEquivalent": "Equivalent to {price}/month",
-  "settings.modelProvider.codingPlan.monthlyFlexibleBilling": "Flexible monthly billing",
   "settings.modelProvider.codingPlan.providerFormDescription":
     "These settings are maintained by Coding Plan. Use the API Key entry for manual keys.",
   "settings.modelProvider.codingPlan.retry": "Retry",
-  "settings.modelProvider.codingPlan.viewPrices": "View prices",
-  "settings.modelProvider.codingPlan.productsLoading": "Loading Coding Plan",
-  "settings.modelProvider.codingPlan.productsLoadingDescription":
-    "Fetching the latest plans and prices from {provider}.",
-  "settings.modelProvider.codingPlan.purchase.authStateError":
-    "Failed to read your sign-in status. Please retry.",
-  "settings.modelProvider.codingPlan.purchase.authStateRetry": "Retry sign-in status",
-  "settings.modelProvider.codingPlan.productsError": "Could not load plans",
-  "settings.modelProvider.codingPlan.productsReconnectTitle": "Connect to view plans",
-  "settings.modelProvider.codingPlan.reconnectToViewPlans": "Reconnect",
-  "settings.modelProvider.codingPlan.productsLoginRequired":
-    "Reconnect your {provider} account to refresh prices and available Coding Plan products.",
-  "settings.modelProvider.codingPlan.purchaseLoginRequired":
-    "Reconnect your account and try again.",
-  "settings.modelProvider.codingPlan.productsEmpty": "No plans available",
-  "settings.modelProvider.codingPlan.productsEmptyDescription":
-    "{provider} did not return any purchasable Coding Plan products for this account.",
-  "settings.modelProvider.codingPlan.dynamicUnsupportedTitle": "Dynamic plans are not available",
-  "settings.modelProvider.codingPlan.dynamicUnsupportedDescription":
-    "In-app subscription is only connected for Z.ai / BigModel Coding Plan right now.",
-  "settings.modelProvider.codingPlan.priceUnavailable": "Price unavailable",
   "settings.modelProvider.codingPlan.systemBusy": "The system is busy. Please try again later.",
-  "settings.modelProvider.codingPlan.subscriptionBusy": "Subscription busy",
-  "settings.modelProvider.codingPlan.subscriptionBusyButton": "System busy",
-  "settings.modelProvider.codingPlan.pendingOrder":
-    "There is an unfinished order. Complete or cancel it before starting another purchase.",
-  "settings.modelProvider.codingPlan.paymentTimeout":
-    "Payment is still pending. Recheck your Coding Plan status after the payment page finishes.",
-  "settings.modelProvider.codingPlan.zaiOverseasPaymentRequired":
-    "Z.ai overseas plans must be paid through PayPal or the official Z.ai payment page, not the Alipay signing flow.",
-  "settings.modelProvider.codingPlan.paypalSetupRequired":
-    "Authorize PayPal before continuing the payment.",
-  "settings.modelProvider.codingPlan.paypalApproveUrlMissing":
-    "PayPal did not return an approval link. Try again later.",
-  "settings.modelProvider.codingPlan.paypalUnsupported":
-    "PayPal is not supported for this account or region.",
-  "settings.modelProvider.codingPlan.paypalCancelled":
-    "PayPal authorization was cancelled. Choose PayPal again to retry.",
-  "settings.modelProvider.codingPlan.paypalSubscribeFailed":
-    "PayPal subscription could not be created. Confirm that PayPal authorization finished, then try again or pay by card.",
-  "settings.modelProvider.codingPlan.securityVerificationRequired":
-    "Complete the security verification before continuing the purchase.",
-  "settings.modelProvider.codingPlan.securityVerificationCancelled":
-    "Security verification was cancelled.",
-  "settings.modelProvider.codingPlan.securityVerificationFailed":
-    "Security verification failed. Try again in a moment.",
   "settings.modelProvider.codingPlan.start.loginEnable": "Connect to enable",
   "settings.modelProvider.codingPlan.start.loginTrial": "Connect Z.ai",
   "settings.modelProvider.codingPlan.start.enabled": "Enabled",
@@ -3055,282 +2936,6 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.codingPlan.start.freeEquityTitle": "Start free plan",
   "settings.modelProvider.codingPlan.start.freeEquityDetails":
     "Basic coding capability is available after sign-in.",
-  "settings.modelProvider.codingPlan.paymentDialog.title": "{product} auto-renewal plan",
-  "settings.modelProvider.codingPlan.paymentDialog.close": "Close payment dialog",
-  "settings.modelProvider.codingPlan.paymentDialog.originalAmount": "Plan price",
-  "settings.modelProvider.codingPlan.paymentDialog.discountActivity": "Discount",
-  "settings.modelProvider.codingPlan.paymentDialog.currentPlanCredit":
-    "Current plan remaining value",
-  "settings.modelProvider.codingPlan.paymentDialog.payAmount": "Amount due",
-  "settings.modelProvider.codingPlan.paymentDialog.deductions": "Deductions",
-  "settings.modelProvider.codingPlan.paymentDialog.alipayScan": "Scan with Alipay to pay",
-  "settings.modelProvider.codingPlan.paymentDialog.polling": "Waiting for payment confirmation",
-  "settings.modelProvider.codingPlan.paymentDialog.qrAlt": "Payment QR code",
-  "settings.modelProvider.codingPlan.paymentDialog.qrLoading": "Generating QR code",
-  "settings.modelProvider.codingPlan.paymentDialog.qrError":
-    "Could not generate the QR code. Try again.",
-  "settings.modelProvider.codingPlan.paymentDialog.qrExpired": "QR code expired",
-  "settings.modelProvider.codingPlan.paymentDialog.refreshQr": "Refresh QR code",
-  "settings.modelProvider.codingPlan.paymentDialog.tipAutoRenew":
-    "The subscription will auto-renew at {price}/month.",
-  "settings.modelProvider.codingPlan.paymentDialog.tipDeduction":
-    "Deduction priority: credits first, then balance, then Alipay.",
-  "settings.modelProvider.codingPlan.paymentDialog.tipPeriodic":
-    "The plan renews monthly until you cancel it according to the service terms.",
-  "settings.modelProvider.codingPlan.paymentDialog.tipCancel":
-    "You can turn off auto-renewal at least 3 days before the renewal date from your plan overview.",
-  "settings.modelProvider.codingPlan.paymentDialog.tipCancelPrefix":
-    "You can turn off auto-renewal at least 3 days before the renewal date from your ",
-  "settings.modelProvider.codingPlan.paymentDialog.planOverviewLink": "plan overview",
-  "settings.modelProvider.codingPlan.paymentDialog.tipCancelSuffix": ".",
-  "settings.modelProvider.codingPlan.paymentDialog.ruleTitle": "Account usage policy",
-  "settings.modelProvider.codingPlan.paymentDialog.ruleDescription":
-    "Use the subscribed account only within officially permitted product scopes. Do not lend, transfer, or provide it to third parties, and do not use it for improper or rule-breaking behavior. If violations are found, the platform may restrict or ban the account without refund.",
-  "settings.modelProvider.codingPlan.paymentDialog.agreement":
-    "Payment means you agree to the service and subscription auto-renewal terms. Virtual products are not refundable after payment.",
-  "settings.modelProvider.codingPlan.enterprise.purchaseMethod": "Service method",
-  "settings.modelProvider.codingPlan.enterprise.purchaseMethodTooltipTitle":
-    "Service method details",
-  "settings.modelProvider.codingPlan.enterprise.purchaseMethodTooltipDescription":
-    "1. Monthly one-time purchase only supports 1, 3, 6, or 12 months. 12 months gets 10% off.\n2. Continuous subscription: auto-renewal deducts in this order: gift balance > balance > Alipay.",
-  "settings.modelProvider.codingPlan.enterprise.tier.lite": "Lite",
-  "settings.modelProvider.codingPlan.enterprise.tier.pro": "Pro",
-  "settings.modelProvider.codingPlan.enterprise.tier.max": "Max",
-  "settings.modelProvider.codingPlan.enterprise.configTitle": "Team plan configuration",
-  "settings.modelProvider.codingPlan.enterprise.packageType": "Plan type",
-  "settings.modelProvider.codingPlan.enterprise.packageSeats": "Plan seats",
-  "settings.modelProvider.codingPlan.enterprise.autoRenewAuthorization":
-    "You authorize us to enable auto-renewal for you",
-  "settings.modelProvider.codingPlan.enterprise.seatMonthlyPrice": "{price} / seat / month",
-  "settings.modelProvider.codingPlan.enterprise.refresh": "Refresh",
-  "settings.modelProvider.codingPlan.enterprise.singleSeatPrice": "single-seat price",
-  "settings.modelProvider.codingPlan.enterprise.singleSeatFrom": "Single-seat pricing",
-  "settings.modelProvider.codingPlan.enterprise.unitPrice": "Single-seat price",
-  "settings.modelProvider.codingPlan.enterprise.seats": "Seats",
-  "settings.modelProvider.codingPlan.enterprise.seatInputUnit": "seats",
-  "settings.modelProvider.codingPlan.enterprise.seatsUnit": "seats",
-  "settings.modelProvider.codingPlan.enterprise.duration": "Duration",
-  "settings.modelProvider.codingPlan.enterprise.durationUnit.month": "mo",
-  "settings.modelProvider.codingPlan.enterprise.durationUnit.quarter": "qtr",
-  "settings.modelProvider.codingPlan.enterprise.durationUnit.year": "yr",
-  "settings.modelProvider.codingPlan.enterprise.durationInputUnit.month": "months",
-  "settings.modelProvider.codingPlan.enterprise.durationInputUnit.year": "years",
-  "settings.modelProvider.codingPlan.enterprise.durationDiscountOption": "10% off",
-  "settings.modelProvider.codingPlan.enterprise.calculating": "Calculating",
-  "settings.modelProvider.codingPlan.enterprise.productsLoadingDescription":
-    "Loading team plan pricing from BigModel.",
-  "settings.modelProvider.codingPlan.enterprise.productsEmptyDescription":
-    "No team plan products are currently available.",
-  "settings.modelProvider.codingPlan.enterprise.productsError": "Could not load team plans",
-  "settings.modelProvider.codingPlan.enterprise.choosePurchaseMethod": "Service method",
-  "settings.modelProvider.codingPlan.enterprise.purchaseMethodDescription":
-    "You authorize us to enable auto-renewal for you. Select service method, seats, and one-time purchase duration before confirming payment.",
-  "settings.modelProvider.codingPlan.enterprise.continuousDescription":
-    "Auto-renews for the selected billing period.",
-  "settings.modelProvider.codingPlan.enterprise.oneTimeDescription":
-    "One-time purchase for the selected duration.",
-  "settings.modelProvider.codingPlan.enterprise.unit.monthly": "/ seat / month",
-  "settings.modelProvider.codingPlan.enterprise.unit.quarterly": "/ seat / quarter",
-  "settings.modelProvider.codingPlan.enterprise.unit.yearly": "/ seat / year",
-  "settings.modelProvider.codingPlan.enterprise.benefitSeats": "Seat-based team access",
-  "settings.modelProvider.codingPlan.enterprise.benefitBilling": "Centralized billing and payment",
-  "settings.modelProvider.codingPlan.enterprise.benefitQuota": "Team coding quota",
-  "settings.modelProvider.codingPlan.enterprise.balanceTitle": "Balance deduction",
-  "settings.modelProvider.codingPlan.enterprise.useGiftBalance": "Use gift balance",
-  "settings.modelProvider.codingPlan.enterprise.useCashBalance": "Use balance",
-  "settings.modelProvider.codingPlan.enterprise.currentGiftBalance":
-    "Current gift balance {amount}",
-  "settings.modelProvider.codingPlan.enterprise.currentCashBalance":
-    "Current account balance {amount}",
-  "settings.modelProvider.codingPlan.enterprise.recharge": "Top up",
-  "settings.modelProvider.codingPlan.enterprise.giftBalance": "Gift balance",
-  "settings.modelProvider.codingPlan.enterprise.cashBalance": "Cash balance",
-  "settings.modelProvider.codingPlan.enterprise.balanceAvailable": "Available {amount}",
-  "settings.modelProvider.codingPlan.enterprise.giftBalanceDeduction": "Gift balance deduction",
-  "settings.modelProvider.codingPlan.enterprise.cashBalanceDeduction": "Cash balance deduction",
-  "settings.modelProvider.codingPlan.enterprise.calculateDescription":
-    "Payment amount will update after the order estimate is ready.",
-  "settings.modelProvider.codingPlan.enterprise.paymentNotesTitle": "Payment notes",
-  "settings.modelProvider.codingPlan.enterprise.paymentNotesDescription":
-    "Balance and gift deductions are estimated by BigModel. Continuous subscriptions must keep at least the required third-party payment amount.",
-  "settings.modelProvider.codingPlan.enterprise.amountDetails": "Amount details",
-  "settings.modelProvider.codingPlan.enterprise.seatQuantity": "Seats",
-  "settings.modelProvider.codingPlan.enterprise.seatCountValue": "{count} seats",
-  "settings.modelProvider.codingPlan.enterprise.orderOriginalAmount": "Original order amount",
-  "settings.modelProvider.codingPlan.enterprise.orderDiscount": "{discount} discount",
-  "settings.modelProvider.codingPlan.enterprise.teamAgreementPrefix": "I agree to the ",
-  "settings.modelProvider.codingPlan.enterprise.teamAgreementLink": "Team plan purchase agreement",
-  "settings.modelProvider.codingPlan.enterprise.cancel": "Cancel",
-  "settings.modelProvider.codingPlan.enterprise.confirmPay": "Confirm and pay",
-  "settings.modelProvider.codingPlan.enterprise.confirmTitle": "Buy {product} enterprise plan",
-  "settings.modelProvider.codingPlan.enterprise.paymentDialog.title":
-    "{product} enterprise plan payment",
-  "settings.modelProvider.codingPlan.enterprise.paymentDialog.tipTotal":
-    "The QR amount is the calculated total for seats and purchase duration.",
-  "settings.modelProvider.codingPlan.enterprise.paymentDialog.tipDeduction":
-    "Balance and gift deductions follow the confirmed estimate on the payment confirmation page.",
-  "settings.modelProvider.codingPlan.enterprise.paymentDialog.tipComplete":
-    "After payment succeeds, enterprise pricing and Coding Plan entitlement will refresh automatically.",
-  "settings.modelProvider.codingPlan.enterprise.pendingOrderTitle": "You have an unpaid order",
-  "settings.modelProvider.codingPlan.enterprise.pendingOrderDescription":
-    "Continue with it? You can cancel this order and choose a new plan, or continue paying for the original order.",
-  "settings.modelProvider.codingPlan.enterprise.pendingOrderCancel": "Cancel order",
-  "settings.modelProvider.codingPlan.enterprise.pendingOrderContinue": "Continue payment",
-  "settings.modelProvider.codingPlan.enterprise.pendingOrderProductMissing":
-    "The plan for this unpaid order was not found. Refresh plans and try again.",
-  "settings.modelProvider.codingPlan.overseasPayment.title": "{product} overseas payment",
-  "settings.modelProvider.codingPlan.overseasPayment.description":
-    "Amount due: {price}. Choose PayPal or continue on the official Z.ai payment page.",
-  "settings.modelProvider.codingPlan.overseasPayment.paypal": "PayPal",
-  "settings.modelProvider.codingPlan.overseasPayment.paypalDescription":
-    "Open PayPal authorization, then return here to continue.",
-  "settings.modelProvider.codingPlan.overseasPayment.paypalAuthorize": "Continue to PayPal",
-  "settings.modelProvider.codingPlan.overseasPayment.paypalContinue":
-    "I authorized PayPal, continue payment",
-  "settings.modelProvider.codingPlan.overseasPayment.selectPaymentMethod": "Payment method",
-  "settings.modelProvider.codingPlan.overseasPayment.cardPayment": "Credit card / debit card",
-  "settings.modelProvider.codingPlan.overseasPayment.savedCards": "Saved cards",
-  "settings.modelProvider.codingPlan.overseasPayment.refreshCards": "Refresh cards",
-  "settings.modelProvider.codingPlan.overseasPayment.deleteCard": "Delete card",
-  "settings.modelProvider.codingPlan.overseasPayment.cardsLoading": "Loading saved cards...",
-  "settings.modelProvider.codingPlan.overseasPayment.noSavedCards": "No saved cards yet.",
-  "settings.modelProvider.codingPlan.overseasPayment.addCard": "Add card",
-  "settings.modelProvider.codingPlan.overseasPayment.changeCard": "Change card",
-  "settings.modelProvider.codingPlan.overseasPayment.cardExpires": "Expires {month}/{year}",
-  "settings.modelProvider.codingPlan.overseasPayment.cardInformation": "Card information",
-  "settings.modelProvider.codingPlan.overseasPayment.nameOnCard": "Name on card",
-  "settings.modelProvider.codingPlan.overseasPayment.billingAddress": "Billing address",
-  "settings.modelProvider.codingPlan.overseasPayment.country": "Country",
-  "settings.modelProvider.codingPlan.overseasPayment.countryRequired":
-    "Select a billing country or region.",
-  "settings.modelProvider.codingPlan.overseasPayment.addressLine1": "Address line 1",
-  "settings.modelProvider.codingPlan.overseasPayment.city": "City",
-  "settings.modelProvider.codingPlan.overseasPayment.postalCode": "Postal code",
-  "settings.modelProvider.codingPlan.overseasPayment.payWithCard": "Pay with card",
-  "settings.modelProvider.codingPlan.overseasPayment.saveCard": "Save card",
-  "settings.modelProvider.codingPlan.overseasPayment.confirm": "Confirm",
-  "settings.modelProvider.codingPlan.overseasPayment.amount.originalAmount": "Original price",
-  "settings.modelProvider.codingPlan.overseasPayment.amount.discountActivity": "Discount",
-  "settings.modelProvider.codingPlan.overseasPayment.amount.currentPlanCredit":
-    "Current plan credit",
-  "settings.modelProvider.codingPlan.overseasPayment.amount.payAmount": "Amount due",
-  "settings.modelProvider.codingPlan.overseasPayment.amount.deductions": "Deductions",
-  "settings.modelProvider.codingPlan.overseasPayment.addCardBeforeConfirm":
-    "Add a card before confirming.",
-  "settings.modelProvider.codingPlan.overseasPayment.stripeNotReady":
-    "Stripe is still loading. Try again in a moment.",
-  "settings.modelProvider.codingPlan.overseasPayment.cardElementMissing":
-    "Card input is not ready. Refresh and try again.",
-  "settings.modelProvider.codingPlan.overseasPayment.stripe3dsFailed":
-    "Stripe 3DS verification failed.",
-  "settings.modelProvider.codingPlan.overseasPayment.stripePaymentMethodFailed":
-    "Stripe payment method failed.",
-  "settings.modelProvider.codingPlan.overseasPayment.stripePublishableKeyMissing":
-    "Stripe card entry is not configured in this build.",
-  "settings.modelProvider.codingPlan.overseasPayment.close": "Maybe later",
-  "settings.modelProvider.codingPlan.overseasPayment.renewalPolicyTitle": "Renewal Policy",
-  "settings.modelProvider.codingPlan.overseasPayment.accountPolicyTitle": "Account Usage Policy",
-  "settings.modelProvider.codingPlan.overseasPayment.period.month": "month",
-  "settings.modelProvider.codingPlan.overseasPayment.period.quarter": "quarter",
-  "settings.modelProvider.codingPlan.overseasPayment.period.year": "year",
-  "settings.modelProvider.codingPlan.overseasPayment.recurringPeriod.month": "Monthly",
-  "settings.modelProvider.codingPlan.overseasPayment.recurringPeriod.quarter": "Quarterly",
-  "settings.modelProvider.codingPlan.overseasPayment.recurringPeriod.year": "Yearly",
-  "settings.modelProvider.codingPlan.overseasPayment.renewalCharge":
-    "{price} will be charged automatically per {period}.",
-  "settings.modelProvider.codingPlan.overseasPayment.renewalChargeFallback":
-    "Future renewals will follow your selected subscription cycle. The actual renewal amount is subject to your renewal invoice.",
-  "settings.modelProvider.codingPlan.overseasPayment.renewalDeduction":
-    "Payments will be deducted first from bonus credits, then from your account balance, and finally via credit card.",
-  "settings.modelProvider.codingPlan.overseasPayment.renewalMinimum":
-    "Please note that a small minimum applies when charging your credit card. If the remaining amount is less, we will round up the deduction to meet this minimum.",
-  "settings.modelProvider.codingPlan.overseasPayment.renewalRecurring":
-    "{period} charges will continue on a recurring basis until you cancel in accordance with our Terms of Service.",
-  "settings.modelProvider.codingPlan.overseasPayment.renewalCancelPrefix":
-    "You may disable auto-renewal at least 1 day before the renewal date in your ",
-  "settings.modelProvider.codingPlan.overseasPayment.subscriptionSettingLink":
-    "subscription setting",
-  "settings.modelProvider.codingPlan.overseasPayment.renewalCancelSuffix": ".",
-  "settings.modelProvider.codingPlan.overseasPayment.accountPolicyPrefix":
-    "The GLM Coding Plan is strictly limited to use by the subscriber within ",
-  "settings.modelProvider.codingPlan.overseasPayment.supportedProductsLink":
-    "officially supported products",
-  "settings.modelProvider.codingPlan.overseasPayment.accountPolicyAfterSupportedProducts":
-    ". Any sharing, resale, transfer, or third-party access is strictly prohibited. Any improper, unauthorized, or policy-violating use may result in immediate account restriction or suspension with no refunds. Please comply with our ",
-  "settings.modelProvider.codingPlan.overseasPayment.termsLink": "Terms",
-  "settings.modelProvider.codingPlan.overseasPayment.accountPolicyBetween": " and ",
-  "settings.modelProvider.codingPlan.overseasPayment.policyLink": "Policy",
-  "settings.modelProvider.codingPlan.overseasPayment.accountPolicySuffix": ".",
-  "settings.modelProvider.codingPlan.overseasPayment.authorizationPrefix":
-    "You agree that Z.ai will charge your card the above amount now and on a recurring basis according to your subscription plan until you cancel in accordance with our ",
-  "settings.modelProvider.codingPlan.overseasPayment.authorizationTermsLink": "terms",
-  "settings.modelProvider.codingPlan.overseasPayment.authorizationSuffix": ".",
-  "settings.modelProvider.codingPlan.paymentDialog.agreementPrefix":
-    "Payment means you agree to the ",
-  "settings.modelProvider.codingPlan.paymentDialog.serviceAgreementLink": "Service agreement",
-  "settings.modelProvider.codingPlan.paymentDialog.agreementBetween": " and the ",
-  "settings.modelProvider.codingPlan.paymentDialog.subscriptionAgreementLink":
-    "Subscription and auto-renewal agreement",
-  "settings.modelProvider.codingPlan.paymentDialog.agreementSuffix":
-    ". Virtual products are not refundable after payment.",
-  "settings.modelProvider.codingPlan.product.soldOut": "Sold out",
-  "settings.modelProvider.codingPlan.product.forbidden": "Unavailable for this account",
-  "settings.modelProvider.codingPlan.product.unavailable": "Unavailable",
-  "settings.modelProvider.codingPlan.product.subscribeNow": "Subscribe now",
-  "settings.modelProvider.codingPlan.product.unavailableTooltipPrefix":
-    "This plan is unavailable for purchase. ",
-  "settings.modelProvider.codingPlan.product.unavailableTooltipLink": "view details",
-  "settings.modelProvider.codingPlan.product.included": "Included",
-  "settings.modelProvider.codingPlan.product.firstPromo": "First-time subscription discount",
-  "settings.modelProvider.codingPlan.product.delay": "Effective {time}",
-  "settings.modelProvider.codingPlan.zai.plan.lite.name": "Lite",
-  "settings.modelProvider.codingPlan.zai.plan.lite.summary": "3x higher Claude Pro usage limits",
-  "settings.modelProvider.codingPlan.zai.plan.pro.name": "Pro",
-  "settings.modelProvider.codingPlan.zai.plan.pro.summary":
-    "Everything in Lite, plus 5x Lite usage",
-  "settings.modelProvider.codingPlan.zai.plan.max.name": "Max",
-  "settings.modelProvider.codingPlan.zai.plan.max.summary":
-    "Everything in Pro, plus 20x Lite usage",
-  "settings.modelProvider.codingPlan.bigmodel.plan.lite.name": "Lite",
-  "settings.modelProvider.codingPlan.bigmodel.plan.lite.summary": "3x Claude Pro usage quota",
-  "settings.modelProvider.codingPlan.bigmodel.plan.pro.name": "Pro",
-  "settings.modelProvider.codingPlan.bigmodel.plan.pro.summary":
-    "5x Lite usage quota + all Lite benefits",
-  "settings.modelProvider.codingPlan.bigmodel.plan.max.name": "Max",
-  "settings.modelProvider.codingPlan.bigmodel.plan.max.summary":
-    "20x Lite usage quota + all Pro benefits",
-  "settings.modelProvider.codingPlan.bigmodel.purchase.plan.lite.detail0": "Base usage allowance",
-  "settings.modelProvider.codingPlan.bigmodel.purchase.plan.lite.detail1":
-    "Light iteration for small repos",
-  "settings.modelProvider.codingPlan.bigmodel.purchase.plan.lite.detail2":
-    "Latest models rolled out over time",
-  "settings.modelProvider.codingPlan.bigmodel.purchase.plan.lite.detail3": "20+ coding tools",
-  "settings.modelProvider.codingPlan.bigmodel.purchase.plan.pro.detail0": "5x Lite usage allowance",
-  "settings.modelProvider.codingPlan.bigmodel.purchase.plan.pro.detail1":
-    "Daily development for mid-sized repos",
-  "settings.modelProvider.codingPlan.bigmodel.purchase.plan.pro.detail2":
-    "Priority access to latest models",
-  "settings.modelProvider.codingPlan.bigmodel.purchase.plan.pro.detail3": "Curated MCP tools",
-  "settings.modelProvider.codingPlan.bigmodel.purchase.plan.max.detail0":
-    "20x Lite usage allowance",
-  "settings.modelProvider.codingPlan.bigmodel.purchase.plan.max.detail1":
-    "Deep work on mid-to-large repos",
-  "settings.modelProvider.codingPlan.bigmodel.purchase.plan.max.detail2":
-    "First access to latest models",
-  "settings.modelProvider.codingPlan.bigmodel.purchase.plan.max.detail3":
-    "Peak-time resource priority",
-  "settings.modelProvider.codingPlan.zai.purchase.plan.lite.detail0": "Base usage included",
-  "settings.modelProvider.codingPlan.zai.purchase.plan.lite.detail1": "Small repo iteration",
-  "settings.modelProvider.codingPlan.zai.purchase.plan.lite.detail2": "Latest models over time",
-  "settings.modelProvider.codingPlan.zai.purchase.plan.lite.detail3": "20+ coding tools",
-  "settings.modelProvider.codingPlan.zai.purchase.plan.pro.detail0": "5x Lite usage",
-  "settings.modelProvider.codingPlan.zai.purchase.plan.pro.detail1": "Mid-sized repo development",
-  "settings.modelProvider.codingPlan.zai.purchase.plan.pro.detail2": "Priority model access",
-  "settings.modelProvider.codingPlan.zai.purchase.plan.pro.detail3": "Curated MCP tools",
-  "settings.modelProvider.codingPlan.zai.purchase.plan.max.detail0": "20x Lite usage",
-  "settings.modelProvider.codingPlan.zai.purchase.plan.max.detail1": "Mid-to-large repo work",
-  "settings.modelProvider.codingPlan.zai.purchase.plan.max.detail2": "First model access",
-  "settings.modelProvider.codingPlan.zai.purchase.plan.max.detail3": "Peak-time priority",
   "settings.modelProvider.enabledStatus": "Enabled",
   "settings.modelProvider.enableModel": "Enable",
   "settings.modelProvider.disabledStatus": "Disabled",
@@ -3432,14 +3037,6 @@ const enUS: Record<string, string> = {
   "settings.usage.toolChartDescription":
     "From the selected provider tool-usage API: Network Search / Web Reader / Zread call counts.",
   "settings.usage.sourceProvider": "Source: {provider}",
-  "settings.usage.billingBanner.title": "{provider} Coding Plan",
-  "settings.usage.billingBanner.description":
-    "Connect your {provider} account to query Coding Plan entitlement, then keep coding in ZCode after purchase or setup.",
-  "settings.usage.billingBanner.compactDescription":
-    "Connect your {provider} account to sync usage.",
-  "settings.usage.billingBanner.buy": "Buy Coding Plan",
-  "settings.usage.billingBanner.apiKeys": "API keys",
-  "settings.usage.billingBanner.usageDetails": "Usage details",
   "settings.usage.entitlementTitle": "Coding Plan entitlement",
   "settings.usage.entitlementDescription":
     "Sync exact plan level, 5-hour prompt pool, weekly quota, and monthly tool quota from the connected Coding Plan account.",
@@ -3515,8 +3112,6 @@ const enUS: Record<string, string> = {
   "settings.usage.entitlementStatusNotConfigured": "Not configured",
   "sidebar.usage.summaryTitle": "Last 30 days",
   "sidebar.usage.plan.title": "Usage remaining",
-  "sidebar.usage.plan.upgrade": "Upgrade",
-  "sidebar.usage.plan.renew": "Renew",
   "sidebar.usage.plan.codingPlanTitle": "Coding Plan",
   "sidebar.usage.plan.audienceIndividual": "Individual",
   "sidebar.usage.plan.audienceTeam": "Team",
@@ -3579,6 +3174,17 @@ const enUS: Record<string, string> = {
   "settings.usage.range.7d": "Last 7 days",
   "settings.usage.range.30d": "Last 30 days",
   "settings.usage.appUsageRangeTitle": "Time range",
+  "settings.usage.sourceAll": "All sources",
+  "settings.usage.sourceNative": "ZCode / API",
+  "settings.usage.sourceAcp": "ACP agents",
+  "settings.usage.nativeModelCharts": "ZCode / API model usage and activity",
+  "settings.usage.acpTurns": "Submitted turns",
+  "settings.usage.acpModels": "Actual model usage",
+  "settings.usage.measuredTurns": "Measured turns",
+  "settings.usage.unknownTurns": "ACP turns with unknown usage",
+  "settings.usage.acpCoverageHint": "Token totals include confirmed usage only. Missing reports, discontinuous baselines and old ACP history remain unknown.",
+  "settings.usage.acpModelUnknown": "Only models reported with actual usage are shown. Remaining tokens cannot be reliably attributed to a model.",
+  "settings.usage.codexUsageUnknown": "The current Codex ACP adapter reports only the last model request, so full-turn tokens remain unknown.",
   "settings.usage.codingPlanRange.today": "Today",
   "settings.usage.codingPlanRange.7d": "7 days",
   "settings.usage.codingPlanRange.30d": "30 days",
@@ -3854,6 +3460,226 @@ const enUS: Record<string, string> = {
   "settings.skills.diagnostics.code.skill_too_large": "SKILL.md too large; content truncated",
   "settings.skills.diagnostics.code.skill_not_found": "Skill not found",
   "settings.subagents.title": "Subagents",
+  "settings.acpAgents.title": "Agent SDK Management",
+  "settings.acpAgents.description": "Manage 15 built-in ACP agents on the target Host.",
+  "settings.acpAgents.list": "ACP agents",
+  "settings.acpAgents.codexDescription":
+    "Run Codex in this workspace through Codex ACP. Codex supplies the session model and permission options.",
+  "settings.acpAgents.claudeDescription":
+    "Run Claude in this workspace through Claude ACP. Claude supplies the session model and permission options.",
+  "settings.acpAgents.geminiDescription":
+    "Run Gemini CLI through its ACP mode. The agent supplies models and permissions.",
+  "settings.acpAgents.openclawDescription": "Run OpenClaw through its native ACP mode.",
+  "settings.acpAgents.opencodeDescription": "Run OpenCode through its native ACP mode.",
+  "settings.acpAgents.clineDescription": "Run Cline through its ACP mode.",
+  "settings.acpAgents.hermesDescription":
+    "Run Hermes through ACP; the managed npm release is a community bridge.",
+  "settings.acpAgents.codebuddyDescription": "Run CodeBuddy through its ACP mode.",
+  "settings.acpAgents.kimi-codeDescription": "Run Kimi Code through its native ACP mode.",
+  "settings.acpAgents.piDescription": "Run Pi through pi-acp; install pi or set PI_ACP_PI_COMMAND.",
+  "settings.acpAgents.grokDescription": "Run Grok through its ACP stdio mode.",
+  "settings.acpAgents.cursorDescription":
+    "Run Cursor Agent through ACP; the managed archive retains its full runtime tree.",
+  "settings.acpAgents.deepseekDescription": "Run DeepSeek Harness through its ACP adapter.",
+  "settings.acpAgents.qoderDescription": "Run Qoder CLI through its native ACP mode.",
+  "settings.acpAgents.antigravityDescription":
+    "Run Google Antigravity through its native ACP server; the agent manages sign-in.",
+  "settings.acpAgents.binary": "Binary",
+  "settings.acpAgents.arguments": "Launch arguments",
+  "settings.acpAgents.unsupportedPlatform":
+    "No managed release for this platform; a system command can still be used.",
+  "settings.acpAgents.piHint": "pi-acp requires pi at runtime, or set PI_ACP_PI_COMMAND.",
+  "settings.acpAgents.command": "ACP command",
+  "settings.acpAgents.connecting": "Connecting to workspace…",
+  "settings.acpAgents.loadFailed": "Could not load ACP agent settings",
+  "settings.acpAgents.refresh": "Refresh",
+  "settings.acpAgents.management": "Adapter management",
+  "settings.acpAgents.adapterBadge": "ACP adapter",
+  "settings.acpAgents.checksCount": "Checks: {count}",
+  "settings.acpAgents.expandChecks": "Expand all",
+  "settings.acpAgents.collapseChecks": "Collapse all",
+  "settings.acpAgents.checkAdapter": "ACP adapter",
+  "settings.acpAgents.checkVersion": "Version status",
+  "settings.acpAgents.checkNode": "Node.js",
+  "settings.acpAgents.checkNpm": "npm",
+  "settings.acpAgents.checkNative": "Vendor CLI",
+  "settings.acpAgents.checkPass": "PASS",
+  "settings.acpAgents.checkWarn": "WARN",
+  "settings.acpAgents.checkFail": "FAIL",
+  "settings.acpAgents.checkInfo": "OPTIONAL",
+  "settings.acpAgents.checksHint":
+    "Checks commands and install state on the target Host; it does not verify Agent sign-in.",
+  "settings.acpAgents.installToolsHint":
+    "Node.js and npm are needed for managed installation. Their absence does not mean an existing ACP session failed.",
+  "settings.acpAgents.checking": "Checking runtime…",
+  "settings.acpAgents.enabled": "Enable agent",
+  "settings.acpAgents.disabled": "Disabled",
+  "settings.acpAgents.status": "Launch status",
+  "settings.acpAgents.ready": "Ready",
+  "settings.acpAgents.missing": "Not found",
+  "settings.acpAgents.source": "Install source",
+  "settings.acpAgents.managed": "Managed by ZCode",
+  "settings.acpAgents.system": "System install",
+  "settings.acpAgents.installedVersion": "Installed version",
+  "settings.acpAgents.registryVersion": "Target version",
+  "settings.acpAgents.unknown": "Unknown",
+  "settings.acpAgents.adapterPath": "Adapter path",
+  "settings.acpAgents.adapterHint":
+    "Managed adapters live only in this Host's ZCode data directory and do not replace system commands.",
+  "settings.acpAgents.nativeHint":
+    "The vendor CLI and ACP adapter are separate commands. An installed codex/claude CLI does not mean its ACP adapter is installed.",
+  "settings.acpAgents.diagnostics": "Runtime diagnostics",
+  "settings.acpAgents.install": "Install adapter",
+  "settings.acpAgents.upgrade": "Upgrade to target",
+  "settings.acpAgents.uninstall": "Uninstall managed adapter",
+  "settings.acpAgents.uninstallConfirm":
+    "Only the adapter managed by ZCode on this Host is removed. System commands and saved sessions are kept.",
+  "settings.acpAgents.systemInstallConfirm":
+    "The system adapter {current} is in use. Installing managed version {target} makes new connections prefer it; the system command stays unchanged. Install it?",
+  "settings.acpAgents.environment": "Agent environment variables",
+  "settings.acpAgents.envHint":
+    "One KEY=value per line, passed only to this ACP agent. Reconnect existing sessions to apply changes.",
+  "settings.acpAgents.save": "Save configuration",
+  "settings.acpAgents.codex.title": "Codex configuration",
+  "settings.acpAgents.codex.reload": "Reload",
+  "settings.acpAgents.codex.loading": "Reading native Codex configuration…",
+  "settings.acpAgents.codex.readFailed":
+    "Could not read the target Host's Codex configuration. Check its files and retry.",
+  "settings.acpAgents.codex.saveFailed":
+    "Save failed. Configuration may have changed elsewhere; reload before retrying.",
+  "settings.acpAgents.codex.authMode": "Authentication method",
+  "settings.acpAgents.codex.subscription": "Official subscription",
+  "settings.acpAgents.codex.custom": "Custom endpoint",
+  "settings.acpAgents.codex.signedIn":
+    "Subscription credentials exist on this Host. Codex will verify them at the next connection.",
+  "settings.acpAgents.codex.loginHint":
+    "No subscription credentials on this Host. Run codex login --device-auth in its terminal.",
+  "settings.acpAgents.codex.show": "Show key",
+  "settings.acpAgents.codex.hide": "Hide key",
+  "settings.acpAgents.codex.models": "Official models / Default model",
+  "settings.acpAgents.codex.refreshModels": "Refresh official models",
+  "settings.acpAgents.codex.loadingModels": "Reading the adapter's Codex model catalog…",
+  "settings.acpAgents.codex.modelsFailed":
+    "Cannot read the target adapter's official catalog. Check Codex ACP installation.",
+  "settings.acpAgents.codex.nativeModel": "Use Codex default model",
+  "settings.acpAgents.codex.modelsHint":
+    "Sets only the default model; does not overwrite Codex or Codeg model catalogs.",
+  "settings.acpAgents.codex.save": "Save Codex configuration",
+  "settings.acpAgents.codex.restartHint":
+    "New or reconnected ACP sessions will use the target Host's Codex configuration.",
+  "settings.acpAgents.restartHint":
+    "Agent enablement and environment changes apply on the next connection.",
+  "settings.acpAgents.env.title": "Agent connection settings",
+  "settings.acpAgents.saveBeforeInstall":
+    "Save your settings before installing or upgrading the adapter.",
+  "settings.acpAgents.env.credential": "Access token / credential",
+  "settings.acpAgents.env.apiKey": "API key",
+  "settings.acpAgents.env.url": "Service URL",
+  "settings.acpAgents.env.model": "Default model",
+  "settings.acpAgents.env.gatewayToken": "Gateway token",
+  "settings.acpAgents.env.sessionKey": "Session key",
+  "settings.acpAgents.env.command": "Pi command",
+  "settings.acpAgents.env.authMethod": "Authentication method",
+  "settings.acpAgents.env.project": "Google Cloud project",
+  "settings.acpAgents.env.location": "Google Cloud location",
+  "settings.acpAgents.env.credentialsFile": "Service account JSON path",
+  "settings.acpAgents.env.agentTools": "Let the agent handle files and commands",
+  "settings.acpAgents.env.agentToolsHint":
+    "ZCode does not host ACP file or terminal channels; the agent applies its own sandbox and permissions.",
+  "settings.acpAgents.env.saveGemini": "Save Gemini configuration",
+  "settings.acpAgents.env.geminiTitle": "Gemini authentication",
+  "settings.acpAgents.env.geminiAuthDocs": "View authentication docs",
+  "settings.acpAgents.env.geminiHint.model_provider":
+    "Use the selected Gemini provider's URL, key, and default model.",
+  "settings.acpAgents.env.provider.select": "Select model provider",
+  "settings.acpAgents.env.provider.empty": "No Gemini model providers. Add one first.",
+  "settings.acpAgents.env.provider.missing":
+    "The bound provider no longer exists. Select another and save.",
+  "settings.acpAgents.env.provider.loading": "Loading model providers…",
+  "settings.acpAgents.env.provider.loadFailed":
+    "Could not read providers from the target Host. Refresh to retry.",
+  "settings.acpAgents.env.provider.saveFailed":
+    "Save failed or the configuration changed. The catalog was reloaded; review the form and retry.",
+  "settings.acpAgents.env.provider.add": "Add provider",
+  "settings.acpAgents.env.provider.edit": "Edit provider",
+  "settings.acpAgents.env.provider.delete": "Delete provider",
+  "settings.acpAgents.env.provider.deleteConfirm":
+    "New Gemini connections bound to this provider will fail until another provider is selected.",
+  "settings.acpAgents.env.provider.refresh": "Refresh providers",
+  "settings.acpAgents.env.provider.configure": "Configure Gemini model provider",
+  "settings.acpAgents.env.provider.hint":
+    "Use an endpoint supporting the native Gemini protocol. Changes apply to new connections.",
+  "settings.acpAgents.env.provider.name": "Provider name",
+  "settings.acpAgents.env.provider.apiUrl": "Gemini API URL",
+  "settings.acpAgents.env.provider.apiKey": "API key",
+  "settings.acpAgents.env.provider.model": "Default model (optional)",
+  "settings.acpAgents.env.provider.invalid": "Enter a name, a valid HTTP(S) URL, and an API key.",
+  "settings.acpAgents.env.provider.cancel": "Cancel",
+  "settings.acpAgents.env.provider.save": "Save provider",
+  "settings.acpAgents.env.geminiHint.custom":
+    "Custom URL and key map to GOOGLE_GEMINI_BASE_URL and GEMINI_API_KEY.",
+  "settings.acpAgents.env.geminiHint.login_google":
+    "Run gemini on the target Host and complete Google sign-in; no API key is needed.",
+  "settings.acpAgents.env.geminiHint.gemini_api_key": "Enter GEMINI_API_KEY for the Gemini API.",
+  "settings.acpAgents.env.geminiHint.vertex_adc":
+    "Use gcloud application default credentials; project and location are recommended.",
+  "settings.acpAgents.env.geminiHint.vertex_service_account":
+    "Enter a service account JSON path, project, and location.",
+  "settings.acpAgents.env.geminiHint.vertex_api_key":
+    "Enter GOOGLE_API_KEY for Vertex AI; project and location are optional.",
+  "settings.acpAgents.env.default": "Use native configuration",
+  "settings.acpAgents.env.optional": "Optional; uses the agent's own configuration if unset",
+  "settings.acpAgents.env.show": "Show credential",
+  "settings.acpAgents.env.hide": "Hide credential",
+  "settings.acpAgents.env.advanced": "Environment variables (KEY=value)",
+  "settings.acpAgents.env.common": "Common fields",
+  "settings.acpAgents.env.advancedHint":
+    "One variable per line; comments starting with # are kept only while editing. The common fields below share this configuration. Saved credentials appear here in plain text.",
+  "settings.acpAgents.env.clearHint":
+    "Clear and save to remove ZCode's value for this agent. The agent may still read system variables and native configuration.",
+  "settings.acpAgents.env.qoderLogin":
+    "Run this command in the target Host's terminal to log in to Qoder. Use the PAT above on hosts without a browser; Qoder does not read OPENAI_API_KEY or QODER_API_KEY.",
+  "settings.acpAgents.env.method.oauth-personal": "Personal account (browser login)",
+  "settings.acpAgents.env.method.oauth-business": "Business account (browser login)",
+  "settings.acpAgents.env.method.gemini-api-key": "Gemini API key",
+  "settings.acpAgents.env.method.agent-platform": "Agent Platform",
+  "settings.acpAgents.env.method.custom": "Custom endpoint",
+  "settings.acpAgents.env.method.login_google": "Google login (OAuth)",
+  "settings.acpAgents.env.method.gemini_api_key": "Gemini API Key",
+  "settings.acpAgents.env.method.vertex_adc": "Vertex AI (ADC)",
+  "settings.acpAgents.env.method.vertex_service_account": "Vertex AI (service account)",
+  "settings.acpAgents.env.method.vertex_api_key": "Vertex AI API Key",
+  "settings.acpAgents.env.method.model_provider": "Model provider",
+  "settings.acpAgents.env.hint.claude":
+    "Claude can use its own login, or a token/API key and service URL. Claude CLI determines how each credential authenticates.",
+  "settings.acpAgents.env.hint.codex":
+    "Codex reads its own login and native auth.json/config.toml; choose the session model through ACP options.",
+  "settings.acpAgents.env.hint.gemini":
+    "Gemini can use its own login; custom services can use the Gemini API key, URL, and default model.",
+  "settings.acpAgents.env.hint.openclaw":
+    "OpenClaw uses a gateway URL, token, and optional session key.",
+  "settings.acpAgents.env.hint.opencode":
+    "OpenCode manages providers and credentials in its native configuration.",
+  "settings.acpAgents.env.hint.cline":
+    "Cline manages login and providers in its native configuration.",
+  "settings.acpAgents.env.hint.hermes":
+    "Hermes manages login and providers in its native configuration.",
+  "settings.acpAgents.env.hint.codebuddy":
+    "CodeBuddy accepts an API key; self-hosted deployments can set CODEBUDDY_BASE_URL. Other environments use native configuration.",
+  "settings.acpAgents.env.hint.kimi-code":
+    "Kimi Code uses KIMI_MODEL_* for noninteractive settings, or its own config.toml.",
+  "settings.acpAgents.env.hint.pi":
+    "Pi ACP can use a custom Pi command; a runnable Pi CLI is still required.",
+  "settings.acpAgents.env.hint.grok":
+    "Grok reads XAI_API_KEY; its endpoint and default model can be overridden.",
+  "settings.acpAgents.env.hint.cursor":
+    "Cursor uses its own login or CURSOR_API_KEY; choose the model in the session.",
+  "settings.acpAgents.env.hint.deepseek":
+    "DeepSeek Harness uses DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, and an optional default model; DEEPSEEK_ACP_PROVIDER is not a service URL.",
+  "settings.acpAgents.env.hint.qoder":
+    "Qoder uses its own browser login or QODER_PERSONAL_ACCESS_TOKEN; choose the model in the session.",
+  "settings.acpAgents.env.hint.antigravity":
+    "The authentication method is written to Antigravity's native settings.json; only credentials for the selected method are shown.",
   "settings.subagents.description":
     "Manage user-level subagent Markdown files consumed by ZCode Agent.",
   "settings.subagents.workspaceScopeUnsupported":
@@ -4017,8 +3843,6 @@ const enUS: Record<string, string> = {
   "settings.plugins.store.viewMoreFew": "See {names}",
   "settings.plugins.store.showLess": "Show less",
   "settings.plugins.store.install": "Install",
-  "settings.plugins.store.paidPlanBadge": "Coding Plan",
-  "settings.plugins.store.requiresPaidPlan": "This plugin works better with a Coding Plan",
   "settings.plugins.store.tryNow": "Try now",
   "settings.plugins.store.sourceMissing":
     "Marketplace source is missing. This plugin remains usable, but updates are unavailable.",
@@ -5764,23 +5588,21 @@ const enUS: Record<string, string> = {
   "chat.quota.startPlan.modelVeryLow":
     "{model} has {percent} of its plan quota remaining ({remaining} tokens).",
   "chat.quota.startPlan.modelExhausted":
-    "All available quota for {model} has been used up. Switch models or upgrade your plan.",
+    "All available quota for {model} has been used up. Switch models or wait for the quota to reset.",
   "chat.quota.startPlan.dailyExhausted":
-    "Your Start Plan quota has been used up. Upgrade your plan or wait for the quota to reset.",
+    "Your Start Plan quota has been used up. Wait for the quota to reset or switch providers.",
   "chat.quota.startPlan.concurrentLimit":
-    "The system is busy. Please switch models, upgrade your account, or try again later.",
+    "The system is busy. Please switch models or try again later.",
   "chat.quota.startPlan.concurrentLimit.retryExhausted":
-    "The system is busy, and automatic retries have reached the maximum count. Please try again later or upgrade your account.",
+    "The system is busy, and automatic retries have reached the maximum count. Please try again later.",
   "chat.quota.startPlan.concurrentLimit.switchModel":
     "The current model request concurrency limit has been reached. Switch models to continue your current task.",
   "chat.quota.mcp.quotaExhausted":
     'ZCode MCP "{server}" has used up today\'s quota. It resets tomorrow.',
   "chat.quota.mcp.codingPlanRequired":
-    'No ZCode MCP "{server}" quota. Sign in or get a Coding Plan to use it.',
+    'No ZCode MCP "{server}" quota. Check your provider connection and entitlement.',
   "chat.quota.providerLimited":
-    "The current account quota or plan limit has been reached. Upgrade or adjust the plan to continue.",
-  "chat.quota.action.upgrade": "Upgrade",
-  "chat.quota.action.renew": "Renew",
+    "The current account quota or plan limit has been reached. Switch providers or wait for the quota to reset.",
   "chat.quota.action.switchModel": "Switch model",
   "chat.quota.action.switchProvider": "Switch provider",
   "chat.quota.action.refresh": "Refresh quota",
@@ -5938,7 +5760,7 @@ const enUS: Record<string, string> = {
     "The current model is unavailable. Check whether the current account has been added to the project member list.",
   "zcode.error.providerBusiness.1006": "Your login session has expired. Please sign in again.",
   "zcode.error.providerBusiness.1005":
-    "Today's free plan quota has been used up. Upgrade to continue now, or wait for the quota to reset.",
+    "Today's free plan quota has been used up. Switch models or wait for the quota to reset.",
   "zcode.error.providerBusiness.3006":
     "The current model is not included in this plan. Switch to an allowed model and try again.",
   "zcode.error.providerBusiness.3002":
@@ -5948,11 +5770,11 @@ const enUS: Record<string, string> = {
   "zcode.error.providerBusiness.3007":
     "The request was rejected by the gateway security check. Please try again later or contact support.",
   "zcode.error.providerBusiness.3008":
-    "The system is busy. Please switch models, upgrade your account, or try again later.",
+    "The system is busy. Please switch models or try again later.",
   "zcode.error.providerBusiness.3009":
-    "The system is busy. Please switch models, upgrade your account, or try again later.",
+    "The system is busy. Please switch models or try again later.",
   "zcode.error.providerBusiness.3010":
-    "The system is busy. Please switch models, upgrade your account, or try again later.",
+    "The system is busy. Please switch models or try again later.",
   "zcode.error.providerBusiness.3102":
     "This run exceeded the maximum single-run time. Create a new off-peak task to continue.",
   "zcode.error.modelSuspiciousEmpty":
@@ -6814,6 +6636,29 @@ const enUS: Record<string, string> = {
   "scheduledPreview.toast.running": "Running “{title}”…",
   "scheduledPreview.toast.view": "View",
   "scheduledPreview.addSchedule": "Add schedule",
+  "acp.modelGroup": "ACP Agents",
+  "acp.newSession": "New session",
+  "acp.retry": "Retry",
+  "acp.sessions": "ACP sessions",
+  "acp.stop": "Stop",
+  "acp.remove": "Remove session from ZCode",
+  "acp.transcript": "ACP transcript",
+  "acp.toolResultUnknown": "Result unconfirmed",
+  "acp.you": "You",
+  "acp.permission": "Permission requested",
+  "acp.prompt": "Send to ACP Agent",
+  "acp.send": "Send",
+  "acp.connecting": "Connecting to ACP Agent…",
+  "acp.loadingSessions": "Loading sessions…",
+  "acp.dismiss": "Dismiss",
+  "acp.qoderCredentialsMissing":
+    "Qoder could not start the session: no login credentials are available. Sign in again under Settings → Agents → Qoder, then reopen this session.",
+  "acp.contextUnsupported": "ACP cannot send native context yet. Remove it or select an API model.",
+  "acp.goal": "Session objective",
+  "acp.goalSave": "Save objective",
+  "acp.goalCancel": "Cancel",
+  "acp.workflowUnavailable": "The ZCode workflow runner is not connected to this ACP Agent",
+  "acp.pluginsUnavailable": "Plugins do not expose callable capabilities to this ACP Agent yet",
 };
 
 export default enUS;

@@ -28,6 +28,7 @@ import { GitPane } from "@/GitPane.js";
 import { TreemappingPane } from "@/TreemappingPane.js";
 import { WhiteboardPane } from "@/WhiteboardPane.js";
 import { ModelTrajectoryPane } from "@/ModelTrajectoryPane.js";
+import { AcpExecutionTracePane } from "@/AcpExecutionTracePane.js";
 import { DeveloperToolsPane } from "@/DeveloperToolsPane.js";
 import { cn } from "@/components/lib/utils.js";
 import { Button } from "@/components/ui/button.js";
@@ -882,6 +883,7 @@ export function AnimatedSidePanePanel({
         modelTrajectoryTitle: intl.formatMessage({
           id: "modelTrajectory.title",
         }),
+        acpTraceTitle: intl.formatMessage({ id: "acpTrace.title" }),
         developerToolsTitle: intl.formatMessage({
           id: "developerTools.title",
         }),
@@ -1237,13 +1239,23 @@ export function AnimatedSidePanePanel({
                             boardId={tab.boardId}
                           />
                         ) : tab.type === "model-trajectory" ? (
-                          <ModelTrajectoryPane
-                            taskId={tab.taskId}
-                            title={tab.title}
-                            workspacePath={workspaceAbsPath}
-                            workspaceIdentity={workspaceIdentity}
-                            onClose={() => onCloseTab(tab.id)}
-                          />
+                          tab.source === "acp" ? (
+                            <AcpExecutionTracePane
+                              sessionId={tab.taskId}
+                              workspacePath={workspaceAbsPath}
+                              workspaceIdentity={workspaceIdentity}
+                              remoteSessionId={tab.remoteSessionId ?? workspaceRemoteSessionId}
+                              onClose={() => onCloseTab(tab.id)}
+                            />
+                          ) : (
+                            <ModelTrajectoryPane
+                              taskId={tab.taskId}
+                              title={tab.title}
+                              workspacePath={workspaceAbsPath}
+                              workspaceIdentity={workspaceIdentity}
+                              onClose={() => onCloseTab(tab.id)}
+                            />
+                          )
                         ) : tab.type === "developer-tools" ? (
                           <ServiceProvider services={services}>
                             <DeveloperToolsPane

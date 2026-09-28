@@ -5,6 +5,8 @@ import { z } from "zod";
 export * from "./usage-quota.js";
 import type { UsageMcpQuotaSnapshot, UsageQuotaSnapshot } from "./usage-quota.js";
 import type { ZCodeAccountAccess, ZCodeProviderAccountAccess } from "./zcode-protocol/index.js";
+import { acpAgentSchema } from "./zcode-protocol/acp.js";
+import { acpModelTokenUsageSchema } from "./acp-usage.js";
 
 export const ESTIMATED_TOKEN_CHAR_DIVISOR = 3;
 
@@ -45,7 +47,7 @@ export interface CodingPlanUsageRequest {
 }
 
 export interface UsageEntitlementRequest {
-  /** 购买或领取完成后，使对应 Start Plan balance 短期缓存失效。 */
+  /** 授权或权益刷新后，使对应 Start Plan balance 短期缓存失效。 */
   invalidateBalanceCache?: boolean;
   /** 兼容旧调用方的提示；Coding Plan 权益必须查询订阅并返回摘要，不再允许仅用额度推断权益。 */
   includeSubscription?: boolean;
@@ -238,6 +240,19 @@ export const appUsageToolUsageSchema = z.object({
   avgDurationMs: z.number().nullable(),
 });
 
+export const acpAppUsageAgentSchema = z.object({
+  agent: acpAgentSchema,
+  sessions: z.number().int().nonnegative(),
+  turns: z.number().int().nonnegative(),
+  measuredTurns: z.number().int().nonnegative(),
+  unknownTurns: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  models: z.array(acpModelTokenUsageSchema).default([]),
+});
+export type AcpAppUsageAgent = z.infer<typeof acpAppUsageAgentSchema>;
+
 export const appUsageSnapshotSchema = z.object({
   range: z.enum(APP_USAGE_RANGES),
   generatedAt: z.number(),
@@ -248,6 +263,8 @@ export const appUsageSnapshotSchema = z.object({
   dailyModelUsage: z.array(appUsageDailyModelUsageSchema),
   models: z.array(appUsageModelUsageSchema),
   tools: z.array(appUsageToolUsageSchema),
+  /** Enriched by the target Host's usage service; absent from the CLI's native-only response. */
+  acpAgents: z.array(acpAppUsageAgentSchema).optional(),
 });
 
 export type AppUsageSummary = z.infer<typeof appUsageSummarySchema>;

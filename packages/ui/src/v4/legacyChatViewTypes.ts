@@ -1,13 +1,23 @@
 /** 竖切后 ChatView 已删；保留 shell / command-center 仍引用的最小类型。 */
-export interface ChatSearchResultHighlightRequest {
+interface SearchResultHighlightBase {
   requestId: number;
-  taskId: string;
   workspacePath: string;
   workspaceIdentity?: string;
   query: string;
   snippet?: string;
   snippetIndex?: number;
+  rowId?: number;
 }
+
+export type ChatSearchResultHighlightRequest = SearchResultHighlightBase &
+  (
+    | { kind?: "native"; taskId: string; acpSessionId?: never; entryId?: never }
+    | { kind: "acp"; acpSessionId: string; entryId?: string; taskId?: never }
+  );
+
+export type ChatSearchResultHighlightInput =
+  | Omit<Extract<ChatSearchResultHighlightRequest, { taskId: string }>, "requestId">
+  | Omit<Extract<ChatSearchResultHighlightRequest, { kind: "acp" }>, "requestId">;
 
 export interface ConversationFindMatchState {
   matchCount: number;

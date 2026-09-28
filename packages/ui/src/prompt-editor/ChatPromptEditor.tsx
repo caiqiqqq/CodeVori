@@ -28,6 +28,7 @@ import {
 import { appendWorkspaceFileMentionToComposer } from "@/lib/workspaceFileComposer.js";
 import { usePromptEditorDragState } from "@/prompt-editor/usePromptEditorDragState.js";
 import { ChatPromptActionMenu } from "@/prompt-editor/ChatPromptActionMenu.js";
+import type { AcpAgent } from "@zcode/shared";
 import { useComposerToolbarFit } from "@/prompt-editor/useComposerToolbarFit.js";
 
 function runAfterFrame(callback: () => void) {
@@ -63,6 +64,11 @@ export function ChatPromptEditor({
   topContent,
   leadingActions,
   attachmentAction,
+  acpMode,
+  acpAgent,
+  acpSessionId,
+  acpGoal,
+  onSetAcpGoal,
   betweenCancelAndSubmitAction,
   submitControl,
   inputTestId,
@@ -88,6 +94,7 @@ export function ChatPromptEditor({
   excludedSlashCommandNames,
   appSlashCommands,
   enableMentionPanel,
+  enableSlashCommands,
 }: {
   workspacePath: string;
   workspaceIdentity?: string;
@@ -119,6 +126,11 @@ export function ChatPromptEditor({
     testId?: string;
     menuItemTestId?: string;
   };
+  acpMode?: boolean;
+  acpAgent?: AcpAgent | null;
+  acpSessionId?: string | null;
+  acpGoal?: string | null;
+  onSetAcpGoal?: (goal: string | null) => Promise<void>;
   /** 行内编辑专用：固定插在取消与主提交之间的第二动作。 */
   betweenCancelAndSubmitAction?: ReactNode;
   submitControl?: ReactNode;
@@ -148,6 +160,7 @@ export function ChatPromptEditor({
   appSlashCommands?: readonly AppSlashCommand[];
   /** mention 面板开关（透传 LexicalChatInput）。 */
   enableMentionPanel?: boolean;
+  enableSlashCommands?: boolean;
 }) {
   const { intl } = useZCodeIntl();
   const toolbarRef = useComposerToolbarFit();
@@ -169,12 +182,11 @@ export function ChatPromptEditor({
     enableExternalFileDrop,
     enableWorkspaceFileDrop,
   });
-  const actionMenuTitle = intl.formatMessage({
-    id: "chat.composer.actionMenu",
-  });
+  const actionMenuTitle = intl.formatMessage({ id: "chat.composer.actionMenu" });
   const workspaceFileDragHint = intl.formatMessage({
     id: "chat.composer.workspaceFileDragHint",
   });
+  // ACP 和原生输入共用同一个添加菜单入口。
   const hasActionMenu = Boolean(attachmentAction) || showMentionButton || showSlashButton;
 
   useEffect(() => {
@@ -384,15 +396,21 @@ export function ChatPromptEditor({
           excludedSlashCommandNames={excludedSlashCommandNames}
           appSlashCommands={appSlashCommands}
           enableMentionPanel={enableMentionPanel}
+          skillsOnlyMentions={acpMode}
+          enableSlashCommands={enableSlashCommands}
         />
         <div ref={toolbarRef} className="group/toolbar flex items-end gap-3">
           <div className="flex min-w-0 flex-1 items-center" data-composer-leading-actions>
             <div className="flex shrink-0 items-center gap-1" data-composer-leading-content>
               {hasActionMenu ? (
                 <ChatPromptActionMenu
+                  key={acpMode ? `acp:${acpAgent}:${acpSessionId ?? "pending"}` : "native"}
                   actionMenuTitle={actionMenuTitle}
                   excludedSlashCommandNames={excludedSlashCommandNames}
                   attachmentAction={attachmentAction}
+                  acpMode={acpMode}
+                  acpGoal={acpGoal}
+                  onSetAcpGoal={onSetAcpGoal}
                   disabled={disabled}
                   disabledReason={disabledReason}
                   inputApiRef={resolvedInputApiRef}
@@ -400,7 +418,7 @@ export function ChatPromptEditor({
                   workspaceIdentity={workspaceIdentity}
                   sessionId={taskId}
                   container={resolvedTriggerPanelContainer}
-                  showPlugins={enableMentionPanel !== false}
+                  showPlugins={acpMode || enableMentionPanel !== false}
                 />
               ) : null}
               {/* 权限/模式选择曾作为 leadingActions 先于动作菜单渲染，导致常驻顺序与产品规范相反。*/}

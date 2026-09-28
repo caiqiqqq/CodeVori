@@ -47,8 +47,14 @@ import type {
 import { AutomationsMainBreadcrumbFrame } from "@/settings/AutomationsMainBreadcrumbFrame.js";
 import { PluginStorePage } from "@/settings/PluginStorePage.js";
 import { TaskFindDialog } from "@/quickpick/TaskFindDialog.js";
+import { CommandCenterDialog } from "@/command-center/CommandCenterDialog.js";
 import { WorkspaceHeader } from "@/WorkspaceHeader.js";
 import { WorkspaceSidebar, type SidebarFileTreeOpenRequest } from "@/WorkspaceSidebar.js";
+import type {
+  AcpSidebarSession,
+  AcpConversationOpenRequest,
+  AcpConversationProjection,
+} from "@/lib/acpSidebarSessions.js";
 import { AnimatedSidePanePanel } from "@/app-shell/AnimatedSidePanePanel.js";
 import {
   findScreenshotSurfaceTabForRender,
@@ -188,6 +194,12 @@ function persistWorkspaceSidebarWidthPx(widthPx: number) {
 }
 
 export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent({
+  commandCenterOpen,
+  commandCenterCommands,
+  commandCenterWorkspaceTabs,
+  onCommandCenterOpenChange,
+  onCommandCenterSearchResultHighlightRequest,
+  onCommandCenterOpenCodeViewer,
   services,
   workspaceReadOnlyReason,
   workspaceMainView,
@@ -204,7 +216,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   onCancelRemoteProject,
   onReconnectRemoteWorkspace,
   onLogout,
-  onLogin,
   user,
   reconnectingRemoteWorkspaceKeys,
   remoteWorkspaceErrorByWorkspaceKey,
@@ -354,12 +365,46 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   const collapsedSidebarWidthPx = hasDesktopPanelInset ? 4 : 0;
   const [draftHeaderDropTargetController, setDraftHeaderDropTargetController] =
     useState<ConversationDropTargetController | null>(null);
+  // 壳只读当前 Host 会话投影；选择请求也只路由到 pane，ACP 身份不进入原生 task store。
+  const [acpSessionProjection, setAcpSessionProjection] = useState<{
+    workspaceKey: string;
+    taskId: string | null;
+    session: AcpConversationProjection;
+  } | null>(null);
+  const [acpOpenRequest, setAcpOpenRequest] = useState<AcpConversationOpenRequest | null>(null);
+  const acpOpenRequestIdRef = useRef(0);
   const fileTreeOpenRequestIdRef = useRef(0);
   const [fileTreeOpenRequest, setFileTreeOpenRequest] = useState<SidebarFileTreeOpenRequest | null>(
     null,
   );
   const [isSidebarFileTreeOpen, setIsSidebarFileTreeOpen] = useState(false);
   const workspaceKey = workspaceIdentity?.trim() || workspaceAbsPath;
+  const handlePrimaryAcpSessionChange = useCallback(
+    (session: AcpConversationProjection | null) => {
+      setAcpSessionProjection((previous) => {
+        if (!session) {
+          return previous?.workspaceKey === workspaceKey && previous.taskId === activeTaskId
+            ? null
+            : previous;
+        }
+        if (
+          previous?.workspaceKey === workspaceKey &&
+          previous.taskId === activeTaskId &&
+          previous.session.id === session.id &&
+          previous.session.title === session.title
+        )
+          return previous;
+        return { workspaceKey, taskId: activeTaskId, session };
+      });
+    },
+    [activeTaskId, workspaceKey],
+  );
+  const visibleAcpSession =
+    acpSessionProjection?.workspaceKey === workspaceKey &&
+    acpSessionProjection.taskId === activeTaskId
+      ? acpSessionProjection.session
+      : null;
+  const acpHeaderTitle = visibleAcpSession?.title ?? null;
   const screenshotSurfaceRequest = useBrowserScreenshotSurfaceRequest(sidePaneState?.tabs ?? []);
   const screenshotSurfaceTab = screenshotSurfaceRequest
     ? findScreenshotSurfaceTabForRender(sidePaneState?.tabs ?? [], screenshotSurfaceRequest)
@@ -720,7 +765,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   }, []);
 
   const activeSearchResultHighlightRequest = useMemo(() => {
-    if (!searchResultHighlightRequest || searchResultHighlightRequest.taskId !== activeTaskId) {
+    if (!searchResultHighlightRequest) {
       return null;
     }
 
@@ -729,8 +774,29 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       searchResultHighlightRequest.workspacePath,
       searchResultHighlightRequest.workspaceIdentity,
     );
-    return activeWorkspaceKey === requestWorkspaceKey ? searchResultHighlightRequest : null;
-  }, [activeTaskId, searchResultHighlightRequest, workspaceAbsPath, workspaceIdentity]);
+    if (
+      activeWorkspaceKey !== requestWorkspaceKey ||
+      searchResultHighlightRequest.workspacePath !== workspaceAbsPath
+    )
+      return null;
+    // 修复原因：ACP 历史选择先切回 draft pane，再异步恢复 Host 会话；旧的原生 taskId 守卫会吞掉高亮请求。
+    if (searchResultHighlightRequest.kind === "acp")
+      return activeTaskId === null &&
+        (acpOpenRequest?.session.id === searchResultHighlightRequest.acpSessionId ||
+          visibleAcpSession?.id === searchResultHighlightRequest.acpSessionId)
+        ? searchResultHighlightRequest
+        : null;
+    return searchResultHighlightRequest.taskId === activeTaskId
+      ? searchResultHighlightRequest
+      : null;
+  }, [
+    acpOpenRequest,
+    activeTaskId,
+    searchResultHighlightRequest,
+    visibleAcpSession?.id,
+    workspaceAbsPath,
+    workspaceIdentity,
+  ]);
   const renderChatFindDialog = () => <TaskFindDialog {...taskFindDialogProps} placement="chat" />;
   const gitDirtyFileCount = useMemo(() => {
     // 关键业务逻辑：同一个文件可能同时出现在 staged / unstaged。
@@ -832,6 +898,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       if (!hasTargetWorkspace && workspaceReadOnlyReason) {
         return;
       }
+      setAcpOpenRequest(null);
       showChatMainView();
       onCreateTask(request);
     },
@@ -873,6 +940,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       targetRemoteSessionId?: string,
       expectedUnreadAt?: number,
     ) => {
+      setAcpOpenRequest(null);
       {
         const workspaceResult = ensureTaskNavigationWorkspace({
           workspacePath: targetWorkspacePath,
@@ -1078,7 +1146,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
         mode: "context-menu",
         side: "right",
       });
-      if (shouldSelectTarget) {
+      if (shouldSelectTarget && target.kind !== "acp") {
         handleSelectTask(target.workspacePath, target.sessionId, target.workspaceIdentity);
       }
     },
@@ -1091,6 +1159,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       targetWorkspacePurpose?: import("@zcode/shared").WorkspacePurpose,
       createSource?: import("@zcode/shared").SessionCreateSource,
     ) => {
+      setAcpOpenRequest(null);
       showChatMainView();
       handleStartDraftInWorkspace(
         targetWorkspacePath,
@@ -1105,6 +1174,38 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     (path: string, identity?: string) =>
       handleStartDraftInWorkspaceInChat(path, identity, undefined, "project"),
     [handleStartDraftInWorkspaceInChat],
+  );
+  const handleSelectAcpSession = useCallback(
+    (session: AcpSidebarSession) => {
+      const targetKey = session.workspaceIdentity?.trim() || session.workspacePath;
+      const workspaceResult = ensureTaskNavigationWorkspace({
+        workspacePath: session.workspacePath,
+        workspaceIdentity: session.workspaceIdentity,
+        activateTabByPath: tabStoreApi.getState().activateTabByPath,
+        addLocalWorkspaceTab: (path) => tabStoreApi.getState().addTab(path),
+      });
+      if (!workspaceResult.accepted) return;
+      // 修复原因：ACP 点击只把主 pane 切回 draft 容器，然后指定 Host id；
+      // 绝不把该 id 送进 handleSelectTask 的 CLI task 路由。
+      if (
+        activeTaskId !== null ||
+        targetKey !== workspaceKey ||
+        session.workspacePath !== workspaceAbsPath
+      ) {
+        handleStartDraftInWorkspaceInChat(session.workspacePath, session.workspaceIdentity);
+      } else {
+        showChatMainView();
+      }
+      setAcpOpenRequest({ requestId: ++acpOpenRequestIdRef.current, session });
+    },
+    [
+      activeTaskId,
+      handleStartDraftInWorkspaceInChat,
+      showChatMainView,
+      tabStoreApi,
+      workspaceAbsPath,
+      workspaceKey,
+    ],
   );
   const activeWorkspacePurpose =
     workspaceTabs.find(
@@ -1494,7 +1595,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   const shouldRenderMainViewHeader =
     workspaceMainView !== "automations" && workspaceMainView !== "plugin-store";
   const shouldRenderWorkspaceHeader =
-    shouldRenderMainViewHeader && (activeTaskId !== null || isDesktop);
+    shouldRenderMainViewHeader && (activeTaskId !== null || acpHeaderTitle !== null || isDesktop);
   // ErrorBoundary resetKeys 的数组如果每次 render 都重新创建，
   // 即使 workspace/task 没变化也会在 React DevTools Components 轨道里持续表现为子树 props 变化。
   const workspaceOnlyResetKeys = useMemo(() => [workspaceKey], [workspaceKey]);
@@ -1516,6 +1617,21 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       isWindowsDesktop={isWindowsDesktop}
       headerTestId={TID_APP_HEADER}
     >
+      <CommandCenterDialog
+        open={commandCenterOpen}
+        commands={commandCenterCommands}
+        workspaceAbsPath={workspaceAbsPath}
+        workspaceIdentity={workspaceIdentity}
+        activeTaskId={activeTaskId}
+        activeAcpSessionId={visibleAcpSession?.id}
+        activeTaskChangeSummary={activeTaskChangeSummary}
+        workspaceTabs={commandCenterWorkspaceTabs}
+        onOpenChange={onCommandCenterOpenChange}
+        onSelectTask={handleSelectTaskInChat}
+        onSelectAcpSession={handleSelectAcpSession}
+        onSearchResultHighlightRequest={onCommandCenterSearchResultHighlightRequest}
+        onOpenCodeViewer={onCommandCenterOpenCodeViewer}
+      />
       <div
         ref={workspaceShellRef}
         data-workspace-shell="true"
@@ -1562,6 +1678,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                     workspaceRemoteSessionId={workspaceRemoteSessionId}
                     activePreviewPath={activePreviewPath}
                     onSelectTask={handleSelectTaskInChat}
+                    onSelectAcpSession={handleSelectAcpSession}
+                    activeAcpSessionId={visibleAcpSession?.id}
                     onStartDraftInWorkspace={handleCreateProjectDraft}
                     onOpenCodeViewer={handleOpenCodeViewer}
                     onOpenBrowserUrl={handleOpenBrowserUrl}
@@ -1581,7 +1699,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                       reconnectingRemoteWorkspaceLogsByWorkspaceKey
                     }
                     onLogout={onLogout}
-                    onLogin={onLogin}
                     user={user}
                     isDesktop={isDesktop}
                     isMacDesktop={isMacDesktop}
@@ -1693,7 +1810,10 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                       >
                         <WorkspaceHeader
                           reserveWindowControls={!isSidePaneVisible}
-                          variant={activeTaskId === null ? "draft" : "task"}
+                          variant={
+                            acpHeaderTitle ? "acp" : activeTaskId === null ? "draft" : "task"
+                          }
+                          acpTitle={acpHeaderTitle}
                           draftDropTargetController={
                             activeTaskId === null ? draftHeaderDropTargetController : undefined
                           }
@@ -1852,6 +1972,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                               onPrimaryDraftDropTargetControllerChange={
                                 setDraftHeaderDropTargetController
                               }
+                              onPrimaryAcpSessionChange={handlePrimaryAcpSessionChange}
+                              acpOpenRequest={acpOpenRequest}
                               gitSummary={gitState.summary}
                               gitDirtyFileCount={gitDirtyFileCount}
                               activeTaskChangeSummary={activeTaskChangeSummary}

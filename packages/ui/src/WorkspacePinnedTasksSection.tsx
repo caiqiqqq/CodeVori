@@ -5,13 +5,17 @@ import type { ZCodeTaskMeta } from "@zcode/shared";
 import { toast } from "@/components/ui/toast.js";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu.js";
 import { useGlobalTaskList } from "@/hooks/useGlobalTaskList.js";
+import { useAcpSidebarSessions } from "@/hooks/useAcpSidebarSessions.js";
 import { useLocalWorkspaceScopes } from "@/hooks/useLocalWorkspaceScopes.js";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { buildTaskWorkspaceKey } from "@/lib/taskQueryCache.js";
 import { compareZCodeTaskListItems } from "@/lib/taskListOrdering.js";
+import { buildWorkspaceServiceLookup } from "@/lib/workspaceServiceResolver.js";
 import { resolveTaskFileTreeTargetFromTabs } from "@/lib/taskFileTreeTarget.js";
 import { MemoTaskItem, TaskListItemContextMenuContent } from "@/TaskListItem.js";
+import { WorkspaceAcpTaskItem } from "@/WorkspaceAcpTaskItem.js";
+import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
 import { TaskRenameDialog } from "@/TaskRenameDialog.js";
 import { useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
@@ -48,15 +52,19 @@ export function WorkspacePinnedTasksSection({
   activeWorkspacePath,
   activeWorkspaceIdentity,
   activeTaskId,
+  activeAcpSessionId,
   taskSortBy,
   onSelectTask,
+  onSelectAcpSession,
   onOpenFileTree,
 }: {
   workspaceTabs: WorkspaceTabState[];
   activeWorkspacePath: string;
   activeWorkspaceIdentity?: string;
   activeTaskId: string | null;
+  activeAcpSessionId?: string | null;
   taskSortBy: "created" | "updated";
+  onSelectAcpSession?: (session: AcpSidebarSession) => void;
   onSelectTask: (
     targetWorkspacePath: string,
     taskId: string,
@@ -77,6 +85,33 @@ export function WorkspacePinnedTasksSection({
   });
   const remoteSessionIdByWorkspaceIdentity = useRemoteWorkspaceSessionStore(
     (state) => state.sessionIdByWorkspaceIdentity,
+  );
+  const sessionsById = useRemoteWorkspaceSessionStore((state) => state.sessionsById);
+  const sessionIdByWorkspacePath = useRemoteWorkspaceSessionStore(
+    (state) => state.sessionIdByWorkspacePath,
+  );
+  const acpServiceLookup = useMemo(
+    () =>
+      buildWorkspaceServiceLookup(workspaceTabs, baseServices, {
+        sessionsById,
+        sessionIdByWorkspaceIdentity: remoteSessionIdByWorkspaceIdentity,
+        sessionIdByWorkspacePath,
+      }),
+    [
+      baseServices,
+      remoteSessionIdByWorkspaceIdentity,
+      sessionIdByWorkspacePath,
+      sessionsById,
+      workspaceTabs,
+    ],
+  );
+  const acpSessions = useAcpSidebarSessions(workspaceTabs, acpServiceLookup);
+  const pinnedAcpSessions = useMemo(
+    () =>
+      acpSessions
+        .filter((session) => session.pinned && !session.archived)
+        .sort((left, right) => right.updatedAt - left.updatedAt),
+    [acpSessions],
   );
   const removeTaskState = useZCodeSessionStore((state) => state.removeTaskState);
   const upsertOptimisticTaskListItem = useZCodeSessionStore(
@@ -461,7 +496,7 @@ export function WorkspacePinnedTasksSection({
     ? resolveTaskServices(contextMenuItem.workspaceIdentity)
     : null;
 
-  if (items.length === 0) {
+  if (items.length === 0 && pinnedAcpSessions.length === 0) {
     // 切换/加入工作区时 pinned 查询会先进入 loading，但此时没有可展示的数据。
     // 不能仍渲染“已置顶 + 正在获取任务”，否则侧栏每次切换都出现一次无实际帮助的 loading。
     // 有缓存数据时继续走下面的正常渲染路径，保持 stale-while-revalidate 的展示体验。
@@ -524,6 +559,29 @@ export function WorkspacePinnedTasksSection({
         />
       ) : null}
       <PinnedTasksSectionTitle title={sectionTitle} />
+      {pinnedAcpSessions.length > 0 ? (
+        <ul className="space-y-0.5">
+          {pinnedAcpSessions.map((session) => {
+            const services = acpServiceLookup.get(
+              buildTaskWorkspaceKey(session.workspacePath, session.workspaceIdentity),
+            );
+            return services ? (
+              <WorkspaceAcpTaskItem
+                key={session.id}
+                session={session}
+                service={services.services.acpService}
+                active={
+                  session.id === activeAcpSessionId &&
+                  buildTaskWorkspaceKey(session.workspacePath, session.workspaceIdentity) ===
+                    activeWorkspaceKey
+                }
+                variant="default"
+                onSelect={() => onSelectAcpSession?.(session)}
+              />
+            ) : null;
+          })}
+        </ul>
+      ) : null}
       <ContextMenu
         onOpenChange={(open) => {
           if (!open) {

@@ -218,6 +218,8 @@ export function WorkspaceHeaderTitleSection({
   // 新任务草稿还没有稳定 task 作用域，header 再展示 workspace/分支会和空态主文案重复抢焦点。
   // 草稿态继续隐藏上下文入口；已有 task 将工作区与分支收进名称前的图标提示。
   const isDraftNewTask = variant ? variant === "draft" : activeTaskId === null;
+  // ACP 复用原标题与工作区上下文样式，但其 Host id 不能执行原生 task 菜单命令。
+  const nativeTaskActionsVisible = !isDraftNewTask && variant !== "acp";
 
   const handleOpenTaskFeedback = async () => {
     const taskTitle =
@@ -387,7 +389,7 @@ export function WorkspaceHeaderTitleSection({
       )}
     >
       <TaskRenameDialog
-        open={!isDraftNewTask && renamingTaskId !== null}
+        open={nativeTaskActionsVisible && renamingTaskId !== null}
         value={renameDraft}
         inputRef={renameInputRef}
         intl={intl}
@@ -491,7 +493,7 @@ export function WorkspaceHeaderTitleSection({
         ) : null} */}
       </h1>
       <div className="flex min-w-0 shrink-0 items-center gap-1">
-        {!isDraftNewTask ? (
+        {nativeTaskActionsVisible ? (
           <DropdownMenu open={taskMenuOpen} onOpenChange={setTaskMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Button

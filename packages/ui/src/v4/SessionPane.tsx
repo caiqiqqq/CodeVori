@@ -1,6 +1,7 @@
 import { resolveSelectionSideInheritedModel } from "@/lib/selectionSideInheritedModel.js";
 import { useStartPlanRecommendation } from "@/hooks/useStartPlanRecommendation.js";
 import type { SessionCreateSource } from "@zcode/shared";
+import { acpAgentDefinition, type AcpAgent } from "@zcode/shared";
 import { reportSessionCreate } from "@/lib/sessionCreateTelemetry.js";
 import { getLocalTtftObserver } from "@/v4/telemetry/localTtftObserver.js";
 /* oxlint-disable eslint(max-lines) -- SessionPane 是单 pane 竖切的命令编排收口（订阅/发送/停止/fork/edit/retry/queue/slash 全集），与旧 ChatView 同粒度；HEAD 已超限（693 行计数），拆散命令组会打散 dispatchCommand/snapshotRef 的闭包纪律。 */
@@ -17,7 +18,6 @@ import {
 } from "react";
 import { Hand } from "lucide-react";
 import {
-  BUILTIN_MODEL_PROVIDER_IDS,
   buildCustomSupplierKey,
   TID_CHAT_EMPTY,
   TID_V4_SESSION_PANE,
@@ -77,10 +77,6 @@ import { usePlanIdentitySnapshot } from "@/hooks/usePlanIdentitySnapshot.js";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { useWorkspaceHomePath } from "@/hooks/useWorkspaceHomePath.js";
 import { prepareWorkspaceWithZCodeSessionService } from "@/hooks/useWorkspacePrepare.js";
-import {
-  createCodingPlanFunnelContext,
-  resolveCodingPlanEntryPlanState,
-} from "@/lib/codingPlanFunnelTelemetry.js";
 import { decodeCustomModelValue, encodeCustomModelValue } from "@/lib/zcodeCustomModelValue.js";
 import { parseModelPickerValue } from "@/lib/zcodeSessionProjection.js";
 import { captureComposerRecentSubmission } from "@/lib/composerRecent.js";
@@ -90,6 +86,7 @@ import {
   useDraftConfigControl,
 } from "@/v4/composer/useDraftConfigControl.js";
 import type { ModelSelectionSource } from "@/v4/composer/V4ComposerToolbar.js";
+import { hasAcpConversationContent } from "@/v4/composer/acpComposerRouting.js";
 import { formatModelChangeLabel } from "@/v4/composer/modelTriggerDisplay.js";
 import { resolveAppFollowupMode } from "@/v4/composer/followupModeSettings.js";
 import {
@@ -124,6 +121,17 @@ import { shouldIgnoreEscapeForStopGeneration } from "@/v4/composer/escapeStop.js
 import { ConversationDraftEmptyState } from "@/v4/ConversationDraftEmptyState.js";
 import { ConversationDraftSuggestedPromptsContainer } from "@/v4/ConversationDraftSuggestedPromptsContainer.js";
 import { ConversationHeader, type PaneWorkspaceBadge } from "@/v4/ConversationHeader.js";
+import {
+  AcpConversationControls,
+  AcpConversationStatus,
+  AcpHomeStatus,
+} from "@/v4/AcpConversationContent.js";
+import { acpEntryRowId, buildAcpConversationRows } from "@/v4/acpConversationRows.js";
+import { useAcpConversation } from "@/v4/useAcpConversation.js";
+import type {
+  AcpConversationOpenRequest,
+  AcpConversationProjection,
+} from "@/lib/acpSidebarSessions.js";
 import { ConversationQueuePanel } from "@/v4/ConversationQueuePanel.js";
 import { projectPendingGuideQueue } from "@/v4/pendingGuideProjection.js";
 import { ConversationQuotaBanner } from "@/v4/ConversationQuotaBanner.js";
@@ -239,7 +247,6 @@ import {
 } from "@/v4/chatLoadingVisibility.js";
 import type { ZCodeUiError } from "@/lib/zcodeUiError.js";
 import { isProviderNotReadyError } from "@/lib/chatPrepareError.js";
-import { useOptionalCodingPlanUpgradeDialog } from "@/settings/CodingPlanUpgradeDialogProvider.js";
 import { setPendingSettingsSectionIntent } from "@/lib/settingsNavigation.js";
 import { useOptionalTabStore } from "@/store/TabStoreProvider.js";
 import type {
@@ -305,6 +312,10 @@ export interface SessionPaneProps {
   onSessionCreated?: (sessionId: string) => void;
   /** deleteSession：删除当前会话后回到 draft（shell 起新草稿）。 */
   onSessionDeleted?: () => void;
+  /** 壳侧只读展示投影；ACP id 不能进入原生任务命令。 */
+  onAcpSessionChange?: (session: AcpConversationProjection | null) => void;
+  acpOpenRequest?: AcpConversationOpenRequest | null;
+  acpBoundSessionId?: string;
   /** 隐藏副屏的 child 已不存在时，由宿主移除对应 tab。 */
   onSelectionSideChatUnavailable?: () => void;
   /**
@@ -500,6 +511,9 @@ export function SessionPane({
   isDesktop = false,
   provider,
   onSessionCreated,
+  onAcpSessionChange,
+  acpOpenRequest,
+  acpBoundSessionId,
   onSelectionSideChatUnavailable,
   focused = true,
   telemetryVisible = true,
@@ -553,8 +567,94 @@ export function SessionPane({
     fileRewindPreview,
   } = useV4Conversation();
   const platform = useOptionalPlatform();
-  const { conversationShareService, modelSelectionService, zcodeSessionService, zcodeTaskService } =
-    useServices();
+  const {
+    acpService,
+    conversationShareService,
+    modelSelectionService,
+    zcodeSessionService,
+    zcodeTaskService,
+  } = useServices();
+  const [acpAgent, setAcpAgent] = useState<AcpAgent | null>(null);
+  const draftFocusVersion = useZCodeSessionStore(
+    (state) => state.getWorkspaceState(workspacePath, workspaceIdentity).draftFocusVersion,
+  );
+  const draftFocusOwnerRef = useRef({
+    workspaceKey: workspaceIdentity?.trim() || workspacePath,
+    version: draftFocusVersion,
+  });
+  const acpConversation = useAcpConversation(
+    acpService,
+    {
+      workspacePath,
+      ...(workspaceIdentity ? { workspaceIdentity } : {}),
+      ...(remoteSessionId ? { remoteSessionId } : {}),
+    },
+    acpAgent,
+  );
+  useEffect(() => {
+    acpConversation.resetSelection();
+    setAcpAgent(null);
+  }, [sessionId, workspaceIdentity, workspacePath, acpConversation.resetSelection]);
+  useEffect(() => {
+    const workspaceKey = workspaceIdentity?.trim() || workspacePath;
+    const previous = draftFocusOwnerRef.current;
+    draftFocusOwnerRef.current = { workspaceKey, version: draftFocusVersion };
+    if (previous.workspaceKey !== workspaceKey || previous.version === draftFocusVersion) return;
+    // 修复原因：同一 draft scope 重复“新建任务”不改变 sessionId；旧 ACP 目标不能继续
+    // 占用刚创建的原生草稿，否则侧栏点击历史后 New Task 仍停在旧 Agent 对话。
+    if (sessionId === null && !acpBoundSessionId) {
+      acpConversation.resetSelection();
+      setAcpAgent(null);
+    }
+  }, [
+    acpConversation.resetSelection,
+    acpBoundSessionId,
+    draftFocusVersion,
+    sessionId,
+    workspaceIdentity,
+    workspacePath,
+  ]);
+  const handleSelectAcpAgent = useCallback((agent: AcpAgent) => {
+    setAcpAgent(agent);
+  }, []);
+  const lastAcpOpenRequestIdRef = useRef<{ requestId: number; sessionId: string } | null>(null);
+  useEffect(() => {
+    if (
+      !acpOpenRequest ||
+      sessionId !== null ||
+      acpOpenRequest.session.workspacePath !== workspacePath ||
+      (acpOpenRequest.session.workspaceIdentity?.trim() || workspacePath) !==
+        (workspaceIdentity?.trim() || workspacePath) ||
+      (lastAcpOpenRequestIdRef.current?.requestId === acpOpenRequest.requestId &&
+        lastAcpOpenRequestIdRef.current.sessionId === acpOpenRequest.session.id)
+    )
+      return;
+    lastAcpOpenRequestIdRef.current = {
+      requestId: acpOpenRequest.requestId,
+      sessionId: acpOpenRequest.session.id,
+    };
+    // 修复原因：侧栏 ACP 行选择的是 Host 会话，不能调用原生 task 绑定或发送命令。
+    acpConversation.selectById(acpOpenRequest.session.agent, acpOpenRequest.session.id);
+    setAcpAgent(acpOpenRequest.session.agent);
+  }, [acpConversation.selectById, acpOpenRequest, sessionId, workspaceIdentity, workspacePath]);
+  const acpHasConversationContent = hasAcpConversationContent(acpConversation.selected);
+  const acpRows = useMemo(
+    () => buildAcpConversationRows(acpConversation.selected),
+    [acpConversation.selected],
+  );
+  const activeSearchResultHighlightRequest = useMemo(() => {
+    if (searchResultHighlightRequest?.kind !== "acp") return searchResultHighlightRequest;
+    if (acpConversation.selected?.id !== searchResultHighlightRequest.acpSessionId) return null;
+    const entryIndex = acpConversation.selected.entries.findIndex(
+      (entry) => entry.id === searchResultHighlightRequest.entryId,
+    );
+    return entryIndex < 0
+      ? searchResultHighlightRequest
+      : {
+          ...searchResultHighlightRequest,
+          rowId: acpEntryRowId(entryIndex),
+        };
+  }, [acpConversation.selected, searchResultHighlightRequest]);
   const { intl, locale } = useZCodeIntl();
   const slashCommands = useSlashCommands(workspacePath, workspaceIdentity);
   const baseWorkspaceServices = useBaseWorkspaceServices();
@@ -1292,7 +1392,6 @@ export function SessionPane({
     () => createComposerSubmissionConfig(draftConfig, modelSelectionView) !== null,
     [draftConfig, modelSelectionView],
   );
-  const codingPlanUpgradeDialog = useOptionalCodingPlanUpgradeDialog();
   const openSettingsTab = useOptionalTabStore((state) => state.openSettingsTab);
   const promoteGroupedDraftTask = useZCodeSessionStore((state) => state.promoteGroupedDraftTask);
   // 首发 commandId 在 accepted 时已存在，也是 completion 的 message_id；不必等回复完成。
@@ -2272,6 +2371,40 @@ export function SessionPane({
       handleApplyFileRewind,
       attachmentRead,
       attachmentReadRange,
+    ],
+  );
+
+  // 修复原因：复用展示时不能把原生会话的附件读取、workflow 与 rewind 命令绑定到 ACP 行。
+  const acpRowContext = useMemo<ConversationRowRenderContext>(
+    () => ({
+      workspacePath,
+      workspaceHomePath,
+      workspaceIdentity,
+      workspaceRemoteSessionId: remoteSessionId ?? undefined,
+      logEpoch: acpConversation.selected?.id,
+      theme,
+      codePreviewSettings,
+      messageStreamShowReasoning,
+      messageStreamShowTodos,
+      chatLoadingBlockedByInteraction: Boolean(acpConversation.selected?.pendingPermission),
+      onOpenBrowserUrl,
+      onOpenCodeViewer,
+      onOpenFileLink,
+    }),
+    [
+      workspacePath,
+      workspaceHomePath,
+      workspaceIdentity,
+      remoteSessionId,
+      acpConversation.selected?.id,
+      acpConversation.selected?.pendingPermission,
+      theme,
+      codePreviewSettings,
+      messageStreamShowReasoning,
+      messageStreamShowTodos,
+      onOpenBrowserUrl,
+      onOpenCodeViewer,
+      onOpenFileLink,
     ],
   );
 
@@ -3425,6 +3558,14 @@ export function SessionPane({
     [draftConfigRef, handleDraftSelectModel],
   );
 
+  const handleSelectNativeModel = useCallback(
+    (modelProvider: string, model: string, sourceModel: ModelSelectionSource | null) => {
+      handleSelectModel(modelProvider, model, sourceModel);
+      setAcpAgent(null);
+    },
+    [handleSelectModel],
+  );
+
   const handleSelectThought = useCallback(
     (thought: string, _modelContext: { provider: string; model: string }) => {
       handleDraftSelectThought(thought);
@@ -3494,6 +3635,7 @@ export function SessionPane({
           zcodeSessionService,
         });
         handleDraftSelectModel(modelSelection.providerId, modelSelection.modelId);
+        setAcpAgent(null);
         store.setConfigOptions(workspacePath, prepareResult.configOptions ?? [], workspaceIdentity);
         store.setConfigOptionsStatus(workspacePath, "ready", workspaceIdentity);
         store.setSlashCommands(workspacePath, prepareResult.slashCommands ?? [], workspaceIdentity);
@@ -3601,16 +3743,31 @@ export function SessionPane({
   // 「stop 等危险操作永远作用于明确的 pane，快捷键走 focused pane」。
   useEffect(() => {
     if (!focused || readOnly) return;
-    if (!sessionId || !snapshot?.control.canStop) return;
+    if (
+      acpAgent
+        ? acpConversation.selected?.status !== "running"
+        : !sessionId || !snapshot?.control.canStop
+    )
+      return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (shouldIgnoreEscapeForStopGeneration(event)) return;
       event.preventDefault();
-      handleStop("escape");
+      if (acpAgent) acpConversation.stop();
+      else handleStop("escape");
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [focused, handleStop, readOnly, sessionId, snapshot?.control.canStop]);
+  }, [
+    acpAgent,
+    acpConversation.selected?.status,
+    acpConversation.stop,
+    focused,
+    handleStop,
+    readOnly,
+    sessionId,
+    snapshot?.control.canStop,
+  ]);
 
   // handleStop 带 source 参数（button / escape 两个调用点），但 ConversationComposer 是 memo：
   // 直接写 onStop={() => handleStop("button")} 每次 render 都换引用，memo 白做，而 composer
@@ -3693,6 +3850,25 @@ export function SessionPane({
   // 提交时先 stop barrier 再 rewind/rerun；UI 不应再用 completed gate 把入口整轮隐藏。
   const editActionsEnabled = !readOnly && !selectionSideChat && Boolean(sessionId);
   const isDraft = sessionId === null;
+  // 修复原因：ACP 首轮已由 Host 接受后，原生 taskId 仍为空；布局必须看当前可见
+  // 对话是否为空，不能把原生 draftMode 误当作首页样式的事实。
+  const visibleEmptyDraft = isDraft && (!acpAgent || !acpHasConversationContent);
+  const acpHeaderTitle =
+    acpAgent && !visibleEmptyDraft
+      ? acpConversation.selected?.title || acpAgentDefinition(acpAgent).name
+      : null;
+  useEffect(() => {
+    onAcpSessionChange?.(
+      acpHeaderTitle && acpAgent && acpConversation.selected
+        ? {
+            id: acpConversation.selected.id,
+            agent: acpAgent,
+            title: acpHeaderTitle,
+          }
+        : null,
+    );
+    return () => onAcpSessionChange?.(null);
+  }, [acpHeaderTitle, acpAgent, acpConversation.selected?.id, onAcpSessionChange]);
   // 滚动恢复必须使用与 sessionId 匹配的 lease projection。切换 session 的 render 与
   // passive effect 不在同一时刻，旧 lease 的 rows 若提前交给 timeline，会让新记忆按旧
   // 内容高度 clamp，后续目标 rows 到达时也无法区分这次临时落点。
@@ -3986,41 +4162,6 @@ export function SessionPane({
     setPendingSettingsSectionIntent("modelProvider");
     openSettingsTab();
   }, [openSettingsTab]);
-  const handleOpenModelUpgrade = useCallback(() => {
-    if (!codingPlanUpgradeDialog) return;
-    const providerId =
-      sharedSettings?.providerFamilyDomain === "bigmodel"
-        ? BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan
-        : BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan;
-    codingPlanUpgradeDialog.openCodingPlanUpgrade({ providerId });
-  }, [codingPlanUpgradeDialog, sharedSettings?.providerFamilyDomain]);
-  const handleOpenQuotaUpgrade = useCallback(() => {
-    const providerId = quotaBanner.upgradeProviderId;
-    if (!providerId || !codingPlanUpgradeDialog) return;
-    const eventText = intl.formatMessage({
-      id: quotaBanner.upgradeActionLabelId,
-    });
-    // 横幅只建立漏斗上下文；coding_plan_upgrade_ck 仍由真实购买面板打开后统一上报。
-    codingPlanUpgradeDialog.openCodingPlanUpgrade({
-      providerId,
-      funnelContext: createCodingPlanFunnelContext({
-        providerId,
-        upgradeSource: "session_quota_alert",
-        eventRegion: "app.session",
-        eventText,
-        entryPlanState: resolveCodingPlanEntryPlanState({
-          providerId,
-          displayStatus: "purchased",
-          planLevel: "start",
-        }),
-      }),
-    });
-  }, [
-    codingPlanUpgradeDialog,
-    intl,
-    quotaBanner.upgradeActionLabelId,
-    quotaBanner.upgradeProviderId,
-  ]);
 
   const handleConfirmShareDisclosure = useCallback(async () => {
     if (!sessionId || !shareDraft || sharePublishing) return;
@@ -4379,18 +4520,41 @@ export function SessionPane({
       submissionReady={composerSubmissionReady}
       updateComposerContent={updateComposerContent}
       createSubmissionFromComposer={createSubmissionFromComposer}
-      contextHeader={isDraft ? draftComposerHeader : undefined}
-      centered={isDraft}
-      blockingRequestId={blockingInteractionId}
-      listenAddToChatEvents={focused}
-      externalTextInsertRequest={focused && sessionId === null ? composerTextInsertRequest : null}
+      contextHeader={visibleEmptyDraft ? draftComposerHeader : undefined}
+      centered={visibleEmptyDraft}
+      blockingRequestId={acpAgent ? null : blockingInteractionId}
+      listenAddToChatEvents={focused && !acpAgent}
+      externalTextInsertRequest={
+        focused && !acpAgent && sessionId === null ? composerTextInsertRequest : null
+      }
       onExternalTextInsertApplied={handleExternalTextInsertApplied}
-      autoFocusEnabled={focused}
+      autoFocusEnabled={focused && !acpAgent}
       disabled={
-        connecting ||
-        draftRuntimeRebuilding ||
-        queueEditActiveForCurrentComposer ||
-        quotaBanner.state.blocksSubmit
+        !acpAgent &&
+        (connecting ||
+          draftRuntimeRebuilding ||
+          queueEditActiveForCurrentComposer ||
+          quotaBanner.state.blocksSubmit)
+      }
+      acpAgent={acpAgent}
+      acpSessionId={acpConversation.selected?.id ?? null}
+      acpReady={
+        acpConversation.loaded &&
+        acpConversation.ready &&
+        !acpConversation.sending &&
+        !acpConversation.busy
+      }
+      acpRunning={acpConversation.selected?.status === "running"}
+      onSendAcpText={acpConversation.send}
+      acpGoal={acpConversation.selected?.goal}
+      onSetAcpGoal={acpConversation.setGoal}
+      acpConfigOptions={acpConversation.selected?.configOptions ?? []}
+      acpModeState={acpConversation.selected?.modeState ?? null}
+      onSetAcpConfigOption={acpConversation.setConfigOption}
+      acpSessionMenu={
+        acpAgent ? (
+          <AcpConversationControls agent={acpAgent} conversation={acpConversation} />
+        ) : null
       }
       workspacePath={workspacePath}
       workspaceIdentity={workspaceIdentity}
@@ -4410,8 +4574,9 @@ export function SessionPane({
       onDraftStateChange={handleComposerDraftStateChange}
       composerRestoreRequest={composerRestoreRequest}
       onComposerRestoreApplied={handleComposerRestoreApplied}
-      onStop={handleStopFromButton}
-      onSelectModel={handleSelectModel}
+      onStop={acpAgent ? acpConversation.stop : handleStopFromButton}
+      onSelectModel={handleSelectNativeModel}
+      onSelectAcpAgent={selectionSideChat ? undefined : handleSelectAcpAgent}
       onSelectThought={handleSelectThought}
       onSwitchMode={handleSwitchMode}
       onOpenRunningBackgroundWorks={
@@ -4427,7 +4592,6 @@ export function SessionPane({
       error={composerError}
       onDismissError={handleDismissComposerError}
       onOpenModelSettings={handleOpenModelSettings}
-      onOpenModelUpgrade={handleOpenModelUpgrade}
       onOpenCodeViewer={onOpenCodeViewer}
       suppressGoalCommands={selectionSideChat}
       appSlashCommands={appSlashCommands}
@@ -4435,7 +4599,7 @@ export function SessionPane({
     />
   );
   const pendingGuideProjection = snapshot ? projectPendingGuideQueue(snapshot.queue) : null;
-  const conversationBottomDockContent = readOnly ? null : shareActive && sessionId ? (
+  const conversationBottomDockContent = readOnly ? null : !acpAgent && shareActive && sessionId ? (
     shareInSelectionStage ? (
       <ConversationShareSelectionDock
         selectedCount={selectedShareRowIds.size}
@@ -4492,22 +4656,17 @@ export function SessionPane({
     )
   ) : (
     <>
-      {quotaBanner.state.visible &&
+      {!acpAgent &&
+      quotaBanner.state.visible &&
       !quotaBanner.dismissed &&
       (!projectedComposerError || quotaBanner.takesOverError || quotaBanner.state.blocksSubmit) ? (
         <ConversationQuotaBanner
           state={quotaBanner.state}
           onShown={quotaBanner.markShown}
-          upgradeActionLabelId={quotaBanner.upgradeActionLabelId}
-          onUpgrade={
-            quotaBanner.upgradeProviderId && codingPlanUpgradeDialog
-              ? handleOpenQuotaUpgrade
-              : undefined
-          }
           onDismiss={quotaBanner.dismiss}
         />
       ) : null}
-      {recoverableCommand ? (
+      {!acpAgent && recoverableCommand ? (
         <PendingCommandRecoveryBanner
           entry={recoverableCommand}
           onResend={
@@ -4516,7 +4675,7 @@ export function SessionPane({
           onDismiss={handleDismissPendingRecovery}
         />
       ) : null}
-      {sessionId && snapshot?.workspaceHookAdmission ? (
+      {!acpAgent && sessionId && snapshot?.workspaceHookAdmission ? (
         <WorkspaceHookPendingBanner
           sessionId={sessionId}
           workspacePath={workspacePath}
@@ -4524,7 +4683,7 @@ export function SessionPane({
           admission={snapshot.workspaceHookAdmission}
         />
       ) : null}
-      {sessionId && snapshot ? (
+      {!acpAgent && sessionId && snapshot ? (
         <ConversationQueuePanel
           key="conversation-queue"
           queue={pendingGuideProjection?.visibleQueue ?? snapshot.queue}
@@ -4540,7 +4699,7 @@ export function SessionPane({
       ) : null}
       {/* v4 权限/问答等待态只是 runtime 的阻塞交互，必须和 composer
           共享 timeline bottom dock；渲染在 SessionPane 外层会脱离主列宽度并挤占下半屏。 */}
-      {sessionId && snapshot ? (
+      {!acpAgent && sessionId && snapshot ? (
         <V4InteractionDialogs
           key="conversation-interactions"
           sessionId={sessionId}
@@ -4553,7 +4712,8 @@ export function SessionPane({
       ) : null}
       {composerNode}
       {/* 办公模式显示主动任务推荐；编程模式保留原有小型场景入口。 */}
-      {isDraft && (!isOfficeMode || sharedSettings?.proactiveSuggestionsEnabled === true) ? (
+      {visibleEmptyDraft &&
+      (!isOfficeMode || sharedSettings?.proactiveSuggestionsEnabled === true) ? (
         <ConversationDraftSuggestedPromptsContainer
           className={isOfficeMode ? "mt-4" : "mt-6"}
           proactive={isOfficeMode}
@@ -4573,7 +4733,9 @@ export function SessionPane({
   // 进入/退出分享时 chat dock 与分享 dock 高度不同；共享同一个 grid 单元做上下位移淡入淡出，
   // 避免父高度突变导致的硬跳。prefers-reduced-motion 由 transition 组件内部降级为立即切换。
   const conversationBottomDock = conversationBottomDockContent ? (
-    <ConversationBottomDockTransition mode={shareActive && sessionId ? "confirmation" : "chat"}>
+    <ConversationBottomDockTransition
+      mode={!acpAgent && shareActive && sessionId ? "confirmation" : "chat"}
+    >
       {conversationBottomDockContent}
     </ConversationBottomDockTransition>
   ) : null;
@@ -4590,13 +4752,13 @@ export function SessionPane({
         .filter((work) => work.kind === "subagent" && work.status === "running")
         .map((work) => work.childSessionId ?? work.workId)
         .join(",")}
-      data-v4-conversation-drop-target="true"
-      onDragOver={effectiveDropTargetController?.onDragOver}
-      onDragLeave={effectiveDropTargetController?.onDragLeave}
-      onDrop={effectiveDropTargetController?.onDrop}
+      data-v4-conversation-drop-target={acpAgent ? undefined : "true"}
+      onDragOver={acpAgent ? undefined : effectiveDropTargetController?.onDragOver}
+      onDragLeave={acpAgent ? undefined : effectiveDropTargetController?.onDragLeave}
+      onDrop={acpAgent ? undefined : effectiveDropTargetController?.onDrop}
       className="relative flex h-full min-h-0 flex-col"
     >
-      {effectiveDropTargetController?.active ? (
+      {!acpAgent && effectiveDropTargetController?.active ? (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-accent/55 backdrop-blur-sm">
           <div className="flex items-center gap-2 rounded-full border border-border bg-accent px-4 py-2 text-ui-base text-foreground shadow-sm">
             <Hand className="size-4 text-foreground" />
@@ -4612,33 +4774,47 @@ export function SessionPane({
         </div>
       ) : null}
       <ConversationHeader
-        title={snapshot?.meta.title ?? ""}
+        title={
+          acpAgent
+            ? (acpConversation.selected?.title ?? acpAgentDefinition(acpAgent).name)
+            : (snapshot?.meta.title ?? "")
+        }
         onSplitRight={onSplitRight}
         onSplitDown={onSplitDown}
         onClosePane={onClosePane}
         workspaceBadge={workspaceBadge}
       />
-
       <div
         ref={conversationLayoutContainerRef}
         className="@container/conversation relative flex min-h-0 flex-1 flex-col"
       >
-        <ConversationShareSelectionScrim
-          visible={shareSelectionPanelVisible}
-          interactive
-          onBackdropClick={dismissShareSelectionPanel}
-        />
-        <ConversationShareSelectionPanel
-          visible={shareSelectionPanelVisible}
-          items={shareItems}
-          selectedRowIds={selectedShareRowIds}
-          onToggle={handleShareSelectionToggle}
-          onInspect={handleShareSelectionInspect}
-        />
-        {shareActive && shareInSelectionStage && shareDraft?.view === "timeline" && sessionId ? (
+        {acpAgent && visibleEmptyDraft ? (
+          <AcpHomeStatus agent={acpAgent} conversation={acpConversation} />
+        ) : null}
+        {!acpAgent && (
+          <ConversationShareSelectionScrim
+            visible={shareSelectionPanelVisible}
+            interactive
+            onBackdropClick={dismissShareSelectionPanel}
+          />
+        )}
+        {!acpAgent && (
+          <ConversationShareSelectionPanel
+            visible={shareSelectionPanelVisible}
+            items={shareItems}
+            selectedRowIds={selectedShareRowIds}
+            onToggle={handleShareSelectionToggle}
+            onInspect={handleShareSelectionInspect}
+          />
+        )}
+        {!acpAgent &&
+        shareActive &&
+        shareInSelectionStage &&
+        shareDraft?.view === "timeline" &&
+        sessionId ? (
           <ConversationShareSelectionReopenTab onOpen={() => showShareSelectionPanel(sessionId)} />
         ) : null}
-        {!isDraft ? (
+        {!acpAgent && !isDraft ? (
           <ConversationStatusPanel
             workspacePath={workspacePath}
             workspaceIdentity={workspaceIdentity}
@@ -4707,7 +4883,7 @@ export function SessionPane({
           />
         ) : null}
 
-        {readOnly && controlLastError ? (
+        {!acpAgent && readOnly && controlLastError ? (
           <div
             role="alert"
             data-testid="v4-subagent-readonly-error"
@@ -4717,7 +4893,7 @@ export function SessionPane({
           </div>
         ) : null}
 
-        {errored ? (
+        {errored && !acpAgent ? (
           <SessionSubscriptionErrorPanel
             error={state.lastError ?? intl.formatMessage({ id: "chat.error.connectionLost" })}
             sessionId={sessionId}
@@ -4726,7 +4902,7 @@ export function SessionPane({
           />
         ) : (
           <SessionPluginReferenceIconBoundary
-            enabled={pluginReferenceIconsEnabled}
+            enabled={!acpAgent && pluginReferenceIconsEnabled}
             remoteSessionId={remoteSessionId}
             sessionId={sessionId}
             workspaceIdentity={workspaceIdentity}
@@ -4736,34 +4912,44 @@ export function SessionPane({
               scrollToBottomActionRef={timelineScrollToBottomRef}
               scrollToQueryActionRef={timelineScrollToQueryRef}
               selectionPanelLayoutContainerRef={conversationLayoutContainerRef}
-              rows={timelineSnapshot?.rows.window ?? []}
-              pendingGuides={timelineSnapshot ? pendingGuideProjection?.pendingGuides : []}
-              apiRetry={timelineSnapshot?.control.apiRetry ?? null}
-              totalCount={timelineSnapshot?.rows.totalCount ?? 0}
-              sessionKey={sessionId ?? "draft"}
-              scrollMemoryKey={timelineScrollMemoryKey}
-              rowContext={rowContext}
-              onFork={forkActionsEnabled ? handleFork : undefined}
-              onRetry={retryActionsEnabled ? handleRetry : undefined}
-              onFeedbackChange={
-                !readOnly && !selectionSideChat && sessionId ? handleAssistantFeedback : undefined
+              rows={acpAgent ? acpRows : (timelineSnapshot?.rows.window ?? [])}
+              pendingGuides={
+                acpAgent ? [] : timelineSnapshot ? pendingGuideProjection?.pendingGuides : []
               }
-              onEdit={editActionsEnabled ? handleEdit : undefined}
-              canLoadOlder={timelineSnapshot ? hasOlderRows(timelineSnapshot) : false}
-              loadingOlder={timelineSnapshot ? state.loadingOlder : false}
-              onLoadOlder={handleLoadOlder}
-              onLoadAllOlder={handleLoadAllOlder}
+              apiRetry={acpAgent ? null : (timelineSnapshot?.control.apiRetry ?? null)}
+              totalCount={acpAgent ? acpRows.length : (timelineSnapshot?.rows.totalCount ?? 0)}
+              sessionKey={
+                acpAgent
+                  ? (acpConversation.selected?.id ?? `acp:${acpAgent}`)
+                  : (sessionId ?? "draft")
+              }
+              scrollMemoryKey={acpAgent ? null : timelineScrollMemoryKey}
+              rowContext={acpAgent ? acpRowContext : rowContext}
+              workDurationAvailable={!acpAgent}
+              onFork={!acpAgent && forkActionsEnabled ? handleFork : undefined}
+              onRetry={!acpAgent && retryActionsEnabled ? handleRetry : undefined}
+              onFeedbackChange={
+                !acpAgent && !readOnly && !selectionSideChat && sessionId
+                  ? handleAssistantFeedback
+                  : undefined
+              }
+              onEdit={!acpAgent && editActionsEnabled ? handleEdit : undefined}
+              canLoadOlder={!acpAgent && timelineSnapshot ? hasOlderRows(timelineSnapshot) : false}
+              loadingOlder={!acpAgent && timelineSnapshot ? state.loadingOlder : false}
+              onLoadOlder={acpAgent ? undefined : handleLoadOlder}
+              onLoadAllOlder={acpAgent ? undefined : handleLoadAllOlder}
               turnNavigatorDirectoryRevision={state.turnNavigatorDirectoryRevision}
               bottomDock={conversationBottomDock}
-              hideTurnNavigator={shareActive && shareInSelectionStage}
+              hideTurnNavigator={Boolean(acpAgent) || (shareActive && shareInSelectionStage)}
               backgroundScrollLocked={resolveConversationShareBackgroundScrollLocked({
-                partialShareActive: shareActive,
+                partialShareActive: !acpAgent && shareActive,
                 stage: shareDraft?.stage ?? "selection",
                 view: shareDraft?.view,
               })}
               headerSlot={
                 // unsupportedRowCount 也要开这个门：整份副本的行都被本 build 跳过时
                 // rows 为空，但只读块必须留下来显示「需要更新 ZCode」，不能整块消失。
+                !acpAgent &&
                 importedShare &&
                 (importedShare.rows.length > 0 || importedShare.unsupportedRowCount > 0) ? (
                   <ConversationShareImportNotice
@@ -4783,28 +4969,45 @@ export function SessionPane({
                   />
                 ) : null
               }
+              footerSlot={
+                acpAgent && acpHasConversationContent ? (
+                  <AcpConversationStatus agent={acpAgent} conversation={acpConversation} />
+                ) : null
+              }
               emptyState={
-                isDraft ? (
+                visibleEmptyDraft ? (
                   <div data-testid={TID_CHAT_EMPTY} className="w-full">
                     <ConversationDraftEmptyState />
                   </div>
                 ) : null
               }
-              centerEmptyStateWithDock={isDraft}
-              summaryPanelLayout={statusPanelLayout}
-              conversationFindQuery={!isDraft && focused ? conversationFindQuery : ""}
-              conversationFindActiveIndex={!isDraft && focused ? conversationFindActiveIndex : -1}
+              centerEmptyStateWithDock={visibleEmptyDraft}
+              summaryPanelLayout={acpAgent ? "none" : statusPanelLayout}
+              conversationFindQuery={(acpAgent || !isDraft) && focused ? conversationFindQuery : ""}
+              conversationFindActiveIndex={
+                (acpAgent || !isDraft) && focused ? conversationFindActiveIndex : -1
+              }
               conversationFindNavigationRequestId={
-                !isDraft && focused ? conversationFindNavigationRequestId : 0
+                (acpAgent || !isDraft) && focused ? conversationFindNavigationRequestId : 0
               }
               onConversationFindMatchStateChange={
-                !isDraft && focused ? onConversationFindMatchStateChange : undefined
+                (acpAgent || !isDraft) && focused ? onConversationFindMatchStateChange : undefined
               }
-              searchResultHighlightRequest={isDraft ? null : searchResultHighlightRequest}
+              searchResultHighlightRequest={
+                acpAgent
+                  ? activeSearchResultHighlightRequest
+                  : isDraft
+                    ? null
+                    : searchResultHighlightRequest
+              }
               onSearchResultHighlightDone={onSearchResultHighlightDone}
-              sessionPhase={isDraft ? undefined : snapshot?.control.phase}
+              sessionPhase={acpAgent || isDraft ? undefined : snapshot?.control.phase}
               shareSelection={
-                shareActive && shareInSelectionStage && shareDraft?.view === "timeline" && sessionId
+                !acpAgent &&
+                shareActive &&
+                shareInSelectionStage &&
+                shareDraft?.view === "timeline" &&
+                sessionId
                   ? {
                       eligibleRowIds: eligibleShareRowIds,
                       selectedRowIds: selectedShareRowIds,
@@ -4813,7 +5016,7 @@ export function SessionPane({
                   : undefined
               }
               selectionActions={
-                !isDraft && sessionId && !readOnly && !selectionSideChat
+                !acpAgent && !isDraft && sessionId && !readOnly && !selectionSideChat
                   ? {
                       enabled: resolveConversationSelectionTooltipEnabled({
                         selectionActionsEnabled: focused && !blockingInteractionId,

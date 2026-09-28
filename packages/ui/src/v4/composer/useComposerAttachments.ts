@@ -61,6 +61,7 @@ export type {
 
 interface UploadTarget {
   sessionId: string | null;
+  acpMode: boolean;
   workspacePath: string;
   workspaceIdentity?: string;
   remoteSessionId?: string;
@@ -107,6 +108,7 @@ interface UseComposerAttachmentsOptions {
   remoteSessionId?: string;
   scopeId: string;
   attachmentSessionId?: string | null;
+  acpMode?: boolean;
   attachmentPut: AttachmentPutFn;
   onRuntimeRestart?: (listener: () => void) => () => void;
   /**
@@ -194,6 +196,7 @@ export function useComposerAttachments(
     remoteSessionId,
     scopeId,
     attachmentSessionId = null,
+    acpMode = false,
     attachmentPut,
     onRuntimeRestart,
     onRuntimeLifecycle,
@@ -229,6 +232,7 @@ export function useComposerAttachments(
 
   targetsRef.current.set(scopeKey, {
     sessionId: attachmentSessionId,
+    acpMode,
     workspacePath,
     workspaceIdentity,
     remoteSessionId,
@@ -368,6 +372,33 @@ export function useComposerAttachments(
           return;
         }
 
+        if (target.acpMode) {
+          // ACP 内联内容在发送时从 File 读取；不能上传到 ZCode CLI 的 artifact store。
+          if (!item.localPath && item.file) {
+            updateItem(targetScopeKey, attachmentId, (current) => ({
+              ...current,
+              uploadStatus: "ready",
+              uploadProgress: 100,
+            }));
+            return;
+          }
+          if (item.localPath) {
+            finishWithReady(
+              targetScopeKey,
+              attachmentId,
+              {
+                ref: item.localPath,
+                fileName: item.filename,
+                mime: item.mimeType,
+                bytes: item.sizeBytes,
+              },
+              false,
+            );
+            return;
+          }
+          throw new Error("ACP attachment has no readable content");
+        }
+
         const serialized = await serializeChatComposerAttachment(item);
         const ref = await uploadComposerAttachment(
           target.attachmentPut,
@@ -503,9 +534,49 @@ export function useComposerAttachments(
     const current = readComposerAttachmentScope(scopeKey);
     const remoteTargetReady =
       !isRemoteAttachmentTarget({ remoteSessionId, workspaceIdentity }) || Boolean(remoteSessionId);
-    if (attachmentSessionId && remoteTargetReady) {
+    if (acpMode || (attachmentSessionId && remoteTargetReady)) {
       for (const item of current) {
-        if (item.uploadStatus === "waitingSession") {
+        if (
+          item.localPath &&
+          acpMode &&
+          !isRemoteAttachmentTarget({ remoteSessionId, workspaceIdentity }) &&
+          item.uploadStatus !== "ready"
+        ) {
+          finishWithReady(
+            scopeKey,
+            item.id,
+            {
+              ref: item.localPath,
+              fileName: item.filename,
+              mime: item.mimeType,
+              bytes: item.sizeBytes,
+            },
+            false,
+          );
+          continue;
+        }
+        if (acpMode && !item.localPath && item.file && item.uploadStatus !== "ready") {
+          // 切换到 ACP 后不再依赖 ZCode artifact 上传；File 字节在 ACP 提交时读取。
+          updateItem(scopeKey, item.id, (candidate) => ({
+            ...candidate,
+            uploadStatus: "ready",
+            uploadProgress: 100,
+            uploadError: undefined,
+          }));
+          continue;
+        }
+        if (
+          !acpMode &&
+          !item.localPath &&
+          item.file &&
+          item.uploadStatus === "ready" &&
+          !item.attachmentRef
+        ) {
+          updateItem(scopeKey, item.id, (candidate) => ({ ...candidate, uploadStatus: "queued" }));
+          enqueueUpload(scopeKey, item.id);
+          continue;
+        }
+        if (item.uploadStatus === "waitingSession" && attachmentSessionId && remoteTargetReady) {
           updateItem(scopeKey, item.id, (candidate) => ({
             ...candidate,
             uploadStatus: "queued",
@@ -515,8 +586,10 @@ export function useComposerAttachments(
       }
     }
   }, [
+    acpMode,
     attachmentSessionId,
     enqueueUpload,
+    finishWithReady,
     remoteSessionId,
     restartEpoch,
     scopeKey,
@@ -539,6 +612,7 @@ export function useComposerAttachments(
         for (const item of items) {
           if (
             item.referenceOwnership === "session" ||
+            (target.acpMode && !item.localPath && item.file) ||
             item.localZeroCopy ||
             item.uploadStatus === "failed"
           ) {
@@ -643,12 +717,18 @@ export function useComposerAttachments(
         const localZeroCopy = Boolean(
           attachment.localPath && target && !isRemoteAttachmentTarget(target),
         );
+        const inlineAcpReady = Boolean(target?.acpMode && attachment.file && !attachment.localPath);
         return {
           ...attachment,
           referenceOwnership: "composer",
           operationId: `prompt-attachment-${attachment.id}`,
-          uploadStatus: localZeroCopy ? "ready" : target?.sessionId ? "queued" : "waitingSession",
-          uploadProgress: localZeroCopy ? 100 : 0,
+          uploadStatus:
+            localZeroCopy || inlineAcpReady
+              ? "ready"
+              : target?.sessionId
+                ? "queued"
+                : "waitingSession",
+          uploadProgress: localZeroCopy || inlineAcpReady ? 100 : 0,
           ...(localZeroCopy && attachment.localPath
             ? {
                 attachmentRef: {

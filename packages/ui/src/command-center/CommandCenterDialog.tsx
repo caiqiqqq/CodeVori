@@ -13,7 +13,11 @@ import {
   SearchIcon,
   Trash2Icon,
 } from "lucide-react";
-import type { WorkspaceFileEntry, ZCodeTaskChangeSummary, ZCodeTaskMeta } from "@zcode/shared";
+import {
+  acpAgentDefinition,
+  type WorkspaceFileEntry,
+  type ZCodeTaskChangeSummary,
+} from "@zcode/shared";
 import {
   Command,
   CommandDialog,
@@ -26,6 +30,12 @@ import {
 import { cn } from "@/components/lib/utils.js";
 import { toast } from "@/components/ui/toast.js";
 import { useGlobalTaskList } from "@/hooks/useGlobalTaskList.js";
+import { useAcpSessionSearch } from "@/hooks/useAcpSessionSearch.js";
+import {
+  buildConversationSearchRows,
+  type ConversationSearchRow,
+} from "@/command-center/conversationSearchResults.js";
+import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
 import { useServices } from "@/hooks/useServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { FileDisplayIcon, resolveFileDisplayDescriptor } from "@/lib/fileDisplay.js";
@@ -46,7 +56,7 @@ import {
 } from "@/quickpick/quickPickStyles.js";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
-import type { ChatSearchResultHighlightRequest } from "@/v4/legacyChatViewTypes.js";
+import type { ChatSearchResultHighlightInput } from "@/v4/legacyChatViewTypes.js";
 import {
   clearCommandCenterSearchHistory,
   pushCommandCenterSearchHistory,
@@ -75,17 +85,7 @@ const commandCenterListClassName = cn(
 );
 
 type CommandCenterSectionId = "commands" | "conversations" | "files";
-type TaskSearchResultItem = ZCodeTaskMeta & {
-  searchSnippet?: string;
-  searchSnippets?: string[];
-};
 type TaskChangedFileSummary = ZCodeTaskChangeSummary["files"][number];
-type TaskSearchResultRow = {
-  key: string;
-  task: TaskSearchResultItem;
-  searchSnippet?: string;
-  snippetIndex?: number;
-};
 
 function getWorkspaceFileDirectory(entry: WorkspaceFileEntry): string {
   const slashIndex = entry.relativePath.lastIndexOf("/");
@@ -115,37 +115,7 @@ function filterWorkspaceFileEntries(
     .slice(0, COMMAND_CENTER_FILE_RESULT_LIMIT);
 }
 
-function normalizeSnippetForDedupe(snippet: string): string {
-  return snippet
-    .replace(/^\.\.\./, "")
-    .replace(/\.\.\.$/, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLocaleLowerCase();
-}
-
-function getUniqueTaskSearchSnippets(task: TaskSearchResultItem): string[] {
-  const snippets = task.searchSnippets?.length
-    ? task.searchSnippets
-    : task.searchSnippet
-      ? [task.searchSnippet]
-      : [];
-  const seen = new Set<string>();
-  const uniqueSnippets: string[] = [];
-  for (const snippet of snippets) {
-    const normalized = normalizeSnippetForDedupe(snippet);
-    if (!normalized || seen.has(normalized)) {
-      continue;
-    }
-
-    seen.add(normalized);
-    uniqueSnippets.push(snippet);
-  }
-
-  return uniqueSnippets;
-}
-
-function getTaskTitle(task: ZCodeTaskMeta, untitledLabel: string): string {
+function getTaskTitle(task: { title: string }, untitledLabel: string): string {
   return task.title.trim() || untitledLabel;
 }
 
@@ -190,51 +160,6 @@ function matchesCommand(command: QuickPickCommand, title: string, query: string)
     .split(/\s+/)
     .filter(Boolean)
     .every((part) => searchText.includes(part));
-}
-
-function buildTaskResultRows(params: {
-  tasks: readonly TaskSearchResultItem[];
-  query: string;
-}): TaskSearchResultRow[] {
-  const rows: TaskSearchResultRow[] = [];
-  const taskByKey = new Map<string, TaskSearchResultItem>();
-
-  for (const task of params.tasks) {
-    const taskKey = `${task.workspaceIdentity?.trim() || task.workspacePath}:${task.taskId}`;
-    const existingTask = taskByKey.get(taskKey);
-    if (!existingTask) {
-      taskByKey.set(taskKey, task);
-      continue;
-    }
-
-    taskByKey.set(taskKey, {
-      ...existingTask,
-      searchSnippets: [
-        ...getUniqueTaskSearchSnippets(existingTask),
-        ...getUniqueTaskSearchSnippets(task),
-      ],
-    });
-  }
-
-  for (const task of taskByKey.values()) {
-    const taskKey = `${task.workspaceIdentity?.trim() || task.workspacePath}:${task.taskId}`;
-    const snippets = params.query ? getUniqueTaskSearchSnippets(task) : [];
-    if (snippets.length === 0) {
-      rows.push({ key: taskKey, task });
-      continue;
-    }
-
-    snippets.forEach((snippet, snippetIndex) => {
-      rows.push({
-        key: `${taskKey}:${snippetIndex}`,
-        task,
-        searchSnippet: snippet,
-        snippetIndex,
-      });
-    });
-  }
-
-  return rows;
 }
 
 function CommandCenterScopeButton({
@@ -402,10 +327,12 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
   workspaceAbsPath,
   workspaceIdentity,
   activeTaskId,
+  activeAcpSessionId,
   activeTaskChangeSummary,
   workspaceTabs,
   onOpenChange,
   onSelectTask,
+  onSelectAcpSession,
   onSearchResultHighlightRequest,
   onOpenCodeViewer,
 }: {
@@ -414,6 +341,7 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
   workspaceAbsPath: string;
   workspaceIdentity?: string;
   activeTaskId?: string | null;
+  activeAcpSessionId?: string | null;
   activeTaskChangeSummary?: ZCodeTaskChangeSummary | null;
   workspaceTabs: WorkspaceTabState[];
   onOpenChange: (open: boolean) => void;
@@ -422,9 +350,8 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
     taskId: string,
     targetWorkspaceIdentity?: string,
   ) => void;
-  onSearchResultHighlightRequest?: (
-    request: Omit<ChatSearchResultHighlightRequest, "requestId">,
-  ) => void;
+  onSelectAcpSession: (session: AcpSidebarSession) => void;
+  onSearchResultHighlightRequest?: (request: ChatSearchResultHighlightInput) => void;
   onOpenCodeViewer: (source: CodeViewerSource) => void;
 }) {
   const { fileService } = useServices();
@@ -467,6 +394,10 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
   const recentTaskWorkspaceTabs = useMemo(
     () => (open && !hasSearchQuery ? currentWorkspaceTabs : []),
     [currentWorkspaceTabs, hasSearchQuery, open],
+  );
+  const acpSearch = useAcpSessionSearch(
+    hasSearchQuery ? searchWorkspaceTabs : recentTaskWorkspaceTabs,
+    searchQuery,
   );
   const taskList = useGlobalTaskList({
     kind: "active",
@@ -516,8 +447,14 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
     [commandOptions],
   );
   const conversationRows = useMemo(
-    () => buildTaskResultRows({ tasks: taskList.items, query: searchQuery }),
-    [searchQuery, taskList.items],
+    () =>
+      buildConversationSearchRows({
+        nativeItems: taskList.items,
+        acpItems: acpSearch.items,
+        query: searchQuery,
+        limit: COMMAND_CENTER_TASK_RESULT_LIMIT,
+      }),
+    [acpSearch.items, searchQuery, taskList.items],
   );
   const fileRows = useMemo(
     () => filterWorkspaceFileEntries(workspaceFiles, searchQuery),
@@ -532,8 +469,14 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
     [recentChangeRows],
   );
   const recentTaskRows = useMemo(
-    () => recentTaskList.items.filter((task) => task.taskId !== activeTaskId),
-    [activeTaskId, recentTaskList.items],
+    () =>
+      buildConversationSearchRows({
+        nativeItems: recentTaskList.items.filter((task) => task.taskId !== activeTaskId),
+        acpItems: acpSearch.items.filter((session) => session.id !== activeAcpSessionId),
+        query: "",
+        limit: COMMAND_CENTER_TASK_RESULT_LIMIT,
+      }),
+    [acpSearch.items, activeAcpSessionId, activeTaskId, recentTaskList.items],
   );
   const recentTaskPreviewRows = useMemo(
     () => recentTaskRows.slice(0, COMMAND_CENTER_CONTEXT_SECTION_LIMIT),
@@ -640,21 +583,48 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
     [closeDialog, intl, rememberSearch],
   );
 
+  const openConversation = useCallback(
+    (row: ConversationSearchRow) => {
+      const conversation = row.conversation;
+      if (conversation.kind === "acp") onSelectAcpSession(conversation.item);
+      else
+        onSelectTask(
+          conversation.item.workspacePath,
+          conversation.item.taskId,
+          conversation.item.workspaceIdentity,
+        );
+    },
+    [onSelectAcpSession, onSelectTask],
+  );
+
   const selectTask = useCallback(
-    (row: TaskSearchResultRow) => {
+    (row: ConversationSearchRow) => {
       rememberSearch("conversations");
-      onSearchResultHighlightRequest?.({
-        taskId: row.task.taskId,
-        workspacePath: row.task.workspacePath,
-        workspaceIdentity: row.task.workspaceIdentity,
+      const { conversation } = row;
+      const item = conversation.item;
+      const request = {
+        workspacePath: item.workspacePath,
+        workspaceIdentity: item.workspaceIdentity,
         query: searchQuery,
-        snippet: row.searchSnippet?.trim() || row.task.searchSnippet?.trim() || undefined,
+        snippet: row.searchSnippet,
         snippetIndex: row.snippetIndex,
-      });
-      onSelectTask(row.task.workspacePath, row.task.taskId, row.task.workspaceIdentity);
+      };
+      // 修复原因：ACP 用 Host session/entry 身份导航，不能伪装原生 taskId。
+      if (conversation.kind === "acp") {
+        if (row.entryId)
+          onSearchResultHighlightRequest?.({
+            ...request,
+            kind: "acp",
+            acpSessionId: conversation.item.id,
+            entryId: row.entryId,
+          });
+      } else {
+        onSearchResultHighlightRequest?.({ ...request, taskId: conversation.item.taskId });
+      }
+      openConversation(row);
       closeDialog();
     },
-    [closeDialog, onSearchResultHighlightRequest, onSelectTask, rememberSearch, searchQuery],
+    [closeDialog, onSearchResultHighlightRequest, openConversation, rememberSearch, searchQuery],
   );
 
   const selectFile = useCallback(
@@ -684,11 +654,11 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
   );
 
   const selectRecentTask = useCallback(
-    (task: ZCodeTaskMeta) => {
-      onSelectTask(task.workspacePath, task.taskId, task.workspaceIdentity);
+    (row: ConversationSearchRow) => {
+      openConversation(row);
       closeDialog();
     },
-    [closeDialog, onSelectTask],
+    [closeDialog, openConversation],
   );
 
   const setScope = useCallback(
@@ -768,7 +738,7 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
     rows = recentTaskPreviewRows,
     showEmpty = false,
   }: {
-    rows?: ZCodeTaskMeta[];
+    rows?: ConversationSearchRow[];
     showEmpty?: boolean;
   } = {}) => {
     if (hasSearchQuery || (rows.length === 0 && !showEmpty)) {
@@ -782,17 +752,27 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
             {intl.formatMessage({ id: "commandCenter.empty.recentTasks" })}
           </CommandEmpty>
         ) : null}
-        {rows.map((task) => {
+        {rows.map((row) => {
+          const task = row.conversation.item;
           const title = getTaskTitle(task, intl.formatMessage({ id: "taskList.untitled" }));
           return (
             <CommandItem
-              key={`${task.workspaceIdentity?.trim() || task.workspacePath}:${task.taskId}`}
+              key={row.key}
+              data-conversation-kind={row.conversation.kind}
+              data-acp-search-session-id={
+                row.conversation.kind === "acp" ? row.conversation.item.id : undefined
+              }
               value={`${title} ${task.workspacePath}`}
               className={quickPickItemClassName}
-              onSelect={() => selectRecentTask(task)}
+              onSelect={() => selectRecentTask(row)}
             >
               <MessageSquareIcon className="size-3.5 text-foreground-subtle" />
               <span className="min-w-0 flex-1 truncate">{title}</span>
+              {row.conversation.kind === "acp" ? (
+                <span className="shrink-0 text-ui-sm text-foreground-subtle">
+                  {acpAgentDefinition(row.conversation.item.agent).name}
+                </span>
+              ) : null}
               <CommandShortcut className={quickPickMetadataClassName}>
                 {formatTaskRelativeTime(task.updatedAt, intl)}
               </CommandShortcut>
@@ -845,7 +825,10 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
     if (
       !hasSearchQuery ||
       !shouldShowConversationSection ||
-      (!taskList.loading && conversationRows.length === 0)
+      (!taskList.loading &&
+        !acpSearch.loading &&
+        !acpSearch.failed &&
+        conversationRows.length === 0)
     ) {
       return null;
     }
@@ -856,13 +839,18 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
         : conversationRows.slice(0, COMMAND_CENTER_SECTION_LIMIT);
     return (
       <CommandGroup heading={intl.formatMessage({ id: "commandCenter.section.conversations" })}>
-        {taskList.loading && conversationRows.length === 0 ? (
+        {(taskList.loading || acpSearch.loading) && conversationRows.length === 0 ? (
           <CommandEmpty className="px-4 py-5 text-foreground-subtle">
             {intl.formatMessage({ id: "taskSearch.loading" })}
           </CommandEmpty>
         ) : null}
+        {acpSearch.failed ? (
+          <div className="px-4 py-2 text-ui-sm text-foreground-subtle">
+            {intl.formatMessage({ id: "commandCenter.acpSearchFailed" })}
+          </div>
+        ) : null}
         {visibleRows.map((row) => {
-          const task = row.task;
+          const task = row.conversation.item;
           const title = getTaskTitle(task, intl.formatMessage({ id: "taskList.untitled" }));
           const workspaceLabel =
             workspaceLabelByKey.get(task.workspaceIdentity?.trim() || task.workspacePath) ??
@@ -871,6 +859,11 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
           return (
             <CommandItem
               key={row.key}
+              data-conversation-kind={row.conversation.kind}
+              data-acp-search-session-id={
+                row.conversation.kind === "acp" ? row.conversation.item.id : undefined
+              }
+              data-search-entry-id={row.entryId}
               value={`${title} ${workspaceLabel} ${searchSnippet ?? ""}`}
               className={quickPickItemClassName}
               onSelect={() => selectTask(row)}
@@ -888,6 +881,9 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
               </span>
               <CommandShortcut className={quickPickMetadataClassName}>
                 {workspaceLabel}
+                {row.conversation.kind === "acp"
+                  ? ` · ${acpAgentDefinition(row.conversation.item.agent).name}`
+                  : ""}
               </CommandShortcut>
               <CommandCenterConversationTimestamp>
                 {formatTaskRelativeTime(task.updatedAt, intl)}
@@ -955,6 +951,7 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
     (shouldShowFileSection && fileRows.length > 0);
   const hasSearchStatus =
     taskList.loading ||
+    (shouldShowConversationSection && (acpSearch.loading || acpSearch.failed)) ||
     workspaceFilesLoading ||
     (shouldShowFileSection && Boolean(workspaceFilesError));
 

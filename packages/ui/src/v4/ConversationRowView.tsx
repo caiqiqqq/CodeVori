@@ -8,6 +8,7 @@ import {
   CopyIcon,
   FileClockIcon,
   FileIcon,
+  WrenchIcon,
   GitBranchIcon,
   GoalIcon,
   PencilIcon,
@@ -27,6 +28,7 @@ import {
   TID_V4_FEEDBACK_LIKE,
   TID_V4_FORK,
   TID_V4_ROW,
+  TID_CHAT_TOOL_CALL_BLOCK,
   TID_V4_ROW_ATTACHMENTS,
   testId,
 } from "@zcode/shared";
@@ -72,6 +74,8 @@ import {
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning.js";
 import { cn } from "@/components/lib/utils.js";
+import { ToolLayout } from "@/ToolCallBlocks/ToolLayout.js";
+import { ACP_DISPLAY_TOOL_NAME } from "@/v4/acpConversationRows.js";
 import { Button } from "@/components/ui/button.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { WorkflowToolSummary } from "@/v4/WorkflowToolSummary.js";
@@ -1891,6 +1895,64 @@ const TimelineMarkerRowView = memo(function TimelineMarkerRowView({
   );
 });
 
+/** 复用原生工具折叠布局，但只展示 ACP Host 给出的标题、状态和文本。 */
+const AcpToolCallRowView = memo(function AcpToolCallRowView({
+  row,
+  context,
+}: {
+  row: ToolCallRow;
+  context: ConversationRowRenderContext;
+}) {
+  const { intl } = useZCodeIntl();
+  const statusKey =
+    row.status === "success"
+      ? "completed"
+      : row.status === "error"
+        ? "failed"
+        : row.status === "cancelled"
+          ? "stopped"
+          : row.status === "inputStreaming"
+            ? "pending"
+            : "running";
+  const statusLabel = intl.formatMessage({
+    id:
+      row.error?.code === "ACP_TOOL_UNCONFIRMED"
+        ? "acp.toolResultUnknown"
+        : `chat.toolCall.status.${statusKey}`,
+  });
+  return (
+    <RowShell rowId={row.rowId} className="py-0">
+      <div
+        data-conversation-selectable="true"
+        data-testid={testId(TID_CHAT_TOOL_CALL_BLOCK, row.toolCallId)}
+        data-tool-call-id={row.toolCallId}
+        data-tool-name={row.inputText}
+        data-status={row.status}
+      >
+        <ToolLayout
+          toolId={row.toolCallId}
+          persistOpenKey={`${context.logEpoch ?? "acp"}:${row.toolCallId}`}
+          icon={<WrenchIcon className="size-4 shrink-0 text-foreground-subtle" />}
+          kindLabel="ACP"
+          primaryText={row.inputText}
+          secondaryText={row.status === "error" ? undefined : statusLabel}
+          statusLabel={row.status === "error" ? statusLabel : undefined}
+          statusTooltip={row.error?.message}
+          showFailureStatus={row.status === "error"}
+          isRunning={row.status === "running" || row.status === "inputStreaming"}
+          title={row.inputText}
+          canToggle={Boolean(row.output?.text)}
+          renderContent={() => (
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface px-3 py-2 font-mono text-ui-sm text-foreground-subtle">
+              {row.output?.text}
+            </pre>
+          )}
+        />
+      </div>
+    </RowShell>
+  );
+});
+
 const ToolCallRowView = memo(function ToolCallRowView({
   row,
   context,
@@ -2149,6 +2211,9 @@ function ConversationRowViewImpl({
     case "timelineMarker":
       return <TimelineMarkerRowView row={row} context={context} />;
     case "toolCall":
+      if (row.toolName === ACP_DISPLAY_TOOL_NAME) {
+        return <AcpToolCallRowView row={row} context={context} />;
+      }
       // 只在 ToolCallBlock 内返回 null 会留下空 RowShell 和多余间距；
       // 在行分发处按同一工具身份规则裁剪，设置关闭时不产生任何 Todo DOM。
       if (

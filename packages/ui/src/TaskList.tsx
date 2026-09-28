@@ -2,6 +2,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Settings2 } from "lucide-react";
 import type { ZCodeTaskMeta } from "@zcode/shared";
+import type { IServiceAccessor } from "@zcode/services";
 import { TID_TASK_LIST, TID_TASK_EMPTY, TID_TASK_SETTINGS_BUTTON } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu.js";
@@ -11,9 +12,10 @@ import { useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { NewTaskButtonGroup } from "@/NewTaskButtonGroup.js";
 import { useTabStore } from "@/store/TabStoreProvider.js";
 import { MemoTaskItem, TaskListItemContextMenuContent } from "@/TaskListItem.js";
+import { WorkspaceAcpTaskItem } from "@/WorkspaceAcpTaskItem.js";
+import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
 import { TaskListLoadingHint } from "@/TaskListLoadingHint.js";
 import { TaskRenameDialog } from "@/TaskRenameDialog.js";
-import { buildTaskWorkspaceKey } from "@/lib/taskQueryCache.js";
 import { compareZCodeTaskListItems } from "@/lib/taskListOrdering.js";
 import { logger } from "@/logger.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
@@ -31,6 +33,10 @@ export const TaskList = memo(function TaskList({
   remoteSessionId,
   workspaceIdentity,
   tasks,
+  acpSessions = [],
+  acpService,
+  activeAcpSessionId,
+  onSelectAcpSession,
   pinnedTasks = EMPTY_PINNED_TASKS,
   activeTaskId,
   sortBy = "manual",
@@ -52,6 +58,10 @@ export const TaskList = memo(function TaskList({
   remoteSessionId?: string;
   workspaceIdentity?: string;
   tasks: ZCodeTaskMeta[];
+  acpSessions?: AcpSidebarSession[];
+  acpService?: IServiceAccessor["acpService"];
+  activeAcpSessionId?: string | null;
+  onSelectAcpSession?: (session: AcpSidebarSession) => void;
   pinnedTasks?: ZCodeTaskMeta[];
   activeTaskId: string | null;
   sortBy?: "manual" | "created" | "updated";
@@ -427,9 +437,9 @@ export const TaskList = memo(function TaskList({
       {/* 任务列表 */}
       <div>
         <div className="space-y-1">
-          {Boolean(inputLoading) && visibleSourceTasks.length === 0 ? (
+          {Boolean(inputLoading) && visibleSourceTasks.length === 0 && !acpSessions.some((item) => !item.archived) ? (
             <TaskListLoadingHint />
-          ) : visibleSourceTasks.length === 0 ? (
+          ) : visibleSourceTasks.length === 0 && !acpSessions.some((item) => !item.archived) ? (
             showEmptyState ? (
               <div
                 data-testid={TID_TASK_EMPTY}
@@ -438,7 +448,7 @@ export const TaskList = memo(function TaskList({
                 {intl.formatMessage({ id: "taskList.noTasks" })}
               </div>
             ) : null
-          ) : (
+          ) : visibleSourceTasks.length > 0 ? (
             <ContextMenu
               onOpenChange={(open) => {
                 if (!open) {
@@ -465,7 +475,25 @@ export const TaskList = memo(function TaskList({
                 />
               ) : null}
             </ContextMenu>
-          )}
+          ) : null}
+          {acpService && acpSessions.some((item) => !item.archived) ? (
+            <ul className="space-y-0.5">
+              {acpSessions
+                .filter((session) => !session.pinned && !session.archived)
+                .slice()
+                .sort((left, right) => right.updatedAt - left.updatedAt)
+                .map((session) => (
+                  <WorkspaceAcpTaskItem
+                    key={session.id}
+                    session={session}
+                    service={acpService}
+                    active={session.id === activeAcpSessionId}
+                    variant="default"
+                    onSelect={() => onSelectAcpSession?.(session)}
+                  />
+                ))}
+            </ul>
+          ) : null}
         </div>
         {hasMore && onShowMore ? (
           <div className="cursor-pointer pl-8.5">
