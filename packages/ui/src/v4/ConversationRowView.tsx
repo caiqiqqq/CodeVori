@@ -79,6 +79,7 @@ import { ACP_DISPLAY_TOOL_NAME } from "@/v4/acpConversationRows.js";
 import { Button } from "@/components/ui/button.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { WorkflowToolSummary } from "@/v4/WorkflowToolSummary.js";
+import { WorkflowRunDigest } from "@/components/workflow-timeline/WorkflowRunDigest.js";
 import {
   readWorkflowName,
   readWorkflowRetuneCall,
@@ -1904,6 +1905,27 @@ const AcpToolCallRowView = memo(function AcpToolCallRowView({
   context: ConversationRowRenderContext;
 }) {
   const { intl } = useZCodeIntl();
+  const workflow = context.workflowRunByToolCallId?.get(row.toolCallId);
+  if (workflow && row.display?.kind === "create_workflow") {
+    return (
+      <RowShell rowId={row.rowId} className="py-0">
+        <WorkflowRunDigest
+          testIdKey={row.toolCallId}
+          name={row.inputText}
+          runId={workflow.runId}
+          graph={row.display.causalityGraph}
+          summary={workflow}
+          {...(context.onOpenAcpWorkflowArtifact
+            ? { onOpenArtifact: (artifactId) => context.onOpenAcpWorkflowArtifact?.(workflow.runId, artifactId) }
+            : {})}
+          {...(context.onCancelBackgroundWork && workflow.status === "running"
+            ? { onCancel: () => context.onCancelBackgroundWork?.(workflow.runId) } : {})}
+          {...(context.onResumeWorkflowRun && workflow.resumable
+            ? { onResume: () => context.onResumeWorkflowRun?.(workflow.runId, row.inputText) } : {})}
+        />
+      </RowShell>
+    );
+  }
   const statusKey =
     row.status === "success"
       ? "completed"

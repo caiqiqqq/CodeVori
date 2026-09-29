@@ -98,6 +98,8 @@ export interface ConversationRowRenderContext {
    * 由宿主补齐。**不带版本号**——chip 的语义是「让我看这个产物」，落点恒为最新版。
    */
   onOpenWorkflowArtifact?: (request: OpenWorkflowArtifactSideTabRequest) => void;
+  /** ACP 产物经目标 Host 的 journal 验证并定位文件，再使用现有文件预览。 */
+  onOpenAcpWorkflowArtifact?: (runId: string, artifactId: string) => void;
   /**
    * 取消一项后台工作（`cancelBackgroundWork{workId}`），由宿主绑定 dispatchCommand + sessionId。
    *

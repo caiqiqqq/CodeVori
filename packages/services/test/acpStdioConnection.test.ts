@@ -6,6 +6,154 @@ import test from "node:test";
 import { AcpSessionLoadError, connectAcpAgent } from "../src/acp/acpStdioConnection.js";
 import type { AcpUpdate } from "../src/acp/acpServiceImpl.js";
 
+const fakePluginAgent = `
+const fs = require('node:fs');
+const readline = require('node:readline');
+const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');
+readline.createInterface({ input: process.stdin }).on('line', (line) => {
+  const message = JSON.parse(line);
+  if (message.method === 'initialize') {
+    send({ id: message.id, result: { protocolVersion: 1, agentCapabilities: {
+      loadSession: true, mcpCapabilities: process.env.ACP_PLUGIN_HTTP === '1' ? { http: true, sse: true } : {}
+    } } });
+  } else if (message.method === 'session/new' || message.method === 'session/load') {
+    fs.writeFileSync(process.env.ACP_PLUGIN_CAPTURE, JSON.stringify({ method: message.method, params: message.params }));
+    send({ id: message.id, result: message.method === 'session/new' ? { sessionId: 'plugin-native' } : {} });
+  }
+});
+`;
+
+test("stdio ACP delivers plugin MCP in new/load wire params and isolates unsupported plugin components", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "zcode-acp-plugin-wire-"));
+  const agent = join(directory, "agent.cjs");
+  const worker = join(directory, "worker");
+  try {
+    await writeFile(agent, fakePluginAgent);
+    await writeFile(worker, "#!/bin/sh\n", { mode: 0o755 });
+    for (const http of [false, true]) {
+      for (const nativeId of [undefined, "plugin-native"]) {
+        const capture = join(directory, `capture-${http}-${nativeId ?? "new"}.json`);
+        const makeServer = (name: string, config: Record<string, unknown>) => ({
+          pluginId: "demo@test",
+          name,
+          rootPath: directory,
+          config,
+        });
+        const port = await connectAcpAgent({
+          agent: "codex",
+          workspacePath: tmpdir(),
+          sessionId: nativeId,
+          launch: {
+            command: process.execPath,
+            args: [agent],
+            env: { ...process.env, ACP_PLUGIN_HTTP: http ? "1" : "0", ACP_PLUGIN_CAPTURE: capture },
+          },
+          mcpServers: [
+            {
+              source: "zcodeagentmcp",
+              scope: "user",
+              name: "ordinary",
+              enabled: true,
+              config: { command: process.execPath },
+            },
+          ],
+          pluginServers: [
+            makeServer("plugin:demo:stdio", {
+              command: "./worker",
+              args: ["--inspect"],
+              env: { TOKEN: "fixture-secret" },
+            }),
+            makeServer("plugin:demo:http", {
+              type: "http",
+              url: "https://example.test/mcp",
+              headers: { Authorization: "fixture-header" },
+            }),
+            makeServer("plugin:demo:sse", { type: "sse", url: "https://example.test/sse" }),
+            makeServer("plugin:demo:oauth", {
+              type: "http",
+              url: "https://example.test",
+              oauth: { type: "authorization_code" },
+            }),
+            makeServer("plugin:demo:official", {
+              type: "http",
+              url: "https://example.test",
+              auth: { type: "zcode_official", provider: "jwt_token" },
+            }),
+            makeServer("plugin:demo:cua", { command: "zcode-cua" }),
+            makeServer("plugin:demo:missing", { command: "./absent" }),
+            makeServer("plugin:demo:disabled", { command: process.execPath, enabled: false }),
+            makeServer("ordinary", { command: process.execPath, args: ["collision"] }),
+          ],
+          onUpdate: async () => {},
+          onPermission: async () => null,
+          onExit: () => {},
+        });
+        try {
+          const wire = JSON.parse(await readFile(capture, "utf8"));
+          assert.equal(wire.method, nativeId ? "session/load" : "session/new");
+          assert.equal(wire.params.cwd, tmpdir());
+          if (nativeId) assert.equal(wire.params.sessionId, nativeId);
+          assert.deepEqual(
+            wire.params.mcpServers.map((server: { name: string }) => server.name),
+            [
+              "ordinary",
+              "plugin:demo:stdio",
+              ...(http ? ["plugin:demo:http", "plugin:demo:sse"] : []),
+            ],
+          );
+          assert.equal(
+            wire.params.mcpServers[1].command,
+            worker,
+            "relative command resolves from plugin root",
+          );
+          assert.deepEqual(wire.params.mcpServers[1].env, [
+            { name: "TOKEN", value: "fixture-secret" },
+          ]);
+          assert.deepEqual(
+            [...(port.provisionedMcpNames ?? [])],
+            ["plugin:demo:stdio", ...(http ? ["plugin:demo:http", "plugin:demo:sse"] : [])],
+          );
+        } finally {
+          port.close();
+          await port.closed;
+        }
+      }
+    }
+    const capture = join(directory, "strict.json");
+    await assert.rejects(
+      connectAcpAgent({
+        agent: "codex",
+        workspacePath: directory,
+        launch: {
+          command: process.execPath,
+          args: [agent],
+          env: { ...process.env, ACP_PLUGIN_CAPTURE: capture },
+        },
+        mcpServers: [
+          {
+            source: "zcodeagentmcp",
+            scope: "user",
+            name: "ordinary",
+            enabled: true,
+            config: { type: "http", url: "https://example.test/mcp" },
+          },
+        ],
+        onUpdate: async () => {},
+        onPermission: async () => null,
+        onExit: () => {},
+      }),
+      /ordinary.*HTTP/,
+    );
+    await assert.rejects(
+      readFile(capture),
+      { code: "ENOENT" },
+      "ordinary MCP validation must happen before session creation",
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 const fakeAgent = `#!/usr/bin/env node
 const readline = require('node:readline');
 const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');
@@ -84,27 +232,50 @@ test("stdio ACP sends target MCP settings in both session/new and session/load",
   try {
     await writeFile(agentFile, fakeMcpAgent);
     await writeFile(worker, "#!/bin/sh\n", { mode: 0o755 });
-    const connect = (sessionId?: string) => connectAcpAgent({
-      agent: "codex",
-      workspacePath: directory,
-      sessionId,
-      launch: { command: process.execPath, args: [agentFile], env: { ...process.env, PATH: directory, ACP_MCP_CAPTURE: capture } },
-      mcpServers: [
-        { source: "zcodeagentmcp", scope: "user", name: "worker", config: { command: "worker", env: { KEY: "value" } }, enabled: true },
-        { source: "zcodeagentmcp", scope: "workspace", name: "http", config: { type: "http", url: "https://example.test/mcp" }, enabled: true },
-      ],
-      onUpdate: async () => {},
-      onPermission: async () => null,
-      onExit: () => {},
-    });
+    const connect = (sessionId?: string) =>
+      connectAcpAgent({
+        agent: "codex",
+        workspacePath: directory,
+        sessionId,
+        launch: {
+          command: process.execPath,
+          args: [agentFile],
+          env: { ...process.env, PATH: directory, ACP_MCP_CAPTURE: capture },
+        },
+        mcpServers: [
+          {
+            source: "zcodeagentmcp",
+            scope: "user",
+            name: "worker",
+            config: { command: "worker", env: { KEY: "value" } },
+            enabled: true,
+          },
+          {
+            source: "zcodeagentmcp",
+            scope: "workspace",
+            name: "http",
+            config: { type: "http", url: "https://example.test/mcp" },
+            enabled: true,
+          },
+        ],
+        onUpdate: async () => {},
+        onPermission: async () => null,
+        onExit: () => {},
+      });
     const first = await connect();
     first.close();
     await first.closed;
     const loaded = await connect("mcp-session");
     loaded.close();
     await loaded.closed;
-    const requests = (await readFile(capture, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
-    assert.deepEqual(requests.map((request) => request.method), ["session/new", "session/load"]);
+    const requests = (await readFile(capture, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      requests.map((request) => request.method),
+      ["session/new", "session/load"],
+    );
     for (const request of requests) {
       assert.deepEqual(request.params.mcpServers, [
         { name: "worker", command: worker, args: [], env: [{ name: "KEY", value: "value" }] },
@@ -130,19 +301,28 @@ test("stdio usage projection uses verified Agent identity, prompt report and ign
       const connection = await connectAcpAgent({
         agent,
         workspacePath: directory,
-        launch: { command: process.execPath, args: [executable], env: { ...process.env, FAKE_AGENT_NAME: agentName } },
-        onUpdate: async (update) => { updates.push(update); },
+        launch: {
+          command: process.execPath,
+          args: [executable],
+          env: { ...process.env, FAKE_AGENT_NAME: agentName },
+        },
+        onUpdate: async (update) => {
+          updates.push(update);
+        },
         onPermission: async () => null,
         onExit: () => {},
       });
       try {
         const report = await connection.prompt("hello");
         assert.deepEqual(updates, [], "context occupancy must not be counted as spend");
-        if (agent === "claude") assert.deepEqual(report, {
-          scope: "turn",
-          usage: { totalTokens: 20, inputTokens: 17, outputTokens: 3 },
-          models: [{ modelId: "claude-sonnet", totalTokens: 20, inputTokens: 17, outputTokens: 3 }],
-        });
+        if (agent === "claude")
+          assert.deepEqual(report, {
+            scope: "turn",
+            usage: { totalTokens: 20, inputTokens: 17, outputTokens: 3 },
+            models: [
+              { modelId: "claude-sonnet", totalTokens: 20, inputTokens: 17, outputTokens: 3 },
+            ],
+          });
         else assert.equal(report, null);
       } finally {
         connection.close();

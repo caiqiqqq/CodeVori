@@ -397,6 +397,7 @@ export function ChatPromptEditor({
           appSlashCommands={appSlashCommands}
           enableMentionPanel={enableMentionPanel}
           skillsOnlyMentions={acpMode}
+          acpSessionId={acpMode ? acpSessionId : null}
           enableSlashCommands={enableSlashCommands}
         />
         <div ref={toolbarRef} className="group/toolbar flex items-end gap-3">
@@ -409,6 +410,7 @@ export function ChatPromptEditor({
                   excludedSlashCommandNames={excludedSlashCommandNames}
                   attachmentAction={attachmentAction}
                   acpMode={acpMode}
+                  acpSessionId={acpSessionId}
                   acpGoal={acpGoal}
                   onSetAcpGoal={onSetAcpGoal}
                   disabled={disabled}

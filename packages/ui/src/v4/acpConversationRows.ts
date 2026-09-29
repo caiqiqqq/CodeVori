@@ -102,6 +102,10 @@ export function buildAcpConversationRows(
         toolName: ACP_DISPLAY_TOOL_NAME,
         status: mappedStatus,
         inputText: entry.title,
+        ...(entry.workflow
+          ? { display: { kind: "create_workflow" as const, ok: true, errorCount: 0,
+              diagnostics: [], ...(entry.workflow.graph ? { causalityGraph: entry.workflow.graph } : {}) } }
+          : {}),
         ...(entry.content ? { output: { text: entry.content } } : {}),
         ...(mappedStatus === "error"
           ? { error: { code: "ACP_TOOL_FAILED", message: entry.content || entry.title } }

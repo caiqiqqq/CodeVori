@@ -6637,11 +6637,8 @@ const enUS: Record<string, string> = {
   "scheduledPreview.toast.view": "View",
   "scheduledPreview.addSchedule": "Add schedule",
   "acp.modelGroup": "ACP Agents",
-  "acp.newSession": "New session",
   "acp.retry": "Retry",
-  "acp.sessions": "ACP sessions",
   "acp.stop": "Stop",
-  "acp.remove": "Remove session from ZCode",
   "acp.transcript": "ACP transcript",
   "acp.toolResultUnknown": "Result unconfirmed",
   "acp.you": "You",
@@ -6649,6 +6646,7 @@ const enUS: Record<string, string> = {
   "acp.prompt": "Send to ACP Agent",
   "acp.send": "Send",
   "acp.connecting": "Connecting to ACP Agent…",
+  "acp.loadingControls": "Loading Agent options…",
   "acp.loadingSessions": "Loading sessions…",
   "acp.dismiss": "Dismiss",
   "acp.qoderCredentialsMissing":
@@ -6657,8 +6655,7 @@ const enUS: Record<string, string> = {
   "acp.goal": "Session objective",
   "acp.goalSave": "Save objective",
   "acp.goalCancel": "Cancel",
-  "acp.workflowUnavailable": "The ZCode workflow runner is not connected to this ACP Agent",
-  "acp.pluginsUnavailable": "Plugins do not expose callable capabilities to this ACP Agent yet",
+  "acp.pluginsUnavailable": "No plugins are available to this ACP session",
 };
 
 export default enUS;

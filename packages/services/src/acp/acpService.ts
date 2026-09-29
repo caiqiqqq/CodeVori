@@ -2,6 +2,7 @@ import type { Event } from "@zcode/rpc";
 import {
   ServiceChannels,
   type AcpAgentAvailability,
+  type AcpPlugin,
   type AcpAgentInfo,
   type AcpAgentManagement,
   type AcpAgentOperationEvent,
@@ -22,10 +23,14 @@ import {
   type AcpWorkspace,
   type AcpAppUsageAgent,
   type AppUsageRequest,
+  type AcpWorkflowControl,
+  type AcpWorkflowArtifactQuery,
 } from "@zcode/shared";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IAcpService {
+  /** Current target Host's usable plugin references; no secrets or plugin runtime state escape. */
+  listPlugins(workspace: AcpWorkspace & { id?: string }): Promise<AcpPlugin[]>;
   listAgents(): Promise<AcpAgentInfo[]>;
   /** Runs the Host launch-readiness checks without executing adapter version commands. */
   listAvailableAgents(): Promise<AcpAgentAvailability[]>;
@@ -61,6 +66,9 @@ export interface IAcpService {
     input: AcpWorkspace & { id: string; configId: string; value: string | boolean },
   ): Promise<AcpSession>;
   stop(input: AcpWorkspace & { id: string }): Promise<void>;
+  cancelWorkflow(input: AcpWorkflowControl): Promise<void>;
+  resumeWorkflow(input: AcpWorkflowControl): Promise<void>;
+  getWorkflowArtifact(input: AcpWorkflowArtifactQuery): Promise<{ path: string }>;
   decide(input: AcpWorkspace & { id: string; requestId: string; optionId: string }): Promise<void>;
   /** Automatic pane cleanup may discard a draft but must never delete an admitted turn. */
   remove(input: AcpWorkspace & { id: string; provisionalOnly?: boolean }): Promise<void>;

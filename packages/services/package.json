@@ -18,6 +18,8 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.5.0",
+    "@zcode/dynamic-workflow": "workspace:*",
+    "@zcode/dynamic-workflow-runtime": "workspace:*",
     "@larksuiteoapi/node-sdk": "1.64.0",
     "@zcode/provider": "workspace:*",
     "@zcode/provider-node": "workspace:*",

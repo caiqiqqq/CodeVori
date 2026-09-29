@@ -31,8 +31,6 @@ export function useAcpConversation(
   );
   const error =
     errorState && (!errorState.agent || errorState.agent === agent) ? errorState.message : null;
-  const [busyCount, setBusyCount] = useState(0);
-  const busy = busyCount > 0;
   const [sendingIds, setSendingIds] = useState<Set<string>>(() => new Set());
   const [reloadKey, setReloadKey] = useState(0);
   const submitting = useRef(new Set<string>());
@@ -41,8 +39,10 @@ export function useAcpConversation(
   );
   const attempted = useRef(new Set<AcpAgent>());
   const refreshed = useRef(new Set<string>());
+  const refreshRequests = useRef(new Map<string, object>());
   const readyIds = useRef(new Set<string>());
   const ownedDraftIds = useRef(new Set<string>());
+  const retainedDraftIds = useRef(new Map<AcpAgent, string>());
   const createRequestIds = useRef(new Map<string, string>());
   const previousAgentRef = useRef(agent);
   const agentRef = useRef(agent);
@@ -52,6 +52,26 @@ export function useAcpConversation(
     workspacePath,
     remoteSessionId,
   ]);
+  const [draftEpoch, setDraftEpoch] = useState(0);
+  const [busyCounts, setBusyCounts] = useState<Record<string, number>>({});
+  const busy = Boolean(agent && busyCounts[`${targetKey}:${draftEpoch}:${agent}`]);
+  const changeBusy = useCallback(
+    (activeAgent: AcpAgent | null, delta: number) => {
+      if (!activeAgent) return;
+      const key = `${targetKey}:${draftEpoch}:${activeAgent}`;
+      // 修复原因：旧智能体、工作区或草稿的迟到连接不能阻塞当前目标的配置和输入。
+      setBusyCounts((previous) => {
+        const count = Math.max(0, (previous[key] ?? 0) + delta);
+        if (count === 0) {
+          const next = { ...previous };
+          delete next[key];
+          return next;
+        }
+        return { ...previous, [key]: count };
+      });
+    },
+    [draftEpoch, targetKey],
+  );
   const targetKeyRef = useRef(targetKey);
   targetKeyRef.current = targetKey;
   const workspaceKey = JSON.stringify([workspaceIdentity?.trim() || workspacePath, workspacePath]);
@@ -71,9 +91,6 @@ export function useAcpConversation(
   sessionsRef.current = sessions;
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
-  const agentSessions = agent
-    ? scopedSessions.filter((session) => session.agent === agent && !session.archived)
-    : [];
 
   useEffect(() => {
     if (agent) setActivated(true);
@@ -93,11 +110,15 @@ export function useAcpConversation(
     }
     attempted.current.clear();
     refreshed.current.clear();
+    refreshRequests.current.clear();
     readyIds.current.clear();
     const subscription = service.onDynamicSessionChanged(target)((change) => {
       if (!live || targetKeyRef.current !== targetKey) return;
       if (change.kind === "removed") {
         ownedDraftIds.current.delete(change.id);
+        for (const [draftAgent, draftId] of retainedDraftIds.current) {
+          if (draftId === change.id) retainedDraftIds.current.delete(draftAgent);
+        }
         readyIds.current.delete(change.id);
         removed.add(change.id);
         updated.delete(change.id);
@@ -112,7 +133,13 @@ export function useAcpConversation(
       }
       // 修复原因：预连接草稿是当前面板的私有选择，其他窗口不能通过 Host 广播看到它。
       if (change.session.provisional && !ownedDraftIds.current.has(change.session.id)) return;
-      if (!change.session.provisional) ownedDraftIds.current.delete(change.session.id);
+      if (!change.session.provisional) {
+        ownedDraftIds.current.delete(change.session.id);
+        // 修复原因：首条消息提交后会话已持久化，不再占用临时连接的两个保留名额。
+        for (const [draftAgent, draftId] of retainedDraftIds.current) {
+          if (draftId === change.session.id) retainedDraftIds.current.delete(draftAgent);
+        }
+      }
       if (change.session.supersededBy) {
         // 修复原因：Host 接替旧空会话后旧快照仍保留在磁盘，实时事件不能把它重新列回页面。
         removed.add(change.session.id);
@@ -171,7 +198,9 @@ export function useAcpConversation(
         void service.remove({ ...target, id, provisionalOnly: true }).catch(() => {});
       }
       ownedDraftIds.current.clear();
+      retainedDraftIds.current.clear();
       createRequestIds.current.clear();
+      refreshRequests.current.clear();
     };
   }, [service, target]);
 
@@ -181,7 +210,7 @@ export function useAcpConversation(
       nextAgent: AcpAgent | null,
       isCurrent: () => boolean = () => true,
     ) => {
-      setBusyCount((count) => count + 1);
+      changeBusy(nextAgent, 1);
       setErrorState(null);
       try {
         await action();
@@ -189,14 +218,45 @@ export function useAcpConversation(
         if (targetKeyRef.current === targetKey && isCurrent())
           setErrorState({ agent: nextAgent, message: messageOf(cause) });
       } finally {
-        setBusyCount((count) => count - 1);
+        changeBusy(nextAgent, -1);
       }
     },
-    [targetKey],
+    [changeBusy, targetKey],
+  );
+
+  const releaseDraft = useCallback(
+    (id: string) => {
+      if (!ownedDraftIds.current.delete(id)) return;
+      for (const [draftAgent, draftId] of retainedDraftIds.current) {
+        if (draftId === id) {
+          retainedDraftIds.current.delete(draftAgent);
+          attempted.current.delete(draftAgent);
+          createRequestIds.current.delete(`${targetKey}:${draftAgent}`);
+        }
+      }
+      readyIds.current.delete(id);
+      refreshed.current.delete(id);
+      refreshRequests.current.delete(id);
+      setSessions((previous) => previous.filter((item) => item.id !== id));
+      if (Object.values(selectedIdsRef.current).includes(id)) {
+        selectedIdsRef.current = Object.fromEntries(
+          Object.entries(selectedIdsRef.current).filter(([, selectedId]) => selectedId !== id),
+        ) as Partial<Record<AcpAgent, string>>;
+        setSelectedIds(selectedIdsRef.current);
+      }
+      void service.remove({ ...target, id, provisionalOnly: true }).catch(() => {});
+    },
+    [service, target, targetKey],
   );
 
   const connectNew = useCallback(
     (nextAgent: AcpAgent, startFresh = false) => {
+      attempted.current.add(nextAgent);
+      // 修复原因：每次切走都关闭进程使切回重复握手；同一草稿最多保留两个已连接的临时会话。
+      if (!retainedDraftIds.current.has(nextAgent) && retainedDraftIds.current.size >= 2) {
+        const oldest = retainedDraftIds.current.values().next().value;
+        if (oldest) releaseDraft(oldest);
+      }
       const key = `${targetKey}:${nextAgent}`;
       if (startFresh) createRequestIds.current.delete(key);
       const requestId = createRequestIds.current.get(key) ?? crypto.randomUUID();
@@ -219,7 +279,11 @@ export function useAcpConversation(
               await service.remove({ ...target, id: session.id, provisionalOnly: true });
             return;
           }
-          if (session.provisional) ownedDraftIds.current.add(session.id);
+          if (session.provisional) {
+            ownedDraftIds.current.add(session.id);
+            retainedDraftIds.current.delete(nextAgent);
+            retainedDraftIds.current.set(nextAgent, session.id);
+          }
           readyIds.current.add(session.id);
           setSessions((previous) => [
             session,
@@ -231,15 +295,17 @@ export function useAcpConversation(
         () => agentRef.current === nextAgent && createRequestIds.current.get(key) === requestId,
       );
     },
-    [run, service, target, targetKey],
+    [releaseDraft, run, service, target, targetKey],
   );
 
   const resetSelection = useCallback(() => {
     // 修复原因：同一 null-task 草稿重复点击“新建任务”不会改变 sessionId；必须按新草稿
     // 的事件边界清掉选择和连接幂等键，迟到的 create 才不能恢复上一轮会话。
     createRequestIds.current.clear();
+    setDraftEpoch((epoch) => epoch + 1);
     attempted.current.clear();
     refreshed.current.clear();
+    refreshRequests.current.clear();
     readyIds.current.clear();
     retries.current.clear();
     selectedIdsRef.current = {};
@@ -248,6 +314,7 @@ export function useAcpConversation(
     setErrorState(null);
     const drafts = new Set(ownedDraftIds.current);
     ownedDraftIds.current.clear();
+    retainedDraftIds.current.clear();
     if (drafts.size) {
       setSessions((previous) => previous.filter((item) => !drafts.has(item.id)));
       for (const id of drafts) {
@@ -261,14 +328,10 @@ export function useAcpConversation(
       attempted.current.add(nextAgent);
       selectedRef.current = null;
       setSelectedIds((previous) => ({ ...previous, [nextAgent]: undefined }));
-      if (selected?.provisional && ownedDraftIds.current.delete(selected.id)) {
-        void service.remove({ ...target, id: selected.id, provisionalOnly: true }).catch(() => {});
-        readyIds.current.delete(selected.id);
-        setSessions((previous) => previous.filter((item) => item.id !== selected.id));
-      }
+      if (selected?.provisional) releaseDraft(selected.id);
       connectNew(nextAgent, true);
     },
-    [connectNew, selected, service, target],
+    [connectNew, releaseDraft, selected],
   );
 
   useEffect(() => {
@@ -281,14 +344,17 @@ export function useAcpConversation(
     (session: AcpSession) => {
       if (refreshed.current.has(session.id)) return;
       refreshed.current.add(session.id);
-      setBusyCount((count) => count + 1);
+      const request = {};
+      refreshRequests.current.set(session.id, request);
+      changeBusy(session.agent, 1);
       void service
         .refresh({ ...target, id: session.id })
         .then((next) => {
           if (
             targetKeyRef.current !== targetKey ||
             agentRef.current !== session.agent ||
-            selectedRef.current?.id !== session.id
+            selectedRef.current?.id !== session.id ||
+            refreshRequests.current.get(session.id) !== request
           )
             return;
           readyIds.current.add(next.id);
@@ -307,12 +373,16 @@ export function useAcpConversation(
           setErrorState(null);
         })
         .catch((cause) => {
-          if (targetKeyRef.current === targetKey && selectedRef.current?.id === session.id)
+          if (
+            targetKeyRef.current === targetKey &&
+            selectedRef.current?.id === session.id &&
+            refreshRequests.current.get(session.id) === request
+          )
             setErrorState({ agent: session.agent, message: messageOf(cause) });
         })
-        .finally(() => setBusyCount((count) => count - 1));
+        .finally(() => changeBusy(session.agent, -1));
     },
-    [service, target, targetKey],
+    [changeBusy, service, target, targetKey],
   );
 
   useEffect(() => {
@@ -324,25 +394,41 @@ export function useAcpConversation(
   useEffect(() => {
     const previous = previousAgentRef.current;
     previousAgentRef.current = agent;
-    if (!previous || previous === agent) return;
-    attempted.current.delete(previous);
-    createRequestIds.current.delete(`${targetKey}:${previous}`);
-    const priorSession = selectAcpSession(
-      sessionsRef.current,
-      previous,
-      selectedIdsRef.current[previous] ?? null,
-    );
-    if (!priorSession) return;
-    readyIds.current.delete(priorSession.id);
-    refreshed.current.delete(priorSession.id);
-    if (priorSession.provisional && ownedDraftIds.current.delete(priorSession.id)) {
-      void service
-        .remove({ ...target, id: priorSession.id, provisionalOnly: true })
-        .catch(() => {});
-      setSessions((items) => items.filter((item) => item.id !== priorSession.id));
-      setSelectedIds((ids) => ({ ...ids, [previous]: undefined }));
+    if (previous === agent) return;
+    if (previous) {
+      const priorSession = selectAcpSession(
+        sessionsRef.current,
+        previous,
+        selectedIdsRef.current[previous] ?? null,
+      );
+      if (priorSession) {
+        readyIds.current.delete(priorSession.id);
+        refreshed.current.delete(priorSession.id);
+        refreshRequests.current.delete(priorSession.id);
+      } else {
+        // 修复原因：尚未完成的 create 离开当前目标后必须失效，迟到回包只能清理。
+        attempted.current.delete(previous);
+        createRequestIds.current.delete(`${targetKey}:${previous}`);
+      }
     }
-  }, [agent, service, target, targetKey]);
+    if (agent) {
+      const retainedId = retainedDraftIds.current.get(agent);
+      const current = selectAcpSession(
+        sessionsRef.current,
+        agent,
+        selectedIdsRef.current[agent] ?? null,
+      );
+      if (retainedId && current?.id === retainedId) {
+        // 修复原因：仅上次就绪不能证明进程还活着；复用前由 Host 核验连接与配置。
+        retainedDraftIds.current.delete(agent);
+        retainedDraftIds.current.set(agent, retainedId);
+        readyIds.current.delete(retainedId);
+        refreshed.current.delete(retainedId);
+        refreshRequests.current.delete(retainedId);
+        refreshSession(current);
+      }
+    }
+  }, [agent, refreshSession, targetKey]);
 
   const send = useCallback(
     async (input: Omit<AcpPromptInput, "commandId">): Promise<string> => {
@@ -429,9 +515,15 @@ export function useAcpConversation(
   );
   const setConfigOption = useCallback(
     async (configId: string, value: string | boolean): Promise<void> => {
-      if (!loaded || !selected || selected.status === "running" || busy)
+      if (
+        !loaded ||
+        !selected ||
+        !readyIds.current.has(selected.id) ||
+        selected.status === "running" ||
+        busy
+      )
         throw new Error("ACP session is not ready");
-      setBusyCount((count) => count + 1);
+      changeBusy(selected.agent, 1);
       setErrorState(null);
       try {
         await service.setConfigOption({ ...target, id: selected.id, configId, value });
@@ -441,10 +533,10 @@ export function useAcpConversation(
           setErrorState({ agent: selected.agent, message: messageOf(cause) });
         throw cause;
       } finally {
-        setBusyCount((count) => count - 1);
+        changeBusy(selected.agent, -1);
       }
     },
-    [busy, loaded, selected, service, target, targetKey],
+    [busy, changeBusy, loaded, selected, service, target, targetKey],
   );
   const decide = useCallback(
     (requestId: string, optionId: string) => {
@@ -471,26 +563,20 @@ export function useAcpConversation(
         // 修复原因：用户显式点击历史后，尚在连接的空会话不能迟到覆盖这个 id。
         createRequestIds.current.delete(`${targetKey}:${agent}`);
         const previous = selectedRef.current;
-        if (
-          previous?.provisional &&
-          previous.id !== session.id &&
-          ownedDraftIds.current.delete(previous.id)
-        ) {
-          void service
-            .remove({ ...target, id: previous.id, provisionalOnly: true })
-            .catch(() => {});
-          setSessions((items) => items.filter((item) => item.id !== previous.id));
-        }
+        if (previous?.provisional && previous.id !== session.id) releaseDraft(previous.id);
+        const retainedId = retainedDraftIds.current.get(agent);
+        if (retainedId && retainedId !== session.id) releaseDraft(retainedId);
         selectedIdsRef.current = { ...selectedIdsRef.current, [agent]: session.id };
         setSelectedIds((previous) => ({ ...previous, [agent]: session.id }));
         setErrorState(null);
         if (!session.provisional) {
           readyIds.current.delete(session.id);
           refreshed.current.delete(session.id);
+          refreshRequests.current.delete(session.id);
         }
       }
     },
-    [agent, service, target, targetKey],
+    [agent, releaseDraft, targetKey],
   );
 
   const selectById = useCallback(
@@ -498,24 +584,19 @@ export function useAcpConversation(
       // 修复原因：侧栏点击可以早于 list 或 create 的结果；先固定精确 id 并废弃旧连接。
       createRequestIds.current.delete(`${targetKey}:${nextAgent}`);
       const previous = selectedRef.current;
-      if (
-        previous?.agent === nextAgent &&
-        previous.id !== id &&
-        previous.provisional &&
-        ownedDraftIds.current.delete(previous.id)
-      ) {
-        void service.remove({ ...target, id: previous.id, provisionalOnly: true }).catch(() => {});
-        readyIds.current.delete(previous.id);
-        setSessions((items) => items.filter((item) => item.id !== previous.id));
-      }
+      if (previous?.agent === nextAgent && previous.id !== id && previous.provisional)
+        releaseDraft(previous.id);
+      const retainedId = retainedDraftIds.current.get(nextAgent);
+      if (retainedId && retainedId !== id) releaseDraft(retainedId);
       selectedRef.current = null;
       selectedIdsRef.current = { ...selectedIdsRef.current, [nextAgent]: id };
       setSelectedIds((current) => ({ ...current, [nextAgent]: id }));
       readyIds.current.delete(id);
       refreshed.current.delete(id);
+      refreshRequests.current.delete(id);
       setErrorState(null);
     },
-    [service, target, targetKey],
+    [releaseDraft, targetKey],
   );
 
   const retryConnection = useCallback(() => {
@@ -529,6 +610,7 @@ export function useAcpConversation(
       setReloadKey((key) => key + 1);
     } else if (!readyIds.current.has(selected.id)) {
       refreshed.current.delete(selected.id);
+      refreshRequests.current.delete(selected.id);
       refreshSession(selected);
     } else {
       setErrorState(null);
@@ -537,9 +619,10 @@ export function useAcpConversation(
 
   return {
     selected,
-    agentSessions,
     loaded,
-    ready: Boolean(selected && readyIds.current.has(selected.id)),
+    ready: Boolean(
+      selected && previousAgentRef.current === agent && readyIds.current.has(selected.id),
+    ),
     error,
     busy,
     sending: Boolean(agent && sendingIds.has(`${targetKey}:${agent}`)),

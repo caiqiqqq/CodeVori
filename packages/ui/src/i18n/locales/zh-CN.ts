@@ -6331,11 +6331,8 @@ const zhCN: Record<string, string> = {
   "scheduledPreview.toast.view": "查看",
   "scheduledPreview.addSchedule": "添加计划",
   "acp.modelGroup": "ACP 智能体",
-  "acp.newSession": "新建会话",
   "acp.retry": "重试",
-  "acp.sessions": "ACP 会话",
   "acp.stop": "停止",
-  "acp.remove": "从 ZCode 移除会话",
   "acp.transcript": "ACP 对话记录",
   "acp.toolResultUnknown": "结果未确认",
   "acp.you": "你",
@@ -6343,6 +6340,7 @@ const zhCN: Record<string, string> = {
   "acp.prompt": "发送给 ACP 智能体",
   "acp.send": "发送",
   "acp.connecting": "正在连接 ACP 智能体…",
+  "acp.loadingControls": "正在读取智能体选项…",
   "acp.loadingSessions": "正在读取会话…",
   "acp.dismiss": "关闭",
   "acp.qoderCredentialsMissing":
@@ -6351,8 +6349,7 @@ const zhCN: Record<string, string> = {
   "acp.goal": "会话目标",
   "acp.goalSave": "保存目标",
   "acp.goalCancel": "取消",
-  "acp.workflowUnavailable": "此 ACP 智能体尚未接入 ZCode 工作流执行器",
-  "acp.pluginsUnavailable": "插件尚未向此 ACP 智能体提供可调用能力",
+  "acp.pluginsUnavailable": "当前没有可在此 ACP 会话使用的插件",
 };
 
 export default zhCN;

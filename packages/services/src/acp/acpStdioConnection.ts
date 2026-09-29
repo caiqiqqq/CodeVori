@@ -17,7 +17,7 @@ import {
 import type { AcpConnectionFactory, AcpConnectionPort, AcpUpdate } from "./acpServiceImpl.js";
 import { projectAcpConfigOptions, projectAcpModeState } from "./acpConfigOptions.js";
 import { projectAcpPromptUsage } from "./acpUsageResponse.js";
-import { projectAcpMcpServers } from "./acpMcpServers.js";
+import { projectAcpMcpServers, projectAcpPluginMcpServers } from "./acpMcpServers.js";
 
 const START_TIMEOUT_MS = 20_000;
 
@@ -84,6 +84,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
   let sessionId = input.sessionId;
   let agentInfo: Implementation | null | undefined;
   let promptCapabilities: AcpConnectionPort["promptCapabilities"];
+  const provisionedMcpNames = new Set<string>();
   let configOptions: AcpConnectionPort["configOptions"] = [];
   let modeState: AcpConnectionPort["modeState"] = null;
   let receivingLiveUpdates = false;
@@ -163,6 +164,31 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
           input.workspacePath,
           launch.env,
         );
+        // 修复原因：工作流工具是目标 Host 的会话能力，不属于用户可编辑的普通 MCP 配置。
+        // 独立接线避免普通配置的禁用与同名条目遮蔽执行器。
+        const workflowServers = await projectAcpMcpServers(
+          input.workflowServers ?? [],
+          initialized.agentCapabilities?.mcpCapabilities,
+          input.workspacePath,
+          launch.env,
+        );
+        for (const workflow of workflowServers) {
+          if (mcpServers.some((server) => server.name === workflow.name))
+            throw new Error(`MCP 名称 ${workflow.name} 已由 ZCode 工作流占用，请重命名用户 MCP 配置`);
+        }
+        mcpServers.push(...workflowServers);
+        for (const server of workflowServers) provisionedMcpNames.add(server.name);
+        // 修复原因：插件配置由 CLI loader 展开，普通设置仍需严格失败；单个插件的
+        // OAuth/CUA/不支持的 transport 不应阻断其它 ACP 插件或普通 MCP 连接。
+        const pluginServers = await projectAcpPluginMcpServers(
+          input.pluginServers ?? [],
+          initialized.agentCapabilities?.mcpCapabilities,
+          input.workspacePath,
+          launch.env,
+          new Set(mcpServers.map((server) => server.name)),
+        );
+        mcpServers.push(...pluginServers);
+        for (const server of pluginServers) provisionedMcpNames.add(server.name);
         if (sessionId) {
           if (!initialized.agentCapabilities?.loadSession) {
             // 修复原因：升级后的适配器可能不再声明 loadSession；空会话仍可安全接替，
@@ -198,6 +224,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       sessionId: activeSessionId,
       closed: closedPromise,
       promptCapabilities,
+      provisionedMcpNames,
       configOptions,
       modeState,
       async setConfigOption(configId, value) {

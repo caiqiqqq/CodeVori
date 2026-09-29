@@ -5,8 +5,11 @@ import {
   isZCodeCuaMcpCommand,
   isZCodeCuaMcpPackageArg,
   type NativeMcpServerRecord,
+  type McpServerConfig,
+  type ZCodePluginsAcpCapabilitiesResult,
 } from "@zcode/shared";
 import { findCommand } from "./acpAgentManager.js";
+import { isPortablePluginMcp } from "./acpPluginContext.js";
 
 /** 连接启动时从目标 Host 的设置读一份快照；禁用项不遮蔽同名的较低优先级配置。 */
 function effectiveRecords(records: readonly NativeMcpServerRecord[]): NativeMcpServerRecord[] {
@@ -26,6 +29,7 @@ export async function projectAcpMcpServers(
   capabilities: McpCapabilities | null | undefined,
   workspacePath: string,
   launchEnv: NodeJS.ProcessEnv,
+  commandBasePath = workspacePath,
 ): Promise<McpServer[]> {
   const servers: McpServer[] = [];
   for (const record of effectiveRecords(records)) {
@@ -52,7 +56,7 @@ export async function projectAcpMcpServers(
       }
       const command = converted.command;
       const target =
-        !isAbsolute(command) && /[\\/]/.test(command) ? resolve(workspacePath, command) : command;
+        !isAbsolute(command) && /[\\/]/.test(command) ? resolve(commandBasePath, command) : command;
       const env = { ...launchEnv, ...config.env };
       // 子进程以工作区为 cwd；相对 PATH 必须按同一工作区解析，不能用 Host 的 cwd。
       env.PATH = env.PATH?.split(delimiter)
@@ -79,4 +83,45 @@ export async function projectAcpMcpServers(
     }
   }
   return servers;
+}
+
+/** 插件按单项投影；不兼容项不改变普通 MCP 的严格失败语义。 */
+export async function projectAcpPluginMcpServers(
+  records: ZCodePluginsAcpCapabilitiesResult["servers"],
+  capabilities: McpCapabilities | null | undefined,
+  workspacePath: string,
+  launchEnv: NodeJS.ProcessEnv,
+  reservedNames: ReadonlySet<string> = new Set(),
+): Promise<McpServer[]> {
+  const seen = new Set(reservedNames);
+  const candidates = records.filter((server) => {
+    if (!isPortablePluginMcp(server.config) || seen.has(server.name)) return false;
+    seen.add(server.name);
+    return true;
+  });
+  const projected = await Promise.all(
+    candidates.map(async (server) => {
+      try {
+        return await projectAcpMcpServers(
+          [
+            {
+              source: "zcodeagentmcp",
+              scope: "user",
+              name: server.name,
+              config: server.config as McpServerConfig,
+              enabled: true,
+            },
+          ],
+          capabilities,
+          workspacePath,
+          launchEnv,
+          server.rootPath,
+        );
+      } catch {
+        // 修复原因：插件 OAuth/CUA/缺失命令不能阻断其它能力；不记录含凭据的配置。
+        return [];
+      }
+    }),
+  );
+  return projected.flat();
 }

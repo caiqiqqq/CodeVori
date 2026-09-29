@@ -1335,8 +1335,9 @@ interface LexicalChatInputProps {
   appSlashCommands?: readonly AppSlashCommand[];
   /** mention（@/#）面板开关。v4 数据面未就绪时显式关闭，入口保留。 */
   enableMentionPanel?: boolean;
-  /** ACP 仅提供已启用的 `$` 技能候选，其他 mention 保持关闭。 */
+  /** ACP 提供已启用的 `$` 技能和 `@` 插件候选，关闭原生会话和白板候选。 */
   skillsOnlyMentions?: boolean;
+  acpSessionId?: string | null;
   enableSlashCommands?: boolean;
 }
 
@@ -1369,6 +1370,7 @@ export function LexicalChatInput({
   appSlashCommands,
   enableMentionPanel = true,
   skillsOnlyMentions = false,
+  acpSessionId,
   enableSlashCommands = true,
 }: LexicalChatInputProps) {
   const inputMountedAtRef = useRef(Date.now());
@@ -1525,6 +1527,7 @@ export function LexicalChatInput({
             container={triggerPanelContainer}
             disabled={disabled}
             skillsOnly={skillsOnlyMentions}
+            acpSessionId={acpSessionId}
             onWhiteboardMentionSelected={onWhiteboardMentionSelected}
           />
         ) : null}

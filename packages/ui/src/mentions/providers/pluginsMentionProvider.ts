@@ -11,6 +11,7 @@ import type { MentionCategoryResult, MentionItem } from "@/mentions/mentionTypes
 import { filterMentionItemsWithOptions } from "@/mentions/mentionSearch.js";
 import { buildPluginMentionMarkdown } from "@/mentions/mentionMarkdown.js";
 import { usePluginReferenceCatalog } from "@/hooks/usePluginReferenceCatalog.js";
+import { useAcpPlugins } from "@/hooks/useAcpPlugins.js";
 import { usePluginStoreOrder } from "@/hooks/usePluginStoreOrder.js";
 import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -108,24 +109,47 @@ export function usePluginsMentionProvider(
   enabled: boolean,
   emptyText: string,
   title: string,
+  acpMode = false,
+  acpSessionId?: string | null,
 ): MentionCategoryResult {
   const { intl, locale } = useZCodeIntl();
-  const { order } = usePluginStoreOrder(enabled);
+  const { order } = usePluginStoreOrder(enabled && !acpMode);
   const isOfficeMode = useIsOfficeMode();
   const modeOrder = isOfficeMode ? order?.work : order?.code;
-  const catalog = usePluginReferenceCatalog(workspacePath, workspaceIdentity, sessionId, enabled);
+  const catalog = usePluginReferenceCatalog(
+    workspacePath,
+    workspaceIdentity,
+    sessionId,
+    enabled && !acpMode,
+  );
+  const acpCatalog = useAcpPlugins(
+    workspacePath,
+    workspaceIdentity,
+    acpSessionId ?? null,
+    enabled && acpMode,
+  );
 
   const allItems = useMemo(
     () =>
-      mapPluginCatalogToMentionItemsForTest(
-        catalog.entries,
-        {
-          conflictReason: intl.formatMessage({ id: "chat.mention.plugins.conflict" }),
-        },
-        locale,
-        modeOrder,
-      ),
-    [catalog.entries, intl, locale, modeOrder],
+      acpMode
+        ? acpCatalog.plugins.map((plugin) => ({
+            id: `plugin:${plugin.pluginId}`,
+            category: "plugins" as const,
+            label: plugin.name,
+            displayLabel: plugin.name,
+            description: plugin.description ?? "",
+            value: plugin.pluginId,
+            markdown: buildPluginMentionMarkdown(plugin.name, plugin.pluginId),
+          }))
+        : mapPluginCatalogToMentionItemsForTest(
+            catalog.entries,
+            {
+              conflictReason: intl.formatMessage({ id: "chat.mention.plugins.conflict" }),
+            },
+            locale,
+            modeOrder,
+          ),
+    [acpCatalog.plugins, acpMode, catalog.entries, intl, locale, modeOrder],
   );
 
   const items = useMemo(
@@ -138,8 +162,14 @@ export function usePluginsMentionProvider(
 
   return {
     items: enabled ? items : [],
-    loading: catalog.loading,
-    error: catalog.error ? new Error(catalog.error) : null,
+    loading: acpMode ? acpCatalog.loading : catalog.loading,
+    error: acpMode
+      ? acpCatalog.error
+        ? new Error(acpCatalog.error)
+        : null
+      : catalog.error
+        ? new Error(catalog.error)
+        : null,
     emptyText,
     title,
   };

@@ -345,7 +345,7 @@ import { createLegacyTeamOrganizationResolver } from "./model-provider/legacyTea
 import { createObservableSettingService } from "./setting/observableSettingService.js";
 import { createCredentialService } from "./credential/credentialService.js";
 import { createBroadcastService } from "./broadcast/broadcastService.js";
-import { createZCodeAgentService } from "./zcode-agent/zcodeAgentService.js";
+import { createZCodeAgentService, getHostAcpPluginCapabilities } from "./zcode-agent/zcodeAgentService.js";
 import type { ZCodeAgentCommandResolver } from "./zcode-agent/zcodeAgentProcessManager.js";
 import { buildAgentTelemetrySpawnEnv } from "./zcode-agent/agentTelemetryEnv.js";
 import { resolveZCodeAgentPresentationSurface } from "./zcode-agent/zcodeAgentPresentationSurface.js";
@@ -2306,7 +2306,13 @@ export function createLocalServices(options: {
     taskIndexSyncer: zcodeTaskIndexSyncer,
     cuaProductMcpServerResolver,
   });
-  const acpService = createAcpService({ mcpSyncService, skillsService });
+  const acpService = createAcpService({
+    mcpSyncService,
+    skillsService,
+    pluginSource: {
+      getAcpPluginCapabilities: (params) => getHostAcpPluginCapabilities(zcodeAgentService, params),
+    },
+  });
   const gitCommitMessageGenerator = new GitCommitMessageGenerator({
     currentModelProvider: {
       async readCurrentModel() {

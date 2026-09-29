@@ -3,6 +3,7 @@ import {
   BrainIcon,
   ChevronDownIcon,
   CpuIcon,
+  LoaderCircleIcon,
   ShieldCheckIcon,
   UsersIcon,
   ZapIcon,
@@ -35,6 +36,7 @@ interface Props {
   sessionId?: string | null;
   options: AcpConfigOption[];
   modes: AcpModeState | null;
+  loading?: boolean;
   disabled: boolean;
   onChange?: (id: string, value: string | boolean) => Promise<void>;
 }
@@ -62,6 +64,7 @@ function AcpComposerConfigControlsImpl({
   sessionId,
   options,
   modes,
+  loading = false,
   disabled,
   onChange,
 }: Props) {
@@ -90,6 +93,23 @@ function AcpComposerConfigControlsImpl({
   };
   return (
     <div className="flex min-w-0 items-center gap-1" data-testid="acp-composer-config-controls">
+      {loading ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled
+          data-testid="acp-config-loading"
+          data-composer-collapse-priority="1"
+          aria-label={intl.formatMessage({ id: "acp.loadingControls" })}
+          className="h-7 gap-1 rounded-lg px-2 text-ui-base"
+        >
+          <LoaderCircleIcon className="size-4 animate-spin" aria-hidden="true" />
+          <span className="hidden sm:inline">
+            {intl.formatMessage({ id: "acp.loadingControls" })}
+          </span>
+        </Button>
+      ) : null}
       {controls.map((option) => {
         if (option.type === "select" && option.options.length === 0) return null;
         const choices =

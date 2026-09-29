@@ -121,13 +121,10 @@ import { shouldIgnoreEscapeForStopGeneration } from "@/v4/composer/escapeStop.js
 import { ConversationDraftEmptyState } from "@/v4/ConversationDraftEmptyState.js";
 import { ConversationDraftSuggestedPromptsContainer } from "@/v4/ConversationDraftSuggestedPromptsContainer.js";
 import { ConversationHeader, type PaneWorkspaceBadge } from "@/v4/ConversationHeader.js";
-import {
-  AcpConversationControls,
-  AcpConversationStatus,
-  AcpHomeStatus,
-} from "@/v4/AcpConversationContent.js";
+import { AcpConversationStatus, AcpHomeStatus } from "@/v4/AcpConversationContent.js";
 import { acpEntryRowId, buildAcpConversationRows } from "@/v4/acpConversationRows.js";
 import { useAcpConversation } from "@/v4/useAcpConversation.js";
+import { useAcpComposerConfigPreview } from "@/v4/composer/useAcpComposerConfigPreview.js";
 import type {
   AcpConversationOpenRequest,
   AcpConversationProjection,
@@ -591,6 +588,14 @@ export function SessionPane({
     },
     acpAgent,
   );
+  const acpConfigPreview = useAcpComposerConfigPreview({
+    agent: acpAgent,
+    workspacePath,
+    workspaceIdentity,
+    session: acpConversation.selected,
+    ready: acpConversation.ready,
+    error: acpConversation.error,
+  });
   useEffect(() => {
     acpConversation.resetSelection();
     setAcpAgent(null);
@@ -2390,6 +2395,35 @@ export function SessionPane({
       onOpenBrowserUrl,
       onOpenCodeViewer,
       onOpenFileLink,
+      workflowRunByToolCallId: buildWorkflowRunByToolCallId(acpConversation.selected?.workflowRuns?.runs),
+      onOpenAcpWorkflowArtifact: acpConversation.selected && onOpenFileLink
+        ? (runId, artifactId) => {
+            void acpService.getWorkflowArtifact({
+              workspacePath, ...(workspaceIdentity ? { workspaceIdentity } : {}),
+              ...(remoteSessionId ? { remoteSessionId } : {}),
+              id: acpConversation.selected!.id, runId, artifactId,
+            }).then(({ path }) => onOpenFileLink({
+              path, label: artifactId, workspacePath,
+              ...(workspaceIdentity ? { workspaceIdentity } : {}),
+              ...(remoteSessionId ? { workspaceRemoteSessionId: remoteSessionId } : {}),
+            })).catch((error: unknown) => {
+              logger.warn("[acp-workflow] 无法打开产物", { error });
+              toast("无法打开工作流产物");
+            });
+          }
+        : undefined,
+      onCancelBackgroundWork: acpConversation.selected
+        ? (runId) => { void acpService.cancelWorkflow({
+            workspacePath, ...(workspaceIdentity ? { workspaceIdentity } : {}),
+            ...(remoteSessionId ? { remoteSessionId } : {}), id: acpConversation.selected!.id, runId,
+          }); }
+        : undefined,
+      onResumeWorkflowRun: acpConversation.selected
+        ? (runId) => { void acpService.resumeWorkflow({
+            workspacePath, ...(workspaceIdentity ? { workspaceIdentity } : {}),
+            ...(remoteSessionId ? { remoteSessionId } : {}), id: acpConversation.selected!.id, runId,
+          }); }
+        : undefined,
     }),
     [
       workspacePath,
@@ -2398,6 +2432,8 @@ export function SessionPane({
       remoteSessionId,
       acpConversation.selected?.id,
       acpConversation.selected?.pendingPermission,
+      acpConversation.selected?.workflowRuns,
+      acpService,
       theme,
       codePreviewSettings,
       messageStreamShowReasoning,
@@ -4548,14 +4584,10 @@ export function SessionPane({
       onSendAcpText={acpConversation.send}
       acpGoal={acpConversation.selected?.goal}
       onSetAcpGoal={acpConversation.setGoal}
-      acpConfigOptions={acpConversation.selected?.configOptions ?? []}
-      acpModeState={acpConversation.selected?.modeState ?? null}
+      acpConfigOptions={acpConfigPreview.options}
+      acpModeState={acpConfigPreview.modes}
+      acpConfigLoading={acpConfigPreview.loading}
       onSetAcpConfigOption={acpConversation.setConfigOption}
-      acpSessionMenu={
-        acpAgent ? (
-          <AcpConversationControls agent={acpAgent} conversation={acpConversation} />
-        ) : null
-      }
       workspacePath={workspacePath}
       workspaceIdentity={workspaceIdentity}
       remoteSessionId={remoteSessionId ?? undefined}

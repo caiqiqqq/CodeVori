@@ -2646,6 +2646,36 @@ export type ZCodePluginsReferenceCatalogResult = z.infer<
   typeof zcodePluginsReferenceCatalogResultSchema
 >;
 
+/** Host-only ACP provisioning snapshot. Contains resolved plugin MCP secrets; never return it to Renderer. */
+export const zcodePluginsAcpCapabilitiesParamsSchema = z
+  .object({ workspace: zcodeWorkspaceRefSchema })
+  .strict();
+export const zcodePluginsAcpCapabilitiesResultSchema = z
+  .object({
+    plugins: z.array(
+      z.object({
+        pluginId: nonEmptyString,
+        name: nonEmptyString,
+        description: z.string().optional(),
+        enabled: z.boolean(),
+        conflictingPluginIds: z.array(nonEmptyString),
+        mcpServerNames: z.array(nonEmptyString),
+      }).strict(),
+    ),
+    servers: z.array(
+      z.object({
+        pluginId: nonEmptyString,
+        name: nonEmptyString,
+        rootPath: nonEmptyString,
+        config: z.record(z.string(), z.unknown()),
+      }).strict(),
+    ),
+  })
+  .strict();
+export type ZCodePluginsAcpCapabilitiesResult = z.infer<
+  typeof zcodePluginsAcpCapabilitiesResultSchema
+>;
+
 // ── Skill 对话引用 catalog──
 // 新草稿读取 workspace 当前目录；已有 Session 读取 AgentRuntime 首次 context
 // 初始化时冻结的发现结果。该协议只承载 Composer 的只读引用投影，不替代 Settings
@@ -3613,6 +3643,7 @@ export const zcodeProtocolMethods = {
   pluginsList: "plugins/list",
   pluginsReferenceCatalog: "plugins/referenceCatalog",
   pluginsReferenceCatalogWithCategory: "plugins/referenceCatalogWithCategory",
+  pluginsAcpCapabilities: "plugins/acpCapabilities",
   skillsReferenceCatalog: "skills/referenceCatalog",
   // 已保存工作流的 GUI 中枢：workspace 级、无会话。
   workflowsList: "workflows/list",
@@ -3715,3 +3746,5 @@ export * from "../localTtft.js";
 // 桌面本地 TTFT 的严格事实合同；检查点不能替代实际内容帧。
 export { localTtftFactsSchema } from "../localTtft.js";
 export * from "./acp.js";
+export * from "./acpPlugin.js";
+export * from "./acpWorkflow.js";

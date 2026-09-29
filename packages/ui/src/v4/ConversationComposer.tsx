@@ -404,9 +404,8 @@ interface ConversationComposerProps {
   onSetAcpGoal?: (goal: string | null) => Promise<void>;
   acpConfigOptions?: AcpConfigOption[];
   acpModeState?: AcpModeState | null;
+  acpConfigLoading?: boolean;
   onSetAcpConfigOption?: (configId: string, value: string | boolean) => Promise<void>;
-  /** 会话历史与新建/删除入口仍在这个输入框内，由 SessionPane 绑定 Host 命令。 */
-  acpSessionMenu?: ReactNode;
   /**
    * 是否在新建任务 / 切换会话 / 挂载后自动把光标聚焦到输入框（默认开）。
    * 竖切多 pane 时由宿主传入 SessionPane.focused，仅焦点 pane 聚焦、后台 pane 不抢焦点。
@@ -527,8 +526,8 @@ function ConversationComposerImpl({
   onSetAcpGoal,
   acpConfigOptions = [],
   acpModeState = null,
+  acpConfigLoading = false,
   onSetAcpConfigOption,
-  acpSessionMenu,
   autoFocusEnabled = true,
   workspacePath,
   workspaceIdentity,
@@ -2267,13 +2266,13 @@ function ConversationComposerImpl({
   const leadingActionsNode = useMemo(
     () => (
       <>
-        {acpSessionMenu}
         {acpAgent ? (
           <AcpComposerConfigControls
             agent={acpAgent}
             sessionId={acpSessionId}
             options={acpConfigOptions}
             modes={acpModeState}
+            loading={acpConfigLoading}
             disabled={disabled || !acpReady || acpRunning}
             onChange={onSetAcpConfigOption}
           />
@@ -2312,10 +2311,10 @@ function ConversationComposerImpl({
     [
       activeConfigPicker,
       acpAgent,
-      acpSessionMenu,
       acpSessionId,
       acpConfigOptions,
       acpModeState,
+      acpConfigLoading,
       acpReady,
       acpRunning,
       onSetAcpConfigOption,

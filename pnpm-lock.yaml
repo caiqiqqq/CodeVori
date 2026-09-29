@@ -959,6 +959,12 @@ importers:
       '@larksuiteoapi/node-sdk':
         specifier: 1.64.0
         version: 1.64.0
+      '@zcode/dynamic-workflow':
+        specifier: workspace:*
+        version: link:../../apps/zcode-cli/packages/dynamic-workflow
+      '@zcode/dynamic-workflow-runtime':
+        specifier: workspace:*
+        version: link:../../apps/zcode-cli/packages/dynamic-workflow-runtime
       '@zcode/provider':
         specifier: workspace:*
         version: link:../provider

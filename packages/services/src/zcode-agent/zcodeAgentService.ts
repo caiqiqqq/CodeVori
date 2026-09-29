@@ -37,6 +37,8 @@ import {
   zcodePluginsConfigureResultSchema,
   zcodePluginsInstallResultSchema,
   zcodePluginsListResultSchema,
+  zcodePluginsAcpCapabilitiesResultSchema,
+  type ZCodePluginsAcpCapabilitiesResult,
   zcodePluginsMarketplaceMutationResultSchema,
   zcodePluginsOverviewResultSchema,
   zcodeProcessChildProcessesResultSchema,
@@ -1054,6 +1056,22 @@ function resolveOffPeakToolSelection(
     ? selection
     : { ...selection, options: { reasoningLevel: thoughtLevel } };
 }
+// 修复原因：RPC 频道按方法名动态派发，含密钥的能力快照不能作为公开 service 方法。
+// Host 私有读取器只关联本地实例；Renderer/远程 RPC 只能使用脱敏的 IAcpService.listPlugins。
+const hostAcpPluginReaders = new WeakMap<
+  IZCodeAgentService,
+  (params: ZCodeAgentWorkspaceTarget) => Promise<ZCodePluginsAcpCapabilitiesResult>
+>();
+
+export function getHostAcpPluginCapabilities(
+  service: IZCodeAgentService,
+  params: ZCodeAgentWorkspaceTarget,
+): Promise<ZCodePluginsAcpCapabilitiesResult> {
+  const reader = hostAcpPluginReaders.get(service);
+  if (!reader) throw new Error("ACP 插件能力只能在目标 Host 读取");
+  return reader(params);
+}
+
 export function createZCodeAgentService(
   options?: CreateZCodeAgentServiceOptions,
 ): IZCodeAgentService & { disposeAllAndWait(): Promise<void> } {
@@ -3330,7 +3348,7 @@ export function createZCodeAgentService(
     return envelope;
   }
 
-  return {
+  const service: IZCodeAgentService & { disposeAllAndWait(): Promise<void> } = {
     async prepareStorage(params) {
       const client = await processManager.getClient(params);
       wireClient(client, params, "chat");
@@ -5659,4 +5677,13 @@ export function createZCodeAgentService(
       disposeLocalState();
     },
   };
+  hostAcpPluginReaders.set(service, async (params) => {
+    const client = await getReadOnlyClient(params);
+    return client.request(
+      zcodeProtocolMethods.pluginsAcpCapabilities,
+      { workspace: buildWorkspaceRef(params) },
+      zcodePluginsAcpCapabilitiesResultSchema,
+    );
+  });
+  return service;
 }

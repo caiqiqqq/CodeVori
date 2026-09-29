@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { acpTokenUsageSchema, acpUsageTurnSchema } from "../acp-usage.js";
+import { workflowRunsStateSchema } from "../zcode-protocol-v4/workflow-runs.js";
+import { acpWorkflowToolSchema } from "./acpWorkflow.js";
 
 /** ACP Agent identity is independent of the ZCode model Provider registry. */
 export const acpAgentSchema = z.enum([
@@ -314,6 +316,7 @@ export const acpEntrySchema = z.discriminatedUnion("kind", [
     status: z.string(),
     content: z.string().optional(),
     createdAt: z.number().optional(),
+    workflow: acpWorkflowToolSchema.optional(),
   }),
 ]);
 export type AcpEntry = z.infer<typeof acpEntrySchema>;
@@ -340,6 +343,8 @@ export const acpSessionSchema = acpWorkspaceSchema.extend({
   configOptions: z.array(acpConfigOptionSchema).default([]),
   modeState: acpModeStateSchema.nullable().default(null),
   entries: z.array(acpEntrySchema),
+  /** 与 API 共用有界投影；旧快照缺席，Host 按 journal 恢复。 */
+  workflowRuns: workflowRunsStateSchema.optional(),
   /** Old snapshots cannot use an unverified cumulative report as a new turn's usage. */
   usageBaselineKnown: z.boolean().default(false),
   usageBaseline: acpTokenUsageSchema.nullable().default(null),

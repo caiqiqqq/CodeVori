@@ -69,6 +69,7 @@ import {
   validatePlugin,
 } from "./plugins.js";
 import {
+  getPluginAcpCapabilities,
   getPluginReferenceCatalog,
   resolveSuggestedPluginReference,
 } from "./plugin-reference-catalog.js";
@@ -649,6 +650,8 @@ export class ZCodeProtocolAgentServer {
         return await getPluginReferenceCatalog(this.context, request.params, true);
       case zcodeProtocolMethods.pluginsReferenceCatalog:
         return await getPluginReferenceCatalog(this.context, request.params);
+      case zcodeProtocolMethods.pluginsAcpCapabilities:
+        return await getPluginAcpCapabilities(this.context, request.params);
       case zcodeProtocolMethods.skillsReferenceCatalog:
         return await getSkillReferenceCatalog(this.context, request.params);
       case zcodeProtocolMethods.workflowsList:

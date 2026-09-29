@@ -37,6 +37,7 @@ export function ChatPromptActionMenu({
   actionMenuTitle,
   attachmentAction,
   acpMode = false,
+  acpSessionId,
   acpGoal,
   onSetAcpGoal,
   disabled,
@@ -57,6 +58,7 @@ export function ChatPromptActionMenu({
     menuItemTestId?: string;
   };
   acpMode?: boolean;
+  acpSessionId?: string | null;
   acpGoal?: string | null;
   onSetAcpGoal?: (goal: string | null) => Promise<void>;
   disabled?: boolean;
@@ -90,9 +92,11 @@ export function ChatPromptActionMenu({
     workspaceIdentity,
     sessionId,
     "",
-    open && !disabled && showPlugins && !acpMode,
+    open && !disabled && showPlugins,
     intl.formatMessage({ id: "chat.mention.plugins.empty" }),
     intl.formatMessage({ id: "chat.mention.plugins.title" }),
+    acpMode,
+    acpSessionId,
   );
   const provider = useChatViewActiveTaskProvider(sessionId, workspacePath, workspaceIdentity);
   const slashCommands = useSlashCommands(workspacePath, workspaceIdentity);
@@ -128,7 +132,7 @@ export function ChatPromptActionMenu({
   const attachmentCount = attachmentAction ? 1 : 0;
   const options = [
     ...(attachmentAction ? [{ disabled: false }] : []),
-    ...quickCommands.map((command) => ({ disabled: acpMode && command === "workflow" })),
+    ...quickCommands.map(() => ({ disabled: false })),
     ...mentionItems,
   ];
   const sections: MentionPanelSection[] = [
@@ -164,17 +168,13 @@ export function ChatPromptActionMenu({
             id,
             label,
             description: "",
-            disabled: acpMode && command === "workflow",
-            disabledReason: acpMode
-              ? intl.formatMessage({ id: "acp.workflowUnavailable" })
-              : undefined,
-            content:
-              acpMode && command === "workflow" ? undefined : (
+            disabled: false,
+            content: (
                 <>
                   <Icon className="size-4 shrink-0" />
                   <span className="truncate text-ui-base font-medium">{label}</span>
                 </>
-              ),
+            ),
           };
         }),
       ],

@@ -159,6 +159,7 @@ try {
     timeline: document.querySelectorAll('[data-testid="v4-timeline"]').length,
     sameInput: document.querySelector('[data-testid="v4-composer-input"]') === globalThis.__acpConversationTestInput,
   }))()`);
+  assert.equal(active.controls, 0, "ACP composer no longer has a session history button");
   assert.equal(active.duplicate, 0);
   assert.equal(active.composer, 1);
   assert.equal(active.timeline, 1);

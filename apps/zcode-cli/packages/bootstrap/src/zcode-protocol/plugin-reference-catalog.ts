@@ -5,10 +5,12 @@ import {
   ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID,
   zcodeProtocolNotifications,
   zcodePluginsReferenceCatalogParamsSchema,
+  zcodePluginsAcpCapabilitiesParamsSchema,
   zcodePluginsResolveSuggestedReferenceParamsSchema,
   type ZCodePluginReferenceCatalogEntry,
   type ZCodePluginDiagnostic as SharedPluginDiagnostic,
   type ZCodePluginsReferenceCatalogResult,
+  type ZCodePluginsAcpCapabilitiesResult,
   type ZCodePluginsResolveSuggestedReferenceResult,
 } from "@zcode/shared";
 import type { PluginReferenceCatalogEntry } from "@zcode/contracts";
@@ -56,6 +58,40 @@ export async function getPluginReferenceCatalog(
     plugins: buildPluginReferenceCatalog(outcome.plugins).plugins.map((entry) =>
       toReferenceCatalogEntry(entry, displayByPluginId, includeCategory),
     ),
+  };
+}
+
+/** 目标 Host 专用：复用 CLI 插件解析与启停事实，不将 MCP 配置送到 UI。 */
+export async function getPluginAcpCapabilities(
+  _context: ZCodeProtocolAgentServerContext,
+  rawParams: unknown,
+): Promise<ZCodePluginsAcpCapabilitiesResult> {
+  const { workspace } = parseParams(zcodePluginsAcpCapabilitiesParamsSchema, rawParams);
+  const outcome = resolveZCodePlugins({ workingDirectory: workspace.workspacePath });
+  const catalog = buildPluginReferenceCatalog(outcome.plugins);
+  const byName = new Map(outcome.plugins.map((plugin) => [plugin.id, plugin]));
+  const servers: ZCodePluginsAcpCapabilitiesResult["servers"] = [];
+  for (const plugin of catalog.plugins) {
+    if (!plugin.enabled || plugin.conflictingPluginIds.length) continue;
+    for (const name of plugin.mcpServerNames) {
+      const config = outcome.mcpServers[name];
+      if (config && config.enabled !== false) {
+        servers.push({ pluginId: plugin.pluginId, name, rootPath: plugin.rootPath, config: { ...config } });
+      }
+    }
+  }
+  return {
+    plugins: catalog.plugins.map((plugin) => ({
+      pluginId: plugin.pluginId,
+      name: plugin.name,
+      ...(byName.get(plugin.pluginId)?.description
+        ? { description: byName.get(plugin.pluginId)!.description }
+        : {}),
+      enabled: plugin.enabled,
+      conflictingPluginIds: plugin.conflictingPluginIds,
+      mcpServerNames: plugin.mcpServerNames,
+    })),
+    servers,
   };
 }
 

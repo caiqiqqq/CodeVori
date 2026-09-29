@@ -156,7 +156,7 @@ try {
       await evaluate(`(() => {
     const pane = document.querySelector('[data-pane-id=${JSON.stringify(splitPaneId)}]');
     const title = document.querySelector(${JSON.stringify(row)})?.querySelector('[title]')?.title;
-    return Boolean(pane?.querySelector('[data-testid="acp-conversation-controls"]') && title && pane.textContent?.includes(title));
+    return Boolean(pane && !pane.querySelector('[data-testid="acp-conversation-controls"]') && title && pane.textContent?.includes(title));
   })()`),
   );
   await click(`[data-pane-id=${JSON.stringify(splitPaneId)}] [aria-label="关闭窗格"]`);

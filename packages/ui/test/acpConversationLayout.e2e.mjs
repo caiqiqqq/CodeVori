@@ -193,35 +193,9 @@ try {
     "Agent selection",
   );
   if (process.env.ZCODE_E2E_ACP_SESSION_ID) {
-    await click('[data-testid="acp-conversation-controls"]');
-    assert.equal(
-      await evaluate(
-        "[...document.querySelectorAll('[role=\"menuitem\"]')].some(item => item.textContent?.includes('新建会话'))",
-      ),
-      true,
-      "History menu retains new session",
-    );
-    assert.equal(
-      await evaluate(
-        "[...document.querySelectorAll('[role=\"menuitem\"]')].some(item => item.textContent?.includes('从 ZCode 移除会话'))",
-      ),
-      true,
-      "History menu retains remove session",
-    );
-    const item = `[data-testid="acp-session-item-${process.env.ZCODE_E2E_ACP_SESSION_ID}"]`;
-    await waitFor(
-      `Boolean(document.querySelector(${JSON.stringify(item)}))`,
-      "saved session menu item",
-    );
-    await waitFor(
-      `document.querySelector(${JSON.stringify(item)})?.getAttribute('aria-disabled') !== 'true'`,
-      "session operation ready",
-    );
+    const item = `[data-acp-session-id=${JSON.stringify(process.env.ZCODE_E2E_ACP_SESSION_ID)}]`;
+    await waitFor(`Boolean(document.querySelector(${JSON.stringify(item)}))`, "saved sidebar row");
     await click(item);
-    await waitFor(
-      "document.querySelector('[data-testid=\"acp-conversation-controls\"]')?.getAttribute('aria-expanded') === 'false'",
-      "history menu closed",
-    );
   }
   await waitFor(`Boolean(document.querySelector('[data-v4-turn-unit]'))`, "saved ACP conversation");
   assert.equal(
@@ -246,7 +220,7 @@ try {
   assert.ok(Math.abs(acp.firstMessage.x - native.firstMessage.x) <= 2);
   assert.equal(acp.extraHeader, false);
   assert.equal(acp.contextHeader, false);
-  assert.equal(acp.menu, true);
+  assert.equal(acp.menu, false);
   assert.equal(acp.nativeTaskActions, false);
   assert.equal(acp.horizontalOverflow, false);
   assert.equal(acp.variant, "acp");

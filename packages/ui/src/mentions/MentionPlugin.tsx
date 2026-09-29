@@ -65,6 +65,7 @@ interface MentionPluginProps {
   sessionId?: string | null;
   disabled?: boolean;
   skillsOnly?: boolean;
+  acpSessionId?: string | null;
   onWhiteboardMentionSelected?: (boardId: string) => void | Promise<void>;
 }
 
@@ -138,6 +139,7 @@ export function MentionPlugin({
   container,
   disabled = false,
   skillsOnly = false,
+  acpSessionId,
   onWhiteboardMentionSelected,
 }: MentionPluginProps & { provider: ZCodeProvider }) {
   const [editor] = useLexicalComposerContext();
@@ -160,8 +162,9 @@ export function MentionPlugin({
   const isOpen =
     !disabled &&
     (activeTrigger?.trigger === "$" ||
-      (!skillsOnly && (activeTrigger?.trigger === "@" || activeTrigger?.trigger === "#")));
-  const isContextTrigger = !skillsOnly && activeTrigger?.trigger === "@";
+      activeTrigger?.trigger === "@" ||
+      (!skillsOnly && activeTrigger?.trigger === "#"));
+  const isContextTrigger = activeTrigger?.trigger === "@";
   const isSessionTrigger = !skillsOnly && activeTrigger?.trigger === "#";
   const isSkillTrigger = activeTrigger?.trigger === "$";
 
@@ -186,7 +189,7 @@ export function MentionPlugin({
     workspacePath,
     workspaceIdentity,
     deferredActiveQuery,
-    isOpen && isContextTrigger,
+    isOpen && isContextTrigger && !skillsOnly,
     intl.formatMessage({ id: "chat.mention.files.empty" }),
     intl.formatMessage({ id: "chat.mention.files.title" }),
     fileDefaultPreviewLimit,
@@ -195,7 +198,7 @@ export function MentionPlugin({
     workspacePath,
     workspaceIdentity,
     deferredActiveQuery,
-    isOpen && isContextTrigger && Boolean(onWhiteboardMentionSelected),
+    isOpen && isContextTrigger && !skillsOnly && Boolean(onWhiteboardMentionSelected),
     intl.formatMessage({ id: "chat.mention.whiteboards.empty" }),
     intl.formatMessage({ id: "chat.mention.whiteboards.title" }),
   );
@@ -204,7 +207,7 @@ export function MentionPlugin({
     workspacePath,
     workspaceIdentity,
     deferredActiveQuery,
-    isOpen && (isContextTrigger || isSessionTrigger),
+    isOpen && !skillsOnly && (isContextTrigger || isSessionTrigger),
     getSessionMentionWorkspaceScope(activeTrigger?.trigger),
     intl.formatMessage({ id: "chat.mention.sessions.empty" }),
     intl.formatMessage({ id: "chat.mention.sessions.title" }),
@@ -219,6 +222,8 @@ export function MentionPlugin({
     isOpen && isContextTrigger,
     intl.formatMessage({ id: "chat.mention.plugins.empty" }),
     intl.formatMessage({ id: "chat.mention.plugins.title" }),
+    skillsOnly,
+    acpSessionId,
   );
 
   const panelGroups = useMemo<MentionResultGroup<MentionItem>[]>(() => {
@@ -268,7 +273,10 @@ export function MentionPlugin({
     // 产品约束：@ 固定为 Plugin → 文件 → 对话 → 画板；旧 # / $ 面板继续走
     // 原单分组 provider。这里仅重排发现入口，候选自身的 canonical markdown 不变。
     return buildVisibleMentionGroups(
-      getMentionPanelGroupOrder(activeTrigger?.trigger).map((groupId) => groupsById[groupId]),
+      (skillsOnly && isContextTrigger
+        ? (["plugins"] as const)
+        : getMentionPanelGroupOrder(activeTrigger?.trigger)
+      ).map((groupId) => groupsById[groupId]),
     );
   }, [
     fileResult.emptyText,
@@ -277,6 +285,8 @@ export function MentionPlugin({
     fileResult.loading,
     fileResult.title,
     activeTrigger?.trigger,
+    isContextTrigger,
+    skillsOnly,
     pluginsResult.emptyText,
     pluginsResult.error,
     pluginsResult.items,
