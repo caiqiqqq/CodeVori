@@ -74,6 +74,7 @@ import { MemorySettingsSection } from "@/settings/MemorySettingsSection.js";
 import { BrowserSettingsSection } from "@/settings/BrowserSettingsSection.js";
 import { ComputerUseSection } from "@/settings/ComputerUseSection.js";
 import { ShortcutSettingsSection } from "@/settings/ShortcutSettingsSection.js";
+import { WorktreesSection } from "@/settings/WorktreesSection.js";
 import { MigrationSection } from "@/settings/MigrationSection.js";
 import { SETTINGS_FRAME_CONTENT_CLASSNAME } from "@/settings/SettingsPageParts.js";
 import {
@@ -1762,6 +1763,11 @@ export function SettingsPage({
                           />
                         ) : activeSection === "shortcuts" ? (
                           <ShortcutSettingsSection isDesktop={Boolean(isDesktop)} />
+                        ) : activeSection === "worktrees" ? (
+                          <ServiceProvider services={localHostServices}>
+                            {/* 工作树目录是本机全局设置；远程 workspace 不能读写远端 Host 的设置。 */}
+                            <WorktreesSection defaultHomeDir={defaultHomeDir} />
+                          </ServiceProvider>
                         ) : activeSection === "modelProvider" ? (
                           <ServiceProvider services={localHostServices}>
                             {/* 模型配置属于本机全局事实源；激活远端 workspace 时也不能注入远端 Host。 */}

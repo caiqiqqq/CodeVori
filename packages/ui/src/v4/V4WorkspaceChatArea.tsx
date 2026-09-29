@@ -108,6 +108,8 @@ interface V4WorkspaceChatAreaProps {
   onSummaryPanelVariantOverrideChange?: (variant: ChatViewSummaryPanelVariant | null) => void;
   onRefreshGit?: () => void;
   onOpenGitReview?: (sourceId?: GitChangeSourceId) => void;
+  onOpenWorkspacePath?: (path: string) => void | Promise<void>;
+  allowWorktreeCreation?: boolean;
   onPaneActiveSessionChange?: (scope: PaneWorkspaceScope, sessionId: string) => void;
   onOpenBrowserUrl?: (url: string) => void;
   onOpenAutomationsMain?: OpenAutomationsMain;
@@ -171,6 +173,8 @@ export function V4WorkspaceChatArea({
   onSummaryPanelVariantOverrideChange,
   onRefreshGit,
   onOpenGitReview,
+  onOpenWorkspacePath,
+  allowWorktreeCreation,
   onPaneActiveSessionChange,
   onOpenBrowserUrl,
   onOpenAutomationsMain,
@@ -300,6 +304,8 @@ export function V4WorkspaceChatArea({
       onSummaryPanelVariantOverrideChange,
       onRefreshGit,
       onOpenGitReview,
+      onOpenWorkspacePath,
+      allowWorktreeCreation,
       onOpenBrowserUrl,
       onOpenAutomationsMain,
       onOpenCodeViewer,
@@ -347,6 +353,8 @@ export function V4WorkspaceChatArea({
       onSummaryPanelVariantOverrideChange,
       onRefreshGit,
       onOpenGitReview,
+      onOpenWorkspacePath,
+      allowWorktreeCreation,
       onOpenBrowserUrl,
       onOpenAutomationsMain,
       onOpenCodeViewer,

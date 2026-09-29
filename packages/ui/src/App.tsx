@@ -106,6 +106,7 @@ export function App({
   onCreateConversationTask,
   onResolveConversationWorkspace,
   onOpenWorkspace,
+  onOpenWorkspacePath,
   onOpenFolderFromWorkspaceMenu,
   onOpenRemoteWorkspace,
   onCreateScratchWorkspace,
@@ -1144,6 +1145,7 @@ export function App({
         onCreateConversationTask={onCreateConversationTask}
         onResolveConversationWorkspace={onResolveConversationWorkspace}
         onOpenWorkspace={onOpenWorkspace}
+        onOpenWorkspacePath={onOpenWorkspacePath}
         onOpenFolderFromWorkspaceMenu={onOpenFolderFromWorkspaceMenu}
         onOpenRemoteWorkspace={onOpenRemoteWorkspace}
         onCreateScratchWorkspace={onCreateScratchWorkspace}

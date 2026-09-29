@@ -310,6 +310,8 @@ export interface WorkbenchShellBinding {
   onSummaryPanelVariantOverrideChange?: (variant: ChatViewSummaryPanelVariant | null) => void;
   onRefreshGit?: () => void;
   onOpenGitReview?: (sourceId?: GitChangeSourceId) => void;
+  onOpenWorkspacePath?: (path: string) => void | Promise<void>;
+  allowWorktreeCreation?: boolean;
   onOpenBrowserUrl?: (url: string) => void;
   onOpenAutomationsMain?: OpenAutomationsMain;
   onOpenCodeViewer?: (source: CodeViewerSource) => void;
@@ -660,6 +662,10 @@ export function WorkbenchLeafPane({
           }
           onRefreshGit={shouldUseShellStatusPanel ? shell.onRefreshGit : undefined}
           onOpenGitReview={shouldUseShellStatusPanel ? shell.onOpenGitReview : undefined}
+          onOpenWorkspacePath={shouldUseShellStatusPanel ? shell.onOpenWorkspacePath : undefined}
+          allowWorktreeCreation={
+            shouldUseShellStatusPanel ? shell.allowWorktreeCreation : undefined
+          }
           onOpenBrowserUrl={shell.onOpenBrowserUrl}
           onOpenAutomationsMain={shell.onOpenAutomationsMain}
           onOpenCodeViewer={shell.onOpenCodeViewer}

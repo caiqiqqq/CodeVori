@@ -348,6 +348,8 @@ export interface AppSettings {
   lastActiveTaskByWorkspace?: Record<string, string>;
   /** 数据目录的根路径（替代 homedir），默认为 os.homedir()；.zcode/v2 后缀不变 */
   dataBaseDir?: string;
+  /** 新建 Git 工作树的根目录；缺省时由 UI 按本机用户 home 派生为 ~/.code/worktrees。 */
+  worktreeRootDirectory?: string;
   /** 自动更新安装完成后，等待首次启动展示的版本说明 */
   pendingPostUpdateReleaseNotes?: {
     version: string;

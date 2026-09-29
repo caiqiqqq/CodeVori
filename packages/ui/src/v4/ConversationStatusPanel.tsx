@@ -139,6 +139,8 @@ interface ConversationStatusPanelProps {
   onWorkflowSectionOpenChange?: (open: boolean) => void;
   onRefreshGit?: () => void;
   onOpenGitReview?: (sourceId?: GitChangeSourceId) => void;
+  onOpenWorkspacePath?: (path: string) => void | Promise<void>;
+  allowWorktreeCreation?: boolean;
   onPauseGoal?: () => void;
   onResumeGoal?: () => void;
   onOpenPlanDetail?: (request: OpenPlanDetailSideTabRequest) => void;
@@ -371,6 +373,8 @@ function GitStatusSection({
   gitWorktreeReviewSourceId?: GitChangeSourceId | null;
   model: ConversationStatusPanelModel;
   onOpenGitReview?: (sourceId?: GitChangeSourceId) => void;
+  onOpenWorkspacePath?: (path: string) => void | Promise<void>;
+  allowWorktreeCreation?: boolean;
   onRefreshGit?: () => void;
   separated: boolean;
   workspaceIdentity?: string;
@@ -433,6 +437,7 @@ function GitStatusSection({
           gitSummary={gitSummary}
           dirtyFileCount={git.dirtyFileCount}
           onRefreshGit={onRefreshGit}
+          allowWorktreeCreation={false}
           className="w-full px-0 pt-0"
           triggerClassName="flex h-8 w-full min-w-0 justify-start gap-2 rounded-lg px-2 text-left text-ui-base text-[var(--color-foreground)] hover:bg-[var(--color-hover)] hover:text-[var(--color-foreground)] [&>span]:max-w-[calc(100%-3.5rem)] [&_svg:first-child]:text-[var(--color-foreground)]"
           popoverClassName="w-72 max-w-[calc(100vw-2rem)]"
@@ -1733,6 +1738,8 @@ function ConversationStatusPanelImpl({
   onWorkflowSectionOpenChange,
   onRefreshGit,
   onOpenGitReview,
+  onOpenWorkspacePath,
+  allowWorktreeCreation,
   onPauseGoal,
   onResumeGoal,
   onOpenPlanDetail,
@@ -1973,6 +1980,8 @@ function ConversationStatusPanelImpl({
                 activeTaskChangeSummary={activeTaskChangeSummary}
                 onRefreshGit={onRefreshGit}
                 onOpenGitReview={onOpenGitReview}
+                onOpenWorkspacePath={onOpenWorkspacePath}
+                allowWorktreeCreation={allowWorktreeCreation}
                 separated={false}
                 useVerticalFloatingPanels={useVerticalFloatingPanels}
               />

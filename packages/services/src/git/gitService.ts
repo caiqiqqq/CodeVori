@@ -211,6 +211,19 @@ export function createGitService(options?: {
       );
     },
 
+    async createWorktree(params) {
+      return await repo.createWorktree(
+        params.workspacePath,
+        params.branchName,
+        params.worktreePath,
+        params.startPoint,
+      );
+    },
+
+    async createAutomaticWorktree(params) {
+      return await repo.createAutomaticWorktree(params.workspacePath, params.worktreeRootPath);
+    },
+
     async getChanges(params) {
       const status = await repo.getStatus(params.workspacePath);
 

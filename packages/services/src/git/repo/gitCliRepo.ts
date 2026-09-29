@@ -1,13 +1,15 @@
 /* eslint-disable max-lines */
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import type {
   GitBranchMutationAction,
   GitBranchMutationIssue,
   GitBranchMutationResult,
   GitCommitGraphCommit,
   GitCommitGraphRef,
+  GitCreateWorktreeResult,
   GitDiffQuery,
   GitDiffResult,
   GitIdentity,
@@ -43,6 +45,7 @@ import {
   isNotRepositoryResult,
   normalizeInputPath,
   parseGitBranchMutationIssues,
+  parseGitWorktreeCreateIssues,
   parseGitConfigValue,
   parseNumstat,
   parseStatusPorcelain,
@@ -112,6 +115,7 @@ const DEFAULT_GIT_GRAPH_MAX_COUNT = 100;
 const MAX_GIT_GRAPH_MAX_COUNT = 200;
 const GIT_GRAPH_RECORD_SEPARATOR = "\x1e";
 const GIT_GRAPH_FIELD_SEPARATOR = "\x00";
+const MAX_WORKTREE_NAME_ATTEMPTS = 8;
 const log = createServiceLogger("git-repo");
 
 function normalizeWatchPath(path: string): string {
@@ -347,6 +351,33 @@ function toBranchMutationSuccess(params: {
   };
 }
 
+function toWorktreeCreateFailure(params: {
+  branchName: string | null;
+  worktreePath: string;
+  issues: GitCreateWorktreeResult["issues"];
+}): GitCreateWorktreeResult {
+  return {
+    ok: false,
+    branchName: params.branchName,
+    worktreePath: params.worktreePath,
+    didCreate: false,
+    issues: params.issues,
+  };
+}
+
+function toWorktreeCreateSuccess(
+  branchName: string,
+  worktreePath: string,
+): GitCreateWorktreeResult {
+  return {
+    ok: true,
+    branchName,
+    worktreePath,
+    didCreate: true,
+    issues: [],
+  };
+}
+
 function parseBranchRefRecords(stdout: string, currentBranchName: string | null): GitLocalBranch[] {
   return stdout
     .replace(/\r\n/g, "\n")
@@ -536,8 +567,12 @@ function parseGitIndexEntries(stdout: string): GitIndexEntry[] {
     });
 }
 
-export function createGitCliRepo(options?: { commandProvider?: GitCommandProvider }): GitCliRepo {
+export function createGitCliRepo(options?: {
+  commandProvider?: GitCommandProvider;
+  generateWorktreeId?: () => string;
+}): GitCliRepo {
   const commandProvider = options?.commandProvider ?? createGitCommandProvider();
+  const generateWorktreeId = options?.generateWorktreeId ?? (() => randomBytes(2).toString("hex"));
   const repositoryResolutionRequests = new Map<string, Promise<GitResolvedRepository>>();
   const workspaceRepositoryInfoRequests = new Map<string, Promise<GitWorkspaceRepositoryInfo>>();
   const statusRequests = new Map<string, Promise<GitStatusSnapshot>>();
@@ -1246,6 +1281,230 @@ export function createGitCliRepo(options?: { commandProvider?: GitCommandProvide
         didChange: true,
         created: true,
         summary: nextStatus.summary,
+      });
+    },
+
+    async createWorktree(
+      workspacePath: string,
+      branchName: string,
+      worktreePath: string,
+      startPoint?: string,
+    ): Promise<GitCreateWorktreeResult> {
+      const status = await this.getStatus(workspacePath);
+      const resolution = status.resolution;
+      const normalizedBranchName = branchName.trim();
+      const normalizedPathInput = worktreePath.trim();
+      const normalizedWorktreePath = normalizedPathInput
+        ? resolve(resolution.workspacePath, normalizedPathInput.split("/").join(sep))
+        : "";
+
+      if (!resolution.isGitAvailable || !resolution.isRepository) {
+        return toWorktreeCreateFailure({
+          branchName: normalizedBranchName || null,
+          worktreePath: normalizedWorktreePath,
+          issues: [
+            {
+              code: "not-repository",
+              message: "Workspace is not inside a Git repository.",
+              detail: null,
+            },
+          ],
+        });
+      }
+
+      if (normalizedBranchName.length === 0) {
+        return toWorktreeCreateFailure({
+          branchName: null,
+          worktreePath: normalizedWorktreePath,
+          issues: [
+            {
+              code: "invalid-branch-name",
+              message: "Branch name is invalid.",
+              detail: null,
+            },
+          ],
+        });
+      }
+
+      if (
+        normalizedWorktreePath.length === 0 ||
+        normalizedWorktreePath === resolve(resolution.workspacePath)
+      ) {
+        return toWorktreeCreateFailure({
+          branchName: normalizedBranchName,
+          worktreePath: normalizedWorktreePath,
+          issues: [
+            {
+              code: "target-path-invalid",
+              message: "The target worktree directory is invalid.",
+              detail: null,
+            },
+          ],
+        });
+      }
+
+      if (await hasOperationInProgress(resolution)) {
+        return toWorktreeCreateFailure({
+          branchName: normalizedBranchName,
+          worktreePath: normalizedWorktreePath,
+          issues: [
+            {
+              code: "operation-in-progress",
+              message: "Another Git operation is still in progress.",
+              detail: null,
+            },
+          ],
+        });
+      }
+
+      let invalidBranchIssue: GitBranchMutationIssue | null;
+      try {
+        invalidBranchIssue = await validateBranchName(resolution, normalizedBranchName);
+      } catch (error: unknown) {
+        const detail = error instanceof Error ? error.message : String(error);
+        return toWorktreeCreateFailure({
+          branchName: normalizedBranchName,
+          worktreePath: normalizedWorktreePath,
+          issues: [
+            {
+              code: /timed out/i.test(detail) ? "command-timeout" : "unknown",
+              message: /timed out/i.test(detail)
+                ? "Git worktree creation timed out."
+                : "Git could not validate the worktree branch.",
+              detail,
+            },
+          ],
+        });
+      }
+      if (invalidBranchIssue) {
+        return toWorktreeCreateFailure({
+          branchName: normalizedBranchName,
+          worktreePath: normalizedWorktreePath,
+          issues: [
+            {
+              code: "invalid-branch-name",
+              message: invalidBranchIssue.message,
+              detail: invalidBranchIssue.detail,
+            },
+          ],
+        });
+      }
+
+      const normalizedStartPoint = startPoint?.trim();
+      const result = await commandProvider.run({
+        cwd: resolution.repoRoot,
+        args: normalizedStartPoint
+          ? [
+              "worktree",
+              "add",
+              "-b",
+              normalizedBranchName,
+              "--",
+              normalizedWorktreePath,
+              normalizedStartPoint,
+            ]
+          : ["worktree", "add", "-b", normalizedBranchName, "--", normalizedWorktreePath],
+        timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+        maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
+      });
+      if (result.exitCode !== 0 || result.timedOut || result.outputTruncated) {
+        return toWorktreeCreateFailure({
+          branchName: normalizedBranchName,
+          worktreePath: normalizedWorktreePath,
+          issues: parseGitWorktreeCreateIssues(result),
+        });
+      }
+
+      return toWorktreeCreateSuccess(normalizedBranchName, normalizedWorktreePath);
+    },
+
+    async createAutomaticWorktree(
+      workspacePath: string,
+      worktreeRootPath: string,
+    ): Promise<GitCreateWorktreeResult> {
+      const root = worktreeRootPath.trim();
+      const resolution = await this.resolveRepository(workspacePath);
+      if (!resolution.isGitAvailable || !resolution.isRepository) {
+        return toWorktreeCreateFailure({
+          branchName: null,
+          worktreePath: root,
+          issues: [
+            {
+              code: "not-repository",
+              message: "Workspace is not inside a Git repository.",
+              detail: null,
+            },
+          ],
+        });
+      }
+      if (!root || !isAbsolute(root)) {
+        return toWorktreeCreateFailure({
+          branchName: null,
+          worktreePath: root,
+          issues: [
+            {
+              code: "target-path-invalid",
+              message: "The worktree root directory must be an absolute path.",
+              detail: null,
+            },
+          ],
+        });
+      }
+
+      for (let attempt = 0; attempt < MAX_WORKTREE_NAME_ATTEMPTS; attempt += 1) {
+        const id = generateWorktreeId();
+        const idDirectory = join(root, id);
+        try {
+          // 同名目录即使为空也不能复用，否则两个工作树会共享随机标识。
+          await lstat(idDirectory);
+          continue;
+        } catch (error: unknown) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            return toWorktreeCreateFailure({
+              branchName: null,
+              worktreePath: idDirectory,
+              issues: [
+                {
+                  code: "target-path-invalid",
+                  message: "Could not inspect the worktree target directory.",
+                  detail: error instanceof Error ? error.message : String(error),
+                },
+              ],
+            });
+          }
+        }
+
+        const result = await this.createWorktree(
+          workspacePath,
+          `worktree/${id}`,
+          join(idDirectory, basename(resolution.repoRoot)),
+        );
+        if (result.ok) {
+          return result;
+        }
+        // Git 原子地拒绝同名分支；目录/分支撞名只重试，不删除任何现有内容。
+        if (
+          result.issues.length === 0 ||
+          !result.issues.every((issue) =>
+            ["branch-already-exists", "branch-in-other-worktree", "target-path-not-empty"].includes(
+              issue.code,
+            ),
+          )
+        ) {
+          return result;
+        }
+      }
+
+      return toWorktreeCreateFailure({
+        branchName: null,
+        worktreePath: root,
+        issues: [
+          {
+            code: "name-allocation-failed",
+            message: "Could not allocate a unique worktree name.",
+            detail: null,
+          },
+        ],
       });
     },
 

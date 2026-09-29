@@ -4,6 +4,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import type {
   GitBranchMutationIssue,
   GitChangeKind,
+  GitWorktreeCreateIssue,
   GitDiffResult,
   GitHeadRefType,
 } from "@zcode/shared";
@@ -161,6 +162,117 @@ export function parseGitBranchMutationIssues(
     {
       code: "unknown",
       message: "Git could not complete the branch operation.",
+      detail,
+    },
+  ];
+}
+
+export function parseGitWorktreeCreateIssues(
+  result: GitCommandExecutionResult,
+): GitWorktreeCreateIssue[] {
+  const detail = result.stderr.trim() || result.stdout.trim() || null;
+  const normalizedDetail = detail?.toLowerCase() ?? "";
+
+  if (result.timedOut) {
+    return [
+      {
+        code: "command-timeout",
+        message: "Git worktree creation timed out.",
+        detail,
+      },
+    ];
+  }
+
+  if (normalizedDetail.includes("a branch named") && normalizedDetail.includes("already exists")) {
+    return [
+      {
+        code: "branch-already-exists",
+        message: "Branch already exists.",
+        detail,
+      },
+    ];
+  }
+
+  if (normalizedDetail.includes("is already used by worktree at")) {
+    return [
+      {
+        code: "branch-in-other-worktree",
+        message: "Branch is already checked out in another worktree.",
+        detail,
+      },
+    ];
+  }
+
+  if (normalizedDetail.includes("invalid reference:")) {
+    return [
+      {
+        code: "target-branch-not-found",
+        message: "Target branch was not found.",
+        detail,
+      },
+    ];
+  }
+
+  if (
+    normalizedDetail.includes("already exists") ||
+    normalizedDetail.includes("is not empty") ||
+    normalizedDetail.includes("directory is not empty")
+  ) {
+    return [
+      {
+        code: "target-path-not-empty",
+        message: "The target worktree directory already exists and is not empty.",
+        detail,
+      },
+    ];
+  }
+
+  if (
+    normalizedDetail.includes("invalid path") ||
+    normalizedDetail.includes("not a valid path") ||
+    normalizedDetail.includes("could not create work tree dir") ||
+    normalizedDetail.includes("no such file or directory")
+  ) {
+    return [
+      {
+        code: "target-path-invalid",
+        message: "The target worktree directory is invalid.",
+        detail,
+      },
+    ];
+  }
+
+  if (
+    normalizedDetail.includes("cannot lock ref") ||
+    normalizedDetail.includes("another git operation") ||
+    normalizedDetail.includes("operation in progress")
+  ) {
+    return [
+      {
+        code: "operation-in-progress",
+        message: "Another Git operation is still in progress.",
+        detail,
+      },
+    ];
+  }
+
+  if (
+    normalizedDetail.includes("not a git repository") ||
+    normalizedDetail.includes("outside repository")
+  ) {
+    return [
+      {
+        code: "not-repository",
+        message: "Workspace is not inside a Git repository.",
+        detail,
+      },
+    ];
+  }
+
+  return [
+    {
+      code: "unknown",
+      message: "Git could not create the worktree.",
       detail,
     },
   ];

@@ -1183,6 +1183,21 @@ const zhCN: Record<string, string> = {
   "git.branchSwitcher.createDialog.placeholder": "例如 feature/git-branch-switcher",
   "git.branchSwitcher.createDialog.helper": "首版只支持基于当前 HEAD 创建并切换。",
   "git.branchSwitcher.createDialog.confirm": "创建并切换",
+  "git.branchSwitcher.worktreeAction": "新建工作树",
+  "git.branchSwitcher.worktreeCancel": "取消新建工作树",
+  "git.branchSwitcher.worktree.error.contextUnsupported":
+    "当前草稿包含附件或旧工作区的引用，请移除后再在新工作树中发送。",
+  "git.branchSwitcher.worktree.error.saveFailed":
+    "工作树已创建，但未能保存新工作区草稿；原输入仍在，请手动打开：{path}",
+  "git.branchSwitcher.worktree.error.createdDeferred":
+    "工作树已创建，原草稿已保留。请手动打开新目录继续：{path}",
+  "git.branchSwitcher.worktree.error.invalidPath": "请在「设置 → 工作树」中配置有效目录。",
+  "git.branchSwitcher.worktree.error.pathNotEmpty": "目标目录已存在且不为空，请重试。",
+  "git.branchSwitcher.worktree.error.nameAllocationFailed": "未能分配不重复的工作树名称，请重试。",
+  "git.branchSwitcher.worktree.error.notRepository": "当前工作区不在 Git 仓库中。",
+  "git.branchSwitcher.worktree.error.timeout": "创建工作树超时，请稍后重试。",
+  "git.branchSwitcher.worktree.error.unknown": "创建工作树失败，请检查工作树目录后重试。",
+  "git.branchSwitcher.worktree.error.requestFailed": "创建工作树失败：{error}",
   "git.branchSwitcher.blockedDialog.title": "提交更改以切换分支",
   "git.branchSwitcher.blockedDialog.description.tracked": "你对以下文件的更改将被检出操作覆盖：",
   "git.branchSwitcher.blockedDialog.description.untracked": "以下未跟踪文件会被检出操作覆盖：",
@@ -1954,6 +1969,12 @@ const zhCN: Record<string, string> = {
   "settings.themeMode.zai-dark": "深色",
   "settings.themeMode.system": "系统",
   "settings.appearanceTitle": "外观",
+  "settings.worktrees.title": "工作树",
+  "settings.worktrees.directory": "工作树目录",
+  "settings.worktrees.directoryDescription":
+    "新建工作树会在此目录下为每个分支创建独立目录；留空则使用默认位置。",
+  "settings.worktrees.directoryPlaceholder": "正在读取用户目录…",
+  "settings.worktrees.saveFailed": "工作树目录保存失败",
   "settings.shortcuts.title": "键盘快捷键",
   "settings.shortcuts.searchPlaceholder": "搜索快捷键",
   "settings.shortcuts.keySearchAria": "按组合键搜索",
@@ -3006,9 +3027,11 @@ const zhCN: Record<string, string> = {
   "settings.usage.acpModels": "实际模型用量",
   "settings.usage.measuredTurns": "已计量轮次",
   "settings.usage.unknownTurns": "ACP 未知用量轮次",
-  "settings.usage.acpCoverageHint": "Token 合计仅包含可确认用量。未上报、缺少连续基线和旧 ACP 历史的用量显示为未知。",
+  "settings.usage.acpCoverageHint":
+    "Token 合计仅包含可确认用量。未上报、缺少连续基线和旧 ACP 历史的用量显示为未知。",
   "settings.usage.acpModelUnknown": "仅展示智能体报告的实际模型用量；其余 Token 无法可靠归属模型。",
-  "settings.usage.codexUsageUnknown": "当前 Codex ACP 适配器只报告最后一次模型请求，无法计算整轮 Token；这些轮次标为未知。",
+  "settings.usage.codexUsageUnknown":
+    "当前 Codex ACP 适配器只报告最后一次模型请求，无法计算整轮 Token；这些轮次标为未知。",
   "settings.usage.codingPlanRange.today": "当日",
   "settings.usage.codingPlanRange.7d": "近 7 日",
   "settings.usage.codingPlanRange.30d": "近 30 日",

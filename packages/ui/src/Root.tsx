@@ -1035,6 +1035,7 @@ function RootInner({
           handleCreateConversationTask={handleCreateConversationTask}
           handleResolveConversationWorkspace={handleResolveConversationWorkspace}
           handleOpenWorkspace={handleOpenWorkspace}
+          handleOpenWorkspacePath={handleSelectProject}
           handleOpenFolderFromWorkspaceMenu={handleOpenFolderFromWorkspaceMenu}
           handleOpenRemoteWorkspace={allowRemoteWorkspace ? handleOpenRemoteConnection : undefined}
           handleCreateScratchWorkspace={handleCreateScratchWorkspace}

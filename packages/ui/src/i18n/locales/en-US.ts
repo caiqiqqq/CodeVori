@@ -1283,6 +1283,25 @@ const enUS: Record<string, string> = {
   "git.branchSwitcher.createDialog.helper":
     "Support creating and switching from the current HEAD only.",
   "git.branchSwitcher.createDialog.confirm": "Create and switch",
+  "git.branchSwitcher.worktreeAction": "New worktree",
+  "git.branchSwitcher.worktreeCancel": "Cancel new worktree",
+  "git.branchSwitcher.worktree.error.contextUnsupported":
+    "This draft has attachments or references from the original workspace. Remove them before sending in a new worktree.",
+  "git.branchSwitcher.worktree.error.saveFailed":
+    "Worktree created, but the new draft could not be saved. Your input is intact. Open it manually: {path}",
+  "git.branchSwitcher.worktree.error.createdDeferred":
+    "Worktree created; your draft remains available. Open the new directory to continue: {path}",
+  "git.branchSwitcher.worktree.error.invalidPath": "Set a valid directory in Settings → Worktrees.",
+  "git.branchSwitcher.worktree.error.pathNotEmpty":
+    "The target directory already contains files. Try again.",
+  "git.branchSwitcher.worktree.error.nameAllocationFailed":
+    "Could not allocate a unique worktree name. Try again.",
+  "git.branchSwitcher.worktree.error.notRepository":
+    "The current workspace is not inside a Git repository.",
+  "git.branchSwitcher.worktree.error.timeout": "Creating the worktree timed out. Try again.",
+  "git.branchSwitcher.worktree.error.unknown":
+    "Could not create the worktree. Check the worktree directory and try again.",
+  "git.branchSwitcher.worktree.error.requestFailed": "Creating the worktree failed: {error}",
   "git.branchSwitcher.blockedDialog.title": "Commit changes to switch branches",
   "git.branchSwitcher.blockedDialog.description.tracked":
     "Your changes to the following files would be overwritten by checkout:",
@@ -2084,6 +2103,12 @@ const enUS: Record<string, string> = {
   "settings.themeMode.zai-dark": "Dark",
   "settings.themeMode.system": "System",
   "settings.appearanceTitle": "Appearance",
+  "settings.worktrees.title": "Worktrees",
+  "settings.worktrees.directory": "Worktree directory",
+  "settings.worktrees.directoryDescription":
+    "New worktrees are created as separate directories under this location. Leave blank to use the default.",
+  "settings.worktrees.directoryPlaceholder": "Loading your home directory…",
+  "settings.worktrees.saveFailed": "Could not save the worktree directory",
   "settings.shortcuts.title": "Keyboard Shortcuts",
   "settings.shortcuts.searchPlaceholder": "Search shortcuts",
   "settings.shortcuts.keySearchAria": "Search by key combination",
@@ -3182,9 +3207,12 @@ const enUS: Record<string, string> = {
   "settings.usage.acpModels": "Actual model usage",
   "settings.usage.measuredTurns": "Measured turns",
   "settings.usage.unknownTurns": "ACP turns with unknown usage",
-  "settings.usage.acpCoverageHint": "Token totals include confirmed usage only. Missing reports, discontinuous baselines and old ACP history remain unknown.",
-  "settings.usage.acpModelUnknown": "Only models reported with actual usage are shown. Remaining tokens cannot be reliably attributed to a model.",
-  "settings.usage.codexUsageUnknown": "The current Codex ACP adapter reports only the last model request, so full-turn tokens remain unknown.",
+  "settings.usage.acpCoverageHint":
+    "Token totals include confirmed usage only. Missing reports, discontinuous baselines and old ACP history remain unknown.",
+  "settings.usage.acpModelUnknown":
+    "Only models reported with actual usage are shown. Remaining tokens cannot be reliably attributed to a model.",
+  "settings.usage.codexUsageUnknown":
+    "The current Codex ACP adapter reports only the last model request, so full-turn tokens remain unknown.",
   "settings.usage.codingPlanRange.today": "Today",
   "settings.usage.codingPlanRange.7d": "7 days",
   "settings.usage.codingPlanRange.30d": "30 days",

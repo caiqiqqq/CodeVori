@@ -30,6 +30,19 @@ import {
 } from "@/v4/workbenchSessionPlacement.js";
 import { usePaneSessionPersistence } from "@/v4/usePaneSessionPersistence.js";
 import { requestV4ComposerDraftWorkspaceTransfer } from "@/v4/composer/composerDraftWorkspaceTransfer.js";
+import {
+  isWorktreeDraftSelectionActive,
+  WorktreeDraftIntentContext,
+  type WorktreeAutoSendRequest,
+  type WorktreeDraftSelection,
+} from "@/v4/composer/worktreeDraftIntent.js";
+import {
+  persistV4ComposerDraft,
+  V4_DRAFT_SCOPE_ROOT,
+  type V4ComposerDraft,
+} from "@/v4/composer/composerDraftStore.js";
+import type { AcpAgent } from "@zcode/shared";
+import { resolveWorktreeRootPath } from "@/lib/worktree.js";
 import { ChatEmptyWorkspacePreviewMenu } from "@/ChatEmptyState.js";
 import { DesktopTopOverlay } from "@/DesktopTopOverlay.js";
 import { DesktopWindowFrame } from "@/DesktopWindowFrame.js";
@@ -224,6 +237,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   onCreateConversationTask,
   onResolveConversationWorkspace,
   onOpenWorkspace,
+  onOpenWorkspacePath,
   onOpenFolderFromWorkspaceMenu,
   onOpenRemoteWorkspace,
   onCreateScratchWorkspace,
@@ -1170,6 +1184,146 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     },
     [handleStartDraftInWorkspace, showChatMainView],
   );
+  const [worktreeSelection, setWorktreeSelection] = useState<WorktreeDraftSelection | null>(null);
+  const [worktreeCreating, setWorktreeCreating] = useState(false);
+  const [worktreeAutoSend, setWorktreeAutoSend] = useState<WorktreeAutoSendRequest | null>(null);
+  const worktreeRequestIdRef = useRef(0);
+  const worktreeSelected = isWorktreeDraftSelectionActive(
+    worktreeSelection,
+    workspaceKey,
+    workspaceShellZCodeState.draftFocusVersion,
+    activeTaskId,
+  );
+  const selectWorktreeDraft = useCallback(
+    (selected: boolean) => {
+      if (worktreeCreating) return;
+      setWorktreeSelection(
+        selected
+          ? { workspaceKey, draftFocusVersion: workspaceShellZCodeState.draftFocusVersion }
+          : null,
+      );
+    },
+    [worktreeCreating, workspaceKey, workspaceShellZCodeState.draftFocusVersion],
+  );
+  const createWorktreeForDraft = useCallback(async () => {
+    if (!worktreeSelected || worktreeCreating || workspaceIdentity || activeTaskId !== null) {
+      throw new Error("stale-worktree-selection");
+    }
+    setWorktreeCreating(true);
+    try {
+      const [settings, systemInfo] = await Promise.all([
+        services.settingService.get(),
+        services.systemService.info(),
+      ]);
+      const worktreeRootPath = resolveWorktreeRootPath({
+        configuredRoot: settings.worktreeRootDirectory,
+        homeDirectory: systemInfo.homedir,
+        workspacePath: workspaceAbsPath,
+      });
+      if (!worktreeRootPath) throw new Error("invalid-worktree-root");
+      return await services.gitService.createAutomaticWorktree({
+        workspacePath: workspaceAbsPath,
+        worktreeRootPath,
+      });
+    } finally {
+      setWorktreeCreating(false);
+    }
+  }, [
+    worktreeSelected,
+    worktreeCreating,
+    workspaceIdentity,
+    activeTaskId,
+    services,
+    workspaceAbsPath,
+  ]);
+  const openCreatedWorktree = useCallback(
+    (
+      path: string,
+      draft: V4ComposerDraft,
+      agent: AcpAgent | null,
+      trigger: WorktreeAutoSendRequest["trigger"],
+    ) => {
+      // Git add 已完成；即使后续草稿落盘失败，也不能让下一次点击再创建一棵工作树。
+      setWorktreeSelection(null);
+      if (!persistV4ComposerDraft(path, undefined, V4_DRAFT_SCOPE_ROOT, draft)) {
+        throw new Error("worktree-draft-save-failed");
+      }
+      try {
+        handleStartDraftInWorkspaceInChat(path, undefined, "project");
+        if (
+          tabStoreApi.getState().activeWorkspacePath !== path ||
+          tabStoreApi.getState().activeWorkspaceIdentity
+        ) {
+          throw new Error("worktree-workspace-open-failed");
+        }
+        const draftFocusVersion = useZCodeSessionStore
+          .getState()
+          .getWorkspaceState(path).draftFocusVersion;
+        setWorktreeAutoSend({
+          requestId: ++worktreeRequestIdRef.current,
+          workspacePath: path,
+          draftFocusVersion,
+          text: draft.text.trim(),
+          agent,
+          trigger,
+        });
+      } catch (error) {
+        setWorktreeAutoSend(null);
+        throw error;
+      }
+    },
+    [handleStartDraftInWorkspaceInChat, tabStoreApi],
+  );
+  const consumeWorktreeAutoSend = useCallback((requestId: number) => {
+    setWorktreeAutoSend((current) => (current?.requestId === requestId ? null : current));
+  }, []);
+  const observedWorktreeAutoSendRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!worktreeAutoSend) {
+      observedWorktreeAutoSendRef.current = null;
+      return;
+    }
+    const atTarget =
+      worktreeAutoSend.workspacePath === workspaceAbsPath &&
+      worktreeAutoSend.draftFocusVersion === workspaceShellZCodeState.draftFocusVersion &&
+      activeTaskId === null;
+    if (atTarget) {
+      observedWorktreeAutoSendRef.current = worktreeAutoSend.requestId;
+    } else if (observedWorktreeAutoSendRef.current === worktreeAutoSend.requestId) {
+      // 目标草稿曾就绪但用户已离开；回到旧 tab 时不得兑现迟到的自动提交。
+      consumeWorktreeAutoSend(worktreeAutoSend.requestId);
+    }
+  }, [
+    activeTaskId,
+    consumeWorktreeAutoSend,
+    workspaceAbsPath,
+    workspaceShellZCodeState.draftFocusVersion,
+    worktreeAutoSend,
+  ]);
+  const activeWorktreeAutoSend =
+    worktreeAutoSend?.workspacePath === workspaceAbsPath &&
+    worktreeAutoSend.draftFocusVersion === workspaceShellZCodeState.draftFocusVersion &&
+    activeTaskId === null
+      ? worktreeAutoSend
+      : null;
+  const worktreeDraftIntent = useMemo(
+    () => ({
+      selected: worktreeSelected,
+      select: selectWorktreeDraft,
+      createWorktree: createWorktreeForDraft,
+      autoSend: activeWorktreeAutoSend,
+      openCreatedWorktree,
+      consumeAutoSend: consumeWorktreeAutoSend,
+    }),
+    [
+      worktreeSelected,
+      selectWorktreeDraft,
+      createWorktreeForDraft,
+      activeWorktreeAutoSend,
+      openCreatedWorktree,
+      consumeWorktreeAutoSend,
+    ],
+  );
   const handleCreateProjectDraft = useCallback(
     (path: string, identity?: string) =>
       handleStartDraftInWorkspaceInChat(path, identity, undefined, "project"),
@@ -1304,6 +1458,10 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
             gitSummary={gitState.summary}
             dirtyFileCount={gitDirtyFileCount}
             onRefreshGit={handleRefreshGit}
+            allowWorktreeCreation={!workspaceIdentity}
+            worktreeSelected={worktreeSelected}
+            worktreeCreating={worktreeCreating}
+            onWorktreeSelectedChange={selectWorktreeDraft}
             className="px-0 pt-0"
             popoverClassName="w-72"
             branchListClassName="max-h-48"
@@ -1325,6 +1483,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       gitDirtyFileCount,
       gitState.summary,
       handleRefreshGit,
+      worktreeSelected,
+      selectWorktreeDraft,
       handleSelectConversationWorkspace,
       handleStartDraftInWorkspaceInChat,
       isWindowsDesktop,
@@ -1956,65 +2116,69 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                   永远停在 draft。v4 语义下 sessionId ≡ taskId，meta 只服务 Header 显示。
                                   桌面主区升级为分屏宿主（Layout/Focus 两层）；primary pane
                                   绑定语义与 testid 契约（paneId=workspace-main）不变。 */}
-                            <V4WorkspaceChatArea
-                              readOnly={Boolean(workspaceReadOnlyReason)}
-                              foregroundEnabled={isWorkspaceVisible}
-                              workspacePath={workspaceAbsPath}
-                              workspaceIdentity={workspaceIdentity}
-                              isDesktop={isDesktop === true}
-                              remoteSessionId={workspaceRemoteSessionId}
-                              sessionId={activeTaskId}
-                              activeSelectionSideChatSessionId={activeSelectionSideChatSessionId}
-                              provider={activeTaskProvider ?? undefined}
-                              onSessionCreated={handleV4SessionCreated}
-                              onSessionDeleted={handleV4SessionDeleted}
-                              draftComposerHeader={draftComposerHeader}
-                              onPrimaryDraftDropTargetControllerChange={
-                                setDraftHeaderDropTargetController
-                              }
-                              onPrimaryAcpSessionChange={handlePrimaryAcpSessionChange}
-                              acpOpenRequest={acpOpenRequest}
-                              gitSummary={gitState.summary}
-                              gitDirtyFileCount={gitDirtyFileCount}
-                              activeTaskChangeSummary={activeTaskChangeSummary}
-                              gitWorktreeReviewSourceId={gitWorktreeReviewSourceId}
-                              gitWorktreeChangeSummary={gitWorktreeChangeSummary}
-                              summaryPanelVariantOverride={summaryPanelVariantOverride}
-                              onSummaryPanelVariantOverrideChange={
-                                onSummaryPanelVariantOverrideChange
-                              }
-                              onRefreshGit={handleRefreshGit}
-                              onOpenGitReview={handleOpenGitReview}
-                              onPaneActiveSessionChange={handlePaneActiveSessionChange}
-                              onOpenBrowserUrl={handleOpenBrowserUrl}
-                              onOpenAutomationsMain={handleOpenAutomations}
-                              onOpenCodeViewer={handleOpenCodeViewer}
-                              onAutoOpenAssistantPptx={
-                                isDesktop ? handleAutoOpenAssistantPptx : undefined
-                              }
-                              onOpenBackgroundBash={handleOpenBackgroundBash}
-                              onOpenSubagentSession={handleOpenSubagentSession}
-                              onOpenSubagentDirectory={handleOpenSubagentDirectory}
-                              onSyncSubagentSessionTabs={handleSyncSubagentSessionTabs}
-                              onOpenSelectionSideChat={handleOpenSelectionSideChat}
-                              onOpenPlanDetail={handleOpenPlanDetail}
-                              onOpenWorkflowRun={handleOpenWorkflowRun}
-                              onOpenWorkflowArtifact={handleOpenWorkflowArtifact}
-                              onOpenWorkflowRunDirectory={handleOpenWorkflowRunDirectory}
-                              onOpenWorkflowActorSession={handleOpenWorkflowActorSession}
-                              onOpenWorkflowWorkspace={handleOpenWorkflowWorkspace}
-                              onOpenFileLink={handleOpenMarkdownFileLink}
-                              conversationFindQuery={conversationFindQuery}
-                              conversationFindActiveIndex={conversationFindActiveIndex}
-                              conversationFindNavigationRequestId={
-                                conversationFindNavigationRequestId
-                              }
-                              onConversationFindMatchStateChange={
-                                onConversationFindMatchStateChange
-                              }
-                              searchResultHighlightRequest={activeSearchResultHighlightRequest}
-                              onSearchResultHighlightDone={onSearchResultHighlightDone}
-                            />
+                            <WorktreeDraftIntentContext.Provider value={worktreeDraftIntent}>
+                              <V4WorkspaceChatArea
+                                readOnly={Boolean(workspaceReadOnlyReason)}
+                                foregroundEnabled={isWorkspaceVisible}
+                                workspacePath={workspaceAbsPath}
+                                workspaceIdentity={workspaceIdentity}
+                                isDesktop={isDesktop === true}
+                                remoteSessionId={workspaceRemoteSessionId}
+                                sessionId={activeTaskId}
+                                activeSelectionSideChatSessionId={activeSelectionSideChatSessionId}
+                                provider={activeTaskProvider ?? undefined}
+                                onSessionCreated={handleV4SessionCreated}
+                                onSessionDeleted={handleV4SessionDeleted}
+                                draftComposerHeader={draftComposerHeader}
+                                onPrimaryDraftDropTargetControllerChange={
+                                  setDraftHeaderDropTargetController
+                                }
+                                onPrimaryAcpSessionChange={handlePrimaryAcpSessionChange}
+                                acpOpenRequest={acpOpenRequest}
+                                gitSummary={gitState.summary}
+                                gitDirtyFileCount={gitDirtyFileCount}
+                                activeTaskChangeSummary={activeTaskChangeSummary}
+                                gitWorktreeReviewSourceId={gitWorktreeReviewSourceId}
+                                gitWorktreeChangeSummary={gitWorktreeChangeSummary}
+                                summaryPanelVariantOverride={summaryPanelVariantOverride}
+                                onSummaryPanelVariantOverrideChange={
+                                  onSummaryPanelVariantOverrideChange
+                                }
+                                onRefreshGit={handleRefreshGit}
+                                onOpenGitReview={handleOpenGitReview}
+                                onOpenWorkspacePath={onOpenWorkspacePath}
+                                allowWorktreeCreation={false}
+                                onPaneActiveSessionChange={handlePaneActiveSessionChange}
+                                onOpenBrowserUrl={handleOpenBrowserUrl}
+                                onOpenAutomationsMain={handleOpenAutomations}
+                                onOpenCodeViewer={handleOpenCodeViewer}
+                                onAutoOpenAssistantPptx={
+                                  isDesktop ? handleAutoOpenAssistantPptx : undefined
+                                }
+                                onOpenBackgroundBash={handleOpenBackgroundBash}
+                                onOpenSubagentSession={handleOpenSubagentSession}
+                                onOpenSubagentDirectory={handleOpenSubagentDirectory}
+                                onSyncSubagentSessionTabs={handleSyncSubagentSessionTabs}
+                                onOpenSelectionSideChat={handleOpenSelectionSideChat}
+                                onOpenPlanDetail={handleOpenPlanDetail}
+                                onOpenWorkflowRun={handleOpenWorkflowRun}
+                                onOpenWorkflowArtifact={handleOpenWorkflowArtifact}
+                                onOpenWorkflowRunDirectory={handleOpenWorkflowRunDirectory}
+                                onOpenWorkflowActorSession={handleOpenWorkflowActorSession}
+                                onOpenWorkflowWorkspace={handleOpenWorkflowWorkspace}
+                                onOpenFileLink={handleOpenMarkdownFileLink}
+                                conversationFindQuery={conversationFindQuery}
+                                conversationFindActiveIndex={conversationFindActiveIndex}
+                                conversationFindNavigationRequestId={
+                                  conversationFindNavigationRequestId
+                                }
+                                onConversationFindMatchStateChange={
+                                  onConversationFindMatchStateChange
+                                }
+                                searchResultHighlightRequest={activeSearchResultHighlightRequest}
+                                onSearchResultHighlightDone={onSearchResultHighlightDone}
+                              />
+                            </WorktreeDraftIntentContext.Provider>
                           </ScopedErrorBoundary>
                         </main>
                       )}

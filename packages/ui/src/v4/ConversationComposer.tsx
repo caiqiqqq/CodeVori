@@ -133,7 +133,11 @@ import {
   resolveComposerAutoFocus,
   type ComposerAutoFocusOptions,
 } from "@/v4/composer/composerAutoFocus.js";
-import { V4_DRAFT_SCOPE_ROOT, type V4ComposerDraft } from "@/v4/composer/composerDraftStore.js";
+import {
+  persistV4ComposerDraft,
+  V4_DRAFT_SCOPE_ROOT,
+  type V4ComposerDraft,
+} from "@/v4/composer/composerDraftStore.js";
 import {
   resolveOppositeFollowupDelivery,
   resolveFollowupModifierTooltip,
@@ -143,6 +147,11 @@ import {
 import { isAppleKeyboardPlatform } from "@/lib/keyboardShortcuts.js";
 import { usePrimaryFollowupModifier } from "@/v4/composer/usePrimaryFollowupModifier.js";
 import { consumeV4ComposerDraftWorkspaceTransferRequest } from "@/v4/composer/composerDraftWorkspaceTransfer.js";
+import {
+  hasUntransferableWorktreeContext,
+  isWorktreeAutoSendTarget,
+  useWorktreeDraftIntent,
+} from "@/v4/composer/worktreeDraftIntent.js";
 import { useComposerAttachments } from "@/v4/composer/useComposerAttachments.js";
 import type { ConversationDropTargetController } from "@/v4/composer/conversationDropTarget.js";
 import { CodeCommentAttachmentChip } from "@/v4/composer/CodeCommentAttachmentChip.js";
@@ -570,6 +579,7 @@ function ConversationComposerImpl({
 }: ConversationComposerProps) {
   const { intl, locale } = useZCodeIntl();
   const services = useOptionalServices();
+  const worktreeDraftIntent = useWorktreeDraftIntent();
   const conversationTelemetry = useScopedConversationTelemetrySupervisor({
     workspacePath,
     ...(workspaceIdentity ? { workspaceIdentity } : {}),
@@ -578,6 +588,7 @@ function ConversationComposerImpl({
   const draftScopeId = sessionId ?? V4_DRAFT_SCOPE_ROOT;
   const workspaceKey = workspaceIdentity?.trim() || workspacePath;
   const configPickerScopeKey = `${workspaceKey}\0${draftScopeId}`;
+  const [restoredScopeKey, setRestoredScopeKey] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
   const [configPickerState, setConfigPickerState] = useState<{
@@ -1025,10 +1036,12 @@ function ConversationComposerImpl({
       if (!api) return;
       // Bug 原因：草稿恢复排到下一帧后，用户可能已在同一编辑器输入；迟到的恢复不能覆盖新正文。
       if (contentRevisionRef.current !== restoreScheduledRevision) {
+        setRestoredScopeKey(`${workspaceIdentity?.trim() || workspacePath}\0${draftScopeId}`);
         requestComposerFocus();
         return;
       }
       restoreDraftInto(api);
+      setRestoredScopeKey(`${workspaceIdentity?.trim() || workspacePath}\0${draftScopeId}`);
       // 草稿恢复后把光标交还输入框（切会话/切草稿/挂载）；连接中会话待可编辑后兑现。
       requestComposerFocus();
     };
@@ -1195,6 +1208,146 @@ function ConversationComposerImpl({
       requestedDelivery?: "startNow" | "queue" | "guide",
     ) => {
       const trimmed = textRef.current.trim();
+      if (draftMode && sessionId === null && worktreeDraftIntent?.selected) {
+        if (!canSend || pendingRef.current) return;
+        const submittedDraft = snapshotDraftOfEditor();
+        let fileMentions = 0;
+        try {
+          fileMentions = acpWorkspaceFilesFromEditor(submittedDraft.editorStateJson).length;
+        } catch {
+          fileMentions = 1;
+        }
+        if (
+          hasUntransferableWorktreeContext({
+            attachments: attachmentsApi.attachments.length,
+            contexts:
+              getCodeCommentContexts().length +
+              webElementContexts.length +
+              pptxElementReferences.length +
+              conversationSelectionReferences.length +
+              Number(Boolean(pendingShareContext)),
+            mentions: fileMentions,
+          })
+        ) {
+          toast(
+            intl.formatMessage({ id: "git.branchSwitcher.worktree.error.contextUnsupported" }),
+            {
+              variant: "warning",
+            },
+          );
+          return;
+        }
+        const submittedRevision = contentRevisionRef.current;
+        const submittedDraftVersion = useZCodeSessionStore
+          .getState()
+          .getWorkspaceState(workspacePath, workspaceIdentity).draftFocusVersion;
+        const fullDraft = {
+          ...ownerDraftRef.current.draft,
+          ...submittedDraft,
+          updatedAt: Date.now(),
+        };
+        pendingRef.current = true;
+        setPending(true);
+        try {
+          const result = await worktreeDraftIntent.createWorktree();
+          if (!result.ok) {
+            const issue = result.issues[0];
+            const messageIds: Record<string, string> = {
+              "name-allocation-failed": "git.branchSwitcher.worktree.error.nameAllocationFailed",
+              "target-path-invalid": "git.branchSwitcher.worktree.error.invalidPath",
+              "target-path-not-empty": "git.branchSwitcher.worktree.error.pathNotEmpty",
+              "operation-in-progress": "git.branchSwitcher.error.operationInProgress",
+              "branch-in-other-worktree": "git.branchSwitcher.error.branchInOtherWorktree",
+              "not-repository": "git.branchSwitcher.worktree.error.notRepository",
+              "command-timeout": "git.branchSwitcher.worktree.error.timeout",
+            };
+            toast(
+              intl.formatMessage({
+                id: messageIds[issue?.code ?? ""] ?? "git.branchSwitcher.worktree.error.unknown",
+              }),
+              { variant: "warning" },
+            );
+            return;
+          }
+          // Git 已创建成功；旧草稿若在等待期间切换/编辑，迟到结果只能保存，不能抢走当前焦点或自动发送。
+          if (
+            draftTargetRef.current.workspacePath !== workspacePath ||
+            draftTargetRef.current.scopeId !== V4_DRAFT_SCOPE_ROOT ||
+            useZCodeSessionStore.getState().getWorkspaceState(workspacePath, workspaceIdentity)
+              .draftFocusVersion !== submittedDraftVersion ||
+            contentRevisionRef.current !== submittedRevision
+          ) {
+            const saved = persistV4ComposerDraft(
+              result.worktreePath,
+              undefined,
+              V4_DRAFT_SCOPE_ROOT,
+              fullDraft,
+            );
+            toast(
+              intl.formatMessage(
+                {
+                  id: saved
+                    ? "git.branchSwitcher.worktree.error.createdDeferred"
+                    : "git.branchSwitcher.worktree.error.saveFailed",
+                },
+                { path: result.worktreePath },
+              ),
+              { variant: "warning" },
+            );
+            worktreeDraftIntent.select(false);
+            return;
+          }
+          if (draftPersistTimerRef.current !== null) {
+            window.clearTimeout(draftPersistTimerRef.current);
+            draftPersistTimerRef.current = null;
+          }
+          updateComposerContent({ text: "", editorStateJson: undefined, mention: undefined });
+          try {
+            worktreeDraftIntent.openCreatedWorktree(
+              result.worktreePath,
+              fullDraft,
+              acpAgent,
+              sendTriggerRef.current,
+            );
+          } catch (error) {
+            replaceComposerDraft(fullDraft);
+            if (submittedDraft.editorStateJson) {
+              inputApiRef.current?.setEditorStateJson(submittedDraft.editorStateJson);
+            } else {
+              inputApiRef.current?.setText(submittedDraft.text);
+            }
+            updateText(submittedDraft.text);
+            toast(
+              intl.formatMessage(
+                { id: "git.branchSwitcher.worktree.error.saveFailed" },
+                { path: result.worktreePath },
+              ),
+              { variant: "warning" },
+            );
+            logger.warn("[v4-composer] 工作树已创建但无法打开新草稿", error);
+          }
+        } catch (error) {
+          logger.warn("[v4-composer] 创建工作树失败", error);
+          if (error instanceof Error && error.message === "stale-worktree-selection") return;
+          if (error instanceof Error && error.message === "invalid-worktree-root") {
+            toast(intl.formatMessage({ id: "git.branchSwitcher.worktree.error.invalidPath" }), {
+              variant: "warning",
+            });
+            return;
+          }
+          toast(
+            intl.formatMessage(
+              { id: "git.branchSwitcher.worktree.error.requestFailed" },
+              { error: error instanceof Error ? error.message : String(error) },
+            ),
+            { variant: "warning" },
+          );
+        } finally {
+          pendingRef.current = false;
+          setPending(false);
+        }
+        return;
+      }
       if (acpAgent) {
         if ((!trimmed && !hasAttachments) || !acpReady || acpRunning || !onSendAcpText) return;
         // 原生结构化上下文仍需专门的 Host 接口；附件走 ACP 内容块。
@@ -1551,6 +1704,10 @@ function ConversationComposerImpl({
     },
     [
       attachmentsApi,
+      worktreeDraftIntent,
+      canSend,
+      draftMode,
+      replaceComposerDraft,
       acpAgent,
       acpReady,
       acpRunning,
@@ -1585,6 +1742,39 @@ function ConversationComposerImpl({
       workspacePath,
     ],
   );
+
+  useEffect(() => {
+    const request = worktreeDraftIntent?.autoSend;
+    if (!isWorktreeAutoSendTarget(request ?? null, workspacePath, workspaceIdentity, sessionId))
+      return;
+    if (!request || acpAgent !== request.agent) return;
+    if (!acpAgent && modelSelectionState.status === "error") {
+      worktreeDraftIntent?.consumeAutoSend(request.requestId);
+      return;
+    }
+    if (restoredScopeKey !== configPickerScopeKey) return;
+    if (text.trim() !== request.text) {
+      worktreeDraftIntent?.consumeAutoSend(request.requestId);
+      return;
+    }
+    if (!canSend || pendingRef.current) return;
+    // 修复原因：新工作区的草稿恢复在下一帧，消费请求必须晚于恢复和 Agent/模型门禁。
+    worktreeDraftIntent?.consumeAutoSend(request.requestId);
+    sendTriggerRef.current = request.trigger;
+    void submit();
+  }, [
+    acpAgent,
+    canSend,
+    configPickerScopeKey,
+    modelSelectionState.status,
+    restoredScopeKey,
+    sessionId,
+    submit,
+    text,
+    workspaceIdentity,
+    workspacePath,
+    worktreeDraftIntent,
+  ]);
 
   // Lexical onChange（首字符也稳定回传，见 LexicalChatInput.TextContentPlugin）。
   const handleEditorChange = useCallback(

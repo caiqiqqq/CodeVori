@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Branch creation and switch-assist dialogs share one dialog surface. */
 import { type FormEvent } from "react";
 import { Button } from "@/components/ui/button.js";
 import {

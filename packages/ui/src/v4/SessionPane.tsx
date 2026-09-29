@@ -94,6 +94,10 @@ import {
   type ComposerSubmissionConfig,
 } from "@/v4/composer/composerSubmissionConfig.js";
 import { useDraftSessionPrewarm } from "@/v4/composer/useDraftSessionPrewarm.js";
+import {
+  isWorktreeAutoSendTarget,
+  useWorktreeDraftIntent,
+} from "@/v4/composer/worktreeDraftIntent.js";
 import { projectSessionConfigToTaskConfigOptions } from "@/v4/composer/sessionConfigTaskCache.js";
 import { useDraftRuntimeRebuildGate } from "@/v4/composer/useDraftRuntimeRebuildGate.js";
 import { useDraftModelReadinessGate } from "@/v4/composer/useDraftModelReadinessGate.js";
@@ -350,6 +354,8 @@ export interface SessionPaneProps {
   onSummaryPanelVariantOverrideChange?: (variant: ChatViewSummaryPanelVariant | null) => void;
   onRefreshGit?: () => void;
   onOpenGitReview?: (sourceId?: GitChangeSourceId) => void;
+  onOpenWorkspacePath?: (path: string) => void | Promise<void>;
+  allowWorktreeCreation?: boolean;
   onOpenBrowserUrl?: (url: string) => void;
   onOpenAutomationsMain?: OpenAutomationsMain;
   onOpenCodeViewer?: (source: CodeViewerSource) => void;
@@ -529,6 +535,8 @@ export function SessionPane({
   onSummaryPanelVariantOverrideChange,
   onRefreshGit,
   onOpenGitReview,
+  onOpenWorkspacePath,
+  allowWorktreeCreation,
   onOpenBrowserUrl,
   onOpenAutomationsMain,
   onOpenCodeViewer,
@@ -572,6 +580,8 @@ export function SessionPane({
     zcodeTaskService,
   } = useServices();
   const [acpAgent, setAcpAgent] = useState<AcpAgent | null>(null);
+  const worktreeDraftIntent = useWorktreeDraftIntent();
+  const worktreeAutoSend = worktreeDraftIntent?.autoSend ?? null;
   const draftFocusVersion = useZCodeSessionStore(
     (state) => state.getWorkspaceState(workspacePath, workspaceIdentity).draftFocusVersion,
   );
@@ -601,6 +611,33 @@ export function SessionPane({
     setAcpAgent(null);
   }, [sessionId, workspaceIdentity, workspacePath, acpConversation.resetSelection]);
   useEffect(() => {
+    // 工作区切换会重置 ACP 选择；新工作树首发只能在目标 cwd 重新选择同一 Agent。
+    if (
+      worktreeAutoSend?.agent &&
+      isWorktreeAutoSendTarget(worktreeAutoSend, workspacePath, workspaceIdentity, sessionId)
+    ) {
+      setAcpAgent(worktreeAutoSend.agent);
+    }
+  }, [sessionId, workspaceIdentity, workspacePath, worktreeAutoSend]);
+  useEffect(() => {
+    if (
+      worktreeAutoSend?.agent &&
+      acpConversation.loaded &&
+      acpConversation.error &&
+      isWorktreeAutoSendTarget(worktreeAutoSend, workspacePath, workspaceIdentity, sessionId)
+    ) {
+      worktreeDraftIntent?.consumeAutoSend(worktreeAutoSend.requestId);
+    }
+  }, [
+    acpConversation.error,
+    acpConversation.loaded,
+    sessionId,
+    workspaceIdentity,
+    workspacePath,
+    worktreeAutoSend,
+    worktreeDraftIntent,
+  ]);
+  useEffect(() => {
     const workspaceKey = workspaceIdentity?.trim() || workspacePath;
     const previous = draftFocusOwnerRef.current;
     draftFocusOwnerRef.current = { workspaceKey, version: draftFocusVersion };
@@ -619,9 +656,15 @@ export function SessionPane({
     workspaceIdentity,
     workspacePath,
   ]);
-  const handleSelectAcpAgent = useCallback((agent: AcpAgent) => {
-    setAcpAgent(agent);
-  }, []);
+  const handleSelectAcpAgent = useCallback(
+    (agent: AcpAgent) => {
+      if (worktreeAutoSend && agent !== worktreeAutoSend.agent) {
+        worktreeDraftIntent?.consumeAutoSend(worktreeAutoSend.requestId);
+      }
+      setAcpAgent(agent);
+    },
+    [worktreeAutoSend, worktreeDraftIntent],
+  );
   const lastAcpOpenRequestIdRef = useRef<{ requestId: number; sessionId: string } | null>(null);
   useEffect(() => {
     if (
@@ -2395,34 +2438,57 @@ export function SessionPane({
       onOpenBrowserUrl,
       onOpenCodeViewer,
       onOpenFileLink,
-      workflowRunByToolCallId: buildWorkflowRunByToolCallId(acpConversation.selected?.workflowRuns?.runs),
-      onOpenAcpWorkflowArtifact: acpConversation.selected && onOpenFileLink
-        ? (runId, artifactId) => {
-            void acpService.getWorkflowArtifact({
-              workspacePath, ...(workspaceIdentity ? { workspaceIdentity } : {}),
-              ...(remoteSessionId ? { remoteSessionId } : {}),
-              id: acpConversation.selected!.id, runId, artifactId,
-            }).then(({ path }) => onOpenFileLink({
-              path, label: artifactId, workspacePath,
+      workflowRunByToolCallId: buildWorkflowRunByToolCallId(
+        acpConversation.selected?.workflowRuns?.runs,
+      ),
+      onOpenAcpWorkflowArtifact:
+        acpConversation.selected && onOpenFileLink
+          ? (runId, artifactId) => {
+              void acpService
+                .getWorkflowArtifact({
+                  workspacePath,
+                  ...(workspaceIdentity ? { workspaceIdentity } : {}),
+                  ...(remoteSessionId ? { remoteSessionId } : {}),
+                  id: acpConversation.selected!.id,
+                  runId,
+                  artifactId,
+                })
+                .then(({ path }) =>
+                  onOpenFileLink({
+                    path,
+                    label: artifactId,
+                    workspacePath,
+                    ...(workspaceIdentity ? { workspaceIdentity } : {}),
+                    ...(remoteSessionId ? { workspaceRemoteSessionId: remoteSessionId } : {}),
+                  }),
+                )
+                .catch((error: unknown) => {
+                  logger.warn("[acp-workflow] 无法打开产物", { error });
+                  toast("无法打开工作流产物");
+                });
+            }
+          : undefined,
+      onCancelBackgroundWork: acpConversation.selected
+        ? (runId) => {
+            void acpService.cancelWorkflow({
+              workspacePath,
               ...(workspaceIdentity ? { workspaceIdentity } : {}),
-              ...(remoteSessionId ? { workspaceRemoteSessionId: remoteSessionId } : {}),
-            })).catch((error: unknown) => {
-              logger.warn("[acp-workflow] 无法打开产物", { error });
-              toast("无法打开工作流产物");
+              ...(remoteSessionId ? { remoteSessionId } : {}),
+              id: acpConversation.selected!.id,
+              runId,
             });
           }
         : undefined,
-      onCancelBackgroundWork: acpConversation.selected
-        ? (runId) => { void acpService.cancelWorkflow({
-            workspacePath, ...(workspaceIdentity ? { workspaceIdentity } : {}),
-            ...(remoteSessionId ? { remoteSessionId } : {}), id: acpConversation.selected!.id, runId,
-          }); }
-        : undefined,
       onResumeWorkflowRun: acpConversation.selected
-        ? (runId) => { void acpService.resumeWorkflow({
-            workspacePath, ...(workspaceIdentity ? { workspaceIdentity } : {}),
-            ...(remoteSessionId ? { remoteSessionId } : {}), id: acpConversation.selected!.id, runId,
-          }); }
+        ? (runId) => {
+            void acpService.resumeWorkflow({
+              workspacePath,
+              ...(workspaceIdentity ? { workspaceIdentity } : {}),
+              ...(remoteSessionId ? { remoteSessionId } : {}),
+              id: acpConversation.selected!.id,
+              runId,
+            });
+          }
         : undefined,
     }),
     [
@@ -3596,10 +3662,13 @@ export function SessionPane({
 
   const handleSelectNativeModel = useCallback(
     (modelProvider: string, model: string, sourceModel: ModelSelectionSource | null) => {
+      if (worktreeAutoSend?.agent) {
+        worktreeDraftIntent?.consumeAutoSend(worktreeAutoSend.requestId);
+      }
       handleSelectModel(modelProvider, model, sourceModel);
       setAcpAgent(null);
     },
-    [handleSelectModel],
+    [handleSelectModel, worktreeAutoSend, worktreeDraftIntent],
   );
 
   const handleSelectThought = useCallback(
@@ -4875,6 +4944,8 @@ export function SessionPane({
             onWorkflowSectionOpenChange={setWorkflowSectionOpen}
             onRefreshGit={onRefreshGit}
             onOpenGitReview={onOpenGitReview}
+            onOpenWorkspacePath={onOpenWorkspacePath}
+            allowWorktreeCreation={allowWorktreeCreation}
             onPauseGoal={
               !readOnly && !selectionSideChat && snapshot?.availability.pauseGoal.allowed
                 ? handlePauseGoal

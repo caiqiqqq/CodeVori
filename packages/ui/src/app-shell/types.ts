@@ -97,6 +97,8 @@ export interface AppProps {
   onCreateConversationTask?: () => void;
   onResolveConversationWorkspace?: () => Promise<string>;
   onOpenWorkspace: () => void;
+  /** 打开一个已经创建好的本地 workspace 路径（例如 Git worktree）。 */
+  onOpenWorkspacePath?: (path: string) => void | Promise<void>;
   onOpenFolderFromWorkspaceMenu: () => void;
   onOpenRemoteWorkspace?: () => void;
   onCreateScratchWorkspace: (name: string) => Promise<string | null>;

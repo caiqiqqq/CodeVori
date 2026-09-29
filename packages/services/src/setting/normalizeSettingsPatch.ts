@@ -79,6 +79,16 @@ export function normalizeSettingsPatch(patch: Partial<AppSettings>): Partial<App
   }
 
   if (
+    "worktreeRootDirectory" in normalizedPatch &&
+    typeof normalizedPatch.worktreeRootDirectory === "string"
+  ) {
+    // 清空工作树目录时回到按用户 home 派生的默认目录；不能把空串继续交给非空路径 schema。
+    const trimmedWorktreeRootDirectory = normalizedPatch.worktreeRootDirectory.trim();
+    normalizedPatch.worktreeRootDirectory =
+      trimmedWorktreeRootDirectory.length > 0 ? trimmedWorktreeRootDirectory : undefined;
+  }
+
+  if (
     "providerFamilyDomain" in normalizedPatch &&
     typeof normalizedPatch.providerFamilyDomain === "string"
   ) {

@@ -145,6 +145,43 @@ export interface GitCreateBranchRequest extends GitRepositoryRequest {
   startPoint?: string;
 }
 
+export type GitWorktreeCreateIssueCode =
+  | "name-allocation-failed"
+  | "invalid-branch-name"
+  | "branch-already-exists"
+  | "target-branch-not-found"
+  | "target-path-invalid"
+  | "target-path-not-empty"
+  | "operation-in-progress"
+  | "branch-in-other-worktree"
+  | "not-repository"
+  | "command-timeout"
+  | "unknown";
+
+export interface GitCreateWorktreeRequest extends GitRepositoryRequest {
+  branchName: string;
+  worktreePath: string;
+  startPoint?: string;
+}
+
+export interface GitCreateAutomaticWorktreeRequest extends GitRepositoryRequest {
+  worktreeRootPath: string;
+}
+
+export interface GitWorktreeCreateIssue {
+  code: GitWorktreeCreateIssueCode;
+  message: string;
+  detail?: string | null;
+}
+
+export interface GitCreateWorktreeResult {
+  ok: boolean;
+  branchName: string | null;
+  worktreePath: string;
+  didCreate: boolean;
+  issues: GitWorktreeCreateIssue[];
+}
+
 export interface GitChangesRequest extends GitRepositoryRequest {
   sourceId: Extract<GitRepositoryChangeSourceId, "unstaged" | "staged">;
 }

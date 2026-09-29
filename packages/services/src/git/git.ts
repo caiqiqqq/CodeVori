@@ -4,6 +4,9 @@ import type {
   GitCommitGraphRequest,
   GitCommitGraphResult,
   GitCreateBranchRequest,
+  GitCreateWorktreeRequest,
+  GitCreateAutomaticWorktreeRequest,
+  GitCreateWorktreeResult,
   GitChangesRequest,
   GitCommitRequest,
   GitCommitResult,
@@ -36,6 +39,10 @@ export interface IGitService {
   getCommitGraph(params: GitCommitGraphRequest): Promise<GitCommitGraphResult>;
   switchBranch(params: GitSwitchBranchRequest): Promise<GitBranchMutationResult>;
   createBranchAndSwitch(params: GitCreateBranchRequest): Promise<GitBranchMutationResult>;
+  createWorktree(params: GitCreateWorktreeRequest): Promise<GitCreateWorktreeResult>;
+  createAutomaticWorktree(
+    params: GitCreateAutomaticWorktreeRequest,
+  ): Promise<GitCreateWorktreeResult>;
   getChanges(params: GitChangesRequest): Promise<GitFileChange[]>;
   getIgnoredPaths(params: GitIgnoredPathsRequest): Promise<string[]>;
   getDiff(params: GitDiffQuery): Promise<GitDiffResult>;

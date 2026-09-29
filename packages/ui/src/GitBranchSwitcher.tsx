@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Branch menu and switch-assist dialogs share one focus/portal owner. */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { GitRepositorySummary } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
@@ -41,6 +42,10 @@ interface GitBranchSwitcherProps {
   popoverSide?: "top" | "bottom" | "left" | "right";
   avoidPopoverCollisions?: boolean;
   showFooterActions?: boolean;
+  allowWorktreeCreation?: boolean;
+  worktreeSelected?: boolean;
+  worktreeCreating?: boolean;
+  onWorktreeSelectedChange?: (selected: boolean) => void;
 }
 
 export function GitBranchSwitcher({
@@ -56,6 +61,10 @@ export function GitBranchSwitcher({
   popoverSide = "top",
   avoidPopoverCollisions = true,
   showFooterActions = true,
+  allowWorktreeCreation = false,
+  worktreeSelected = false,
+  worktreeCreating = false,
+  onWorktreeSelectedChange,
 }: GitBranchSwitcherProps) {
   const { intl, locale } = useZCodeIntl();
   const numberFormatter = new Intl.NumberFormat(locale);
@@ -90,7 +99,7 @@ export function GitBranchSwitcher({
 
   const isVisible = gitSummary.isGitAvailable && gitSummary.isRepository;
   const displayedCurrentBranchName = branchesResult?.currentBranchName ?? gitSummary.branchName;
-  const triggerLabel = useMemo(
+  const branchLabel = useMemo(
     () =>
       resolveGitBranchTriggerLabel({
         headRefType: gitSummary.headRefType,
@@ -100,6 +109,9 @@ export function GitBranchSwitcher({
       }),
     [displayedCurrentBranchName, gitSummary.headRefType, intl],
   );
+  const triggerLabel = worktreeSelected
+    ? intl.formatMessage({ id: "git.branchSwitcher.worktreeAction" })
+    : branchLabel;
   const currentBranchDirtyLabel = useMemo(
     () =>
       dirtyFileCount > 0
@@ -178,9 +190,10 @@ export function GitBranchSwitcher({
           <PopoverTrigger asChild>
             <Button
               type="button"
+              data-testid={worktreeSelected ? "worktree-draft-selected" : undefined}
               variant="ghost"
               size={"default"}
-              disabled={mutationPending}
+              disabled={mutationPending || worktreeCreating}
               aria-label={intl.formatMessage({
                 id: "git.branchSwitcher.trigger.ariaLabel",
               })}
@@ -196,7 +209,7 @@ export function GitBranchSwitcher({
               />
               <>
                 <span className="min-w-0 max-w-25 truncate text-left">{triggerLabel}</span>
-                {loadingBranches || mutationPending ? (
+                {loadingBranches || mutationPending || worktreeCreating ? (
                   <LoaderIcon
                     data-branch-switcher-trailing-icon="true"
                     className="size-3.5 animate-spin text-foreground-subtle"
@@ -267,16 +280,18 @@ export function GitBranchSwitcher({
                   className="space-y-0.5 p-1 **:[[cmdk-group-heading]]:px-3 **:[[cmdk-group-heading]]:py-2 **:[[cmdk-group-heading]]:text-ui-base **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-foreground-subtle"
                 >
                   {(branchesResult?.branches ?? []).map((branch) => {
-                    const isCurrent = branch.name === displayedCurrentBranchName;
+                    const isCurrent =
+                      !worktreeSelected && branch.name === displayedCurrentBranchName;
                     return (
                       <CommandItem
                         key={branch.name}
                         value={branch.name}
                         data-checked={isCurrent ? "true" : undefined}
                         data-branch-current={isCurrent ? "true" : undefined}
-                        disabled={mutationPending}
+                        disabled={mutationPending || worktreeCreating}
                         className={cn("items-start gap-3 rounded-lg px-3 py-2 text-ui-base")}
                         onSelect={() => {
+                          onWorktreeSelectedChange?.(false);
                           void switchBranch(branch.name);
                         }}
                       >
@@ -304,8 +319,9 @@ export function GitBranchSwitcher({
                   variant="ghost"
                   size="lg"
                   className="w-full justify-start px-2 text-foreground hover:bg-menu-hover hover:text-foreground"
-                  disabled={mutationPending}
+                  disabled={mutationPending || worktreeCreating}
                   onClick={() => {
+                    onWorktreeSelectedChange?.(false);
                     setOpen(false);
                     setCreateDialogOpen(true);
                   }}
@@ -315,6 +331,26 @@ export function GitBranchSwitcher({
                     id: "git.branchSwitcher.createAction",
                   })}
                 </Button>
+                {allowWorktreeCreation && onWorktreeSelectedChange ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="lg"
+                    className="w-full justify-start px-2 text-foreground hover:bg-menu-hover hover:text-foreground"
+                    disabled={mutationPending || worktreeCreating}
+                    onClick={() => {
+                      setOpen(false);
+                      onWorktreeSelectedChange(!worktreeSelected);
+                    }}
+                  >
+                    <GitBranchIcon className="size-4 text-foreground-subtle" />
+                    {intl.formatMessage({
+                      id: worktreeSelected
+                        ? "git.branchSwitcher.worktreeCancel"
+                        : "git.branchSwitcher.worktreeAction",
+                    })}
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="ghost"

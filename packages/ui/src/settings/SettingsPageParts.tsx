@@ -117,16 +117,18 @@ export function SettingsRow({
   description?: ReactNode;
   control: ReactNode;
   detail?: ReactNode;
-  controlLayout?: "default" | "wide";
+  controlLayout?: "default" | "wide" | "balanced";
 }) {
   return (
     <div className="border-t border-border px-4 py-3 first:border-t-0">
       <div
         className={cn(
           "grid items-center gap-4",
-          controlLayout === "wide"
-            ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_280px]"
-            : "grid-cols-[minmax(0,1fr)_192px]",
+          controlLayout === "balanced"
+            ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,45%)]"
+            : controlLayout === "wide"
+              ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_280px]"
+              : "grid-cols-[minmax(0,1fr)_192px]",
         )}
       >
         <div className="min-w-0">
@@ -136,11 +138,11 @@ export function SettingsRow({
           ) : null}
         </div>
         <div className="flex w-full flex-nowrap items-center justify-end gap-2">
-          {controlLayout === "wide" ? detail : null}
+          {controlLayout !== "default" ? detail : null}
           {control}
         </div>
       </div>
-      {detail && controlLayout !== "wide" ? <div className="mt-3">{detail}</div> : null}
+      {detail && controlLayout === "default" ? <div className="mt-3">{detail}</div> : null}
     </div>
   );
 }
