@@ -5,6 +5,10 @@ import { filterCommitMessageFilesByCurrentSession } from "./commitMessageFileSco
 import type { IGitService } from "./git.js";
 import type { GitCommitMessageGenerator } from "./gitCommitMessageGenerator.js";
 import {
+  createVersionControlService,
+  type VersionControlService,
+} from "./versionControlService.js";
+import {
   createGitCliRepo,
   type GitBranchComparisonChange,
   type GitBranchComparisonSnapshot,
@@ -169,11 +173,13 @@ function getCommitMessageDiffQueries(
 
 export function createGitService(options?: {
   repo?: GitCliRepo;
+  versionControl?: VersionControlService;
   commitMessageGenerator?: GitCommitMessageGenerator;
 }): IGitService {
   const repo = options?.repo ?? createGitCliRepo();
 
   return {
+    ...(options?.versionControl ?? createVersionControlService()),
     async getRepositorySummary(params) {
       const status = await repo.getStatus(params.workspacePath);
       return status.summary;

@@ -75,6 +75,7 @@ import { BrowserSettingsSection } from "@/settings/BrowserSettingsSection.js";
 import { ComputerUseSection } from "@/settings/ComputerUseSection.js";
 import { ShortcutSettingsSection } from "@/settings/ShortcutSettingsSection.js";
 import { WorktreesSection } from "@/settings/WorktreesSection.js";
+import { VersionControlSection } from "@/settings/VersionControlSection.js";
 import { MigrationSection } from "@/settings/MigrationSection.js";
 import { SETTINGS_FRAME_CONTENT_CLASSNAME } from "@/settings/SettingsPageParts.js";
 import {
@@ -1763,6 +1764,11 @@ export function SettingsPage({
                           />
                         ) : activeSection === "shortcuts" ? (
                           <ShortcutSettingsSection isDesktop={Boolean(isDesktop)} />
+                        ) : activeSection === "versionControl" ? (
+                          <ServiceProvider services={localHostServices}>
+                            {/* Git 配置和账号属于本机 Host，不跟随远程 workspace 切换。 */}
+                            <VersionControlSection />
+                          </ServiceProvider>
                         ) : activeSection === "worktrees" ? (
                           <ServiceProvider services={localHostServices}>
                             {/* 工作树目录是本机全局设置；远程 workspace 不能读写远端 Host 的设置。 */}

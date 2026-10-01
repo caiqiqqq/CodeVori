@@ -28,11 +28,26 @@ import type {
   GitWorkspaceRepositoryInfo,
   GitFileChange,
   GitSwitchBranchRequest,
+  GitVersionControlSettings,
+  GitDetection,
+  GitPathRequest,
+  GitAccountAddRequest,
+  GitAccountRotateRequest,
+  GitAccountIdRequest,
+  GitAccountTestResult,
 } from "@zcode/shared";
 import { ServiceChannels } from "@zcode/shared";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IGitService {
+  getVersionControlSettings(): Promise<GitVersionControlSettings>;
+  detectGit(): Promise<GitDetection>;
+  updateGitPath(params: GitPathRequest): Promise<GitDetection>;
+  addGitAccount(params: GitAccountAddRequest): Promise<GitVersionControlSettings>;
+  rotateGitAccount(params: GitAccountRotateRequest): Promise<GitVersionControlSettings>;
+  testGitAccount(params: GitAccountIdRequest): Promise<GitAccountTestResult>;
+  setDefaultGitAccount(params: GitAccountIdRequest): Promise<GitVersionControlSettings>;
+  removeGitAccount(params: GitAccountIdRequest): Promise<GitVersionControlSettings>;
   getRepositorySummary(params: GitRepositoryRequest): Promise<GitRepositorySummary>;
   getWorkspaceRepositoryInfo(params: GitRepositoryRequest): Promise<GitWorkspaceRepositoryInfo>;
   getLocalBranches(params: GitRepositoryRequest): Promise<GitLocalBranchListResult>;

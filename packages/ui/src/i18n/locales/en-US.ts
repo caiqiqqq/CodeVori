@@ -2103,6 +2103,61 @@ const enUS: Record<string, string> = {
   "settings.themeMode.zai-dark": "Dark",
   "settings.themeMode.system": "System",
   "settings.appearanceTitle": "Appearance",
+  "settings.versionControl.title": "Version Control",
+  "settings.versionControl.customPath": "Custom Git Path",
+  "settings.versionControl.pathPlaceholder": "Automatically detect Git",
+  "settings.versionControl.pathLabel": "Path:",
+  "settings.versionControl.gitDetected": "Git detected",
+  "settings.versionControl.gitNotFound": "Git not found",
+  "settings.versionControl.loading": "Loading...",
+  "settings.versionControl.refresh": "Refresh",
+  "settings.versionControl.retry": "Retry",
+  "settings.versionControl.accounts": "Accounts",
+  "settings.versionControl.genericAccounts": "Generic Accounts",
+  "settings.versionControl.noAccounts": "No accounts",
+  "settings.versionControl.addAccount": "Add Account",
+  "settings.versionControl.updateCredential": "Update Credential",
+  "settings.versionControl.removeAccount": "Remove Account",
+  "settings.versionControl.removeConfirm": "Remove {username} and its stored credential?",
+  "settings.versionControl.setDefault": "Set as Default",
+  "settings.versionControl.default": "Default",
+  "settings.versionControl.testConnection": "Test Connection",
+  "settings.versionControl.testCredential": "Check Credential",
+  "settings.versionControl.connectionSuccess": "Connection successful",
+  "settings.versionControl.credentialAvailable":
+    "Credential saved; server connection was not tested",
+  "settings.versionControl.serverUrl": "Server URL",
+  "settings.versionControl.username": "Username",
+  "settings.versionControl.accessToken": "Access Token",
+  "settings.versionControl.password": "Password or Access Token",
+  "settings.versionControl.genericCredential": "Git account credential",
+  "settings.versionControl.generateToken": "Generate Token",
+  "settings.versionControl.showSecret": "Show Credential",
+  "settings.versionControl.hideSecret": "Hide Credential",
+  "settings.versionControl.validateAndAdd": "Validate and Add",
+  "settings.versionControl.cancel": "Cancel",
+  "settings.versionControl.loadFailed": "Unable to load version control settings. Please retry.",
+  "settings.versionControl.operationFailed":
+    "Operation failed. Check the server, credential and network, then retry.",
+  "settings.versionControl.invalidPath":
+    "Invalid Git path. Enter the full path to a Git executable.",
+  "settings.versionControl.invalidServer":
+    "Use an HTTP/HTTPS server URL without credentials, query parameters or fragments.",
+  "settings.versionControl.identityChanged":
+    "The new credential belongs to another account. Add that account separately.",
+  "settings.versionControl.tokenHint.gitlab": "Use a personal access token with the api scope.",
+  "settings.versionControl.tokenHint.gitea": "Use a token with repository read/write permissions.",
+  "settings.versionControl.testError.credentials-missing":
+    "Stored credential not found. Update the credential.",
+  "settings.versionControl.testError.authentication":
+    "Invalid or expired credential. Update the credential.",
+  "settings.versionControl.testError.forbidden": "Access denied. Check the token permissions.",
+  "settings.versionControl.testError.network":
+    "Unable to connect. Check the server URL and network.",
+  "settings.versionControl.testError.response":
+    "Invalid server response. Check the server URL and service status.",
+  "settings.versionControl.testError.identity-changed":
+    "The credential belongs to another account. Update the credential.",
   "settings.worktrees.title": "Worktrees",
   "settings.worktrees.directory": "Worktree directory",
   "settings.worktrees.directoryDescription":

@@ -19,6 +19,7 @@ import {
   Keyboard,
   FileSearch,
   FolderTree,
+  GitBranch,
 } from "lucide-react";
 import { isSettingsSectionEnabled, type SettingsSectionId } from "@/lib/settingsNavigation.js";
 import type { Theme } from "@/useTheme.js";
@@ -78,6 +79,12 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     id: "worktrees",
     icon: FolderTree,
     titleId: "settings.worktrees.title",
+    groupId: "basics",
+  },
+  {
+    id: "versionControl",
+    icon: GitBranch,
+    titleId: "settings.versionControl.title",
     groupId: "basics",
   },
   {

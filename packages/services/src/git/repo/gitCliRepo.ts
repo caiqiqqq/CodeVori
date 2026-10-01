@@ -1908,6 +1908,7 @@ export function createGitCliRepo(options?: {
         : await resolvePushRemote(status);
       const pushResult = await commandProvider.run({
         cwd: resolution.repoRoot,
+        credentialRemote: remoteName ?? "origin",
         args: hasTrackingBranch
           ? ["push"]
           : ["push", "--set-upstream", remoteName ?? "origin", branchName],

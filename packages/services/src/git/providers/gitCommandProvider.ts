@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { DEFAULT_GIT_COMMAND_TIMEOUT_MS, DEFAULT_GIT_OUTPUT_BYTES } from "../config.js";
+import { createVersionControlRepo, readConfiguredGitPath } from "../repo/versionControlRepo.js";
+import { createGitCredentialEnv } from "./gitCredentialProvider.js";
 import {
   createGitEnvironmentProvider,
   type GitEnvironmentProvider,
@@ -11,6 +13,7 @@ export interface GitCommandExecutionOptions {
   timeoutMs?: number;
   maxOutputBytes?: number;
   env?: NodeJS.ProcessEnv;
+  credentialRemote?: string;
 }
 
 export interface GitCommandExecutionResult {
@@ -68,23 +71,27 @@ function forceKillChildProcess(child: ChildProcess, platform: NodeJS.Platform): 
 
 export function createGitCommandProvider(options?: {
   environmentProvider?: GitEnvironmentProvider;
+  getConfiguredGitPath?: () => Promise<string | null>;
   platform?: NodeJS.Platform;
   timeoutKillGraceMs?: number;
   timeoutForceKillGraceMs?: number;
 }): GitCommandProvider {
   const environmentProvider = options?.environmentProvider ?? createGitEnvironmentProvider();
+  const getConfiguredGitPath = options?.getConfiguredGitPath ?? readConfiguredGitPath;
+  const resolveGitBinary = async () =>
+    (await getConfiguredGitPath()) ?? (await environmentProvider.resolveGitBinary());
   const platform = options?.platform ?? process.platform;
   const timeoutKillGraceMs = options?.timeoutKillGraceMs ?? DEFAULT_TIMEOUT_KILL_GRACE_MS;
   const timeoutForceKillGraceMs =
     options?.timeoutForceKillGraceMs ?? DEFAULT_TIMEOUT_FORCE_KILL_GRACE_MS;
 
-  return {
+  const provider: GitCommandProvider = {
     async resolveGitBinary(): Promise<string | null> {
-      return await environmentProvider.resolveGitBinary();
+      return await resolveGitBinary();
     },
 
     async run(command: GitCommandExecutionOptions): Promise<GitCommandExecutionResult> {
-      const gitBinary = await environmentProvider.resolveGitBinary();
+      const gitBinary = await resolveGitBinary();
       if (!gitBinary) {
         throw new Error("Git binary is not available");
       }
@@ -96,6 +103,46 @@ export function createGitCommandProvider(options?: {
         ...environmentProvider.createCommandEnv(),
         ...command.env,
       };
+      if (command.credentialRemote) {
+        const settings = await createVersionControlRepo().read();
+        if (settings.accounts.length) {
+          let credentialRemote = command.credentialRemote;
+          if (command.args.length === 1 && command.args[0] === "push") {
+            // 无显式 remote 的 push 会优先使用 pushRemote/pushDefault，不能拿 upstream 的账号替代。
+            const branch = await provider.run({
+              cwd: command.cwd,
+              args: ["symbolic-ref", "--quiet", "--short", "HEAD"],
+              env: command.env,
+            });
+            const branchName = branch.exitCode === 0 ? branch.stdout.trim() : "";
+            for (const key of [
+              ...(branchName ? [`branch.${branchName}.pushRemote`] : []),
+              "remote.pushDefault",
+            ]) {
+              const configured = await provider.run({
+                cwd: command.cwd,
+                args: ["config", "--get", key],
+                env: command.env,
+              });
+              if (configured.exitCode === 0 && configured.stdout.trim()) {
+                credentialRemote = configured.stdout.trim();
+                break;
+              }
+            }
+          }
+          const remote = await provider.run({
+            cwd: command.cwd,
+            args: ["remote", "get-url", "--push", "--all", credentialRemote],
+            env: command.env,
+          });
+          if (remote.exitCode === 0) {
+            Object.assign(
+              env,
+              createGitCredentialEnv(settings.accounts, remote.stdout.trim().split(/\r?\n/), env),
+            );
+          }
+        }
+      }
       const startedAt = Date.now();
 
       return await new Promise<GitCommandExecutionResult>((resolve) => {
@@ -235,4 +282,5 @@ export function createGitCommandProvider(options?: {
       });
     },
   };
+  return provider;
 }

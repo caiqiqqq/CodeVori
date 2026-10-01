@@ -335,6 +335,8 @@ import { createFileService } from "./file/fileService.js";
 import { createMediaPreviewService } from "./media-preview/mediaPreview.js";
 import type { WorkspaceFileSearchFilter } from "./file/workspaceFileMentionFilter.js";
 import { createGitService } from "./git/gitService.js";
+import { createVersionControlService } from "./git/versionControlService.js";
+import { createVersionControlRepo } from "./git/repo/versionControlRepo.js";
 import { GitCommitMessageGenerator } from "./git/gitCommitMessageGenerator.js";
 import { createGitCheckpointService } from "./git/gitCheckpointService.js";
 import { createSystemService } from "./system/systemService.js";
@@ -2335,6 +2337,10 @@ export function createLocalServices(options: {
     logger: createServiceLogger("git-commit-message"),
   });
   const gitService = createGitService({
+    versionControl: createVersionControlService({
+      repo: createVersionControlRepo({ credentialService }),
+      fetcher: hostApiNetworkTransport.fetch,
+    }),
     commitMessageGenerator: gitCommitMessageGenerator,
   });
   // task wrapper 由 ZCode task service adapter 提供；核心 session 状态由 ZCode agent server 维护。
