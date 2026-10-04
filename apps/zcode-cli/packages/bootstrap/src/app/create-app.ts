@@ -272,6 +272,8 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
           logger,
           platform: options.platform,
         }));
+      // 通信目录异步分配，必须等 broker 就绪再把路径注入 MCP，避免发送尚未绑定的端点。
+      await nodeReplBrowserBroker.ready;
       configuredMcpServers = injectNodeReplBrowserBroker(
         configuredMcpServers,
         nodeReplBrowserBroker,
@@ -1279,7 +1281,12 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
   } catch (error) {
     providerModelRuntime?.dispose();
     void modelTelemetry.shutdown().catch(() => undefined);
-    void ownedNodeReplBrowserBroker?.close();
+    await ownedNodeReplBrowserBroker?.close().catch((cleanupError: unknown) => {
+      logger.warn("Node REPL browser broker startup cleanup failed", {
+        event: "node_repl.browser_broker.startup.cleanup.failed",
+        error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+      });
+    });
     startupTimer.fail("ZCode app startup failed", error, {
       context: { sessionId, workingDirectory },
       event: "bootstrap.app.startup.failed",

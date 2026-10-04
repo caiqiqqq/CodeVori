@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { mkdtemp, rm, rmdir } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BrowserControlPort, Logger, McpServerConfig, TraceContext } from "@zcode/contracts";
 import {
@@ -15,6 +15,21 @@ import {
 const NODE_REPL_MCP_SERVER_NAME = "node_repl";
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const SOCKET_DIRECTORY_PREFIX = ".znr-";
+const SOCKET_FILENAME = "b.sock";
+const MAX_UNIX_SOCKET_PATH_BYTES = 103;
+const RECOVERABLE_SOCKET_ROOT_ERRORS = new Set([
+  "ENOENT",
+  "ENOTDIR",
+  "EACCES",
+  "EPERM",
+  "ENAMETOOLONG",
+]);
+
+interface BrokerEndpoint {
+  socketPath: string;
+  directory?: string;
+}
 
 export interface NodeReplBrowserBroker {
   close(): Promise<void>;
@@ -27,8 +42,10 @@ export function createNodeReplBrowserBroker(input: {
   browserControlPort: BrowserControlPort;
   logger: Logger;
   platform?: NodeJS.Platform | string;
+  socketRootDirectories?: readonly string[];
 }): NodeReplBrowserBroker {
-  const socketPath = createSocketPath(input.platform ?? process.platform);
+  let endpoint: BrokerEndpoint | undefined;
+  let closing: Promise<void> | undefined;
   const token = randomBytes(32).toString("hex");
   const server = createServer((socket) => {
     handleSocket(socket, { ...input, token }).catch((error) => {
@@ -39,30 +56,37 @@ export function createNodeReplBrowserBroker(input: {
     });
   });
   server.on("error", (error) => {
+    if (!endpoint) return;
     input.logger.error("Node REPL browser broker failed", error, {
       event: "node_repl.browser_broker.failed",
     });
   });
-  server.listen(socketPath);
-  server.unref();
-  const ready = new Promise<void>((resolve, reject) => {
-    server.once("listening", resolve);
-    server.once("error", reject);
-  });
+  const ready = initializeEndpoint(server, input).then(
+    (result) => {
+      endpoint = result;
+    },
+    (error: Error) => {
+      input.logger.error("Node REPL browser broker startup failed", error, {
+        event: "node_repl.browser_broker.startup.failed",
+      });
+      throw error;
+    },
+  );
 
   return {
     ready,
-    socketPath,
-    token,
-    close: async () => {
-      // createZCodeApp 是同步工厂，极短生命周期下 close 可能先于 listen 回调；
-      // 直接检查 server.listening 会漏关随后才绑定成功的 socket。
-      await ready.catch(() => undefined);
-      await closeServer(server);
-      if ((input.platform ?? process.platform) !== "win32") {
-        await rm(socketPath, { force: true });
-      }
+    get socketPath() {
+      if (!endpoint) throw new Error("Node REPL browser broker is not ready");
+      return endpoint.socketPath;
     },
+    token,
+    close: () =>
+      (closing ??= (async () => {
+        // 启动中的关闭必须等目录分配和 listen 收口；重复关闭不能并发清理同一端点。
+        await ready.catch(() => undefined);
+        await closeServer(server);
+        if (endpoint?.directory) await removeEndpoint(endpoint);
+      })()),
   };
 }
 
@@ -86,11 +110,84 @@ export function injectNodeReplBrowserBroker(
   };
 }
 
-function createSocketPath(platform: NodeJS.Platform | string): string {
-  const id = randomUUID();
-  return platform === "win32"
-    ? `\\\\.\\pipe\\zcode-node-repl-${id}`
-    : join(tmpdir(), `znr-${id}.sock`);
+async function initializeEndpoint(
+  server: Server,
+  input: {
+    platform?: NodeJS.Platform | string;
+    socketRootDirectories?: readonly string[];
+    logger: Logger;
+  },
+): Promise<BrokerEndpoint> {
+  if ((input.platform ?? process.platform) === "win32") {
+    const socketPath = `\\\\.\\pipe\\zcode-node-repl-${randomUUID()}`;
+    await listen(server, socketPath);
+    return { socketPath };
+  }
+  // 外部启动器的 TMPDIR 可能早已被回收；不复活外部目录，只在可用根下分配自己的私有目录。
+  const roots = new Set(input.socketRootDirectories ?? [tmpdir(), homedir()]);
+  const errors: unknown[] = [];
+  for (const root of roots) {
+    let endpoint: BrokerEndpoint | undefined;
+    try {
+      const prefix = join(root, SOCKET_DIRECTORY_PREFIX);
+      const longestPath = join(`${prefix}XXXXXX`, SOCKET_FILENAME);
+      if (Buffer.byteLength(longestPath) > MAX_UNIX_SOCKET_PATH_BYTES) {
+        throw Object.assign(new Error("Node REPL browser broker socket path is too long"), {
+          code: "ENAMETOOLONG",
+        });
+      }
+      const directory = await mkdtemp(prefix);
+      endpoint = { directory, socketPath: join(directory, SOCKET_FILENAME) };
+      await listen(server, endpoint.socketPath);
+      return endpoint;
+    } catch (error) {
+      if (endpoint) await removeEndpoint(endpoint);
+      const code = (error as NodeJS.ErrnoException).code;
+      if (!code || !RECOVERABLE_SOCKET_ROOT_ERRORS.has(code)) throw error;
+      errors.push(error);
+      input.logger.warn("Node REPL browser broker socket root unavailable", {
+        event: "node_repl.browser_broker.socket_root.unavailable",
+        errorCode: code,
+      });
+    }
+  }
+  throw new AggregateError(errors, "No usable Node REPL browser broker socket directory", {
+    cause: errors.at(-1),
+  });
+}
+
+async function listen(server: Server, socketPath: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const onListening = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const cleanup = () => {
+      server.off("listening", onListening);
+      server.off("error", onError);
+    };
+    server.once("listening", onListening);
+    server.once("error", onError);
+    try {
+      server.listen(socketPath);
+      server.unref();
+    } catch (error) {
+      onError(error as Error);
+    }
+  });
+}
+
+async function removeEndpoint(endpoint: BrokerEndpoint): Promise<void> {
+  await rm(endpoint.socketPath, { force: true });
+  if (!endpoint.directory) return;
+  // 只删自己的 socket 和空目录，不能递归删除根目录或夹带的其他文件。
+  await rmdir(endpoint.directory).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+  });
 }
 
 async function handleSocket(
