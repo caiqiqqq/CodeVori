@@ -1,0 +1,8 @@
+<!-- Derived from Codeg src/components/agent-icon.tsx at 932ac543532c86186a851ffada83dc1ccab9515c. Apache-2.0.
+Modified by ZCode: Converted JSX to standalone SVG; removed layout props and used document-local gradient IDs. -->
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" >
+<title>Kimi Code</title>
+<rect width="24" height="24" rx="5.3" fill="#000000" />
+<path d="M7.2 6.5V17.5M7.2 12l7-5.3M7.2 12l7.6 5.5" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+<circle cx="17.95" cy="6.7" r="1.9" fill="#1783FF" />
+</svg>

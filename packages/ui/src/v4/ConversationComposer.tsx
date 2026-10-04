@@ -88,7 +88,13 @@ import {
 import type { LexicalChatInputHandle } from "@/LexicalChatInput.js";
 import { ChatPromptEditor } from "@/prompt-editor/ChatPromptEditor.js";
 import { toast } from "@/components/ui/toast.js";
-import type { AcpAgent, AcpConfigOption, AcpModeState, AcpPromptInput } from "@zcode/shared";
+import type {
+  AcpAgent,
+  AcpConfigOption,
+  AcpModeState,
+  AcpPromptInput,
+  AcpSession,
+} from "@zcode/shared";
 import { AcpComposerConfigControls } from "@/v4/composer/AcpComposerConfigControls.js";
 import { getAcpComposerBlockingReason } from "@/v4/composer/acpComposerRouting.js";
 import {
@@ -406,6 +412,7 @@ interface ConversationComposerProps {
   /** 只改变同一个编辑器的提交目标；ACP 会话与转录由 Host 持有。 */
   acpAgent?: AcpAgent | null;
   acpSessionId?: string | null;
+  acpContextUsage?: AcpSession["contextUsage"];
   acpReady?: boolean;
   acpRunning?: boolean;
   onSendAcpText?: (input: Omit<AcpPromptInput, "commandId">) => Promise<string>;
@@ -528,6 +535,7 @@ function ConversationComposerImpl({
   disabled = false,
   acpAgent = null,
   acpSessionId = null,
+  acpContextUsage = null,
   acpReady = false,
   acpRunning = false,
   onSendAcpText,
@@ -2366,6 +2374,7 @@ function ConversationComposerImpl({
             usage={composerUsage}
             disabled={disabled}
             acpAgent={acpAgent}
+            acpContextUsage={acpContextUsage}
             activeConfigPicker={activeConfigPicker}
             onConfigPickerOpenChange={handleConfigPickerOpenChange}
             onSelectModel={handleSelectModelTrace}
@@ -2419,6 +2428,7 @@ function ConversationComposerImpl({
       activeConfigPicker,
       composerPhase,
       composerUsage,
+      acpContextUsage,
       disabled,
       draftConfig,
       draftMode,

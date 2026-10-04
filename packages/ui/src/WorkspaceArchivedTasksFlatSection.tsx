@@ -7,7 +7,6 @@ import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { useGlobalTaskList } from "@/hooks/useGlobalTaskList.js";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { formatTaskRelativeTime } from "@/lib/taskListItemPresentation.js";
 import { getTaskChangeSummary } from "@/lib/taskChangeSummary.js";
 import { getPathLeaf } from "@/lib/path.js";
 import { logger } from "@/logger.js";
@@ -23,6 +22,7 @@ import { DeleteAllArchivedTasksButton } from "@/DeleteAllArchivedTasksButton.js"
 import { useAcpSidebarSessions } from "@/hooks/useAcpSidebarSessions.js";
 import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
 import { WorkspaceArchivedAcpSessionItem } from "@/WorkspaceArchivedAcpSessionItem.js";
+import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
 
 export function WorkspaceArchivedTasksFlatSection({
   workspaceTabs,
@@ -174,10 +174,6 @@ export function WorkspaceArchivedTasksFlatSection({
           }
           const { services } = workspaceServices;
           const taskTitle = task.title || intl.formatMessage({ id: "taskList.untitled" });
-          const taskTimeLabel = formatTaskRelativeTime(
-            sortBy === "created" ? task.createdAt : task.updatedAt,
-            intl,
-          );
           const taskChangeSummary = getTaskChangeSummary(task);
           const workspaceKey = buildTaskWorkspaceKey(task.workspacePath, task.workspaceIdentity);
           const workspaceLabel =
@@ -204,6 +200,7 @@ export function WorkspaceArchivedTasksFlatSection({
               )}
             >
               <div className="relative flex items-center gap-2">
+                <TaskAgentIcon task={task} />
                 {isMobileActive ? (
                   <ControlHintTooltip
                     title={intl.formatMessage({ id: "taskList.mobileActive" })}
@@ -231,9 +228,6 @@ export function WorkspaceArchivedTasksFlatSection({
                 >
                   {taskTitle}
                 </p>
-                <span className="shrink-0 text-ui-base text-foreground-subtle">
-                  {taskTimeLabel}
-                </span>
               </div>
               <div className="mt-1 flex items-center gap-2 text-ui-base text-foreground-subtle">
                 <span

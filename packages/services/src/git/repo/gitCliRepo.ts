@@ -1,8 +1,8 @@
 /* eslint-disable max-lines */
-import { lstat, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, readdir, realpath, rm, rmdir, stat } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
-import { basename, isAbsolute, join, resolve, sep } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type {
   GitBranchMutationAction,
   GitBranchMutationIssue,
@@ -13,6 +13,9 @@ import type {
   GitDiffQuery,
   GitDiffResult,
   GitIdentity,
+  GitManagedWorktreeProject,
+  GitRemoveManagedWorktreeRequest,
+  GitRemoveManagedWorktreeResult,
   GitLocalBranch,
   GitLocalBranchListResult,
   GitWorkspaceRepositoryInfo,
@@ -576,6 +579,7 @@ export function createGitCliRepo(options?: {
   const repositoryResolutionRequests = new Map<string, Promise<GitResolvedRepository>>();
   const workspaceRepositoryInfoRequests = new Map<string, Promise<GitWorkspaceRepositoryInfo>>();
   const statusRequests = new Map<string, Promise<GitStatusSnapshot>>();
+  const managedWorktreeRemovalRequests = new Map<string, Promise<GitRemoveManagedWorktreeResult>>();
   const collapsedUntrackedRepoRoots = new Set<string>();
 
   function executeGitStatus(resolution: GitResolvedRepository, untrackedMode: "all" | "normal") {
@@ -836,14 +840,16 @@ export function createGitCliRepo(options?: {
           }
 
           const gitEntryPath = resolve(resolution.repoRoot, ".git");
+          const mainInfo: GitWorkspaceRepositoryInfo = {
+            workspacePath,
+            kind: "main-tree",
+            isGitAvailable: true,
+            repoRoot: resolution.repoRoot,
+          };
           try {
             const gitEntryStat = await stat(gitEntryPath);
             if (gitEntryStat.isDirectory()) {
-              return {
-                workspacePath,
-                kind: "main-tree",
-                isGitAvailable: true,
-              };
+              return mainInfo;
             }
 
             if (gitEntryStat.isFile()) {
@@ -864,10 +870,36 @@ export function createGitCliRepo(options?: {
                 // 其它 `.git` 文件形态（如 submodule / separate-git-dir）一律按 main-tree 放行，
                 // 因为迁移过滤不是强依赖，宁可少过滤也不要误杀正常记录。
                 if (normalizedGitDir.includes("/.git/worktrees/")) {
+                  // 主工作树位置以 Git 的登记信息为准，不从 `.git` 文件、目录名或
+                  // 当前 workspacePath 猜测；路径被移动或 Git 不可读时保持独立项目。
+                  const worktrees = await commandProvider.run({
+                    cwd: resolution.repoRoot,
+                    args: ["worktree", "list", "--porcelain", "-z"],
+                    timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+                  });
+                  const records =
+                    worktrees.exitCode === 0 && !worktrees.timedOut && !worktrees.outputTruncated
+                      ? worktrees.stdout.split("\0\0")
+                      : [];
+                  const firstRecord = records[0]?.split("\0") ?? [];
+                  const mainWorktreePath = firstRecord[0]?.startsWith("worktree ")
+                    ? firstRecord[0].slice("worktree ".length)
+                    : undefined;
+                  const currentRecord = records.find((record) =>
+                    record.split("\0").some((line) => line === `worktree ${resolution.repoRoot}`),
+                  );
+                  const branchRef = currentRecord
+                    ?.split("\0")
+                    .find((line) => line.startsWith("branch refs/heads/"));
                   return {
                     workspacePath,
                     kind: "linked-worktree",
                     isGitAvailable: true,
+                    repoRoot: resolution.repoRoot,
+                    ...(mainWorktreePath && currentRecord ? { mainWorktreePath } : {}),
+                    ...(branchRef
+                      ? { branchName: branchRef.slice("branch refs/heads/".length) }
+                      : {}),
                   };
                 }
               }
@@ -878,11 +910,7 @@ export function createGitCliRepo(options?: {
             // 避免把本来可迁移的记录误过滤掉。
           }
 
-          return {
-            workspacePath,
-            kind: "main-tree",
-            isGitAvailable: true,
-          };
+          return mainInfo;
         },
       );
     },
@@ -1045,6 +1073,7 @@ export function createGitCliRepo(options?: {
       workspacePath: string,
       maxCount?: number,
       skip?: number,
+      headOnly = false,
     ): Promise<GitCommitGraphSnapshot> {
       const resolution = await this.resolveRepository(workspacePath);
       if (!resolution.isGitAvailable || !resolution.isRepository) {
@@ -1064,9 +1093,7 @@ export function createGitCliRepo(options?: {
           // --all 会把 refs/zcode/checkpoints 等内部 hidden refs 拉进 Git Graph。
           // Graph 只展示用户可见历史，因此限定到 HEAD、分支、标签和远端分支。
           "HEAD",
-          "--branches",
-          "--tags",
-          "--remotes",
+          ...(headOnly ? [] : ["--branches", "--tags", "--remotes"]),
           "--date-order",
           "--topo-order",
           `--skip=${normalizedSkip}`,
@@ -1506,6 +1533,197 @@ export function createGitCliRepo(options?: {
           },
         ],
       });
+    },
+
+    async listManagedWorktrees(worktreeRootPath: string): Promise<GitManagedWorktreeProject[]> {
+      if (!isAbsolute(worktreeRootPath)) {
+        throw new Error("Worktree root must be absolute");
+      }
+      let root: string;
+      try {
+        root = await realpath(worktreeRootPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+        throw error;
+      }
+      const rootStat = await stat(root);
+      if (!rootStat.isDirectory()) throw new Error("Worktree root is not a directory");
+      const firstLevel = await readdir(root, { withFileTypes: true });
+      const candidatePaths = (
+        await Promise.all(
+          firstLevel
+            .filter((entry) => entry.isDirectory())
+            .map(async (entry) => {
+              const parent = join(root, entry.name);
+              const children = await readdir(parent, { withFileTypes: true }).catch(
+                (error: NodeJS.ErrnoException) => {
+                  if (error.code === "ENOENT") return [];
+                  throw error;
+                },
+              );
+              // 配置目录内也可能是手动创建的一级工作树；Git 关系负责排除普通目录。
+              return [
+                parent,
+                ...children
+                  .filter((child) => child.isDirectory())
+                  .map((child) => join(parent, child.name)),
+              ];
+            }),
+        )
+      ).flat();
+      const projects = new Map<string, GitManagedWorktreeProject>();
+      await Promise.all(
+        candidatePaths.map(async (candidate) => {
+          try {
+            const canonical = await realpath(candidate);
+            if (
+              canonical !== candidate ||
+              !relative(root, canonical) ||
+              relative(root, canonical).startsWith(`..${sep}`)
+            )
+              return;
+            const info = await this.getWorkspaceRepositoryInfo(canonical);
+            if (
+              info.kind !== "linked-worktree" ||
+              !info.mainWorktreePath ||
+              info.repoRoot !== canonical
+            )
+              return;
+            const projectPath = await realpath(info.mainWorktreePath);
+            const project = projects.get(projectPath) ?? { projectPath, worktrees: [] };
+            project.worktrees.push({
+              worktreePath: canonical,
+              branchName: info.branchName ?? null,
+            });
+            projects.set(projectPath, project);
+          } catch (error) {
+            // 目录扫描不能因为一个失效或无权限的子目录隐藏其它真实工作树。
+            log.debug(undefined, "Skipping unreadable managed worktree candidate", {
+              candidate,
+              error,
+            });
+          }
+        }),
+      );
+      return [...projects.values()]
+        .sort((a, b) => a.projectPath.localeCompare(b.projectPath))
+        .map((project) => ({
+          ...project,
+          worktrees: project.worktrees.sort((a, b) => a.worktreePath.localeCompare(b.worktreePath)),
+        }));
+    },
+
+    async removeManagedWorktree(
+      params: GitRemoveManagedWorktreeRequest,
+      prepare?: (worktreePath: string) => Promise<"workspace-busy" | null>,
+    ): Promise<GitRemoveManagedWorktreeResult> {
+      const busy = managedWorktreeRemovalRequests.get(params.worktreePath);
+      if (busy) return { ok: false, issue: "operation-in-progress" };
+      const task = (async (): Promise<GitRemoveManagedWorktreeResult> => {
+        const invalid: GitRemoveManagedWorktreeResult = { ok: false, issue: "invalid-target" };
+        if (
+          !isAbsolute(params.worktreeRootPath) ||
+          !isAbsolute(params.worktreePath) ||
+          !isAbsolute(params.projectPath)
+        )
+          return invalid;
+        let root: string;
+        let target: string;
+        let project: string;
+        try {
+          [root, target, project] = await Promise.all([
+            realpath(params.worktreeRootPath),
+            realpath(params.worktreePath),
+            realpath(params.projectPath),
+          ]);
+        } catch {
+          return invalid;
+        }
+        const inside = relative(root, target);
+        if (
+          !inside ||
+          inside === ".." ||
+          inside.startsWith(`..${sep}`) ||
+          isAbsolute(inside) ||
+          resolve(params.worktreePath) !== target ||
+          target === project ||
+          (await lstat(target)).isSymbolicLink()
+        )
+          return invalid;
+        const validateRegistration = async () => {
+          this.invalidate(target);
+          const info = await this.getWorkspaceRepositoryInfo(target);
+          if (info.kind !== "linked-worktree" || info.repoRoot !== target || !info.mainWorktreePath)
+            return false;
+          const currentProject = await realpath(info.mainWorktreePath);
+          if (currentProject !== project) return false;
+          const registered = await commandProvider.run({
+            cwd: project,
+            args: ["worktree", "list", "--porcelain", "-z"],
+            timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+          });
+          if (registered.exitCode !== 0 || registered.timedOut || registered.outputTruncated)
+            return false;
+          return registered.stdout
+            .split("\0\0")
+            .some((record) => record.split("\0").includes(`worktree ${target}`));
+        };
+        try {
+          if (!(await validateRegistration())) return invalid;
+          const worktreeList = await commandProvider.run({
+            cwd: project,
+            args: ["worktree", "list", "--porcelain", "-z"],
+            timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+          });
+          ensureGitCommandSucceeded("git worktree list", worktreeList);
+          const record = worktreeList.stdout
+            .split("\0\0")
+            .find((value) => value.split("\0").includes(`worktree ${target}`));
+          if (record?.split("\0").some((line) => line === "locked" || line.startsWith("locked "))) {
+            return { ok: false, issue: "locked-worktree" };
+          }
+          const status = await commandProvider.run({
+            cwd: target,
+            args: ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+            timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+          });
+          ensureGitCommandSucceeded("git status", status);
+          if (status.stdout.length > 0) return { ok: false, issue: "dirty-worktree" };
+          if (await prepare?.(target)) return { ok: false, issue: "workspace-busy" };
+          // 检查和预热进程回收之间可能有异步操作；真正移除前重新校验 Git 归属。
+          if (!(await validateRegistration())) return invalid;
+          const removal = await commandProvider.run({
+            cwd: project,
+            args: ["worktree", "remove", "--", target],
+            timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+          });
+          if (removal.exitCode !== 0 || removal.timedOut || removal.outputTruncated) {
+            return { ok: false, issue: "command-failed" };
+          }
+          this.invalidate(target);
+          this.invalidate(project);
+          // 自动创建的随机标识目录为空时才清理，绝不删除相邻工作树。
+          const parent = resolve(target, "..");
+          if (parent !== root && resolve(parent, "..") === root) {
+            await rmdir(parent).catch((error: NodeJS.ErrnoException) => {
+              if (error.code !== "ENOTEMPTY" && error.code !== "ENOENT" && error.code !== "EEXIST")
+                log.warn(undefined, "Could not remove empty worktree parent", { parent, error });
+            });
+          }
+          return { ok: true };
+        } catch (error) {
+          log.warn(undefined, "Managed worktree removal failed", { target, error });
+          return { ok: false, issue: "command-failed" };
+        }
+      })();
+      managedWorktreeRemovalRequests.set(params.worktreePath, task);
+      try {
+        return await task;
+      } finally {
+        if (managedWorktreeRemovalRequests.get(params.worktreePath) === task) {
+          managedWorktreeRemovalRequests.delete(params.worktreePath);
+        }
+      }
     },
 
     async getDiff(params: GitDiffQuery): Promise<GitDiffResult> {

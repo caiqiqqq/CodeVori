@@ -37,7 +37,11 @@ test("adapter versions are compared with the fixed release target", () => {
   assert.equal(compareAcpAdapterVersions("0.81.1", "0.75.1"), 1);
   assert.equal(compareAcpAdapterVersions("1.9.9", "1.10.0"), -1);
   assert.equal(compareAcpAdapterVersions("1.10.0", "1.10.0"), 0);
-  assert.equal(compareAcpAdapterVersions("1.10.0-beta.1", "1.10.0"), null);
+  assert.equal(compareAcpAdapterVersions("1.10.0-beta.1", "1.10.0"), -1);
+  assert.equal(compareAcpAdapterVersions("1.10.0", "1.10.0-beta.1"), 1);
+  assert.equal(compareAcpAdapterVersions("2026.09.02-c22c1a3", "2026.09.26"), -1);
+  assert.equal(compareAcpAdapterVersions("2.0.1+build.2", "2.0.1"), 0);
+  assert.equal(compareAcpAdapterVersions("2.0.1-beta.10", "2.0.1-beta.2"), 1);
   assert.equal(compareAcpAdapterVersions(null, "1.10.0"), null);
   assert.equal(compareAcpAdapterVersions("unknown", "1.10.0"), null);
 });
@@ -145,5 +149,21 @@ test("system ACP adapter at or above the fixed target keeps its version without 
   assert.equal(
     shouldOfferManagedAcpInstall({ ...agent, source: "managed", managedVersion: "1.13.1" }),
     false,
+  );
+  const updated = {
+    ...agent,
+    registryVersion: "2.0.1",
+    updateCheck: { status: "checked", source: "acp-registry", checkedAt: null },
+  } as const;
+  assert.equal(shouldOfferManagedAcpInstall(updated), true);
+  assert.equal(projectAcpAgentChecks(updated)[1]?.status, "warn");
+  assert.equal(projectAcpAgentChecks({ ...updated, installedVersion: "2.0.1" })[1]?.status, "pass");
+  assert.equal(
+    projectAcpAgentChecks({
+      ...updated,
+      installedVersion: "2.0.1",
+      updateCheck: { ...updated.updateCheck, status: "error" },
+    })[1]?.status,
+    "warn",
   );
 });

@@ -9,7 +9,7 @@ import {
   NodeModelSelectionConfigRepository,
   PERSONAL_PROVIDER_CONFIG_FILE_NAME,
 } from "@zcode/provider-node";
-import { getAppConfigDir as resolveAppConfigDir } from "./paths.js";
+import { getAppConfigDir as resolveAppConfigDir, getZCodeDataRootDir } from "./paths.js";
 import {
   buildLocalMediaPreviewUrl,
   isProviderProvisioningAccountCredentialKey,
@@ -297,6 +297,11 @@ import { ICredentialService } from "./credential/credential.js";
 import { IBroadcastService } from "./broadcast/broadcast.js";
 import { IZCodeTaskService } from "./session/zcodeTaskService.js";
 import { IAcpService } from "./acp/acpService.js";
+import { IWorkTaskService } from "./session/contract.js";
+import { WorkTaskRepo } from "./session/workTaskRepo.js";
+import { WorkTaskService } from "./session/workTaskService.js";
+import { createWorkTaskExecution } from "./work-task/workTaskExecution.js";
+import { createWorkTaskConversation } from "./work-task/workTaskConversation.js";
 import { createAcpService } from "./acp/acpServiceImpl.js";
 import { IZCodeAgentService } from "./zcode-agent/zcodeAgent.js";
 import type { CuaOperationStateReporter } from "./zcode-agent/cuaOperationTurnTracker.js";
@@ -347,7 +352,10 @@ import { createLegacyTeamOrganizationResolver } from "./model-provider/legacyTea
 import { createObservableSettingService } from "./setting/observableSettingService.js";
 import { createCredentialService } from "./credential/credentialService.js";
 import { createBroadcastService } from "./broadcast/broadcastService.js";
-import { createZCodeAgentService, getHostAcpPluginCapabilities } from "./zcode-agent/zcodeAgentService.js";
+import {
+  createZCodeAgentService,
+  getHostAcpPluginCapabilities,
+} from "./zcode-agent/zcodeAgentService.js";
 import type { ZCodeAgentCommandResolver } from "./zcode-agent/zcodeAgentProcessManager.js";
 import { buildAgentTelemetrySpawnEnv } from "./zcode-agent/agentTelemetryEnv.js";
 import { resolveZCodeAgentPresentationSurface } from "./zcode-agent/zcodeAgentPresentationSurface.js";
@@ -2341,7 +2349,41 @@ export function createLocalServices(options: {
       repo: createVersionControlRepo({ credentialService }),
       fetcher: hostApiNetworkTransport.fetch,
     }),
+    forgeOptions: {
+      credentials: createVersionControlRepo({ credentialService }),
+      fetcher: hostApiNetworkTransport.fetch,
+    },
     commitMessageGenerator: gitCommitMessageGenerator,
+    prepareWorktreeRemoval: async (worktreePath) => {
+      const workspace = { workspacePath: worktreePath };
+      // 先检查 CLI 活跃状态，避免它仍忙碌时提前断开该目录下空闲的 ACP 连接。
+      try {
+        const sessions = await zcodeAgentService.listSessions({
+          ...workspace,
+          runtimePolicy: "existing-only",
+        });
+        if (
+          sessions.some(
+            (session) =>
+              session.status === "running" ||
+              session.status === "waiting" ||
+              session.status === "paused",
+          )
+        ) {
+          return "workspace-busy";
+        }
+      } catch (error) {
+        if ((error as { code?: unknown }).code !== "ZCODE_AGENT_RUNTIME_UNAVAILABLE") throw error;
+      }
+      // 删除工作树由本机 Host 串行准入：ACP/CLI 运行中的会话不能被回收 cwd。
+      if (!(await acpService.prepareWorktreeRemoval(workspace))) return "workspace-busy";
+      try {
+        await zcodeAgentService.disposeWorkspace(workspace);
+      } catch (error) {
+        if ((error as { code?: unknown }).code !== "ZCODE_AGENT_RUNTIME_UNAVAILABLE") throw error;
+      }
+      return null;
+    },
   });
   // task wrapper 由 ZCode task service adapter 提供；核心 session 状态由 ZCode agent server 维护。
   const zcodeTaskService = createZCodeTaskServiceAdapter({
@@ -2447,6 +2489,21 @@ export function createLocalServices(options: {
   // 注册链上的懒工厂（如 OffPeak）会各自创建 tasks-index sqlite repo；先收集到本数组，
   // services 集合建好后在 return 前统一登记进 sharedSqliteRepos 侧表
   const sqliteReposToClose: Array<{ close(): void }> = [];
+  const workTaskExecution = createWorkTaskExecution({
+    git: gitService,
+    settings: settingService,
+    acp: acpService,
+    agent: zcodeAgentService,
+    ensureWorkspaceSubscription: (target) =>
+      zcodeTaskIndexSyncer.ensureWorkspaceSubscription(target),
+  });
+  const workTaskService = new WorkTaskService({
+    repo: new WorkTaskRepo(join(getZCodeDataRootDir(), "work-tasks.sqlite")),
+    execute: (task, context) => workTaskExecution.execute(task, context),
+    conversation: createWorkTaskConversation({ acp: acpService, agent: zcodeAgentService }),
+    allowExecution: !isDesktopAttachedRemote,
+  });
+  workTaskService.startScheduler();
   const services = new ServiceCollection()
     .register(IFileService, fileService)
     .register(IMediaPreviewService, mediaPreviewService)
@@ -2462,6 +2519,7 @@ export function createLocalServices(options: {
     .register(IZCodeAgentService, zcodeAgentService)
     .register(IZCodeSessionService, zcodeSessionService)
     .register(IAcpService, acpService)
+    .register(IWorkTaskService, workTaskService)
     .register(ICuaPermissionService, cuaPermissionService)
     .register(ICuaPipSessionService, cuaPipSessionService)
     .register(IConversationShareService, conversationShareService)
@@ -2757,6 +2815,7 @@ export function disposeServiceResources(services: ServiceCollection): void {
   // terminal/task wrapper 这类会拉起子进程的服务只能等宿主进程自己结束，时序上可能留下短暂残留。
   // 这里集中调用各服务的本地 disposeAll 钩子，把“退出 app = 回收所有托管资源”落成机械动作。
   const disposableServices = [
+    services.getOptional(IWorkTaskService),
     services.getOptional(ITerminalService),
     services.getOptional(IZCodeTaskService),
     services.getOptional(IZCodeAgentService),
@@ -2792,6 +2851,7 @@ export async function disposeServiceResourcesAndWait(services: ServiceCollection
   // app 关闭时 host 需要等 agent 进程树完成 graceful + force 清理。
   // 旧的同步 dispose 会在 host 退出时丢掉强杀 timer，导致 zcode-cli/app-server 变成孤儿进程。
   const disposableServices = [
+    services.getOptional(IWorkTaskService),
     services.getOptional(ITerminalService),
     services.getOptional(IZCodeTaskService),
     services.getOptional(IZCodeAgentService),

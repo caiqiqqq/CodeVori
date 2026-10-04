@@ -410,7 +410,169 @@ nodes:
         symbol: TaskList
       - file: packages/ui/src/hooks/useAcpSidebarSessions.ts
         symbol: useAcpSidebarSessions
+  - id: capability.work-tasks
+    kind: capability
+    label: Project work tasks
+    aliases:
+      - Work Tasks
+      - Codeg work tasks
+      - 待办任务
+      - 代办任务
+      - 项目待办
+    codeSeeds:
+      - file: packages/shared/src/work-task.ts
+        symbol: workTaskSchema
+      - file: packages/services/src/session/contract.ts
+        symbol: IWorkTaskService
+    invariants:
+      - The target Host owns accepted task state; UI drafts and board projections are not another queue.
+      - Starting is explicit; completion and archive never commit, merge or delete a worktree or session.
+      - The first phase executes local Git projects only; remote targets cannot fall back to local execution.
+  - id: surface.work-tasks-board
+    kind: ui-surface
+    label: Work tasks board and list in the existing workspace shell
+    codeSeeds:
+      - file: packages/ui/src/work-tasks/WorkTasksPanel.tsx
+        symbol: WorkTasksPanel
+      - file: packages/ui/src/hooks/useWorkTasks.ts
+        symbol: useWorkTasks
+      - file: packages/ui/src/app-shell/WorkspaceShellLayout.tsx
+        symbol: handleOpenWorkTaskConversation
+  - id: surface.work-task-editor
+    kind: ui-surface
+    label: Work task draft and saved API or ACP configuration
+    codeSeeds:
+      - file: packages/ui/src/work-tasks/WorkTaskEditor.tsx
+        symbol: WorkTaskEditor
+      - file: packages/ui/src/hooks/useWorkTaskModels.ts
+        symbol: useWorkTaskModels
+    invariants:
+      - Selecting an Agent or creating a task only saves configuration; it does not create or prompt an Agent session.
+      - Existing task session bindings cannot switch execution kind or ACP Agent on retry.
+  - id: surface.work-task-review
+    kind: ui-surface
+    label: Work task review, follow-up and explicit completion
+    codeSeeds:
+      - file: packages/ui/src/work-tasks/WorkTaskDetail.tsx
+        symbol: WorkTaskDetail
+  - id: service.work-task-owner
+    kind: service
+    label: Host work task state and scheduler owner
+    codeSeeds:
+      - file: packages/services/src/session/workTaskService.ts
+        symbol: WorkTaskService
+      - file: packages/services/src/session/workTask.ts
+        symbol: IWorkTaskService
+  - id: persistence.work-task-record
+    kind: persistence
+    label: Shared local task SQLite records and project concurrency
+    codeSeeds:
+      - file: packages/services/src/session/workTaskRepo.ts
+        symbol: WorkTaskRepo
+      - file: packages/services/src/session/workTaskDatabase.ts
+        symbol: openWorkTaskDatabase
+    invariants:
+      - Atomic claims and owner leases prevent duplicate execution across Hosts; runSeq fences late results.
+      - Recovery interrupts expired owners, not other live Hosts, and never silently resends unknown prompts.
+  - id: service.work-task-execution
+    kind: service
+    label: Work task adapter to existing native and ACP admission
+    codeSeeds:
+      - file: packages/services/src/work-task/workTaskExecution.ts
+        symbol: createWorkTaskExecution
+      - file: packages/services/src/work-task/workTaskExecutionState.ts
+        symbol: commitWorkTaskExecution
+    invariants:
+      - Save worktree and session bindings before prompt; execute saved task configuration, not the current composer selection.
+      - Native admission waits for an authoritative snapshot and refuses busy sessions; stop targets only an observed foreground execution.
+  - id: boundary.work-task-worktree
+    kind: delivery-boundary
+    label: Work task isolated worktree and conversation binding
+    codeSeeds:
+      - file: packages/services/src/work-task/workTaskWorktree.ts
+        symbol: prepareWorkTaskWorktree
+      - file: packages/shared/src/worktree.ts
+        symbol: resolveWorktreeRootPath
+    invariants:
+      - Allocate under the configured Worktrees root; retry reuses only a verified project and branch binding.
+      - Use canonical filesystem paths for ownership; do not touch an unrelated directory or branch.
 edges:
+  - from: capability.work-tasks
+    to: surface.work-tasks-board
+    type: renders-in
+    rank: must-inspect
+  - from: surface.work-tasks-board
+    to: surface.work-task-editor
+    type: edits-through
+    rank: must-inspect
+  - from: surface.work-tasks-board
+    to: surface.work-task-review
+    type: reviews-through
+    rank: must-inspect
+  - from: surface.work-task-editor
+    to: shared-ui.model-config-select
+    type: shares-component
+    rank: must-inspect
+    condition: API and ACP selections save a task draft without changing the active conversation.
+  - from: surface.work-tasks-board
+    to: service.work-task-owner
+    type: commands-through
+    rank: must-inspect
+  - from: surface.work-task-review
+    to: service.work-task-owner
+    type: commands-through
+    rank: must-inspect
+  - from: service.work-task-owner
+    to: persistence.work-task-record
+    type: persists-through
+    rank: must-inspect
+  - from: service.work-task-owner
+    to: service.work-task-execution
+    type: executes-through
+    rank: must-inspect
+  - from: service.work-task-execution
+    to: boundary.work-task-worktree
+    type: isolated-by
+    rank: must-inspect
+  - from: service.work-task-execution
+    to: service.conversation-command-inbox
+    type: admitted-by
+    rank: must-inspect
+    condition: API and ZCode tasks use existing native V4 createSession, sendText and stop commands.
+  - from: service.work-task-execution
+    to: capability.acp-agent-sessions
+    type: admitted-by
+    rank: must-inspect
+    condition: ACP tasks use target Host create, saved config, prompt and stop admission.
+  - from: surface.work-tasks-board
+    to: surface.acp-conversation
+    type: opens-conversation-in
+    rank: conditional
+    condition: Linked ACP tasks open their bound session through the existing SessionPane.
+  - from: surface.work-tasks-board
+    to: capability.conversation-runtime
+    type: opens-conversation-in
+    rank: conditional
+    condition: Linked API and ZCode tasks open their bound session through existing task navigation.
+  - from: capability.work-tasks
+    to: boundary.workspace-key
+    type: isolated-by
+    rank: must-inspect
+  - from: service.work-task-execution
+    to: service.zcode-agent-connection-scope
+    type: attaches-through
+    rank: conditional
+    condition: Native task execution owns a background attachment released after completion or failure.
+  - from: capability.work-tasks
+    to: boundary.desktop-continuous
+    type: preserves
+    rank: invariant-only
+    condition: Linked desktop conversations retain the existing continuous stream semantics.
+  - from: capability.work-tasks
+    to: boundary.web-remote-replayable
+    type: preserves
+    rank: invariant-only
+    condition: Mobile linked conversations retain replayable snapshots; task projections reread Host records on reconnect.
   - from: capability.acp-agent-sessions
     to: surface.acp-conversation
     type: renders-in

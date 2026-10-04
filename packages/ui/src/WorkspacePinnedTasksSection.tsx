@@ -54,6 +54,7 @@ export function WorkspacePinnedTasksSection({
   activeTaskId,
   activeAcpSessionId,
   taskSortBy,
+  worktreeWorkspaceKeys,
   onSelectTask,
   onSelectAcpSession,
   onOpenFileTree,
@@ -64,6 +65,7 @@ export function WorkspacePinnedTasksSection({
   activeTaskId: string | null;
   activeAcpSessionId?: string | null;
   taskSortBy: "created" | "updated";
+  worktreeWorkspaceKeys?: ReadonlySet<string>;
   onSelectAcpSession?: (session: AcpSidebarSession) => void;
   onSelectTask: (
     targetWorkspacePath: string,
@@ -576,6 +578,9 @@ export function WorkspacePinnedTasksSection({
                     activeWorkspaceKey
                 }
                 variant="default"
+                isWorktree={worktreeWorkspaceKeys?.has(
+                  buildTaskWorkspaceKey(session.workspacePath, session.workspaceIdentity),
+                )}
                 onSelect={() => onSelectAcpSession?.(session)}
               />
             ) : null;
@@ -613,6 +618,9 @@ export function WorkspacePinnedTasksSection({
                   }
                   task={item}
                   isPinned
+                  isWorktree={worktreeWorkspaceKeys?.has(
+                    buildTaskWorkspaceKey(item.workspacePath, item.workspaceIdentity),
+                  )}
                   isActive={
                     // 同路径远端 workspace 可能包含相同 taskId，选中态必须按 workspaceIdentity 隔离。
                     buildTaskWorkspaceKey(item.workspacePath, item.workspaceIdentity) ===

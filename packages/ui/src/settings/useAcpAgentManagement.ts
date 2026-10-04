@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IAcpService } from "@zcode/services";
-import type { AcpAgent, AcpAgentInfo, AcpAgentManagement, AcpAgentUpdate } from "@zcode/shared";
+import type {
+  AcpAgent,
+  AcpAgentInfo,
+  AcpAgentListOptions,
+  AcpAgentManagement,
+  AcpAgentUpdate,
+} from "@zcode/shared";
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -34,52 +40,85 @@ export function parseAcpEnv(text: string): Record<string, string> {
 export function useAcpAgentManagement(service: IAcpService | null) {
   const [agents, setAgents] = useState<AcpAgentInfo[]>([]);
   const [loading, setLoading] = useState(Boolean(service));
+  const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [operationAgent, setOperationAgent] = useState<AcpAgent | null>(null);
   const generation = useRef(0);
+  const requestSequence = useRef(0);
+  const active = useRef(false);
+  const currentService = useRef(service);
+  currentService.current = service;
   const subscriptions = useRef(new Set<() => void>());
 
+  const read = useCallback(
+    async (options?: AcpAgentListOptions) => {
+      if (!service || !active.current || currentService.current !== service) return false;
+      const currentGeneration = generation.current;
+      const sequence = ++requestSequence.current;
+      const isCurrent = () =>
+        generation.current === currentGeneration && requestSequence.current === sequence;
+      if (options?.checkUpdates) setChecking(true);
+      else setLoading(true);
+      setError(null);
+      try {
+        const result = await service.listAgents(options);
+        if (!isCurrent()) return false;
+        setAgents(result);
+        return true;
+      } catch (cause) {
+        if (isCurrent()) setError(errorMessage(cause));
+        return false;
+      } finally {
+        if (isCurrent()) {
+          setLoading(false);
+          setChecking(false);
+        }
+      }
+    },
+    [service],
+  );
+
+  const refresh = useCallback(() => read({ checkUpdates: true, force: true }), [read]);
+
   useEffect(() => {
-    const currentGeneration = ++generation.current;
+    ++generation.current;
+    active.current = true;
     // 修复原因：切到另一台 Host 或远端断线时，旧 Host 的安装状态不能留在新目标列表。
     setAgents([]);
     setError(null);
     setBusy(false);
     setLog([]);
     setOperationAgent(null);
+    setChecking(false);
     if (!service) {
       setLoading(false);
       return () => {
         generation.current++;
+        active.current = false;
       };
     }
     setLoading(true);
-    void service
-      .listAgents()
-      .then((result) => {
-        if (generation.current !== currentGeneration) return;
-        setAgents(result);
-        setError(null);
-      })
-      .catch((cause: unknown) => {
-        if (generation.current === currentGeneration) setError(errorMessage(cause));
-      })
-      .finally(() => {
-        if (generation.current === currentGeneration) setLoading(false);
-      });
+    // 修复原因：远端更新查询不能挡住本地设置；第二阶段检查不卸载面板或丢失草稿。
+    void read().then((accepted) => {
+      if (accepted) void read({ checkUpdates: true });
+    });
     return () => {
       generation.current++;
+      active.current = false;
       for (const dispose of subscriptions.current) dispose();
       subscriptions.current.clear();
     };
-  }, [service]);
+  }, [service, read]);
 
   const update = useCallback(
     async (input: AcpAgentUpdate) => {
-      if (!service) return;
+      if (!service || !active.current || currentService.current !== service) return;
       const currentGeneration = generation.current;
+      // 旧检查不能在保存完成后把旧安装/环境状态写回来。
+      requestSequence.current++;
+      setChecking(false);
       setBusy(true);
       setError(null);
       try {
@@ -100,9 +139,11 @@ export function useAcpAgentManagement(service: IAcpService | null) {
   );
 
   const manage = useCallback(
-    async (agent: AcpAgent, action: AcpAgentManagement["action"]) => {
-      if (!service) return;
+    async (agent: AcpAgent, action: AcpAgentManagement["action"], expectedVersion?: string) => {
+      if (!service || !active.current || currentService.current !== service) return;
       const currentGeneration = generation.current;
+      requestSequence.current++;
+      setChecking(false);
       setBusy(true);
       setError(null);
       setLog([]);
@@ -116,7 +157,12 @@ export function useAcpAgentManagement(service: IAcpService | null) {
         });
         disposeSubscription = () => subscription.dispose();
         subscriptions.current.add(disposeSubscription);
-        await service.manageAgent({ agent, action, operationId });
+        await service.manageAgent({
+          agent,
+          action,
+          operationId,
+          ...(expectedVersion && action !== "uninstall" ? { expectedVersion } : {}),
+        });
         const next = await service.listAgents();
         if (generation.current === currentGeneration) setAgents(next);
       } catch (cause) {
@@ -141,5 +187,5 @@ export function useAcpAgentManagement(service: IAcpService | null) {
     [service],
   );
 
-  return { agents, loading, error, busy, log, operationAgent, update, manage };
+  return { agents, loading, checking, error, busy, log, operationAgent, refresh, update, manage };
 }

@@ -1,8 +1,9 @@
-import { Bot, CircleIcon } from "lucide-react";
+import { CircleIcon } from "lucide-react";
 import { useState } from "react";
 import type { IAcpService } from "@zcode/services";
 import type { AcpAgent } from "@zcode/shared";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import {
   useBaseWorkspaceServices,
@@ -25,13 +26,11 @@ function AcpAgentsContent({
   service,
   waiting,
   onAgentChange,
-  onRefresh,
 }: {
   agent: AcpAgent;
   service: IAcpService | null;
   waiting: boolean;
   onAgentChange: (agent: AcpAgent) => void;
-  onRefresh: () => void;
 }) {
   const { intl } = useZCodeIntl();
   const management = useAcpAgentManagement(service);
@@ -43,10 +42,10 @@ function AcpAgentsContent({
           {intl.formatMessage({ id: "settings.acpAgents.description" })}
         </p>
         <SettingsResourceHeaderActions
-          onRefresh={onRefresh}
-          refreshing={management.loading}
-          refreshDisabled={!service || management.busy}
-          refreshLabel={intl.formatMessage({ id: "settings.acpAgents.refresh" })}
+          onRefresh={() => void management.refresh()}
+          refreshing={management.loading || management.checking}
+          refreshDisabled={!service || management.busy || management.loading || management.checking}
+          refreshLabel={intl.formatMessage({ id: "settings.acpAgents.checkUpdates" })}
           refreshTestId="settings-acp-agents-refresh"
         />
       </div>
@@ -82,7 +81,7 @@ function AcpAgentsContent({
                     onClick={() => onAgentChange(item.agent)}
                     className={`relative box-border flex h-8 w-full items-center gap-2 rounded-lg border px-2 py-1 text-left text-ui-base font-medium transition-colors focus-visible:outline-2 focus-visible:outline-brand max-md:size-8 max-md:justify-center max-md:gap-0 max-md:px-0 ${agent === item.agent ? "border-border-hover bg-card-selected text-foreground" : "border-transparent text-foreground hover:border-border-hover/60"}`}
                   >
-                    <Bot className="size-4 shrink-0" aria-hidden="true" />
+                    <AcpAgentIcon agent={item.agent} />
                     <span className="min-w-0 flex-1 truncate max-md:sr-only">{item.name}</span>
                     {status ? (
                       <CircleIcon
@@ -119,7 +118,6 @@ export function AcpAgentsSection({
   remoteTarget,
 }: AcpAgentsSectionProps) {
   const [agent, setAgent] = useState<AcpAgent>("codex");
-  const [reloadKey, setReloadKey] = useState(0);
   const resolution = useWorkspaceServicesResolution(
     workspacePath,
     remoteSessionId,
@@ -132,7 +130,6 @@ export function AcpAgentsSection({
     workspacePath,
     resolution.remoteSessionId,
     resolution.rpcReady,
-    reloadKey,
   ]);
 
   return (
@@ -148,7 +145,6 @@ export function AcpAgentsSection({
       }
       waiting={Boolean(workspacePath && !resolution.rpcReady)}
       onAgentChange={setAgent}
-      onRefresh={() => setReloadKey((key) => key + 1)}
     />
   );
 }

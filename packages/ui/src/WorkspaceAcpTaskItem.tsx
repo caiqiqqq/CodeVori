@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { LoaderIcon, Pin } from "lucide-react";
+import { LoaderIcon } from "lucide-react";
 import { acpAgentDefinition, type AcpSessionRowUpdate } from "@zcode/shared";
 import type { IServiceAccessor } from "@zcode/services";
-import { Button } from "@/components/ui/button.js";
+import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
+import { AcpTaskRowContent } from "@/components/AcpTaskRowContent.js";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -12,9 +13,7 @@ import {
 } from "@/components/ui/context-menu.js";
 import { toast } from "@/components/ui/toast.js";
 import { cn } from "@/components/lib/utils.js";
-import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
-import { formatTaskRelativeTime } from "@/lib/taskListItemPresentation.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { logger } from "@/logger.js";
 import { TaskRenameDialog } from "@/TaskRenameDialog.js";
@@ -25,6 +24,7 @@ import { useFeedbackStore } from "@/feedback/feedbackStore.js";
 import { buildTaskFeedbackDescription } from "@/lib/taskFeedbackDraft.js";
 import { useV4SplitPaneEntry } from "@/v4/splitPaneEntryContext.js";
 import { useModelTrajectoryStore } from "@/store/modelTrajectoryStore.js";
+import { useTaskRowArchiveConfirmation } from "@/hooks/useTaskRowArchiveConfirmation.js";
 
 /** The same ACP row and actions appear in workspace, chronological and pinned lists. */
 export function WorkspaceAcpTaskItem({
@@ -32,12 +32,14 @@ export function WorkspaceAcpTaskItem({
   service,
   active,
   variant,
+  isWorktree = false,
   onSelect,
 }: {
   session: AcpSidebarSession;
   service: IServiceAccessor["acpService"];
   active: boolean;
   variant: "timeline" | "default";
+  isWorktree?: boolean;
   onSelect: () => void;
 }) {
   const { intl } = useZCodeIntl();
@@ -49,6 +51,10 @@ export function WorkspaceAcpTaskItem({
   const [busy, setBusy] = useState(false);
   const [hoverActionsVisible, setHoverActionsVisible] = useState(false);
   const [focusActionsVisible, setFocusActionsVisible] = useState(false);
+  const [isHoverNone] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(hover: none)").matches,
+  );
+  const itemRef = useRef<HTMLLIElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const openFeedbackSubmit = useFeedbackStore((state) => state.openSubmit);
   const splitPaneEntry = useV4SplitPaneEntry();
@@ -59,7 +65,6 @@ export function WorkspaceAcpTaskItem({
       remoteSessionId: session.remoteSessionId,
       intl,
     });
-  const timeLabel = session.updatedAt > 0 ? formatTaskRelativeTime(session.updatedAt, intl) : null;
   const actionTarget = {
     id: session.id,
     workspacePath: session.workspacePath,
@@ -100,6 +105,7 @@ export function WorkspaceAcpTaskItem({
   }
 
   function select() {
+    cancelArchiveConfirm();
     onSelect();
     if (session.unreadAt) {
       void updateRow({ kind: "unread", unread: false }, "taskList.markAsUnreadFailed");
@@ -135,32 +141,57 @@ export function WorkspaceAcpTaskItem({
   }
 
   const pinLabel = intl.formatMessage({ id: session.pinned ? "taskList.unpin" : "taskList.pin" });
-  const pinAction = () =>
+  const pinAction = () => {
+    cancelArchiveConfirm();
     void updateRow({ kind: "pin", pinned: !session.pinned }, "taskList.pinFailed");
-  // 修复原因：API 项目列表普通状态留空，只有时间线显示空闲灰点；
-  // ACP 原先所有布局都显示灰点，且运行态覆盖未读。按同一优先级投影 Host 字段。
+  };
+  // 修复原因：ACP 之前只有右键归档入口；行内按钮与菜单必须复用同一 scoped Host 命令。
+  function archiveAction() {
+    void updateRow({ kind: "archive", archived: true }, "taskList.archiveFailed");
+  }
+  const {
+    confirming: isArchiveConfirming,
+    cancel: cancelArchiveConfirm,
+    onClick: archiveInline,
+  } = useTaskRowArchiveConfirmation({
+    itemRef,
+    disabled: readOnly || busy,
+    onConfirm: archiveAction,
+  });
+  // 会话行的品牌身份来自自己的 Host 投影，不能读取输入框当前选择；未读仍优先于运行。
   const leadingIndicator =
     typeof session.unreadAt === "number"
       ? "unread"
       : session.status === "running"
         ? "loading"
         : "none";
-  const showTimelineIdleIndicator =
-    variant === "timeline" && leadingIndicator === "none" && !session.pinned;
-  // 修复原因：API 会话在左侧 16px 状态槽展示置顶；ACP 原来额外在右侧
-  // 放按钮，导致两种行的位置不一致。悬停/聚焦共用状态槽，标题不发生位移。
-  const showPinAction =
-    hoverActionsVisible || focusActionsVisible || (session.pinned && leadingIndicator === "none");
+  // 修复原因：置顶与归档移到同一右侧 action 组，左侧品牌和状态在 hover/focus 时仍保留。
+  const showRowActions =
+    hoverActionsVisible || focusActionsVisible || isHoverNone || isArchiveConfirming;
+  const showPinAction = showRowActions || (Boolean(session.pinned) && !isWorktree);
+  const showArchiveAction = !readOnly && showRowActions;
+  const pinDisabledReason = readOnly
+    ? intl.formatMessage({ id: "workspaceSidebar.unavailableLocalDirectory" })
+    : busy
+      ? intl.formatMessage({ id: "common.loading" })
+      : undefined;
 
   return (
     <>
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <li
+            ref={itemRef}
             data-testid={`acp-task-item-${session.id}`}
             data-acp-session-id={session.id}
             data-acp-pinned={session.pinned ? "true" : undefined}
             role="button"
+            aria-label={`${session.title}, ${acpAgentDefinition(session.agent).name}`}
+            aria-description={
+              isWorktree
+                ? `${intl.formatMessage({ id: "taskList.worktreeConversation" })}: ${session.workspacePath}`
+                : undefined
+            }
             aria-current={active ? "page" : undefined}
             tabIndex={0}
             onClick={select}
@@ -170,9 +201,13 @@ export function WorkspaceAcpTaskItem({
             onBlurCapture={(event) => {
               if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
                 setFocusActionsVisible(false);
+                cancelArchiveConfirm();
               }
             }}
-            onContextMenu={(event) => event.stopPropagation()}
+            onContextMenu={(event) => {
+              event.stopPropagation();
+              cancelArchiveConfirm();
+            }}
             onKeyDown={(event) => {
               if (
                 event.target === event.currentTarget &&
@@ -196,72 +231,46 @@ export function WorkspaceAcpTaskItem({
             >
               <span
                 aria-hidden="true"
-                className={cn(
-                  "flex size-4 items-center justify-center transition-opacity",
-                  showPinAction && "hidden",
-                )}
+                className="relative flex size-4 items-center justify-center transition-opacity"
               >
+                <AcpAgentIcon agent={session.agent} />
                 {leadingIndicator === "unread" ? (
-                  <span
-                    data-unread-indicator="true"
-                    className="size-1.5 rounded-full bg-sky-500 dark:bg-sky-400"
-                  />
+                  <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-card">
+                    <span
+                      data-unread-indicator="true"
+                      className="size-1.5 rounded-full bg-sky-500 dark:bg-sky-400"
+                    />
+                  </span>
                 ) : leadingIndicator === "loading" ? (
-                  <LoaderIcon className="size-4 animate-spin text-foreground-subtle" />
-                ) : showTimelineIdleIndicator ? (
-                  <span data-idle-indicator="true" className="size-1.5 rounded-full bg-border" />
-                ) : null}
-              </span>
-              {showPinAction ? (
-                <ControlHintTooltip title={pinLabel} side="top" align="center">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    disabled={readOnly || busy}
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      pinAction();
-                    }}
-                    className="inline-flex size-4 min-w-0 rounded-sm p-0 text-foreground-subtle !bg-transparent hover:text-foreground"
-                    aria-label={pinLabel}
-                    data-testid={`acp-task-pin-${session.id}`}
-                  >
-                    <Pin className="size-4" />
-                  </Button>
-                </ControlHintTooltip>
-              ) : null}
-            </div>
-            <span
-              className={cn(
-                "flex min-w-0 flex-1",
-                variant === "timeline" ? "flex-col gap-0.5" : "items-center gap-2",
-              )}
-            >
-              <span className="min-w-0 flex-1 truncate text-foreground" title={session.title}>
-                {session.title}
-              </span>
-              <span
-                className={cn(
-                  "flex items-center gap-2 text-foreground-subtle",
-                  variant === "timeline"
-                    ? "h-6 justify-between text-ui-base"
-                    : "shrink-0 text-ui-sm",
-                )}
-              >
-                <span className="min-w-0 truncate">{acpAgentDefinition(session.agent).name}</span>
-                {timeLabel ? (
-                  <span className="shrink-0" data-testid="acp-task-time">
-                    {timeLabel}
+                  <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-card">
+                    <LoaderIcon
+                      data-acp-running-indicator="true"
+                      className="size-2.5 animate-spin text-foreground-subtle"
+                    />
                   </span>
                 ) : null}
               </span>
-            </span>
+            </div>
+            <AcpTaskRowContent
+              session={session}
+              variant={variant}
+              showWorktreeIndicator={isWorktree && !showRowActions}
+              showPin={showPinAction}
+              pinDisabledReason={pinDisabledReason}
+              showArchive={showArchiveAction}
+              confirming={isArchiveConfirming}
+              busy={busy}
+              onPinClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                // 修复原因：禁用聚焦按钮可能不触发冒泡 blur；先交回行焦点，避免残留 focus action。
+                if (event.currentTarget === document.activeElement) {
+                  itemRef.current?.focus();
+                }
+                pinAction();
+              }}
+              onClick={archiveInline}
+            />
           </li>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-52" data-testid={`acp-task-menu-${session.id}`}>
@@ -277,12 +286,7 @@ export function WorkspaceAcpTaskItem({
           >
             {intl.formatMessage({ id: "taskList.rename" })}
           </ContextMenuItem>
-          <ContextMenuItem
-            disabled={readOnly || busy}
-            onSelect={() =>
-              void updateRow({ kind: "archive", archived: true }, "taskList.archiveFailed")
-            }
-          >
+          <ContextMenuItem disabled={readOnly || busy} onSelect={archiveAction}>
             {intl.formatMessage({ id: "taskList.archive" })}
           </ContextMenuItem>
           <ContextMenuItem

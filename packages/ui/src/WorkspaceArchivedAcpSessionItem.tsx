@@ -16,7 +16,6 @@ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
-import { formatTaskRelativeTime } from "@/lib/taskListItemPresentation.js";
 import { logger } from "@/logger.js";
 import { isWorkspaceReadOnly } from "@/store/tabStore.js";
 import { useOptionalTabStore } from "@/store/TabStoreProvider.js";
@@ -112,9 +111,6 @@ export function WorkspaceArchivedAcpSessionItem({
             >
               {session.title}
             </p>
-            <span className="shrink-0 text-ui-base text-foreground-subtle">
-              {session.updatedAt > 0 ? formatTaskRelativeTime(session.updatedAt, intl) : null}
-            </span>
           </div>
           <div className="mt-1 flex items-center gap-2 text-ui-base text-foreground-subtle">
             <span

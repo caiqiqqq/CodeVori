@@ -1,10 +1,12 @@
 // import { GripHorizontal, GripVertical } from "lucide-react";
 import { cn } from "@/components/lib/utils.js";
+import { useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
 import {
   Group,
   Panel,
   Separator,
   useDefaultLayout,
+  useGroupRef,
   type GroupProps,
   type PanelProps,
   type SeparatorProps,
@@ -23,17 +25,48 @@ function ResizablePanelGroup({
   className,
   layoutId,
   panelIds,
+  persistenceEnabled = true,
+  groupRef,
   ...props
 }: Omit<GroupProps, "defaultLayout" | "onLayoutChange" | "onLayoutChanged"> & {
   /** 持久化 key，对应 useDefaultLayout 的 id */
   layoutId: string;
   /** 条件渲染面板时需要传当前可见面板的 id 列表 */
   panelIds?: string[];
+  /** 窄屏临时隐藏分栏时不覆盖桌面布局偏好。 */
+  persistenceEnabled?: boolean;
 }) {
+  const group = useGroupRef();
+  const persistenceActive = useRef(persistenceEnabled);
+  const storage = useMemo(
+    () => ({
+      getItem: (key: string) => localStorage.getItem(key),
+      setItem: (key: string, value: string) => {
+        // 切到窄屏后，库内尚未执行的 debounce 也不能把临时比例写入桌面偏好。
+        if (persistenceActive.current) localStorage.setItem(key, value);
+      },
+    }),
+    [],
+  );
   const { defaultLayout, onLayoutChange } = useDefaultLayout({
     id: layoutId,
     panelIds,
+    storage,
   });
+  useImperativeHandle(
+    groupRef,
+    () => ({
+      getLayout: () => group.current?.getLayout() ?? {},
+      setLayout: (layout) => group.current?.setLayout(layout) ?? {},
+    }),
+    [group],
+  );
+  useLayoutEffect(() => {
+    const wasActive = persistenceActive.current;
+    persistenceActive.current = persistenceEnabled;
+    // disabled 只禁止拖动，库的 ResizeObserver 仍会改比例；恢复时由同一布局所有者重放偏好。
+    if (persistenceEnabled && !wasActive && defaultLayout) group.current?.setLayout(defaultLayout);
+  }, [defaultLayout, group, persistenceEnabled]);
 
   return (
     <Group
@@ -42,7 +75,8 @@ function ResizablePanelGroup({
       // onLayoutChanged 会在每次布局变化后立刻写 localStorage。
       // 窗口 resize 时 PanelGroup 会连续产生成百上千次 layout 更新，必须走库内置
       // debounce 的 onLayoutChange，避免同步持久化放大主线程压力。
-      onLayoutChange={onLayoutChange}
+      onLayoutChange={persistenceEnabled ? onLayoutChange : undefined}
+      groupRef={group}
       {...props}
     />
   );

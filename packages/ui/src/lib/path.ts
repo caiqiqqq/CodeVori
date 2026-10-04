@@ -1,6 +1,7 @@
 const WINDOWS_ABSOLUTE_PATH_RE = /^[a-zA-Z]:[\\/]/;
 const UNC_PATH_RE = /^\\\\/;
 const URI_ESCAPE_RE = /%[0-9A-Fa-f]{2}/;
+export { isAbsoluteFilePath, joinFilePath } from "@zcode/shared";
 
 export function getPathLeaf(path: string): string {
   const normalizedPath = path.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -32,10 +33,6 @@ export function getContainingDirectoryPath(path: string): string | null {
   return parentPath || null;
 }
 
-export function isAbsoluteFilePath(path: string): boolean {
-  return path.startsWith("/") || WINDOWS_ABSOLUTE_PATH_RE.test(path) || UNC_PATH_RE.test(path);
-}
-
 export function decodeFilePathUriEscapes(path: string): string {
   if (!URI_ESCAPE_RE.test(path)) {
     return path;
@@ -49,21 +46,6 @@ export function decodeFilePathUriEscapes(path: string): string {
   } catch {
     return path;
   }
-}
-
-export function joinFilePath(basePath: string, childPath: string): string {
-  if (!childPath) {
-    return basePath;
-  }
-
-  if (isAbsoluteFilePath(childPath)) {
-    return childPath;
-  }
-
-  const separator = basePath.includes("\\") && !basePath.includes("/") ? "\\" : "/";
-  const normalizedBasePath = basePath.replace(/[\\/]+$/, "");
-  const normalizedChildPath = childPath.replace(/^[\\/]+/, "");
-  return `${normalizedBasePath}${separator}${normalizedChildPath}`;
 }
 
 // encodeURI 不转义 # 和 ?，但它们在 URL 里是 fragment/query 分隔符。

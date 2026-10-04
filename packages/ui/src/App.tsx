@@ -6,6 +6,7 @@ import { useZCodeStore } from "@/store/StoreProvider.js";
 import { getVisibleTaskMetas, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { useTaskQueryCacheStore } from "@/store/taskQueryCacheStore.js";
 import { useAppPanels } from "@/hooks/useAppPanels.js";
+import { useWorkTaskWorkspaceTools } from "@/hooks/useWorkTaskWorkspaceTools.js";
 import { useGitAutoRefresh } from "@/hooks/useGitAutoRefresh.js";
 import { useGitRepository } from "@/hooks/useGitRepository.js";
 import { useAppKeyboard } from "@/hooks/useAppKeyboard.js";
@@ -185,6 +186,29 @@ export function App({
   // Settings tab 覆盖 workspace 时 active tab 不是 workspace tab。
   // 这里必须使用 Root 传入的 workspaceIdentity 兜底，否则远程断连态会把 /home/... 当成本地 base workspace 预热。
   const workspaceIdentity = workspaceRpcTarget.workspaceIdentity;
+  const [workspaceMainView, setWorkspaceMainView] = useState<WorkspaceMainView>("chat");
+  const workTaskTools = useWorkTaskWorkspaceTools(
+    {
+      workspacePath: workspaceAbsPath,
+      workspaceIdentity,
+      remoteSessionId: workspaceRemoteSessionId,
+    },
+    workspaceMainView === "work-tasks",
+  );
+  const panelWorkspacePath = workTaskTools.target?.workspacePath ?? workspaceAbsPath;
+  const panelWorkspaceIdentity = workTaskTools.target
+    ? workTaskTools.target.workspaceIdentity
+    : workspaceIdentity;
+  const panelRemoteSessionId = workTaskTools.target
+    ? workTaskTools.target.remoteSessionId
+    : workspaceRpcTarget.remoteSessionId;
+  const panelRemoteTarget = workTaskTools.target ? undefined : workspaceRpcTarget.remoteTarget;
+  const { services: panelServices } = useWorkspaceServicesResolution(
+    panelWorkspacePath,
+    panelRemoteSessionId,
+    panelWorkspaceIdentity,
+    panelRemoteTarget,
+  );
   const { rpcReady: workspaceRpcReady } = useWorkspaceServicesResolution(
     workspaceAbsPath,
     workspaceRpcTarget.remoteSessionId,
@@ -195,6 +219,12 @@ export function App({
     isWorkspaceReadOnly(state, workspaceAbsPath, workspaceIdentity),
   );
   const workspaceReadOnlyReason = workspaceReadOnly
+    ? intl.formatMessage({ id: "workspaceSidebar.unavailableLocalDirectory" })
+    : undefined;
+  const panelReadOnly = useTabStore((state) =>
+    isWorkspaceReadOnly(state, panelWorkspacePath, panelWorkspaceIdentity),
+  );
+  const panelReadOnlyReason = panelReadOnly
     ? intl.formatMessage({ id: "workspaceSidebar.unavailableLocalDirectory" })
     : undefined;
   const { workspaceShellZCodeState, reloadSessionDisabled } = useWorkspaceShellZCodeState(
@@ -209,6 +239,10 @@ export function App({
     (state) => state.getWorkspaceState(workspaceAbsPath, workspaceIdentity).draftSessionId,
   );
   const sidePaneOwnerId = activeTaskId ?? draftSessionId ?? null;
+  const panelActiveTaskId = workTaskTools.target
+    ? workTaskTools.target.nativeSessionId
+    : activeTaskId;
+  const panelOwnerId = workTaskTools.target?.sidePaneOwnerId ?? sidePaneOwnerId;
   const [summaryPanelVariantOverride, setSummaryPanelVariantOverride] =
     useState<ChatViewSummaryPanelVariant | null>(null);
   const draftFocusVersion = workspaceShellZCodeState.draftFocusVersion;
@@ -258,11 +292,11 @@ export function App({
     handleBrowserNavigationRequestHandled,
     handleBrowserPageMetadataChange,
   } = useAppPanels({
-    workspaceAbsPath,
-    workspaceIdentity,
-    workspaceRemoteSessionId,
-    activeTaskId,
-    sidePaneOwnerId,
+    workspaceAbsPath: panelWorkspacePath,
+    workspaceIdentity: panelWorkspaceIdentity,
+    workspaceRemoteSessionId: panelRemoteSessionId,
+    activeTaskId: panelActiveTaskId,
+    sidePaneOwnerId: panelOwnerId,
     isDesktop,
     isWorkspaceVisible,
     supportsEmbeddedBrowser,
@@ -348,11 +382,11 @@ export function App({
   const [gitSelectedSourceId, setGitSelectedSourceId] = useState<GitChangeSourceId>("unstaged");
   const [gitRefreshVersion, setGitRefreshVersion] = useState(0);
   const { browserRestoreUrls, handleBrowserUrlChange } = useTaskSidePaneMemoryBridge({
-    activeTaskId,
+    activeTaskId: panelActiveTaskId,
     gitSelectedSourceId,
     setGitSelectedSourceId,
-    workspaceAbsPath,
-    workspaceIdentity,
+    workspaceAbsPath: panelWorkspacePath,
+    workspaceIdentity: panelWorkspaceIdentity,
   });
   const theme = useZCodeStore((s) => s.theme);
   const setTheme = useZCodeStore((s) => s.setTheme);
@@ -416,20 +450,20 @@ export function App({
   }, []);
   const openSettingsTab = useTabStore((state) => state.openSettingsTab);
   const gitState = useGitRepository({
-    workspacePath: workspaceAbsPath,
-    activeTaskId,
+    workspacePath: panelWorkspacePath,
+    activeTaskId: panelActiveTaskId,
     includeExtendedData: hasGitTab,
     // 关键逻辑：真实 Git 只在 workspace 变化、Git pane 打开、或用户显式点刷新时重拉。
     // task 切换 / last-turn 摘要变化只更新本地衍生数据，不再顺带重跑 Git 命令。
     refreshToken: gitRefreshVersion,
-    remoteSessionId: workspaceRpcTarget.remoteSessionId ?? null,
-    remoteTarget: workspaceRpcTarget.remoteTarget,
-    workspaceIdentity,
+    remoteSessionId: panelRemoteSessionId ?? null,
+    remoteTarget: panelRemoteTarget,
+    workspaceIdentity: panelWorkspaceIdentity,
   });
   useGitAutoRefresh({
-    workspacePath: workspaceAbsPath,
-    workspaceIdentity,
-    remoteSessionId: workspaceRpcTarget.remoteSessionId ?? null,
+    workspacePath: panelWorkspacePath,
+    workspaceIdentity: panelWorkspaceIdentity,
+    remoteSessionId: panelRemoteSessionId ?? null,
     gitSummary: gitState.summary,
     gitSummaryWorkspaceKey: gitState.workspaceKey,
     enabled: isWorkspaceVisible,
@@ -554,32 +588,32 @@ export function App({
     [onCreateTask, workspaceReadOnlyReason],
   );
   const handleToggleTerminalIfWritable = useCallback(() => {
-    if (!workspaceReadOnlyReason) {
+    if (!panelReadOnlyReason) {
       handleToggleTerminal();
     }
-  }, [handleToggleTerminal, workspaceReadOnlyReason]);
+  }, [handleToggleTerminal, panelReadOnlyReason]);
   const handleOpenTerminalTabIfWritable = useCallback(() => {
-    if (!workspaceReadOnlyReason) {
+    if (!panelReadOnlyReason) {
       handleOpenTerminalTab();
     }
-  }, [handleOpenTerminalTab, workspaceReadOnlyReason]);
+  }, [handleOpenTerminalTab, panelReadOnlyReason]);
   const handleOpenGitIfWritable = useCallback(() => {
     if (!workspaceReadOnlyReason) {
       handleOpenGit();
     }
   }, [handleOpenGit, workspaceReadOnlyReason]);
   const handleToggleGitIfWritable = useCallback(() => {
-    if (!workspaceReadOnlyReason) {
+    if (!panelReadOnlyReason) {
       handleToggleGit();
     }
-  }, [handleToggleGit, workspaceReadOnlyReason]);
+  }, [handleToggleGit, panelReadOnlyReason]);
   const handleOpenCodeViewerIfWritable = useCallback(
     (...args: Parameters<typeof handleOpenCodeViewer>) => {
-      if (!workspaceReadOnlyReason) {
+      if (!panelReadOnlyReason) {
         handleOpenCodeViewer(...args);
       }
     },
-    [handleOpenCodeViewer, workspaceReadOnlyReason],
+    [handleOpenCodeViewer, panelReadOnlyReason],
   );
   const handleAutoOpenAssistantPptx = useCallback(
     (request: AssistantPreviewCardsAutoOpenRequest) => {
@@ -824,7 +858,6 @@ export function App({
     [locale, services.zcodeAgentService, setLocale, theme, setTheme, testMessages],
   );
   useTestActions(testActions);
-  const [workspaceMainView, setWorkspaceMainView] = useState<WorkspaceMainView>("chat");
   const [openAutomationId, setOpenAutomationId] = useState<string | null>(null);
   const [openAutomationTab, setOpenAutomationTab] = useState<NonNullable<
     AutomationsNavigationTarget["automationTab"]
@@ -852,6 +885,12 @@ export function App({
     preserveNextSettingsExit();
     setWorkspaceMainView("plugin-store");
   }, [preserveNextSettingsExit]);
+  const handleNavigateToRepositoryMain = useCallback(() => {
+    setWorkspaceMainView("repository");
+  }, []);
+  const handleNavigateToWorkTasksMain = useCallback(() => {
+    setWorkspaceMainView("work-tasks");
+  }, []);
   const handleOpenAutomationConsumed = useCallback(() => {
     setOpenAutomationId(null);
     setOpenAutomationTab(null);
@@ -860,6 +899,8 @@ export function App({
     handleSelectTask,
     handleOpenAutomations,
     handleOpenPluginStore,
+    handleOpenRepository,
+    handleOpenWorkTasks,
     handleTaskNavBack,
     handleTaskNavForward,
     canGoBack,
@@ -874,6 +915,8 @@ export function App({
     onNavigateToTask: handleNavigateToTaskMain,
     onNavigateToAutomations: handleNavigateToAutomationsMain,
     onNavigateToPluginStore: handleNavigateToPluginStoreMain,
+    onNavigateToRepository: handleNavigateToRepositoryMain,
+    onNavigateToWorkTasks: handleNavigateToWorkTasksMain,
   });
   const handleOpenPluginStoreForScope = useCallback(
     (_target: PluginStoreOpenTarget = {}) => {
@@ -1120,6 +1163,11 @@ export function App({
         services={services}
         workspaceReadOnlyReason={workspaceReadOnlyReason}
         workspaceMainView={workspaceMainView}
+        workTaskTools={{
+          ...workTaskTools,
+          services: panelServices,
+          readOnlyReason: panelReadOnlyReason,
+        }}
         pluginStoreOpenVersion={pluginStoreOpenVersion}
         openAutomationId={openAutomationId}
         openAutomationTab={openAutomationTab}
@@ -1127,6 +1175,8 @@ export function App({
         onOpenAutomationConsumed={handleOpenAutomationConsumed}
         handleOpenAutomations={handleOpenAutomations}
         handleOpenPluginStore={handleOpenPluginStoreForScope}
+        handleOpenRepository={handleOpenRepository}
+        handleOpenWorkTasks={handleOpenWorkTasks}
         handleManageInstalledPlugins={handleManageInstalledPlugins}
         onConnectRemote={onConnectRemote}
         onSelectRemoteProject={onSelectRemoteProject}

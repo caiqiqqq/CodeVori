@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { createServer } from "node:http";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -35,6 +36,15 @@ test("binary ACP archive keeps required companion executable and preserves prior
     assert.ok(address && typeof address !== "string");
     const url = `http://127.0.0.1:${address.port}/release.tar.gz`;
     await installAcpBinary(target, url, release);
+    assert.equal((await managedAcpBinary(target, release))?.version, "1.1.1");
+    await installAcpBinary(target, url, {
+      ...release,
+      sha256: createHash("sha256").update(payload).digest("hex"),
+    });
+    await assert.rejects(
+      installAcpBinary(target, url, { ...release, version: "1.1.2", sha256: "0".repeat(64) }),
+      /checksum/,
+    );
     assert.equal((await managedAcpBinary(target, release))?.version, "1.1.1");
     await createTar({ file: archive, cwd: content, gzip: true }, [release.entry]);
     payload = await readFile(archive);

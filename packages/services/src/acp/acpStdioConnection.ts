@@ -17,9 +17,11 @@ import {
 import type { AcpConnectionFactory, AcpConnectionPort, AcpUpdate } from "./acpServiceImpl.js";
 import { projectAcpConfigOptions, projectAcpModeState } from "./acpConfigOptions.js";
 import { projectAcpPromptUsage } from "./acpUsageResponse.js";
+import { projectAcpContextUsage } from "./acpContextUsage.js";
 import { projectAcpMcpServers, projectAcpPluginMcpServers } from "./acpMcpServers.js";
 
 const START_TIMEOUT_MS = 20_000;
+const MAX_INITIAL_USAGE_SESSIONS = 16;
 
 /** Only native-session restore failures may trigger empty-session replacement in the Host. */
 export class AcpSessionLoadError extends Error {
@@ -88,16 +90,45 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
   let configOptions: AcpConnectionPort["configOptions"] = [];
   let modeState: AcpConnectionPort["modeState"] = null;
   let receivingLiveUpdates = false;
+  let receivingInitialUsage = false;
+  const initialUsageBySession = new Map<string, AcpUpdate & { kind: "context_usage" }>();
   const client: Client = {
     async sessionUpdate(notification) {
-      // session/load may replay history. The Host already owns the displayed transcript.
-      if (!receivingLiveUpdates || notification.sessionId !== sessionId) return;
       const update = notification.update;
+      if (!receivingLiveUpdates) {
+        // 修复原因：恢复回放的消息不能重复追加，但容量元数据不是历史消息。
+        // session/new 的 ID 此时未知；只暂存有界元数据，成功后按真实 ID 合并。
+        if (
+          receivingInitialUsage &&
+          update.sessionUpdate === "usage_update" &&
+          (!sessionId || notification.sessionId === sessionId)
+        ) {
+          initialUsageBySession.delete(notification.sessionId);
+          initialUsageBySession.set(notification.sessionId, {
+            kind: "context_usage",
+            usage: projectAcpContextUsage(update),
+          });
+          if (initialUsageBySession.size > MAX_INITIAL_USAGE_SESSIONS) {
+            const oldest = initialUsageBySession.keys().next().value;
+            if (oldest !== undefined) initialUsageBySession.delete(oldest);
+          }
+        }
+        return;
+      }
+      // session/load may replay history. The Host already owns the displayed transcript.
+      if (notification.sessionId !== sessionId) return;
       let mapped: AcpUpdate | undefined;
       if (update.sessionUpdate === "config_option_update") {
         mapped = { kind: "config", configOptions: projectAcpConfigOptions(update.configOptions) };
       } else if (update.sessionUpdate === "current_mode_update") {
         mapped = { kind: "mode", modeId: update.currentModeId };
+      } else if (update.sessionUpdate === "usage_update") {
+        // 修复原因：usage_update 是 Agent 的上下文窗口占用，并非 prompt 消耗报告。
+        // 无效或未知值清空旧容量，让共享圆环显示未知，避免误导性的 0% 和旧会话值。
+        mapped = {
+          kind: "context_usage",
+          usage: projectAcpContextUsage(update),
+        };
       } else if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
         mapped = {
           kind: "text",
@@ -174,7 +205,9 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         );
         for (const workflow of workflowServers) {
           if (mcpServers.some((server) => server.name === workflow.name))
-            throw new Error(`MCP 名称 ${workflow.name} 已由 ZCode 工作流占用，请重命名用户 MCP 配置`);
+            throw new Error(
+              `MCP 名称 ${workflow.name} 已由 ZCode 工作流占用，请重命名用户 MCP 配置`,
+            );
         }
         mcpServers.push(...workflowServers);
         for (const server of workflowServers) provisionedMcpNames.add(server.name);
@@ -189,6 +222,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         );
         mcpServers.push(...pluginServers);
         for (const server of pluginServers) provisionedMcpNames.add(server.name);
+        receivingInitialUsage = true;
         if (sessionId) {
           if (!initialized.agentCapabilities?.loadSession) {
             // 修复原因：升级后的适配器可能不再声明 loadSession；空会话仍可安全接替，
@@ -218,6 +252,8 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       })(),
     ]);
     if (!sessionId) throw new Error("ACP Agent 未返回会话 ID");
+    const initialUsage = initialUsageBySession.get(sessionId);
+    initialUsageBySession.clear();
     receivingLiveUpdates = true;
     const activeSessionId = sessionId;
     return {
@@ -227,6 +263,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       provisionedMcpNames,
       configOptions,
       modeState,
+      ...(initialUsage ? { contextUsage: initialUsage.usage } : {}),
       async setConfigOption(configId, value) {
         const result = await connection.setSessionConfigOption({
           sessionId: activeSessionId,

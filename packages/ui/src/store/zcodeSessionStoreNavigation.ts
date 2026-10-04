@@ -10,6 +10,8 @@ import {
   goForward as navGoForward,
   pushAutomationsNavEntry,
   pushPluginStoreNavEntry,
+  pushRepositoryNavEntry,
+  pushWorkTasksNavEntry,
   removeTaskFromHistory,
   type AutomationsNavigationTab,
   type WorkspaceNavEntry,
@@ -59,6 +61,25 @@ export function createNavigationSlice(set: SetFn, get: GetFn) {
       }));
     },
 
+    taskNavPushRepository: (workspacePath: string, workspaceIdentity?: string) => {
+      set((state) => ({
+        taskNavHistory: pushRepositoryNavEntry(
+          state.taskNavHistory,
+          workspacePath,
+          workspaceIdentity,
+        ),
+      }));
+    },
+
+    taskNavPushWorkTasks: (workspacePath: string, workspaceIdentity?: string) => {
+      set((state) => ({
+        taskNavHistory: pushWorkTasksNavEntry(
+          state.taskNavHistory,
+          workspacePath,
+          workspaceIdentity,
+        ),
+      }));
+    },
     taskNavGoBack: (): WorkspaceNavEntry | null => {
       const state = get();
       const result = navGoBack(state.taskNavHistory);

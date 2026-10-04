@@ -228,6 +228,7 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
   triggerBadge,
 }: ModelConfigSelectProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const pressedModelRef = useRef<{ value: string; pointerId: number } | null>(null);
   const open = controlledOpen ?? uncontrolledOpen;
   const lastOpenRequestKeyRef = useRef(openRequestKey);
   const hasSelectableModel = modelGroups.length > 0;
@@ -250,6 +251,7 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
 
   const handlePopoverOpenChange = useCallback(
     (nextOpen: boolean) => {
+      pressedModelRef.current = null;
       if (controlledOpen === undefined) {
         setUncontrolledOpen(nextOpen);
       }
@@ -357,6 +359,21 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
           {...commonProps}
           value={item.value}
           className="min-h-8 gap-2 pl-2 pr-8 text-ui-base"
+          onPointerDown={(event) => {
+            if (event.button === 0)
+              pressedModelRef.current = { value: item.value, pointerId: event.pointerId };
+          }}
+          onPointerUp={(event) => {
+            // 修复原因：异步 API/ACP 列表会推动向上展开的菜单，Radix 会为松开时
+            // 恰好位于鼠标下的另一项合成 click，误切智能体。只兑现同一选项的按下/松开。
+            const pressed = pressedModelRef.current;
+            pressedModelRef.current = null;
+            if (pressed?.value !== item.value || pressed.pointerId !== event.pointerId)
+              event.preventDefault();
+          }}
+          onPointerCancel={() => {
+            pressedModelRef.current = null;
+          }}
           onSelect={() => {
             handleModelValueChange(item.value);
             handlePopoverOpenChange(false);

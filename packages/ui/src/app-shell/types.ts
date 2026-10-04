@@ -45,6 +45,7 @@ import type {
 import type { TaskFindDialogProps } from "@/quickpick/TaskFindDialog.js";
 import type { QuickPickCommand } from "@/quickpick/quickPickCommands.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
+import type { WorkTaskWorkspaceToolTarget } from "@/lib/workTaskWorkspaceTools.js";
 import type { AutomationsNavigationTab, OpenAutomationsMain } from "@/lib/taskNavigationHistory.js";
 
 export interface WorkspaceShellZCodeState {
@@ -122,7 +123,12 @@ export interface GitChangeSummary {
   removed: number;
 }
 
-export type WorkspaceMainView = "chat" | "automations" | "plugin-store";
+export type WorkspaceMainView =
+  | "chat"
+  | "automations"
+  | "plugin-store"
+  | "repository"
+  | "work-tasks";
 
 export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackService"> {
   commandCenterOpen: boolean;
@@ -133,6 +139,12 @@ export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackS
   onCommandCenterOpenCodeViewer: (source: CodeViewerSource) => void;
   workspaceReadOnlyReason?: string;
   workspaceMainView: WorkspaceMainView;
+  workTaskTools?: {
+    target: WorkTaskWorkspaceToolTarget | null;
+    services: IServiceAccessor;
+    readOnlyReason?: string;
+    onTargetChange: (target: WorkTaskWorkspaceToolTarget | null) => void;
+  };
   pluginStoreOpenVersion: number;
   openAutomationId: string | null;
   openAutomationTab: AutomationsNavigationTab | null;
@@ -140,6 +152,8 @@ export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackS
   onOpenAutomationConsumed: () => void;
   handleOpenAutomations: OpenAutomationsMain;
   handleOpenPluginStore: () => void;
+  handleOpenRepository: () => void;
+  handleOpenWorkTasks: () => void;
   handleManageInstalledPlugins: () => void;
   workspaceShellZCodeState: WorkspaceShellZCodeState;
   theme: Theme;

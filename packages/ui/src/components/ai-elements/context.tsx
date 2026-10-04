@@ -71,7 +71,7 @@ export const Context = ({ usedTokens, maxTokens, usage, modelId, ...props }: Con
   );
 };
 
-const ContextIcon = () => {
+const ContextIcon = ({ unknown = false }: { unknown?: boolean }) => {
   const { usedTokens, maxTokens } = useContextValue();
   const circumference = 2 * Math.PI * ICON_RADIUS;
   const usedPercent = formatUsagePercent(usedTokens, maxTokens);
@@ -92,21 +92,24 @@ const ContextIcon = () => {
         opacity="0.25"
         r={ICON_RADIUS}
         stroke="currentColor"
+        strokeDasharray={unknown ? "2 3" : undefined}
         strokeWidth={ICON_STROKE_WIDTH}
       />
-      <circle
-        cx={ICON_CENTER}
-        cy={ICON_CENTER}
-        fill="none"
-        opacity="0.7"
-        r={ICON_RADIUS}
-        stroke="currentColor"
-        strokeDasharray={`${circumference} ${circumference}`}
-        strokeDashoffset={dashOffset}
-        strokeLinecap="round"
-        strokeWidth={ICON_STROKE_WIDTH}
-        style={{ transform: "rotate(-90deg)", transformOrigin: "center" }}
-      />
+      {unknown ? null : (
+        <circle
+          cx={ICON_CENTER}
+          cy={ICON_CENTER}
+          fill="none"
+          opacity="0.7"
+          r={ICON_RADIUS}
+          stroke="currentColor"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={dashOffset}
+          strokeLinecap="round"
+          strokeWidth={ICON_STROKE_WIDTH}
+          style={{ transform: "rotate(-90deg)", transformOrigin: "center" }}
+        />
+      )}
     </svg>
   );
 };
@@ -114,9 +117,16 @@ const ContextIcon = () => {
 export type ContextTriggerProps = ComponentProps<typeof Button> & {
   /** 触发器转圈：额度自动重置进行中时替换 ContextIcon（对应「正在重置」状态）。 */
   loading?: boolean;
+  /** 未收到容量时显示虚线环，不把缺少数据表现为 0% 用量。 */
+  unknown?: boolean;
 };
 
-export const ContextTrigger = ({ children, loading = false, ...props }: ContextTriggerProps) => {
+export const ContextTrigger = ({
+  children,
+  loading = false,
+  unknown = false,
+  ...props
+}: ContextTriggerProps) => {
   return (
     <HoverCardTrigger asChild>
       {children ?? (
@@ -133,7 +143,7 @@ export const ContextTrigger = ({ children, loading = false, ...props }: ContextT
               aria-hidden="true"
             />
           ) : (
-            <ContextIcon />
+            <ContextIcon unknown={unknown} />
           )}
         </Button>
       )}

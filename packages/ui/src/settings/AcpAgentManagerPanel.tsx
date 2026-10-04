@@ -1,7 +1,8 @@
-import { Bot, CheckCircle2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import type { AcpAgent } from "@zcode/shared";
 import type { IAcpService } from "@zcode/services";
+import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { Badge } from "@/components/ui/badge.js";
 import { Button } from "@/components/ui/button.js";
 import { Switch } from "@/components/ui/switch.js";
@@ -64,6 +65,9 @@ export function AcpAgentManagerPanel({
     agentInfo?.managedVersion &&
     compareAcpAdapterVersions(agentInfo.managedVersion, agentInfo.registryVersion) === 1,
   );
+  const updateAvailable =
+    agentInfo &&
+    compareAcpAdapterVersions(agentInfo.installedVersion, agentInfo.registryVersion) === -1;
   const manage = (action: "install" | "upgrade" | "uninstall") => {
     if (action === "uninstall" || (action === "install" && agentInfo?.source === "system")) {
       const installingOverSystem = action === "install";
@@ -80,11 +84,11 @@ export function AcpAgentManagerPanel({
           : label("uninstallConfirm"),
         confirmLabel: label(action),
       }).then((confirmed) => {
-        if (confirmed) void management.manage(agent, action);
+        if (confirmed) void management.manage(agent, action, agentInfo?.registryVersion);
       });
       return;
     }
-    void management.manage(agent, action);
+    void management.manage(agent, action, agentInfo?.registryVersion);
   };
   const operationLog =
     management.log.length && management.operationAgent === agent ? (
@@ -106,7 +110,7 @@ export function AcpAgentManagerPanel({
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Bot className="size-5 shrink-0" aria-hidden="true" />
+            <AcpAgentIcon agent={agent} className="size-5" />
             <h3 className="min-w-0 text-ui-lg font-semibold text-foreground">{catalogItem.name}</h3>
             <Badge variant="outline">
               {agentInfo?.distribution === "binary" ? label("binary") : "npm"}
@@ -210,13 +214,44 @@ export function AcpAgentManagerPanel({
                         value={agentInfo.registryVersion}
                         technical
                       />
+                      {management.checking ? (
+                        <p role="status" className="text-ui-sm text-foreground-subtle">
+                          {label("checkingUpdates")}
+                        </p>
+                      ) : agentInfo.updateCheck?.status === "error" ? (
+                        <p
+                          data-testid="acp-update-check-error"
+                          role="status"
+                          className="text-ui-sm text-warning"
+                        >
+                          {label("updateCheckFailed")}
+                        </p>
+                      ) : agentInfo.updateCheck?.status === "unavailable" ? (
+                        <p role="status" className="text-ui-sm text-foreground-subtle">
+                          {label("updateCheckUnavailable")}
+                        </p>
+                      ) : agentInfo.updateCheck?.status === "unchecked" ? (
+                        <p className="text-ui-sm text-foreground-subtle">
+                          {label("updateUnchecked")}
+                        </p>
+                      ) : null}
+                      {updateAvailable ? (
+                        <p data-testid="acp-update-available" className="text-ui-sm text-warning">
+                          {intl.formatMessage(
+                            { id: "settings.acpAgents.updateAvailable" },
+                            { version: agentInfo.registryVersion },
+                          )}
+                        </p>
+                      ) : null}
                       <div className="flex flex-wrap gap-2 pt-1">
                         {shouldOfferManagedAcpInstall(agentInfo) ? (
                           <Button
                             type="button"
                             size="sm"
+                            data-testid="acp-install"
                             disabled={
                               management.busy ||
+                              management.checking ||
                               envChanged ||
                               agentInfo.platformSupported === false ||
                               (agentInfo.distribution !== "binary" &&
@@ -231,9 +266,11 @@ export function AcpAgentManagerPanel({
                             <Button
                               type="button"
                               size="sm"
+                              data-testid="acp-upgrade"
                               variant="outline"
                               disabled={
                                 management.busy ||
+                                management.checking ||
                                 envChanged ||
                                 agentInfo.platformSupported === false ||
                                 (agentInfo.distribution !== "binary" &&

@@ -4,7 +4,7 @@ import type { KeyboardEvent, MouseEvent } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { UniqueIdentifier } from "@dnd-kit/core";
 import { isCronTask, isOffPeakTask, type ZCodeTaskMeta } from "@zcode/shared";
-import { ArrowUpToLine, Clock, Cloud, Folder, ListTree, LoaderIcon, Moon, X } from "lucide-react";
+import { ArrowUpToLine, Clock, Cloud, Folder, ListTree, Moon, X } from "lucide-react";
 import { cn } from "@/components/lib/utils.js";
 import { Badge } from "@/components/ui/badge.js";
 import { toast } from "@/components/ui/toast.js";
@@ -16,10 +16,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import {
-  deriveTaskLeadingIndicator,
-  formatTaskRelativeTime,
-} from "@/lib/taskListItemPresentation.js";
+import { deriveTaskLeadingIndicator } from "@/lib/taskListItemPresentation.js";
 import { getTaskChangeSummary } from "@/lib/taskChangeSummary.js";
 import { buildTaskWorkspaceKey } from "@/lib/taskQueryCache.js";
 import { buildTaskFeedbackDescription } from "@/lib/taskFeedbackDraft.js";
@@ -40,6 +37,7 @@ import { useTaskInteractionAutoResolutionSnooze } from "@/hooks/useTaskInteracti
 import { useOptionalTabStore } from "@/store/TabStoreProvider.js";
 import { isWorkspaceReadOnly } from "@/store/tabStore.js";
 import { TaskTitleOverflowText } from "@/components/TaskTitleOverflowText.js";
+import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
 
 function GroupedTaskRowComponent({
   task,
@@ -101,7 +99,7 @@ function GroupedTaskRowComponent({
   const taskActivity = getTaskListRowActivity(task);
   const taskAttention = getTaskListAttention(task);
   // 交互胶囊是当前最高优先级的右侧状态；无论来自 sessions-index 摘要还是
-  // activity attention，都不应再并排显示相对时间并挤压任务标题。
+  // activity attention，都优先占用右侧元信息区，避免其它状态挤压任务标题。
   const hasPendingInteraction = Boolean(task.pendingInteraction) || taskAttention !== null;
   // 远端 session 未就绪时打开文件树必然会被 resolver 拒绝，因此不要暴露
   // 无效 action；本地 task 不需要 remoteSessionId，仍保持入口可用。
@@ -126,7 +124,6 @@ function GroupedTaskRowComponent({
       id: task.forkedFromTaskId ? "taskList.forkedUntitled" : "taskList.untitled",
     });
   const taskChangeParts = formatGroupedTaskHoverChangeParts(getTaskChangeSummary(task));
-  const taskTimeLabel = formatTaskRelativeTime(task.updatedAt, intl);
   const isTaskCron = isCronTask(task);
   // 月亮身份改为持久 meta 标记判断；off-peak store 反查在任务被删除后会丢失
   // 会话溯源，且让每一行多背一个全局 store 订阅。
@@ -135,13 +132,6 @@ function GroupedTaskRowComponent({
     buildTaskWorkspaceKey(activeWorkspacePath, activeWorkspaceIdentity) === workspaceKey &&
     activeTaskId === task.taskId;
   const isMobileActive = false;
-  const statusDotClassName =
-    leadingIndicator === "error"
-      ? "bg-destructive"
-      : leadingIndicator === "unread"
-        ? // grouped task 未读点需要和普通 task list 共用 sky 色，避免 brand 色在不同主题下表达漂移。
-          "bg-sky-500 dark:bg-sky-400"
-        : null;
   const canShowHoverActions = !dragOverlay;
   // 工作流运行行：分组行同样长在标题下；
   // drag overlay 只是纯展示，不挂确认副作用与点击入口。
@@ -175,6 +165,7 @@ function GroupedTaskRowComponent({
       )}
     >
       <span className={TASK_GROUP_ROW_LINE_CLASS}>
+        <TaskAgentIcon task={task} indicator={leadingIndicator} />
         <TaskTitleOverflowText
           as="span"
           className="text-foreground"
@@ -206,15 +197,8 @@ function GroupedTaskRowComponent({
               canShowHoverActions && "group-hover/task-row:hidden",
             )}
           >
-            {leadingIndicator === "loading" ? (
-              <LoaderIcon className="size-3.5 animate-spin text-foreground-subtle" />
-            ) : statusDotClassName ? (
-              <span aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center">
-                <span className={cn("size-1.5 rounded-full", statusDotClassName)} />
-              </span>
-            ) : null}
             {!hasPendingInteraction && isTaskCron ? (
-              // drag overlay 也复用 grouped row 元信息；clock 放时间前面，不能跟未读点互斥。
+              // drag overlay 也复用 grouped row 元信息；clock 不能跟未读点互斥。
               <Clock
                 data-cron-task-icon="true"
                 aria-label={intl.formatMessage({ id: "taskList.cronTaskLabel" })}
@@ -227,7 +211,6 @@ function GroupedTaskRowComponent({
                 className="size-3.5 shrink-0"
               />
             ) : null}
-            {!hasPendingInteraction ? <span className="mr-1">{taskTimeLabel}</span> : null}
           </span>
         </span>
       </span>
@@ -347,8 +330,8 @@ function GroupedTaskRowComponent({
   const shouldMountHoverActions =
     !task.pendingInteraction &&
     (taskRowHovered || taskRowFocusWithin || isHoverNone || isMobileActive);
-  // 触屏端 isHoverNone 只负责常驻 action；时间、状态点和 cron/off-peak 元信息
-  // 仍应保留，仅在真实 hover / focus 交互时让位，避免手机端永久丢失任务状态。
+  // 触屏端 isHoverNone 只负责常驻 action；cron/off-peak 元信息仅在 hover / focus 时让位。
+  // 原有状态已移到左侧品牌角标，始终保留。
   const shouldSuppressTaskMetadata = taskRowHovered || taskRowFocusWithin;
 
   const interactiveTaskRow = (
@@ -379,6 +362,8 @@ function GroupedTaskRowComponent({
       )}
     >
       <span className={TASK_GROUP_ROW_LINE_CLASS}>
+        {/* 修复原因：分组与拖动预览也复用原生身份图标，状态移到角标且 hover 时不再丢失。 */}
+        <TaskAgentIcon task={task} indicator={leadingIndicator} />
         <TaskTitleOverflowText as="span" className="text-foreground" title={taskTitle}>
           {/* grouped task 标题超出时不要显示省略号，右侧渐隐能保留标题连续性，避免和右侧状态元信息挤在一起。*/}
           {taskTitle}
@@ -397,19 +382,9 @@ function GroupedTaskRowComponent({
           ) : null}
           {!shouldSuppressTaskMetadata ? (
             <span className="flex shrink-0 items-center gap-1">
-              {leadingIndicator === "loading" ? (
-                <LoaderIcon className="size-3.5 animate-spin text-foreground-subtle" />
-              ) : statusDotClassName ? (
-                <span
-                  aria-hidden="true"
-                  className="flex size-4 shrink-0 items-center justify-center"
-                >
-                  <span className={cn("size-1.5 rounded-full", statusDotClassName)} />
-                </span>
-              ) : null}
               {!hasPendingInteraction && isTaskCron ? (
                 // 可交互 grouped row 之前漏渲染 clock，导致 Projects 分组里的定时任务没有 icon。
-                // 这里和普通 task list 一样放在时间前面，同时不再被未读/运行状态顶掉。
+                // 这里和普通 task list 一样保留右侧标记，同时不再被未读/运行状态顶掉。
                 <Clock
                   data-cron-task-icon="true"
                   aria-label={intl.formatMessage({ id: "taskList.cronTaskLabel" })}
@@ -422,7 +397,6 @@ function GroupedTaskRowComponent({
                   className="size-3.5 shrink-0"
                 />
               ) : null}
-              {!hasPendingInteraction ? <span className="mr-1">{taskTimeLabel}</span> : null}
             </span>
           ) : null}
           {shouldMountHoverActions ? (

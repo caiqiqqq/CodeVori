@@ -40,6 +40,7 @@ import type { IWindowControllerService } from "./window-controller/windowControl
 import type { IOnboardingRecordService } from "./onboarding/onboardingRecord.js";
 import type { IConversationShareService } from "./conversation-share/conversationShare.js";
 import type { IAcpService } from "./acp/acpService.js";
+import type { IWorkTaskService } from "./session/contract.js";
 
 /** UI 层消费的统一服务接口 */
 export interface IServiceAccessor {
@@ -61,6 +62,7 @@ export interface IServiceAccessor {
   readonly zcodeSessionService: IZCodeSessionService;
   /** Target Environment's ACP Agent session owner. */
   readonly acpService: IAcpService;
+  readonly workTaskService?: IWorkTaskService;
   // CUA 是 opt-in 内测特性：local macOS host 提供，远端 等 host 没有。可选避免连锁必填。
   readonly cuaPermissionService?: ICuaPermissionService;
   readonly conversationShareService: IConversationShareService;

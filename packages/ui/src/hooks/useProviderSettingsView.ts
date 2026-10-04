@@ -86,7 +86,13 @@ export function useProviderSettingsServiceView(
     const previous = ownedRef.current;
     const retainedReady =
       previous.service === service && previous.state.status === "ready" ? previous.state : null;
-    setOwned({ service, state: retainedReady ?? { status: "loading" } });
+    const nextOwned: OwnedProviderSettingsState = {
+      service,
+      state: retainedReady ?? { status: "loading" },
+    };
+    // Host 换代时快速 getView 可能早于 loading render；先同步 owner 引用，避免新 View 被旧 owner 拒绝。
+    ownedRef.current = nextOwned;
+    setOwned(nextOwned);
     latestRevisionRef.current = retainedReady?.view.revision ?? -1;
     let hasReadyView = retainedReady !== null;
     const commit = (view: ProviderSettingsView): void => {

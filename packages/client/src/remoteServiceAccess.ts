@@ -14,6 +14,7 @@ import {
   IZCodeAgentService,
   IZCodeSessionService,
   IAcpService,
+  IWorkTaskService,
   ICuaPermissionService,
   IConversationShareService,
   IBotsService,
@@ -65,6 +66,7 @@ export class RemoteServiceAccess implements IServiceAccessor {
   readonly zcodeAgentService: IZCodeAgentService;
   readonly zcodeSessionService: IZCodeSessionService;
   readonly acpService: IAcpService;
+  readonly workTaskService: IWorkTaskService;
   // cuaPermissionService 在 IServiceAccessor 上是可选（远端/bots host 不提供），但桌面 renderer
   // 经 RPC 一定能拿到（main host 始终注册此 descriptor；非 macOS / 未启用时方法返回 available:false）。
   readonly cuaPermissionService: ICuaPermissionService;
@@ -142,6 +144,9 @@ export class RemoteServiceAccess implements IServiceAccessor {
     );
     this.acpService = ProxyChannel.toService<IAcpService>(
       channelClient.getChannel(IAcpService.channelName),
+    );
+    this.workTaskService = ProxyChannel.toService<IWorkTaskService>(
+      channelClient.getChannel(IWorkTaskService.channelName),
     );
     this.cuaPermissionService = ProxyChannel.toService<ICuaPermissionService>(
       channelClient.getChannel(ICuaPermissionService.channelName),

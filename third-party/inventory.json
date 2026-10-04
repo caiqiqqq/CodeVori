@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "inputHashEncoding": "UTF-8 with CRLF normalized to LF; notice and source snapshot hashes remain byte-exact",
   "scope": "Production dependency union across current workspace projects, copied source/assets and native tools; not a per-installer SBOM or a certification of all licensing obligations.",
-  "noticesSha256": "874bf7c10bdcadd0df0b50fc782f39f077669c6e41bbdbccd868409cd714dec3",
+  "noticesSha256": "39c14d1b0d6a57d6447a9da55b8b7a54a7401ffa7c13ace819a10302fa6da668",
   "inputs": {
     ".agents/skills/agent-browser/references/authentication.md": "e2c3b0f4a1dc1368dee821f03c000d818a48421d09f3872525dddffe73f2112b",
     ".agents/skills/agent-browser/references/commands.md": "17522fc56d742663f47231ff06c4811abc87e12c7f78e11f94d253ddd540a909",
@@ -244,7 +244,7 @@
     "apps/zcode-cli/packages/tui/package.json": "097d5896b0b37a455eafaf015f21113dfbea7b05bb3f92666f423f7753720eb1",
     "apps/zcode-cli/tools/prompt-trajectory/package.json": "7f161fc87f36691f01eb8c2034bd89cf28107da36db02bc20e76f059edd36af6",
     "apps/zcode-cli/tools/typescript/package.json": "23d7e50d2089d205ce3022c5bafbb6b3e31d000e41ac678a5934e0b72627cf3a",
-    "package.json": "fd17e8cdcefd36cf92a83b8e45468c4756a947bd77db4e529d11cf2a62d947ed",
+    "package.json": "1c8de5f20a664c0dc3071ca4d58ae55f4282cb671c529d2ea5f2b0879638b64c",
     "packages/client/package.json": "e76f441549130dc3e5e68072a36b6cb9044e19a6625f1e813f19a4def2b1b689",
     "packages/desktop/package.json": "fd4a396d3236a97f573c09c3faa35523f09b6735e2393444113fb3b8fa83d673",
     "packages/desktop/src/renderer/public/material-icons/3d.svg": "9527b849f0fba57ca7640e2717b3a19cb5f5e046712cbbd8b75d73af338c68fb",
@@ -1419,10 +1419,25 @@
     "packages/rpc/src/remote.ts": "a11e072d5df7e1c1ce64814a68f72afc081246b364f0da409b5c9d22bc815957",
     "packages/rpc/src/serialization.ts": "e949418e1cd17cc863c147fc8d1ff15237e1b5f0cb8e3344fd2a9ccfae9d54e7",
     "packages/server/package.json": "0a6119239c88af79bc766e3c023eb4437105a0d35b03ecca1137d1e688e60a90",
-    "packages/services/package.json": "71fef5a81918526e8cdda4d3309ef3528353d0a526a9418c306ec9f95641ad50",
+    "packages/services/package.json": "40f8a746e5fcd2d76302d81cd292489a7a0d2a27b891947ae8b43cc095898b2c",
     "packages/shared/package.json": "6394da63b39d6bf4cabadf803a4f26cf9758de944ac6e0cc5c4f0dc303f66b77",
     "packages/shared/src/zcode-protocol-v4/wire-codec.ts": "ac2494a3acc795c809c94ee9393f50271a9c2a0fd33813459e5ab93842ceef75",
-    "packages/ui/package.json": "220e916077604008bb6ffea19d6bdf7148c4b09472bea251248a230ba3c69bf5",
+    "packages/ui/package.json": "6696b923164d21dc71f2293c2d48010d8967c6c210e97d8f407d2da781705aa9",
+    "packages/ui/src/assets/acp-agent-icons/antigravity.svg": "81c4550dca6e7e33e01a851ccefcc7642271d205f16962b782a38b5f609e0ba4",
+    "packages/ui/src/assets/acp-agent-icons/claude.svg": "46f8728497649014276ab14687930c70209b9de702b101c24f3fd3c4693a11c2",
+    "packages/ui/src/assets/acp-agent-icons/cline.svg": "d56a04987bb8b3ea3a318b802f83a66682ff0a6ead846b1992ced4c3ac8c51ff",
+    "packages/ui/src/assets/acp-agent-icons/codebuddy.svg": "50bee775e595811097e0b88d54f77fd4bf5314f2801cb561097b80357cd0b740",
+    "packages/ui/src/assets/acp-agent-icons/codex.svg": "d949ab5ee967e256112a944e34b71322626d7f1b7a8f0f42a177f0ed1137108a",
+    "packages/ui/src/assets/acp-agent-icons/cursor.svg": "d2943ab6f05eaee88a9402b2e495e1ca588e39cb80f579ec533f289b9e5c4112",
+    "packages/ui/src/assets/acp-agent-icons/deepseek.svg": "9acf180849e05bc5feef98c37cf62a064aa2dfbed2a31d7f66bc9ef648e23561",
+    "packages/ui/src/assets/acp-agent-icons/gemini.svg": "b906bf51347368b71b0e82d28645954fb289a64d5a2c10f19d7e7b6de0edaca1",
+    "packages/ui/src/assets/acp-agent-icons/grok.svg": "eb23e4e3c23e0e815e7d69a4d86dcee98b97c17a7bdafdc57bb648d328a7d773",
+    "packages/ui/src/assets/acp-agent-icons/hermes.svg": "f59344806e1c2b300a271d2956fd69163ecbe1c7646c46433e9679354d9e9986",
+    "packages/ui/src/assets/acp-agent-icons/kimi-code.svg": "4af884dded673931484d9c74ed59ccdd23e7da54cb22dbdb5bf0bd206b037812",
+    "packages/ui/src/assets/acp-agent-icons/openclaw.svg": "b53aafff4bafe12795452a8f1f6d2a526f5e2afe7843ee45df6a9c1c6080caa4",
+    "packages/ui/src/assets/acp-agent-icons/opencode.svg": "c86bc15e97aa102c7476c8c94adcc0acd90bbb37abea6767268a28115404ddb7",
+    "packages/ui/src/assets/acp-agent-icons/pi.svg": "1a715fb1dd3dc69c3b0370fc393e14a6916d9852698dc6cb3b150d54a9dc9a55",
+    "packages/ui/src/assets/acp-agent-icons/qoder.svg": "abeb03ea3b56a9c5e8cb0218721423c0f7742a82452d3561b50451aab43850d6",
     "packages/ui/src/components/ai-elements/agent.tsx": "830e7ea9e927de1524851337f1d35bda0e5690e3e4fa307fff854b60006b16c7",
     "packages/ui/src/components/ai-elements/artifact.tsx": "7d73f08864d6280ac86c77d32e56d0e702f8aa6208e5910820139d0fb08ce64c",
     "packages/ui/src/components/ai-elements/attachments.tsx": "7a847ce6c8ac9dc630481a82dd20a5e9e00949bf710a41fea1d32a18123011d8",
@@ -1433,7 +1448,7 @@
     "packages/ui/src/components/ai-elements/commit.tsx": "e9f5dcffac4ec7702b6d77b41cfc28fab54f0595375dd2c992dc972c0a9e74d2",
     "packages/ui/src/components/ai-elements/confirmation.tsx": "bb39ae89d5550f4ffcbb36e73dc8b75d1c9930f0fdba28cc8ff135d753b65a9b",
     "packages/ui/src/components/ai-elements/connection.tsx": "6e6cf65efcef612a3d14f5fda69e27009bc06046d1f7aa842a1a93b9142a7f81",
-    "packages/ui/src/components/ai-elements/context.tsx": "9f9a766dcab0010b1483b5276f9d5f4b4c3b31bd85434731fc7ce4d8bf9913f7",
+    "packages/ui/src/components/ai-elements/context.tsx": "f5f41857ea991c582f461e9700d3c9c2b029d2bfe24a97a2f2ab637b143736b9",
     "packages/ui/src/components/ai-elements/controls.tsx": "3123e9cb668171780944fb91632c68977617ae4ef46312540c1f7ddecc3fc568",
     "packages/ui/src/components/ai-elements/conversation.tsx": "1fda6a3c198ae104e8736b70992e9ce8549f667a942246d9a9762be8f4431e3a",
     "packages/ui/src/components/ai-elements/diagram-preview-dialog.tsx": "cc142f8808370897dfc40cd7aea3f1aa42fd07ce471a7fbb284d9ae728b1299a",
@@ -1515,7 +1530,7 @@
     "packages/ui/src/components/ui/usePdfZoomOverlay.ts": "c8c91b003ce2fded32c7a2369dc6eac43aa4b9dc9c830a0f5ceccb21d366b610",
     "packages/ui/src/components/ui/ZCodeAboutLogo.tsx": "1e5b7c2e8a9dc98a3c597cbe34122521319eaeb89825e4c41641e77715d1407a",
     "packages/ui/src/lib/builtinSkillI18n.ts": "fbb44f7044214b70148f64dbafc1cea5ea550531e8084965ea978c5defc06deb",
-    "packages/ui/src/styles.css": "22d5b58e44cdebdbe7154c418ee05fef6dde689e384f0dd590d4057739487be7",
+    "packages/ui/src/styles.css": "7b48c49e617f9c4ed1483d5409bbcd43460f44784301c4b5b4a560a4428ff996",
     "packages/web/package.json": "0810e762bf1d6641d5f73ab642b81953e183e53fd963a1d405ffc65b206e5ce6",
     "packages/web/public/material-icons/3d.svg": "9527b849f0fba57ca7640e2717b3a19cb5f5e046712cbbd8b75d73af338c68fb",
     "packages/web/public/material-icons/abap.svg": "1335bd7eb9a0ed49deb622330d680c2e97731726a7a5eee8e4f46dc1e5db4de4",
@@ -2668,12 +2683,12 @@
     "patches/@ai-sdk__anthropic@3.0.81.patch": "d3a7c381eba7f5157f765a0528003af17cf84544911dfb7412c7800168e01c18",
     "patches/@ai-sdk__openai-compatible@2.0.60.patch": "9632fe9d821b3dc20939ae509cc35b968d90d018bbd1d812390718898182a38b",
     "patches/@arms__rum-electron@0.0.3.patch": "36855354851ea495bc47a03340b0484ff62836b739cad56904b8a69f18e2ae97",
-    "pnpm-lock.yaml": "7d40b0231089692a91eb39f73b212f7eae86ee9402c360139216cff577e9583c",
+    "pnpm-lock.yaml": "c0fcbd822055d6dfab19debb0ffc12fe6193e04f96d6b5da31afd00d84ab5577",
     "pnpm-workspace.yaml": "f18a18233e82cda1dc40be61bf2ad1bc99de25de63ad0be64bc652761a638372",
     "scripts/license-texts/Apache-2.0.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "scripts/native-search-tools-config.mjs": "281d368464f61363fa2d8ab74f416962fe730dd0a0572db5564475f876bb65aa",
     "scripts/remote-native-search-tools-config.mjs": "472322a66f84c7452f96aa9e16e9c4e0600f7c2588a03dc6bc869229161b1cb2",
-    "third-party/copied-components.json": "a411ef6ee22a25e910d2ccfb5dde572a116174645abbda9e99f86946deeb2072",
+    "third-party/copied-components.json": "b7f519e07fa0c5baf3bcb723d84bb1d6c1a58c7b8a32bf2beac21eb2406eb33c",
     "third-party/embedded-components.json": "9586ccca15897f56d4ca1d703dffe9e02880fedd766c1dff93f7ac1f52ea891a",
     "third-party/native-search/licenses/00373c9bf56a894b2ed67586596bc1e8b0630cabbaf1ab46c75fc754b6bcd1ce.txt": "00373c9bf56a894b2ed67586596bc1e8b0630cabbaf1ab46c75fc754b6bcd1ce",
     "third-party/native-search/licenses/01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f.txt": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f",
@@ -2855,6 +2870,7 @@
     "third-party/upstream/bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526.txt": "bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526",
     "third-party/upstream/c5adaf9051f20a1bbeecfb39de415cac1fef591d4fcda2b55d66b31354fdba1e.txt": "c5adaf9051f20a1bbeecfb39de415cac1fef591d4fcda2b55d66b31354fdba1e",
     "third-party/upstream/c681d64256e752c1435814cf045f4467720a8473e425ea54103a0f5128bfc817.txt": "c681d64256e752c1435814cf045f4467720a8473e425ea54103a0f5128bfc817",
+    "third-party/upstream/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
     "third-party/upstream/c8b789cf5a746611e6300a0cc7750dbf92b61912a709d04e639245f7290656d0.txt": "c8b789cf5a746611e6300a0cc7750dbf92b61912a709d04e639245f7290656d0",
     "third-party/upstream/cb992262f361a5359e6771c28740d33c7041e15332ae8537fae40538992591a9.txt": "cb992262f361a5359e6771c28740d33c7041e15332ae8537fae40538992591a9",
     "third-party/upstream/cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c.txt": "cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c",
@@ -2874,6 +2890,22 @@
     "third-party/upstream/fc7d762e0ebf8720d0a03cf00058aaa3a198347e9651be2f50a25e3b3ec13985.txt": "fc7d762e0ebf8720d0a03cf00058aaa3a198347e9651be2f50a25e3b3ec13985"
   },
   "packages": [
+    {
+      "name": "@agentclientprotocol/sdk",
+      "version": "1.5.0",
+      "license": "Apache-2.0",
+      "repository": "git+https://github.com/agentclientprotocol/typescript-sdk.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "6ed4f049cce59e05197d585bdf8a39980b45d546d6ea718ee344555f3a867c3a"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "cff63b58fb0de3be0abeccdd54f6277831c8b7c70fadc24c701d67adeedd81a3"
+        }
+      ]
+    },
     {
       "name": "@ai-sdk/anthropic",
       "version": "3.0.81",
@@ -3984,6 +4016,18 @@
         {
           "member": "LICENSE",
           "sha256": "85aca0b12ce5ade4ff76e9cbbe7e0d5a4cdde979e3930727c272e1fa04b8cc23"
+        }
+      ]
+    },
+    {
+      "name": "@isaacs/fs-minipass",
+      "version": "4.0.1",
+      "license": "ISC",
+      "repository": "https://github.com/npm/fs-minipass.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "4ec3d4c66cd87f5c8d8ad911b10f99bf27cb00cdfcff82621956e379186b016b"
         }
       ]
     },
@@ -6785,30 +6829,6 @@
       ]
     },
     {
-      "name": "@stripe/react-stripe-js",
-      "version": "6.4.0",
-      "license": "MIT",
-      "repository": "https://github.com/stripe/react-stripe-js.git",
-      "notices": [
-        {
-          "member": "LICENSE",
-          "sha256": "f5ecc63f26b1bf790f68fd8e4a84376385b19b9246100dc93a5b6ba9bf17f964"
-        }
-      ]
-    },
-    {
-      "name": "@stripe/stripe-js",
-      "version": "9.6.0",
-      "license": "MIT",
-      "repository": "github:stripe/stripe-js",
-      "notices": [
-        {
-          "member": "LICENSE",
-          "sha256": "f5ecc63f26b1bf790f68fd8e4a84376385b19b9246100dc93a5b6ba9bf17f964"
-        }
-      ]
-    },
-    {
       "name": "@szmarczak/http-timer",
       "version": "4.0.6",
       "license": "MIT",
@@ -8661,6 +8681,18 @@
         {
           "member": "LICENSE.txt",
           "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "name": "chownr",
+      "version": "3.0.0",
+      "license": "BlueOak-1.0.0",
+      "repository": "git://github.com/isaacs/chownr.git",
+      "notices": [
+        {
+          "member": "LICENSE.md",
+          "sha256": "a49c9ba464796f65b59fca3f1e6ca40912df1e859f575383223f7ec6c5baae09"
         }
       ]
     },
@@ -14401,6 +14433,30 @@
       ]
     },
     {
+      "name": "minipass",
+      "version": "7.1.3",
+      "license": "BlueOak-1.0.0",
+      "repository": "https://github.com/isaacs/minipass",
+      "notices": [
+        {
+          "member": "LICENSE.md",
+          "sha256": "8a1af140fdfbf5afd3df27f7e662f989c5b963a300020dfafce42033cae9e004"
+        }
+      ]
+    },
+    {
+      "name": "minizlib",
+      "version": "3.1.0",
+      "license": "MIT",
+      "repository": "git+https://github.com/isaacs/minizlib.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "df05697a04b8997c79d423930534e59cc18828f6e22d0c8c2d62fcbea1c4f50b"
+        }
+      ]
+    },
+    {
       "name": "mitt",
       "version": "3.0.1",
       "license": "MIT",
@@ -15701,22 +15757,6 @@
       ]
     },
     {
-      "name": "prop-types",
-      "version": "15.8.1",
-      "license": "MIT",
-      "repository": "facebook/prop-types",
-      "notices": [
-        {
-          "member": "LICENSE",
-          "sha256": "f657f99d3fb9647db92628e96007aabb46e5f04f33e49999075aab8e250ca7ce"
-        },
-        {
-          "member": "README.md (license section)",
-          "sha256": "ca980af9aad75880631440fc14082e1a217b1ea3e615cf715469468bee6a8ef4"
-        }
-      ]
-    },
-    {
       "name": "propagating-hammerjs",
       "version": "3.0.0",
       "license": "MIT",
@@ -15981,18 +16021,6 @@
         {
           "member": "LICENSE",
           "sha256": "2cdb493db15b320c5787535f9dadd37b13cae6fe0a1cdd7849ccfbce70c389fd"
-        }
-      ]
-    },
-    {
-      "name": "react-is",
-      "version": "16.13.1",
-      "license": "MIT",
-      "repository": "https://github.com/facebook/react.git",
-      "notices": [
-        {
-          "member": "LICENSE",
-          "sha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85"
         }
       ]
     },
@@ -17625,6 +17653,18 @@
       ]
     },
     {
+      "name": "tar",
+      "version": "7.5.13",
+      "license": "BlueOak-1.0.0",
+      "repository": "https://github.com/isaacs/node-tar.git",
+      "notices": [
+        {
+          "member": "LICENSE.md",
+          "sha256": "8a1af140fdfbf5afd3df27f7e662f989c5b963a300020dfafce42033cae9e004"
+        }
+      ]
+    },
+    {
       "name": "tiny-invariant",
       "version": "1.3.3",
       "license": "MIT",
@@ -19101,6 +19141,18 @@
       ]
     },
     {
+      "name": "yallist",
+      "version": "5.0.0",
+      "license": "BlueOak-1.0.0",
+      "repository": "git+https://github.com/isaacs/yallist.git",
+      "notices": [
+        {
+          "member": "LICENSE.md",
+          "sha256": "a49c9ba464796f65b59fca3f1e6ca40912df1e859f575383223f7ec6c5baae09"
+        }
+      ]
+    },
+    {
       "name": "yaml",
       "version": "2.9.0",
       "license": "ISC",
@@ -19573,7 +19625,7 @@
         },
         {
           "file": "packages/ui/src/styles.css",
-          "sha256": "22d5b58e44cdebdbe7154c418ee05fef6dde689e384f0dd590d4057739487be7"
+          "sha256": "7b48c49e617f9c4ed1483d5409bbcd43460f44784301c4b5b4a560a4428ff996"
         }
       ]
     },
@@ -19775,7 +19827,7 @@
         },
         {
           "file": "packages/ui/src/components/ai-elements/context.tsx",
-          "sha256": "9f9a766dcab0010b1483b5276f9d5f4b4c3b31bd85434731fc7ce4d8bf9913f7"
+          "sha256": "f5f41857ea991c582f461e9700d3c9c2b029d2bfe24a97a2f2ab637b143736b9"
         },
         {
           "file": "packages/ui/src/components/ai-elements/controls.tsx",
@@ -30167,6 +30219,112 @@
         {
           "file": ".agents/skills/react-best-practices/rules/server-serialization.md",
           "sha256": "4d025c42043c56e6355196a2e885d168cdb15248d0797146c9db838a57b34946"
+        }
+      ]
+    },
+    {
+      "id": "Codeg builtin ACP agent icons",
+      "referenceRevision": "932ac543532c86186a851ffada83dc1ccab9515c",
+      "importRevision": "932ac543532c86186a851ffada83dc1ccab9515c",
+      "source": "https://raw.githubusercontent.com/xintaofei/codeg/932ac543532c86186a851ffada83dc1ccab9515c/LICENSE",
+      "file": "third-party/upstream/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "roots": [
+        "packages/ui/src/assets/acp-agent-icons/claude.svg",
+        "packages/ui/src/assets/acp-agent-icons/codex.svg",
+        "packages/ui/src/assets/acp-agent-icons/gemini.svg",
+        "packages/ui/src/assets/acp-agent-icons/openclaw.svg",
+        "packages/ui/src/assets/acp-agent-icons/opencode.svg",
+        "packages/ui/src/assets/acp-agent-icons/cline.svg",
+        "packages/ui/src/assets/acp-agent-icons/hermes.svg",
+        "packages/ui/src/assets/acp-agent-icons/codebuddy.svg",
+        "packages/ui/src/assets/acp-agent-icons/kimi-code.svg",
+        "packages/ui/src/assets/acp-agent-icons/pi.svg",
+        "packages/ui/src/assets/acp-agent-icons/grok.svg",
+        "packages/ui/src/assets/acp-agent-icons/cursor.svg",
+        "packages/ui/src/assets/acp-agent-icons/deepseek.svg",
+        "packages/ui/src/assets/acp-agent-icons/qoder.svg",
+        "packages/ui/src/assets/acp-agent-icons/antigravity.svg"
+      ],
+      "scope": "Brand SVG shapes only, extracted from src/components/agent-icon.tsx. Converted to standalone assets; runtime navigation and state remain ZCode implementations.",
+      "license": "Apache-2.0",
+      "modifiedFiles": [
+        "packages/ui/src/assets/acp-agent-icons/claude.svg",
+        "packages/ui/src/assets/acp-agent-icons/codex.svg",
+        "packages/ui/src/assets/acp-agent-icons/gemini.svg",
+        "packages/ui/src/assets/acp-agent-icons/openclaw.svg",
+        "packages/ui/src/assets/acp-agent-icons/opencode.svg",
+        "packages/ui/src/assets/acp-agent-icons/cline.svg",
+        "packages/ui/src/assets/acp-agent-icons/hermes.svg",
+        "packages/ui/src/assets/acp-agent-icons/codebuddy.svg",
+        "packages/ui/src/assets/acp-agent-icons/kimi-code.svg",
+        "packages/ui/src/assets/acp-agent-icons/pi.svg",
+        "packages/ui/src/assets/acp-agent-icons/grok.svg",
+        "packages/ui/src/assets/acp-agent-icons/cursor.svg",
+        "packages/ui/src/assets/acp-agent-icons/deepseek.svg",
+        "packages/ui/src/assets/acp-agent-icons/qoder.svg",
+        "packages/ui/src/assets/acp-agent-icons/antigravity.svg"
+      ],
+      "files": [
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/claude.svg",
+          "sha256": "46f8728497649014276ab14687930c70209b9de702b101c24f3fd3c4693a11c2"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/codex.svg",
+          "sha256": "d949ab5ee967e256112a944e34b71322626d7f1b7a8f0f42a177f0ed1137108a"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/gemini.svg",
+          "sha256": "b906bf51347368b71b0e82d28645954fb289a64d5a2c10f19d7e7b6de0edaca1"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/openclaw.svg",
+          "sha256": "b53aafff4bafe12795452a8f1f6d2a526f5e2afe7843ee45df6a9c1c6080caa4"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/opencode.svg",
+          "sha256": "c86bc15e97aa102c7476c8c94adcc0acd90bbb37abea6767268a28115404ddb7"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/cline.svg",
+          "sha256": "d56a04987bb8b3ea3a318b802f83a66682ff0a6ead846b1992ced4c3ac8c51ff"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/hermes.svg",
+          "sha256": "f59344806e1c2b300a271d2956fd69163ecbe1c7646c46433e9679354d9e9986"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/codebuddy.svg",
+          "sha256": "50bee775e595811097e0b88d54f77fd4bf5314f2801cb561097b80357cd0b740"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/kimi-code.svg",
+          "sha256": "4af884dded673931484d9c74ed59ccdd23e7da54cb22dbdb5bf0bd206b037812"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/pi.svg",
+          "sha256": "1a715fb1dd3dc69c3b0370fc393e14a6916d9852698dc6cb3b150d54a9dc9a55"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/grok.svg",
+          "sha256": "eb23e4e3c23e0e815e7d69a4d86dcee98b97c17a7bdafdc57bb648d328a7d773"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/cursor.svg",
+          "sha256": "d2943ab6f05eaee88a9402b2e495e1ca588e39cb80f579ec533f289b9e5c4112"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/deepseek.svg",
+          "sha256": "9acf180849e05bc5feef98c37cf62a064aa2dfbed2a31d7f66bc9ef648e23561"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/qoder.svg",
+          "sha256": "abeb03ea3b56a9c5e8cb0218721423c0f7742a82452d3561b50451aab43850d6"
+        },
+        {
+          "file": "packages/ui/src/assets/acp-agent-icons/antigravity.svg",
+          "sha256": "81c4550dca6e7e33e01a851ccefcc7642271d205f16962b782a38b5f609e0ba4"
         }
       ]
     }

@@ -1,0 +1,213 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { promisify } from "node:util";
+import { createGitService } from "../src/git/gitService.js";
+
+const exec = promisify(execFile);
+
+async function fixture() {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "zcode-managed-worktrees-")));
+  const project = join(directory, "project with spaces");
+  const root = join(directory, "managed");
+  const outside = join(directory, "managed-other", "outside");
+  const target = join(root, "abcd", "project");
+  await mkdir(project);
+  await exec("git", ["init", "-q", project]);
+  await exec("git", ["-C", project, "config", "user.name", "ZCode Test"]);
+  await exec("git", ["-C", project, "config", "user.email", "zcode@example.invalid"]);
+  await writeFile(join(project, "file.txt"), "initial\n");
+  await exec("git", ["-C", project, "add", "."]);
+  await exec("git", ["-C", project, "commit", "-qm", "initial"]);
+  await exec("git", ["-C", project, "worktree", "add", "-qb", "worktree/abcd", target]);
+  await exec("git", ["-C", project, "worktree", "add", "-qb", "outside", outside]);
+  return { directory, project, root, target, outside };
+}
+
+test("managed worktrees are discovered without tabs, grouped by Git project and scoped to the configured root", async () => {
+  const f = await fixture();
+  const service = createGitService();
+  try {
+    const projects = await service.listManagedWorktrees({ worktreeRootPath: f.root });
+    assert.equal(projects.length, 1);
+    assert.equal(projects[0]?.projectPath, f.project);
+    assert.deepEqual(
+      projects[0]?.worktrees.map((item) => item.worktreePath),
+      [f.target],
+    );
+    assert.equal(projects[0]?.worktrees[0]?.branchName, "worktree/abcd");
+    assert.deepEqual(
+      await service.listManagedWorktrees({ worktreeRootPath: join(f.directory, "missing") }),
+      [],
+    );
+    await assert.rejects(service.listManagedWorktrees({ worktreeRootPath: "relative" }));
+  } finally {
+    await rm(f.directory, { recursive: true, force: true });
+  }
+});
+
+test("a registered worktree directly beneath the configured root is visible too", async () => {
+  const f = await fixture();
+  const direct = join(f.root, "direct");
+  try {
+    await exec("git", ["-C", f.project, "worktree", "add", "-qb", "direct", direct]);
+    const projects = await createGitService().listManagedWorktrees({ worktreeRootPath: f.root });
+    assert.deepEqual(
+      projects[0]?.worktrees.map(({ worktreePath }) => worktreePath),
+      [f.target, direct],
+    );
+    assert.ok(!projects[0]?.worktrees.some(({ worktreePath }) => worktreePath === f.outside));
+  } finally {
+    await rm(f.directory, { recursive: true, force: true });
+  }
+});
+
+test("managed discovery excludes symlink escapes, main trees and unregistered directories", async () => {
+  const f = await fixture();
+  const service = createGitService();
+  try {
+    await symlink(f.outside, join(f.root, "external-link"), "dir");
+    await mkdir(join(f.root, "ordinary-folder"));
+    await writeFile(join(f.root, "ordinary-folder", "keep.txt"), "keep");
+    const projects = await service.listManagedWorktrees({ worktreeRootPath: f.directory });
+    assert.equal(projects.length, 1);
+    assert.ok(!projects[0]?.worktrees.some((item) => item.worktreePath === f.project));
+    const scoped = await service.listManagedWorktrees({ worktreeRootPath: f.root });
+    assert.deepEqual(
+      scoped.flatMap((item) => item.worktrees.map((tree) => tree.worktreePath)),
+      [f.target],
+    );
+  } finally {
+    await rm(f.directory, { recursive: true, force: true });
+  }
+});
+
+test("removing a clean managed worktree unregisters it, retains its branch and preserves neighbours", async () => {
+  const f = await fixture();
+  let prepared: string | null = null;
+  const service = createGitService({
+    prepareWorktreeRemoval: async (path) => {
+      prepared = path;
+      return null;
+    },
+  });
+  try {
+    const result = await service.removeManagedWorktree({
+      worktreeRootPath: f.root,
+      worktreePath: f.target,
+      projectPath: f.project,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(prepared, f.target);
+    await assert.rejects(stat(f.target), { code: "ENOENT" });
+    await assert.rejects(stat(join(f.root, "abcd")), { code: "ENOENT" });
+    await stat(join(f.outside, "file.txt"));
+    await exec("git", ["-C", f.project, "show-ref", "--verify", "refs/heads/worktree/abcd"]);
+    assert.deepEqual(await service.listManagedWorktrees({ worktreeRootPath: f.root }), []);
+    assert.equal(
+      (
+        await service.removeManagedWorktree({
+          worktreeRootPath: f.root,
+          worktreePath: f.target,
+          projectPath: f.project,
+        })
+      ).ok,
+      false,
+    );
+  } finally {
+    await rm(f.directory, { recursive: true, force: true });
+  }
+});
+
+test("removal rechecks strict containment, Git ownership and worktree registration before touching runtimes", async () => {
+  const f = await fixture();
+  let prepared = 0;
+  const service = createGitService({
+    prepareWorktreeRemoval: async () => {
+      prepared++;
+      return null;
+    },
+  });
+  try {
+    await symlink(f.outside, join(f.root, "external-link"), "dir");
+    for (const target of [f.outside, f.root, f.project, join(f.root, "external-link")]) {
+      const result = await service.removeManagedWorktree({
+        worktreeRootPath: f.root,
+        worktreePath: target,
+        projectPath: f.project,
+      });
+      assert.equal(result.ok, false);
+    }
+    const wrongProject = await service.removeManagedWorktree({
+      worktreeRootPath: f.root,
+      worktreePath: f.target,
+      projectPath: f.outside,
+    });
+    assert.equal(wrongProject.ok, false);
+    assert.equal(prepared, 0);
+    await stat(join(f.target, "file.txt"));
+    await stat(join(f.outside, "file.txt"));
+    await stat(join(f.project, "file.txt"));
+  } finally {
+    await rm(f.directory, { recursive: true, force: true });
+  }
+});
+
+test("dirty, locked and busy managed worktrees are rejected without force deletion", async () => {
+  const f = await fixture();
+  let prepareCalls = 0;
+  const service = createGitService({
+    prepareWorktreeRemoval: async () => {
+      prepareCalls++;
+      return "workspace-busy";
+    },
+  });
+  const input = { worktreeRootPath: f.root, worktreePath: f.target, projectPath: f.project };
+  try {
+    await writeFile(join(f.target, "untracked.txt"), "keep");
+    assert.equal((await service.removeManagedWorktree(input)).issue, "dirty-worktree");
+    assert.equal(await readFile(join(f.target, "untracked.txt"), "utf8"), "keep");
+    assert.equal(prepareCalls, 0);
+    await rm(join(f.target, "untracked.txt"));
+    await exec("git", ["-C", f.project, "worktree", "lock", f.target]);
+    assert.equal((await service.removeManagedWorktree(input)).issue, "locked-worktree");
+    assert.equal(prepareCalls, 0);
+    await exec("git", ["-C", f.project, "worktree", "unlock", f.target]);
+    assert.equal((await service.removeManagedWorktree(input)).issue, "workspace-busy");
+    assert.equal(prepareCalls, 1);
+    await stat(join(f.target, "file.txt"));
+  } finally {
+    await rm(f.directory, { recursive: true, force: true });
+  }
+});
+
+test("concurrent deletion of the same worktree enters runtime preparation only once", async () => {
+  const f = await fixture();
+  let prepareCalls = 0;
+  let release!: () => void;
+  const prepared = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const service = createGitService({
+    prepareWorktreeRemoval: async () => {
+      prepareCalls++;
+      await prepared;
+      return null;
+    },
+  });
+  try {
+    const input = { worktreeRootPath: f.root, worktreePath: f.target, projectPath: f.project };
+    const first = service.removeManagedWorktree(input);
+    const second = service.removeManagedWorktree(input);
+    release();
+    const results = await Promise.all([first, second]);
+    assert.equal(prepareCalls, 1);
+    assert.ok(results.some((result) => result.ok));
+  } finally {
+    release();
+    await rm(f.directory, { recursive: true, force: true });
+  }
+});

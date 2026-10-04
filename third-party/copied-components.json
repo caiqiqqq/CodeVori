@@ -250,5 +250,49 @@
     "license": "MIT",
     "scope": "Vendored React/Next.js guidance and local adaptations; local README preserves Shu Ding / Vercel attribution.",
     "reviewRequired": "Pinned upstream README and skill declare MIT, but a complete original copyright/license notice has not been obtained."
+  },
+  {
+    "id": "Codeg builtin ACP agent icons",
+    "referenceRevision": "932ac543532c86186a851ffada83dc1ccab9515c",
+    "importRevision": "932ac543532c86186a851ffada83dc1ccab9515c",
+    "source": "https://raw.githubusercontent.com/xintaofei/codeg/932ac543532c86186a851ffada83dc1ccab9515c/LICENSE",
+    "file": "third-party/upstream/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt",
+    "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "roots": [
+      "packages/ui/src/assets/acp-agent-icons/claude.svg",
+      "packages/ui/src/assets/acp-agent-icons/codex.svg",
+      "packages/ui/src/assets/acp-agent-icons/gemini.svg",
+      "packages/ui/src/assets/acp-agent-icons/openclaw.svg",
+      "packages/ui/src/assets/acp-agent-icons/opencode.svg",
+      "packages/ui/src/assets/acp-agent-icons/cline.svg",
+      "packages/ui/src/assets/acp-agent-icons/hermes.svg",
+      "packages/ui/src/assets/acp-agent-icons/codebuddy.svg",
+      "packages/ui/src/assets/acp-agent-icons/kimi-code.svg",
+      "packages/ui/src/assets/acp-agent-icons/pi.svg",
+      "packages/ui/src/assets/acp-agent-icons/grok.svg",
+      "packages/ui/src/assets/acp-agent-icons/cursor.svg",
+      "packages/ui/src/assets/acp-agent-icons/deepseek.svg",
+      "packages/ui/src/assets/acp-agent-icons/qoder.svg",
+      "packages/ui/src/assets/acp-agent-icons/antigravity.svg"
+    ],
+    "scope": "Brand SVG shapes only, extracted from src/components/agent-icon.tsx. Converted to standalone assets; runtime navigation and state remain ZCode implementations.",
+    "license": "Apache-2.0",
+    "modifiedFiles": [
+      "packages/ui/src/assets/acp-agent-icons/claude.svg",
+      "packages/ui/src/assets/acp-agent-icons/codex.svg",
+      "packages/ui/src/assets/acp-agent-icons/gemini.svg",
+      "packages/ui/src/assets/acp-agent-icons/openclaw.svg",
+      "packages/ui/src/assets/acp-agent-icons/opencode.svg",
+      "packages/ui/src/assets/acp-agent-icons/cline.svg",
+      "packages/ui/src/assets/acp-agent-icons/hermes.svg",
+      "packages/ui/src/assets/acp-agent-icons/codebuddy.svg",
+      "packages/ui/src/assets/acp-agent-icons/kimi-code.svg",
+      "packages/ui/src/assets/acp-agent-icons/pi.svg",
+      "packages/ui/src/assets/acp-agent-icons/grok.svg",
+      "packages/ui/src/assets/acp-agent-icons/cursor.svg",
+      "packages/ui/src/assets/acp-agent-icons/deepseek.svg",
+      "packages/ui/src/assets/acp-agent-icons/qoder.svg",
+      "packages/ui/src/assets/acp-agent-icons/antigravity.svg"
+    ]
   }
 ]

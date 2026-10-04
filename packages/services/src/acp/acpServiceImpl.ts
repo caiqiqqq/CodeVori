@@ -19,6 +19,7 @@ import {
   acpCreateInputSchema,
   acpDiagnosticEventSchema,
   acpPromptInputSchema,
+  acpStopInputSchema,
   acpSessionSchema,
   acpSessionRowUpdateSchema,
   acpSessionSearchInputSchema,
@@ -50,6 +51,8 @@ import { projectAcpPluginMcpServers } from "./acpMcpServers.js";
 import { createAcpWorkflowMcp } from "./acpWorkflowMcp.js";
 import { AcpWorkflowHost } from "./acpWorkflowHost.js";
 import { acpConfigValues } from "./acpConfigOptions.js";
+import { acpAgentConfigFingerprint, readAcpAgentConfigs } from "./acpAgentConfigs.js";
+import { projectAcpContextUsage } from "./acpContextUsage.js";
 import { searchAcpSessions } from "./acpSessionSearch.js";
 import { recordAcpPromptUsage, summarizeAcpUsage } from "./acpUsageStats.js";
 import {
@@ -67,7 +70,8 @@ export type AcpUpdate =
   | { kind: "text"; text: string; messageId?: string }
   | { kind: "tool"; id: string; title?: string; status?: string; content?: string }
   | { kind: "config"; configOptions: AcpConfigOption[] }
-  | { kind: "mode"; modeId: string };
+  | { kind: "mode"; modeId: string }
+  | { kind: "context_usage"; usage: AcpSession["contextUsage"] };
 export interface AcpPermission {
   requestId: string;
   title: string;
@@ -80,6 +84,8 @@ export interface AcpConnectionPort {
   provisionedMcpNames?: ReadonlySet<string>;
   configOptions: AcpConfigOption[];
   modeState: AcpModeState | null;
+  /** undefined: no initial report; null: Agent explicitly reported unknown capacity. */
+  contextUsage?: AcpSession["contextUsage"];
   setConfigOption(configId: string, value: string | boolean): Promise<AcpConfigOption[]>;
   setMode(modeId: string): Promise<void>;
   prompt(text: string, blocks?: ContentBlock[]): Promise<AcpUsageReport | null | void>;
@@ -153,9 +159,14 @@ export function createAcpService(
   const pending = new Map<string, { requestId: string; resolve(value: string | null): void }>();
   const workflowMcp = createAcpWorkflowMcp(directory);
   const workflowRegistrations = new Map<string, { revoke(): void }>();
-  const permissionQueues = new Map<string, Array<{
-    request: AcpPermission; runId?: string; resolve(value: string | null): void;
-  }>>();
+  const permissionQueues = new Map<
+    string,
+    Array<{
+      request: AcpPermission;
+      runId?: string;
+      resolve(value: string | null): void;
+    }>
+  >();
   const workflowNotifications = new Map<string, Array<{ runId: string; result: unknown }>>();
   const workflowNotifying = new Set<string>();
   const notificationTasks = new Set<Promise<void>>();
@@ -313,7 +324,11 @@ export function createAcpService(
     for (const request of permissionQueues.get(id) ?? []) request.resolve(null);
     permissionQueues.delete(id);
   };
-  const requestPermission = (session: AcpSession, request: AcpPermission, runId?: string): Promise<string | null> =>
+  const requestPermission = (
+    session: AcpSession,
+    request: AcpPermission,
+    runId?: string,
+  ): Promise<string | null> =>
     new Promise((resolve) => {
       const queue = permissionQueues.get(session.id) ?? [];
       queue.push({ request, runId, resolve });
@@ -330,7 +345,9 @@ export function createAcpService(
     if (activeRequest && pending.get(session.id)?.requestId === activeRequest.request.requestId) {
       pending.delete(session.id);
       // 修复原因：取消一个后台 run 时只撤销它的权限，不能清掉主 ACP 回合或其它 run 的请求。
-      await mutate(session, () => { session.pendingPermission = null; });
+      await mutate(session, () => {
+        session.pendingPermission = null;
+      });
       if (remaining.length) void showNextPermission(session);
     }
     for (const item of queue) if (item.runId === runId) item.resolve(null);
@@ -340,7 +357,9 @@ export function createAcpService(
     if (!next || pending.has(session.id) || removed.has(session.id)) return;
     pending.set(session.id, { requestId: next.request.requestId, resolve: next.resolve });
     try {
-      await mutate(session, () => { session.pendingPermission = next.request; });
+      await mutate(session, () => {
+        session.pendingPermission = next.request;
+      });
       await appendDiagnostic(session, { kind: "permission-requested" });
     } catch (error) {
       logger.warn(undefined, "ACP permission persistence failed", { error: failureMessage(error) });
@@ -348,7 +367,13 @@ export function createAcpService(
     }
   };
   const deliverWorkflowNotifications = async (session: AcpSession): Promise<void> => {
-    if (disposed || removed.has(session.id) || active.has(session.id) || workflowNotifying.has(session.id)) return;
+    if (
+      disposed ||
+      removed.has(session.id) ||
+      active.has(session.id) ||
+      workflowNotifying.has(session.id)
+    )
+      return;
     const notifications = workflowNotifications.get(session.id);
     const port = connections.get(session.id);
     if (!port || !notifications?.length) return;
@@ -358,7 +383,9 @@ export function createAcpService(
     active.set(session.id, commandId);
     let delivered = false;
     try {
-      await mutate(session, () => { session.status = "running"; });
+      await mutate(session, () => {
+        session.status = "running";
+      });
       const text = `ZCode 工作流运行结果：${JSON.stringify(notifications)}。请根据结果继续回答用户原来的问题。`;
       const usage = await port.prompt(text, [{ type: "text", text }]);
       if (active.get(session.id) === commandId) {
@@ -369,10 +396,18 @@ export function createAcpService(
         delivered = true;
       }
     } catch (error) {
-      logger.warn(undefined, "ACP workflow result delivery failed", { error: failureMessage(error) });
-      workflowNotifications.set(session.id, [...notifications, ...(workflowNotifications.get(session.id) ?? [])]);
+      logger.warn(undefined, "ACP workflow result delivery failed", {
+        error: failureMessage(error),
+      });
+      workflowNotifications.set(session.id, [
+        ...notifications,
+        ...(workflowNotifications.get(session.id) ?? []),
+      ]);
       if (active.get(session.id) === commandId)
-        await mutate(session, () => { session.status = "interrupted"; session.error = failureMessage(error); });
+        await mutate(session, () => {
+          session.status = "interrupted";
+          session.error = failureMessage(error);
+        });
     } finally {
       if (active.get(session.id) === commandId) active.delete(session.id);
       workflowNotifying.delete(session.id);
@@ -385,27 +420,46 @@ export function createAcpService(
   const scheduleWorkflowNotifications = (session: AcpSession): void => {
     const task = deliverWorkflowNotifications(session);
     notificationTasks.add(task);
-    void task.catch((error: unknown) => {
-      logger.warn(undefined, "ACP workflow notification persistence failed", { error: failureMessage(error) });
-    }).finally(() => { notificationTasks.delete(task); });
+    void task
+      .catch((error: unknown) => {
+        logger.warn(undefined, "ACP workflow notification persistence failed", {
+          error: failureMessage(error),
+        });
+      })
+      .finally(() => {
+        notificationTasks.delete(task);
+      });
   };
   const workflowHost = new AcpWorkflowHost({
-    directory, connect, mcp: workflowMcp, mutate,
+    directory,
+    connect,
+    mcp: workflowMcp,
+    mutate,
     sources: async (session) => {
       const [mcpSettings, launch, plugins] = await Promise.all([
         options.mcpSyncService?.loadMcpFromUserDirectory({ workspacePath: session.workspacePath }),
-        options.connect && !options.agentManager ? undefined : agentManager.resolveLaunch(session.agent),
+        options.connect && !options.agentManager
+          ? undefined
+          : agentManager.resolveLaunch(session.agent),
         options.pluginSource?.getAcpPluginCapabilities({
           workspacePath: session.workspacePath,
           ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
           ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
         }),
       ]);
-      return { mcpServers: mcpSettings?.servers ?? [], ...(launch ? { launch } : {}),
-        ...(plugins ? { pluginServers: plugins.servers } : {}) };
+      return {
+        mcpServers: mcpSettings?.servers ?? [],
+        ...(launch ? { launch } : {}),
+        ...(plugins ? { pluginServers: plugins.servers } : {}),
+      };
     },
     permission: async (session, request, runId) => {
-      if (disposed || removed.has(session.id) || (!active.has(session.id) && !workflowHost.ownsLive(session.id))) return null;
+      if (
+        disposed ||
+        removed.has(session.id) ||
+        (!active.has(session.id) && !workflowHost.ownsLive(session.id))
+      )
+        return null;
       return requestPermission(session, request, runId);
     },
     notify: async (session, runId, result) => {
@@ -433,6 +487,7 @@ export function createAcpService(
     const generation = {};
     generations.set(session.id, generation);
     let receivedConfig = false;
+    let receivedContextUsage = false;
     let updatedModeId: string | undefined;
     // 修复原因：若仅在设置页检查启用/安装状态，create 与 session/load 仍会从旧静态命令
     // 启动禁用的 Agent。每次新连接都向同一个 Host 设置所有者重新解析，复用连接不重启。
@@ -460,6 +515,25 @@ export function createAcpService(
         ...(launch ? { launch } : {}),
         onUpdate: async (update) => {
           if (generations.get(session.id) !== generation || removed.has(session.id)) return;
+          if (update.kind === "context_usage") {
+            receivedContextUsage = true;
+            // 修复原因：ACP usage_update 是当前上下文占用，不能依赖 active prompt
+            // 的门禁或计入累计 Token 消耗；只更新所属会话的 Host 快照。
+            const usage = projectAcpContextUsage(update.usage);
+            if (
+              session.contextUsage?.used === usage?.used &&
+              session.contextUsage?.size === usage?.size
+            )
+              return;
+            if (!session.acpSessionId) {
+              session.contextUsage = usage;
+              return;
+            }
+            await mutate(session, () => {
+              session.contextUsage = usage;
+            });
+            return;
+          }
           if (update.kind === "config" || update.kind === "mode") {
             if (update.kind === "config") receivedConfig = true;
             else updatedModeId = update.modeId;
@@ -572,11 +646,17 @@ export function createAcpService(
           // 首份报告必须先重建基线，不能与上一个进程的快照直接求差。
           session.usageBaselineKnown = false;
           if (!receivedConfig) session.configOptions = port.configOptions ?? [];
+          // 修复原因：握手期间的容量此前随历史消息被丢弃；只在连接成功后合入快照。
+          // 实时通知可能早于握手结果被 Host 接收，不能用初始值反向覆盖较新的通知。
+          if (!receivedContextUsage && port.contextUsage !== undefined)
+            session.contextUsage = projectAcpContextUsage(port.contextUsage);
           session.modeState = port.modeState ?? null;
           if (session.modeState && updatedModeId) session.modeState.currentModeId = updatedModeId;
         });
       } else {
         if (!receivedConfig) session.configOptions = port.configOptions ?? [];
+        if (!receivedContextUsage && port.contextUsage !== undefined)
+          session.contextUsage = projectAcpContextUsage(port.contextUsage);
         session.modeState = port.modeState ?? null;
         if (session.modeState && updatedModeId) session.modeState.currentModeId = updatedModeId;
       }
@@ -750,11 +830,41 @@ export function createAcpService(
           );
       return availableAcpPlugins(snapshot, skillList?.skills ?? [], mcpNames);
     },
-    listAgents: () => agentManager.listAgents(),
+    listAgents: (options) => agentManager.listAgents(options),
     listGeminiProviders: () => agentManager.listGeminiProviders(),
     updateGeminiProviders: (input) => agentManager.updateGeminiProviders(input),
     listAvailableAgents: async () =>
       acpAgentAvailabilityListSchema.parse(await agentManager.listAvailableAgents()),
+    async listAgentConfigs(input) {
+      if (disposed) throw new Error("ACP service closed");
+      return readAcpAgentConfigs(directory, acpWorkspaceSchema.parse(input), sessions, removed);
+    },
+    onDynamicAgentConfigsChanged() {
+      return (listener) => {
+        const observed = new Map(
+          [...sessions.values()].map((session) => [session.id, acpAgentConfigFingerprint(session)]),
+        );
+        return emitter.event((change) => {
+          if (change.kind === "removed") {
+            observed.delete(change.id);
+            listener();
+            return;
+          }
+          const signature = acpAgentConfigFingerprint(change.session);
+          const previous = observed.get(change.session.id);
+          observed.set(change.session.id, signature);
+          // 配置目录是会话快照的派生投影；消息流不能反复触发全 Host 文件查询。
+          if (previous === signature) return;
+          if (
+            previous === undefined &&
+            !change.session.configOptions.length &&
+            !change.session.modeState
+          )
+            return;
+          listener();
+        });
+      };
+    },
     updateAgent: (input) => agentManager.updateAgent(input),
     readCodexConfig: () => agentManager.readCodexConfig(),
     updateCodexConfig: (input) => agentManager.updateCodexConfig(input),
@@ -768,6 +878,20 @@ export function createAcpService(
     },
     async list(workspace) {
       return (await listScopedSessions(workspace)).map((value) => structuredClone(value));
+    },
+    async prepareWorktreeRemoval(workspace) {
+      const scopedSessions = await listScopedSessions(workspace);
+      // 修复原因：删除工作树时不能用 remove() 清理连接，它会连持久对话一起删除。
+      // Host 自身的 active/workflow 所有者先拒绝运行，再仅断开空闲适配器。
+      if (
+        scopedSessions.some(
+          (session) => active.has(session.id) || workflowHost.ownsLive(session.id),
+        )
+      ) {
+        return false;
+      }
+      for (const session of scopedSessions) detach(session.id);
+      return true;
     },
     async getUsageStats(request) {
       if (request.range !== "all" && request.range !== "7d" && request.range !== "30d")
@@ -919,6 +1043,7 @@ export function createAcpService(
           goal: null,
           configOptions: [],
           modeState: null,
+          contextUsage: null,
           entries: [],
           usageBaselineKnown: true,
           usageBaseline: null,
@@ -1024,7 +1149,10 @@ export function createAcpService(
         const notifications = workflowNotifications.get(session.id);
         if (notifications?.length) {
           workflowNotifications.delete(session.id);
-          blocks.unshift({ type: "text", text: `ZCode 工作流运行结果：${JSON.stringify(notifications)}` });
+          blocks.unshift({
+            type: "text",
+            text: `ZCode 工作流运行结果：${JSON.stringify(notifications)}`,
+          });
         }
         if (goal) {
           // 目标属于 Host 会话，不是 ZCode CLI 的 /goal 命令；仅向 Agent 传入本轮有效目标。
@@ -1169,7 +1297,10 @@ export function createAcpService(
       }
     },
     async stop(input) {
-      const session = await scoped(input);
+      const parsed = acpStopInputSchema.parse(input);
+      const session = await scoped(parsed);
+      // 待办观察取消只针对其实际 command；旧取消请求不能停止用户后续的新消息或工作流。
+      if (parsed.expectedCommandId && active.get(session.id) !== parsed.expectedCommandId) return;
       workflowHost.stopSession(session.id);
       if (!active.has(session.id)) return;
       stopping.add(session.id);
@@ -1194,8 +1325,11 @@ export function createAcpService(
       const session = await scoped(params);
       await workflowHost.get(session, params.runId);
       await settleWorkflowPermissions(session, params.runId);
-      try { await workflowHost.cancel(session, params.runId); }
-      finally { await settleWorkflowPermissions(session, params.runId); }
+      try {
+        await workflowHost.cancel(session, params.runId);
+      } finally {
+        await settleWorkflowPermissions(session, params.runId);
+      }
     },
     async resumeWorkflow(input) {
       const params = acpWorkflowControlSchema.parse(input);
@@ -1219,13 +1353,19 @@ export function createAcpService(
         session.pendingPermission = null;
       });
       // 写入快照期间 stop/remove 可能已取消此请求；迟到的允许不能到达 Agent。
-      if (pending.get(session.id) !== decision || (!active.has(session.id) && !workflowHost.ownsLive(session.id))) {
+      if (
+        pending.get(session.id) !== decision ||
+        (!active.has(session.id) && !workflowHost.ownsLive(session.id))
+      ) {
         throw new Error("ACP permission expired");
       }
       // 修复原因：先完成 Host 轨迹再允许适配器恢复，否则 fast adapter 的完成事件可跑在授权记录前。
       await diagnosticWrites.get(session.id);
       await appendDiagnostic(session, { kind: "permission-resolved" });
-      if (pending.get(session.id) !== decision || (!active.has(session.id) && !workflowHost.ownsLive(session.id))) {
+      if (
+        pending.get(session.id) !== decision ||
+        (!active.has(session.id) && !workflowHost.ownsLive(session.id))
+      ) {
         throw new Error("ACP permission expired");
       }
       pending.delete(session.id);
@@ -1233,7 +1373,10 @@ export function createAcpService(
       if (queue?.[0]?.request.requestId === input.requestId) {
         queue.shift();
         if (!queue.length) permissionQueues.delete(session.id);
-        else queueMicrotask(() => { void showNextPermission(session); });
+        else
+          queueMicrotask(() => {
+            void showNextPermission(session);
+          });
       }
       decision.resolve(input.optionId);
     },

@@ -315,6 +315,8 @@ export interface SessionPaneProps {
   onSessionDeleted?: () => void;
   /** 壳侧只读展示投影；ACP id 不能进入原生任务命令。 */
   onAcpSessionChange?: (session: AcpConversationProjection | null) => void;
+  /** Host 确认归档后，由宿主清理匹配的 pane binding 和打开请求。 */
+  onAcpSessionArchived?: (sessionId: string) => void;
   acpOpenRequest?: AcpConversationOpenRequest | null;
   acpBoundSessionId?: string;
   /** 隐藏副屏的 child 已不存在时，由宿主移除对应 tab。 */
@@ -515,6 +517,7 @@ export function SessionPane({
   provider,
   onSessionCreated,
   onAcpSessionChange,
+  onAcpSessionArchived,
   acpOpenRequest,
   acpBoundSessionId,
   onSelectionSideChatUnavailable,
@@ -580,6 +583,14 @@ export function SessionPane({
     zcodeTaskService,
   } = useServices();
   const [acpAgent, setAcpAgent] = useState<AcpAgent | null>(null);
+  const handleAcpSessionArchived = useCallback(
+    (archivedSessionId: string) => {
+      // 修复原因：只清 selection 会触发 ACP 自动预连接；同一事件中退出 ACP 模式。
+      setAcpAgent(null);
+      onAcpSessionArchived?.(archivedSessionId);
+    },
+    [onAcpSessionArchived],
+  );
   const worktreeDraftIntent = useWorktreeDraftIntent();
   const worktreeAutoSend = worktreeDraftIntent?.autoSend ?? null;
   const draftFocusVersion = useZCodeSessionStore(
@@ -597,6 +608,7 @@ export function SessionPane({
       ...(remoteSessionId ? { remoteSessionId } : {}),
     },
     acpAgent,
+    handleAcpSessionArchived,
   );
   const acpConfigPreview = useAcpComposerConfigPreview({
     agent: acpAgent,
@@ -682,7 +694,11 @@ export function SessionPane({
       sessionId: acpOpenRequest.session.id,
     };
     // 修复原因：侧栏 ACP 行选择的是 Host 会话，不能调用原生 task 绑定或发送命令。
-    acpConversation.selectById(acpOpenRequest.session.agent, acpOpenRequest.session.id);
+    acpConversation.selectById(
+      acpOpenRequest.session.agent,
+      acpOpenRequest.session.id,
+      Boolean(acpOpenRequest.session.archived),
+    );
     setAcpAgent(acpOpenRequest.session.agent);
   }, [acpConversation.selectById, acpOpenRequest, sessionId, workspaceIdentity, workspacePath]);
   const acpHasConversationContent = hasAcpConversationContent(acpConversation.selected);
@@ -4643,6 +4659,9 @@ export function SessionPane({
       }
       acpAgent={acpAgent}
       acpSessionId={acpConversation.selected?.id ?? null}
+      acpContextUsage={
+        acpConversation.selected?.agent === acpAgent ? acpConversation.selected.contextUsage : null
+      }
       acpReady={
         acpConversation.loaded &&
         acpConversation.ready &&

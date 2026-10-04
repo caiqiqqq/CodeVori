@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, type CSSProperties } from "react";
+import { memo, useCallback, useMemo, type CSSProperties, type ReactNode } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { WorkspaceSidebarItem, type SortableBindings } from "./WorkspaceSidebarItem.js";
@@ -15,6 +15,7 @@ export { restrictVerticalDragWithinContainer } from "@/lib/restrictVerticalDragW
 export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSidebarItem({
   tab,
   isActiveWorkspace,
+  hasActiveDescendant = false,
   isExpanded,
   activateTab,
   closeTab,
@@ -35,9 +36,11 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   reconnectingRemoteWorkspaceLogsByWorkspaceKey,
   onReconnectRemoteWorkspace,
   onOpenFileTree,
+  projectTaskList,
 }: {
   tab: WorkspaceTabState;
   isActiveWorkspace: boolean;
+  hasActiveDescendant?: boolean;
   isExpanded: boolean;
   activateTab: (tabId: string) => void;
   closeTab: (tabId: string) => void;
@@ -67,6 +70,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
     workspaceIdentity?: string;
     workspaceRemoteSessionId?: string;
   }) => void;
+  projectTaskList?: ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tab.id,
@@ -113,6 +117,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
     <WorkspaceSidebarItem
       tab={tab}
       isActiveWorkspace={isActiveWorkspace}
+      hasActiveDescendant={hasActiveDescendant}
       isExpanded={isExpanded}
       activateTab={activateTab}
       closeTab={closeTab}
@@ -136,6 +141,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
       itemStyle={style}
       sortableBindings={sortableBindings}
       isDragging={isDragging}
+      projectTaskList={projectTaskList}
     />
   );
 });

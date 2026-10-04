@@ -34,7 +34,19 @@ export interface PluginStoreNavEntry extends WorkspaceNavEntryBase {
   kind: "plugin-store";
 }
 
-export type WorkspaceNavEntry = TaskNavEntry | AutomationsNavEntry | PluginStoreNavEntry;
+export interface RepositoryNavEntry extends WorkspaceNavEntryBase {
+  kind: "repository";
+}
+export interface WorkTasksNavEntry extends WorkspaceNavEntryBase {
+  kind: "work-tasks";
+}
+
+export type WorkspaceNavEntry =
+  | TaskNavEntry
+  | AutomationsNavEntry
+  | PluginStoreNavEntry
+  | RepositoryNavEntry
+  | WorkTasksNavEntry;
 
 export interface TaskNavigationHistory {
   entries: WorkspaceNavEntry[];
@@ -58,6 +70,13 @@ export function isAutomationsNavEntry(entry: WorkspaceNavEntry): entry is Automa
 
 export function isPluginStoreNavEntry(entry: WorkspaceNavEntry): entry is PluginStoreNavEntry {
   return entry.kind === "plugin-store";
+}
+
+export function isRepositoryNavEntry(entry: WorkspaceNavEntry): entry is RepositoryNavEntry {
+  return entry.kind === "repository";
+}
+export function isWorkTasksNavEntry(entry: WorkspaceNavEntry): entry is WorkTasksNavEntry {
+  return entry.kind === "work-tasks";
 }
 
 function isSameNavEntry(left: WorkspaceNavEntry, right: WorkspaceNavEntry): boolean {
@@ -150,8 +169,32 @@ export function pushPluginStoreNavEntry(
   });
 }
 
+export function pushRepositoryNavEntry(
+  history: TaskNavigationHistory,
+  workspacePath: string,
+  workspaceIdentity?: string,
+): TaskNavigationHistory {
+  return pushEntry(history, {
+    kind: "repository",
+    workspacePath,
+    ...(workspaceIdentity?.trim() ? { workspaceIdentity: workspaceIdentity.trim() } : {}),
+  });
+}
+
 export function canGoBack(history: TaskNavigationHistory): boolean {
   return history.cursor > 0;
+}
+
+export function pushWorkTasksNavEntry(
+  history: TaskNavigationHistory,
+  workspacePath: string,
+  workspaceIdentity?: string,
+): TaskNavigationHistory {
+  return pushEntry(history, {
+    kind: "work-tasks",
+    workspacePath,
+    ...(workspaceIdentity?.trim() ? { workspaceIdentity: workspaceIdentity.trim() } : {}),
+  });
 }
 
 export function canGoForward(history: TaskNavigationHistory): boolean {

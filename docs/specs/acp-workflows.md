@@ -10,6 +10,7 @@
 - 运行记录与有界投影保存在目标 Host。对话复用现有 `WorkflowRunDigest` / `WorkflowTimeline`，提供停止与恢复；内容产物的药丸经目标 Host 校验归属并解析 journal 中的最新版文件，再交给现有文件预览入口。结果回传主 ACP 智能体，由它在原对话继续总结，不新增对话页面。工作流可能在主回合仍占用连接时先结算；通知排队，并在主回合释放连接后自动送达。同一次通知失败保留结果供下一轮送达，不忙循环重试。
 - 停止保留已完成步骤；恢复重放原脚本、实参、模型配置和 journal，复用已完成结果，不能自动重放未知的写操作。Host 重启从 journal 恢复全部 run，包括已 durable admission 但尚未写入会话投影的 run，将孤儿 running 收敛为 stopped/interrupted；用户显式恢复。历史读取和模型选择不启动工作流。
 - 本次入口是对话内工作流；设置中的保存工作流目录与 API 启动器保持各自现有语义。ACP 工具可以读取工作区脚本启动，不将 ACP 会话 ID 送到原生 API 启动器。
+- Desktop 的 main、window Host 与 scheduler ESM 产物内联工作流编译器时，必须让其 TypeScript CommonJS 依赖可读取 Node 内建模块及自身文件路径；冷启动时 main 和 Host 均须正常加载，工作树等 Host RPC 方法须由当前运行版本提供。dev 的 Renderer 热更新不代表既有 Host 已更新，跨进程接口变更后应重启整个 Desktop 进程树，不能只刷新页面。
 
 ## 所有者与接口
 
@@ -56,3 +57,4 @@ Desktop continuous 和手机 replayable 读取同一 Host snapshot、revision �
 6. 跨 workspace identity/session/run 的读取、取消、恢复和失效 token 全部拒绝。
 7. UI E2E 在原对话显示相同工作流进度卡、停止/恢复和结果；不用付费智能体完成验证。
 8. 执行 root typecheck、lint、architecture 检查及相关 service/交互验证，报告真实结果。
+9. 冷启动重新构建的 Desktop main/Host/scheduler；断言 main 不因内联 TypeScript 的 `require("fs")` 或 `__filename` 崩溃，Renderer 与 Host 连接后调用只读失败路径的工作树 RPC 返回结构化 `not-repository`，而不是 `Method not found`。

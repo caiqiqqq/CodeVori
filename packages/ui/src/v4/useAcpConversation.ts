@@ -14,6 +14,7 @@ export function useAcpConversation(
   service: IAcpService,
   workspace: AcpWorkspace,
   agent: AcpAgent | null,
+  onArchived?: (sessionId: string) => void,
 ) {
   const { workspacePath, workspaceIdentity, remoteSessionId } = workspace;
   const target = useMemo(
@@ -91,6 +92,45 @@ export function useAcpConversation(
   sessionsRef.current = sessions;
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
+  const archivedOpenIds = useRef(new Map<AcpAgent, string>());
+  const onArchivedRef = useRef(onArchived);
+  onArchivedRef.current = onArchived;
+
+  const closeArchivedSelection = useCallback(
+    (session: AcpSession) => {
+      if (
+        session.workspacePath !== workspacePath ||
+        (session.workspaceIdentity?.trim() || session.workspacePath) !==
+          (workspaceIdentity?.trim() || workspacePath) ||
+        selectedIdsRef.current[session.agent] !== session.id
+      )
+        return;
+      if (!session.archived) {
+        archivedOpenIds.current.delete(session.agent);
+        return;
+      }
+      // 修复原因：归档页的显式打开意图允许查看历史；普通选择不能在 Host 归档后继续显示。
+      if (archivedOpenIds.current.get(session.agent) === session.id) return;
+      const isVisible = agentRef.current === session.agent;
+      selectedIdsRef.current = { ...selectedIdsRef.current, [session.agent]: undefined };
+      setSelectedIds(selectedIdsRef.current);
+      createRequestIds.current.delete(`${targetKey}:${session.agent}`);
+      refreshRequests.current.delete(session.id);
+      refreshed.current.delete(session.id);
+      readyIds.current.delete(session.id);
+      retries.current.delete(`${targetKey}:${session.agent}`);
+      if (isVisible) {
+        // 先同步废弃选择和请求守卫，再通知 pane 退出，迟到 refresh/create 不能恢复旧正文。
+        selectedRef.current = null;
+        attempted.current.add(session.agent);
+        setErrorState(null);
+        onArchivedRef.current?.(session.id);
+      } else {
+        attempted.current.delete(session.agent);
+      }
+    },
+    [targetKey, workspaceIdentity, workspacePath],
+  );
 
   useEffect(() => {
     if (agent) setActivated(true);
@@ -106,6 +146,9 @@ export function useAcpConversation(
     // remoteSessionId 重连只更换 attachment，不抹掉用户选中的同工作区历史会话。
     if (selectedWorkspaceKeyRef.current !== workspaceKey) {
       selectedWorkspaceKeyRef.current = workspaceKey;
+      selectedIdsRef.current = {};
+      selectedRef.current = null;
+      archivedOpenIds.current.clear();
       setSelectedIds({});
     }
     attempted.current.clear();
@@ -131,6 +174,20 @@ export function useAcpConversation(
         });
         return;
       }
+      if (
+        change.session.workspacePath !== workspacePath ||
+        (change.session.workspaceIdentity?.trim() || change.session.workspacePath) !==
+          (workspaceIdentity?.trim() || workspacePath)
+      )
+        return;
+      const current = sessionsRef.current.find((item) => item.id === change.session.id);
+      const newer = updated.get(change.session.id);
+      // 修复原因：归档关闭也必须遵守 snapshot revision，旧通知不能关闭较新的会话选择。
+      if (
+        (current && current.revision > change.session.revision) ||
+        (newer && newer.revision > change.session.revision)
+      )
+        return;
       // 修复原因：预连接草稿是当前面板的私有选择，其他窗口不能通过 Host 广播看到它。
       if (change.session.provisional && !ownedDraftIds.current.has(change.session.id)) return;
       if (!change.session.provisional) {
@@ -153,15 +210,13 @@ export function useAcpConversation(
         return;
       }
       removed.delete(change.session.id);
-      const newer = updated.get(change.session.id);
-      if (!newer || change.session.revision >= newer.revision) {
-        updated.set(change.session.id, change.session);
-      }
+      updated.set(change.session.id, change.session);
       setSessions((previous) => {
         const current = previous.find((item) => item.id === change.session.id);
         if (current && current.revision > change.session.revision) return previous;
         return [change.session, ...previous.filter((item) => item.id !== change.session.id)];
       });
+      closeArchivedSelection(change.session);
     });
     // Bug 原因：远端 list 与实时通知并发；先订阅，再按 revision 合并快照。
     void service
@@ -175,7 +230,11 @@ export function useAcpConversation(
           const older = byId.get(item.id);
           if (!older || item.revision > older.revision) byId.set(item.id, item);
         }
-        setSessions([...byId.values()]);
+        const nextSessions = [...byId.values()];
+        sessionsRef.current = nextSessions;
+        setSessions(nextSessions);
+        // 重连的 replay/list 也是 Host 确认边界，不能只在实时通知中处理归档。
+        nextSessions.forEach(closeArchivedSelection);
         // 修复原因：用户已点选的精确历史 id 可能早于 list 回包；旧快照缺失不能把
         // 这个意图抹掉并触发自动创建。真实删除由 removed 事件或新建任务处理。
         setLoadedTargetKey(targetKey);
@@ -189,7 +248,17 @@ export function useAcpConversation(
       live = false;
       subscription.dispose();
     };
-  }, [activated, reloadKey, service, target, targetKey, workspaceKey]);
+  }, [
+    activated,
+    closeArchivedSelection,
+    reloadKey,
+    service,
+    target,
+    targetKey,
+    workspaceIdentity,
+    workspaceKey,
+    workspacePath,
+  ]);
 
   useEffect(() => {
     // 修复原因：未发送的预连接不是历史会话；离开目标 Host 时释放 Agent 子进程。
@@ -308,6 +377,7 @@ export function useAcpConversation(
     refreshRequests.current.clear();
     readyIds.current.clear();
     retries.current.clear();
+    archivedOpenIds.current.clear();
     selectedIdsRef.current = {};
     selectedRef.current = null;
     setSelectedIds({});
@@ -370,6 +440,8 @@ export function useAcpConversation(
           if (next.id !== session.id && selectedRef.current?.id === session.id) {
             setSelectedIds((previous) => ({ ...previous, [session.agent]: next.id }));
           }
+          const current = sessionsRef.current.find((item) => item.id === next.id);
+          closeArchivedSelection(current && current.revision > next.revision ? current : next);
           setErrorState(null);
         })
         .catch((cause) => {
@@ -382,7 +454,7 @@ export function useAcpConversation(
         })
         .finally(() => changeBusy(session.agent, -1));
     },
-    [changeBusy, service, target, targetKey],
+    [changeBusy, closeArchivedSelection, service, target, targetKey],
   );
 
   useEffect(() => {
@@ -567,6 +639,8 @@ export function useAcpConversation(
         const retainedId = retainedDraftIds.current.get(agent);
         if (retainedId && retainedId !== session.id) releaseDraft(retainedId);
         selectedIdsRef.current = { ...selectedIdsRef.current, [agent]: session.id };
+        if (session.archived) archivedOpenIds.current.set(agent, session.id);
+        else archivedOpenIds.current.delete(agent);
         setSelectedIds((previous) => ({ ...previous, [agent]: session.id }));
         setErrorState(null);
         if (!session.provisional) {
@@ -580,7 +654,7 @@ export function useAcpConversation(
   );
 
   const selectById = useCallback(
-    (nextAgent: AcpAgent, id: string) => {
+    (nextAgent: AcpAgent, id: string, allowArchived = false) => {
       // 修复原因：侧栏点击可以早于 list 或 create 的结果；先固定精确 id 并废弃旧连接。
       createRequestIds.current.delete(`${targetKey}:${nextAgent}`);
       const previous = selectedRef.current;
@@ -589,7 +663,11 @@ export function useAcpConversation(
       const retainedId = retainedDraftIds.current.get(nextAgent);
       if (retainedId && retainedId !== id) releaseDraft(retainedId);
       selectedRef.current = null;
+      // 显式跨 Agent 打开先更新选择意图，旧会话同一批次的归档不能覆盖下一次打开。
+      agentRef.current = nextAgent;
       selectedIdsRef.current = { ...selectedIdsRef.current, [nextAgent]: id };
+      if (allowArchived) archivedOpenIds.current.set(nextAgent, id);
+      else archivedOpenIds.current.delete(nextAgent);
       setSelectedIds((current) => ({ ...current, [nextAgent]: id }));
       readyIds.current.delete(id);
       refreshed.current.delete(id);

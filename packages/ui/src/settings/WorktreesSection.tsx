@@ -6,9 +6,20 @@ import { getErrorMessage } from "@/lib/errorMessage.js";
 import { normalizeConfiguredWorktreeRoot, resolveDefaultWorktreeRoot } from "@/lib/worktree.js";
 import { SettingsGroupCard, SettingsRow } from "@/settings/SettingsPageParts.js";
 import { logger } from "@/logger.js";
+import { ManagedWorktreesList } from "@/settings/ManagedWorktreesList.js";
+import { resolveWorktreeRootPath } from "@/lib/worktree.js";
+import type { CreateTaskRequest } from "@/app-shell/types.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-export function WorktreesSection({ defaultHomeDir }: { defaultHomeDir: string }) {
+export function WorktreesSection({
+  defaultHomeDir,
+  workspacePath,
+  onCreateTask,
+}: {
+  defaultHomeDir: string;
+  workspacePath: string;
+  onCreateTask?: (request?: CreateTaskRequest) => void;
+}) {
   const { intl } = useZCodeIntl();
   const { settings, update } = useSettings();
   const defaultRoot = useMemo(
@@ -17,6 +28,15 @@ export function WorktreesSection({ defaultHomeDir }: { defaultHomeDir: string })
   );
   const configuredRoot = settings?.worktreeRootDirectory?.trim() ?? "";
   const effectiveRoot = configuredRoot || defaultRoot;
+  const managedRoot = useMemo(
+    () =>
+      resolveWorktreeRootPath({
+        configuredRoot,
+        homeDirectory: defaultHomeDir,
+        workspacePath,
+      }),
+    [configuredRoot, defaultHomeDir, workspacePath],
+  );
   const [draftRoot, setDraftRoot] = useState(effectiveRoot);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -101,6 +121,7 @@ export function WorktreesSection({ defaultHomeDir }: { defaultHomeDir: string })
           }
         />
       </SettingsGroupCard>
+      <ManagedWorktreesList root={managedRoot} onCreateTask={onCreateTask} />
     </div>
   );
 }

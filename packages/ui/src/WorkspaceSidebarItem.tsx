@@ -8,6 +8,7 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent,
+  type ReactNode,
 } from "react";
 import {
   CheckIcon,
@@ -96,6 +97,7 @@ import {
 } from "@/lib/workspaceRemovalSafety.js";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { toast } from "@/components/ui/toast.js";
+import { shouldStartWorkspaceDraftOnExpand } from "@/WorkspaceSidebar/workspaceSidebarSelection.js";
 
 export type SortableBindings = Pick<ReturnType<typeof useSortable>, "attributes" | "listeners">;
 
@@ -138,6 +140,7 @@ function getSshWorkspaceTooltipDetails(tab: WorkspaceTabState): SshWorkspaceTool
 export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   tab,
   isActiveWorkspace,
+  hasActiveDescendant = false,
   isExpanded,
   closeTab,
   toggleWorkspaceExpanded,
@@ -160,9 +163,11 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   itemStyle,
   sortableBindings,
   isDragging = false,
+  projectTaskList,
 }: {
   tab: WorkspaceTabState;
   isActiveWorkspace: boolean;
+  hasActiveDescendant?: boolean;
   isExpanded: boolean;
   activateTab: (tabId: string) => void;
   closeTab: (tabId: string) => void;
@@ -196,6 +201,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   itemStyle?: CSSProperties;
   sortableBindings?: SortableBindings;
   isDragging?: boolean;
+  projectTaskList?: ReactNode;
 }) {
   const { intl } = useZCodeIntl();
   const workspaceZCodeState = useZCodeSessionStore((state) =>
@@ -217,7 +223,12 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
     tab.remoteTarget,
   );
   const services = serviceResolution.services;
-  const acpTabs = useMemo(() => (isExpanded ? [tab] : []), [isExpanded, tab]);
+  // 合并项目列表自己订阅真实 workspace scopes；不能再从项目头重复读取同一批 ACP 会话。
+  const hasProjectTaskList = Boolean(projectTaskList);
+  const acpTabs = useMemo(
+    () => (isExpanded && !hasProjectTaskList ? [tab] : []),
+    [hasProjectTaskList, isExpanded, tab],
+  );
   const acpServiceLookup = useMemo(
     () =>
       new Map(
@@ -327,22 +338,25 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
         return;
       }
 
-      // workspace 草稿导航本身会把 workspace 标记为展开。
-      // 之前在 Collapsible 的 onOpenChange 里无论展开/收起都先激活 workspace，
-      // 收起后的下一次点击会先被激活路径展开，再被 toggleWorkspaceExpanded 反向切回收起，
-      // 表现出来就是"收起后再也打不开"。
-      // 这里把职责拆开：展开时只走草稿导航；收起时只做 toggle，避免两条状态更新互相抵消。
-      if (nextOpen) {
-        if (!isExpanded) {
-          // workspace 行表达“打开这个 workspace”，不是恢复它上次选中的 session。
-          // 统一走上层草稿导航事务，让 workspace identity、group/pane 清理和 draft 聚焦一起收口。
-          onStartDraftInWorkspace(tab.workspacePath, tab.workspaceIdentity);
-        }
-      } else if (isExpanded) {
+      if (nextOpen === isExpanded) {
+        return;
+      }
+
+      // 展开当前项目或活动工作树的父项目只恢复列表可见性。
+      // 原先无条件启动父项目草稿会重置 ACP/API 选择并切走工作树对话。
+      // 跨项目展开仍复用草稿导航；该入口本身负责展开，不能再 toggle 一次。
+      if (
+        nextOpen &&
+        shouldStartWorkspaceDraftOnExpand({ isActiveWorkspace, hasActiveDescendant })
+      ) {
+        onStartDraftInWorkspace(tab.workspacePath, tab.workspaceIdentity);
+      } else {
         toggleWorkspaceExpanded(tab.workspacePath);
       }
     },
     [
+      hasActiveDescendant,
+      isActiveWorkspace,
       isDisconnectedRemoteWorkspace,
       isExpanded,
       onStartDraftInWorkspace,
@@ -782,7 +796,10 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
       <span className="relative flex size-4 shrink-0 items-center justify-center">
         {renderWorkspaceIcon()}
       </span>
-      <div className="min-w-0 truncate text-ui-base text-foreground-subtle">
+      <div
+        className="min-w-0 truncate text-ui-base text-foreground-subtle"
+        title={tab.workspacePath}
+      >
         {workspaceSidebarLabel}
       </div>
       {!isExpanded && taskListHasUnread ? (
@@ -1153,30 +1170,34 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
           </div>
         </BorderBeam>
 
-        <CollapsibleContent>
-          <TaskList
-            workspacePath={tab.workspacePath}
-            remoteSessionId={tab.remoteSessionId}
-            workspaceIdentity={tab.workspaceIdentity}
-            tasks={taskItems}
-            acpSessions={acpSessions}
-            acpService={services.acpService}
-            activeAcpSessionId={isActiveWorkspace ? activeAcpSessionId : null}
-            onSelectAcpSession={onSelectAcpSession}
-            pinnedTasks={EMPTY_PINNED_TASKS}
-            activeTaskId={isActiveWorkspace ? activeTaskId : null}
-            onSelectTask={handleSelectTask}
-            showCreateButton={false}
-            showFooter={false}
-            loading={taskListLoading}
-            hasMore={taskListHasMore}
-            onShowMore={onShowMoreTasks}
-            onRenameTask={handleRenameTask}
-            onSetTaskPinned={handleSetTaskPinned}
-            onArchiveTask={handleArchiveTask}
-            onSetTaskUnread={handleSetTaskUnread}
-            readOnlyReason={readOnlyReason}
-          />
+        <CollapsibleContent forceMount={projectTaskList ? true : undefined}>
+          {/* 修复原因：工作树对话复用跨 workspace 列表平铺，项目收起时保留订阅与行实例。
+              每行的选择和菜单仍按真实路径路由，不能把工作树会话交给父仓库 TaskList。 */}
+          {projectTaskList ?? (
+            <TaskList
+              workspacePath={tab.workspacePath}
+              remoteSessionId={tab.remoteSessionId}
+              workspaceIdentity={tab.workspaceIdentity}
+              tasks={taskItems}
+              acpSessions={acpSessions}
+              acpService={services.acpService}
+              activeAcpSessionId={isActiveWorkspace ? activeAcpSessionId : null}
+              onSelectAcpSession={onSelectAcpSession}
+              pinnedTasks={EMPTY_PINNED_TASKS}
+              activeTaskId={isActiveWorkspace ? activeTaskId : null}
+              onSelectTask={handleSelectTask}
+              showCreateButton={false}
+              showFooter={false}
+              loading={taskListLoading}
+              hasMore={taskListHasMore}
+              onShowMore={onShowMoreTasks}
+              onRenameTask={handleRenameTask}
+              onSetTaskPinned={handleSetTaskPinned}
+              onArchiveTask={handleArchiveTask}
+              onSetTaskUnread={handleSetTaskUnread}
+              readOnlyReason={readOnlyReason}
+            />
+          )}
         </CollapsibleContent>
       </Collapsible>
       <RemoteSyncDialogs

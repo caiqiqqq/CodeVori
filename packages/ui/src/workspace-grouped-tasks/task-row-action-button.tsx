@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactNode } from "react";
+import type { ComponentProps, MouseEvent, ReactNode } from "react";
 import { Button } from "@/components/ui/button.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 
@@ -10,6 +10,8 @@ function TaskRowActionButton({
   showTooltip = false,
   disabledReason,
   testId,
+  variant = "ghost",
+  size = "icon-sm",
 }: {
   label: string;
   children: ReactNode;
@@ -18,12 +20,14 @@ function TaskRowActionButton({
   showTooltip?: boolean;
   disabledReason?: string;
   testId?: string;
+  variant?: ComponentProps<typeof Button>["variant"];
+  size?: ComponentProps<typeof Button>["size"];
 }) {
   const button = (
     <Button
       type="button"
-      variant="ghost"
-      size="icon-sm"
+      variant={variant}
+      size={size}
       className={className}
       disabled={Boolean(disabledReason)}
       data-testid={testId}

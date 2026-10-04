@@ -44,7 +44,7 @@ import {
   buildAcpModelSelectGroup,
 } from "@/v4/composer/acpModelSelection.js";
 import { useAvailableAcpAgents } from "@/v4/composer/useAvailableAcpAgents.js";
-import { acpAgentDefinition, type AcpAgent } from "@zcode/shared";
+import { acpAgentDefinition, type AcpAgent, type AcpSession } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { ChatContextUsage } from "@/chat-input-toolbar/display.js";
 import {
@@ -101,6 +101,7 @@ import {
   resolveDraftModelThoughtOption,
   resolveDraftThoughtCurrentValue,
 } from "@/v4/composer/draftWorkspaceDefaults.js";
+import { composerContextUsage } from "@/v4/composer/composerContextUsage.js";
 
 // 拆分件再导出（模式选择移居 V4ComposerModeControls，超行数拆分）：
 // 既有消费方（ConversationComposer）继续从本模块入口 import，接口面不变。
@@ -342,6 +343,7 @@ export interface V4ComposerToolbarProps {
   usage: SessionUsageState | null;
   disabled: boolean;
   acpAgent?: AcpAgent | null;
+  acpContextUsage?: AcpSession["contextUsage"];
   onSelectAcpAgent?: (agent: AcpAgent) => void;
   modelFocusSelector?: string;
   /** 单个 composer 内的配置 picker 排他 owner；只属于 renderer-local presentation。 */
@@ -381,6 +383,7 @@ function V4ComposerModelControlsImpl({
   usage,
   disabled,
   acpAgent = null,
+  acpContextUsage = null,
   onSelectAcpAgent,
   modelFocusSelector,
   activeConfigPicker,
@@ -962,16 +965,10 @@ function V4ComposerModelControlsImpl({
     });
   }, [effectiveConfig, onSelectThought, thoughtOption]);
 
-  const taskUsage = useMemo(() => {
-    const contextWindow = usage?.contextWindow;
-    if (!contextWindow) return null;
-    return {
-      used: contextWindow.usedTokens,
-      size: contextWindow.maxTokens,
-      ...(contextWindow.cache ? { cache: contextWindow.cache } : {}),
-      ...(contextWindow.breakdown ? { breakdown: contextWindow.breakdown } : {}),
-    };
-  }, [usage?.contextWindow]);
+  const taskUsage = useMemo(
+    () => composerContextUsage(acpAgent, acpContextUsage, usage),
+    [acpAgent, acpContextUsage, usage],
+  );
   // 工具条热键已转正为命令表命令：tooltip 快捷键文案读生效表，
   // 改绑后按钮提示即时跟随（不能用硬编码文案）。
   const modelShortcutLabel = useShortcutCommandLabel("openModelMenu");
@@ -1020,22 +1017,21 @@ function V4ComposerModelControlsImpl({
         }
         data-mode={draftConfig?.mode ?? ""}
         data-plan-enabled={draftConfig?.planEnabled ?? false}
-        data-usage-used={usage?.contextWindow?.usedTokens ?? ""}
-        data-usage-max={usage?.contextWindow?.maxTokens ?? ""}
+        data-usage-used={taskUsage?.used ?? ""}
+        data-usage-max={taskUsage?.size ?? ""}
         className="hidden"
       />
-      {!acpAgent ? (
-        <ChatContextUsage
-          codingPlanUsageRemaining={codingPlanUsageRemaining}
-          taskUsage={taskUsage}
-          startPlanBalance={contextStartPlanBalance}
-          selectedProvider={displayProvider}
-          intl={intl}
-          locale={locale}
-          onSendCompressionCommand={onSendCompressionCommand}
-          compressionDisabled={disabled || recoveryPending}
-        />
-      ) : null}
+      <ChatContextUsage
+        codingPlanUsageRemaining={acpAgent ? undefined : codingPlanUsageRemaining}
+        taskUsage={taskUsage}
+        showUnknownUsage={Boolean(acpAgent)}
+        startPlanBalance={acpAgent ? undefined : contextStartPlanBalance}
+        selectedProvider={displayProvider}
+        intl={intl}
+        locale={locale}
+        onSendCompressionCommand={acpAgent ? undefined : onSendCompressionCommand}
+        compressionDisabled={disabled || recoveryPending}
+      />
       {!onSelectAcpAgent && modelSelectionState.status === "error" && modelSelectionReload ? (
         <Button
           type="button"

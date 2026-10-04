@@ -39,6 +39,12 @@ interface Props {
   loading?: boolean;
   disabled: boolean;
   onChange?: (id: string, value: string | boolean) => Promise<void>;
+  focusSelectorOnClose?: string | null;
+  defaultOption?: {
+    label: string;
+    selectedIds: string[];
+    onSelect(id: string): Promise<void>;
+  };
 }
 
 function categoryIcon(category?: string) {
@@ -67,6 +73,8 @@ function AcpComposerConfigControlsImpl({
   loading = false,
   disabled,
   onChange,
+  defaultOption,
+  focusSelectorOnClose = `[data-testid="${TID_V4_COMPOSER_INPUT}"]`,
 }: Props) {
   const { intl, locale } = useZCodeIntl();
   const controls: AcpConfigOption[] = options.length
@@ -116,8 +124,12 @@ function AcpComposerConfigControlsImpl({
           option.type === "select"
             ? option.options.flatMap((item) => ("group" in item ? item.options : [item]))
             : [];
-        const selectedName =
-          option.type === "boolean"
+        const inherited = defaultOption?.selectedIds.includes(option.id) ?? false;
+        let defaultValue = "__zcode_inherit_default__";
+        while (choices.some((choice) => choice.value === defaultValue)) defaultValue += "_";
+        const selectedName = inherited
+          ? defaultOption!.label
+          : option.type === "boolean"
             ? intl.formatMessage({
                 id: option.currentValue
                   ? "chat.toolbar.thoughtLevel.value.on"
@@ -173,10 +185,8 @@ function AcpComposerConfigControlsImpl({
               className="max-h-80 w-64 max-w-[calc(100vw-2rem)] overflow-y-auto"
               onCloseAutoFocus={(event) => {
                 event.preventDefault();
-                if (!isCoarseTouchDevice())
-                  document
-                    .querySelector<HTMLElement>(`[data-testid="${TID_V4_COMPOSER_INPUT}"]`)
-                    ?.focus();
+                if (!isCoarseTouchDevice() && focusSelectorOnClose)
+                  document.querySelector<HTMLElement>(focusSelectorOnClose)?.focus();
               }}
             >
               {option.description ? (
@@ -187,7 +197,7 @@ function AcpComposerConfigControlsImpl({
                   <DropdownMenuSeparator />
                 </>
               ) : null}
-              {option.type === "boolean" ? (
+              {option.type === "boolean" && !defaultOption ? (
                 <DropdownMenuCheckboxItem
                   checked={option.currentValue}
                   onCheckedChange={(checked) => change(option.id, checked)}
@@ -197,51 +207,85 @@ function AcpComposerConfigControlsImpl({
                 </DropdownMenuCheckboxItem>
               ) : (
                 <DropdownMenuRadioGroup
-                  value={option.currentValue}
-                  onValueChange={(value) => change(option.id, value)}
+                  value={inherited ? defaultValue : String(option.currentValue)}
+                  onValueChange={(value) => {
+                    if (defaultOption && value === defaultValue) {
+                      void defaultOption.onSelect(option.id).catch(() => {});
+                    } else change(option.id, option.type === "boolean" ? value === "true" : value);
+                  }}
                 >
-                  {option.options.map((item) =>
-                    "group" in item ? (
-                      <div key={`group:${item.group}`}>
-                        <DropdownMenuLabel>
-                          {acpConfigGroupLabel(locale, item.name)}
-                        </DropdownMenuLabel>
-                        {item.options.map((choice) => (
+                  {defaultOption ? (
+                    <>
+                      <DropdownMenuRadioItem
+                        value={defaultValue}
+                        data-testid={`acp-config-default-${option.id}`}
+                      >
+                        {defaultOption.label}
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  ) : null}
+                  {option.type === "boolean"
+                    ? [true, false].map((value) => (
+                        <DropdownMenuRadioItem
+                          key={String(value)}
+                          value={String(value)}
+                          data-testid={`acp-config-choice-${option.id}-${value}`}
+                        >
+                          {intl.formatMessage({
+                            id: value
+                              ? "chat.toolbar.thoughtLevel.value.on"
+                              : "chat.toolbar.thoughtLevel.value.off",
+                          })}
+                        </DropdownMenuRadioItem>
+                      ))
+                    : option.options.map((item) =>
+                        "group" in item ? (
+                          <div key={`group:${item.group}`}>
+                            <DropdownMenuLabel>
+                              {acpConfigGroupLabel(locale, item.name)}
+                            </DropdownMenuLabel>
+                            {item.options.map((choice) => (
+                              <DropdownMenuRadioItem
+                                key={choice.value}
+                                value={choice.value}
+                                data-testid={`acp-config-choice-${option.id}-${choice.value}`}
+                                className="items-start"
+                              >
+                                <span className="flex min-w-0 flex-col gap-0.5">
+                                  <span>{acpConfigChoiceLabel(locale, agent, option, choice)}</span>
+                                  {choice.description ? (
+                                    <span className="text-ui-sm text-foreground-subtle">
+                                      {acpConfigDescription(
+                                        locale,
+                                        agent,
+                                        option,
+                                        choice.description,
+                                      )}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </DropdownMenuRadioItem>
+                            ))}
+                          </div>
+                        ) : (
                           <DropdownMenuRadioItem
-                            key={choice.value}
-                            value={choice.value}
-                            data-testid={`acp-config-choice-${option.id}-${choice.value}`}
+                            key={item.value}
+                            value={item.value}
+                            data-testid={`acp-config-choice-${option.id}-${item.value}`}
                             className="items-start"
                           >
                             <span className="flex min-w-0 flex-col gap-0.5">
-                              <span>{acpConfigChoiceLabel(locale, agent, option, choice)}</span>
-                              {choice.description ? (
+                              <span>{acpConfigChoiceLabel(locale, agent, option, item)}</span>
+                              {item.description ? (
                                 <span className="text-ui-sm text-foreground-subtle">
-                                  {acpConfigDescription(locale, agent, option, choice.description)}
+                                  {acpConfigDescription(locale, agent, option, item.description)}
                                 </span>
                               ) : null}
                             </span>
                           </DropdownMenuRadioItem>
-                        ))}
-                      </div>
-                    ) : (
-                      <DropdownMenuRadioItem
-                        key={item.value}
-                        value={item.value}
-                        data-testid={`acp-config-choice-${option.id}-${item.value}`}
-                        className="items-start"
-                      >
-                        <span className="flex min-w-0 flex-col gap-0.5">
-                          <span>{acpConfigChoiceLabel(locale, agent, option, item)}</span>
-                          {item.description ? (
-                            <span className="text-ui-sm text-foreground-subtle">
-                              {acpConfigDescription(locale, agent, option, item.description)}
-                            </span>
-                          ) : null}
-                        </span>
-                      </DropdownMenuRadioItem>
-                    ),
-                  )}
+                        ),
+                      )}
                 </DropdownMenuRadioGroup>
               )}
             </DropdownMenuContent>

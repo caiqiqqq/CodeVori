@@ -4,6 +4,8 @@ import {
   type AcpAgentAvailability,
   type AcpPlugin,
   type AcpAgentInfo,
+  type AcpAgentListOptions,
+  type AcpAgentConfigSnapshot,
   type AcpAgentManagement,
   type AcpAgentOperationEvent,
   type AcpAgentUpdate,
@@ -14,6 +16,7 @@ import {
   type AcpGeminiProvidersUpdate,
   type AcpCreateInput,
   type AcpPromptInput,
+  type AcpStopInput,
   type AcpSession,
   type AcpDiagnosticEvent,
   type AcpSessionRowUpdate,
@@ -31,9 +34,14 @@ import { createServiceDescriptor } from "../descriptors.js";
 export interface IAcpService {
   /** Current target Host's usable plugin references; no secrets or plugin runtime state escape. */
   listPlugins(workspace: AcpWorkspace & { id?: string }): Promise<AcpPlugin[]>;
-  listAgents(): Promise<AcpAgentInfo[]>;
+  /** Local diagnostics by default; settings may explicitly check or refresh remote releases. */
+  listAgents(options?: AcpAgentListOptions): Promise<AcpAgentInfo[]>;
   /** Runs the Host launch-readiness checks without executing adapter version commands. */
   listAvailableAgents(): Promise<AcpAgentAvailability[]>;
+  /** Read-only known capabilities from this Host; never creates or reconnects an Agent. */
+  listAgentConfigs(workspace: AcpWorkspace): Promise<AcpAgentConfigSnapshot[]>;
+  /** Metadata-only invalidation; ordinary message and tool updates do not invalidate catalogs. */
+  onDynamicAgentConfigsChanged(): Event<void>;
   updateAgent(input: AcpAgentUpdate): Promise<AcpAgentInfo>;
   readCodexConfig(): Promise<AcpCodexConfig>;
   updateCodexConfig(input: AcpCodexConfigUpdate): Promise<AcpCodexConfig>;
@@ -43,6 +51,8 @@ export interface IAcpService {
   manageAgent(input: AcpAgentManagement): Promise<AcpAgentInfo>;
   onDynamicAgentOperation(operationId: string): Event<AcpAgentOperationEvent>;
   list(workspace: AcpWorkspace): Promise<AcpSession[]>;
+  /** Refuse active prompts/workflows, then disconnect idle adapters while preserving durable history. */
+  prepareWorktreeRemoval(workspace: AcpWorkspace): Promise<boolean>;
   /** Current target Host's persisted usage; missing native reports remain unknown. */
   getUsageStats(request: AppUsageRequest): Promise<AcpAppUsageAgent[]>;
   /** Read-only history query; returns bounded display metadata without connecting an Agent. */
@@ -65,7 +75,7 @@ export interface IAcpService {
   setConfigOption(
     input: AcpWorkspace & { id: string; configId: string; value: string | boolean },
   ): Promise<AcpSession>;
-  stop(input: AcpWorkspace & { id: string }): Promise<void>;
+  stop(input: AcpStopInput): Promise<void>;
   cancelWorkflow(input: AcpWorkflowControl): Promise<void>;
   resumeWorkflow(input: AcpWorkflowControl): Promise<void>;
   getWorkflowArtifact(input: AcpWorkflowArtifactQuery): Promise<{ path: string }>;

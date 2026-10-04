@@ -116,6 +116,8 @@ export interface GitCommitGraphCommit {
 export interface GitCommitGraphRequest extends GitRepositoryRequest {
   maxCount?: number;
   skip?: number;
+  /** Task worktree allocation pins the current HEAD, excluding unrelated branch tips. */
+  headOnly?: boolean;
 }
 
 export interface GitCommitGraphResult {
@@ -134,6 +136,12 @@ export interface GitWorkspaceRepositoryInfo {
   workspacePath: string;
   kind: GitWorkspaceRepositoryKind;
   isGitAvailable: boolean;
+  /** Git 解析的当前工作树根目录；不把 workspace 子目录当作仓库根。 */
+  repoRoot?: string;
+  /** 仅 linked worktree 返回 Git 注册的主工作树根目录。 */
+  mainWorktreePath?: string;
+  /** 仅 linked worktree 且 HEAD 指向分支时返回短分支名。 */
+  branchName?: string;
 }
 
 export interface GitSwitchBranchRequest extends GitRepositoryRequest {
@@ -181,6 +189,37 @@ export interface GitCreateWorktreeResult {
   didCreate: boolean;
   issues: GitWorktreeCreateIssue[];
 }
+
+export interface GitManagedWorktree {
+  worktreePath: string;
+  branchName: string | null;
+}
+
+export interface GitManagedWorktreeProject {
+  projectPath: string;
+  worktrees: GitManagedWorktree[];
+}
+
+export interface GitManagedWorktreeRootRequest {
+  worktreeRootPath: string;
+}
+
+export interface GitRemoveManagedWorktreeRequest extends GitManagedWorktreeRootRequest {
+  projectPath: string;
+  worktreePath: string;
+}
+
+export type GitManagedWorktreeRemovalIssue =
+  | "invalid-target"
+  | "dirty-worktree"
+  | "locked-worktree"
+  | "workspace-busy"
+  | "operation-in-progress"
+  | "command-failed";
+
+export type GitRemoveManagedWorktreeResult =
+  | { ok: true }
+  | { ok: false; issue: GitManagedWorktreeRemovalIssue };
 
 export interface GitChangesRequest extends GitRepositoryRequest {
   sourceId: Extract<GitRepositoryChangeSourceId, "unstaged" | "staged">;

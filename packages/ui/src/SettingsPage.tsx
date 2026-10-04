@@ -1772,7 +1772,27 @@ export function SettingsPage({
                         ) : activeSection === "worktrees" ? (
                           <ServiceProvider services={localHostServices}>
                             {/* 工作树目录是本机全局设置；远程 workspace 不能读写远端 Host 的设置。 */}
-                            <WorktreesSection defaultHomeDir={defaultHomeDir} />
+                            <WorktreesSection
+                              defaultHomeDir={defaultHomeDir}
+                              workspacePath={
+                                workspaceTabs.find(
+                                  (tab) =>
+                                    tab.workspacePath === activeWorkspacePath &&
+                                    !activeWorkspaceIdentity &&
+                                    !tab.workspaceIdentity &&
+                                    !tab.remoteTarget &&
+                                    !tab.remoteSessionId,
+                                )?.workspacePath ??
+                                workspaceTabs.find(
+                                  (tab) =>
+                                    !tab.workspaceIdentity &&
+                                    !tab.remoteTarget &&
+                                    !tab.remoteSessionId,
+                                )?.workspacePath ??
+                                ""
+                              }
+                              onCreateTask={onCreateTask}
+                            />
                           </ServiceProvider>
                         ) : activeSection === "modelProvider" ? (
                           <ServiceProvider services={localHostServices}>

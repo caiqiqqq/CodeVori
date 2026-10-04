@@ -199,6 +199,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     send({ method: 'session/update', params: { sessionId: 'usage-native', update: {
       sessionUpdate: 'usage_update', used: 9000, size: 200000,
     } } });
+    send({ method: 'session/update', params: { sessionId: 'usage-native', update: {
+      sessionUpdate: 'usage_update', used: 0, size: 200000,
+    } } });
     send({ id: message.id, result: {
       stopReason: 'end_turn',
       usage: { totalTokens: 20, inputTokens: 5, outputTokens: 3, cachedReadTokens: 10, cachedWriteTokens: 2 },
@@ -209,6 +212,94 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   }
 });
 `;
+
+const fakeInitialUsageAgent = `
+const readline = require('node:readline');
+const send = (value) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\\n');
+const update = (sessionId, value) => send({ method: 'session/update', params: { sessionId, update: value } });
+readline.createInterface({ input: process.stdin }).on('line', line => {
+  const message = JSON.parse(line);
+  if (message.method === 'initialize') {
+    update('initial-native', { sessionUpdate: 'usage_update', used: 99999, size: 200000 });
+    send({ id: message.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true } } });
+  } else if (message.method === 'session/new' || message.method === 'session/load') {
+    update('initial-native', { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'replayed history' } });
+    update('initial-native', { sessionUpdate: 'usage_update', used: 4000, size: 200000 });
+    update('initial-native', { sessionUpdate: 'usage_update', used: process.env.ACP_ZERO_USAGE === '1' ? 0 : 9000, size: 200000 });
+    update('other-native', { sessionUpdate: 'usage_update', used: 88888, size: 200000 });
+    send(process.env.ACP_FAIL_LOAD === '1'
+      ? { id: message.id, error: { code: -32603, message: 'fixture load failure' } }
+      : { id: message.id, result: message.method === 'session/new' ? { sessionId: 'initial-native' } : {} });
+  } else if (message.method === 'session/prompt') {
+    update('other-native', { sessionUpdate: 'usage_update', used: 88888, size: 200000 });
+    update('initial-native', { sessionUpdate: 'usage_update', used: 12000, size: 200000 });
+    update('initial-native', { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'live answer' } });
+    send({ id: message.id, result: { stopReason: 'end_turn' } });
+  }
+});
+`;
+
+test("stdio keeps matching new/load capacity metadata without replaying transcript", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "zcode-acp-initial-capacity-"));
+  const executable = join(directory, "initial-usage.cjs");
+  try {
+    await writeFile(executable, fakeInitialUsageAgent);
+    for (const sessionId of [undefined, "initial-native"]) {
+      for (const zero of [false, true]) {
+        const updates: AcpUpdate[] = [];
+        const port = await connectAcpAgent({
+          agent: "codex",
+          workspacePath: directory,
+          sessionId,
+          launch: {
+            command: process.execPath,
+            args: [executable],
+            env: { ...process.env, ACP_ZERO_USAGE: zero ? "1" : "0" },
+          },
+          onUpdate: async (update) => {
+            updates.push(update);
+          },
+          onPermission: async () => null,
+          onExit() {},
+        });
+        try {
+          assert.deepEqual(port.contextUsage, zero ? null : { used: 9000, size: 200000 });
+          assert.deepEqual(updates, [], "initial metadata is merged only by the ready snapshot");
+          await port.prompt("fixture prompt");
+          assert.deepEqual(updates, [
+            { kind: "context_usage", usage: { used: 12000, size: 200000 } },
+            { kind: "text", text: "live answer", messageId: undefined },
+          ]);
+        } finally {
+          port.close();
+          await port.closed;
+        }
+      }
+    }
+    const failedUpdates: AcpUpdate[] = [];
+    await assert.rejects(
+      connectAcpAgent({
+        agent: "codex",
+        workspacePath: directory,
+        sessionId: "initial-native",
+        launch: {
+          command: process.execPath,
+          args: [executable],
+          env: { ...process.env, ACP_FAIL_LOAD: "1" },
+        },
+        onUpdate: async (update) => {
+          failedUpdates.push(update);
+        },
+        onPermission: async () => null,
+        onExit() {},
+      }),
+      AcpSessionLoadError,
+    );
+    assert.deepEqual(failedUpdates, [], "failed load cannot publish buffered capacity or history");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 const fakeMcpAgent = `#!/usr/bin/env node
 const fs = require('node:fs');
@@ -288,7 +379,7 @@ test("stdio ACP sends target MCP settings in both session/new and session/load",
   }
 });
 
-test("stdio usage projection uses verified Agent identity, prompt report and ignores context occupancy", async () => {
+test("stdio reports context occupancy independently of verified prompt spend", async () => {
   const directory = await mkdtemp(join(tmpdir(), "zcode-acp-usage-stdio-"));
   const executable = join(directory, "fake-usage.cjs");
   try {
@@ -314,7 +405,10 @@ test("stdio usage projection uses verified Agent identity, prompt report and ign
       });
       try {
         const report = await connection.prompt("hello");
-        assert.deepEqual(updates, [], "context occupancy must not be counted as spend");
+        assert.deepEqual(updates, [
+          { kind: "context_usage", usage: { used: 9000, size: 200000 } },
+          { kind: "context_usage", usage: null },
+        ]);
         if (agent === "claude")
           assert.deepEqual(report, {
             scope: "turn",

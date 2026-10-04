@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- ACP wire schemas stay together so session snapshots remain compatible across Host and UI. */
 import { z } from "zod";
 import { acpTokenUsageSchema, acpUsageTurnSchema } from "../acp-usage.js";
 import { workflowRunsStateSchema } from "../zcode-protocol-v4/workflow-runs.js";
@@ -105,6 +106,22 @@ export function acpAgentDefinition(agent: AcpAgent) {
 }
 
 /** Target-Host Agent SDK state. An installed vendor CLI is not an ACP adapter. */
+export const acpAgentListOptionsSchema = z
+  .object({
+    checkUpdates: z.boolean().optional(),
+    force: z.boolean().optional(),
+  })
+  .strict();
+export type AcpAgentListOptions = z.infer<typeof acpAgentListOptionsSchema>;
+
+export const acpAgentUpdateCheckSchema = z
+  .object({
+    status: z.enum(["unchecked", "checked", "error", "unavailable"]),
+    source: z.enum(["builtin", "acp-registry", "npm"]),
+    checkedAt: z.string().datetime().nullable(),
+  })
+  .strict();
+
 export const acpAgentInfoSchema = z.object({
   agent: acpAgentSchema,
   command: z.string(),
@@ -113,6 +130,7 @@ export const acpAgentInfoSchema = z.object({
   platformSupported: z.boolean().default(true),
   packageName: z.string(),
   registryVersion: z.string(),
+  updateCheck: acpAgentUpdateCheckSchema.optional(),
   enabled: z.boolean(),
   env: z.record(z.string(), z.string()),
   source: z.enum(["managed", "system", "missing"]),
@@ -198,6 +216,7 @@ export const acpAgentManagementSchema = z.object({
   agent: acpAgentSchema,
   action: z.enum(["install", "upgrade", "uninstall"]),
   operationId: z.string().uuid(),
+  expectedVersion: z.string().min(1).max(128).optional(),
 });
 export type AcpAgentManagement = z.infer<typeof acpAgentManagementSchema>;
 
@@ -215,6 +234,14 @@ export const acpWorkspaceSchema = z.object({
   remoteSessionId: z.string().optional(),
 });
 export type AcpWorkspace = z.infer<typeof acpWorkspaceSchema>;
+
+export const acpStopInputSchema = acpWorkspaceSchema
+  .extend({
+    id: z.string().min(1),
+    expectedCommandId: z.string().trim().min(1).optional(),
+  })
+  .strict();
+export type AcpStopInput = z.infer<typeof acpStopInputSchema>;
 
 /** One UI submission keeps this ID across an ambiguous create RPC retry. */
 export const acpCreateInputSchema = acpWorkspaceSchema.extend({
@@ -295,6 +322,20 @@ export const acpModeStateSchema = z.object({
 });
 export type AcpModeState = z.infer<typeof acpModeStateSchema>;
 
+/** Read-only target-Host catalogs contain capabilities, never source conversation data. */
+export const acpAgentConfigSnapshotSchema = z
+  .object({
+    agent: acpAgentSchema,
+    source: z.enum(["workspace", "host"]),
+    configOptions: z.array(acpConfigOptionSchema),
+    modeState: acpModeStateSchema.nullable(),
+  })
+  .strict();
+export type AcpAgentConfigSnapshot = z.infer<typeof acpAgentConfigSnapshotSchema>;
+export const acpAgentConfigCatalogSchema = z
+  .array(acpAgentConfigSnapshotSchema)
+  .max(ACP_AGENT_CATALOG.length);
+
 export const acpEntrySchema = z.discriminatedUnion("kind", [
   z.object({
     id: z.string(),
@@ -342,6 +383,11 @@ export const acpSessionSchema = acpWorkspaceSchema.extend({
   goal: z.string().nullable().default(null),
   configOptions: z.array(acpConfigOptionSchema).default([]),
   modeState: acpModeStateSchema.nullable().default(null),
+  /** Agent-reported current context occupancy; missing legacy snapshots have no known value. */
+  contextUsage: z
+    .object({ used: z.number().finite().positive(), size: z.number().finite().positive() })
+    .nullable()
+    .default(null),
   entries: z.array(acpEntrySchema),
   /** 与 API 共用有界投影；旧快照缺席，Host 按 journal 恢复。 */
   workflowRuns: workflowRunsStateSchema.optional(),

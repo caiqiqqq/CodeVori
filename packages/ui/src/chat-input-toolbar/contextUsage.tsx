@@ -236,6 +236,7 @@ export function ChatContextUsage({
   codingPlanUsageRemaining,
   startPlanBalance,
   taskUsage,
+  showUnknownUsage = false,
   selectedProvider: _selectedProvider,
   intl,
   locale,
@@ -248,6 +249,8 @@ export function ChatContextUsage({
     cache?: { hitRate: number | null };
     breakdown?: ZCodeContextUsageBreakdownItem[];
   } | null;
+  /** ACP 能力入口保持可见；未上报时明确显示未知，不继承 API 用量。 */
+  showUnknownUsage?: boolean;
   selectedProvider: ZCodeProvider;
   intl: ReturnType<typeof useZCodeIntl>["intl"];
   locale: string;
@@ -805,6 +808,7 @@ export function ChatContextUsage({
 
   if (
     (!renderableTaskUsage || !contextUsageLabel) &&
+    !showUnknownUsage &&
     !hasCodingPlanUsageRemaining &&
     !hasStartPlanBalance
   ) {
@@ -824,11 +828,13 @@ export function ChatContextUsage({
     : null;
   const triggerLabel =
     contextUsageLabel ??
-    (hasCodingPlanUsageRemaining
-      ? intl.formatMessage({ id: "sidebar.usage.plan.title" })
-      : intl.formatMessage({
-          id: "settings.modelProvider.startPlan.balance.title",
-        }));
+    (showUnknownUsage
+      ? intl.formatMessage({ id: "chat.contextUsage.unavailable" })
+      : hasCodingPlanUsageRemaining
+        ? intl.formatMessage({ id: "sidebar.usage.plan.title" })
+        : intl.formatMessage({
+            id: "settings.modelProvider.startPlan.balance.title",
+          }));
   const contextUsedTokens = renderableTaskUsage?.used ?? 0;
   const contextMaxTokens = renderableTaskUsage?.size ?? 1;
 
@@ -870,6 +876,7 @@ export function ChatContextUsage({
         <span className="inline-flex shrink-0">
           <ContextTrigger
             aria-label={triggerLabel}
+            unknown={showUnknownUsage && !renderableTaskUsage}
             className={cn(
               "text-foreground-subtle",
               opportunityTriggerTone === "available" && "text-success",
@@ -919,6 +926,15 @@ export function ChatContextUsage({
                 segments={progressSegments}
                 value={usagePercent * PERCENT_MAX}
               />
+            </div>
+          ) : showUnknownUsage ? (
+            <div className="space-y-2">
+              <span className="text-ui-base font-medium text-foreground">
+                {intl.formatMessage({ id: "chat.contextUsage.title" })}
+              </span>
+              <p className="text-ui-sm text-foreground-subtle">
+                {intl.formatMessage({ id: "chat.contextUsage.unavailable" })}
+              </p>
             </div>
           ) : null}
           {renderableTaskUsage && (breakdownSegments.length > 0 || cacheHitRateLabel) ? (

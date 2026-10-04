@@ -5,14 +5,189 @@ import { join } from "node:path";
 import test from "node:test";
 import type { AcpSession } from "@zcode/shared";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
-import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
+import {
+  createAcpService,
+  type AcpConnectionFactory,
+  type AcpUpdate,
+} from "../src/acp/acpServiceImpl.js";
 import { AcpSessionLoadError } from "../src/acp/acpStdioConnection.js";
 
 const workspace = { workspacePath: "/tmp/acp-example", workspaceIdentity: "remote:ssh:example" };
 
+test("ACP ready snapshots merge initial capacity and prefer newer live notifications", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "zcode-acp-ready-context-"));
+  let initialUsage: AcpSession["contextUsage"] | undefined = { used: 9000, size: 200000 };
+  let liveUsage: AcpSession["contextUsage"] | undefined;
+  let failLoad = false;
+  const connect: AcpConnectionFactory = async ({ agent, sessionId, onUpdate }) => {
+    if (failLoad) throw new AcpSessionLoadError(new Error("fixture restore failed"));
+    if (liveUsage !== undefined) await onUpdate({ kind: "context_usage", usage: liveUsage });
+    return {
+      sessionId: sessionId ?? `native-${agent}`,
+      contextUsage: initialUsage,
+      configOptions: [],
+      modeState: null,
+      async setConfigOption() {
+        return [];
+      },
+      async setMode() {},
+      async prompt() {},
+      async cancel() {},
+      close() {},
+    };
+  };
+  let service = createAcpService({ directory, connect });
+  try {
+    const codex = await service.create({ ...workspace, agent: "codex" });
+    assert.deepEqual(codex.contextUsage, initialUsage);
+    assert.deepEqual(codex.entries, []);
+    assert.deepEqual(await service.getUsageStats({ range: "all" }), []);
+    service.disposeAll();
+    service = createAcpService({ directory, connect });
+    assert.deepEqual(
+      (await service.read({ ...workspace, id: codex.id })).contextUsage,
+      initialUsage,
+    );
+
+    initialUsage = undefined;
+    assert.deepEqual(
+      (await service.refresh({ ...workspace, id: codex.id })).contextUsage,
+      {
+        used: 9000,
+        size: 200000,
+      },
+      "absence of a resume report preserves this saved session's value",
+    );
+    service.disposeAll();
+    service = createAcpService({ directory, connect });
+    initialUsage = { used: 15000, size: 200000 };
+    assert.deepEqual(
+      (await service.refresh({ ...workspace, id: codex.id })).contextUsage,
+      initialUsage,
+    );
+
+    service.disposeAll();
+    service = createAcpService({ directory, connect });
+    liveUsage = { used: 19000, size: 200000 };
+    assert.deepEqual(
+      (await service.refresh({ ...workspace, id: codex.id })).contextUsage,
+      liveUsage,
+      "a newer live update must not be overwritten by the initial snapshot",
+    );
+    service.disposeAll();
+    service = createAcpService({ directory, connect });
+    liveUsage = undefined;
+    initialUsage = null;
+    assert.equal((await service.refresh({ ...workspace, id: codex.id })).contextUsage, null);
+
+    service.disposeAll();
+    service = createAcpService({ directory, connect });
+    initialUsage = { used: 21000, size: 200000 };
+    await service.refresh({ ...workspace, id: codex.id });
+    service.disposeAll();
+    service = createAcpService({ directory, connect });
+    failLoad = true;
+    await assert.rejects(service.refresh({ ...workspace, id: codex.id }));
+    assert.deepEqual(
+      (await service.read({ ...workspace, id: codex.id })).contextUsage,
+      initialUsage,
+    );
+  } finally {
+    service.disposeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("ACP context capacity belongs to the selected Host session and survives snapshot replay", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "zcode-acp-context-"));
+  const updates: Array<{ agent: string; send: (update: AcpUpdate) => Promise<void> }> = [];
+  const connect: AcpConnectionFactory = async ({ agent, sessionId, onUpdate }) => {
+    updates.push({ agent, send: onUpdate });
+    return {
+      sessionId: sessionId ?? `native-${agent}`,
+      configOptions: [],
+      modeState: null,
+      async setConfigOption() {
+        return [];
+      },
+      async setMode() {},
+      async prompt() {},
+      async cancel() {},
+      close() {},
+    };
+  };
+  let service = createAcpService({ directory, connect });
+  try {
+    const codex = await service.create({ ...workspace, agent: "codex" });
+    const claude = await service.create({ ...workspace, agent: "claude" });
+    assert.equal(codex.contextUsage, null);
+    assert.equal(claude.contextUsage, null);
+    const revisions: number[] = [];
+    const subscription = service.onDynamicSessionChanged(workspace)((change) => {
+      if (change.kind === "updated" && change.session.id === codex.id)
+        revisions.push(change.session.revision);
+    });
+    await updates[0].send({ kind: "context_usage", usage: { used: 9000, size: 200000 } });
+    assert.deepEqual((await service.read({ ...workspace, id: codex.id })).contextUsage, {
+      used: 9000,
+      size: 200000,
+    });
+    assert.equal((await service.read({ ...workspace, id: claude.id })).contextUsage, null);
+    assert.deepEqual(
+      await service.getUsageStats({ range: "all" }),
+      [],
+      "current context occupancy must not become cumulative token spend",
+    );
+    assert.equal(revisions.at(-1), codex.revision + 1);
+    assert.deepEqual(
+      JSON.parse(await readFile(join(directory, `${codex.id}.json`), "utf8")).contextUsage,
+      { used: 9000, size: 200000 },
+    );
+    await assert.rejects(
+      service.read({ ...workspace, workspaceIdentity: "different", id: codex.id }),
+    );
+
+    await updates[0].send({ kind: "context_usage", usage: null });
+    assert.equal(
+      (await service.read({ ...workspace, id: codex.id })).contextUsage,
+      null,
+      "an unknown report must hide the previous value",
+    );
+    await updates[0].send({ kind: "context_usage", usage: { used: 5000, size: 200000 } });
+    assert.equal(await service.prepareWorktreeRemoval(workspace), true);
+    await service.refresh({ ...workspace, id: codex.id });
+    await updates[0].send({ kind: "context_usage", usage: { used: 1, size: 1 } });
+    assert.deepEqual(
+      (await service.read({ ...workspace, id: codex.id })).contextUsage,
+      { used: 5000, size: 200000 },
+      "old process updates must not override the current snapshot",
+    );
+    await updates.at(-1)!.send({ kind: "context_usage", usage: { used: 7000, size: 200000 } });
+    subscription.dispose();
+    service.disposeAll();
+    service = createAcpService({ directory, connect });
+    assert.deepEqual((await service.read({ ...workspace, id: codex.id })).contextUsage, {
+      used: 7000,
+      size: 200000,
+    });
+    assert.equal((await service.read({ ...workspace, id: claude.id })).contextUsage, null);
+  } finally {
+    service.disposeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("ACP Host reads target MCP settings on connection and injects only explicitly named skills into the wire prompt", async () => {
   const directory = await mkdtemp(join(tmpdir(), "zcode-acp-config-context-"));
-  const mcpRecords = [{ source: "zcodeagentmcp" as const, scope: "user" as const, name: "demo", config: { command: "/usr/bin/demo" }, enabled: true }];
+  const mcpRecords = [
+    {
+      source: "zcodeagentmcp" as const,
+      scope: "user" as const,
+      name: "demo",
+      config: { command: "/usr/bin/demo" },
+      enabled: true,
+    },
+  ];
   const connected: Array<{ path: string; names: string[] }> = [];
   const received: ContentBlock[][] = [];
   const skillPrompts: string[] = [];
@@ -29,7 +204,9 @@ test("ACP Host reads target MCP settings on connection and injects only explicit
         skillPrompts.push(input.prompt);
         assert.equal(input.workspaceIdentity, workspace.workspaceIdentity);
         return {
-          prompt: input.prompt.includes("$demo") ? `${input.prompt}\n\n<activated_skill>private body</activated_skill>` : input.prompt,
+          prompt: input.prompt.includes("$demo")
+            ? `${input.prompt}\n\n<activated_skill>private body</activated_skill>`
+            : input.prompt,
           activatedSkillNames: input.prompt.includes("$demo") ? ["demo"] : [],
         };
       },
@@ -40,9 +217,13 @@ test("ACP Host reads target MCP settings on connection and injects only explicit
         sessionId: "native",
         configOptions: [],
         modeState: null,
-        async setConfigOption() { return []; },
+        async setConfigOption() {
+          return [];
+        },
         async setMode() {},
-        async prompt(_text, blocks) { received.push(blocks ?? []); },
+        async prompt(_text, blocks) {
+          received.push(blocks ?? []);
+        },
         async cancel() {},
         close() {},
       };
@@ -51,8 +232,22 @@ test("ACP Host reads target MCP settings on connection and injects only explicit
   try {
     const created = await service.create({ ...workspace, agent: "codex" });
     assert.deepEqual(connected, [{ path: workspace.workspacePath, names: ["demo"] }]);
-    await service.prompt({ ...workspace, id: created.id, commandId: crypto.randomUUID(), text: "use $demo", attachments: [], workspaceFiles: [] });
-    await service.prompt({ ...workspace, id: created.id, commandId: crypto.randomUUID(), text: "hello", attachments: [], workspaceFiles: [] });
+    await service.prompt({
+      ...workspace,
+      id: created.id,
+      commandId: crypto.randomUUID(),
+      text: "use $demo",
+      attachments: [],
+      workspaceFiles: [],
+    });
+    await service.prompt({
+      ...workspace,
+      id: created.id,
+      commandId: crypto.randomUUID(),
+      text: "hello",
+      attachments: [],
+      workspaceFiles: [],
+    });
     assert.deepEqual(skillPrompts, ["use $demo", "hello"]);
     const firstBlock = received[0]?.[0];
     assert.equal(firstBlock?.type, "text");
@@ -79,7 +274,17 @@ test("ACP recovery reads current target MCP settings and skill-read failure stay
     directory,
     mcpSyncService: {
       async loadMcpFromUserDirectory() {
-        return { servers: [{ source: "zcodeagentmcp" as const, scope: "user" as const, name, config: { command: "/usr/bin/demo" }, enabled: true }] };
+        return {
+          servers: [
+            {
+              source: "zcodeagentmcp" as const,
+              scope: "user" as const,
+              name,
+              config: { command: "/usr/bin/demo" },
+              enabled: true,
+            },
+          ],
+        };
       },
     },
     skillsService: {
@@ -90,9 +295,19 @@ test("ACP recovery reads current target MCP settings and skill-read failure stay
     },
     connect: (async ({ sessionId, mcpServers }) => {
       connections.push({ sessionId, name: mcpServers?.[0]?.name });
-      return { sessionId: "native", configOptions: [], modeState: null,
-        async setConfigOption() { return []; }, async setMode() {},
-        async prompt() { prompts += 1; }, async cancel() {}, close() {},
+      return {
+        sessionId: "native",
+        configOptions: [],
+        modeState: null,
+        async setConfigOption() {
+          return [];
+        },
+        async setMode() {},
+        async prompt() {
+          prompts += 1;
+        },
+        async cancel() {},
+        close() {},
       };
     }) satisfies AcpConnectionFactory,
   };
@@ -100,7 +315,14 @@ test("ACP recovery reads current target MCP settings and skill-read failure stay
   try {
     const session = await service.create({ ...workspace, agent: "claude" });
     const commandId = crypto.randomUUID();
-    const input = { ...workspace, id: session.id, commandId, text: "first", attachments: [], workspaceFiles: [] };
+    const input = {
+      ...workspace,
+      id: session.id,
+      commandId,
+      text: "first",
+      attachments: [],
+      workspaceFiles: [],
+    };
     await service.prompt(input);
     await service.prompt(input);
     assert.equal(prompts, 1, "repeated command must not rebuild or send the accepted prompt");
@@ -108,7 +330,10 @@ test("ACP recovery reads current target MCP settings and skill-read failure stay
     name = "updated";
     service = createAcpService(options);
     await service.refresh({ ...workspace, id: session.id });
-    assert.deepEqual(connections, [{ sessionId: undefined, name: "first" }, { sessionId: "native", name: "updated" }]);
+    assert.deepEqual(connections, [
+      { sessionId: undefined, name: "first" },
+      { sessionId: "native", name: "updated" },
+    ]);
     skillFailure = true;
     const next = { ...input, commandId: crypto.randomUUID(), text: "$demo" };
     await assert.rejects(service.prompt(next), /Skill read failed/);

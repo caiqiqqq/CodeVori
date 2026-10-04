@@ -2,6 +2,9 @@ import type {
   GitBranchMutationResult,
   GitChangeKind,
   GitCreateWorktreeResult,
+  GitManagedWorktreeProject,
+  GitRemoveManagedWorktreeRequest,
+  GitRemoveManagedWorktreeResult,
   GitCommitGraphCommit,
   GitDiffQuery,
   GitDiffResult,
@@ -78,6 +81,7 @@ export interface GitCliRepo {
     workspacePath: string,
     maxCount?: number,
     skip?: number,
+    headOnly?: boolean,
   ): Promise<GitCommitGraphSnapshot>;
   getIgnoredPaths(workspacePath: string, paths: string[]): Promise<string[]>;
   listLocalBranches(workspacePath: string): Promise<GitLocalBranchListResult>;
@@ -97,6 +101,11 @@ export interface GitCliRepo {
     workspacePath: string,
     worktreeRootPath: string,
   ): Promise<GitCreateWorktreeResult>;
+  listManagedWorktrees(worktreeRootPath: string): Promise<GitManagedWorktreeProject[]>;
+  removeManagedWorktree(
+    params: GitRemoveManagedWorktreeRequest,
+    prepare?: (worktreePath: string) => Promise<"workspace-busy" | null>,
+  ): Promise<GitRemoveManagedWorktreeResult>;
   getDiff(params: GitDiffQuery): Promise<GitDiffResult>;
   getBranchComparison(workspacePath: string): Promise<GitBranchComparisonSnapshot>;
   stage(workspacePath: string, paths: string[]): Promise<void>;

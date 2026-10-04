@@ -300,6 +300,7 @@ export interface WorkbenchShellBinding {
     controller: ConversationDropTargetController | null,
   ) => void;
   onPrimaryAcpSessionChange?: (session: AcpConversationProjection | null) => void;
+  onPrimaryAcpSessionArchived?: (sessionId: string) => void;
   acpOpenRequest?: AcpConversationOpenRequest | null;
   gitSummary?: GitRepositorySummary | null;
   gitDirtyFileCount?: number;
@@ -425,6 +426,19 @@ export function WorkbenchLeafPane({
   const handleClosePane = useCallback(() => {
     onClosePane(paneId);
   }, [onClosePane, paneId]);
+  const handleAcpSessionArchived = useCallback(
+    (archivedSessionId: string) => {
+      const currentBinding = isPrimary ? primaryBinding : binding;
+      // 修复原因：归档不能只隐藏正文，持久化的 ACP 分屏绑定也需走已有关闭动作。
+      if (currentBinding?.kind === "acp" && currentBinding.sessionId === archivedSessionId) {
+        handleClosePane();
+      }
+      if (isPrimary && paneWorkspaceKey(scope) === shellWorkspaceKey) {
+        shell.onPrimaryAcpSessionArchived?.(archivedSessionId);
+      }
+    },
+    [binding, handleClosePane, isPrimary, primaryBinding, scope, shell, shellWorkspaceKey],
+  );
   const handleSessionDeleted = useCallback(() => {
     if (isGroupPrimary) {
       // group primary 删除过去只关闭布局，shell 仍指向已删除 session。
@@ -627,6 +641,7 @@ export function WorkbenchLeafPane({
           provider={isPrimary && isShellWorkspace ? shell.provider : undefined}
           onSessionCreated={handleSessionCreated}
           onSessionDeleted={handleSessionDeleted}
+          onAcpSessionArchived={handleAcpSessionArchived}
           focused={focused}
           onSplitRight={canSplit && onSplit ? handleSplitRight : undefined}
           onSplitDown={canSplit && onSplit ? handleSplitDown : undefined}

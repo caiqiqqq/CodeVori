@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
@@ -45,6 +45,14 @@ test("GitCliRepo creates a linked worktree without changing the current workspac
       "--show-current",
     ]);
     assert.equal(worktreeBranch.stdout.trim(), "feature/worktree");
+    const mainInfo = await repo.getWorkspaceRepositoryInfo(root);
+    const linkedInfo = await repo.getWorkspaceRepositoryInfo(worktreePath);
+    assert.equal(mainInfo.kind, "main-tree");
+    assert.equal(mainInfo.repoRoot, await realpath(root));
+    assert.equal(linkedInfo.kind, "linked-worktree");
+    assert.equal(linkedInfo.mainWorktreePath, mainInfo.repoRoot);
+    assert.equal(linkedInfo.repoRoot, await realpath(worktreePath));
+    assert.equal(linkedInfo.branchName, "feature/worktree");
   } finally {
     await rm(container, { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { constants } from "node:fs";
 import { access, chmod, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -12,6 +12,7 @@ export type AcpBinaryRelease = {
   version: string;
   entry: string;
   sibling?: string;
+  sha256?: string;
 };
 
 function safePath(root: string, entry: string): string {
@@ -115,16 +116,21 @@ export async function installAcpBinary(
     if (!response.ok || !response.body)
       throw new Error(`ACP download failed: HTTP ${response.status}`);
     let bytes = 0;
+    const hash = createHash("sha256");
     await pipeline(
       Readable.fromWeb(response.body as import("node:stream/web").ReadableStream<Uint8Array>),
       new Transform({
         transform(chunk: Buffer, _encoding, done) {
           bytes += chunk.length;
+          hash.update(chunk);
           done(bytes > 750_000_000 ? new Error("ACP archive exceeds size limit") : null, chunk);
         },
       }),
       createWriteStream(archive, { mode: 0o600 }),
     );
+    // 修复原因：远端目录提供校验和时，坏归档不得替换已安装的完整版本。
+    if (release.sha256 && hash.digest("hex") !== release.sha256.toLowerCase())
+      throw new Error("ACP archive checksum mismatch");
     const extracted = join(staging, "extracted");
     await mkdir(extracted);
     if (url.endsWith(".zip")) {

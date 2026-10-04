@@ -9,11 +9,14 @@ import { Emitter, type Event } from "@zcode/rpc";
 import {
   ACP_AGENT_CATALOG,
   acpAgentDefinition,
+  acpAgentListOptionsSchema,
   acpAgentManagementSchema,
   acpAgentUpdateSchema,
+  compareAcpAdapterVersions,
   type AcpAgent,
   type AcpAgentAvailability,
   type AcpAgentInfo,
+  type AcpAgentListOptions,
   type AcpAgentManagement,
   type AcpAgentOperationEvent,
   type AcpAgentUpdate,
@@ -38,8 +41,9 @@ import {
   projectGeminiNativeAuth,
 } from "./acpGeminiAuth.js";
 import { createGeminiProviderStore } from "./acpGeminiProviders.js";
+import { createAcpReleaseRegistry } from "./acpReleaseRegistry.js";
 
-/** Codeg release pins. Identity, display name, executable and ACP args live in shared catalog. */
+/** Offline release defaults. Remote checks replace only version/distribution metadata on this Host. */
 const catalog = {
   claude: {
     kind: "npm",
@@ -165,7 +169,7 @@ export type AcpAgentLaunch = {
 };
 
 export interface AcpAgentManager {
-  listAgents(): Promise<AcpAgentInfo[]>;
+  listAgents(options?: AcpAgentListOptions): Promise<AcpAgentInfo[]>;
   listAvailableAgents(): Promise<AcpAgentAvailability[]>;
   updateAgent(input: AcpAgentUpdate): Promise<AcpAgentInfo>;
   readCodexConfig(): Promise<AcpCodexConfig>;
@@ -289,6 +293,7 @@ async function npmInstallAttempt(
   prefix: string,
   agent: AcpAgent,
   env: NodeJS.ProcessEnv,
+  targetVersion: string,
 ): Promise<void> {
   const meta = catalog[agent];
   if (meta.kind !== "npm") throw new Error("Not an npm ACP release");
@@ -297,8 +302,7 @@ async function npmInstallAttempt(
   await mkdir(staging, { recursive: true });
   try {
     await new Promise<void>((finish, reject) => {
-      // The spec and arguments are from this static catalog; prefix travels in env,
-      // never through cmd.exe interpolation on Windows.
+      // 包名来自内置目录，版本已通过发行校验；prefix 通过环境变量传入，避免 Windows 命令插值。
       const child = spawn(
         "npm",
         [
@@ -307,7 +311,7 @@ async function npmInstallAttempt(
           "--no-audit",
           "--no-fund",
           "--include=optional",
-          `${meta.packageName}@${meta.version}`,
+          `${meta.packageName}@${targetVersion}`,
         ],
         {
           env: {
@@ -328,8 +332,8 @@ async function npmInstallAttempt(
     const installed = await managedPackage(staging, agent);
     if (!installed)
       throw new Error("ACP adapter installation did not produce a launchable package");
-    if (installed.version !== meta.version)
-      throw new Error("ACP adapter installation returned a different pinned version");
+    if (installed.version !== targetVersion)
+      throw new Error("ACP adapter installation returned a different target version");
     let previous = false;
     try {
       await rename(prefix, backup);
@@ -355,6 +359,8 @@ export function createAcpAgentManager(
     directory?: string;
     env?: NodeJS.ProcessEnv;
     runPackageCommand?: (agent: AcpAgent, action: Action) => Promise<void>;
+    fetchMetadata?: (url: string) => Promise<unknown>;
+    now?: () => number;
   } = {},
 ): AcpAgentManager {
   const directory = options.directory ?? join(getZCodeDataRootDir(), "acp-agents");
@@ -381,6 +387,33 @@ export function createAcpAgentManager(
       ...("sibling" in meta ? { sibling: meta.sibling } : {}),
     };
   };
+  const releases = createAcpReleaseRegistry(
+    ACP_AGENT_CATALOG.map(({ id, args }) => {
+      const meta = catalog[id];
+      const binary = binaryRelease(id);
+      return {
+        agent: id,
+        kind: meta.kind,
+        packageName: meta.packageName,
+        version: meta.version,
+        args: [
+          ...args,
+          ...(id === "antigravity" && process.platform === "linux" ? ["--uid="] : []),
+        ],
+        platformSupported: meta.kind === "npm" || Boolean(platformUrl(id)),
+        ...(binary
+          ? {
+              binary: {
+                url: platformUrl(id) ?? "",
+                entry: binary.entry,
+                ...(binary.sibling ? { sibling: binary.sibling } : {}),
+              },
+            }
+          : {}),
+      };
+    }),
+    options,
+  );
   const managedFor = async (agent: AcpAgent) => {
     const release = binaryRelease(agent);
     return release
@@ -464,10 +497,11 @@ export function createAcpAgentManager(
         ...(agent === "antigravity" && process.platform === "linux" ? ["--uid="] : []),
       ],
       distribution: meta.kind,
-      platformSupported: !release || Boolean(platformUrl(agent)),
+      platformSupported: releases.target(agent).platformSupported,
       nativeCommand: meta.nativeCommand,
       packageName: meta.packageName,
-      registryVersion: meta.version,
+      registryVersion: releases.target(agent).version,
+      updateCheck: releases.check(agent),
       enabled: settings.enabled,
       env: settings.env,
       source,
@@ -520,7 +554,9 @@ export function createAcpAgentManager(
         }),
       );
     },
-    async listAgents() {
+    async listAgents(input) {
+      const query = acpAgentListOptionsSchema.parse(input ?? {});
+      if (query.checkUpdates) await releases.refresh(query.force);
       const [nodePath, npmPath] = await Promise.all([
         findCommand("node", env),
         findCommand("npm", env),
@@ -571,9 +607,11 @@ export function createAcpAgentManager(
       }
     },
     async manageAgent(input) {
-      const { agent, action, operationId } = acpAgentManagementSchema.parse(input);
+      const { agent, action, operationId, expectedVersion } = acpAgentManagementSchema.parse(input);
       if (busy) throw new Error("ACP package operation already running");
       busy = true;
+      // 修复原因：检查可能与安装并发，admission 时绑定完整目标，不能在下载期间换版本或 URL。
+      const target = releases.target(agent);
       const emit = (phase: AcpAgentOperationEvent["phase"], message: string) =>
         emitter.fire({ operationId, agent, phase, message });
       emit("started", `${action}: ${acpAgentDefinition(agent).command}`);
@@ -589,6 +627,11 @@ export function createAcpAgentManager(
               force: true,
             });
         } else {
+          if (expectedVersion && expectedVersion !== target.version)
+            throw new Error("ACP 发行目标已变化，请重新检查更新后再安装。");
+          const current = await status(agent);
+          if (compareAcpAdapterVersions(current.installedVersion, target.version) === 1)
+            throw new Error("当前 ACP 适配器高于目标版本，拒绝降级。");
           if (!options.runPackageCommand && meta.kind === "npm") {
             const [node, npm] = await Promise.all([
               findCommand("node", env),
@@ -597,21 +640,24 @@ export function createAcpAgentManager(
             if (!node || !npm)
               throw new Error("Node.js and npm are required to install ACP adapters");
           }
-          const url = platformUrl(agent);
-          if (meta.kind === "binary" && !url)
+          const url = target.binary?.url;
+          if (meta.kind === "binary" && (!url || !target.platformSupported))
             throw new Error("No managed ACP release for this platform");
           if (options.runPackageCommand) {
             emit(
               "log",
-              `Installing ${meta.kind === "npm" ? meta.packageName : acpAgentDefinition(agent).command}@${meta.version}`,
+              `Installing ${meta.kind === "npm" ? meta.packageName : acpAgentDefinition(agent).command}@${target.version}`,
             );
             await options.runPackageCommand(agent, action);
           } else if (meta.kind === "npm") {
-            emit("log", `Installing ${meta.packageName}@${meta.version}`);
-            await npmInstallAttempt(prefix(agent), agent, env);
+            emit("log", `Installing ${meta.packageName}@${target.version}`);
+            await npmInstallAttempt(prefix(agent), agent, env, target.version);
           } else {
-            emit("log", `Installing ${acpAgentDefinition(agent).command}@${meta.version}`);
-            await installAcpBinary(binaryDir(agent), url!, binaryRelease(agent)!);
+            emit("log", `Installing ${acpAgentDefinition(agent).command}@${target.version}`);
+            await installAcpBinary(binaryDir(agent), url!, {
+              ...target.binary!,
+              version: target.version,
+            });
           }
           if (!(await managedFor(agent)))
             throw new Error("ACP adapter installation did not produce a launchable package");

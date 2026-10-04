@@ -46,7 +46,13 @@ export function isRemoteWorkspaceTarget(
   target: WorkspaceServiceTarget,
   resolvedRemoteSessionId?: string,
 ): boolean {
-  return Boolean(target.workspaceIdentity || target.remoteTarget || resolvedRemoteSessionId);
+  // 旧作用域可能只有 attachment id；连接丢失不能把明确的远端目标重新当成本机。
+  return Boolean(
+    target.workspaceIdentity ||
+    target.remoteSessionId ||
+    target.remoteTarget ||
+    resolvedRemoteSessionId,
+  );
 }
 
 export function resolveWorkspaceServices(

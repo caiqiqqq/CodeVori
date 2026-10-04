@@ -1,0 +1,345 @@
+import { useCallback, useMemo, useState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  GitFork,
+  MessageSquare,
+  Plus,
+  RotateCw,
+  Settings,
+} from "lucide-react";
+import type { ForgeItem, ForgeItemRequest, ForgeTargetRequest } from "@zcode/shared";
+import { useRepositoryPanel } from "@/hooks/useRepositoryPanel.js";
+import { usePlatform } from "@/hooks/usePlatform.js";
+import { useTabStore } from "@/store/TabStoreProvider.js";
+import { setPendingSettingsSectionIntent } from "@/lib/settingsNavigation.js";
+import { buildForgeAgentPrompt, safeRepositoryExternalUrl } from "@/lib/forgePanel.js";
+import { logger } from "@/logger.js";
+import { Button } from "@/components/ui/button.js";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select.js";
+import type { CreateTaskRequest } from "@/app-shell/types.js";
+import type { Theme } from "@/useTheme.js";
+import { RepositoryToolbar, type RepositoryFilters } from "./RepositoryToolbar.js";
+import { RepositoryItemDetail } from "./RepositoryItemDetail.js";
+import { NewIssueDialog } from "./NewIssueDialog.js";
+import {
+  RepositoryError,
+  RepositoryExternalButton,
+  RepositoryIconButton,
+  RepositoryItemIcon,
+  RepositoryLabels,
+  RepositoryLoading,
+  RepositoryTime,
+  useRepositoryMessages,
+} from "./RepositoryParts.js";
+
+interface RepositoryPanelProps {
+  workspacePath: string;
+  workspaceIdentity?: string;
+  remoteSessionId?: string;
+  active?: boolean;
+  theme: Theme;
+  onCreateTask: (request?: CreateTaskRequest) => void;
+}
+
+export function RepositoryPanel(props: RepositoryPanelProps) {
+  // 草稿筛选属于当前 workspace，切换项目时立即换 owner，不能先显示旧仓库再等待 effect 清理。
+  return (
+    <RepositoryPanelContent
+      key={`${props.workspaceIdentity?.trim() || props.workspacePath}:${props.remoteSessionId ?? "local"}`}
+      {...props}
+    />
+  );
+}
+
+function RepositoryPanelContent({
+  workspacePath,
+  workspaceIdentity,
+  remoteSessionId,
+  active = true,
+  theme,
+  onCreateTask,
+}: RepositoryPanelProps) {
+  const t = useRepositoryMessages();
+  const platform = usePlatform();
+  const openSettingsTab = useTabStore((state) => state.openSettingsTab);
+  const [remoteName, setRemoteName] = useState<string | undefined>();
+  const [filters, setFilters] = useState<RepositoryFilters>({
+    kind: "issue",
+    state: "open",
+    search: "",
+    sort: "newest",
+    labels: [],
+    page: 1,
+  });
+  const panel = useRepositoryPanel(
+    { workspacePath, workspaceIdentity, remoteSessionId },
+    { ...filters, remoteName },
+    active,
+  );
+  const [selection, setSelection] = useState<{
+    target: ForgeTargetRequest;
+    kind: ForgeItem["kind"];
+    number: number;
+  } | null>(null);
+  const [newIssueTarget, setNewIssueTarget] = useState<ForgeTargetRequest | null>(null);
+  const repo = panel.repository?.repository;
+  const selectionRequest = useMemo<ForgeItemRequest | null>(
+    () =>
+      selection && selection.target === panel.target
+        ? { ...selection.target, kind: selection.kind, number: selection.number }
+        : null,
+    [selection, panel.target],
+  );
+  const openExternal = useCallback(
+    (url: string) => {
+      const safeUrl = safeRepositoryExternalUrl(url);
+      if (safeUrl)
+        void Promise.resolve(platform.openExternal(safeUrl)).catch(() =>
+          logger.warn("[RepositoryPanel] 打开仓库链接失败"),
+        );
+    },
+    [platform],
+  );
+  const selectItem = (item: ForgeItem) => {
+    if (panel.target) setSelection({ target: panel.target, kind: item.kind, number: item.number });
+  };
+  const handleItem = (item: ForgeItem) => {
+    if (!repo || !panel.target) return;
+    onCreateTask({
+      initialPrompt: buildForgeAgentPrompt(repo, item),
+      targetWorkspace: { workspacePath, ...(workspaceIdentity ? { workspaceIdentity } : {}) },
+    });
+  };
+  const onFilterChange = (patch: Partial<RepositoryFilters>) =>
+    setFilters((current) => ({ ...current, ...patch, page: patch.page ?? 1 }));
+  const status = panel.repository?.status;
+  const data = panel.list.data;
+  return (
+    <div
+      data-testid="repository-panel"
+      aria-busy={panel.discoveryLoading || panel.list.loading}
+      className="flex h-full min-h-0 min-w-0 flex-col bg-background text-foreground"
+    >
+      <div className="shrink-0 px-4 pt-4 md:px-6">
+        <header className="mb-4 flex min-w-0 flex-wrap items-center gap-2">
+          <GitFork className="size-5 shrink-0 text-foreground-subtle" />
+          <div className="min-w-0 flex-1">
+            <h2 className="break-all text-ui-base font-medium">{repo?.name ?? t("title")}</h2>
+            <p className="break-all text-ui-sm text-foreground-subtle">
+              {repo
+                ? `${repo.provider === "github" ? "GitHub" : repo.provider === "gitlab" ? "GitLab" : "Gitea / Forgejo"} · ${repo.accountUsername}`
+                : workspacePath}
+            </p>
+          </div>
+          {panel.repository?.remoteNames.length ? (
+            <Select
+              value={panel.repository.remoteName ?? undefined}
+              onValueChange={(name) => {
+                setRemoteName(name);
+                setFilters((current) => ({ ...current, labels: [], page: 1 }));
+                setSelection(null);
+                setNewIssueTarget(null);
+              }}
+            >
+              <SelectTrigger size="lg" aria-label={t("remote")} className="max-w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {panel.repository.remoteNames.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          <RepositoryExternalButton
+            url={repo?.url ?? null}
+            label={t("openRepository")}
+            onOpen={openExternal}
+          />
+          <RepositoryIconButton
+            label={t("refresh")}
+            disabled={panel.discoveryLoading || panel.list.loading}
+            onClick={panel.refresh}
+          >
+            <RotateCw className="size-4" />
+          </RepositoryIconButton>
+          {repo ? (
+            <Button size="lg" onClick={() => setNewIssueTarget(panel.target)}>
+              <Plus className="size-4" />
+              {t("newIssue")}
+            </Button>
+          ) : null}
+        </header>
+        {repo ? (
+          <RepositoryToolbar
+            provider={repo.provider}
+            filters={filters}
+            labels={panel.labels}
+            onChange={onFilterChange}
+          />
+        ) : null}
+      </div>
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 md:px-6 [scrollbar-gutter:stable]">
+        {panel.error ? (
+          <RepositoryError error={panel.error} retry={panel.refresh} />
+        ) : !repo && panel.discoveryLoading ? (
+          <RepositoryLoading />
+        ) : !repo && status ? (
+          <div className="flex flex-col items-start gap-3 py-8">
+            <p className="max-w-xl break-words text-ui-sm text-foreground-subtle">
+              {t(`empty.${status}`, {
+                host: panel.repository?.host ?? "",
+                provider: panel.repository?.provider ?? "",
+              })}
+            </p>
+            {status === "missing-account" ||
+            status === "account-mismatch" ||
+            status === "unsupported" ? (
+              panel.isRemoteTarget ? (
+                <p className="max-w-xl text-ui-sm text-foreground-subtle">
+                  {t("remoteAccountRequired")}
+                </p>
+              ) : (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setPendingSettingsSectionIntent("versionControl");
+                    openSettingsTab();
+                  }}
+                >
+                  <Settings className="size-4" />
+                  {t("addAccount")}
+                </Button>
+              )
+            ) : null}
+          </div>
+        ) : repo ? (
+          <>
+            {panel.list.error ? (
+              <RepositoryError error={panel.list.error} retry={panel.refresh} />
+            ) : panel.list.loading ? (
+              <RepositoryLoading />
+            ) : data ? (
+              <>
+                <div className="flex flex-wrap justify-between gap-2 py-3 text-ui-sm text-foreground-subtle">
+                  <span>
+                    {data.total !== null
+                      ? t("count", { count: data.total })
+                      : t("page", { page: filters.page })}
+                  </span>
+                  {data.incomplete ? <span>{t("incomplete")}</span> : null}
+                  {data.total !== null &&
+                  data.reachableTotal !== null &&
+                  data.total > data.reachableTotal ? (
+                    <span>{t("reachableCap", { count: data.reachableTotal })}</span>
+                  ) : null}
+                </div>
+                {data.items.length ? (
+                  <ul className="divide-y divide-border">
+                    {data.items.map((item) => (
+                      <li key={`${item.kind}:${item.number}`}>
+                        <button
+                          type="button"
+                          data-testid="repository-item-row"
+                          onClick={() => selectItem(item)}
+                          className="flex w-full min-w-0 items-start gap-3 py-3 text-left hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring"
+                        >
+                          <span className="pt-0.5">
+                            <RepositoryItemIcon item={item} />
+                          </span>
+                          <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                            <span className="break-words text-ui-base font-medium [overflow-wrap:anywhere]">
+                              {item.title}
+                            </span>
+                            <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-ui-sm text-foreground-subtle">
+                              <span>#{item.number}</span>
+                              <span className="break-all">{item.author.username}</span>
+                              <RepositoryTime value={item.updatedAt} />
+                              {item.draft ? <span>{t("draft")}</span> : null}
+                              <RepositoryLabels labels={item.labels} />
+                            </span>
+                          </span>
+                          {item.commentCount > 0 ? (
+                            <span className="flex shrink-0 items-center gap-1 text-ui-xs text-foreground-subtle">
+                              <MessageSquare className="size-3.5" />
+                              {item.commentCount}
+                            </span>
+                          ) : null}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="py-8 text-ui-sm text-foreground-subtle">{t("emptyList")}</p>
+                )}
+              </>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+      {repo ? (
+        <nav
+          aria-label={t("pagination")}
+          className="flex shrink-0 items-center justify-end gap-3 border-t border-border px-4 py-3 text-ui-sm md:px-6"
+        >
+          <RepositoryIconButton
+            label={t("previousPage")}
+            disabled={filters.page === 1 || panel.list.loading}
+            onClick={() => onFilterChange({ page: filters.page - 1 })}
+          >
+            <ChevronLeft className="size-4" />
+          </RepositoryIconButton>
+          <span className="min-w-12 text-center tabular-nums">
+            {t("page", { page: filters.page })}
+          </span>
+          <RepositoryIconButton
+            label={t("nextPage")}
+            disabled={!data?.hasMore || panel.list.loading}
+            onClick={() => onFilterChange({ page: filters.page + 1 })}
+          >
+            <ChevronRight className="size-4" />
+          </RepositoryIconButton>
+        </nav>
+      ) : null}
+      {repo && panel.target && newIssueTarget === panel.target ? (
+        <NewIssueDialog
+          open={active}
+          repositoryName={repo.name}
+          busy={panel.mutation.busy}
+          error={panel.mutation.error}
+          onClose={() => setNewIssueTarget(null)}
+          onSubmit={async (title, body) => {
+            const item = await panel.createIssue(title, body);
+            if (item) {
+              setNewIssueTarget(null);
+              selectItem(item);
+            }
+          }}
+        />
+      ) : null}
+      {repo && selectionRequest ? (
+        <RepositoryItemDetail
+          key={`${repo.key}:${selectionRequest.kind}:${selectionRequest.number}`}
+          request={selectionRequest}
+          repository={repo}
+          gitService={panel.gitService}
+          theme={theme}
+          active={active}
+          onClose={() => setSelection(null)}
+          onChanged={panel.refresh}
+          onHandle={handleItem}
+          onOpen={openExternal}
+        />
+      ) : null}
+    </div>
+  );
+}

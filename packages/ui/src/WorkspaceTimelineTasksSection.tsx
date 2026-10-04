@@ -51,6 +51,8 @@ export function WorkspaceTimelineTasksSection({
   taskSortBy,
   groupByDate = true,
   taskRowVariant = "timeline",
+  worktreeWorkspaceKeys,
+  expanded = true,
   emptyMessage,
   onSelectTask,
   onSelectAcpSession,
@@ -63,6 +65,8 @@ export function WorkspaceTimelineTasksSection({
   taskSortBy: "created" | "updated";
   groupByDate?: boolean;
   taskRowVariant?: "default" | "timeline";
+  worktreeWorkspaceKeys?: ReadonlySet<string>;
+  expanded?: boolean;
   emptyMessage?: string;
   onSelectTask: (
     targetWorkspacePath: string,
@@ -285,7 +289,7 @@ export function WorkspaceTimelineTasksSection({
 
   useEffect(() => {
     setVisibleTaskLimit(collapsedLimit);
-  }, [taskSortBy, workspaceTabsSignature]);
+  }, [expanded, taskSortBy, workspaceTabsSignature]);
 
   useEffect(() => {
     // 这条日志会随着远端 timeline 同步和 tab 恢复多次触发。
@@ -739,6 +743,9 @@ export function WorkspaceTimelineTasksSection({
                                 activeWorkspaceKey
                             }
                             variant={taskRowVariant}
+                            isWorktree={worktreeWorkspaceKeys?.has(
+                              buildTaskWorkspaceKey(item.workspacePath, item.workspaceIdentity),
+                            )}
                             onSelect={() => onSelectAcpSession?.(item)}
                           />
                         );
@@ -763,6 +770,9 @@ export function WorkspaceTimelineTasksSection({
                           task={item}
                           isPinned={false}
                           variant={taskRowVariant}
+                          isWorktree={worktreeWorkspaceKeys?.has(
+                            buildTaskWorkspaceKey(item.workspacePath, item.workspaceIdentity),
+                          )}
                           isActive={
                             // timeline 是跨 workspace 视图，active 判断必须使用 workspaceKey，避免同路径远端串高亮。
                             buildTaskWorkspaceKey(item.workspacePath, item.workspaceIdentity) ===

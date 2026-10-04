@@ -92,6 +92,15 @@ export function applyDesktopTsupEsbuildSecurityOptions(options: DesktopTsupEsbui
   options.legalComments = "none";
 }
 
+function enableInlinedCommonJsForNodeEsm(options: { banner?: Record<string, string> }) {
+  // 工作流编译器依赖的 TypeScript 是 CommonJS，内联后仍会读取 require 和 __filename。
+  // ESM main/Host/scheduler 每个 chunk 都须提供这些 Node 绑定，否则冷启动先于 Host RPC 崩溃。
+  options.banner = {
+    ...options.banner,
+    js: 'import { createRequire as __zcodeCreateRequire } from "node:module"; import { fileURLToPath as __zcodeFileURLToPath } from "node:url"; import { dirname as __zcodeDirname } from "node:path"; const require = __zcodeCreateRequire(import.meta.url); const __filename = __zcodeFileURLToPath(import.meta.url); const __dirname = __zcodeDirname(__filename);',
+  };
+}
+
 const desktopTsupBundleSecurityOptions = resolveDesktopTsupBundleSecurityOptions();
 
 function createSharedDefines() {
@@ -174,6 +183,7 @@ export default defineConfig([
     // 这里按目标分目录输出 chunk，确保并发构建下产物隔离。
     esbuildOptions(options) {
       applyDesktopTsupEsbuildSecurityOptions(options);
+      enableInlinedCommonJsForNodeEsm(options);
       options.chunkNames = "main/chunk-[hash]";
     },
     onSuccess: createDevReadyMarkerHook("main"),
@@ -229,6 +239,7 @@ export default defineConfig([
     // 与 main 保持一致的 chunk 隔离策略，避免 host/main 产物相互覆盖。
     esbuildOptions(options) {
       applyDesktopTsupEsbuildSecurityOptions(options);
+      enableInlinedCommonJsForNodeEsm(options);
       options.chunkNames = "host/chunk-[hash]";
     },
     onSuccess: createDevReadyMarkerHook("host"),
@@ -257,6 +268,7 @@ export default defineConfig([
     define: createSharedDefines(),
     esbuildOptions(options) {
       applyDesktopTsupEsbuildSecurityOptions(options);
+      enableInlinedCommonJsForNodeEsm(options);
       options.chunkNames = "scheduler/chunk-[hash]";
     },
     onSuccess: createDevReadyMarkerHook("scheduler"),

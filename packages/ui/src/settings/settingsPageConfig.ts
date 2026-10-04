@@ -76,6 +76,12 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     groupId: "basics",
   },
   {
+    id: "acpAgents",
+    icon: Bot,
+    titleId: "settings.acpAgents.title",
+    groupId: "basics",
+  },
+  {
     id: "worktrees",
     icon: FolderTree,
     titleId: "settings.worktrees.title",
@@ -97,12 +103,6 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     id: "subagents",
     icon: Bot,
     titleId: "settings.subagents.title",
-    groupId: "agentCapabilities",
-  },
-  {
-    id: "acpAgents",
-    icon: Bot,
-    titleId: "settings.acpAgents.title",
     groupId: "agentCapabilities",
   },
   {

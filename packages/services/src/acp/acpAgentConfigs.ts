@@ -1,0 +1,111 @@
+import { readFile, readdir, stat } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  ACP_AGENT_CATALOG,
+  acpAgentConfigCatalogSchema,
+  acpSessionSchema,
+  type AcpAgent,
+  type AcpAgentConfigSnapshot,
+  type AcpSession,
+  type AcpWorkspace,
+} from "@zcode/shared";
+import { createServiceLogger } from "../logger/serviceLogger.js";
+
+const logger = createServiceLogger("acp-agent-configs");
+const metadataSchema = acpSessionSchema.pick({
+  id: true,
+  agent: true,
+  workspacePath: true,
+  workspaceIdentity: true,
+  configOptions: true,
+  modeState: true,
+  supersededBy: true,
+});
+type Metadata = ReturnType<typeof metadataSchema.parse>;
+
+export function acpAgentConfigFingerprint(
+  session: Pick<AcpSession, "agent" | "configOptions" | "modeState">,
+) {
+  return JSON.stringify([session.agent, session.configOptions, session.modeState]);
+}
+
+export async function readAcpAgentConfigs(
+  directory: string,
+  workspace: AcpWorkspace,
+  sessions: ReadonlyMap<string, AcpSession>,
+  removed: ReadonlySet<string>,
+): Promise<AcpAgentConfigSnapshot[]> {
+  const names = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  // 修复原因：新项目没有历史、任务会话又在工作树下；只读同 Host 的配置元数据，
+  // 不能调用 load/refresh 触发历史迁移、工作流恢复或 Agent 握手。
+  const disk = await Promise.all(
+    names
+      .filter((name) => /^[0-9a-f-]{36}\.json$/i.test(name))
+      .map(async (name) => {
+        try {
+          const path = join(directory, name);
+          const cached = sessions.get(name.slice(0, -5));
+          const [contents, info] = await Promise.all([
+            cached ? Promise.resolve(null) : readFile(path, "utf8"),
+            stat(path),
+          ]);
+          const parsed = metadataSchema.safeParse(cached ?? JSON.parse(contents!));
+          return parsed.success ? { session: parsed.data, at: info.mtimeMs } : null;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+            logger.warn(undefined, "ACP configuration metadata unreadable");
+          return null;
+        }
+      }),
+  );
+  const candidates = new Map<string, { session: Metadata; at: number }>();
+  for (const candidate of disk) if (candidate) candidates.set(candidate.session.id, candidate);
+  // 内存快照是当前 Host 所有者的最新事实，包含尚未落盘的临时会话。
+  for (const session of sessions.values()) {
+    candidates.set(session.id, {
+      session: metadataSchema.parse(session),
+      at: candidates.get(session.id)?.at ?? Date.now(),
+    });
+  }
+  const known = new Map<AcpAgent, { snapshot: AcpAgentConfigSnapshot; at: number }>();
+  const key = workspace.workspaceIdentity?.trim() || workspace.workspacePath;
+  for (const { session, at } of candidates.values()) {
+    if (
+      removed.has(session.id) ||
+      session.supersededBy ||
+      (!session.configOptions.length && !session.modeState?.availableModes.length)
+    )
+      continue;
+    const source =
+      (session.workspaceIdentity?.trim() || session.workspacePath) === key &&
+      session.workspacePath === workspace.workspacePath
+        ? "workspace"
+        : "host";
+    const previous = known.get(session.agent);
+    if (
+      previous &&
+      (previous.snapshot.source === source
+        ? previous.at > at
+        : previous.snapshot.source === "workspace")
+    )
+      continue;
+    known.set(session.agent, {
+      at,
+      snapshot: {
+        agent: session.agent,
+        source,
+        configOptions: session.configOptions,
+        modeState: session.modeState,
+      },
+    });
+  }
+  return acpAgentConfigCatalogSchema.parse(
+    ACP_AGENT_CATALOG.flatMap(({ id }) => {
+      const item = known.get(id);
+      return item ? [item.snapshot] : [];
+    }),
+  );
+}

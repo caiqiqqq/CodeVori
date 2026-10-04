@@ -2,6 +2,7 @@
 export { type ServiceDescriptor, createServiceDescriptor } from "./descriptors.js";
 export { ServiceCollection } from "./collection.js";
 export { IAcpService } from "./acp/acpService.js";
+export { IWorkTaskService } from "./session/contract.js";
 export {
   IModelSelectionService,
   IProviderSettingsService,

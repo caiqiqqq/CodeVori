@@ -6,6 +6,8 @@ import {
   canGoForward as navCanGoForward,
   isAutomationsNavEntry,
   isPluginStoreNavEntry,
+  isRepositoryNavEntry,
+  isWorkTasksNavEntry,
   type AutomationsNavigationTab,
 } from "@/lib/taskNavigationHistory.js";
 import { shouldBlockTaskSelectionDuringModelRestart } from "@/lib/taskSwitchGuard.js";
@@ -41,6 +43,8 @@ export function useWorkspaceTaskNavigation({
   onNavigateToTask,
   onNavigateToAutomations,
   onNavigateToPluginStore,
+  onNavigateToRepository,
+  onNavigateToWorkTasks,
 }: {
   intl: { formatMessage: (descriptor: { id: string }) => string };
   workspaceAbsPath: string;
@@ -49,6 +53,8 @@ export function useWorkspaceTaskNavigation({
   onNavigateToTask?: () => void;
   onNavigateToAutomations?: (target: AutomationsNavigationTarget) => void;
   onNavigateToPluginStore?: (target: Omit<AutomationsNavigationTarget, "automationId">) => void;
+  onNavigateToRepository?: (target: { workspacePath: string; workspaceIdentity?: string }) => void;
+  onNavigateToWorkTasks?: (target: { workspacePath: string; workspaceIdentity?: string }) => void;
 }) {
   // 跨 workspace 选择会先同步切换 tab，但本次 React render 捕获的 ambient
   // services 仍可能属于旧 remote attachment。local 目标必须固定从 window base attachment
@@ -59,6 +65,8 @@ export function useWorkspaceTaskNavigation({
   const taskNavHistory = useZCodeSessionStore((s) => s.taskNavHistory);
   const taskNavPushAutomations = useZCodeSessionStore((s) => s.taskNavPushAutomations);
   const taskNavPushPluginStore = useZCodeSessionStore((s) => s.taskNavPushPluginStore);
+  const taskNavPushRepository = useZCodeSessionStore((s) => s.taskNavPushRepository);
+  const taskNavPushWorkTasks = useZCodeSessionStore((s) => s.taskNavPushWorkTasks);
   const taskNavGoBack = useZCodeSessionStore((s) => s.taskNavGoBack);
   const taskNavGoForward = useZCodeSessionStore((s) => s.taskNavGoForward);
   const removeTaskFromNavHistory = useZCodeSessionStore((s) => s.removeTaskFromNavHistory);
@@ -224,6 +232,15 @@ export function useWorkspaceTaskNavigation({
     onNavigateToPluginStore?.({ workspacePath: workspaceAbsPath, workspaceIdentity });
   }, [onNavigateToPluginStore, taskNavPushPluginStore, workspaceAbsPath, workspaceIdentity]);
 
+  const handleOpenRepository = useCallback(() => {
+    taskNavPushRepository(workspaceAbsPath, workspaceIdentity);
+    onNavigateToRepository?.({ workspacePath: workspaceAbsPath, workspaceIdentity });
+  }, [onNavigateToRepository, taskNavPushRepository, workspaceAbsPath, workspaceIdentity]);
+  const handleOpenWorkTasks = useCallback(() => {
+    taskNavPushWorkTasks(workspaceAbsPath, workspaceIdentity);
+    onNavigateToWorkTasks?.({ workspacePath: workspaceAbsPath, workspaceIdentity });
+  }, [onNavigateToWorkTasks, taskNavPushWorkTasks, workspaceAbsPath, workspaceIdentity]);
+
   const handleTaskNavBack = useCallback(() => {
     const currentWorkspaceState = useZCodeSessionStore
       .getState()
@@ -267,14 +284,20 @@ export function useWorkspaceTaskNavigation({
         });
         return;
       }
-      if (isPluginStoreNavEntry(currentEntry)) {
+      if (
+        isPluginStoreNavEntry(currentEntry) ||
+        isRepositoryNavEntry(currentEntry) ||
+        isWorkTasksNavEntry(currentEntry)
+      ) {
         activateTabByPath(
           currentEntry.workspacePath,
           currentEntry.workspaceIdentity
             ? { workspaceIdentity: currentEntry.workspaceIdentity }
             : undefined,
         );
-        onNavigateToPluginStore?.(currentEntry);
+        if (isRepositoryNavEntry(currentEntry)) onNavigateToRepository?.(currentEntry);
+        else if (isWorkTasksNavEntry(currentEntry)) onNavigateToWorkTasks?.(currentEntry);
+        else onNavigateToPluginStore?.(currentEntry);
         return;
       }
       const navWorkspaceState = useZCodeSessionStore
@@ -306,6 +329,8 @@ export function useWorkspaceTaskNavigation({
     intl,
     onNavigateToAutomations,
     onNavigateToPluginStore,
+    onNavigateToRepository,
+    onNavigateToWorkTasks,
     removeTaskFromNavHistory,
     taskNavGoBack,
     workspaceAbsPath,
@@ -353,14 +378,20 @@ export function useWorkspaceTaskNavigation({
         });
         return;
       }
-      if (isPluginStoreNavEntry(currentEntry)) {
+      if (
+        isPluginStoreNavEntry(currentEntry) ||
+        isRepositoryNavEntry(currentEntry) ||
+        isWorkTasksNavEntry(currentEntry)
+      ) {
         activateTabByPath(
           currentEntry.workspacePath,
           currentEntry.workspaceIdentity
             ? { workspaceIdentity: currentEntry.workspaceIdentity }
             : undefined,
         );
-        onNavigateToPluginStore?.(currentEntry);
+        if (isRepositoryNavEntry(currentEntry)) onNavigateToRepository?.(currentEntry);
+        else if (isWorkTasksNavEntry(currentEntry)) onNavigateToWorkTasks?.(currentEntry);
+        else onNavigateToPluginStore?.(currentEntry);
         return;
       }
       const navWorkspaceState = useZCodeSessionStore
@@ -391,6 +422,8 @@ export function useWorkspaceTaskNavigation({
     intl,
     onNavigateToAutomations,
     onNavigateToPluginStore,
+    onNavigateToRepository,
+    onNavigateToWorkTasks,
     removeTaskFromNavHistory,
     taskNavGoForward,
     workspaceAbsPath,
@@ -410,6 +443,8 @@ export function useWorkspaceTaskNavigation({
     handleSelectTask,
     handleOpenAutomations,
     handleOpenPluginStore,
+    handleOpenRepository,
+    handleOpenWorkTasks,
     handleTaskNavBack,
     handleTaskNavForward,
     canGoBack,

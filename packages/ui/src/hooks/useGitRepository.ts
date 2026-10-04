@@ -15,7 +15,7 @@ import type {
 import { buildTurnChangeSummary, toWorkspaceRelativePath } from "@/lib/taskChangeSummary.js";
 import { logger } from "@/logger.js";
 import { shouldEnableWorkspaceRpc } from "@/lib/workspaceRpcAvailability.js";
-import { useServices } from "@/hooks/useServices.js";
+import { useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { useResolvedRemoteWorkspaceSessionId } from "@/hooks/useResolvedRemoteWorkspaceSessionId.js";
 
 type GitRepositorySourceId = Extract<GitChangeSourceId, "unstaged" | "staged" | "branch">;
@@ -388,7 +388,12 @@ export function useGitRepository(options: {
     remoteTarget,
     workspaceIdentity = null,
   } = options;
-  const { gitService } = useServices();
+  const { gitService } = useWorkspaceServices(
+    workspacePath,
+    preferredRemoteSessionId,
+    workspaceIdentity,
+    remoteTarget,
+  );
   const remoteSessionId = useResolvedRemoteWorkspaceSessionId(
     workspacePath,
     preferredRemoteSessionId,

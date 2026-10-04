@@ -100,6 +100,7 @@ export const ServiceChannels = {
   ZCodeSession: "zcode-session",
   /** Independent Codex/Claude ACP Agent sessions; never a model Provider. */
   Acp: "acp",
+  WorkTask: "work-task",
   /** 会话分享发布、预览与 continuation API 编排 */
   ConversationShare: "conversation-share",
   /** 文件系统监视服务 */

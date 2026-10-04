@@ -7,6 +7,10 @@ import type {
   GitCreateWorktreeRequest,
   GitCreateAutomaticWorktreeRequest,
   GitCreateWorktreeResult,
+  GitManagedWorktreeProject,
+  GitManagedWorktreeRootRequest,
+  GitRemoveManagedWorktreeRequest,
+  GitRemoveManagedWorktreeResult,
   GitChangesRequest,
   GitCommitRequest,
   GitCommitResult,
@@ -35,11 +39,38 @@ import type {
   GitAccountRotateRequest,
   GitAccountIdRequest,
   GitAccountTestResult,
+  ForgeRepositoryRequest,
+  ForgeRepositoryInfo,
+  ForgeListRequest,
+  ForgeItemList,
+  ForgeItemRequest,
+  ForgeItemDetail,
+  ForgePageRequest,
+  ForgePage,
+  ForgeComment,
+  ForgeChangedFile,
+  ForgeTargetRequest,
+  ForgeLabel,
+  ForgeNewIssueRequest,
+  ForgeItem,
+  ForgeCommentRequest,
+  ForgeStateRequest,
+  ForgeMergeRequest,
 } from "@zcode/shared";
 import { ServiceChannels } from "@zcode/shared";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IGitService {
+  getForgeRepository(params: ForgeRepositoryRequest): Promise<ForgeRepositoryInfo>;
+  listForgeItems(params: ForgeListRequest): Promise<ForgeItemList>;
+  getForgeItem(params: ForgeItemRequest): Promise<ForgeItemDetail>;
+  listForgeComments(params: ForgePageRequest): Promise<ForgePage<ForgeComment>>;
+  listForgeFiles(params: ForgePageRequest): Promise<ForgePage<ForgeChangedFile>>;
+  listForgeLabels(params: ForgeTargetRequest): Promise<ForgeLabel[]>;
+  createForgeIssue(params: ForgeNewIssueRequest): Promise<ForgeItem>;
+  createForgeComment(params: ForgeCommentRequest): Promise<void>;
+  setForgeItemState(params: ForgeStateRequest): Promise<void>;
+  mergeForgePullRequest(params: ForgeMergeRequest): Promise<void>;
   getVersionControlSettings(): Promise<GitVersionControlSettings>;
   detectGit(): Promise<GitDetection>;
   updateGitPath(params: GitPathRequest): Promise<GitDetection>;
@@ -58,6 +89,10 @@ export interface IGitService {
   createAutomaticWorktree(
     params: GitCreateAutomaticWorktreeRequest,
   ): Promise<GitCreateWorktreeResult>;
+  listManagedWorktrees(params: GitManagedWorktreeRootRequest): Promise<GitManagedWorktreeProject[]>;
+  removeManagedWorktree(
+    params: GitRemoveManagedWorktreeRequest,
+  ): Promise<GitRemoveManagedWorktreeResult>;
   getChanges(params: GitChangesRequest): Promise<GitFileChange[]>;
   getIgnoredPaths(params: GitIgnoredPathsRequest): Promise<string[]>;
   getDiff(params: GitDiffQuery): Promise<GitDiffResult>;

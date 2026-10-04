@@ -1,4 +1,5 @@
-import { ACP_AGENT_CATALOG, type AcpAgentInfo } from "@zcode/shared";
+import { ACP_AGENT_CATALOG, compareAcpAdapterVersions, type AcpAgentInfo } from "@zcode/shared";
+export { compareAcpAdapterVersions } from "@zcode/shared";
 
 export const ACP_AGENT_SETTINGS_CATALOG = ACP_AGENT_CATALOG.map(({ id, name, command }) => ({
   agent: id,
@@ -7,29 +8,7 @@ export const ACP_AGENT_SETTINGS_CATALOG = ACP_AGENT_CATALOG.map(({ id, name, com
   descriptionId: `settings.acpAgents.${id}Description`,
 }));
 
-/** Compare the three numeric parts used by the pinned adapter catalog. */
-export function compareAcpAdapterVersions(
-  installed: string | null | undefined,
-  target: string,
-): -1 | 0 | 1 | null {
-  const parse = (version: string | null | undefined) => {
-    const parts = version?.match(/^(\d+)\.(\d+)\.(\d+)$/);
-    if (!parts) return null;
-    const numbers = parts.slice(1, 4).map(Number);
-    return numbers.every(Number.isSafeInteger) ? numbers : null;
-  };
-  const current = parse(installed);
-  const desired = parse(target);
-  if (installed === target) return 0;
-  if (!current || !desired) return null;
-  for (let part = 0; part < 3; part++) {
-    if (current[part]! > desired[part]!) return 1;
-    if (current[part]! < desired[part]!) return -1;
-  }
-  return 0;
-}
-
-/** A system adapter meeting the pinned target already satisfies the install check. */
+/** A system adapter meeting the current release target already satisfies the install check. */
 export function shouldOfferManagedAcpInstall(info: AcpAgentInfo): boolean {
   if (info.managedVersion) return false;
   if (info.source !== "system") return true;
@@ -53,7 +32,10 @@ export function projectAcpAgentChecks(
         ? info.ready
           ? "warn"
           : "fail"
-        : versionComparison === null || versionComparison < 0
+        : info.updateCheck?.status === "error" ||
+            info.updateCheck?.status === "unavailable" ||
+            versionComparison === null ||
+            versionComparison < 0
           ? "warn"
           : "pass",
     },

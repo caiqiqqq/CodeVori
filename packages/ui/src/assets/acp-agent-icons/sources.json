@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-09-30",
+  "sourceUrl": "https://github.com/xintaofei/codeg/blob/932ac543532c86186a851ffada83dc1ccab9515c/src/components/agent-icon.tsx",
+  "sourceSha256": "3b562e9c76dd5838f19df452275f9be931598ee12e1dae94b0247f5e41ab7552",
+  "license": "Apache-2.0",
+  "licenseFile": "third-party/upstream/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt",
+  "normalization": "Converted Codeg JSX brand marks to standalone SVGs without changing paths, colors or viewBoxes. Monochrome marks are displayed through a currentColor CSS mask; color marks retain their original colors.",
+  "icons": [
+    {
+      "agent": "claude",
+      "file": "claude.svg",
+      "component": "ClaudeCodeColorIcon",
+      "monochrome": false
+    },
+    {
+      "agent": "codex",
+      "file": "codex.svg",
+      "component": "CodexColorIcon",
+      "monochrome": false
+    },
+    {
+      "agent": "gemini",
+      "file": "gemini.svg",
+      "component": "GeminiCliColorIcon",
+      "monochrome": false
+    },
+    {
+      "agent": "openclaw",
+      "file": "openclaw.svg",
+      "component": "OpenClawColorIcon",
+      "monochrome": false
+    },
+    {
+      "agent": "opencode",
+      "file": "opencode.svg",
+      "component": "OpenCodeMonoIcon",
+      "monochrome": true
+    },
+    {
+      "agent": "cline",
+      "file": "cline.svg",
+      "component": "ClineMonoIcon",
+      "monochrome": true
+    },
+    {
+      "agent": "hermes",
+      "file": "hermes.svg",
+      "component": "HermesMonoIcon",
+      "monochrome": true
+    },
+    {
+      "agent": "codebuddy",
+      "file": "codebuddy.svg",
+      "component": "CodeBuddyMonoIcon",
+      "monochrome": true
+    },
+    {
+      "agent": "kimi-code",
+      "file": "kimi-code.svg",
+      "component": "KimiCodeColorIcon",
+      "monochrome": false
+    },
+    {
+      "agent": "pi",
+      "file": "pi.svg",
+      "component": "PiColorIcon",
+      "monochrome": false
+    },
+    {
+      "agent": "grok",
+      "file": "grok.svg",
+      "component": "GrokMonoIcon",
+      "monochrome": true
+    },
+    {
+      "agent": "cursor",
+      "file": "cursor.svg",
+      "component": "CursorMonoIcon",
+      "monochrome": true
+    },
+    {
+      "agent": "deepseek",
+      "file": "deepseek.svg",
+      "component": "DeepSeekColorIcon",
+      "monochrome": false
+    },
+    {
+      "agent": "qoder",
+      "file": "qoder.svg",
+      "component": "QoderMonoIcon",
+      "monochrome": true
+    },
+    {
+      "agent": "antigravity",
+      "file": "antigravity.svg",
+      "component": "AntigravityMonoIcon",
+      "monochrome": true
+    }
+  ]
+}

@@ -19,6 +19,7 @@ import {
   Cloud,
   Folder,
   FolderOpen,
+  GitFork,
   Hash,
   ListFilter,
   Maximize2,
@@ -78,6 +79,7 @@ import { useZCodeStore } from "@/store/StoreProvider.js";
 import { useTabStore } from "@/store/TabStoreProvider.js";
 import { isWorkspaceReadOnly, isWorkspaceTab, type WorkspaceTabState } from "@/store/tabStore.js";
 import { useWorkspaceTaskLists } from "@/hooks/useWorkspaceTaskLists.js";
+import { useWorktreeProjectGroups } from "@/hooks/useWorktreeProjectGroups.js";
 import {
   persistSidebarTaskPreferences,
   readSidebarTaskPreferences,
@@ -128,6 +130,7 @@ import {
   type SidebarTaskGroupTogglePresentation,
 } from "@/WorkspaceSidebar/taskGroupTogglePresentation.js";
 import { WorkspacePurposeSection } from "@/WorkspaceSidebar/WorkspacePurposeSection.js";
+import { WorkTasksSidebarButton } from "@/work-tasks/WorkTasksSidebarButton.js";
 import { cn } from "@/components/lib/utils.js";
 import {
   resolveWorkspaceDragGlobalIndices,
@@ -259,8 +262,12 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   onOpenCommandCenter,
   onOpenAutomations,
   onOpenPluginStore,
+  onOpenRepository,
+  onOpenWorkTasks,
   automationsActive = false,
   pluginStoreActive = false,
+  repositoryActive = false,
+  workTasksActive = false,
   onFileTreeOpenChange,
 }: {
   workspacePath: string;
@@ -312,8 +319,12 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   onOpenCommandCenter: () => void;
   onOpenAutomations?: () => void;
   onOpenPluginStore?: () => void;
+  onOpenRepository?: () => void;
+  onOpenWorkTasks?: () => void;
   automationsActive?: boolean;
   pluginStoreActive?: boolean;
+  repositoryActive?: boolean;
+  workTasksActive?: boolean;
   onFileTreeOpenChange?: (open: boolean) => void;
 }) {
   const { intl, localePreference, setLocalePreference } = useZCodeIntl();
@@ -349,6 +360,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
 
     return activeTab.workspaceIdentity;
   });
+  const activeWorkspaceKey = buildTaskWorkspaceKey(workspacePath, workspaceIdentity);
   const workspaceReadOnly = useTabStore((state) =>
     isWorkspaceReadOnly(state, workspacePath, workspaceIdentity),
   );
@@ -374,9 +386,54 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     () => partitionWorkspaceTabsByPurpose(workspaceTabs),
     [workspaceTabs],
   );
+  const projectGroups = useWorktreeProjectGroups(projectWorkspaceTabs);
+  const topLevelProjectTabs = useMemo(
+    () => projectGroups.map((group) => group.tab),
+    [projectGroups],
+  );
+  const workTaskProjects = useMemo(
+    () => projectGroups.filter((group) => !group.isLinkedWorktree).map((group) => group.tab),
+    [projectGroups],
+  );
+  const worktreeWorkspaceKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const group of projectGroups) {
+      if (group.isLinkedWorktree) keys.add(buildTaskWorkspaceKey(group.tab.workspacePath));
+      for (const { tab } of group.worktrees) keys.add(buildTaskWorkspaceKey(tab.workspacePath));
+    }
+    return keys;
+  }, [projectGroups]);
+  const knownProjectTabIds = useRef(new Set(projectWorkspaceTabs.map((tab) => tab.id)));
+  const pendingNewWorktreeTabIds = useRef(new Set<string>());
+  useEffect(() => {
+    const currentIds = new Set(projectWorkspaceTabs.map((tab) => tab.id));
+    for (const id of currentIds) {
+      if (!knownProjectTabIds.current.has(id)) pendingNewWorktreeTabIds.current.add(id);
+    }
+    for (const id of pendingNewWorktreeTabIds.current) {
+      if (!currentIds.has(id)) pendingNewWorktreeTabIds.current.delete(id);
+    }
+    knownProjectTabIds.current = currentIds;
+  }, [projectWorkspaceTabs]);
+  useEffect(() => {
+    for (const group of projectGroups) {
+      for (const child of group.worktrees) {
+        if (!pendingNewWorktreeTabIds.current.has(child.tab.id)) continue;
+        pendingNewWorktreeTabIds.current.delete(child.tab.id);
+        // 新建工作树的 tab 先出现、Git 关系随后才解析完成；此时打开父项目一次，
+        // 否则工作树已激活却藏在原项目的收起态里。之后手动收起不得被重新打开。
+        if (
+          child.tab.workspacePath === workspacePath &&
+          !expandedWorkspacePaths.has(group.tab.workspacePath)
+        ) {
+          toggleWorkspaceExpanded(group.tab.workspacePath);
+        }
+      }
+    }
+  }, [projectGroups, expandedWorkspacePaths, toggleWorkspaceExpanded, workspacePath]);
   const workspacePaths = useMemo(
-    () => projectWorkspaceTabs.map((tab) => tab.workspacePath),
-    [projectWorkspaceTabs],
+    () => topLevelProjectTabs.map((tab) => tab.workspacePath),
+    [topLevelProjectTabs],
   );
   const areAllWorkspaceGroupsExpanded = useMemo(
     () =>
@@ -567,21 +624,29 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     taskOrganizeBy,
   });
   const effectiveTaskViewMode = taskViewMode;
-  const visibleWorkspaceTaskKeys = useMemo(
-    () =>
-      resolveVisibleWorkspaceTaskKeys({
-        enabled:
-          effectiveTaskViewMode === "workspace" && purposeSectionPreferences.projectsExpanded,
-        expandedWorkspacePaths,
-        workspaces: projectWorkspaceTabs,
-      }),
-    [
-      effectiveTaskViewMode,
-      expandedWorkspacePaths,
-      projectWorkspaceTabs,
-      purposeSectionPreferences.projectsExpanded,
-    ],
-  );
+  const visibleWorkspaceTaskKeys = useMemo(() => {
+    const visibleExpandedPaths = new Set(expandedWorkspacePaths);
+    for (const group of projectGroups) {
+      for (const child of group.worktrees) {
+        if (expandedWorkspacePaths.has(group.tab.workspacePath)) {
+          visibleExpandedPaths.add(child.tab.workspacePath);
+        } else {
+          visibleExpandedPaths.delete(child.tab.workspacePath);
+        }
+      }
+    }
+    return resolveVisibleWorkspaceTaskKeys({
+      enabled: effectiveTaskViewMode === "workspace" && purposeSectionPreferences.projectsExpanded,
+      expandedWorkspacePaths: visibleExpandedPaths,
+      workspaces: projectWorkspaceTabs,
+    });
+  }, [
+    effectiveTaskViewMode,
+    expandedWorkspacePaths,
+    projectGroups,
+    projectWorkspaceTabs,
+    purposeSectionPreferences.projectsExpanded,
+  ]);
   useEffect(() => {
     // 交互规则：分页进度只属于当前可见且已展开的 workspace。
     // 单组/项目区/全部收起、切换视图或移除 workspace 都通过同一可见集合清理，
@@ -704,21 +769,21 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
       const indices = resolveWorkspaceDragGlobalIndices({
         activeId: String(active.id),
         overId: String(over.id),
-        projectTabs: projectWorkspaceTabs,
+        projectTabs: topLevelProjectTabs,
         workspaceTabs,
       });
       if (indices) {
         reorderWorkspaceTabs(indices.fromIndex, indices.toIndex);
       }
     },
-    [projectWorkspaceTabs, reorderWorkspaceTabs, resetWorkspaceDrag, workspaceTabs],
+    [topLevelProjectTabs, reorderWorkspaceTabs, resetWorkspaceDrag, workspaceTabs],
   );
   const activeWorkspaceDragTab = useMemo(
     () =>
       activeWorkspaceDragId
-        ? (projectWorkspaceTabs.find((tab) => tab.id === activeWorkspaceDragId) ?? null)
+        ? (topLevelProjectTabs.find((tab) => tab.id === activeWorkspaceDragId) ?? null)
         : null,
-    [activeWorkspaceDragId, projectWorkspaceTabs],
+    [activeWorkspaceDragId, topLevelProjectTabs],
   );
 
   const handleThemeChange = useCallback(
@@ -840,7 +905,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     collapsedGroupedTaskGroupIds,
   );
   const canToggleAllProjectTaskGroups =
-    !showArchivedTasks && taskOrganizeBy === "project" && projectWorkspaceTabs.length > 0;
+    !showArchivedTasks && taskOrganizeBy === "project" && topLevelProjectTabs.length > 0;
   const showToggleAllTaskGroups = canToggleAllProjectTaskGroups || showToggleAllGroupedTaskGroups;
   const canToggleAllTaskGroups = canToggleAllProjectTaskGroups || canToggleAllGroupedTaskGroups;
   const areAllTaskGroupsExpanded =
@@ -1334,6 +1399,26 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
               <Blocks className="size-4" />
               {intl.formatMessage({ id: "workspace.openPluginsSettings" })}
             </Button>
+            <WorkTasksSidebarButton
+              projects={workTaskProjects}
+              active={workTasksActive}
+              onClick={onOpenWorkTasks}
+            />
+            <Button
+              variant="ghost"
+              onClick={onOpenRepository}
+              data-icon="inline-start"
+              data-testid="repository-sidebar-open"
+              size="lg"
+              aria-pressed={repositoryActive}
+              className={cn(
+                "w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
+                repositoryActive && "bg-selected text-foreground",
+              )}
+            >
+              <GitFork className="size-4" />
+              {intl.formatMessage({ id: "repositoryPanel.title" })}
+            </Button>
           </div>
 
           <div className="relative flex min-h-0 flex-1 flex-col">
@@ -1357,6 +1442,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                   activeTaskId={activeTaskId}
                   activeAcpSessionId={activeAcpSessionId}
                   taskSortBy={taskSortBy}
+                  worktreeWorkspaceKeys={worktreeWorkspaceKeys}
                   onSelectTask={handleTaskRowSelect}
                   onSelectAcpSession={onSelectAcpSession}
                   onOpenFileTree={(target) => {
@@ -1406,6 +1492,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                     activeTaskId={activeTaskId}
                     activeAcpSessionId={activeAcpSessionId}
                     taskSortBy={taskSortBy}
+                    worktreeWorkspaceKeys={worktreeWorkspaceKeys}
                     onSelectTask={handleTaskRowSelect}
                     onSelectAcpSession={onSelectAcpSession}
                   />
@@ -1481,7 +1568,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                 </DropdownMenu>
                               }
                             >
-                              {projectWorkspaceTabs.length === 0 ? (
+                              {topLevelProjectTabs.length === 0 ? (
                                 <div className="px-3 py-2 text-ui-base text-foreground-subtle">
                                   {intl.formatMessage({
                                     id: "workspaceSidebar.noProjects",
@@ -1497,64 +1584,110 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                   onDragCancel={handleWorkspaceDragCancel}
                                 >
                                   <SortableContext
-                                    items={projectWorkspaceTabs.map((tab) => tab.id)}
+                                    items={topLevelProjectTabs.map((tab) => tab.id)}
                                     strategy={workspaceVerticalListSortingStrategy}
                                   >
                                     <ul data-testid={TID_WORKSPACE_LIST} className="space-y-2 pb-4">
-                                      {projectWorkspaceTabs.map((tab) => {
-                                        const workspaceKey = buildTaskWorkspaceKey(
-                                          tab.workspacePath,
-                                          tab.workspaceIdentity,
-                                        );
-                                        const taskGroup = workspaceTaskGroupByKey.get(workspaceKey);
-                                        const taskLoading =
-                                          workspaceTaskLists.loadingByWorkspaceKey[workspaceKey] ??
-                                          false;
+                                      {projectGroups.map(
+                                        ({
+                                          tab,
+                                          worktrees,
+                                          isLinkedWorktree,
+                                          workspaceTabs: projectTabs,
+                                        }) => {
+                                          const workspaceKey = buildTaskWorkspaceKey(
+                                            tab.workspacePath,
+                                            tab.workspaceIdentity,
+                                          );
+                                          const taskGroup =
+                                            workspaceTaskGroupByKey.get(workspaceKey);
+                                          const taskLoading =
+                                            workspaceTaskLists.loadingByWorkspaceKey[
+                                              workspaceKey
+                                            ] ?? false;
 
-                                        return (
-                                          <SortableWorkspaceSidebarItem
-                                            key={tab.id}
-                                            tab={tab}
-                                            isActiveWorkspace={tab.workspacePath === workspacePath}
-                                            isExpanded={resolveWorkspaceDragExpanded({
-                                              activeDragId: activeWorkspaceDragId,
-                                              expanded: expandedWorkspacePaths.has(
-                                                tab.workspacePath,
-                                              ),
-                                              tabId: tab.id,
-                                            })}
-                                            activateTab={activateTab}
-                                            closeTab={closeTab}
-                                            toggleWorkspaceExpanded={toggleWorkspaceExpanded}
-                                            onSelectTask={onSelectTask}
-                                            onSelectAcpSession={onSelectAcpSession}
-                                            activeAcpSessionId={activeAcpSessionId}
-                                            onStartDraftInWorkspace={onStartDraftInWorkspace}
-                                            taskItems={
-                                              taskGroup?.items ?? EMPTY_WORKSPACE_TASK_ITEMS
-                                            }
-                                            taskListLoading={taskLoading}
-                                            taskListHasMore={taskGroup?.hasMore ?? false}
-                                            taskListHasUnread={taskGroup?.hasUnread ?? false}
-                                            taskListLiveWorkflowCount={
-                                              taskGroup?.liveWorkflowCount ?? 0
-                                            }
-                                            workspaceKey={workspaceKey}
-                                            onShowMoreWorkspaceTasks={handleShowMoreWorkspaceTasks}
-                                            reconnectingRemoteWorkspaceKeys={
-                                              reconnectingRemoteWorkspaceKeys
-                                            }
-                                            remoteWorkspaceErrorByWorkspaceKey={
-                                              remoteWorkspaceErrorByWorkspaceKey
-                                            }
-                                            reconnectingRemoteWorkspaceLogsByWorkspaceKey={
-                                              reconnectingRemoteWorkspaceLogsByWorkspaceKey
-                                            }
-                                            onReconnectRemoteWorkspace={onReconnectRemoteWorkspace}
-                                            onOpenFileTree={handleOpenWorkspaceFileTree}
-                                          />
-                                        );
-                                      })}
+                                          return (
+                                            <SortableWorkspaceSidebarItem
+                                              key={tab.id}
+                                              tab={tab}
+                                              isActiveWorkspace={
+                                                workspaceKey === activeWorkspaceKey
+                                              }
+                                              hasActiveDescendant={worktrees.some(
+                                                ({ tab: child }) =>
+                                                  buildTaskWorkspaceKey(
+                                                    child.workspacePath,
+                                                    child.workspaceIdentity,
+                                                  ) === activeWorkspaceKey,
+                                              )}
+                                              isExpanded={resolveWorkspaceDragExpanded({
+                                                activeDragId: activeWorkspaceDragId,
+                                                expanded: expandedWorkspacePaths.has(
+                                                  tab.workspacePath,
+                                                ),
+                                                tabId: tab.id,
+                                              })}
+                                              activateTab={activateTab}
+                                              closeTab={closeTab}
+                                              toggleWorkspaceExpanded={toggleWorkspaceExpanded}
+                                              onSelectTask={onSelectTask}
+                                              onSelectAcpSession={onSelectAcpSession}
+                                              activeAcpSessionId={activeAcpSessionId}
+                                              onStartDraftInWorkspace={onStartDraftInWorkspace}
+                                              taskItems={
+                                                taskGroup?.items ?? EMPTY_WORKSPACE_TASK_ITEMS
+                                              }
+                                              taskListLoading={taskLoading}
+                                              taskListHasMore={taskGroup?.hasMore ?? false}
+                                              taskListHasUnread={taskGroup?.hasUnread ?? false}
+                                              taskListLiveWorkflowCount={
+                                                taskGroup?.liveWorkflowCount ?? 0
+                                              }
+                                              workspaceKey={workspaceKey}
+                                              onShowMoreWorkspaceTasks={
+                                                handleShowMoreWorkspaceTasks
+                                              }
+                                              reconnectingRemoteWorkspaceKeys={
+                                                reconnectingRemoteWorkspaceKeys
+                                              }
+                                              remoteWorkspaceErrorByWorkspaceKey={
+                                                remoteWorkspaceErrorByWorkspaceKey
+                                              }
+                                              reconnectingRemoteWorkspaceLogsByWorkspaceKey={
+                                                reconnectingRemoteWorkspaceLogsByWorkspaceKey
+                                              }
+                                              onReconnectRemoteWorkspace={
+                                                onReconnectRemoteWorkspace
+                                              }
+                                              onOpenFileTree={handleOpenWorkspaceFileTree}
+                                              projectTaskList={
+                                                worktrees.length > 0 || isLinkedWorktree ? (
+                                                  <div
+                                                    data-project-workspace-path={tab.workspacePath}
+                                                  >
+                                                    <WorkspaceTimelineTasksSection
+                                                      workspaceTabs={projectTabs}
+                                                      activeWorkspacePath={workspacePath}
+                                                      activeWorkspaceIdentity={workspaceIdentity}
+                                                      activeTaskId={activeTaskId}
+                                                      activeAcpSessionId={activeAcpSessionId}
+                                                      taskSortBy={taskSortBy}
+                                                      groupByDate={false}
+                                                      taskRowVariant="default"
+                                                      worktreeWorkspaceKeys={worktreeWorkspaceKeys}
+                                                      expanded={expandedWorkspacePaths.has(
+                                                        tab.workspacePath,
+                                                      )}
+                                                      onSelectTask={handleTaskRowSelect}
+                                                      onSelectAcpSession={onSelectAcpSession}
+                                                    />
+                                                  </div>
+                                                ) : undefined
+                                              }
+                                            />
+                                          );
+                                        },
+                                      )}
                                     </ul>
                                   </SortableContext>
                                   {typeof document === "undefined"

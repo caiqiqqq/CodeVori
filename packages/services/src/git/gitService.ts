@@ -3,6 +3,7 @@ import type { GitBranchComparison, GitFileChange, GitChangeSectionId } from "@zc
 import { isPathInWorkspaceScope, normalizeGitPath, toWorkspaceRelativeGitPath } from "./config.js";
 import { filterCommitMessageFilesByCurrentSession } from "./commitMessageFileScope.js";
 import type { IGitService } from "./git.js";
+import { createForgeService } from "./forgeService.js";
 import type { GitCommitMessageGenerator } from "./gitCommitMessageGenerator.js";
 import {
   createVersionControlService,
@@ -174,12 +175,15 @@ function getCommitMessageDiffQueries(
 export function createGitService(options?: {
   repo?: GitCliRepo;
   versionControl?: VersionControlService;
+  forgeOptions?: Parameters<typeof createForgeService>[0];
   commitMessageGenerator?: GitCommitMessageGenerator;
+  prepareWorktreeRemoval?: (worktreePath: string) => Promise<"workspace-busy" | null>;
 }): IGitService {
   const repo = options?.repo ?? createGitCliRepo();
 
   return {
     ...(options?.versionControl ?? createVersionControlService()),
+    ...createForgeService({ gitRepo: repo, ...options?.forgeOptions }),
     async getRepositorySummary(params) {
       const status = await repo.getStatus(params.workspacePath);
       return status.summary;
@@ -198,6 +202,7 @@ export function createGitService(options?: {
         params.workspacePath,
         params.maxCount,
         params.skip,
+        params.headOnly,
       );
       return {
         commits: snapshot.commits,
@@ -228,6 +233,14 @@ export function createGitService(options?: {
 
     async createAutomaticWorktree(params) {
       return await repo.createAutomaticWorktree(params.workspacePath, params.worktreeRootPath);
+    },
+
+    async listManagedWorktrees(params) {
+      return await repo.listManagedWorktrees(params.worktreeRootPath);
+    },
+
+    async removeManagedWorktree(params) {
+      return await repo.removeManagedWorktree(params, options?.prepareWorktreeRemoval);
     },
 
     async getChanges(params) {

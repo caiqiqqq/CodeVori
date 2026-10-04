@@ -543,7 +543,7 @@ export function createTabStore(storage: StorageLike | null | undefined = undefin
 
     activateTabByPath: (path: string, options) => {
       const stateBefore = get();
-      const tab = stateBefore.tabs.find((currentTab): currentTab is WorkspaceTabState => {
+      const matches = stateBefore.tabs.filter((currentTab): currentTab is WorkspaceTabState => {
         if (!isWorkspaceTab(currentTab) || currentTab.workspacePath !== path) {
           return false;
         }
@@ -554,6 +554,13 @@ export function createTabStore(storage: StorageLike | null | undefined = undefin
 
         return true;
       });
+      // 路径相同的远程 tab 可能排在本地 tab 前面；无远程 identity 的导航优先落在本机。
+      const tab = options?.workspaceIdentity
+        ? matches[0]
+        : (matches.find(
+            (candidate) =>
+              !candidate.workspaceIdentity && !candidate.remoteSessionId && !candidate.remoteTarget,
+          ) ?? matches[0]);
       if (!tab) {
         return false;
       }
