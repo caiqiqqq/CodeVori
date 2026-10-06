@@ -121,3 +121,33 @@ test("remote task tools retain identity and attachment, ignoring local-looking w
   assert.equal(target.nativeSessionId, null);
   assert.equal(target.sidePaneOwnerId, "work-task:task-1");
 });
+
+test("merge conversations and tools use the saved integration binding without replacing the original", () => {
+  const bound: WorkTask = {
+    ...task,
+    worktree,
+    session: { kind: "api", id: "native" },
+    merge: {
+      id: "00000000-0000-4000-8000-000000000002",
+      projectPath: "/project",
+      targetBranch: "release",
+      phase: "resolving",
+      worktree: { ...worktree, path: "/trees/merge/project", branchName: "merge/test" },
+      session: { kind: "api", id: "resolver" },
+    },
+  };
+  assert.deepEqual(workTaskConversationBinding(bound, true), {
+    kind: "api",
+    workspacePath: "/trees/merge/project",
+    sessionId: "resolver",
+  });
+  assert.equal(workTaskWorkspaceToolTarget(bound, true).workspacePath, "/trees/merge/project");
+  assert.equal(workTaskWorkspaceToolTarget(bound, true).nativeSessionId, "resolver");
+  assert.equal(workTaskConversationBinding(bound, false)?.sessionId, "native");
+  assert.equal(workTaskConversationBinding({ ...bound, remoteSessionId: "remote" }, true), null);
+  assert.equal(
+    workTaskConversationBinding({ ...bound, merge: { ...bound.merge!, session: undefined } }, true),
+    null,
+  );
+  assert.equal(bound.session?.id, "native");
+});

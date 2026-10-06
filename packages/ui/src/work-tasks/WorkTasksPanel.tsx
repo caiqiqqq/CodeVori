@@ -1,11 +1,15 @@
 import { useCallback, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { ListTodo, Play, Plus } from "lucide-react";
-import { type WorkTask, type WorkTaskScope } from "@zcode/shared";
+import { isWorkTaskMerging, type WorkTask, type WorkTaskScope } from "@zcode/shared";
 import { useWorkTasks } from "@/hooks/useWorkTasks.js";
 import { useWorktreeProjectGroups } from "@/hooks/useWorktreeProjectGroups.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
 import { getPathLeaf } from "@/lib/path.js";
-import { filterWorkTasks, groupWorkTasksByColumn } from "@/lib/workTaskBoard.js";
+import {
+  canCompleteWorkTask,
+  filterWorkTasks,
+  groupWorkTasksByColumn,
+} from "@/lib/workTaskBoard.js";
 import {
   workTaskWorkspaceToolTarget,
   type WorkTaskWorkspaceToolTarget,
@@ -20,6 +24,8 @@ import {
 } from "@/components/ui/select.js";
 import { WorkTaskEditor } from "./WorkTaskEditor.js";
 import { WorkTaskDetail } from "./WorkTaskDetail.js";
+import { WorkTaskCompletionDialog } from "./WorkTaskCompletionDialog.js";
+import { WorkTaskMergeControls } from "./WorkTaskMergeControls.js";
 import { WorkTaskBoardView } from "./WorkTaskBoardView.js";
 import { WorkTasksSplitLayout } from "./WorkTasksSplitLayout.js";
 import {
@@ -39,6 +45,7 @@ interface Props extends WorkTaskScope {
   conversationOptions?: WorkTaskConversationOptions;
   workspaceTools?: WorkTaskConversationTools;
   onWorkspaceToolTargetChange?: (target: WorkTaskWorkspaceToolTarget | null) => void;
+  reviewContainer?: HTMLElement | null;
 }
 
 export function WorkTasksPanel(props: Props) {
@@ -120,6 +127,7 @@ export function WorkTasksPanel(props: Props) {
         conversationOptions={props.conversationOptions}
         workspaceTools={props.workspaceTools}
         onWorkspaceToolTargetChange={props.onWorkspaceToolTargetChange}
+        reviewContainer={props.reviewContainer}
       />
     </div>
   );
@@ -134,6 +142,7 @@ function WorkTasksBoard({
   conversationOptions,
   workspaceTools,
   onWorkspaceToolTargetChange,
+  reviewContainer,
 }: {
   scope: WorkTaskScope;
   hasProject: boolean;
@@ -143,17 +152,33 @@ function WorkTasksBoard({
   conversationOptions?: WorkTaskConversationOptions;
   workspaceTools?: WorkTaskConversationTools;
   onWorkspaceToolTargetChange?: Props["onWorkspaceToolTargetChange"];
+  reviewContainer?: HTMLElement | null;
 }) {
   const t = useWorkTaskMessages();
   const [editor, setEditor] = useState<{ task: WorkTask | null } | null>(null);
   const [selection, setSelection] = useState<string | null>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [completionId, setCompletionId] = useState<string | null>(null);
+  const [conversationView, setConversationView] = useState<{
+    taskId: string;
+    mergeId: string;
+    merge: boolean;
+  } | null>(null);
   const panel = useWorkTasks(scope, false, hasProject);
   const tasks = useMemo(() => filterWorkTasks(panel.board?.tasks ?? [], {}), [panel.board?.tasks]);
   const selected = tasks.find((task) => task.id === selection);
+  const completionTask = tasks.find((task) => task.id === completionId);
+  if (completionId && (!completionTask || !canCompleteWorkTask(completionTask)))
+    setCompletionId(null);
+  const showMergeConversation =
+    !!selected?.merge?.session &&
+    (isWorkTaskMerging(selected) ||
+      (conversationView?.taskId === selected.id &&
+        conversationView.mergeId === selected.merge.id &&
+        conversationView.merge));
   const toolTarget = useMemo(
-    () => (selected ? workTaskWorkspaceToolTarget(selected) : null),
-    [selected],
+    () => (selected ? workTaskWorkspaceToolTarget(selected, showMergeConversation) : null),
+    [selected, showMergeConversation],
   );
   // 工具目标只投影已选任务；布局同步在绘制前完成，不让首次点击沿用主项目目录。
   useLayoutEffect(() => {
@@ -164,7 +189,17 @@ function WorkTasksBoard({
   // Host 归档或取消任务后立即收起观察窗格，任务恢复可见时不能重开旧历史。
   if (selection && panel.board && !panel.loading && !selected) setSelection(null);
   const columns = useMemo(() => groupWorkTasksByColumn(tasks), [tasks]);
-  const openInline = (task: WorkTask) => setSelection(task.id);
+  const selectTask = (id: string) => {
+    setCompletionId(null);
+    setSelection(id);
+  };
+  const openInline = (task: WorkTask) => selectTask(task.id);
+  const requestCompletion = (task: WorkTask) => {
+    if (canCompleteWorkTask(task)) setCompletionId(task.id);
+  };
+  const closeCompletion = useCallback((id: string) => {
+    setCompletionId((current) => (current === id ? null : current));
+  }, []);
   const closeSelection = useCallback((id: string) => {
     // 旧 pane 的迟到归档/删除事件只能关闭当时选择的任务。
     setSelection((current) => (current === id ? null : current));
@@ -175,6 +210,16 @@ function WorkTasksBoard({
   };
   return (
     <>
+      {selected &&
+      ((selected.status === "review" && !selected.archived && selected.worktree) ||
+        selected.merge) ? (
+        <WorkTaskMergeControls
+          key={selected.id}
+          task={selected}
+          panel={panel}
+          container={reviewContainer ?? null}
+        />
+      ) : null}
       <WorkTasksSplitLayout
         hasSelection={Boolean(selected)}
         sidebar={
@@ -232,10 +277,11 @@ function WorkTasksBoard({
                 <WorkTaskBoardView
                   columns={columns}
                   panel={panel}
-                  onSelect={setSelection}
+                  onSelect={selectTask}
                   onEdit={edit}
                   onOpenConversation={openInline}
                   onDetails={(task) => setDetailsId(task.id)}
+                  onComplete={requestCompletion}
                   selectedId={selected?.id}
                 />
               )}
@@ -245,20 +291,39 @@ function WorkTasksBoard({
         conversation={
           <WorkTaskConversationPane
             task={selected ?? null}
+            showMergeConversation={showMergeConversation}
+            onToggleMergeConversation={() => {
+              if (selected?.merge)
+                setConversationView({
+                  taskId: selected.id,
+                  mergeId: selected.merge.id,
+                  merge: !showMergeConversation,
+                });
+            }}
             panel={panel}
             options={{
               ...conversationOptions,
-              focused: conversationOptions?.focused !== false && !editor && !details,
+              focused:
+                conversationOptions?.focused !== false && !editor && !details && !completionTask,
             }}
             workspaceTools={workspaceTools}
             onClose={closeSelection}
             onDetails={(task) => setDetailsId(task.id)}
             onEdit={edit}
+            onComplete={requestCompletion}
             onOpenConversation={onOpenConversation}
             onOpenNativeSession={onOpenNativeSession}
           />
         }
       />
+      {completionTask && canCompleteWorkTask(completionTask) ? (
+        <WorkTaskCompletionDialog
+          key={completionTask.id}
+          task={completionTask}
+          panel={panel}
+          onClose={closeCompletion}
+        />
+      ) : null}
       {editor ? (
         <WorkTaskEditor
           key={editor.task?.id ?? "new"}

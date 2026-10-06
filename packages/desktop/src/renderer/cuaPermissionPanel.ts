@@ -17,6 +17,7 @@ declare global {
       prepareDrag?(): Promise<PrepareCuaHelperPermissionDragResult>;
       startDrag?(): void;
       notifyDragEnded?(): void;
+      close?(): void;
       onState?(callback: (state: CuaPermissionPanelState) => void): () => void;
     };
   }
@@ -29,6 +30,8 @@ const permissionLabel = document.getElementById("permissionLabel");
 const hintSuffix = document.getElementById("hintSuffix");
 const completion = document.getElementById("completion");
 const icon = document.querySelector<HTMLElement>(".icon");
+const closeButton = document.getElementById("closeButton");
+closeButton?.addEventListener("click", () => bridge?.close?.());
 
 // 挂载即预热：install+verify 是异步的，必须在用户开始拖之前完成，
 // 否则 dragstart 里无法同步发起拖拽（等 I/O 就会错过手势窗口）。
@@ -54,6 +57,8 @@ bridge?.onState?.((state) => {
   if (permissionLabel) permissionLabel.textContent = messages.permissionLabel;
   if (hintSuffix) hintSuffix.textContent = messages.hintSuffix;
   if (completion) completion.textContent = messages.completion;
+  closeButton?.setAttribute("title", messages.closeTitle);
+  closeButton?.setAttribute("aria-label", messages.closeTitle);
   // 用真实 ZCode 图标替换占位渐变，和系统设置列表里那一行的图标保持一致。
   if (state.iconDataUrl && icon) {
     icon.style.backgroundImage = `url("${state.iconDataUrl}")`;

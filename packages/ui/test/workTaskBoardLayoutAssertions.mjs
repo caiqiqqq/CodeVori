@@ -172,6 +172,16 @@ export async function exerciseWorkTaskCompactRows(page, panel, artifacts) {
       }, theme);
       for (const width of [1280, 390, 320]) {
         await page.setViewportSize({ width, height: 850 });
+        // 窗口 resize 后由 ResizeObserver 更新分栏；断言等待真实布局，不采样旧宽屏投影。
+        await page.waitForFunction(() => {
+          const group = document.getElementById("work-task-workbench");
+          const sidebar = document.getElementById("work-task-sidebar");
+          const wide = group.clientWidth >= 768;
+          return (
+            group.dataset.wide === String(wide) &&
+            (wide || Math.abs(sidebar.clientWidth - group.clientWidth) <= 1)
+          );
+        });
         await assertWorkTaskBoardLayout(panel);
         const row = panel.locator('[data-task-id="compact-task-0"]');
         const title = row.getByTestId("work-task-card-title");
@@ -201,6 +211,28 @@ export async function exerciseWorkTaskCompactRows(page, panel, artifacts) {
     await page.mouse.move(0, 0);
     await page.getByRole("tooltip").waitFor({ state: "detached" });
     assert.deepEqual(await commands(), before, "compact presentation must not issue commands");
+  } catch (error) {
+    await page.screenshot({ path: join(artifacts, "compact-tasks-failure.png") });
+    process.stderr.write(
+      JSON.stringify(
+        await page.evaluate(() => {
+          const group = document.getElementById("work-task-workbench");
+          return {
+            viewport: innerWidth,
+            wide: group.dataset.wide,
+            group: group.getBoundingClientRect().toJSON(),
+            children: Array.from(group.children).map((element) => ({
+              id: element.id,
+              hidden: element.hidden,
+              display: getComputedStyle(element).display,
+              width: element.getBoundingClientRect().width,
+              style: element.getAttribute("style"),
+            })),
+          };
+        }),
+      ) + "\n",
+    );
+    throw error;
   } finally {
     await page.evaluate((theme) => {
       document.documentElement.className = theme;

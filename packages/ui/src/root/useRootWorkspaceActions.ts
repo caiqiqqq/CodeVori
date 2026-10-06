@@ -135,7 +135,7 @@ export function useRootWorkspaceActions({
       const activeGroupWasRestored = Boolean(
         activeGroup &&
         [activeGroup.primaryBinding, ...Object.values(activeGroup.panes)].some(
-          (binding) => binding.restoredUnvalidated,
+          (binding) => binding?.restoredUnvalidated,
         ),
       );
       if (activeGroupWasRestored) {

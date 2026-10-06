@@ -1,0 +1,19 @@
+{
+  "name": "computer-use",
+  "version": "0.6.4",
+  "description": "Control local macOS applications through accessibility, screenshots and scoped input using Open ZCode Computer Use.",
+  "author": {
+    "name": "Open ZCode Computer Use contributors",
+    "url": "https://github.com/hqhq1025/open-zcode-computer-use"
+  },
+  "homepage": "https://github.com/hqhq1025/open-zcode-computer-use",
+  "license": "MIT",
+  "skills": "./skills",
+  "mcpServers": {
+    "computer-use": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${ZCODE_PLUGIN_ROOT}/dist/mcp/server.js"]
+    }
+  }
+}

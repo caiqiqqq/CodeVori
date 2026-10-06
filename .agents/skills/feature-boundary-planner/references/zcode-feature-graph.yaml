@@ -426,7 +426,7 @@ nodes:
         symbol: IWorkTaskService
     invariants:
       - The target Host owns accepted task state; UI drafts and board projections are not another queue.
-      - Starting is explicit; completion and archive never commit, merge or delete a worktree or session.
+      - Starting and local task merging are explicit; ordinary completion and archive never write Git or delete a worktree or session.
       - The first phase executes local Git projects only; remote targets cannot fall back to local execution.
   - id: surface.work-tasks-board
     kind: ui-surface
@@ -440,21 +440,77 @@ nodes:
         symbol: handleOpenWorkTaskConversation
   - id: surface.work-task-editor
     kind: ui-surface
-    label: Work task draft and saved API or ACP configuration
+    label: Work task shared composer draft, attachments and saved API or ACP configuration
+    aliases:
+      - 任务描述
+      - 任务附件
     codeSeeds:
       - file: packages/ui/src/work-tasks/WorkTaskEditor.tsx
         symbol: WorkTaskEditor
       - file: packages/ui/src/hooks/useWorkTaskModels.ts
         symbol: useWorkTaskModels
+      - file: packages/ui/src/work-tasks/WorkTaskPromptField.tsx
+        symbol: WorkTaskPromptField
+      - file: packages/ui/src/hooks/useWorkTaskPromptAssets.ts
+        symbol: useWorkTaskPromptAssets
     invariants:
       - Selecting an Agent or creating a task only saves configuration; it does not create or prompt an Agent session.
       - Existing task session bindings cannot switch execution kind or ACP Agent on retry.
+      - File collection and mentions never create, prewarm or authenticate an Agent; failed saves preserve the independent draft.
+  - id: shared-ui.chat-prompt-editor
+    kind: shared-ui
+    label: Existing shared chat prompt editor and attachment collection
+    codeSeeds:
+      - file: packages/ui/src/prompt-editor/ChatPromptEditor.tsx
+        symbol: ChatPromptEditor
+      - file: packages/ui/src/v4/composer/useComposerAttachments.ts
+        symbol: useComposerAttachments
+  - id: persistence.work-task-attachments
+    kind: persistence
+    label: Host-owned immutable work task attachment snapshots
+    codeSeeds:
+      - file: packages/services/src/session/workTaskAttachmentStore.ts
+        symbol: WorkTaskAttachmentStore
+    invariants:
+      - Task records store scoped file references, not base64; saving uses bounded attachment transactions independent of Agent sessions.
+      - Removing an attachment from a draft never deletes content already referenced by a conversation.
   - id: surface.work-task-review
     kind: ui-surface
-    label: Work task review, follow-up and explicit completion
+    label: Work task review, follow-up, ordinary completion and selected-branch merge
     codeSeeds:
       - file: packages/ui/src/work-tasks/WorkTaskDetail.tsx
         symbol: WorkTaskDetail
+      - file: packages/ui/src/work-tasks/WorkTaskCompletionDialog.tsx
+        symbol: WorkTaskCompletionDialog
+      - file: packages/ui/src/lib/workTaskBoard.ts
+        symbol: canCompleteWorkTask
+      - file: packages/ui/src/work-tasks/WorkTaskMergeControls.tsx
+        symbol: WorkTaskMergeControls
+      - file: packages/ui/src/work-tasks/WorkTasksPanel.tsx
+        symbol: WorkTasksBoard
+      - file: packages/ui/src/app-shell/AnimatedSidePanePanel.tsx
+        symbol: AnimatedSidePanePanel
+    invariants:
+      - Merge controls project into the existing Git review tab while retaining the branch draft in the board subtree; no additional task subscription is created.
+      - Closing the side pane or review tab preserves the branch and conversation drafts; changing task resets the branch draft.
+      - Header and task-row completion share one task-id-scoped board confirmation and the original complete command; details do not own another dialog and completion never writes Git or replaces a conversation.
+  - id: service.work-task-merge
+    kind: service
+    label: Owner-admitted local merge with isolated API or ACP conflict resolution
+    codeSeeds:
+      - file: packages/services/src/work-task/workTaskMerge.ts
+        symbol: createWorkTaskMerge
+      - file: packages/services/src/git/repo/gitTaskMergeRepo.ts
+        symbol: createGitTaskMergeRepo
+      - file: packages/services/src/git/repo/gitTaskMergePublish.ts
+        symbol: publishCheckedOutTaskMerge
+      - file: packages/services/src/git/repo/gitWorktreeChanges.ts
+        symbol: hasGitWorktreeChanges
+    invariants:
+      - Commit only the verified task worktree and publish to the selected local target with an expected-old ref update; never push automatically.
+      - Resolve text conflicts in an isolated worktree using saved task settings; preserve the original session and refuse busy resolver or source sessions.
+      - Same repository target merges share SQLite admission, owner leases and runSeq; late runs cannot complete a newer task.
+      - Status presence checks drain stdout while retaining only its first byte and wait for successful exit; untracked directories remain dirty and query failures never bypass merge protection.
   - id: service.work-task-owner
     kind: service
     label: Host work task state and scheduler owner
@@ -495,6 +551,7 @@ nodes:
         symbol: resolveWorktreeRootPath
     invariants:
       - Allocate under the configured Worktrees root; retry reuses only a verified project and branch binding.
+      - Resolve the selected local source branch only at first allocation and persist its base commit; retries never follow later branch movement.
       - Use canonical filesystem paths for ownership; do not touch an unrelated directory or branch.
 edges:
   - from: capability.work-tasks
@@ -514,6 +571,21 @@ edges:
     type: shares-component
     rank: must-inspect
     condition: API and ACP selections save a task draft without changing the active conversation.
+  - from: surface.work-task-editor
+    to: shared-ui.chat-prompt-editor
+    type: shares-component
+    rank: must-inspect
+    condition: Embedded task descriptions reuse the existing editor and collect attachments without an Agent session.
+  - from: surface.work-task-editor
+    to: service.composer-host-file-search
+    type: options-from
+    rank: must-inspect
+    condition: The task-only @ and add menu query project file candidates; Agent catalogs and capabilities are disabled.
+  - from: surface.work-task-editor
+    to: service.work-task-owner
+    type: commands-through
+    rank: must-inspect
+    condition: Attachments are saved before the existing create or update command; Enter only inserts a newline.
   - from: surface.work-tasks-board
     to: service.work-task-owner
     type: commands-through
@@ -527,9 +599,29 @@ edges:
     type: persists-through
     rank: must-inspect
   - from: service.work-task-owner
+    to: persistence.work-task-attachments
+    type: persists-through
+    rank: must-inspect
+    condition: Local imports and binary chunks become immutable, scope-validated Host snapshots for API and ACP task execution.
+  - from: service.work-task-owner
     to: service.work-task-execution
     type: executes-through
     rank: must-inspect
+  - from: service.work-task-owner
+    to: service.work-task-merge
+    type: executes-through
+    rank: must-inspect
+    condition: Explicit merge commands share the existing owner queue and persist operation phases before publication.
+  - from: service.work-task-merge
+    to: service.work-task-execution
+    type: admitted-by
+    rank: must-inspect
+    condition: Text conflicts use existing V4 or ACP conversation admission, binding before prompt with saved settings and without original attachments.
+  - from: service.work-task-merge
+    to: boundary.work-task-worktree
+    type: isolated-by
+    rank: must-inspect
+    condition: Git validates registered original and integration worktrees, conflict content, ancestry and target cleanliness before local publication.
   - from: service.work-task-execution
     to: boundary.work-task-worktree
     type: isolated-by

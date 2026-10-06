@@ -43,6 +43,7 @@ import {
   ensureGitCommandSucceeded,
   ensureRepositoryAvailable,
   fileExists,
+  hasGitOperationInProgress,
   inferKindFromNumstat,
   isMissingWorkingDirectoryResult,
   isNotRepositoryResult,
@@ -103,16 +104,6 @@ function toCompleteDiffContents(
 
   return { beforeContent, afterContent };
 }
-
-const GIT_OPERATION_MARKERS = [
-  "MERGE_HEAD",
-  "CHERRY_PICK_HEAD",
-  "REVERT_HEAD",
-  "REBASE_HEAD",
-  "rebase-merge",
-  "rebase-apply",
-  "BISECT_LOG",
-] as const;
 
 const DEFAULT_GIT_GRAPH_MAX_COUNT = 100;
 const MAX_GIT_GRAPH_MAX_COUNT = 200;
@@ -653,24 +644,7 @@ export function createGitCliRepo(options?: {
   }
 
   async function hasOperationInProgress(resolution: GitResolvedRepository): Promise<boolean> {
-    // 进行中的 merge / rebase / cherry-pick 在不同 Git 版本上的报错并不完全稳定，
-    // 这里先通过 git-dir 标记位做一次轻量探测，让上层能拿到更稳定的阻塞原因。
-    const gitPathResult = await commandProvider.run({
-      cwd: resolution.repoRoot,
-      args: ["rev-parse", ...GIT_OPERATION_MARKERS.flatMap((marker) => ["--git-path", marker])],
-      timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-    });
-    ensureGitCommandSucceeded("git rev-parse --git-path", gitPathResult);
-
-    const candidatePaths = gitPathResult.stdout
-      .replace(/\r\n/g, "\n")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .map((line) => (isAbsolute(line) ? line : resolve(resolution.repoRoot, line)));
-
-    const markerExists = await Promise.all(candidatePaths.map((path) => fileExists(path)));
-    return markerExists.some(Boolean);
+    return hasGitOperationInProgress(commandProvider, resolution.repoRoot);
   }
 
   async function readOptionalGitConfig(

@@ -6,6 +6,11 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { prepareDevElectronAppBundle } from "./devElectronAppBundle.mjs";
+import {
+  createDevElectronLaunch,
+  readDevElectronApplicationAsns,
+  signalDevElectronApplication,
+} from "./devElectronLaunch.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const mainBundle = resolve(root, "out/main/index.js");
@@ -111,6 +116,7 @@ console.log("[dev] Starting Electron...");
 
 const electronBinary = resolveLocalElectronBinary();
 let electronCommand = existsSync(electronBinary) ? electronBinary : "electron";
+let electronAppPath;
 
 if (process.platform === "darwin" && existsSync(electronBinary)) {
   // macOS 命令行启动的 raw Electron 没有 CFBundleURLTypes，LaunchServices 会把
@@ -118,21 +124,33 @@ if (process.platform === "darwin" && existsSync(electronBinary)) {
   // Info.plist 后，线上 Share 页面无需感知 Dev，仍可把链接投递给已运行的 Dev 实例。
   const electronPackageJsonPath = require.resolve("electron/package.json");
   const electronPackage = JSON.parse(await readFile(electronPackageJsonPath, "utf8"));
-  const electronAppPath = resolve(electronBinary, "../../..");
+  const sourceAppPath = resolve(electronBinary, "../../..");
   const devBundle = await prepareDevElectronAppBundle({
-    electronAppPath,
+    electronAppPath: sourceAppPath,
     runtimeRoot: resolve(root, "../../.zcode-runtime/desktop-dev"),
     electronVersion: electronPackage.version,
     arch: process.arch,
   });
   electronCommand = devBundle.executablePath;
+  electronAppPath = devBundle.appPath;
   console.log(`[dev] Prepared macOS ZCode Dev bundle: ${devBundle.appPath}`);
 }
 
-const electron = spawn(electronCommand, ["."], {
+const launch = createDevElectronLaunch({
+  executablePath: electronCommand,
+  appPath: electronAppPath,
+  cwd: root,
+  rendererUrl,
+});
+const existingApplicationAsns = launch.useLaunchServices
+  ? await readDevElectronApplicationAsns(electronCommand)
+  : new Set();
+let ownedApplicationAsns;
+let signalOperation = Promise.resolve();
+const electron = spawn(launch.command, launch.args, {
   cwd: root,
   stdio: "inherit",
-  env: { ...process.env, ELECTRON_RENDERER_URL: rendererUrl },
+  env: launch.env,
   windowsHide: true,
   detached: process.platform !== "win32",
 });
@@ -143,12 +161,31 @@ let forceKillTimer;
 let hardExitTimer;
 
 function signalElectronTree(signal) {
-  if (electronClosed || !electron.pid) {
+  if ((!launch.useLaunchServices && electronClosed) || !electron.pid) {
     return;
   }
 
   if (process.platform === "win32") {
     electron.kill(signal);
+    return;
+  }
+
+  if (launch.useLaunchServices) {
+    // open -W 的 PID 不是应用 PID；只清理本次 LaunchServices 新建的精确实例，避免孤儿窗口。
+    signalOperation = signalOperation
+      .then(async () => {
+        const owned = await signalDevElectronApplication({
+          executablePath: electronCommand,
+          existingAsns: existingApplicationAsns,
+          ownedAsns: ownedApplicationAsns,
+          signal,
+        });
+        // open 尚未完成注册时不能把空集合锁成终态；后续强制清理仍需识别迟到的本次实例。
+        if (owned.size > 0) ownedApplicationAsns = owned;
+      })
+      .catch((error) =>
+        console.error("[dev] Failed to stop owned Electron application:", error.message),
+      );
     return;
   }
 
@@ -160,7 +197,7 @@ function signalElectronTree(signal) {
 }
 
 function forceKillElectronTree() {
-  if (electronClosed || !electron.pid) {
+  if ((!launch.useLaunchServices && electronClosed) || !electron.pid) {
     return;
   }
 
@@ -188,7 +225,13 @@ function shutdownFromSignal(signal) {
   // 这里把 Electron 放进独立进程组并由 dev 脚本统一回收，超时后强制清掉整棵开发进程树。
   signalElectronTree("SIGTERM");
   forceKillTimer = setTimeout(forceKillElectronTree, 1_500);
-  hardExitTimer = setTimeout(() => process.exit(0), 5_000);
+  hardExitTimer = setTimeout(
+    () => {
+      if (launch.useLaunchServices) forceKillElectronTree();
+      void signalOperation.finally(() => process.exit(0));
+    },
+    launch.useLaunchServices ? 10_000 : 5_000,
+  );
 }
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
@@ -200,11 +243,16 @@ electron.on("error", (error) => {
   process.exit(1);
 });
 
-electron.on("close", (code, signal) => {
+electron.on("close", async (code, signal) => {
   electronClosed = true;
   clearTimeout(forceKillTimer);
   clearTimeout(hardExitTimer);
   if (shuttingDown) {
+    // concurrently 可能先终止 open 包装层；必须等待精确应用清理，不能留下 launchd 托管的孤儿。
+    if (launch.useLaunchServices) {
+      forceKillElectronTree();
+      await signalOperation;
+    }
     process.exit(0);
   }
   process.exit(code ?? (signal ? 1 : 0));

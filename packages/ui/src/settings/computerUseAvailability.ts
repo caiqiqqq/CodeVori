@@ -54,7 +54,7 @@ export function resolveComputerUseAvailability({
   }
   if (!isDesktop) return { kind: "web", supported: false };
   if (isMacDesktop) return { kind: "local-macos", supported: true };
-  if (isWindowsDesktop) return { kind: "local-windows", supported: true };
+  if (isWindowsDesktop) return { kind: "local-windows", supported: false };
   return { kind: "local-linux", supported: false };
 }
 

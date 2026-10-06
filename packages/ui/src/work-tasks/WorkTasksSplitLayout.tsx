@@ -34,7 +34,8 @@ export function WorkTasksSplitLayout({
         persistenceEnabled={wide}
         disabled={!wide}
         data-wide={wide}
-        className="group/work-task-workbench min-h-0 min-w-0 [&>[hidden]]:hidden!"
+        // 窄屏隐藏另一栏后，库留下的 flex-grow < 1 会保留空白；只覆盖投影，不改桌面比例。
+        className="group/work-task-workbench min-h-0 min-w-0 [&>[hidden]]:hidden! data-[wide=false]:[&>[data-panel]]:flex-1!"
       >
         <ResizablePanel
           id={PANEL_IDS[0]}

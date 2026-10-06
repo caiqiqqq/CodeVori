@@ -396,6 +396,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     ? workTaskTools?.readOnlyReason
     : workspaceReadOnlyReason;
   const hasWorkspaceToolsView = workspaceMainView === "chat" || Boolean(workTaskToolTarget);
+  const [workTaskReviewContainer, setWorkTaskReviewContainer] = useState<HTMLElement | null>(null);
   const isLinuxDesktop = Boolean(isDesktop && !isMacDesktop && !isWindowsDesktop);
   // Windows/Linux 也需要外层留白，避免独立面板贴住窗口边缘；桌面统一使用 4px 间距。
   const hasDesktopPanelInset = isMacDesktop || isWindowsDesktop || isLinuxDesktop;
@@ -413,6 +414,9 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   const collapsedSidebarWidthPx = hasDesktopPanelInset ? 4 : 0;
   const [draftHeaderDropTargetController, setDraftHeaderDropTargetController] =
     useState<ConversationDropTargetController | null>(null);
+  const [conversationTabsContainer, setConversationTabsContainer] = useState<HTMLDivElement | null>(
+    null,
+  );
   // 壳只读当前 Host 会话投影；选择请求也只路由到 pane，ACP 身份不进入原生 task store。
   const [acpSessionProjection, setAcpSessionProjection] = useState<{
     workspaceKey: string;
@@ -1815,6 +1819,9 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
         onOpenDeveloperTools={handleOpenDeveloperTools}
         onOpenTerminalTab={handleOpenTerminalTab}
         onOpenReviewTab={handleToggleGit}
+        onWorkTaskReviewContainerChange={
+          workTaskToolTarget ? setWorkTaskReviewContainer : undefined
+        }
         onOpenSelectionSideConversation={handleOpenSelectionSideConversationLauncher}
         onRevealGitFileInTree={handleRevealGitFileInTree}
         onOpenBrowserUrl={handleOpenBrowserUrl}
@@ -2063,6 +2070,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                         className="border-b"
                       >
                         <WorkspaceHeader
+                          onConversationTabsContainerChange={setConversationTabsContainer}
                           reserveWindowControls={!isSidePaneVisible}
                           variant={
                             acpHeaderTitle ? "acp" : activeTaskId === null ? "draft" : "task"
@@ -2224,6 +2232,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                   remoteSessionId={workspaceRemoteSessionId}
                                   workspaceTabs={workspaceTabs}
                                   onWorkspaceToolTargetChange={workTaskTools?.onTargetChange}
+                                  reviewContainer={workTaskReviewContainer}
                                   workspaceTools={{
                                     isDesktop,
                                     readOnlyReason: panelReadOnlyReason,
@@ -2236,6 +2245,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                     isSidePaneOpen: hasWorkspaceToolsView && isSidePaneOpen,
                                     onToggleTerminal: handleToggleTerminal,
                                     onToggleSidePane: handleToggleSidePane,
+                                    onOpenReview: handleOpenGitReview,
                                     toggleSidePaneShortcutLabel,
                                   }}
                                   onOpenConversation={handleOpenWorkTaskConversation}
@@ -2320,6 +2330,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                   绑定语义与 testid 契约（paneId=workspace-main）不变。 */}
                             <WorktreeDraftIntentContext.Provider value={worktreeDraftIntent}>
                               <V4WorkspaceChatArea
+                                conversationTabsContainer={conversationTabsContainer}
                                 readOnly={Boolean(workspaceReadOnlyReason)}
                                 foregroundEnabled={isWorkspaceVisible}
                                 workspacePath={workspaceAbsPath}

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "inputHashEncoding": "UTF-8 with CRLF normalized to LF; notice and source snapshot hashes remain byte-exact",
   "scope": "Production dependency union across current workspace projects, copied source/assets and native tools; not a per-installer SBOM or a certification of all licensing obligations.",
-  "noticesSha256": "39c14d1b0d6a57d6447a9da55b8b7a54a7401ffa7c13ace819a10302fa6da668",
+  "noticesSha256": "a35cbe452d80f5717a7e9b429019b62ebae150635290cc8e684ccf6b0190c538",
   "inputs": {
     ".agents/skills/agent-browser/references/authentication.md": "e2c3b0f4a1dc1368dee821f03c000d818a48421d09f3872525dddffe73f2112b",
     ".agents/skills/agent-browser/references/commands.md": "17522fc56d742663f47231ff06c4811abc87e12c7f78e11f94d253ddd540a909",
@@ -244,7 +244,7 @@
     "apps/zcode-cli/packages/tui/package.json": "097d5896b0b37a455eafaf015f21113dfbea7b05bb3f92666f423f7753720eb1",
     "apps/zcode-cli/tools/prompt-trajectory/package.json": "7f161fc87f36691f01eb8c2034bd89cf28107da36db02bc20e76f059edd36af6",
     "apps/zcode-cli/tools/typescript/package.json": "23d7e50d2089d205ce3022c5bafbb6b3e31d000e41ac678a5934e0b72627cf3a",
-    "package.json": "1c8de5f20a664c0dc3071ca4d58ae55f4282cb671c529d2ea5f2b0879638b64c",
+    "package.json": "d8fdaf7d25f28a75e1728c36845e77a763ee9964f6de9d5d513bdad224ec32b5",
     "packages/client/package.json": "e76f441549130dc3e5e68072a36b6cb9044e19a6625f1e813f19a4def2b1b689",
     "packages/desktop/package.json": "fd4a396d3236a97f573c09c3faa35523f09b6735e2393444113fb3b8fa83d673",
     "packages/desktop/src/renderer/public/material-icons/3d.svg": "9527b849f0fba57ca7640e2717b3a19cb5f5e046712cbbd8b75d73af338c68fb",
@@ -1419,7 +1419,7 @@
     "packages/rpc/src/remote.ts": "a11e072d5df7e1c1ce64814a68f72afc081246b364f0da409b5c9d22bc815957",
     "packages/rpc/src/serialization.ts": "e949418e1cd17cc863c147fc8d1ff15237e1b5f0cb8e3344fd2a9ccfae9d54e7",
     "packages/server/package.json": "0a6119239c88af79bc766e3c023eb4437105a0d35b03ecca1137d1e688e60a90",
-    "packages/services/package.json": "40f8a746e5fcd2d76302d81cd292489a7a0d2a27b891947ae8b43cc095898b2c",
+    "packages/services/package.json": "b756ffc2cd216a428f5a6b11ff2f8a74682da9cc5125d7f3f83bddfe434b26f9",
     "packages/shared/package.json": "6394da63b39d6bf4cabadf803a4f26cf9758de944ac6e0cc5c4f0dc303f66b77",
     "packages/shared/src/zcode-protocol-v4/wire-codec.ts": "ac2494a3acc795c809c94ee9393f50271a9c2a0fd33813459e5ab93842ceef75",
     "packages/ui/package.json": "6696b923164d21dc71f2293c2d48010d8967c6c210e97d8f407d2da781705aa9",
@@ -1516,7 +1516,7 @@
     "packages/ui/src/components/ui/pptx-selection-action-bar.tsx": "6e7187b7f527e4a97df117cc0df85d2dd8f4408d7415aec2e4907db39a331efd",
     "packages/ui/src/components/ui/progress.tsx": "ba88ffa75ad78eaa23519c7af84e11679ca2b8e4508c57759d769462811c0ec5",
     "packages/ui/src/components/ui/README.md": "75b3a7d95cb683c0e97d4212af3a984359031f9b1f0c5d373b2c9ed38e4bda40",
-    "packages/ui/src/components/ui/resizable.tsx": "83425c34fb76c35276e6dbf8d7ad0ee860b4536ba9d4cfd8e8a60aec3b7cabc4",
+    "packages/ui/src/components/ui/resizable.tsx": "e65688bdc1281f5ed92623a97a87a5aa448b0d238540424d9ea95f1be52f450c",
     "packages/ui/src/components/ui/scroll-area.tsx": "83999d597a4a417aea402e833884826539b9aa1bd1ec966aa2f6dab9a97afb3c",
     "packages/ui/src/components/ui/scroll-fade-viewport.tsx": "50e5984232b6a7d59e872aab4ebb36ae837e2865e3a770adbc234b61c2531da1",
     "packages/ui/src/components/ui/select.tsx": "e6d73ae0bf6916256fd86005d8a94e3dfb004c8107f51882cfd2d52e7751ca09",
@@ -2678,17 +2678,70 @@
     "packages/web/public/material-icons/zeabur.svg": "8bb7c84934202e9b24842ddb1ca69d316b9d69f1a4f5ebc9bbcce78eb2cea1a7",
     "packages/web/public/material-icons/zig.svg": "37be0ce02cf471b18d86150b3c38e80caa7c16c49a15078e7db6f1f41788d101",
     "packages/web/public/material-icons/zip.svg": "dad79a45f756542d37abd422502ecfbea15720b92ea1c9d80ef0439ab6b9448a",
-    "packages/zcode-cua/package.json": "87f0fe859ffd7539d719bfd6ac4ae2884960ffa80ee29a7a562b52bc805f67c8",
+    "packages/zcode-cua-plugin/package.json": "6b202fdfcc575729f0371ba6cfb8f2f3576847c6600587886c4b1e414ef636e1",
+    "packages/zcode-cua/package.json": "a1b4c8a5630db28a1add3bdcbc6a18e765e0cf1327f5d0362fe5590e6d8280da",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/docs/compatibility.md": "b34087fc6f4b66350f8eb24a373bdb2bd48ad437bff2a6bb8d9cb37d8de7de71",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/fixtures/official/tools-0.5.12.json": "5b0a243c0d403480ea1b15452f4efde9db1cd0b0d7cf9752286a4bf8969cd3ba",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/LICENSE": "ec5433f4ba767d5d74b5b4140e02d76750abf460f9cd45412897d666aea53b91",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Package.swift": "b30857625813a3069287d8afb38dba158177652c48b7e8f8dfa5b448136325bb",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/AccessibilitySnapshot.swift": "3069edcee945e3977e5d3f7034a92a4c4731b2178abe15fee709dd15d5d97572",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/AppDiscovery.swift": "ed8569b6e8a5f3b32009eb83e442544d2d09e1cedf7c692ac6eddb8df71a27c3",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/ComputerUseService.swift": "f22dfa7e9ab293d011702b75b1fc0749c7bdf950153034caca19f5edde0d2b5d",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/CursorMotionModel.swift": "dac9bb072f331f0e51f63846133d2dc3b0135f4fb56f001e58edd88b2bf58ad6",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/DoctorDiagnostics.swift": "a3ec1f8f89a7c51b2505d67afd6e029099c192780ab19af66a8d231df3175535",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/Errors.swift": "a87efeeb73f156f136c641ff7ea16f9ab78227ef43c28834892fa5a49f98824a",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/FixtureBridge.swift": "fb8e8dc32aeebc4b3a3f3c3a6f0b79d97d610dd630abc7bc78d996ca9f23fa01",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostAccessibilityAdapter.swift": "3c69c5694457e5880e63d81005d71da64b75bcf2ff2f6aa5929fcf29cf90d29f",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostDispatchPolicy.swift": "98e37b0a8dacd26d93cb99fe33186090655d0f92ba4acff99cfae61458b1946b",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostElementBinding.swift": "305a5644bfb8eaad00d22e34ec185c4962e76acd4ab118c05c30214f003555b1",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostImageStore.swift": "e149aa670e6deebe9eed054503d697f409083525d61a95df54ac7f779d6aeaa7",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostKeyStroke.swift": "3d2c199623903f697c5b57e75c8f432b59145571d3a12a55db11875a5cb63152",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostObservation.swift": "8c9fc21cf665e7e456be57b476a2cb22de3b40ce0c1e8371a7f88100959126db",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostObservationDifference.swift": "65b592c66a7962379f3c2fa0b30fa07d6cc7cfb3cb524002daaca5cfef63624b",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostProtocolCodec.swift": "8e8470a3ca9d30a80761ffaba6ecfe9d7ddf7b145c638c895dd4c0d8d124cefd",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostProtocolServer.swift": "a30ff654f45ebd247e864252537f3ca363a0cbb6b6839094d4fb4ff340375517",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostProtocolServer+Observe.swift": "c881d31210a14253aeca7cf374e38c8d314070ef1af1c761d7d3d370039c9ff8",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostProtocolWire.swift": "957239c8cafd8f5c95ec62a87e76ca0971ab90aad203ae02655eef6e17a8d0f5",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostSnapshotRegistry.swift": "13c567f9ae950bcfce9a38b796b4aae01acdb56641d05f42d6c34eac646e9edf",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostSystemEnvironment.swift": "7181f99fb4830b9badf8e4679069a33d04b6b3129cdf6039b67d1f9430cd5714",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostWindowManagement.swift": "c01bf10e0175e3df29423ab3e04b070a026bef41d96619d83ab32ef8a89e9f72",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/InputSimulation.swift": "13b442222e83ce5a3355737fa8825a69870aa9b196d5d3b04a3297c49d425277",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/KeyMapping.swift": "e73e8680ceb066d67d8fed73ca7d0a7d2205941df7b24e8512ed150d3c666673",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/LiveApplicationInventory.swift": "391489dfcd4ce32f8d2f796fd9c4c4832ff26ccceefb33312de5a112ea89a665",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/OpenComputerUseCLI.swift": "6c82cbc1a9b0473df18b4ebfa90dd1491f73b400460aa8c85379423da7aa3985",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/OpenComputerUseVersion.swift": "7de4d88aa74961caee6da57476b3bad2aa2dbf00063c1d2f354356569937ebd1",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/Permissions.swift": "b068eee3a2f46cd89c4c9524ad1e422066021dfa92688e2ce0c6a8d68576c51a",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/SkyClickSimulation.swift": "324256e1c99ac2fca0758283081b1e185932ac7c831ef290c4c2f0c0b69f12e6",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/SkyLightSPI.swift": "3c71d850f62b792b7b7c2960bc9bfc83aab9de75ddfbf5c0f3587824fc270be5",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/SoftwareCursorGlyphRenderer.swift": "4718741802facf354e556c5bbe29c0f5d4b2f6040a8c2cda40890862d7ea5d86",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/SoftwareCursorOverlay.swift": "362eaa111f4f3a39e6a7e8141d651ad2a38ea93526bd4c577df885f3f59fc494",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenZCodeFixture/main.swift": "ee5887572dff8c8e4b3eb2aff67f814b138e2b1d36420e7534e4149ecc58e766",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenZCodeNative/main.swift": "88d919ab2d28a6801a6570750bb198d8edb4443d23a2ab6e15c40053e1183dc0",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/NOTICE": "946e00df13b7cfdbd076908644e0b8c6e2c08a1d8aa1524d513b20cbd0d46731",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/README.md": "6af3f37b5fe4aa9c23c9094e12c0c5a5bc405a558d415db6d6b5deb0487406f5",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/src/computer-use-service.mjs": "d8ebe9c81cc0a184430146f8158f0e838b2b864c9a33cec8414368f9503af1e0",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/src/host-client.mjs": "64c1fdd5aea491dbcb8195b88c2e245e773f950af76f7228a8f29c4798d7890f",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/src/mcp-server.mjs": "c3d28f94c226ca8098f5085d67376ea31c8f2b4fc8863049d3151557eef94356",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/src/registries.mjs": "03375b7e338c9bca777b0e4046888a5c23ac522c54d5d52908f2c2517e402594",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/src/results.mjs": "130dba476e3c5c29f5cbafb74195e8e56b7933f22dfc38a664f37c1cb7551603",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/src/tool-definitions.mjs": "3c4e38121d696e92f1ef277fedb08566fee38c9ea7369e655934bfb2a6581bd9",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/tests/mcp-server.test.mjs": "89e4c2ddeb65c09012106157467913a9ddee6be25752d33bca22d241e5894046",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/tests/registries.test.mjs": "61ad794c39979002e7f0702451f28470d7347bc6b6cb50accf7273b8deb8f801",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/tests/schema-parity.test.mjs": "dd74ec36dfe35b6c337b0d8f2db2498e19400321e27b78a906bf1da60e14317b",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/tests/service.test.mjs": "c8e84e4b1d39fac4caac304d79f32e1edd520d87fa07b24e0d1e4e0277d0f072",
+    "packages/zcode-cua/vendor/open-zcode-computer-use/ZCODE-CHANGES.md": "1cfbc318e0a17c247675c0d6a92d9da4801648697daf1b159dee192885f8bf18",
     "packages/zcode-server-cli/package.json": "6e294c4409cb90863d85b2e3d60f92766b156ccee577ebfeaffcb85e94194004",
     "patches/@ai-sdk__anthropic@3.0.81.patch": "d3a7c381eba7f5157f765a0528003af17cf84544911dfb7412c7800168e01c18",
     "patches/@ai-sdk__openai-compatible@2.0.60.patch": "9632fe9d821b3dc20939ae509cc35b968d90d018bbd1d812390718898182a38b",
     "patches/@arms__rum-electron@0.0.3.patch": "36855354851ea495bc47a03340b0484ff62836b739cad56904b8a69f18e2ae97",
-    "pnpm-lock.yaml": "c0fcbd822055d6dfab19debb0ffc12fe6193e04f96d6b5da31afd00d84ab5577",
+    "patches/@radix-ui__react-dropdown-menu@2.1.16.patch": "12ed0732386c54ef8b41db7364c718b5ab82d36dc7609e2380877ea48d38b4f4",
+    "patches/@radix-ui__react-slot@1.2.3.patch": "afa2e035083258b3cab4c99858a98aff441d72b6ff658ae6140f59d824f3c8b0",
+    "pnpm-lock.yaml": "3d2896ecfa21c30d178c24c2bf3ae0f367a7e877720d74dbcb4e71665223aec0",
     "pnpm-workspace.yaml": "f18a18233e82cda1dc40be61bf2ad1bc99de25de63ad0be64bc652761a638372",
     "scripts/license-texts/Apache-2.0.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "scripts/native-search-tools-config.mjs": "281d368464f61363fa2d8ab74f416962fe730dd0a0572db5564475f876bb65aa",
     "scripts/remote-native-search-tools-config.mjs": "472322a66f84c7452f96aa9e16e9c4e0600f7c2588a03dc6bc869229161b1cb2",
-    "third-party/copied-components.json": "b7f519e07fa0c5baf3bcb723d84bb1d6c1a58c7b8a32bf2beac21eb2406eb33c",
+    "third-party/copied-components.json": "cf7277ac6ee58f341eca30e248829cc56c4bec47ec42e616cd53f0e04aecc333",
     "third-party/embedded-components.json": "9586ccca15897f56d4ca1d703dffe9e02880fedd766c1dff93f7ac1f52ea891a",
     "third-party/native-search/licenses/00373c9bf56a894b2ed67586596bc1e8b0630cabbaf1ab46c75fc754b6bcd1ce.txt": "00373c9bf56a894b2ed67586596bc1e8b0630cabbaf1ab46c75fc754b6bcd1ce",
     "third-party/native-search/licenses/01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f.txt": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f",
@@ -15773,6 +15826,22 @@
       ]
     },
     {
+      "name": "proper-lockfile",
+      "version": "4.1.2",
+      "license": "MIT",
+      "repository": "git@github.com:moxystudio/node-proper-lockfile.git",
+      "notices": [
+        {
+          "member": "LICENSE",
+          "sha256": "aaa78451b6fecd1b9c4594c796c133c0e90cad100372ff8bc6de615e9ef9adf1"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "ae23bc497387d4df92901cf403625e16c228dc6ef366a5f74d9ba0117a3bfce0"
+        }
+      ]
+    },
+    {
       "name": "property-information",
       "version": "7.1.0",
       "license": "MIT",
@@ -16589,6 +16658,22 @@
         {
           "member": "license",
           "sha256": "5c932d88256b4ab958f64a856fa48e8bd1f55bc1d96b8149c65689e0c61789d3"
+        }
+      ]
+    },
+    {
+      "name": "retry",
+      "version": "0.12.0",
+      "license": "MIT",
+      "repository": "git://github.com/tim-kos/node-retry.git",
+      "notices": [
+        {
+          "member": "License",
+          "sha256": "01ad164273e8e095abc9dbd1c21e194594a671af7d528cb43ee7b4c903ba7da3"
+        },
+        {
+          "member": "README.md (license section)",
+          "sha256": "4065d2ca50b8827ab26a82470cfdd6d3e71dfa72889caabc0a0ccaf3f4e93f44"
         }
       ]
     },
@@ -19429,6 +19514,225 @@
   ],
   "copied": [
     {
+      "id": "Open ZCode Computer Use",
+      "referenceRevision": "202395e65218f83086b30daceb0f11d2f3430dd8",
+      "importRevision": "202395e65218f83086b30daceb0f11d2f3430dd8",
+      "source": "https://github.com/hqhq1025/open-zcode-computer-use/tree/202395e65218f83086b30daceb0f11d2f3430dd8",
+      "file": "packages/zcode-cua/vendor/open-zcode-computer-use/LICENSE",
+      "sha256": "ec5433f4ba767d5d74b5b4140e02d76750abf460f9cd45412897d666aea53b91",
+      "roots": [
+        "packages/zcode-cua/vendor/open-zcode-computer-use/src",
+        "packages/zcode-cua/vendor/open-zcode-computer-use/native/Package.swift",
+        "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources",
+        "packages/zcode-cua/vendor/open-zcode-computer-use/tests",
+        "packages/zcode-cua/vendor/open-zcode-computer-use/fixtures",
+        "packages/zcode-cua/vendor/open-zcode-computer-use/docs",
+        "packages/zcode-cua/vendor/open-zcode-computer-use/README.md",
+        "packages/zcode-cua/vendor/open-zcode-computer-use/NOTICE",
+        "packages/zcode-cua/vendor/open-zcode-computer-use/ZCODE-CHANGES.md"
+      ],
+      "scope": "Independent JavaScript MCP and macOS Swift source, tests, schema fixtures and documentation. Compiler, permission preflight and transport lifecycle adaptations are recorded in ZCODE-CHANGES.md. No proprietary binaries or research tools are imported.",
+      "license": "MIT",
+      "files": [
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/src/computer-use-service.mjs",
+          "sha256": "d8ebe9c81cc0a184430146f8158f0e838b2b864c9a33cec8414368f9503af1e0"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/src/host-client.mjs",
+          "sha256": "64c1fdd5aea491dbcb8195b88c2e245e773f950af76f7228a8f29c4798d7890f"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/src/mcp-server.mjs",
+          "sha256": "c3d28f94c226ca8098f5085d67376ea31c8f2b4fc8863049d3151557eef94356"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/src/registries.mjs",
+          "sha256": "03375b7e338c9bca777b0e4046888a5c23ac522c54d5d52908f2c2517e402594"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/src/results.mjs",
+          "sha256": "130dba476e3c5c29f5cbafb74195e8e56b7933f22dfc38a664f37c1cb7551603"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/src/tool-definitions.mjs",
+          "sha256": "3c4e38121d696e92f1ef277fedb08566fee38c9ea7369e655934bfb2a6581bd9"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Package.swift",
+          "sha256": "b30857625813a3069287d8afb38dba158177652c48b7e8f8dfa5b448136325bb"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/AccessibilitySnapshot.swift",
+          "sha256": "3069edcee945e3977e5d3f7034a92a4c4731b2178abe15fee709dd15d5d97572"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/AppDiscovery.swift",
+          "sha256": "ed8569b6e8a5f3b32009eb83e442544d2d09e1cedf7c692ac6eddb8df71a27c3"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/ComputerUseService.swift",
+          "sha256": "f22dfa7e9ab293d011702b75b1fc0749c7bdf950153034caca19f5edde0d2b5d"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/CursorMotionModel.swift",
+          "sha256": "dac9bb072f331f0e51f63846133d2dc3b0135f4fb56f001e58edd88b2bf58ad6"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/DoctorDiagnostics.swift",
+          "sha256": "a3ec1f8f89a7c51b2505d67afd6e029099c192780ab19af66a8d231df3175535"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/Errors.swift",
+          "sha256": "a87efeeb73f156f136c641ff7ea16f9ab78227ef43c28834892fa5a49f98824a"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/FixtureBridge.swift",
+          "sha256": "fb8e8dc32aeebc4b3a3f3c3a6f0b79d97d610dd630abc7bc78d996ca9f23fa01"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostAccessibilityAdapter.swift",
+          "sha256": "3c69c5694457e5880e63d81005d71da64b75bcf2ff2f6aa5929fcf29cf90d29f"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostDispatchPolicy.swift",
+          "sha256": "98e37b0a8dacd26d93cb99fe33186090655d0f92ba4acff99cfae61458b1946b"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostElementBinding.swift",
+          "sha256": "305a5644bfb8eaad00d22e34ec185c4962e76acd4ab118c05c30214f003555b1"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostImageStore.swift",
+          "sha256": "e149aa670e6deebe9eed054503d697f409083525d61a95df54ac7f779d6aeaa7"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostKeyStroke.swift",
+          "sha256": "3d2c199623903f697c5b57e75c8f432b59145571d3a12a55db11875a5cb63152"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostObservation.swift",
+          "sha256": "8c9fc21cf665e7e456be57b476a2cb22de3b40ce0c1e8371a7f88100959126db"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostObservationDifference.swift",
+          "sha256": "65b592c66a7962379f3c2fa0b30fa07d6cc7cfb3cb524002daaca5cfef63624b"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostProtocolCodec.swift",
+          "sha256": "8e8470a3ca9d30a80761ffaba6ecfe9d7ddf7b145c638c895dd4c0d8d124cefd"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostProtocolServer+Observe.swift",
+          "sha256": "c881d31210a14253aeca7cf374e38c8d314070ef1af1c761d7d3d370039c9ff8"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostProtocolServer.swift",
+          "sha256": "a30ff654f45ebd247e864252537f3ca363a0cbb6b6839094d4fb4ff340375517"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostProtocolWire.swift",
+          "sha256": "957239c8cafd8f5c95ec62a87e76ca0971ab90aad203ae02655eef6e17a8d0f5"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostSnapshotRegistry.swift",
+          "sha256": "13c567f9ae950bcfce9a38b796b4aae01acdb56641d05f42d6c34eac646e9edf"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostSystemEnvironment.swift",
+          "sha256": "7181f99fb4830b9badf8e4679069a33d04b6b3129cdf6039b67d1f9430cd5714"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/HostProtocol/HostWindowManagement.swift",
+          "sha256": "c01bf10e0175e3df29423ab3e04b070a026bef41d96619d83ab32ef8a89e9f72"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/InputSimulation.swift",
+          "sha256": "13b442222e83ce5a3355737fa8825a69870aa9b196d5d3b04a3297c49d425277"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/KeyMapping.swift",
+          "sha256": "e73e8680ceb066d67d8fed73ca7d0a7d2205941df7b24e8512ed150d3c666673"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/LiveApplicationInventory.swift",
+          "sha256": "391489dfcd4ce32f8d2f796fd9c4c4832ff26ccceefb33312de5a112ea89a665"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/OpenComputerUseCLI.swift",
+          "sha256": "6c82cbc1a9b0473df18b4ebfa90dd1491f73b400460aa8c85379423da7aa3985"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/OpenComputerUseVersion.swift",
+          "sha256": "7de4d88aa74961caee6da57476b3bad2aa2dbf00063c1d2f354356569937ebd1"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/Permissions.swift",
+          "sha256": "b068eee3a2f46cd89c4c9524ad1e422066021dfa92688e2ce0c6a8d68576c51a"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/SkyClickSimulation.swift",
+          "sha256": "324256e1c99ac2fca0758283081b1e185932ac7c831ef290c4c2f0c0b69f12e6"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/SkyLightSPI.swift",
+          "sha256": "3c71d850f62b792b7b7c2960bc9bfc83aab9de75ddfbf5c0f3587824fc270be5"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/SoftwareCursorGlyphRenderer.swift",
+          "sha256": "4718741802facf354e556c5bbe29c0f5d4b2f6040a8c2cda40890862d7ea5d86"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenComputerUseKit/SoftwareCursorOverlay.swift",
+          "sha256": "362eaa111f4f3a39e6a7e8141d651ad2a38ea93526bd4c577df885f3f59fc494"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenZCodeFixture/main.swift",
+          "sha256": "ee5887572dff8c8e4b3eb2aff67f814b138e2b1d36420e7534e4149ecc58e766"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources/OpenZCodeNative/main.swift",
+          "sha256": "88d919ab2d28a6801a6570750bb198d8edb4443d23a2ab6e15c40053e1183dc0"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/tests/mcp-server.test.mjs",
+          "sha256": "89e4c2ddeb65c09012106157467913a9ddee6be25752d33bca22d241e5894046"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/tests/registries.test.mjs",
+          "sha256": "61ad794c39979002e7f0702451f28470d7347bc6b6cb50accf7273b8deb8f801"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/tests/schema-parity.test.mjs",
+          "sha256": "dd74ec36dfe35b6c337b0d8f2db2498e19400321e27b78a906bf1da60e14317b"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/tests/service.test.mjs",
+          "sha256": "c8e84e4b1d39fac4caac304d79f32e1edd520d87fa07b24e0d1e4e0277d0f072"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/fixtures/official/tools-0.5.12.json",
+          "sha256": "5b0a243c0d403480ea1b15452f4efde9db1cd0b0d7cf9752286a4bf8969cd3ba"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/docs/compatibility.md",
+          "sha256": "b34087fc6f4b66350f8eb24a373bdb2bd48ad437bff2a6bb8d9cb37d8de7de71"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/README.md",
+          "sha256": "6af3f37b5fe4aa9c23c9094e12c0c5a5bc405a558d415db6d6b5deb0487406f5"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/NOTICE",
+          "sha256": "946e00df13b7cfdbd076908644e0b8c6e2c08a1d8aa1524d513b20cbd0d46731"
+        },
+        {
+          "file": "packages/zcode-cua/vendor/open-zcode-computer-use/ZCODE-CHANGES.md",
+          "sha256": "1cfbc318e0a17c247675c0d6a92d9da4801648697daf1b159dee192885f8bf18"
+        }
+      ]
+    },
+    {
       "id": "shadcn",
       "referenceRevision": "a87a63b2ca25143d26c8bd0903e4e9bc77b3f824",
       "source": "https://raw.githubusercontent.com/shadcn-ui/ui/a87a63b2ca25143d26c8bd0903e4e9bc77b3f824/LICENSE.md",
@@ -19577,7 +19881,7 @@
         },
         {
           "file": "packages/ui/src/components/ui/resizable.tsx",
-          "sha256": "83425c34fb76c35276e6dbf8d7ad0ee860b4536ba9d4cfd8e8a60aec3b7cabc4"
+          "sha256": "e65688bdc1281f5ed92623a97a87a5aa448b0d238540424d9ea95f1be52f450c"
         },
         {
           "file": "packages/ui/src/components/ui/scroll-area.tsx",
@@ -30344,6 +30648,16 @@
       "package": "@ai-sdk/anthropic@3.0.81",
       "file": "patches/@ai-sdk__anthropic@3.0.81.patch",
       "sha256": "d3a7c381eba7f5157f765a0528003af17cf84544911dfb7412c7800168e01c18"
+    },
+    {
+      "package": "@radix-ui/react-slot@1.2.3",
+      "file": "patches/@radix-ui__react-slot@1.2.3.patch",
+      "sha256": "afa2e035083258b3cab4c99858a98aff441d72b6ff658ae6140f59d824f3c8b0"
+    },
+    {
+      "package": "@radix-ui/react-dropdown-menu@2.1.16",
+      "file": "patches/@radix-ui__react-dropdown-menu@2.1.16.patch",
+      "sha256": "12ed0732386c54ef8b41db7364c718b5ab82d36dc7609e2380877ea48d38b4f4"
     }
   ],
   "exceptions": [

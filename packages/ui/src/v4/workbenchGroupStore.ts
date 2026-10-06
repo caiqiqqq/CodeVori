@@ -19,6 +19,7 @@ import {
   splitPaneAtSide,
   effectiveFocusedPaneId,
   type PaneBinding,
+  type PaneCloseReason,
   type PaneLayoutSnapshot,
   type PaneLayoutNode,
   type PaneSplitSide,
@@ -42,7 +43,8 @@ export interface WorkbenchSessionBinding extends WorkbenchBindingBase {
 
 export interface WorkbenchGroup {
   readonly id: string;
-  readonly primaryBinding: WorkbenchSessionBinding;
+  /** 主面板关闭后为 null；剩余 pane 保留原 id 和 binding，不被提升或复制。 */
+  readonly primaryBinding: WorkbenchSessionBinding | null;
   readonly root: PaneLayoutNode;
   readonly panes: Readonly<Record<string, WorkbenchSessionBinding>>;
   readonly focusedPaneId: string;
@@ -65,11 +67,11 @@ interface WorkbenchGroupStore extends WorkbenchGroupSnapshot {
     fallbackPrimaryBinding?: WorkbenchSessionBinding,
   ) => void;
   promotePaneLayoutToGroup: (
-    primaryBinding: WorkbenchSessionBinding,
+    primaryBinding: WorkbenchSessionBinding | null,
     layout: PaneLayoutSnapshot,
   ) => boolean;
   focusPane: (groupId: string, paneId: string) => void;
-  closePane: (groupId: string, paneId: string) => void;
+  closePane: (groupId: string, paneId: string, reason?: PaneCloseReason) => void;
   confirmRestoredPaneSession: (groupId: string, paneId: string) => void;
   bindPaneSession: (groupId: string, paneId: string, sessionId: string) => void;
   setSplitRatio: (groupId: string, splitId: string, ratio: number) => void;
@@ -131,7 +133,9 @@ function workbenchBinding(binding: PaneBinding): WorkbenchSessionBinding | null 
 }
 
 function groupSessionBindings(group: WorkbenchGroup): WorkbenchSessionBinding[] {
-  return [group.primaryBinding, ...Object.values(group.panes)];
+  return group.primaryBinding
+    ? [group.primaryBinding, ...Object.values(group.panes)]
+    : Object.values(group.panes);
 }
 
 function groupContainsBinding(group: WorkbenchGroup, binding: WorkbenchSessionBinding): boolean {
@@ -159,7 +163,7 @@ function findWorkbenchGroupPaneId(
   group: WorkbenchGroup,
   binding: WorkbenchSessionBinding,
 ): string | null {
-  if (sameSessionBinding(group.primaryBinding, binding)) {
+  if (group.primaryBinding && sameSessionBinding(group.primaryBinding, binding)) {
     return V4_PRIMARY_PANE_ID;
   }
   for (const [paneId, candidate] of Object.entries(group.panes)) {
@@ -206,12 +210,13 @@ function createWorkbenchGroupFromSessions(
 }
 
 function createWorkbenchGroupFromPaneLayout(
-  primary: WorkbenchSessionBinding,
+  primary: WorkbenchSessionBinding | null,
   layout: PaneLayoutSnapshot,
   options: { readonly id?: string; readonly updatedAt?: number } = {},
 ): WorkbenchGroup | null {
   const leafIds = leafPaneIds(layout.root);
-  if (leafIds.length < 2 || !leafIds.includes(V4_PRIMARY_PANE_ID)) {
+  const hasPrimary = leafIds.includes(V4_PRIMARY_PANE_ID);
+  if (leafIds.length < 2 || (hasPrimary && !primary)) {
     return null;
   }
 
@@ -230,7 +235,7 @@ function createWorkbenchGroupFromPaneLayout(
 
   return {
     id: options.id ?? "group-1",
-    primaryBinding: primary,
+    primaryBinding: hasPrimary ? primary : null,
     root: layout.root,
     panes,
     focusedPaneId: effectiveFocusedPaneId(layout),
@@ -280,13 +285,12 @@ function splitWorkbenchGroupPane(
 export function closeWorkbenchGroupPane(
   group: WorkbenchGroup,
   paneId: string,
+  reason: PaneCloseReason = "dismiss",
   updatedAt = Date.now(),
 ): WorkbenchGroup | null {
-  if (paneId === V4_PRIMARY_PANE_ID) {
-    // primary 被删除时没有稳定的“提升谁为新的 primary”语义；直接解散壳子，让剩余 session 走普通打开路径。
-    return null;
-  }
-  const next = closePane(group, paneId);
+  if (!leafPaneIds(group.root).includes(paneId)) return group;
+  if (countPanes(group) === 1) return reason === "session-removed" ? null : group;
+  const next = closePane(group, paneId, reason);
   if (next === group) {
     return group;
   }
@@ -297,20 +301,20 @@ export function closeWorkbenchGroupPane(
       panes[nextPaneId] = converted;
     }
   }
-  const candidate = {
+  // 修复原因：解散组会使存活 ACP 失去显式绑定，并重新显示 shell 的空白主草稿。
+  return {
     ...group,
+    primaryBinding: paneId === V4_PRIMARY_PANE_ID ? null : group.primaryBinding,
     root: next.root,
     panes,
     focusedPaneId: next.focusedPaneId,
     updatedAt,
   };
-  // 壳子只在 2 个及以上 session 时存在；退回单 session 后交还给普通打开路径。
-  return countPanes(candidate) < 2 ? null : candidate;
 }
 
 function confirmRestoredWorkbenchGroupPane(group: WorkbenchGroup, paneId: string): WorkbenchGroup {
   if (paneId === V4_PRIMARY_PANE_ID) {
-    if (!group.primaryBinding.restoredUnvalidated) {
+    if (!group.primaryBinding?.restoredUnvalidated) {
       return group;
     }
     const { restoredUnvalidated: _restored, ...primaryBinding } = group.primaryBinding;
@@ -395,7 +399,7 @@ function splitSessionIntoSnapshot(
 
 function promotePaneLayoutToGroupSnapshot(
   state: WorkbenchGroupSnapshot,
-  primaryBinding: WorkbenchSessionBinding,
+  primaryBinding: WorkbenchSessionBinding | null,
   layout: PaneLayoutSnapshot,
 ): WorkbenchGroupSnapshot {
   const group = createWorkbenchGroupFromPaneLayout(primaryBinding, layout, {
@@ -562,19 +566,19 @@ function sanitizeWorkbenchGroup(value: unknown): WorkbenchGroup | null {
   if (!isRecord(value) || typeof value.id !== "string") {
     return null;
   }
-  const primaryBinding = sanitizeBinding(value.primaryBinding);
   const root = sanitizePaneLayoutNode(value.root);
-  if (!primaryBinding || !root) {
+  if (!root) {
     return null;
   }
 
   const leafIds = leafPaneIds(root);
   const uniqueLeafIds = new Set(leafIds);
-  if (
-    uniqueLeafIds.size !== leafIds.length ||
-    !uniqueLeafIds.has(V4_PRIMARY_PANE_ID) ||
-    leafIds.length > MAX_WORKBENCH_PANES
-  ) {
+  if (uniqueLeafIds.size !== leafIds.length || leafIds.length > MAX_WORKBENCH_PANES) {
+    return null;
+  }
+  const hasPrimary = uniqueLeafIds.has(V4_PRIMARY_PANE_ID);
+  const primaryBinding = hasPrimary ? sanitizeBinding(value.primaryBinding) : null;
+  if ((hasPrimary && !primaryBinding) || (!hasPrimary && value.primaryBinding != null)) {
     return null;
   }
 
@@ -591,10 +595,11 @@ function sanitizeWorkbenchGroup(value: unknown): WorkbenchGroup | null {
     panes[paneId] = binding;
   }
 
-  const focusedPaneId =
-    typeof value.focusedPaneId === "string" && uniqueLeafIds.has(value.focusedPaneId)
-      ? value.focusedPaneId
-      : V4_PRIMARY_PANE_ID;
+  const focusedPaneId = effectiveFocusedPaneId({
+    root,
+    panes,
+    focusedPaneId: typeof value.focusedPaneId === "string" ? value.focusedPaneId : "",
+  });
   const group: WorkbenchGroup = {
     id: value.id,
     primaryBinding,
@@ -603,8 +608,7 @@ function sanitizeWorkbenchGroup(value: unknown): WorkbenchGroup | null {
     focusedPaneId,
     updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : 0,
   };
-  // 恢复时发现只剩一个 session，直接丢弃壳子，避免刷新后出现“假分屏”。
-  return countPanes(group) < 2 ? null : group;
+  return group;
 }
 
 function sanitizePersistedWorkbenchGroups(value: unknown): WorkbenchGroupSnapshot | null {
@@ -649,7 +653,9 @@ function persistWorkbenchGroups(snapshot: WorkbenchGroupSnapshot): void {
   try {
     const groups = Object.fromEntries(
       Object.entries(snapshot.groups).map(([groupId, group]) => {
-        const { restoredUnvalidated: _primaryRestored, ...primaryBinding } = group.primaryBinding;
+        const { restoredUnvalidated: _primaryRestored, ...persistedPrimary } =
+          group.primaryBinding ?? {};
+        const primaryBinding = group.primaryBinding ? persistedPrimary : null;
         const panes = Object.fromEntries(
           Object.entries(group.panes).map(([paneId, binding]) => {
             const { restoredUnvalidated: _restored, ...persisted } = binding;
@@ -760,7 +766,7 @@ export const useWorkbenchGroupStore = create<WorkbenchGroupStore>()((set, get) =
     });
   },
 
-  closePane: (groupId, paneId) => {
+  closePane: (groupId, paneId, reason) => {
     if (!workbenchGroupsEnabled()) {
       return;
     }
@@ -769,7 +775,7 @@ export const useWorkbenchGroupStore = create<WorkbenchGroupStore>()((set, get) =
       if (!group) {
         return state;
       }
-      const nextGroup = closeWorkbenchGroupPane(group, paneId);
+      const nextGroup = closeWorkbenchGroupPane(group, paneId, reason);
       if (!nextGroup) {
         return removeGroup(state, groupId);
       }

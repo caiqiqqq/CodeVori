@@ -48,6 +48,7 @@ export function ChatPromptActionMenu({
   sessionId,
   container,
   showPlugins,
+  filesOnly = false,
   excludedSlashCommandNames,
 }: {
   actionMenuTitle: string;
@@ -69,6 +70,7 @@ export function ChatPromptActionMenu({
   sessionId: string | null;
   container: HTMLElement | null;
   showPlugins: boolean;
+  filesOnly?: boolean;
   excludedSlashCommandNames?: readonly string[];
 }) {
   const { intl } = useZCodeIntl();
@@ -92,7 +94,7 @@ export function ChatPromptActionMenu({
     workspaceIdentity,
     sessionId,
     "",
-    open && !disabled && showPlugins,
+    open && !disabled && showPlugins && !filesOnly,
     intl.formatMessage({ id: "chat.mention.plugins.empty" }),
     intl.formatMessage({ id: "chat.mention.plugins.title" }),
     acpMode,
@@ -104,7 +106,7 @@ export function ChatPromptActionMenu({
     workspacePath,
     workspaceIdentity,
     "",
-    open && !disabled && showPlugins,
+    open && !disabled && (showPlugins || filesOnly),
     intl.formatMessage({ id: "chat.mention.files.empty" }),
     intl.formatMessage({ id: "chat.mention.files.title" }),
     MENTION_FILES_ONLY_DEFAULT_PREVIEW_LIMIT,
@@ -114,16 +116,19 @@ export function ChatPromptActionMenu({
     workspacePath,
     workspaceIdentity,
     "",
-    open && !disabled && showPlugins && !acpMode,
+    open && !disabled && showPlugins && !acpMode && !filesOnly,
     getSessionMentionWorkspaceScope("@"),
     intl.formatMessage({ id: "chat.mention.sessions.empty" }),
     intl.formatMessage({ id: "chat.mention.sessions.title" }),
   );
   const contextGroups = buildVisibleMentionGroups(
-    [
-      { id: "files", ...files },
-      { id: "sessions", ...sessions },
-    ].map((group) => ({
+    (filesOnly
+      ? [{ id: "files", ...files }]
+      : [
+          { id: "files", ...files },
+          { id: "sessions", ...sessions },
+        ]
+    ).map((group) => ({
       ...group,
       errorText: group.error?.message ?? null,
     })),
@@ -170,10 +175,10 @@ export function ChatPromptActionMenu({
             description: "",
             disabled: false,
             content: (
-                <>
-                  <Icon className="size-4 shrink-0" />
-                  <span className="truncate text-ui-base font-medium">{label}</span>
-                </>
+              <>
+                <Icon className="size-4 shrink-0" />
+                <span className="truncate text-ui-base font-medium">{label}</span>
+              </>
             ),
           };
         }),
@@ -204,7 +209,11 @@ export function ChatPromptActionMenu({
         content: <ContextMentionOptionContent item={item} workspacePath={workspacePath} />,
       })),
     })),
-  ].filter((section) => section.id !== "add" || section.options.length > 0);
+  ].filter(
+    (section) =>
+      (section.id !== "add" || section.options.length > 0) &&
+      (!filesOnly || section.id !== "plugins"),
+  );
 
   const selectOption = (index: number) => {
     if (disabled || !options[index] || options[index].disabled) return;
@@ -246,19 +255,23 @@ export function ChatPromptActionMenu({
           const emptyDraft = inputApiRef.current?.getText() === "";
           const offered = (command: QuickCommand, available: boolean) =>
             emptyDraft && available && !excludedSlashCommandNames?.includes(command);
-          setQuickCommands([
-            ...(acpMode || offered("goal", sessionId === null) ? (["goal"] as const) : []),
-            ...(acpMode ? (["workflow"] as const) : []),
-            ...(offered(
-              "workflow",
-              !acpMode &&
-                slashCommands.some(
-                  (entry) => normalizeSlashCommandValue(entry.name) === "workflow",
-                ),
-            )
-              ? (["workflow"] as const)
-              : []),
-          ]);
+          setQuickCommands(
+            filesOnly
+              ? []
+              : [
+                  ...(acpMode || offered("goal", sessionId === null) ? (["goal"] as const) : []),
+                  ...(acpMode ? (["workflow"] as const) : []),
+                  ...(offered(
+                    "workflow",
+                    !acpMode &&
+                      slashCommands.some(
+                        (entry) => normalizeSlashCommandValue(entry.name) === "workflow",
+                      ),
+                  )
+                    ? (["workflow"] as const)
+                    : []),
+                ],
+          );
           selectionStateRef.current = inputApiRef.current?.getEditorState();
           setSelectedIndex(0);
         }
@@ -348,7 +361,7 @@ export function ChatPromptActionMenu({
             description=""
             listMaxHeight="min(24rem, max(8rem, calc(var(--radix-popover-content-available-height, 32rem) - 6rem)))"
             footer={
-              acpMode ? undefined : (
+              acpMode || filesOnly ? undefined : (
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-ui-sm text-foreground-subtle">
                   {(
                     [

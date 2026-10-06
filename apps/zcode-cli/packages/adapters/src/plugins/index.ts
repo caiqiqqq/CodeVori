@@ -1,5 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { ZCODE_CUA_OFFICIAL_PLUGIN_ID } from "@zcode/shared/mcp";
+import { isZCodeCuaInternalFeatureEnabled } from "@zcode/shared/runtime-env";
 import type {
   CustomCommandRoot,
   HookConfig,
@@ -152,6 +154,16 @@ export class NodePluginAdapter implements PluginPort {
       throwIfAborted(options);
       const loaded = loadPlugin(candidate, diagnostics);
       if (!loaded) continue;
+      // 只限制播种无法挡住旧缓存；必须在组件解析前按当前 Host 的能力拒绝加载。
+      const runtimeEnv = request.env ?? process.env;
+      if (
+        loaded.id === ZCODE_CUA_OFFICIAL_PLUGIN_ID &&
+        (process.platform !== "darwin" ||
+          !runtimeEnv.ZCODE_OPEN_CUA_NATIVE?.trim() ||
+          !isZCodeCuaInternalFeatureEnabled(runtimeEnv))
+      ) {
+        continue;
+      }
       // 内置（官方）插件被「卸载」后只在 user config 写 suppressedBuiltins 标记。这里在发现层
       // 用插件的权威 id（manifest 名 @ marketplace）过滤，不依赖缓存文件是否已被物理删除——
       // 这样即便 app 升级遗留了旧版本缓存目录、或会话内 facade 持有过时配置，被卸载的内置插件

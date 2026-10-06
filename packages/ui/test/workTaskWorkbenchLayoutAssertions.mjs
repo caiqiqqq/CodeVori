@@ -89,7 +89,10 @@ export async function assertWorkTaskSessionTarget(panel, kind, id, path) {
   for (const name of ["在 Finder 中打开", "选择打开方式", "帮助"])
     assert.ok(await header.getByRole("button", { name, exact: true }).isVisible());
   assert.ok(await header.getByTestId("terminal-toggle").isVisible());
-  assert.ok(await header.getByTestId("side-pane-toggle").isVisible());
+  // 展开侧栏后原顶部开关会隐藏，关闭入口由侧栏标题持有。
+  if (await header.getByTestId("side-pane-toggle").count())
+    assert.ok(await header.getByTestId("side-pane-toggle").isVisible());
+  else assert.ok(await panel.page().getByTestId("work-task-review-fixture").isVisible());
 }
 
 export async function exerciseWorkTaskConversationResize(page, panel) {

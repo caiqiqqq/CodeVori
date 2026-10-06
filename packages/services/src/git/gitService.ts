@@ -3,6 +3,7 @@ import type { GitBranchComparison, GitFileChange, GitChangeSectionId } from "@zc
 import { isPathInWorkspaceScope, normalizeGitPath, toWorkspaceRelativeGitPath } from "./config.js";
 import { filterCommitMessageFilesByCurrentSession } from "./commitMessageFileScope.js";
 import type { IGitService } from "./git.js";
+import { createGitTaskMergeRepo, type GitTaskMergeRepo } from "./repo/gitTaskMergeRepo.js";
 import { createForgeService } from "./forgeService.js";
 import type { GitCommitMessageGenerator } from "./gitCommitMessageGenerator.js";
 import {
@@ -174,6 +175,7 @@ function getCommitMessageDiffQueries(
 
 export function createGitService(options?: {
   repo?: GitCliRepo;
+  taskMerge?: GitTaskMergeRepo;
   versionControl?: VersionControlService;
   forgeOptions?: Parameters<typeof createForgeService>[0];
   commitMessageGenerator?: GitCommitMessageGenerator;
@@ -182,6 +184,7 @@ export function createGitService(options?: {
   const repo = options?.repo ?? createGitCliRepo();
 
   return {
+    ...(options?.taskMerge ?? createGitTaskMergeRepo({ repo })),
     ...(options?.versionControl ?? createVersionControlService()),
     ...createForgeService({ gitRepo: repo, ...options?.forgeOptions }),
     async getRepositorySummary(params) {

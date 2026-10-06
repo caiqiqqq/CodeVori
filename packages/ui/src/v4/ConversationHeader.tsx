@@ -26,7 +26,7 @@ interface ConversationHeaderProps {
   onSplitRight?: () => void;
   /** 向下拆分新 draft 窗格。 */
   onSplitDown?: () => void;
-  /** 关闭本窗格（仅非 primary pane 下发；关 pane ≠ 停 session）。 */
+  /** 关闭本窗格（分屏时每个 pane 下发；关 pane ≠ 停 session）。 */
   onClosePane?: () => void;
   /** 跨 workspace pane 的归属徽标（pane workspace ≠ shell 当前 workspace 时下发）。 */
   workspaceBadge?: PaneWorkspaceBadge;

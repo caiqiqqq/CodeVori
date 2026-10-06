@@ -82,7 +82,7 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.stack || error.message));
-    await page.goto(`http://localhost:5174/${name}.html`);
+    await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`);
     const input = page.locator('[data-testid="v4-composer-input"]');
     await input.waitFor({ timeout: 10000 }).catch((cause) => {
       throw new Error(`Editor fixture failed: ${errors.join("; ") || cause.message}`);

@@ -859,7 +859,8 @@ export interface PlatformChannelMap {
     response: void;
   };
   [PlatformChannels.CancelCuaPermissionOnboarding]: {
-    request: { operationId: string };
+    /** permission-panel 仅供 Main 登记的浮窗 sender，取消其所属的整组引导。 */
+    request: { operationId: string } | { surface: "permission-panel" };
     response: void;
   };
   [PlatformChannels.OAuthRegisterState]: {

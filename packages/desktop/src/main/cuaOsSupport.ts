@@ -1,13 +1,9 @@
 import { release } from "node:os";
 import type { CuaOsSupport } from "@zcode/shared";
 
-// 承诺地板 = max(Helper Info.plist LSMinimumSystemVersion 12.0, SEA 二进制 minos 11.0)。
-// 2026-08 事故：地板检查缺位时，低版本 macOS 用户只看到授权反复无响应
-// （真因是 LaunchServices -10825 拒启 Helper）。
-const CUA_MINIMUM_MACOS_VERSION = "12.0";
-// 地板与上游 zcode-cua helperAppBundle.ts 的 Info.plist LSMinimumSystemVersion(12.0) 联动，
-// bump 任一侧必须同步其余常量。
-const CUA_MINIMUM_DARWIN_MAJOR = 21; // Darwin major - 9 = macOS major（21↔12, 22↔13）
+// 与开源 Swift 包的 .macOS(.v14) 和 native target triple 一致。
+const CUA_MINIMUM_MACOS_VERSION = "14.0";
+const CUA_MINIMUM_DARWIN_MAJOR = 23; // 开源 ScreenCaptureKit runtime 的最低版本是 macOS 14。
 
 function darwinMajorToMacosMajor(major: number): number {
   return major - 9;

@@ -150,9 +150,17 @@ export function WorkTaskPendingConversation({ task }: { task: WorkTask }) {
         createdAt: task.createdAt,
         createdAtSeq: 0,
         text: task.runSeq > 0 ? task.runText : task.prompt,
+        attachments: task.runSeq > 0 && task.runUsesPromptAssets === false ? [] : task.attachments,
       },
     ],
-    [task.createdAt, task.prompt, task.runSeq, task.runText],
+    [
+      task.createdAt,
+      task.prompt,
+      task.runSeq,
+      task.runText,
+      task.runUsesPromptAssets,
+      task.attachments,
+    ],
   );
   const rowContext = useMemo(
     () => ({

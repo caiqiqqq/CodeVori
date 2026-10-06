@@ -118,6 +118,8 @@ export function useWorkTasks(
     startAll: () => run((target) => target.startAll(scope)),
     cancel: (id: string) => run((target) => target.cancel({ ...scope, id })),
     complete: (id: string) => run((target) => target.complete({ ...scope, id })),
+    merge: (id: string, targetBranch: string) =>
+      run((target) => target.merge({ ...scope, id, targetBranch })),
     archive: (id: string, archived: boolean) =>
       run((target) => target.archive({ ...scope, id, archived })),
     setConcurrency: (concurrency: number) =>

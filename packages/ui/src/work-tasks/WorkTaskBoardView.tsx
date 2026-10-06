@@ -23,6 +23,7 @@ interface Props {
   onEdit(task: WorkTask): void;
   onOpenConversation(task: WorkTask): void;
   onDetails(task: WorkTask): void;
+  onComplete(task: WorkTask): void;
   selectedId?: string;
 }
 
@@ -33,6 +34,7 @@ export function WorkTaskBoardView({
   onEdit,
   onOpenConversation,
   onDetails,
+  onComplete,
   selectedId,
 }: Props) {
   const t = useWorkTaskMessages();
@@ -110,6 +112,7 @@ export function WorkTaskBoardView({
                             onOpenConversation={onOpenConversation}
                             onEdit={onEdit}
                             onDetails={onDetails}
+                            onComplete={onComplete}
                           />
                         </div>
                       </article>

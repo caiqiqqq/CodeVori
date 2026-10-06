@@ -112,7 +112,9 @@ function createMcpToolEntry(
   const isCuaAppObservation = isZCodeCuaGetAppState(descriptor);
   // 宿主 node_repl 的 js 能执行本机 Node 代码，不能沿用普通未知 MCP 的 medium/network
   // 默认值；否则权限 UI 会把文件/进程级能力错误描述成普通网络调用。
-  const sideEffectScope: ModelToolSideEffectScope = isHostNodeReplExecution ? "system" : "network";
+  // 开源电脑控制按系统级工具审批，但不得仅凭命名授予 official_cua 特权。
+  const isComputerControl = descriptor.serverName === ZCODE_CUA_OFFICIAL_MCP_SERVER_NAME;
+  const sideEffectScope: ModelToolSideEffectScope = isHostNodeReplExecution || isComputerControl ? "system" : "network";
   const riskLevel: RiskLevel = isHostNodeReplExecution
     ? "high"
     : destructive

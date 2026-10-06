@@ -1,5 +1,26 @@
 [
   {
+    "id": "Open ZCode Computer Use",
+    "referenceRevision": "202395e65218f83086b30daceb0f11d2f3430dd8",
+    "importRevision": "202395e65218f83086b30daceb0f11d2f3430dd8",
+    "source": "https://github.com/hqhq1025/open-zcode-computer-use/tree/202395e65218f83086b30daceb0f11d2f3430dd8",
+    "file": "packages/zcode-cua/vendor/open-zcode-computer-use/LICENSE",
+    "sha256": "ec5433f4ba767d5d74b5b4140e02d76750abf460f9cd45412897d666aea53b91",
+    "roots": [
+      "packages/zcode-cua/vendor/open-zcode-computer-use/src",
+      "packages/zcode-cua/vendor/open-zcode-computer-use/native/Package.swift",
+      "packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources",
+      "packages/zcode-cua/vendor/open-zcode-computer-use/tests",
+      "packages/zcode-cua/vendor/open-zcode-computer-use/fixtures",
+      "packages/zcode-cua/vendor/open-zcode-computer-use/docs",
+      "packages/zcode-cua/vendor/open-zcode-computer-use/README.md",
+      "packages/zcode-cua/vendor/open-zcode-computer-use/NOTICE",
+      "packages/zcode-cua/vendor/open-zcode-computer-use/ZCODE-CHANGES.md"
+    ],
+    "scope": "Independent JavaScript MCP and macOS Swift source, tests, schema fixtures and documentation. Compiler, permission preflight and transport lifecycle adaptations are recorded in ZCODE-CHANGES.md. No proprietary binaries or research tools are imported.",
+    "license": "MIT"
+  },
+  {
     "id": "shadcn",
     "referenceRevision": "a87a63b2ca25143d26c8bd0903e4e9bc77b3f824",
     "source": "https://raw.githubusercontent.com/shadcn-ui/ui/a87a63b2ca25143d26c8bd0903e4e9bc77b3f824/LICENSE.md",

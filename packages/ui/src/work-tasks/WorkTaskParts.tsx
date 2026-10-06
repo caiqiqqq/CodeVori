@@ -34,7 +34,7 @@ export function WorkTaskStatus({ task }: { task: WorkTask }) {
       data-work-task-status={task.status}
       className={cn(
         "inline-flex max-w-full shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-ui-xs",
-        task.status === "failed"
+        task.status === "failed" || (task.merge?.phase === "failed" && task.status !== "done")
           ? "bg-destructive/10 text-destructive"
           : task.status === "awaiting_input"
             ? "bg-interaction-confirmation-surface text-interaction-confirmation-foreground"
@@ -46,7 +46,9 @@ export function WorkTaskStatus({ task }: { task: WorkTask }) {
       {active && task.status !== "awaiting_input" ? (
         <LoaderCircle className="size-3 shrink-0 animate-spin" />
       ) : null}
-      {t(`status.${task.status}`)}
+      {task.merge && (task.status !== "done" || task.completion === "merged")
+        ? t(`mergePhase.${task.merge.phase}`)
+        : t(`status.${task.status}`)}
     </span>
   );
 }

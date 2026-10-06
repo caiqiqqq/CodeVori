@@ -20,7 +20,7 @@ const task = (status: WorkTaskStatus, archived = false): WorkTask => ({
   updatedAt: 1,
 });
 
-test("sidebar counts preparing/running and accepted done, not other states or archives", () => {
+test("sidebar counts running and attention columns, not completed or archived tasks", () => {
   const states: WorkTaskStatus[] = [
     "todo",
     "queued",
@@ -32,12 +32,15 @@ test("sidebar counts preparing/running and accepted done, not other states or ar
     "done",
     "canceled",
   ];
-  assert.deepEqual(countWorkTasks(states.map((status) => task(status))), { running: 2, done: 1 });
+  assert.deepEqual(countWorkTasks(states.map((status) => task(status))), {
+    running: 2,
+    waiting: 3,
+  });
   assert.deepEqual(countWorkTasks(states.map((status) => task(status, true))), {
     running: 0,
-    done: 0,
+    waiting: 0,
   });
-  assert.deepEqual(countWorkTasks([]), { running: 0, done: 0 });
+  assert.deepEqual(countWorkTasks([]), { running: 0, waiting: 0 });
 });
 
 test("API and every ACP use the same count rules without inspecting conversation status", () => {
@@ -54,12 +57,19 @@ test("API and every ACP use the same count rules without inspecting conversation
     countWorkTasks([
       api,
       ...acp.map((agent) => ({
-        ...task("done"),
+        ...task("review"),
         execution: { kind: "acp" as const, agent, config: [] },
       })),
     ]),
-    { running: 1, done: 3 },
+    { running: 1, waiting: 3 },
   );
+});
+
+test("waiting tasks leave the sidebar count when execution resumes or the result is accepted", () => {
+  assert.deepEqual(countWorkTasks([task("awaiting_input")]), { running: 0, waiting: 1 });
+  assert.deepEqual(countWorkTasks([task("running")]), { running: 1, waiting: 0 });
+  assert.deepEqual(countWorkTasks([task("review"), task("failed")]), { running: 0, waiting: 2 });
+  assert.deepEqual(countWorkTasks([task("done"), task("canceled")]), { running: 0, waiting: 0 });
 });
 
 test("sidebar scopes deduplicate projects and exclude the non-project conversation directory", () => {

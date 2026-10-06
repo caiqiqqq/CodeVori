@@ -6,8 +6,10 @@
 // （实测拖入后 auth_value 直接为 2，比弹窗少一步——弹窗只创建条目，仍需用户自己找到并勾选）。
 // 每 stage 的验签指纹不再交给 open(2) 前的终检，而是登记到会话上，由 dragstart 前的同步比对消费。
 import { randomUUID } from "node:crypto";
-import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+// Electron 会给 ASAR 虚拟文件分配递增的合成 inode，连续复核也会误报 bundle 被替换。
+// 使用物理文件系统，将归档本身纳入真实 inode/ctime/size 校验，保留拖拽前的防替换检查。
+import { readdirSync, statSync } from "original-fs";
 import { shell } from "electron";
 import type { CuaHelperInstallerOptions } from "@zcode/services/node";
 import {
@@ -58,6 +60,8 @@ interface OpenCuaAccessibilitySettingsOptions {
     sessionId: string;
     timeoutMs: number;
     signal: AbortSignal;
+    /** 浮窗关闭取消协调器拥有的整组会话，避免其他 join participant 永久等待。 */
+    cancel: () => void;
     openSettings: () => Promise<void>;
   }) => Promise<void>;
 }
@@ -455,6 +459,7 @@ class CuaPermissionOnboardingCoordinator {
             sessionId: session.sessionId,
             timeoutMs: returnTimeoutMs,
             signal: controller.signal,
+            cancel: () => controller.abort(new Error("CUA permission onboarding panel closed")),
             openSettings,
           });
           if (controller.signal.aborted) throw controller.signal.reason;

@@ -1337,6 +1337,8 @@ interface LexicalChatInputProps {
   enableMentionPanel?: boolean;
   /** ACP 提供已启用的 `$` 技能和 `@` 插件候选，关闭原生会话和白板候选。 */
   skillsOnlyMentions?: boolean;
+  /** Local task drafts may discover files without querying Agent catalogs or sessions. */
+  filesOnlyMentions?: boolean;
   acpSessionId?: string | null;
   enableSlashCommands?: boolean;
 }
@@ -1370,6 +1372,7 @@ export function LexicalChatInput({
   appSlashCommands,
   enableMentionPanel = true,
   skillsOnlyMentions = false,
+  filesOnlyMentions = false,
   acpSessionId,
   enableSlashCommands = true,
 }: LexicalChatInputProps) {
@@ -1527,6 +1530,7 @@ export function LexicalChatInput({
             container={triggerPanelContainer}
             disabled={disabled}
             skillsOnly={skillsOnlyMentions}
+            filesOnly={filesOnlyMentions}
             acpSessionId={acpSessionId}
             onWhiteboardMentionSelected={onWhiteboardMentionSelected}
           />

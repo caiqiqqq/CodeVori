@@ -5,6 +5,7 @@ import {
   canAddPane,
   effectiveFocusedPaneId,
   findPaneIdForSession,
+  leafPaneIds,
   paneBindingMatchesSession,
   paneWorkspaceKey,
   usePaneLayoutStore,
@@ -60,6 +61,8 @@ function draftPrimaryOwnsLayout(shellBinding: WorkbenchSessionBinding | null): b
   if (Object.keys(layout.panes).length === 0) {
     return false;
   }
+  // 主草稿关闭后 shell 只是导航投影，不能据其历史 session 重新创建主面板。
+  if (!leafPaneIds(layout.root).includes(V4_PRIMARY_PANE_ID)) return true;
   return (
     !shellBinding ||
     Object.values(layout.panes).some((binding) =>

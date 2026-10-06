@@ -60,6 +60,15 @@ const requiredDevPluginRuntimeBuilds = [
     packageName: "@zcode/browser-use-plugin",
     artifactPath: "browser-use-plugin/scripts/browser-client.mjs",
   },
+  ...(process.platform === "darwin"
+    ? [
+        {
+          packageName: "@zcode/zcode-cua-plugin",
+          artifactPath: "packages/zcode-cua-plugin/dist/mcp/server.js",
+          rootRelative: true,
+        },
+      ]
+    : []),
 ];
 const defaultBuildFilters = [
   ...cliWorkspaceBuilds.map(({ packageName }) => packageName),
@@ -68,7 +77,11 @@ const defaultBuildFilters = [
 
 async function verifyRequiredDevPluginRuntimeArtifacts() {
   for (const runtime of requiredDevPluginRuntimeBuilds) {
-    const artifactPath = resolve(repoRoot, "apps/zcode-cli/packages", runtime.artifactPath);
+    const artifactPath = resolve(
+      repoRoot,
+      runtime.rootRelative ? "." : "apps/zcode-cli/packages",
+      runtime.artifactPath,
+    );
     try {
       await access(artifactPath);
     } catch (error) {
@@ -138,6 +151,12 @@ async function runBootstrapWithRemoteBuild() {
 
 if (useBootstrapWithRemoteBuild) {
   await runBootstrapWithRemoteBuild();
+  if (process.platform === "darwin") {
+    runCommand(process.execPath, ["packages/zcode-cua-plugin/scripts/build.mjs"], {
+      cwd: repoRoot,
+      env: pnpmRunEnv,
+    });
+  }
   stageDevAgentBundle();
   process.exit(0);
 }
@@ -180,4 +199,10 @@ runCommand(
     stdio: "inherit",
   },
 );
+if (process.platform === "darwin") {
+  runCommand(process.execPath, ["packages/zcode-cua-plugin/scripts/build.mjs"], {
+    cwd: repoRoot,
+    env: pnpmRunEnv,
+  });
+}
 stageDevAgentBundle();

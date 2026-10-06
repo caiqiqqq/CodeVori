@@ -8,11 +8,28 @@ import {
   type WorkTaskStart,
   type WorkTaskTarget,
   type WorkTaskUpdate,
+  type WorkTaskMerge,
+  type WorkTaskMergeRequest,
+  type WorkTaskAttachment,
+  type WorkTaskAttachmentImport,
+  type WorkTaskAttachmentBegin,
+  type WorkTaskAttachmentChunk,
+  type WorkTaskAttachmentTarget,
 } from "@zcode/shared";
+import type {
+  V4AttachmentBeginResult,
+  V4AttachmentChunkResult,
+  V4AttachmentPutResult,
+} from "@zcode/shared/zcode-protocol-v4";
 import type { Event, IDisposable } from "@zcode/rpc";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IWorkTaskService {
+  attachmentImport(input: WorkTaskAttachmentImport): Promise<WorkTaskAttachment>;
+  attachmentBegin(input: WorkTaskAttachmentBegin): Promise<V4AttachmentBeginResult>;
+  attachmentChunk(input: WorkTaskAttachmentChunk): Promise<V4AttachmentChunkResult>;
+  attachmentCommit(input: WorkTaskAttachmentTarget): Promise<V4AttachmentPutResult>;
+  attachmentAbort(input: WorkTaskAttachmentTarget): Promise<void>;
   list(input: WorkTaskScope & { includeArchived?: boolean }): Promise<WorkTaskBoard>;
   create(input: WorkTaskCreate): Promise<WorkTask>;
   update(input: WorkTaskUpdate): Promise<WorkTask>;
@@ -20,6 +37,7 @@ export interface IWorkTaskService {
   startAll(input: WorkTaskScope): Promise<void>;
   cancel(input: WorkTaskTarget): Promise<WorkTask>;
   complete(input: WorkTaskTarget): Promise<WorkTask>;
+  merge(input: WorkTaskMergeRequest): Promise<WorkTask>;
   archive(input: WorkTaskTarget & { archived: boolean }): Promise<WorkTask>;
   setConcurrency(input: WorkTaskScope & { concurrency: number }): Promise<void>;
   getEvents(input: WorkTaskTarget): Promise<WorkTaskEvent[]>;
@@ -31,6 +49,7 @@ export interface WorkTaskExecutionUpdate {
   status?: "running" | "awaiting_input";
   session?: NonNullable<WorkTask["session"]>;
   worktree?: NonNullable<WorkTask["worktree"]>;
+  merge?: WorkTaskMerge;
 }
 export interface WorkTaskExecutionContext {
   readonly signal: AbortSignal;
@@ -38,6 +57,11 @@ export interface WorkTaskExecutionContext {
   update(patch: WorkTaskExecutionUpdate): Promise<boolean>;
 }
 export interface WorkTaskExecutionPort {
+  execute(task: WorkTask, context: WorkTaskExecutionContext): Promise<void>;
+}
+
+export interface WorkTaskMergePort {
+  validate(task: WorkTask, targetBranch: string): Promise<{ projectPath: string }>;
   execute(task: WorkTask, context: WorkTaskExecutionContext): Promise<void>;
 }
 

@@ -65,12 +65,21 @@ export async function prepareWorkTaskWorktree(
       workspacePath: task.workspacePath,
     });
     if (!rootPath) throw new Error("work-task.worktree-root-unavailable");
-    const graph = await deps.git.getCommitGraph({
-      workspacePath: task.workspacePath,
-      maxCount: 1,
-      headOnly: true,
-    });
-    const baseCommit = graph.commits[0]?.hash;
+    // 来源仅在首次分配解析；已有分配重试固定提交，不能追随分支后续推进。
+    const baseCommit = task.sourceBranch
+      ? (
+          await deps.git.resolveLocalBranch({
+            workspacePath: task.workspacePath,
+            branchName: task.sourceBranch,
+          })
+        ).commitHash
+      : (
+          await deps.git.getCommitGraph({
+            workspacePath: task.workspacePath,
+            maxCount: 1,
+            headOnly: true,
+          })
+        ).commits[0]?.hash;
     if (!baseCommit) throw new Error("work-task.no-commit");
     for (let attempt = 0; attempt < 16; attempt++) {
       const token = randomBytes(2).toString("hex");

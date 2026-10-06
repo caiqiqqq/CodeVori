@@ -172,6 +172,38 @@ export interface GitCreateWorktreeRequest extends GitRepositoryRequest {
   startPoint?: string;
 }
 
+export interface GitResolveLocalBranchRequest extends GitRepositoryRequest {
+  branchName: string;
+}
+
+export interface GitResolvedLocalBranch {
+  branchName: string;
+  commitHash: string;
+}
+
+export interface GitPrepareTaskMergeRequest extends GitRepositoryRequest {
+  taskWorktreePath: string;
+  taskBranchName: string;
+  targetBranchName: string;
+  worktreePath: string;
+  branchName: string;
+  commitMessage: string;
+  expectedTargetCommit?: string;
+}
+
+export interface GitTaskMergePreparation {
+  sourceCommit: string;
+  targetCommit: string;
+  conflicts: string[];
+}
+
+export interface GitFinalizeTaskMergeRequest
+  extends GitPrepareTaskMergeRequest, GitTaskMergePreparation {}
+
+export interface GitApplyTaskMergeRequest extends GitFinalizeTaskMergeRequest {
+  resultCommit: string;
+}
+
 export interface GitCreateAutomaticWorktreeRequest extends GitRepositoryRequest {
   worktreeRootPath: string;
 }

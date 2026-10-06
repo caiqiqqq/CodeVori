@@ -49,6 +49,7 @@ import {
   paneWorkspaceKey,
   V4_PRIMARY_PANE_ID,
   type PaneBinding,
+  type PaneCloseReason,
   type PaneSplitSide,
   type PaneWorkspaceScope,
   type SplitDirection,
@@ -339,6 +340,7 @@ export interface WorkbenchShellBinding {
 
 interface WorkbenchLeafPaneProps {
   paneId: string;
+  conversationTabContainer?: HTMLElement | null;
   rect: RectExpr;
   focused: boolean;
   showFocusIndicator: boolean;
@@ -351,7 +353,7 @@ interface WorkbenchLeafPaneProps {
   shell: WorkbenchShellBinding;
   onFocusRequest: (paneId: string) => void;
   onSplit?: (paneId: string, direction: SplitDirection, scope: PaneWorkspaceScope) => void;
-  onClosePane: (paneId: string) => void;
+  onClosePane: (paneId: string, reason?: PaneCloseReason) => void;
   onConfirmRestoredSession: (paneId: string) => void;
   onBindSession: (paneId: string, sessionId: string) => boolean | void;
   onPaneActiveSessionChange?: (scope: PaneWorkspaceScope, sessionId: string) => void;
@@ -374,6 +376,7 @@ function workspaceBadgeFor(scope: PaneWorkspaceScope): PaneWorkspaceBadge {
 
 export function WorkbenchLeafPane({
   paneId,
+  conversationTabContainer,
   rect,
   focused,
   showFocusIndicator,
@@ -393,7 +396,6 @@ export function WorkbenchLeafPane({
 }: WorkbenchLeafPaneProps) {
   const [dropSide, setDropSide] = useState<PaneSplitSide | null>(null);
   const isPrimary = paneId === V4_PRIMARY_PANE_ID;
-  const isGroupPrimary = isPrimary && Boolean(primaryBinding);
   const scope = useMemo<PaneWorkspaceScope>(() => {
     if (!isPrimary && binding) {
       return binding.workspaceScope;
@@ -426,34 +428,36 @@ export function WorkbenchLeafPane({
   const handleClosePane = useCallback(() => {
     onClosePane(paneId);
   }, [onClosePane, paneId]);
+  const handleRemovePane = useCallback(() => {
+    onClosePane(paneId, "session-removed");
+  }, [onClosePane, paneId]);
   const handleAcpSessionArchived = useCallback(
     (archivedSessionId: string) => {
       const currentBinding = isPrimary ? primaryBinding : binding;
+      const matchesBinding =
+        currentBinding?.kind === "acp" && currentBinding.sessionId === archivedSessionId;
       // 修复原因：归档不能只隐藏正文，持久化的 ACP 分屏绑定也需走已有关闭动作。
-      if (currentBinding?.kind === "acp" && currentBinding.sessionId === archivedSessionId) {
-        handleClosePane();
+      if (matchesBinding) {
+        handleRemovePane();
       }
-      if (isPrimary && paneWorkspaceKey(scope) === shellWorkspaceKey) {
+      // 分屏最后一个 ACP 关闭后主面板会恢复，必须清理同 scope 的旧打开请求。
+      if ((isPrimary || matchesBinding) && paneWorkspaceKey(scope) === shellWorkspaceKey) {
         shell.onPrimaryAcpSessionArchived?.(archivedSessionId);
       }
     },
-    [binding, handleClosePane, isPrimary, primaryBinding, scope, shell, shellWorkspaceKey],
+    [binding, handleRemovePane, isPrimary, primaryBinding, scope, shell, shellWorkspaceKey],
   );
   const handleSessionDeleted = useCallback(() => {
-    if (isGroupPrimary) {
-      // group primary 删除过去只关闭布局，shell 仍指向已删除 session。
-      // accepted 后必须先解散 group，再让 shell 回当前 workspace draft；secondary
-      // 仅恢复普通 session 身份，不能在这里被隐式提升。
-      handleClosePane();
-      shell.onSessionDeleted?.();
-      return;
+    handleRemovePane();
+  }, [handleRemovePane]);
+  const handleMissingRestoredSession = useCallback(() => {
+    const currentBinding = isPrimary ? primaryBinding : binding;
+    if (currentBinding?.kind === "acp" && currentBinding.sessionId) {
+      handleAcpSessionArchived(currentBinding.sessionId);
+    } else {
+      handleSessionDeleted();
     }
-    if (isPrimary) {
-      shell.onSessionDeleted?.();
-      return;
-    }
-    handleClosePane();
-  }, [handleClosePane, isGroupPrimary, isPrimary, shell.onSessionDeleted]);
+  }, [binding, handleAcpSessionArchived, handleSessionDeleted, isPrimary, primaryBinding]);
   const handleBindSession = useCallback(
     (createdSessionId: string) => {
       const shouldSyncShellActive = onBindSession(paneId, createdSessionId) !== false;
@@ -620,11 +624,12 @@ export function WorkbenchLeafPane({
             sessionId={sessionId}
             kind={acpBinding ? "acp" : "native"}
             onConfirmed={onConfirmRestoredSession}
-            onMissing={onClosePane}
+            onMissing={handleMissingRestoredSession}
           />
         ) : null}
         <SessionPane
           paneId={paneId}
+          conversationTabContainer={conversationTabContainer}
           readOnly={readOnly}
           sessionId={acpBinding ? null : sessionId}
           acpBoundSessionId={acpBinding?.sessionId ?? undefined}
@@ -645,7 +650,7 @@ export function WorkbenchLeafPane({
           focused={focused}
           onSplitRight={canSplit && onSplit ? handleSplitRight : undefined}
           onSplitDown={canSplit && onSplit ? handleSplitDown : undefined}
-          onClosePane={isPrimary ? undefined : handleClosePane}
+          onClosePane={showFocusIndicator ? handleClosePane : undefined}
           workspaceBadge={!isPrimary && !isShellWorkspace ? workspaceBadgeFor(scope) : undefined}
           draftComposerHeader={isPrimary && !primaryBinding ? shell.draftComposerHeader : undefined}
           onDropTargetControllerChange={

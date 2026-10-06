@@ -27,6 +27,11 @@ contextBridge.exposeInMainWorld("cuaPermissionPanel", {
   startDrag: () => ipcRenderer.send(PlatformChannels.StartCuaHelperPermissionDrag),
   /** 拖拽手势结束，浮窗可以收走了。 */
   notifyDragEnded: () => ipcRenderer.send(PlatformChannels.NotifyCuaHelperPermissionDragEnded),
+  /** 取消浮窗所属引导，Main 依据本窗口 sender 识别，不接受来自页面的目标 id。 */
+  close: () =>
+    ipcRenderer.send(PlatformChannels.CancelCuaPermissionOnboarding, {
+      surface: "permission-panel",
+    }),
   /** 接收 main 推送的当前权限阶段与应用图标，用于切换文案和 tile 图标。 */
   onState: (callback: (state: CuaPermissionPanelState) => void) => {
     const listener = (_event: unknown, payload: CuaPermissionPanelState) => callback(payload);

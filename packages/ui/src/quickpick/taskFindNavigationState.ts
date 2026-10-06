@@ -17,6 +17,9 @@ export function changeTaskFindSelection(
   query: string,
   activeIndex: number,
 ): TaskFindNavigationState {
+  // 历史订阅未完成时空 rows 会重新派生相同查找结果；若仍创建新状态，
+  // App 渲染会反馈到时间线并触发滚动布局循环。结果同步必须幂等，主动导航另行递增请求。
+  if (state.query === query && state.activeIndex === activeIndex) return state;
   return {
     activeIndex,
     navigationRequestId: state.navigationRequestId,

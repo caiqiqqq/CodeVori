@@ -65,6 +65,7 @@ interface MentionPluginProps {
   sessionId?: string | null;
   disabled?: boolean;
   skillsOnly?: boolean;
+  filesOnly?: boolean;
   acpSessionId?: string | null;
   onWhiteboardMentionSelected?: (boardId: string) => void | Promise<void>;
 }
@@ -139,6 +140,7 @@ export function MentionPlugin({
   container,
   disabled = false,
   skillsOnly = false,
+  filesOnly = false,
   acpSessionId,
   onWhiteboardMentionSelected,
 }: MentionPluginProps & { provider: ZCodeProvider }) {
@@ -161,6 +163,7 @@ export function MentionPlugin({
   );
   const isOpen =
     !disabled &&
+    (!filesOnly || activeTrigger?.trigger === "@") &&
     (activeTrigger?.trigger === "$" ||
       activeTrigger?.trigger === "@" ||
       (!skillsOnly && activeTrigger?.trigger === "#"));
@@ -176,7 +179,7 @@ export function MentionPlugin({
     sessionId ?? null,
     provider,
     deferredActiveQuery,
-    isOpen && isSkillTrigger,
+    isOpen && isSkillTrigger && !filesOnly,
     false,
     intl.formatMessage({ id: "chat.mention.skills.empty" }),
     intl.formatMessage({ id: "chat.mention.skills.title" }),
@@ -207,7 +210,7 @@ export function MentionPlugin({
     workspacePath,
     workspaceIdentity,
     deferredActiveQuery,
-    isOpen && !skillsOnly && (isContextTrigger || isSessionTrigger),
+    isOpen && !skillsOnly && !filesOnly && (isContextTrigger || isSessionTrigger),
     getSessionMentionWorkspaceScope(activeTrigger?.trigger),
     intl.formatMessage({ id: "chat.mention.sessions.empty" }),
     intl.formatMessage({ id: "chat.mention.sessions.title" }),
@@ -219,7 +222,7 @@ export function MentionPlugin({
     workspaceIdentity,
     sessionId ?? null,
     deferredActiveQuery,
-    isOpen && isContextTrigger,
+    isOpen && isContextTrigger && !filesOnly,
     intl.formatMessage({ id: "chat.mention.plugins.empty" }),
     intl.formatMessage({ id: "chat.mention.plugins.title" }),
     skillsOnly,
@@ -273,9 +276,11 @@ export function MentionPlugin({
     // 产品约束：@ 固定为 Plugin → 文件 → 对话 → 画板；旧 # / $ 面板继续走
     // 原单分组 provider。这里仅重排发现入口，候选自身的 canonical markdown 不变。
     return buildVisibleMentionGroups(
-      (skillsOnly && isContextTrigger
-        ? (["plugins"] as const)
-        : getMentionPanelGroupOrder(activeTrigger?.trigger)
+      (filesOnly
+        ? (["files"] as const)
+        : skillsOnly && isContextTrigger
+          ? (["plugins"] as const)
+          : getMentionPanelGroupOrder(activeTrigger?.trigger)
       ).map((groupId) => groupsById[groupId]),
     );
   }, [
@@ -287,6 +292,7 @@ export function MentionPlugin({
     activeTrigger?.trigger,
     isContextTrigger,
     skillsOnly,
+    filesOnly,
     pluginsResult.emptyText,
     pluginsResult.error,
     pluginsResult.items,

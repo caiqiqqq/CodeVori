@@ -35,18 +35,21 @@ export function WorkTaskSessionView({
   options,
   onClose,
   onOpenNativeSession,
+  readOnly = false,
 }: {
   task: WorkTask;
   binding: WorkTaskConversationBinding;
   options?: WorkTaskConversationOptions;
   onClose(id: string): void;
   onOpenNativeSession?: OpenWorkTaskNativeSession;
+  readOnly?: boolean;
 }) {
   const scope = { workspacePath: binding.workspacePath };
   return (
     <V4PaneConversationProvider scope={scope}>
       <SessionPane
         {...options}
+        readOnly={readOnly}
         paneId="work-task-conversation"
         workspacePath={binding.workspacePath}
         sessionId={binding.kind === "api" ? binding.sessionId : null}

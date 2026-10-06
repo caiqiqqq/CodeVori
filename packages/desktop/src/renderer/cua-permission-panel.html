@@ -85,8 +85,29 @@
         }
       }
       .hint {
+        min-width: 0;
         color: #6a6a6a;
         line-height: 1.5;
+      }
+      .close {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: #6a6a6a;
+        font: inherit;
+        cursor: pointer;
+      }
+      .close:hover {
+        background: rgba(128, 128, 128, 0.18);
       }
       .hint strong {
         color: #1d1d1f;
@@ -113,11 +134,23 @@
         .hint strong {
           color: #f5f5f7;
         }
+        .close {
+          color: #a1a1a6;
+        }
       }
     </style>
   </head>
   <body>
     <div class="panel">
+      <button
+        class="close"
+        id="closeButton"
+        type="button"
+        title="关闭权限引导"
+        aria-label="关闭权限引导"
+      >
+        &times;
+      </button>
       <div class="tile" id="tile" draggable="true">
         <div class="icon"></div>
         <div class="name" id="appName">ZCode Computer Use</div>

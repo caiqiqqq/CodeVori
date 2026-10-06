@@ -72,6 +72,7 @@ function shouldShowRemoteSkillSyncAction(params: {
 
 export function WorkspaceHeaderTitleSection({
   variant,
+  onConversationTabsContainerChange,
   readOnlyReason,
   workspaceAbsPath,
   remoteSessionId,
@@ -384,7 +385,8 @@ export function WorkspaceHeaderTitleSection({
       className={cn(
         // 标题区必须按内容占宽，不能 flex-1 铺满整条 header。
         // 父级 header 是 drag 区域；如果 no-drag 的标题区铺满剩余空间，mac/Windows 标题栏空白处会无法拖动窗口。
-        "flex min-w-0 items-center gap-2 overflow-hidden [app-region:no-drag]",
+        "flex min-w-0 items-center gap-2 overflow-hidden",
+        onConversationTabsContainerChange ? "flex-1 [app-region:drag]" : "[app-region:no-drag]",
         simplifyForNarrowRemote && "max-md:gap-1",
       )}
     >
@@ -456,6 +458,7 @@ export function WorkspaceHeaderTitleSection({
             variant="ghost"
             size={compact ? "icon-sm" : "icon-md"}
             data-testid={TID_WORKSPACE_PATH}
+            className="[app-region:no-drag]"
             aria-label={[workspaceContextLabel, workspaceBranchLabel].filter(Boolean).join(" · ")}
             onClick={() => setWorkspaceContextOpen(true)}
           >
@@ -467,17 +470,20 @@ export function WorkspaceHeaderTitleSection({
           </Button>
         </ControlHintTooltip>
       ) : null}
-      <h1
-        data-testid={TID_WORKSPACE_TITLE}
-        className={cn(
-          "flex min-w-12 max-w-100 shrink items-center gap-2 truncate font-semibold text-foreground @max-[560px]/workspace-header:max-w-[30vw] @max-[420px]/workspace-header:max-w-[22vw]",
-          simplifyForNarrowRemote && "max-md:max-w-[42vw]",
-          compact ? "text-[0.92rem]" : "text-ui-base",
-        )}
-        title={activeTaskTitle}
-      >
-        <span className="min-w-0 truncate">{activeTaskTitle}</span>
-        {/* {activeTaskChangeSummary ? (
+      {onConversationTabsContainerChange ? (
+        <div ref={onConversationTabsContainerChange} className="min-w-0 flex-1" />
+      ) : (
+        <h1
+          data-testid={TID_WORKSPACE_TITLE}
+          className={cn(
+            "flex min-w-12 max-w-100 shrink items-center gap-2 truncate font-semibold text-foreground @max-[560px]/workspace-header:max-w-[30vw] @max-[420px]/workspace-header:max-w-[22vw]",
+            simplifyForNarrowRemote && "max-md:max-w-[42vw]",
+            compact ? "text-[0.92rem]" : "text-ui-base",
+          )}
+          title={activeTaskTitle}
+        >
+          <span className="min-w-0 truncate">{activeTaskTitle}</span>
+          {/* {activeTaskChangeSummary ? (
           <>
             {activeTaskChangeSummary.added > 0 ? (
               <span className="text-diff-added">
@@ -491,8 +497,9 @@ export function WorkspaceHeaderTitleSection({
             ) : null}
           </>
         ) : null} */}
-      </h1>
-      <div className="flex min-w-0 shrink-0 items-center gap-1">
+        </h1>
+      )}
+      <div className="flex min-w-0 shrink-0 items-center gap-1 [app-region:no-drag]">
         {nativeTaskActionsVisible ? (
           <DropdownMenu open={taskMenuOpen} onOpenChange={setTaskMenuOpen}>
             <DropdownMenuTrigger asChild>

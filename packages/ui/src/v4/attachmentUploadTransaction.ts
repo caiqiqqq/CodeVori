@@ -6,6 +6,8 @@ import {
   type V4AttachmentChunkResult,
   type V4AttachmentPutParams,
   type V4AttachmentPutResult,
+  type V4AttachmentBeginParams,
+  type V4AttachmentChunkParams,
 } from "@zcode/shared/zcode-protocol-v4";
 import type {
   ZCodeAgentAttachmentBeginParams,
@@ -125,17 +127,73 @@ export async function uploadAttachmentTransaction(
   input: V4AttachmentPutParams,
   options: AttachmentUploadOptions = {},
 ): Promise<V4AttachmentPutResult> {
+  const target = { ...workspace, sessionId: input.sessionId };
+  return uploadAttachmentBytes(
+    {
+      begin: (data) => {
+        const params = { ...target, ...data };
+        assertAttachmentChannelRequest("attachmentBeginV4", params);
+        return agent.attachmentBeginV4(params);
+      },
+      chunk: (data) => {
+        const params = { ...target, ...data };
+        assertAttachmentChannelRequest("attachmentChunkV4", params);
+        return agent.attachmentChunkV4(params);
+      },
+      commit: (data) => {
+        const params = { ...target, ...data };
+        assertAttachmentChannelRequest("attachmentCommitV4", params);
+        return agent.attachmentCommitV4(params);
+      },
+      abort: (data) => agent.attachmentAbortV4({ ...target, ...data }),
+    },
+    {
+      fileName: input.fileName,
+      mime: input.mime,
+      bytes: validatedAttachmentBytes(input.dataBase64),
+    },
+    options,
+  );
+}
+
+function validatedAttachmentBytes(dataBase64: string) {
+  const decodedBytes = decodedBase64ByteLength(dataBase64);
+  if (decodedBytes > PROTOCOL_V4_LIMITS.attachmentMaxBytes)
+    throw new Error("proto.payloadTooLarge");
+  const bytes = decodeBase64(dataBase64);
+  if (bytes.byteLength !== decodedBytes) throw new Error("proto.invalidBase64");
+  return bytes;
+}
+
+export interface AttachmentUploadTransactionPort {
+  begin(
+    data: Pick<
+      V4AttachmentBeginParams,
+      "uploadId" | "fileName" | "mime" | "totalBytes" | "totalChunks" | "checksum"
+    >,
+  ): Promise<V4AttachmentBeginResult>;
+  chunk(
+    data: Pick<V4AttachmentChunkParams, "uploadId" | "chunkIndex" | "dataBase64">,
+  ): Promise<V4AttachmentChunkResult>;
+  commit(data: { uploadId: string }): Promise<V4AttachmentPutResult>;
+  abort(data: { uploadId: string }): Promise<void>;
+}
+
+/** Same bounded transaction for session artifacts and Host-owned task drafts. */
+export async function uploadAttachmentBytes(
+  port: AttachmentUploadTransactionPort,
+  input: { fileName: string; mime: string; bytes: Uint8Array },
+  options: AttachmentUploadOptions = {},
+): Promise<V4AttachmentPutResult> {
   throwIfAborted(options.signal);
-  const decodedBytes = decodedBase64ByteLength(input.dataBase64);
-  if (decodedBytes > PROTOCOL_V4_LIMITS.attachmentMaxBytes) {
+  const bytes = input.bytes;
+  if (bytes.length > PROTOCOL_V4_LIMITS.attachmentMaxBytes) {
     throw new Error("proto.payloadTooLarge");
   }
-  const bytes = decodeBase64(input.dataBase64);
-  if (bytes.byteLength !== decodedBytes) throw new Error("proto.invalidBase64");
   const uploadId = createUploadId();
-  const common = { ...workspace, sessionId: input.sessionId, uploadId };
+  const common = { uploadId };
   const totalChunks = Math.ceil(bytes.byteLength / ATTACHMENT_UPLOAD_CHUNK_BYTES);
-  const beginParams: ZCodeAgentAttachmentBeginParams = {
+  const beginParams = {
     ...common,
     fileName: input.fileName,
     mime: input.mime,
@@ -143,13 +201,13 @@ export async function uploadAttachmentTransaction(
     totalChunks,
     checksum: await checksum(bytes),
   };
-  assertAttachmentChannelRequest("attachmentBeginV4", beginParams);
 
   let began = false;
   try {
     throwIfAborted(options.signal);
-    const begin = await agent.attachmentBeginV4(beginParams);
+    // begin 回复丢失时 Host 可能已经创建暂存文件；仍按 uploadId 尝试清理。
     began = true;
+    const begin = await port.begin(beginParams);
     if (begin.state === "committed") {
       options.onProgress?.({
         phase: "committing",
@@ -172,15 +230,14 @@ export async function uploadAttachmentTransaction(
     for (let chunkIndex = begin.nextChunkIndex; chunkIndex < totalChunks; chunkIndex += 1) {
       throwIfAborted(options.signal);
       const start = chunkIndex * ATTACHMENT_UPLOAD_CHUNK_BYTES;
-      const chunkParams: ZCodeAgentAttachmentChunkParams = {
+      const chunkParams = {
         ...common,
         chunkIndex,
         dataBase64: encodeBase64(
           bytes.subarray(start, Math.min(start + ATTACHMENT_UPLOAD_CHUNK_BYTES, bytes.length)),
         ),
       };
-      assertAttachmentChannelRequest("attachmentChunkV4", chunkParams);
-      const result = await agent.attachmentChunkV4(chunkParams);
+      const result = await port.chunk(chunkParams);
       if (result.nextChunkIndex !== chunkIndex + 1) {
         throw new Error("fault.attachment.invalidServerProgress");
       }
@@ -196,13 +253,11 @@ export async function uploadAttachmentTransaction(
       uploadedBytes: bytes.byteLength,
       totalBytes: bytes.byteLength,
     });
-    const terminal = common satisfies ZCodeAgentAttachmentTerminalParams;
-    assertAttachmentChannelRequest("attachmentCommitV4", terminal);
-    return await agent.attachmentCommitV4(terminal);
+    return await port.commit(common);
   } catch (error) {
     if (began) {
       try {
-        await agent.attachmentAbortV4(common);
+        await port.abort(common);
       } catch (abortError) {
         logger.warn("[v4-attachment] failed to abort upload transaction", abortError);
       }

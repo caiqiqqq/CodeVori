@@ -316,6 +316,7 @@ export function AnimatedSidePanePanel({
   onOpenDeveloperTools,
   onOpenTerminalTab,
   onOpenReviewTab,
+  onWorkTaskReviewContainerChange,
   onOpenSelectionSideConversation,
   onRevealGitFileInTree,
   onOpenBrowserUrl,
@@ -381,6 +382,7 @@ export function AnimatedSidePanePanel({
   onOpenDeveloperTools: () => void;
   onOpenTerminalTab: () => void;
   onOpenReviewTab: () => void;
+  onWorkTaskReviewContainerChange?: (container: HTMLDivElement | null) => void;
   onOpenSelectionSideConversation: () => void;
   onRevealGitFileInTree?: (path: string) => void;
   onOpenBrowserUrl: (url: string) => void;
@@ -1209,22 +1211,35 @@ export function AnimatedSidePanePanel({
                             })}
                           />
                         ) : tab.type === "git" ? (
-                          <GitPane
-                            workspacePath={workspaceAbsPath}
-                            workspaceIdentity={workspaceIdentity}
-                            workspaceRemoteSessionId={workspaceRemoteSessionId}
-                            gitState={gitState}
-                            isDesktop={isDesktop}
-                            selectedSourceId={activeGitSourceId}
-                            fileChangeFindActiveIndex={fileChangeFindActiveIndex}
-                            fileChangeFindNavigationRequestId={fileChangeFindNavigationRequestId}
-                            fileChangeFindQuery={fileChangeFindQuery}
-                            onFileChangeFindMatchCountChange={onFileChangeFindMatchCountChange}
-                            onSelectSource={onSelectGitSource}
-                            onClose={onCloseGit}
-                            onRefresh={onRefreshGit}
-                            onRevealFileInTree={onRevealGitFileInTree}
-                          />
+                          <div className="flex h-full min-h-0 min-w-0 flex-col">
+                            {onWorkTaskReviewContainerChange ? (
+                              <div
+                                ref={onWorkTaskReviewContainerChange}
+                                className="contents"
+                                data-testid="work-task-review-slot"
+                              />
+                            ) : null}
+                            <div className="min-h-0 min-w-0 flex-1">
+                              <GitPane
+                                workspacePath={workspaceAbsPath}
+                                workspaceIdentity={workspaceIdentity}
+                                workspaceRemoteSessionId={workspaceRemoteSessionId}
+                                gitState={gitState}
+                                isDesktop={isDesktop}
+                                selectedSourceId={activeGitSourceId}
+                                fileChangeFindActiveIndex={fileChangeFindActiveIndex}
+                                fileChangeFindNavigationRequestId={
+                                  fileChangeFindNavigationRequestId
+                                }
+                                fileChangeFindQuery={fileChangeFindQuery}
+                                onFileChangeFindMatchCountChange={onFileChangeFindMatchCountChange}
+                                onSelectSource={onSelectGitSource}
+                                onClose={onCloseGit}
+                                onRefresh={onRefreshGit}
+                                onRevealFileInTree={onRevealGitFileInTree}
+                              />
+                            </div>
+                          </div>
                         ) : tab.type === "treemapping" ? (
                           <TreemappingPane
                             activeTaskId={activeTaskId}

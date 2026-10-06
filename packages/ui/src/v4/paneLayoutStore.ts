@@ -16,6 +16,7 @@ import {
   splitPaneAt,
   splitPaneAtSide,
   type PaneBinding,
+  type PaneCloseReason,
   type PaneLayoutSnapshot,
   type PaneSplitSide,
   type PaneWorkspaceScope,
@@ -44,7 +45,7 @@ interface PaneLayoutStore extends PaneLayoutSnapshot {
   openSessionInNewPane: (scope: PaneWorkspaceScope, sessionId: string) => void;
   /** draft 临时布局：普通 sidebar 点击只替换 focused secondary，不覆盖 primary draft。 */
   replacePaneBinding: (paneId: string, binding: PaneBinding) => void;
-  closePane: (paneId: string) => void;
+  closePane: (paneId: string, reason?: PaneCloseReason) => void;
   focusPane: (paneId: string) => void;
   bindPaneSession: (paneId: string, sessionId: string) => void;
   setSplitRatio: (splitId: string, ratio: number) => void;
@@ -79,8 +80,8 @@ export const usePaneLayoutStore = create<PaneLayoutStore>()((set) => ({
     set((state) => replacePaneBinding(state, paneId, binding));
   },
 
-  closePane: (paneId) => {
-    set((state) => closePane(state, paneId));
+  closePane: (paneId, reason) => {
+    set((state) => closePane(state, paneId, reason));
   },
 
   focusPane: (paneId) => {

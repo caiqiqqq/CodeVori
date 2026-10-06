@@ -33,7 +33,7 @@ export async function exerciseWorkTaskAcpCreation(page, panel, card) {
   await editor.getByTestId("work-task-save").click();
   await editor.getByRole("alert").waitFor();
   assert.equal(await editor.getByTestId("work-task-title").inputValue(), "ACP task");
-  assert.equal(await editor.getByTestId("work-task-prompt").inputValue(), "Implement an ACP task");
+  assert.equal(await editor.getByTestId("work-task-prompt").innerText(), "Implement an ACP task");
   await editor.getByTestId("work-task-save").click();
   await editor.waitFor({ state: "detached" });
   await card("task-1").waitFor();

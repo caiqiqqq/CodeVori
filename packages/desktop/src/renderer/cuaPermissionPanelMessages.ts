@@ -7,6 +7,7 @@ interface CuaPermissionPanelMessages {
   permissionLabel: string;
   hintSuffix: string;
   completion: string;
+  closeTitle: string;
 }
 
 const MESSAGES: Record<
@@ -18,7 +19,8 @@ const MESSAGES: Record<
     dragTitle: "拖动我到上面的权限列表",
     hintPrefix: "把左边的图标拖进上方的",
     hintSuffix: "列表",
-    completion: "松手即完成授权，无需再点开关",
+    completion: "请确认开关已开启；暂不授权可关闭此提示",
+    closeTitle: "关闭权限引导",
     accessibility: "辅助功能",
     screen_recording: "屏幕录制",
   },
@@ -27,7 +29,8 @@ const MESSAGES: Record<
     dragTitle: "Drag me to the permission list above",
     hintPrefix: "Drag the icon on the left into the ",
     hintSuffix: " list above",
-    completion: "Release to grant access—no need to toggle the switch",
+    completion: "Confirm access is enabled, or close this prompt to cancel",
+    closeTitle: "Close permission guide",
     accessibility: "Accessibility",
     screen_recording: "Screen Recording",
   },
@@ -45,5 +48,6 @@ export function resolveCuaPermissionPanelMessages(
     permissionLabel: messages[permission],
     hintSuffix: messages.hintSuffix,
     completion: messages.completion,
+    closeTitle: messages.closeTitle,
   };
 }

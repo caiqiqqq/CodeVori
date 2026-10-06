@@ -1,7 +1,7 @@
 /** English translations */
 const enUS: Record<string, string> = {
   "workTasks.title": "Work Tasks",
-  "workTasks.sidebar.summary": "Open projects: {running} running, {done} done",
+  "workTasks.sidebar.summary": "Open projects: {running} running, {waiting} waiting",
   "workTasks.sidebar.loading": "Loading task counts",
   "workTasks.sidebar.unavailable": "Task counts are unavailable",
   "workTasks.project": "Project",
@@ -13,6 +13,26 @@ const enUS: Record<string, string> = {
   "workTasks.close": "Cancel",
   "workTasks.taskTitle": "Task name",
   "workTasks.prompt": "Description",
+  "workTasks.error.work-task.attachments-unsupported":
+    "This Host does not support task attachments. Update and restart the app.",
+  "workTasks.error.work-task.attachment-too-large": "Task attachments must not exceed 20 MiB.",
+  "workTasks.error.work-task.attachment-not-file": "Select a file, not a folder.",
+  "workTasks.error.work-task.attachment-content-missing":
+    "Attachment content is unavailable. Add the file again.",
+  "workTasks.error.work-task.attachment-unsupported-media":
+    "ACP does not support audio or video attachments. Remove them or select an API model.",
+  "workTasks.error.work-task.attachment-scope":
+    "The attachment does not belong to this project. Add it again.",
+  "workTasks.error.work-task.attachment-size-mismatch":
+    "Attachment content is incomplete or the file changed. Add it again.",
+  "workTasks.error.work-task.attachment-checksum": "Attachment verification failed. Save again.",
+  "workTasks.error.work-task.attachment-upload-not-found": "Attachment upload expired. Save again.",
+  "workTasks.error.work-task.attachment-upload-conflict":
+    "Attachment upload metadata does not match. Save again.",
+  "workTasks.error.work-task.attachment-upload-limit":
+    "Too many attachment uploads. Try again later.",
+  "workTasks.error.work-task.attachment-chunk-order":
+    "Attachment chunks arrived out of order. Save again.",
   "workTasks.agents": "Agents",
   "workTasks.selectModel": "Select model or agent",
   "workTasks.executor": "Agent / Model",
@@ -60,6 +80,62 @@ const enUS: Record<string, string> = {
   "workTasks.loading": "Loading...",
   "workTasks.emptyColumn": "No tasks",
   "workTasks.branch": "Branch",
+  "workTasks.sourceBranch": "Source branch",
+  "workTasks.currentHead": "Current commit (HEAD)",
+  "workTasks.selectBranch": "Select branch",
+  "workTasks.branchRetry": "Reload branches",
+  "workTasks.mergeTarget": "Merge into",
+  "workTasks.commitAndMerge": "Commit and merge",
+  "workTasks.mergeProgress": "Merge progress",
+  "workTasks.mergeCommit": "Merge commit",
+  "workTasks.mergeConflicts": "Conflicted files",
+  "workTasks.mergeConversation": "View merge conversation",
+  "workTasks.originalConversation": "Return to task conversation",
+  "workTasks.mergePhase.queued": "Merge queued",
+  "workTasks.mergePhase.preparing": "Preparing merge",
+  "workTasks.mergePhase.resolving": "Processing merge",
+  "workTasks.mergePhase.awaiting_input": "Merge needs input",
+  "workTasks.mergePhase.applying": "Updating target branch",
+  "workTasks.mergePhase.merged": "Merged",
+  "workTasks.mergePhase.failed": "Merge failed",
+  "workTasks.mergePhase.canceled": "Merge canceled",
+  "workTasks.event.merge-queued": "Merge queued",
+  "workTasks.event.merge-settled": "Merge processing ended",
+  "workTasks.event.merge-canceled": "Merge canceled",
+  "workTasks.event.merged": "Merged into target branch",
+  "workTasks.error.work-task.branch-not-found":
+    "The selected local branch no longer exists. Select another branch.",
+  "workTasks.error.work-task.source-branch-locked":
+    "The worktree is already allocated; its source branch cannot change.",
+  "workTasks.error.work-task.merge-invalid-target":
+    "Select a local target other than the task branch.",
+  "workTasks.error.work-task.merge-target-dirty":
+    "The target worktree has uncommitted changes. Handle them before merging.",
+  "workTasks.error.work-task.merge-target-changed":
+    "The target branch changed. It was not overwritten; merge again.",
+  "workTasks.error.work-task.merge-source-changed":
+    "The task worktree changed during the merge. Check it and merge again.",
+  "workTasks.error.work-task.merge-target-busy":
+    "The target branch is checked out in multiple worktrees.",
+  "workTasks.error.work-task.merge-operation-in-progress":
+    "Finish the existing Git operation first.",
+  "workTasks.error.work-task.merge-identity-required":
+    "Configure your Git user name and email before committing and merging.",
+  "workTasks.error.work-task.merge-unsupported-conflict":
+    "Binary, submodule, symlink or oversized conflicts cannot be resolved automatically. The target was not updated.",
+  "workTasks.error.work-task.merge-unresolved":
+    "Conflicts remain unresolved. The target was not updated; check the merge conversation.",
+  "workTasks.error.work-task.merge-check-failed":
+    "Git validation failed. The target was not updated.",
+  "workTasks.error.work-task.merge-history-invalid":
+    "The merge history or worktree is not as expected; the result was not published.",
+  "workTasks.error.work-task.merge-in-progress": "A merge is in progress. Wait or cancel it first.",
+  "workTasks.error.work-task.merge-applying":
+    "The target branch is being updated and cannot be canceled now.",
+  "workTasks.error.work-task.merge-incomplete":
+    "The merge did not complete. Check the history before merging again.",
+  "workTasks.error.work-task.merge-unsupported":
+    "This Host does not support task merging. Update and restart the app.",
   "workTasks.worktree": "Worktree",
   "workTasks.runCount": "{count} runs",
   "workTasks.events": "Activity",
@@ -2189,6 +2265,7 @@ const enUS: Record<string, string> = {
   "v4Pane.closePane": "Close pane",
   "v4Pane.closePaneTitle": "Close pane (session keeps running)",
   "v4Pane.remote": "Remote",
+  "v4Pane.conversationTabs": "Open conversations",
   "taskList.markAsUnreadFailed": "Could not mark task as unread",
   "taskList.feedback": "Report issue",
   "taskList.viewModelTrajectory": "View model trajectory",
@@ -7002,9 +7079,9 @@ const enUS: Record<string, string> = {
     "The Computer Use plugin is not enabled. Enable it in Plugins to use Computer Use.",
   "settings.computerUse.unsupported.title": "Computer Use is unavailable here",
   "settings.computerUse.unsupported.remoteDescription":
-    "Computer Use is not yet supported for SSH, WSL, Docker, or other remote environments. Switch to a local macOS or Windows workspace.",
+    "Computer Use requires local macOS 14 or later. SSH, WSL, Docker and other remote workspaces are not supported.",
   "settings.computerUse.unsupported.linuxDescription":
-    "Computer Use is not yet supported on Linux desktops. Switch to a local macOS or Windows workspace.",
+    "Computer Use requires local macOS 14 or later. Windows and Linux are not supported.",
   "settings.computerUse.unsupported.badge": "Unavailable here",
   "settings.computerUse.unsupported.group": "Unavailable built-in capabilities",
   "scheduledPreview.keepAwakeEnabled": "Keep awake enabled",

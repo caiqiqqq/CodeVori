@@ -8,6 +8,33 @@ import {
 const writes = (page) =>
   page.evaluate(() => window.__tasks.calls.filter((call) => call.op !== "list"));
 
+export async function exerciseWorkTaskProjectReadRace(page, panel, card, assertBoardOnly) {
+  await page.evaluate(() => {
+    window.__tasks.delayList = true;
+    window.__tasks.notify();
+  });
+  await page.waitForFunction(() => window.__tasks.pending.length === 1);
+  await panel.getByTestId("work-task-project").click();
+  await page.getByRole("option", { name: "Other", exact: true }).click();
+  await page.waitForFunction(
+    () => window.__tasks.calls.at(-1)?.workspacePath === "/synthetic/other",
+  );
+  assert.ok(await panel.getByTestId("work-task-start-all").isDisabled());
+  assert.ok(await panel.getByTestId("work-task-new").isEnabled());
+  await page.evaluate(() => window.__tasks.finish());
+  await panel.getByTestId("work-task-no-selection").waitFor();
+  assert.equal(
+    await panel.getByTestId("work-task-card").count(),
+    0,
+    "late project read must not leak old tasks",
+  );
+  await panel.getByTestId("work-task-project").click();
+  await page.getByRole("option", { name: "Project", exact: true }).click();
+  await card("task-1").waitFor();
+  await assertBoardOnly();
+  await panel.getByTestId("work-task-no-selection").waitFor();
+}
+
 export async function assertWorkTaskCompactToolbar(panel) {
   await panel.getByRole("heading", { name: "待办任务", exact: true }).waitFor();
   assert.equal(await panel.getByTestId("work-task-project").count(), 1);

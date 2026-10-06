@@ -7,13 +7,20 @@ export interface WorkTaskWorkspaceToolTarget extends WorkTaskScope {
   sidePaneOwnerId: string;
 }
 
-export function workTaskWorkspaceToolTarget(task: WorkTask): WorkTaskWorkspaceToolTarget {
-  const binding = workTaskConversationBinding(task);
+export function workTaskWorkspaceToolTarget(
+  task: WorkTask,
+  mergeConversation = false,
+): WorkTaskWorkspaceToolTarget {
+  const binding = workTaskConversationBinding(task, mergeConversation);
   // 远端待办尚不执行工作树；保存的分配不能把工具路由到本机同名目录。
   const local = !task.workspaceIdentity && !task.remoteSessionId;
   return {
     taskId: task.id,
-    workspacePath: local ? (task.worktree?.path ?? task.workspacePath) : task.workspacePath,
+    workspacePath: local
+      ? (binding?.workspacePath ??
+        (mergeConversation ? task.merge?.worktree?.path : task.worktree?.path) ??
+        task.workspacePath)
+      : task.workspacePath,
     workspaceIdentity: task.workspaceIdentity,
     remoteSessionId: task.remoteSessionId,
     nativeSessionId: binding?.kind === "api" ? binding.sessionId : null,

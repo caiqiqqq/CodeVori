@@ -3,6 +3,7 @@
 // 兼容读取旧版 v1（单值 splitPane），仅当 v1 workspaceKey 是可信本地路径时迁移。
 import {
   clampSplitRatio,
+  effectiveFocusedPaneId,
   leafPaneIds,
   MAX_WORKBENCH_PANES,
   PRIMARY_LEAF,
@@ -108,9 +109,9 @@ function sanitizeScope(raw: unknown): PaneWorkspaceScope | null {
 
 /**
  * 把任意（可能损坏的）v2 持久化值归一为合法布局快照；不可救回 null（调用方回初始布局）。
- * 完整性要求（任一不满足即整体丢弃）：树结构合法、叶子 id 唯一、恰含一个 primary、
+ * 完整性要求（任一不满足即整体丢弃）：树结构合法、叶子 id 唯一、primary 可缺席、
  * 叶子数 ≤ 上限、每个非 primary 叶子有合法绑定。恢复出的 session 绑定补
- * restoredUnvalidated（等 sessions-index 验证）；focusedPaneId 不在树中回 primary。
+ * restoredUnvalidated（等 sessions-index 验证）；无效焦点回存活叶子。
  */
 function sanitizePersistedPaneLayout(raw: unknown): PaneLayoutSnapshot | null {
   if (typeof raw !== "object" || raw === null) {
@@ -122,11 +123,7 @@ function sanitizePersistedPaneLayout(raw: unknown): PaneLayoutSnapshot | null {
     return null;
   }
   const paneIds = leafPaneIds(root);
-  if (
-    paneIds.length > MAX_WORKBENCH_PANES ||
-    new Set(paneIds).size !== paneIds.length ||
-    paneIds.filter((paneId) => paneId === V4_PRIMARY_PANE_ID).length !== 1
-  ) {
+  if (paneIds.length > MAX_WORKBENCH_PANES || new Set(paneIds).size !== paneIds.length) {
     return null;
   }
   const rawPanes =
@@ -162,10 +159,11 @@ function sanitizePersistedPaneLayout(raw: unknown): PaneLayoutSnapshot | null {
       ...(sessionId !== null ? { restoredUnvalidated: true as const } : {}),
     };
   }
-  const focusedPaneId =
-    typeof record.focusedPaneId === "string" && paneIds.includes(record.focusedPaneId)
-      ? record.focusedPaneId
-      : V4_PRIMARY_PANE_ID;
+  const focusedPaneId = effectiveFocusedPaneId({
+    root,
+    panes,
+    focusedPaneId: typeof record.focusedPaneId === "string" ? record.focusedPaneId : "",
+  });
   return { root, panes, focusedPaneId };
 }
 

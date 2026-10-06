@@ -1,7 +1,6 @@
 import type { IPlatformService } from "@zcode/shared";
 
-// macOS 才具备 TCC 权限、授权引导和 Helper 状态轮询；Windows 本地桌面仅复用
-// zcode-cua 插件总开关，不读取 TCC 或 Helper 状态。Linux、普通 Web 和手机远控不展示电脑控制设置。
+// 当前开源 native 只支持 macOS，Windows/Linux/普通 Web 没有本机控制能力。
 // 因此权限弹窗、预检和 Helper 状态轮询都必须先判定本地是 macOS desktop。
 // 用 navigator.userAgent 判定，并显式排除 iOS（iPhone/iPad 的 UA 含 Macintosh 子串）。
 //
@@ -14,10 +13,6 @@ function isMacOsDesktopUserAgent(): boolean {
     /Macintosh|Mac OS X/.test(navigator.userAgent) &&
     !/iPhone|iPad|iPod/.test(navigator.userAgent)
   );
-}
-
-function isWindowsDesktopUserAgent(): boolean {
-  return typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
 }
 
 /**
@@ -33,13 +28,11 @@ export function supportsLocalMacCuaPermissionOnboarding(
 }
 
 /**
- * Windows 本地桌面的 CUA 能力门（与上面的 mac 门对称）。
- *
- * Windows 无 TCC，不读 Helper 权限，因此不能用 openCuaPermissionOnboarding 当 capability 判据；
- * 改用 executeDesktopCommand——它只在 desktop preload 注入，能把 Windows 上的普通浏览器排除掉。
+ * 保留 Windows 能力查询接口供现有 composer 调用，开源 runtime 始终返回不支持。
  */
 export function supportsLocalWindowsCuaEntry(
-  platform: Pick<IPlatformService, "executeDesktopCommand"> | null | undefined,
+  _platform: Pick<IPlatformService, "executeDesktopCommand"> | null | undefined,
 ): boolean {
-  return isWindowsDesktopUserAgent() && typeof platform?.executeDesktopCommand === "function";
+  // 上游只提供 macOS native，不能把桌面 IPC 当作 Windows 控制能力。
+  return false;
 }

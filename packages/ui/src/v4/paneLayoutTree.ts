@@ -11,7 +11,7 @@
 // - workspaceScope 语义 = session 归属的主（primary）workspace，是连接路由键；
 //   不是「session 能触达的全部路径」（未来跨 workspace session 的辅助路径是
 //   session 属性，不进布局层）。
-// - primary pane（workspace-main）是保留叶子：不进 panes，绑定沿用既有选择态
+// - primary pane（workspace-main）不进 panes，可在分屏中关闭，绑定沿用既有选择态
 //   （activeTaskId → shell props），避免与 zcodeSessionStore/tabStore 双写；
 //   tabStore（workspace tab 语义）完全不动。
 // 所有转移函数无副作用；无变化时返回原引用（zustand 免重渲染）。
@@ -88,6 +88,8 @@ export type SplitDirection = "row" | "column";
 /** IDE 式拖拽拆分方向：left/up 插到 anchor 前，right/down 插到 anchor 后。 */
 export type PaneSplitSide = "left" | "right" | "up" | "down";
 
+export type PaneCloseReason = "dismiss" | "session-removed";
+
 export type PaneLayoutNode =
   | { readonly type: "leaf"; readonly paneId: string }
   | {
@@ -148,9 +150,12 @@ function leafExists(node: PaneLayoutNode, paneId: string): boolean {
   return leafExists(node.first, paneId) || leafExists(node.second, paneId);
 }
 
-/** 焦点 pane 不在树中（如刚被关闭/恢复数据异常）时退化为 primary。 */
+/** 焦点无效时优先存活 primary，否则选第一个叶子，不能路由到已关闭的主草稿。 */
 export function effectiveFocusedPaneId(state: PaneLayoutSnapshot): string {
-  return leafExists(state.root, state.focusedPaneId) ? state.focusedPaneId : V4_PRIMARY_PANE_ID;
+  if (leafExists(state.root, state.focusedPaneId)) return state.focusedPaneId;
+  return leafExists(state.root, V4_PRIMARY_PANE_ID)
+    ? V4_PRIMARY_PANE_ID
+    : leafPaneIds(state.root)[0]!;
 }
 
 /** 分配新 pane id：pane-<n>，n = 树内既有序号最大值 + 1（与 workspace-main/split 保留 id 无碰撞）。 */
@@ -303,20 +308,26 @@ export function splitPaneAtSide(
 
 /**
  * 关闭 pane：叶子移除，父分割节点塌缩为兄弟子树；绑定移除。
- * primary 不可关；pane 不在树中 → no-op。焦点在被关 pane 上时归还 primary。
+ * 只保护最后一个 pane；会话已移除时允许清理最后绑定并回到主草稿。
  * 关 pane ≠ 停 session：只是退订视图，session 在 CLI 里照跑。
  */
-export function closePane(state: PaneLayoutSnapshot, paneId: string): PaneLayoutSnapshot {
-  if (paneId === V4_PRIMARY_PANE_ID || !leafExists(state.root, paneId)) {
+export function closePane(
+  state: PaneLayoutSnapshot,
+  paneId: string,
+  reason: PaneCloseReason = "dismiss",
+): PaneLayoutSnapshot {
+  if (!leafExists(state.root, paneId)) {
     return state;
   }
-  const root = removeLeaf(state.root, paneId) ?? PRIMARY_LEAF;
+  const root = removeLeaf(state.root, paneId);
+  if (!root) return reason === "session-removed" ? INITIAL_PANE_LAYOUT : state;
   const panes = { ...state.panes };
   delete panes[paneId];
+  // 修复原因：主草稿也是可关闭面板；保留存活 paneId 才能保留对话实例和输入草稿。
   return {
     root,
     panes,
-    focusedPaneId: state.focusedPaneId === paneId ? V4_PRIMARY_PANE_ID : state.focusedPaneId,
+    focusedPaneId: effectiveFocusedPaneId({ root, panes, focusedPaneId: state.focusedPaneId }),
   };
 }
 

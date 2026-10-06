@@ -1,4 +1,6 @@
 node_modules/
+packages/zcode-cua/vendor/open-zcode-computer-use/native/.build/
+packages/zcode-cua/native-bin/
 dist/
 # zcode-server-cli 发行包 staging 输出，本地组装产物不入库。
 dist-release/

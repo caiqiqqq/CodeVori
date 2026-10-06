@@ -5,6 +5,7 @@ import {
   availableAcpPlugins,
   buildAcpPluginPrompt,
   referencedAcpPlugins,
+  isPortablePluginMcp,
 } from "../src/acp/acpPluginContext.js";
 
 const skill = (pluginId: string, name: string, enabled = true): SkillSummary => ({
@@ -23,6 +24,21 @@ const plugin = (pluginId: string, enabled = true, conflictingPluginIds: string[]
   enabled,
   conflictingPluginIds,
   mcpServerNames: [],
+});
+
+test("open computer-use is portable ordinary MCP; broker-specific commands remain excluded", () => {
+  const config = {
+    type: "stdio",
+    command: process.execPath,
+    args: [
+      "/application/zcode.cjs",
+      "__zcode-plugin-host",
+      "/plugins/computer-use/dist/mcp/server.js",
+    ],
+    env: { ELECTRON_RUN_AS_NODE: "1" },
+  };
+  assert.equal(isPortablePluginMcp(config), true);
+  assert.equal(isPortablePluginMcp({ command: "npx", args: ["@zcode/zcode-cua"] }), false);
 });
 
 test("ACP canonical plugin references share strict identity, escaping and limits with native ZCode", () => {

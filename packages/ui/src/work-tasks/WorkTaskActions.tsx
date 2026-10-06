@@ -1,6 +1,7 @@
 import {
   Archive,
   ArchiveRestore,
+  Check,
   Info,
   MessageSquare,
   MoreHorizontal,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import { WORK_TASK_ACTIVE_STATUSES, type WorkTask } from "@zcode/shared";
 import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
+import { canCompleteWorkTask } from "@/lib/workTaskBoard.js";
 import { WorkTaskIconButton, useWorkTaskMessages } from "./WorkTaskParts.js";
 import { Button } from "@/components/ui/button.js";
 import {
@@ -25,6 +27,7 @@ export function WorkTaskActions({
   panel,
   onOpenConversation,
   onEdit,
+  onComplete,
   onDetails,
   showConversation = true,
   menu = false,
@@ -33,6 +36,7 @@ export function WorkTaskActions({
   panel: ReturnType<typeof useWorkTasks>;
   onOpenConversation(task: WorkTask): void;
   onEdit(task: WorkTask): void;
+  onComplete(task: WorkTask): void;
   onDetails?(task: WorkTask): void;
   showConversation?: boolean;
   menu?: boolean;
@@ -42,6 +46,8 @@ export function WorkTaskActions({
   const startable = ["todo", "failed", "canceled"].includes(task.status) && !task.archived;
   const disabled = panel.busy || task.stopPending;
   const actions: { label: string; Icon: LucideIcon; disabled?: boolean; run(): void }[] = [];
+  if (canCompleteWorkTask(task))
+    actions.push({ label: t("complete"), Icon: Check, disabled, run: () => onComplete(task) });
   if (onDetails) actions.push({ label: t("details"), Icon: Info, run: () => onDetails(task) });
   if (showConversation && task.session)
     actions.push({
@@ -65,7 +71,7 @@ export function WorkTaskActions({
       ? {
           label: t("cancel"),
           Icon: Square,
-          disabled,
+          disabled: disabled || task.merge?.phase === "applying",
           run: () => {
             void panel.cancel(task.id);
           },

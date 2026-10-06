@@ -300,7 +300,9 @@ import { IAcpService } from "./acp/acpService.js";
 import { IWorkTaskService } from "./session/contract.js";
 import { WorkTaskRepo } from "./session/workTaskRepo.js";
 import { WorkTaskService } from "./session/workTaskService.js";
+import { WorkTaskAttachmentStore } from "./session/workTaskAttachmentStore.js";
 import { createWorkTaskExecution } from "./work-task/workTaskExecution.js";
+import { createWorkTaskMerge } from "./work-task/workTaskMerge.js";
 import { createWorkTaskConversation } from "./work-task/workTaskConversation.js";
 import { createAcpService } from "./acp/acpServiceImpl.js";
 import { IZCodeAgentService } from "./zcode-agent/zcodeAgent.js";
@@ -509,6 +511,7 @@ import { createCanonicalCuaHelperInstaller } from "./cua-permission-broker/cuaHe
 import { WindowsCuaHelperHost } from "#src/cua-permission-broker/windowsCuaDevHelperHost.js";
 import { DEV_HELPER_APP_NAME, HELPER_APP_NAME } from "@zcode/zcode-cua/broker/helperConstants";
 import { resolveBrokerSocketPath } from "@zcode/zcode-cua/broker/socketPath";
+import { createOpenCuaPermissionService } from "./cua-permission-broker/openCuaPermissionService.js";
 import {
   DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY,
   resolveSafeEndpointHostname,
@@ -1860,7 +1863,9 @@ export function createLocalServices(options: {
   // enabled 与 onCuaPipSessionLifecycle 是否挂上，都由 serviceAuthorityMode 单点决定；
   // 提出来命名，避免下面的启动期诊断与真实取值漂移。
   const cuaPipSessionEnabled =
-    process.platform === "darwin" && options?.serviceAuthorityMode === "desktop-local";
+    process.platform === "darwin" &&
+    options?.serviceAuthorityMode === "desktop-local" &&
+    !process.env.ZCODE_OPEN_CUA_NATIVE;
   const cuaPipSessionService = createCuaPipSessionService({
     enabled: cuaPipSessionEnabled,
     resolveCredentials: async () => {
@@ -1890,12 +1895,18 @@ export function createLocalServices(options: {
   // 用户授权后从明确入口精确重启一次 Helper。重启**必须走 resolver.restart()**（不是裸 host.restart），
   // 因为 resolver 优先复用既有 socket/token；裸 host.restart() 可能 fresh 新凭据，使已有 Agent
   // 继续持有旧 transport，无法连接新的 broker。
+  const openCuaPermissionService = process.env.ZCODE_OPEN_CUA_NATIVE
+    ? createOpenCuaPermissionService({ serviceAuthorityMode: options?.serviceAuthorityMode })
+    : undefined;
   const cuaPermissionService: ICuaPermissionService = {
     async getStatus(
       workspacePath: string,
       workspaceIdentity?: string,
       queryOptions?: CuaPermissionStatusQueryOptions,
     ): Promise<CuaPermissionStatusResult> {
+      if (openCuaPermissionService) {
+        return openCuaPermissionService.getStatus(workspacePath, workspaceIdentity, queryOptions);
+      }
       if (process.platform !== "darwin") {
         return {
           available: false,
@@ -2022,6 +2033,13 @@ export function createLocalServices(options: {
       workspaceIdentity?: string,
       restartOptions?: CuaPermissionRestartOptions,
     ): Promise<CuaPermissionRestartResult> {
+      if (openCuaPermissionService) {
+        return openCuaPermissionService.restartHelper(
+          workspacePath,
+          workspaceIdentity,
+          restartOptions,
+        );
+      }
       if (process.platform !== "darwin") {
         return {
           ok: false,
@@ -2167,7 +2185,8 @@ export function createLocalServices(options: {
             };
       // 与 helper 创建同一个门控（isCuaEnabledForContext：dev/internal 特性 OR 官方插件 enablement），
       // 避免 dev mode 下 helper 建了但 resolveSpawnEnv 漏注入 broker env 的割裂。
-      const cuaPluginEnabled = isCuaEnabledForContext(context);
+      const cuaPluginEnabled =
+        !process.env.ZCODE_OPEN_CUA_NATIVE && isCuaEnabledForContext(context);
       // 懒启动：darwin 上 spawn 绝不 acquire 拉起 Helper——已有 host（peek，比如刚走过
       // 授权流）则复用其 tuple；否则只注入稳定 socket，SDK 首次 CUA 调用自行拉起
       // （宿主启动/spawn 均不使 Helper 常驻）。win32 保留 acquire（token 模式）。
@@ -2299,7 +2318,8 @@ export function createLocalServices(options: {
   // 动态 resolver：isPluginEnabled 与 helper 创建用同一个 isCuaEnabledForContext 门控（dev mode 一致），
   // 避免开发场景下 resolver pass-through 而 helper 已建的割裂。
   const defaultCuaProductMcpServerResolver = createDynamicCuaProductMcpServerResolver({
-    isPluginEnabled: (context) => isCuaEnabledForContext(context),
+    isPluginEnabled: (context) =>
+      !process.env.ZCODE_OPEN_CUA_NATIVE && isCuaEnabledForContext(context),
     getResolver: async () => {
       // peek-only——resolver 属托管 host 体系，host 未建时返回 undefined（懒启动下
       // CUA 经 node_repl + 稳定 socket，不依赖此 resolver）；绝不在此 acquire。
@@ -2489,17 +2509,20 @@ export function createLocalServices(options: {
   // 注册链上的懒工厂（如 OffPeak）会各自创建 tasks-index sqlite repo；先收集到本数组，
   // services 集合建好后在 return 前统一登记进 sharedSqliteRepos 侧表
   const sqliteReposToClose: Array<{ close(): void }> = [];
-  const workTaskExecution = createWorkTaskExecution({
+  const workTaskExecutionDependencies = {
     git: gitService,
     settings: settingService,
     acp: acpService,
     agent: zcodeAgentService,
-    ensureWorkspaceSubscription: (target) =>
+    ensureWorkspaceSubscription: (target: { workspacePath: string }) =>
       zcodeTaskIndexSyncer.ensureWorkspaceSubscription(target),
-  });
+  };
+  const workTaskExecution = createWorkTaskExecution(workTaskExecutionDependencies);
   const workTaskService = new WorkTaskService({
     repo: new WorkTaskRepo(join(getZCodeDataRootDir(), "work-tasks.sqlite")),
+    attachments: new WorkTaskAttachmentStore(join(getZCodeDataRootDir(), "work-task-attachments")),
     execute: (task, context) => workTaskExecution.execute(task, context),
+    merge: createWorkTaskMerge(workTaskExecutionDependencies),
     conversation: createWorkTaskConversation({ acp: acpService, agent: zcodeAgentService }),
     allowExecution: !isDesktopAttachedRemote,
   });

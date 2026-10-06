@@ -79,6 +79,7 @@ export function createCuaPermissionDragPanel(
   let timer: NodeJS.Timeout | null = null;
   let lastBounds: Rect | null = null;
   let destroyed = false;
+  let visible = false;
 
   function readSettingsBounds(): Rect | null {
     if (!options.getSettingsBounds) return null;
@@ -126,7 +127,9 @@ export function createCuaPermissionDragPanel(
 
   return {
     show(permission: CuaPermissionKind): void {
-      if (destroyed) destroyed = false;
+      // 销毁是终态；取消后迟到的设置打开回调不能复活浮窗或定位 watcher。
+      if (destroyed) return;
+      visible = true;
       const initialBounds = resolvePanelBounds({
         settings: readSettingsBounds(),
         display: options.getDisplayWorkArea(),
@@ -137,7 +140,8 @@ export function createCuaPermissionDragPanel(
       if (!window || window.isDestroyed()) {
         window = options.createWindow(initialBounds);
         window.onceReadyToShow(() => {
-          if (!window || window.isDestroyed()) return;
+          // 用户可能在 renderer 加载期间取消/隐藏，ready-to-show 不能反向覆盖该决定。
+          if (!visible || destroyed || !window || window.isDestroyed()) return;
           window.setBounds(lastBounds ?? initialBounds);
           // 浮窗是独立静态 renderer，不在主 React Intl 树内；不传 locale 的话
           // 英文 ZCode 也会显示硬编码中文。先发当前 locale 再显示，避免中文 fallback 闪屏。
@@ -163,6 +167,7 @@ export function createCuaPermissionDragPanel(
     },
 
     hide(): void {
+      visible = false;
       stopTracking();
       if (window && !window.isDestroyed()) window.hide();
     },
@@ -174,6 +179,7 @@ export function createCuaPermissionDragPanel(
     destroy(): void {
       if (destroyed) return;
       destroyed = true;
+      visible = false;
       stopTracking();
       if (window && !window.isDestroyed()) window.destroy();
       window = null;
@@ -206,6 +212,7 @@ export function createRealCuaPermissionPanelWindow(deps: {
   preloadPath: string;
   rendererDir: string;
   rendererDevUrl?: string | undefined;
+  onWindowCreated?: (webContentsId: number) => void;
 }): (initialBounds: Rect) => CuaPermissionPanelWindow {
   return (initialBounds: Rect) => {
     const win = new deps.BrowserWindow({
@@ -230,6 +237,7 @@ export function createRealCuaPermissionPanelWindow(deps: {
         nodeIntegration: false,
       },
     });
+    deps.onWindowCreated?.(win.webContents.id);
 
     // 与主窗口保持一致：生产包始终加载签名包内的渲染资源。
     if (!deps.app.isPackaged && deps.rendererDevUrl) {
@@ -248,7 +256,12 @@ export function createRealCuaPermissionPanelWindow(deps: {
       showInactive() {
         win.showInactive();
         win.setAlwaysOnTop(true, "screen-saver");
-        win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+        // Electron 默认会把整个应用转换成 UIElement，导致主程序的 Dock 图标消失。
+        // 浮窗跨桌面显示不应改变应用类型，也不应通过恢复 Dock 抢走系统设置的焦点。
+        win.setVisibleOnAllWorkspaces(true, {
+          visibleOnFullScreen: true,
+          skipTransformProcessType: true,
+        });
       },
       hide() {
         win.hide();

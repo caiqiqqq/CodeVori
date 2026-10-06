@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { Emitter, type Event, type IDisposable } from "@zcode/rpc";
 import {
   resolveWorkspaceKey,
+  workTaskMergeRequestSchema,
+  isWorkTaskMerging,
   workTaskArchiveSchema,
   workTaskConcurrencySchema,
   workTaskCreateSchema,
@@ -10,6 +12,15 @@ import {
   workTaskStartSchema,
   workTaskTargetSchema,
   workTaskUpdateSchema,
+  workTaskAttachmentImportSchema,
+  workTaskAttachmentBeginSchema,
+  workTaskAttachmentChunkSchema,
+  workTaskAttachmentTargetSchema,
+  type WorkTaskAttachment,
+  type WorkTaskAttachmentImport,
+  type WorkTaskAttachmentBegin,
+  type WorkTaskAttachmentChunk,
+  type WorkTaskAttachmentTarget,
   type WorkTask,
   type WorkTaskBoard,
   type WorkTaskCreate,
@@ -17,6 +28,7 @@ import {
   type WorkTaskStart,
   type WorkTaskTarget,
   type WorkTaskUpdate,
+  type WorkTaskMergeRequest,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import type {
@@ -24,8 +36,10 @@ import type {
   WorkTaskExecutionContext,
   WorkTaskConversationEvent,
   WorkTaskConversationPort,
+  WorkTaskMergePort,
 } from "./workTask.js";
 import { WorkTaskRepo } from "./workTaskRepo.js";
+import type { WorkTaskAttachmentStore } from "./workTaskAttachmentStore.js";
 
 interface Run {
   task: WorkTask;
@@ -51,7 +65,9 @@ export class WorkTaskService implements IWorkTaskService {
   constructor(
     private readonly options: {
       repo: WorkTaskRepo;
+      attachments?: WorkTaskAttachmentStore;
       execute(task: WorkTask, context: WorkTaskExecutionContext): Promise<void>;
+      merge?: WorkTaskMergePort;
       conversation?: WorkTaskConversationPort;
       pollIntervalMs?: number;
       allowExecution?: boolean;
@@ -208,7 +224,11 @@ export class WorkTaskService implements IWorkTaskService {
     let error: string | undefined;
     try {
       this.assertLocal(run.task);
-      await this.options.execute(run.task, {
+      const execute = isWorkTaskMerging(run.task)
+        ? this.options.merge?.execute.bind(this.options.merge)
+        : this.options.execute;
+      if (!execute) throw new Error("work-task.merge-unsupported");
+      await execute(run.task, {
         signal: run.abort.signal,
         update: async (patch) => {
           if (run.abort.signal.aborted || this.closed) return false;
@@ -239,6 +259,7 @@ export class WorkTaskService implements IWorkTaskService {
   async create(input: WorkTaskCreate) {
     const parsed = workTaskCreateSchema.parse(input);
     await this.ready();
+    await this.validateAttachments(parsed, parsed.attachments);
     const task = this.options.repo.create(parsed);
     this.publish();
     return task;
@@ -246,9 +267,40 @@ export class WorkTaskService implements IWorkTaskService {
   async update(input: WorkTaskUpdate) {
     const parsed = workTaskUpdateSchema.parse(input);
     await this.ready();
+    await this.validateAttachments(parsed, parsed.attachments);
     const task = this.options.repo.update(parsed);
     this.publish();
     return task;
+  }
+  private attachmentStore(scope: WorkTaskScope) {
+    this.assertLocal(scope);
+    if (this.closed) throw new Error("work-task.host-closed");
+    if (!this.options.attachments) throw new Error("work-task.attachments-unsupported");
+    return this.options.attachments;
+  }
+  private async validateAttachments(scope: WorkTaskScope, attachments?: WorkTaskAttachment[]) {
+    if (attachments?.length) await this.attachmentStore(scope).validate(scope, attachments);
+    if (this.closed) throw new Error("work-task.host-closed");
+  }
+  async attachmentImport(input: WorkTaskAttachmentImport) {
+    const parsed = workTaskAttachmentImportSchema.parse(input);
+    return this.attachmentStore(parsed).importFile(parsed);
+  }
+  async attachmentBegin(input: WorkTaskAttachmentBegin) {
+    const parsed = workTaskAttachmentBeginSchema.parse(input);
+    return this.attachmentStore(parsed).begin(parsed);
+  }
+  async attachmentChunk(input: WorkTaskAttachmentChunk) {
+    const parsed = workTaskAttachmentChunkSchema.parse(input);
+    return this.attachmentStore(parsed).chunk(parsed);
+  }
+  async attachmentCommit(input: WorkTaskAttachmentTarget) {
+    const parsed = workTaskAttachmentTargetSchema.parse(input);
+    return this.attachmentStore(parsed).commit(parsed);
+  }
+  async attachmentAbort(input: WorkTaskAttachmentTarget) {
+    const parsed = workTaskAttachmentTargetSchema.parse(input);
+    return this.attachmentStore(parsed).abort(parsed);
   }
   async start(input: WorkTaskStart) {
     const parsed = workTaskStartSchema.parse(input);
@@ -281,6 +333,19 @@ export class WorkTaskService implements IWorkTaskService {
     await this.ready();
     const task = this.options.repo.complete(parsed, parsed.id);
     this.publish();
+    return task;
+  }
+  async merge(input: WorkTaskMergeRequest) {
+    const parsed = workTaskMergeRequestSchema.parse(input);
+    this.assertLocal(parsed);
+    await this.ready();
+    if (!this.options.merge) throw new Error("work-task.merge-unsupported");
+    const current = this.options.repo.get(parsed, parsed.id);
+    const { projectPath } = await this.options.merge.validate(current, parsed.targetBranch);
+    if (this.closed) throw new Error("work-task.host-closed");
+    const task = this.options.repo.enqueueMerge(parsed, projectPath);
+    this.publish();
+    this.wake();
     return task;
   }
   async archive(input: WorkTaskTarget & { archived: boolean }) {
@@ -321,6 +386,7 @@ export class WorkTaskService implements IWorkTaskService {
     this.disposal = this.stopAndClose();
   }
   private async stopAndClose() {
+    await this.options.attachments?.dispose();
     await this.initialized?.catch(() => {});
     await this.ticking;
     if (this.initialized) {

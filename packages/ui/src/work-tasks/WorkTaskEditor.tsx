@@ -7,6 +7,11 @@ import {
   type WorkTaskScope,
 } from "@zcode/shared";
 import { useWorkTaskModels } from "@/hooks/useWorkTaskModels.js";
+import { useWorkTaskBranches } from "@/hooks/useWorkTaskBranches.js";
+import { WorkTaskBranchSelect } from "./WorkTaskBranchSelect.js";
+import { useWorkTaskPromptAssets } from "@/hooks/useWorkTaskPromptAssets.js";
+import { useWorkTaskEditorSave } from "@/hooks/useWorkTaskEditorSave.js";
+import type { LexicalChatInputHandle } from "@/LexicalChatInput.js";
 import {
   resolveWorkTaskExecutionPreference,
   workTaskExecutionPreferenceStore,
@@ -20,7 +25,6 @@ import { buildAcpModelSelectGroup } from "@/v4/composer/acpModelSelection.js";
 import { AcpComposerConfigControls } from "@/v4/composer/AcpComposerConfigControls.js";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
-import { Textarea } from "@/components/ui/textarea.js";
 import {
   Dialog,
   DialogContent,
@@ -28,14 +32,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select.js";
 import { WorkTaskError, WorkTaskIconButton, useWorkTaskMessages } from "./WorkTaskParts.js";
+import { WorkTaskPromptField } from "./WorkTaskPromptField.js";
+import { WorkTaskApiConfigControls } from "./WorkTaskApiConfigControls.js";
 
 interface Props {
   scope: WorkTaskScope;
@@ -50,7 +49,7 @@ interface Props {
 export function WorkTaskEditor({
   scope,
   task,
-  busy,
+  busy: externalBusy,
   error,
   startAfterSave = false,
   onClose,
@@ -58,9 +57,17 @@ export function WorkTaskEditor({
 }: Props) {
   const t = useWorkTaskMessages();
   const models = useWorkTaskModels(scope);
+  const branches = useWorkTaskBranches(scope, !task?.worktree);
+  const [sourceDraft, setSourceDraft] = useState<{ value?: string } | null>(
+    task ? { value: task.sourceBranch } : null,
+  );
+  const sourceBranch = sourceDraft ? sourceDraft.value : branches.currentBranch;
   const [title, setTitle] = useState(task?.title ?? "");
   const [prompt, setPrompt] = useState(task?.prompt ?? "");
-  const submitting = useRef(false);
+  const submission = useWorkTaskEditorSave(externalBusy);
+  const { busy } = submission;
+  const inputApiRef = useRef<LexicalChatInputHandle | null>(null);
+  const assets = useWorkTaskPromptAssets(scope, task, busy);
   const [draftExecution, setDraftExecution] = useState<WorkTaskExecution | null>(
     task?.execution ?? null,
   );
@@ -164,16 +171,18 @@ export function WorkTaskEditor({
   };
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!execution || busy || submitting.current) return;
-    // React 提交忙碌状态前仍可能连续 submit；同步锁覆盖保存和重新开始的完整操作。
-    submitting.current = true;
-    try {
+    if (!execution || !inputApiRef.current) return;
+    await submission.submit(async (signal) => {
       // 修复原因：历史快照只提供目录，保存全部历史当前值会继承别的会话的高权限。
       // 未显式选择的项留给实际 Agent 默认值，已保存的未知选项也不能悄悄丢弃。
-      if (await onSave({ title: title.trim(), prompt: prompt.trim(), execution })) onClose();
-    } finally {
-      submitting.current = false;
-    }
+      if (!inputApiRef.current) return;
+      const draft = await assets.prepareDraft(title, execution, inputApiRef.current, signal);
+      if (
+        (await onSave({ ...draft, ...(sourceBranch ? { sourceBranch } : {}) })) &&
+        !signal.aborted
+      )
+        onClose();
+    });
   };
   return (
     <Dialog
@@ -212,6 +221,35 @@ export function WorkTaskEditor({
             <span className="break-all font-mono">{scope.workspacePath}</span>
           </label>
           <div className="flex min-w-0 flex-col gap-1.5">
+            <span className="text-ui-sm text-foreground-subtle">{t("sourceBranch")}</span>
+            <WorkTaskBranchSelect
+              label={t("sourceBranch")}
+              value={sourceBranch}
+              branches={branches.branches}
+              allowHead
+              testId="work-task-source-branch"
+              disabled={busy || !!task?.worktree || branches.loading}
+              onChange={(value) => setSourceDraft({ value })}
+              onOpen={() => {
+                void branches.refresh();
+              }}
+            />
+            <WorkTaskError error={branches.error} />
+            {branches.error ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="self-start"
+                onClick={() => {
+                  void branches.refresh();
+                }}
+              >
+                {t("branchRetry")}
+              </Button>
+            ) : null}
+          </div>
+          <div className="flex min-w-0 flex-col gap-1.5">
             <span className="text-ui-sm text-foreground-subtle">{t("executor")}</span>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <ModelConfigSelect
@@ -241,55 +279,12 @@ export function WorkTaskEditor({
                 triggerClassName="max-w-full"
               />
               {execution?.kind === "api" ? (
-                <>
-                  <Select
-                    value={execution.mode}
-                    onValueChange={(mode) =>
-                      changeExecution({
-                        ...execution,
-                        mode: mode as "build" | "edit" | "plan" | "yolo",
-                      })
-                    }
-                    disabled={busy}
-                  >
-                    <SelectTrigger className="max-w-40" aria-label={t("mode")}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {["build", "edit", "plan", "yolo"].map((mode) => (
-                        <SelectItem key={mode} value={mode}>
-                          {t(`mode.${mode}`)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {thought?.options?.length ? (
-                    <Select
-                      value={execution.modelSelection.options?.reasoningLevel ?? ""}
-                      onValueChange={(level) =>
-                        changeExecution({
-                          ...execution,
-                          modelSelection: {
-                            ...execution.modelSelection,
-                            options: { reasoningLevel: level },
-                          },
-                        })
-                      }
-                      disabled={busy}
-                    >
-                      <SelectTrigger className="max-w-40" aria-label={t("reasoning")}>
-                        <SelectValue placeholder={t("reasoning")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {thought.options.map((item) => (
-                          <SelectItem key={item.value} value={item.value}>
-                            {item.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : null}
-                </>
+                <WorkTaskApiConfigControls
+                  execution={execution}
+                  thought={thought}
+                  disabled={busy}
+                  onChange={changeExecution}
+                />
               ) : agent ? (
                 <div className="min-w-0 [&>div]:flex-wrap">
                   <AcpComposerConfigControls
@@ -362,19 +357,15 @@ export function WorkTaskEditor({
               </div>
             ) : null}
           </div>
-          <label className="flex min-w-0 flex-col gap-1.5 text-ui-sm text-foreground-subtle">
-            {t("prompt")}
-            <Textarea
-              data-testid="work-task-prompt"
-              className="h-40 field-sizing-fixed resize-y border-input-border bg-input text-foreground"
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              required
-              maxLength={100000}
-              disabled={busy}
-            />
-          </label>
-          <WorkTaskError error={error} />
+          <WorkTaskPromptField
+            scope={scope}
+            task={task}
+            busy={busy}
+            assets={assets}
+            inputApiRef={inputApiRef}
+            onChange={setPrompt}
+          />
+          <WorkTaskError error={submission.error ?? assets.attachmentError ?? error} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
               {t("close")}
@@ -386,6 +377,7 @@ export function WorkTaskEditor({
                 !title.trim() ||
                 !prompt.trim() ||
                 !execution ||
+                (!task?.worktree && (branches.loading || !!branches.error)) ||
                 (!!thought?.options?.length && !thought.currentValue)
               }
               data-testid="work-task-save"

@@ -72,6 +72,33 @@ async function until(check: () => boolean) {
   assert.fail("native command did not arrive");
 }
 
+test("API task sendText carries saved attachment refs without Agent upload", async () => {
+  const f = await fixture();
+  try {
+    f.task.attachments = [
+      {
+        ref: join(f.path, "reference.txt"),
+        fileName: "reference.txt",
+        mime: "text/plain",
+        bytes: 12,
+      },
+    ];
+    const run = f.execute();
+    await until(() => f.calls.includes("subscribe"));
+    f.emit(snapshot());
+    await until(() => f.calls.includes("sendText"));
+    const payload = f.commands.find((row) => row.type === "sendText")!.payload as {
+      attachments: unknown;
+    };
+    assert.deepEqual(payload.attachments, f.task.attachments);
+    f.terminal();
+    await run;
+  } finally {
+    f.abort.abort();
+    await f.cleanup();
+  }
+});
+
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), "zcode-task-native-"));
   const path = join(dir, "abcd", "project");

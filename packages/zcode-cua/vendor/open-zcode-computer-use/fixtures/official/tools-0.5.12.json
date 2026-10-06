@@ -1,0 +1,1988 @@
+{
+  "tools": [
+    {
+      "name": "list_apps",
+      "title": "List Apps",
+      "description": "List running applications only: name, bundle_id (macOS bundle id / Windows AUMID / often empty on Linux), pid, active. A target missing from this list does not mean it is not installed. Do not substitute a different running application for the user-requested app. On Linux/Windows prefer name or pid. Read-only.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "open_application",
+      "title": "Open Application",
+      "description": "Launch or resolve an application.\napp is OS-specific:\n  - macOS: {\"bundle_id\": \"com.apple.TextEdit\"} or {\"name\": \"TextEdit\"}.\n  - Linux: {\"name\": \"gedit\"} or {\"name\": \"Firefox\"} (no bundle_id on Linux; use name/pid).\n  - Windows: {\"name\": \"Notepad\"} or {\"bundle_id\": \"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App\"} (AUMID for UWP).\nWhen bundle_id or pid is known, use that canonical identity alone; do not add a translated or guessed name.\nFor a macOS app that is not running, try the original user-provided name once: copy it character-for-character into app.name, including its script, case, spaces, punctuation, and suffixes such as app. For example, use {\"name\":\"网易云音乐app\"}, not {\"name\":\"网易云音乐\"}; use {\"name\":\"日历\"}, not {\"name\":\"Calendar\"}. Do not translate, localize, normalize, shorten, or remove a suffix; do not retry names, search with Bash/Finder/Spotlight, or substitute another application.\nIf you already have a process-scoped app_ref from get_app_state/list_apps, {\"pid\": 123, \"name\": \"...\"}\nis accepted to resolve that already-running process.\nBrowser navigation/search: pass url or urls, e.g.\n{\"bundle_id\": \"com.google.Chrome\", \"url\": \"https://www.bing.com/search?q=Zhipu+AI\"}.\nPrefer url/urls for browsers when get_app_state has no elements or screenshot is unavailable.\n\na11y-first: by default (activate=false) the app is NOT brought to the foreground, so\nthis never steals the user's focus/screen -- accessibility targets remain the primary\nbackground-safe path. App-scoped input may still report no observable effect; do not treat\ndispatch acceptance as proof that an attached panel or control handled it. Do\nNOT set activate=true just to open, observe, click element targets, or type/key with\napp_ref; try those background-safe paths first. Set activate=true only when the operation\ngenuinely requires the application foreground. The backend verifies that foreground\npostcondition on every platform and fails instead of silently falling back to background.\nThe prevent_activation policy of the trusted host can still refuse activate=true before\ndispatch; the model-facing flag expresses intent and never overrides host policy.\nFor an ordinary launch or application activation, omit window_id. Never guess window_id or use placeholders such as 1.\nOnly for a fresh macOS open/save panel, copy the exact pid, bundle_id, and actual window_id\nreturned by get_app_state with activate=true. Re-observe that surface before event key/type.\nUse foreground activation ONLY as a last resort for raw foreground key/hold_key\ninput, or a coordinate click onto a self-drawn canvas area with no accessibility element --\nthose are the only inputs that truly need the app frontmost. A normal left_click and all\nelement/type/key actions are already background-safe (accessibility hit-test / AXPress) and\ndo NOT require activate=true, so do not set it before a coordinate or element click.\nactivate=true also applies to an already-running exact target. The returned\n\"active\" field tells you whether the app ended up frontmost.\n\nOn macOS, new_instance=true launches and verifies a separate process. Use it for a disposable\nscratch document when an existing app process is blocked or has unrelated windows. It cannot\nbe combined with app.pid; the returned fresh pid must be reused for list_windows/get_app_state.\n\nOn Linux, keyboard input (type/key without an element target) additionally needs the target window frontmost -- Mutter ignores programmatic focus.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "app": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "bundle_id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "For an app that is not running, copy the user-provided name character-for-character, including script, case, spaces, punctuation, and suffixes such as app. For example, use {\"name\":\"网易云音乐app\"}, not {\"name\":\"网易云音乐\"}; use {\"name\":\"日历\"}, not {\"name\":\"Calendar\"}. Do not translate, localize, normalize, shorten, or remove a suffix."
+                  },
+                  "pid": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "window_id": {
+                    "description": "Only copy a fresh actual_window_id from an observed macOS open/save panel. Omit for ordinary launch or activation; never guess a placeholder such as 1.",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "urls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "bundle_id"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "bundle_id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "For an app that is not running, copy the user-provided name character-for-character, including script, case, spaces, punctuation, and suffixes such as app. For example, use {\"name\":\"网易云音乐app\"}, not {\"name\":\"网易云音乐\"}; use {\"name\":\"日历\"}, not {\"name\":\"Calendar\"}. Do not translate, localize, normalize, shorten, or remove a suffix."
+                  },
+                  "pid": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "window_id": {
+                    "description": "Only copy a fresh actual_window_id from an observed macOS open/save panel. Omit for ordinary launch or activation; never guess a placeholder such as 1.",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "urls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "bundle_id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "For an app that is not running, copy the user-provided name character-for-character, including script, case, spaces, punctuation, and suffixes such as app. For example, use {\"name\":\"网易云音乐app\"}, not {\"name\":\"网易云音乐\"}; use {\"name\":\"日历\"}, not {\"name\":\"Calendar\"}. Do not translate, localize, normalize, shorten, or remove a suffix."
+                  },
+                  "pid": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "window_id": {
+                    "description": "Only copy a fresh actual_window_id from an observed macOS open/save panel. Omit for ordinary launch or activation; never guess a placeholder such as 1.",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "urls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "pid"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "activate": {
+            "default": false,
+            "type": "boolean"
+          },
+          "new_instance": {
+            "default": false,
+            "description": "macOS only: launch a separate process and verify its fresh pid. Use for an isolated scratch app when an existing instance is blocked; do not combine with app.pid.",
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "list_windows",
+      "title": "List Windows",
+      "description": "List an application's windows: index, window_id, title, bounds, main, focused. Every window bounds=[x,y,width,height] tuple uses global screen points. `main` is the application's AX main window; `focused` identifies the application's AX focused/key window. Neither field means the application is the macOS system-frontmost application — use list_apps.active for that. For a multi-window app, capture a SPECIFIC window by passing its `window_id` back inside app_ref (get_app_state / left_click / set_value), e.g. {\"pid\":123,\"window_id\":4567}; otherwise the app's main/key window is returned. Read-only.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "app_ref": {}
+        },
+        "required": [
+          "app_ref"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_app_state",
+      "title": "Get App State",
+      "description": "Observe an app ONCE, then ACT on the next turn. Returns the filtered accessibility tree + a fresh state_id that element targets reference.\n\nObserve-then-act is the core loop: call this ONCE to read the current UI, then act (left_click / type / set_value / perform_action) using an element target from that state_id. Do NOT call get_app_state again on the SAME unchanged state before acting -- re-observing an identical state wastes your limited turn budget and is the leading cause of task failure. Re-observe only when (a) the server returned an element_stale error, (b) you just took an action that should have changed the UI and need to verify the result, or (c) the app/frontmost/occlusion state may have changed. This tool always requests a full snapshot from CUA; broker-internal delta/no_change replies are not model executable state.\n\napp_ref = {\"pid\": 1234} (preferred; from list_apps), {\"name\": \"...\"} (must resolve uniquely), or {\"bundle_id\": \"...\"} (macOS bundle id / Windows AUMID). For a multi-window app, add \"window_id\" (integer, from list_windows or the window tuple this tool returns) to observe a SPECIFIC window, e.g. {\"pid\":1234,\"window_id\":4567}; without it the main/key window is returned (a window_id_fallback note is surfaced if the requested window could not be resolved). macOS and Windows accept a stable window_id returned by list_windows; Linux support is backend-dependent, so never invent one. macOS also uses it for window-scoped pointer and synthetic-focus dispatch.\n\ndetail=\"compact\" (default) returns a token-lean tree: each element as index + kind + name + capability flags (pressable/editable/has_menu/focused), which is all you need to pick an element target. detail=\"full\" adds every field including bounds and the full `actions` list (use it when you need coordinates or a specific secondary action). Each element's integer `index` is valid only within this state_id.\n\nCoordinate contract: image-derived actions use integer x/y pixels from the latest returned raster; CUA binds its frame internally. app/window/element bounds=[x,y,width,height] remain diagnostic global screen points and must never be copied into a coordinate target.\n\ninclude_screenshot=false (default) keeps AX-first observations text-only so normal app control does not require or consume visual input. Set include_screenshot=true only when the task explicitly requires visual reading or frame-pixel coordinates. When present, the response emits image_ref immediately beside the image for internal integrity; do not invent or transform coordinates.\n\nIf an action fails unexpectedly or the app state looks wrong, check whether a modal dialog may be intercepting an unrelated action -- it shows up as a frontmost window here. Inspect its contents first; dismiss it only when it is NOT the intended target (press Escape, or use the dialog's own cancel/close control), then re-observe with get_app_state. If the dialog IS your task, read its contents before choosing an option.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "app_ref": {},
+          "detail": {
+            "default": "compact",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full"
+            ]
+          },
+          "include_screenshot": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "app_ref"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "screenshot",
+      "title": "Screenshot",
+      "description": "Fallback full-display observation; prefer get_app_state. The image covers the display selected by switch_display. For a pixel action, choose x/y only by looking at the returned raster and submit them unchanged; CUA binds the frame internally. CUA owns the native projection. Metadata includes bounds=[x,y,width,height] for display identity only.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "zoom",
+      "title": "Zoom",
+      "description": "Exceptional close-up for a target that is too small or ambiguous in the current raster. Crop the latest returned raster with region=[x0,y0,x1,y1]; an optional explicit frame_id is accepted for compatibility, and it never takes a replacement screenshot. Alternatively zoom an accessibility element target; the modes are mutually exclusive. The result is a new raster. Choose x/y only by looking at that child raster and submit them unchanged; frame binding is internal.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "frame_id": {
+            "description": "Optional explicit source frame for backward compatibility; omit it to crop the latest actionable raster in this transport.",
+            "type": "string",
+            "minLength": 1
+          },
+          "region": {
+            "description": "Crop bounds [x0,y0,x1,y1] in the latest delivered raster (or the optional explicit frame_id). Do not pass with target.",
+            "anyOf": [
+              {
+                "minItems": 4,
+                "maxItems": 4,
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "description": "Element target from get_app_state. Do not also pass frame_id or region.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "list_displays",
+      "title": "List Displays",
+      "description": "List displays: index (1-based), bounds, main. Display bounds=[x,y,width,height] use global screen points. Read-only.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "switch_display",
+      "title": "Switch Display",
+      "description": "Choose which display a future full-screen `screenshot` captures (1-based index from list_displays). This does not capture an image or create a frame. Previously returned immutable frame_ids keep their original pixel meaning; the next captured image receives a new adjacent image_ref.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "index"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "cursor_position",
+      "title": "Cursor Position",
+      "description": "Read current pointer position (screen points).\n\nThe point is GLOBAL (covers all displays; secondary displays may have negative origins). ``cursor_display`` is the display the pointer is on and ``selected_display`` is the display ``screenshot`` currently captures, so a multi-display session can tell whether the pointer and the capture target agree. Call ``list_displays`` for each display's bounds/origin.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "left_click",
+      "title": "Left Click",
+      "description": "Left-click a target. Element target {\"type\":\"element\",\"state_id\",\"index\"} is PREFERRED: an accessibility press that works on a BACKGROUND app (no focus steal). A coordinate target is still a11y-first under auto -- the server hit-tests and presses via accessibility when a pressable element is found; a raw click is the fallback only when no pressable element is hit, strategy=\"event\", or a modifier is held. On macOS that fallback stays background/window-scoped. A coordinate is {\"type\":\"coordinate\",\"x\",\"y\"}; x/y are integer pixels in the latest returned raster, and CUA binds its frame internally. strategy: auto|a11y|event; modifiers are OS-specific (macOS cmd/shift/ctrl/alt; Linux ctrl/shift/alt/super; Windows ctrl/shift/alt/win -- use ctrl, not cmd, on Linux/Windows); return_state compact|full|none. For an element target, state_id is the authoritative app/window scope; omit app_ref (a redundant top-level app_ref is validated and ignored for compatibility). A coordinate inherits its observed app/window scope from CUA's internal frame binding; top-level app_ref may only narrow it. Example: left_click(target={\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}). See SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "modifiers": {
+            "default": "",
+            "type": "string"
+          },
+          "strategy": {
+            "default": "auto",
+            "type": "string",
+            "enum": [
+              "auto",
+              "a11y",
+              "event"
+            ]
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          },
+          "app_ref": {}
+        },
+        "required": [
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "double_click",
+      "title": "Double Click",
+      "description": "Double-click a target. NO ACCESSIBILITY equivalent: on macOS it is a verified background window event; Linux/Windows retain their foreground raw route. Under auto an element target fails closed; a coordinate falls through to the same raw event and is bound to the current raster internally. Example: double_click(target={\"type\":\"coordinate\",\"x\":120,\"y\":80}, strategy=\"event\"). See SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "modifiers": {
+            "default": "",
+            "type": "string"
+          },
+          "strategy": {
+            "default": "auto",
+            "type": "string",
+            "enum": [
+              "auto",
+              "a11y",
+              "event"
+            ]
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          },
+          "app_ref": {}
+        },
+        "required": [
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "triple_click",
+      "title": "Triple Click",
+      "description": "Triple-click a target. NO ACCESSIBILITY equivalent: on macOS it is a verified background window event; Linux/Windows retain their foreground raw route. Under auto an element target fails closed; a coordinate falls through to the same raw event and is bound to the current raster internally. Example: triple_click(target={\"type\":\"coordinate\",\"x\":120,\"y\":80}, strategy=\"event\"). See SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "modifiers": {
+            "default": "",
+            "type": "string"
+          },
+          "strategy": {
+            "default": "auto",
+            "type": "string",
+            "enum": [
+              "auto",
+              "a11y",
+              "event"
+            ]
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          },
+          "app_ref": {}
+        },
+        "required": [
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "right_click",
+      "title": "Right Click",
+      "description": "Right-click a target. Element target {\"type\":\"element\",\"state_id\",\"index\"} opens the element's menu via accessibility when it has one (BACKGROUND-safe). A coordinate is still a11y-first under auto -- the server hit-tests and opens the menu via accessibility when a menu element is found; a raw right-click is the fallback when no menu element is hit, strategy=\"event\", or a modifier is held. On macOS that fallback is still background/window-scoped. An element target with no menu or with a modifier fails closed under auto. A coordinate is bound to the current raster inside CUA. modifiers/return_state/app_ref as on left_click. Example: right_click(target={\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}). See SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "modifiers": {
+            "default": "",
+            "type": "string"
+          },
+          "strategy": {
+            "default": "auto",
+            "type": "string",
+            "enum": [
+              "auto",
+              "a11y",
+              "event"
+            ]
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          },
+          "app_ref": {}
+        },
+        "required": [
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "middle_click",
+      "title": "Middle Click",
+      "description": "Middle-click a target. NO ACCESSIBILITY equivalent: on macOS it is a verified background window event; Linux/Windows retain their foreground raw route. Under auto an element target fails closed; a coordinate falls through to the same raw event and is bound to the current raster internally. Example: middle_click(target={\"type\":\"coordinate\",\"x\":120,\"y\":80}, strategy=\"event\"). See SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "modifiers": {
+            "default": "",
+            "type": "string"
+          },
+          "strategy": {
+            "default": "auto",
+            "type": "string",
+            "enum": [
+              "auto",
+              "a11y",
+              "event"
+            ]
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          },
+          "app_ref": {}
+        },
+        "required": [
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "scroll",
+      "title": "Scroll",
+      "description": "Scroll at a target. scroll_amount is clamped to 0..100. Scroll has NO accessibility actuation: it is always a raw event, so under strategy=auto or a11y an element target fails closed. On macOS strategy=event is background/window-scoped; Linux/Windows retain their foreground raw route. A coordinate is bound to the current raster inside CUA. Example: scroll(target={\"type\":\"coordinate\",\"x\":200,\"y\":300}, scroll_direction=\"down\", scroll_amount=10, strategy=\"event\"). See SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "scroll_direction": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down",
+              "left",
+              "right"
+            ]
+          },
+          "scroll_amount": {
+            "type": "integer"
+          },
+          "strategy": {
+            "default": "auto",
+            "type": "string",
+            "enum": [
+              "auto",
+              "a11y",
+              "event"
+            ]
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          },
+          "app_ref": {}
+        },
+        "required": [
+          "target",
+          "scroll_direction",
+          "scroll_amount"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "left_click_drag",
+      "title": "Left Click Drag",
+      "description": "Drag from one target to another (each an element or coordinate). ADVANCED/RAW: a drag has no accessibility equivalent, so both endpoints must be scoped to the same app. On macOS it is a background/window-scoped gesture; Linux/Windows retain foreground raw semantics. modifiers (e.g. cmd/shift/opt/ctrl) are held for the whole drag and are OS-specific: macOS cmd/shift/ctrl/alt; Linux ctrl/shift/alt/super; Windows ctrl/shift/alt/win -- use ctrl, not cmd, on Linux/Windows. A coordinate endpoint is bound to the current raster inside CUA. return_state/app_ref as on left_click. Example: left_click_drag(from_target={\"type\":\"element\",\"state_id\":\"s-1\",\"index\":2}, to={\"type\":\"coordinate\",\"x\":40,\"y\":60}). See SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "from_target": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "to": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "modifiers": {
+            "default": "",
+            "type": "string"
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          },
+          "app_ref": {}
+        },
+        "required": [
+          "from_target",
+          "to"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "mouse_move",
+      "title": "Mouse Move",
+      "description": "Move the virtual pointer to a coordinate target without clicking (hover). ADVANCED/RAW. On macOS this is a background/window-scoped move and leaves the physical cursor unchanged; Linux/Windows retain their native pointer semantics. Coordinate only; an element target is refused (use left_click to actuate an element). Use integer pixels from the latest returned raster. Example: mouse_move(coordinate={\"type\":\"coordinate\",\"x\":100,\"y\":100}). See SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "coordinate": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "app_ref": {},
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "coordinate"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "left_mouse_down",
+      "title": "Left Mouse Down",
+      "description": "Press and hold the left mouse button at an element or frame-bound coordinate. ADVANCED/RAW and requires an element or frame-bound coordinate target. Coordinate targets are bound to the current raster internally, so the press is scoped to an observed app/window. On macOS the pair is window-scoped and leaves the real cursor/frontmost app intact. A left_mouse_down + left_mouse_up pair is a click, so independently verify the target before releasing. return_state defaults to none; request compact/full only when fresh UI state is needed. The matching left_mouse_up reuses the stored app scope. Release with left_mouse_up. Examples: left_mouse_down(target={\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}); left_mouse_down(target={\"type\":\"coordinate\",\"x\":100,\"y\":100}). See SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "app_ref": {},
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "left_mouse_up",
+      "title": "Left Mouse Up",
+      "description": "Release the left mouse button previously pressed by this MCP session. CLEANUP RELEASE ONLY: it refuses when this session has not successfully called left_mouse_down, so an accidental call cannot release the user's own mouse press. return_state defaults to none; request compact/full only when fresh UI state is needed. The app scope is remembered from the matching left_mouse_down. Example: left_mouse_up(). See SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "type",
+      "title": "Type",
+      "description": "Type text into an editable element, a target app, or the current focus.\n\nPrefer element targets: `target` is an element target ({\"type\":\"element\",\"state_id\",\"index\"}); a coordinate target is accepted and first hit-tested through accessibility to the element owning that point (an empty or non-actuable point is refused with action_sent=false). With an editable element the default (strategy=auto/a11y) sets the field's value via accessibility -- no focus move, no global keystrokes -- so it works on a background/non-frontmost app and never steals focus; it REPLACES the field's contents (select_text first, or strategy=event, to insert). With `app_ref` and no element, this is app-scoped input: macOS posts to the target window through a synthetic-focus SkyLight session (background-safe, including Chromium); app_ref.window_id is preserved and verified immediately before dispatch. On Linux and Windows (neither has pid-targeted keyboard) the app MUST be frontmost or the call is refused -- prefer an editable element target when not frontmost. On macOS strategy=event requires the app and exact app_ref.window_id already frontmost and focused; it never activates implicitly. For open/save panels, first call confirmed open_application and re-observe. After Cmd+Shift+G, observe by pid/bundle without the old panel window_id, then type against the fresh attached_dialog actual_window_id. Without target/app_ref, a11y backends refuse because raw foreground text can hit the user's current-focus app; only non-a11y fallback backends use targetless current-focus typing.\nExample: type(text=\"hello\", target={\"type\":\"element\",\"state_id\":\"s-1\",\"index\":1}).\nSee SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "target": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "app_ref": {},
+          "strategy": {
+            "default": "auto",
+            "type": "string",
+            "enum": [
+              "auto",
+              "a11y",
+              "event"
+            ]
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "set_value",
+      "title": "Set Value",
+      "description": "Set a settable element's value directly via accessibility (BACKGROUND-safe; no focus move, no keystrokes). target is an element target ({\"type\":\"element\",\"state_id\",\"index\"}); a coordinate target is accepted and first hit-tested through accessibility to the element owning that point. Use this for sliders/steppers/controls that type refuses. For a document-backed text entry whose app must receive real edit notifications, strategy=event focuses that element and replaces its text through PID+bundle-verified keyboard input; non-text controls reject event strategy.\nExample: set_value(target={\"type\":\"element\",\"state_id\":\"s-1\",\"index\":0}, value=\"72\").\nSee SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "value": {
+            "type": "string"
+          },
+          "strategy": {
+            "default": "auto",
+            "type": "string",
+            "enum": [
+              "auto",
+              "a11y",
+              "event"
+            ]
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "target",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "select_text",
+      "title": "Select Text",
+      "description": "Select a text range [start, length] in a text element, or place the caret. target must an element target ({\"type\":\"element\",\"state_id\",\"index\"}); a coordinate target is accepted. Background-safe via accessibility. Omit text_range to place the caret.\nExample: select_text(target={\"type\":\"element\",\"state_id\":\"s-1\",\"index\":1}, text_range=[0,3]).\nSee SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "text_range": {
+            "anyOf": [
+              {
+                "minItems": 2,
+                "maxItems": 2,
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "key",
+      "title": "Key",
+      "description": "Press a non-text key or explicit chord (Return, Escape, Tab, cmd+a, arrows). Not for typing ordinary text -- use type(app_ref=..., text=...) for that. Negative repeat is refused, repeat=0 is a no-op, and positive values are clamped to 1..100. With `app_ref`, sends an app-scoped chord (macOS binds it to the verified CGWindowID through synthetic focus); on Linux and Windows (neither has pid-targeted keyboard) the app MUST be frontmost or the call is refused -- prefer an element target / perform_action when the app is not frontmost. Without `app_ref` this is a FOREGROUND-ONLY raw fallback: a11y backends refuse it because a GLOBAL key would reach the user's frontmost app; only non-a11y fallback backends use targetless current-focus keys. Modifiers are OS-specific: macOS cmd/shift/ctrl/alt; Linux ctrl/shift/alt/super; Windows ctrl/shift/alt/win. Use ctrl (not cmd) for shortcuts on Linux/Windows.\nOn macOS strategy=\"event\" requires an already-frontmost, freshly verified app_ref.window_id; it never activates implicitly. File panels require confirmed open_application followed by a fresh observation; after Cmd+Shift+G, omit the old panel window_id once to discover and pin the focused attached_dialog. auto keeps the synthetic-focus background route. A focused submit button + Enter is auto-routed through the element action path, no strategy needed.\nExample: key(text=\"return\", app_ref={\"pid\":1}).\nSee SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "repeat": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "app_ref": {},
+          "strategy": {
+            "default": "auto",
+            "type": "string",
+            "enum": [
+              "auto",
+              "a11y",
+              "event"
+            ]
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "hold_key",
+      "title": "Hold Key",
+      "description": "Hold a key or chord for a duration (clamped to 0..30 seconds). With `app_ref`, holds an app-scoped chord (macOS binds it to the verified background CGWindowID); on Linux and Windows (neither has window-targeted keyboard) the app MUST be frontmost or the call is refused -- prefer an element target when the app is not frontmost. Without `app_ref` this is a FOREGROUND-ONLY raw fallback: a11y backends refuse a targetless hold because a GLOBAL key would reach the user's frontmost app. On macOS, auto keeps the verified background window route; strategy=\"event\" requires an already-frontmost, fresh app_ref.window_id and never activates implicitly.\nExample: hold_key(text=\"shift\", duration=1.0, app_ref={\"pid\":1}).\nSee SKILL.md \"Choose the target\".",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "number"
+          },
+          "app_ref": {},
+          "strategy": {
+            "default": "auto",
+            "type": "string",
+            "enum": [
+              "auto",
+              "a11y",
+              "event"
+            ]
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "text",
+          "duration"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "perform_action",
+      "title": "Perform Action",
+      "description": "Invoke a named accessibility action on an element. `action` must be one of that element's `actions` from the current state (server-validated). For ordinary buttons, activation is the element's listed Press/Invoke action; a scroll-to-visible action only scrolls an element into view and does not activate/click it. An open/activate action opens or launches the target (like a double-click) — it does NOT merely select it; to just select a list or table row, click it rather than opening it, since opening will launch the item.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "description": "Choose exactly one semantic path. Use an element target only when selecting an accessibility-tree element. When the action is derived from a delivered image, use the coordinate target and copy integer pixels from that exact raster; CUA binds its frame internally.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "state_id",
+                  "index"
+                ],
+                "description": "Element target (PREFERRED): accessibility-driven, works on a BACKGROUND app (no focus steal) -- {\"type\":\"element\",\"state_id\":\"s-1\",\"index\":4}. state_id/index come from the most recent get_app_state.",
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "state_id": {
+                    "type": "string",
+                    "description": "state_id from the most recent get_app_state"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "description": "the element's index within that state_id"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y"
+                ],
+                "description": "Image-pixel target {\"type\":\"coordinate\",\"x\":496,\"y\":331}. x/y are integer pixel indices in the latest actionable raster returned by this transport. Retina, DPI, crop, resize, display origin and pointer units are resolved internally.",
+                "properties": {
+                  "type": {
+                    "const": "coordinate"
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "optional explicit frame_id for backward compatibility; omit it to use CUA's transport-local current raster binding"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "action": {
+            "type": "string"
+          },
+          "return_state": {
+            "default": "none",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "target",
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "request_access",
+      "title": "Request Access",
+      "description": "Report OS permission readiness and the current server action-policy mode.\n\nThis tool is permanently read-only: it probes OS permission records, the broker's declared capabilities, and live permission health without popping native permission dialogs or changing authorization. A live health probe may internally validate an already-granted capture path, but no image is returned.\n\nCapabilities are probes, not grants, and calling this tool cannot approve mutating or sensitive actions. Missing grants must be requested through the trusted ZCode host UI, outside the model-visible MCP surface.\n\nOn macOS this surfaces TCC grants; on Linux and Windows there are no TCC-style gates -- a healthy report means the broker + AX bus are reachable.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "capabilities": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "stop_computer_control",
+      "title": "Stop Computer Control",
+      "description": "Stop computer control for this session: refuses all further actions and releases a left mouse button held by this session (or recovers an orphaned button no session owns — e.g. a drag interrupted mid-gesture). Enforced, not just cooperative.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "wait",
+      "title": "Wait",
+      "description": "Pause for a duration in seconds (clamped to 0..30). Re-observe afterwards.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "duration": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "duration"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "read_clipboard",
+      "title": "Read Clipboard",
+      "description": "Read the system clipboard.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "write_clipboard",
+      "title": "Write Clipboard",
+      "description": "Write text to the system clipboard.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    }
+  ]
+}

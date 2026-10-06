@@ -14,8 +14,36 @@ import {
   GIT_UNTRACKED_STAT_MAX_BYTES,
   normalizeGitPath,
 } from "#src/git/config.js";
-import type { GitCommandExecutionResult } from "../providers/gitCommandProvider.js";
+import type {
+  GitCommandExecutionResult,
+  GitCommandProvider,
+} from "../providers/gitCommandProvider.js";
 import type { GitLineStat, GitResolvedRepository, GitStatusEntry } from "./gitCliTypes.js";
+
+export async function hasGitOperationInProgress(
+  provider: GitCommandProvider,
+  cwd: string,
+): Promise<boolean> {
+  const markers = [
+    "MERGE_HEAD",
+    "CHERRY_PICK_HEAD",
+    "REVERT_HEAD",
+    "REBASE_HEAD",
+    "rebase-merge",
+    "rebase-apply",
+    "BISECT_LOG",
+  ];
+  const result = await provider.run({
+    cwd,
+    args: ["rev-parse", ...markers.flatMap((marker) => ["--git-path", marker])],
+  });
+  ensureGitCommandSucceeded("git rev-parse --git-path", result);
+  const paths = result.stdout
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((path) => (isAbsolute(path) ? path : resolve(cwd, path)));
+  return (await Promise.all(paths.map(fileExists))).some(Boolean);
+}
 
 function toResultMessage(result: GitCommandExecutionResult): string {
   return result.stderr.trim() || result.stdout.trim() || `exitCode=${result.exitCode ?? "null"}`;

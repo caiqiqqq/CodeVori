@@ -1,5 +1,6 @@
 /* oxlint-disable eslint(max-lines) -- V4WorkspaceChatArea 是分屏 workbench 宿主，集中管理 pane layout/focus/session binding；拆散会让 store action 和 shell binding 链路跨文件跳转。 */
-import { useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type {
   GitChangeSourceId,
   GitRepositorySummary,
@@ -25,18 +26,21 @@ import type {
 } from "@/lib/workspaceSidePane.js";
 import { logger } from "@/logger.js";
 import {
+  closePane,
   effectiveFocusedPaneId,
+  leafPaneIds,
   MAX_WORKBENCH_PANES,
   paneWorkspaceKey,
-  PRIMARY_LEAF,
   usePaneLayoutStore,
   V4_PRIMARY_PANE_ID,
+  type PaneCloseReason,
   type PaneSplitSide,
   type PaneWorkspaceScope,
 } from "@/v4/paneLayoutStore.js";
 import { collectWorkbenchLayout, dividerStyle, SPLIT_VAR_PREFIX } from "@/v4/workbenchLayout.js";
 import { WorkbenchLeafPane, type WorkbenchShellBinding } from "@/v4/WorkbenchPane.js";
 import { WorkbenchSplitDivider } from "@/v4/WorkbenchSplitDivider.js";
+import { WorkbenchConversationTabs } from "@/v4/WorkbenchConversationTabs.js";
 import type { ConversationDropTargetController } from "@/v4/composer/conversationDropTarget.js";
 import type {
   AcpConversationOpenRequest,
@@ -81,6 +85,7 @@ interface V4WorkspaceChatAreaProps {
   remoteSessionId?: string;
   /** primary pane 绑定的 CLI session（既有选择态 activeTaskId）；null = draft。 */
   sessionId: string | null;
+  conversationTabsContainer?: HTMLElement | null;
   activeSelectionSideChatSessionId?: string | null;
   provider?: ZCodeProvider;
   /** primary pane createSession/fork 后接入既有选择路径（handleSelectTask）。 */
@@ -157,6 +162,7 @@ export function V4WorkspaceChatArea({
   foregroundEnabled = true,
   remoteSessionId,
   sessionId,
+  conversationTabsContainer,
   activeSelectionSideChatSessionId = null,
   provider,
   onSessionCreated,
@@ -231,11 +237,25 @@ export function V4WorkspaceChatArea({
   );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [tabContainers, setTabContainers] = useState<Record<string, HTMLSpanElement>>({});
+  const handleTabContainerChange = useCallback(
+    (paneId: string, element: HTMLSpanElement | null) => {
+      setTabContainers((current) => {
+        if ((current[paneId] ?? null) === element) return current;
+        const next = { ...current };
+        if (element) next[paneId] = element;
+        else delete next[paneId];
+        return next;
+      });
+    },
+    [],
+  );
 
   const root = activeGroup?.root ?? paneRoot;
   const panes = activeGroup?.panes ?? paneBindings;
   const focusedPaneId = activeGroup?.focusedPaneId ?? paneFocusedPaneId;
   const layout = useMemo(() => collectWorkbenchLayout(root), [root]);
+  const tabPaneIds = useMemo(() => layout.leaves.map((leaf) => leaf.paneId), [layout.leaves]);
   const shellSessionOwnedBySplitPane = useMemo(() => {
     if (activeGroup || !sessionId) {
       return false;
@@ -439,27 +459,30 @@ export function V4WorkspaceChatArea({
   );
 
   const handleClosePane = useMemo(
-    () => (paneId: string) => {
+    () => (paneId: string, reason?: PaneCloseReason) => {
       if (activeGroup) {
-        const nextGroup = closeWorkbenchGroupPane(activeGroup, paneId);
+        const nextGroup = closeWorkbenchGroupPane(activeGroup, paneId, reason);
         const nextActiveBinding =
           activeGroup.focusedPaneId === paneId
-            ? nextGroup
-              ? selectWorkbenchGroupActiveBinding(nextGroup)
-              : paneId === V4_PRIMARY_PANE_ID
-                ? null
-                : activeGroup.primaryBinding
+            ? nextGroup && selectWorkbenchGroupActiveBinding(nextGroup)
             : null;
-        closeGroupPaneAction(activeGroup.id, paneId);
+        closeGroupPaneAction(activeGroup.id, paneId, reason);
+        // 最后绑定已移除时，复用壳已有回草稿入口，不能重新显示 shell 的旧会话。
+        if (!nextGroup) onSessionDeleted?.();
         // close store 只负责布局塌缩；若被关 pane 正是 focused pane，
         // shell activeTaskId 必须回到关闭后的可导航 session，不能继续停在已关闭 session。
         syncShellActiveSession(nextActiveBinding);
       } else {
+        const current = usePaneLayoutStore.getState();
+        const next = closePane(current, paneId, reason);
         const nextActiveBinding =
-          focusedPaneId === paneId && primaryPaneSessionId
-            ? { workspaceScope: shellScope, sessionId: primaryPaneSessionId }
+          next !== current && current.focusedPaneId === paneId
+            ? resolvePaneSessionBinding(effectiveFocusedPaneId(next))
             : null;
-        closePaneAction(paneId);
+        closePaneAction(paneId, reason);
+        if (next !== current && reason === "session-removed" && current.root.type === "leaf") {
+          onSessionDeleted?.();
+        }
         syncShellActiveSession(nextActiveBinding);
       }
     },
@@ -467,9 +490,8 @@ export function V4WorkspaceChatArea({
       activeGroup,
       closeGroupPaneAction,
       closePaneAction,
-      focusedPaneId,
-      primaryPaneSessionId,
-      shellScope,
+      onSessionDeleted,
+      resolvePaneSessionBinding,
       syncShellActiveSession,
     ],
   );
@@ -524,7 +546,9 @@ export function V4WorkspaceChatArea({
         return true;
       }
       bindPaneSessionAction(paneId, createdSessionId);
-      if (!sessionId) {
+      const sourceLayout = usePaneLayoutStore.getState();
+      const hasPrimary = leafPaneIds(sourceLayout.root).includes(V4_PRIMARY_PANE_ID);
+      if (hasPrimary && !sessionId) {
         return false;
       }
       // 非 primary draft 首发会先产生新 session；若此时直接
@@ -532,15 +556,16 @@ export function V4WorkspaceChatArea({
       // 会跟着显示右侧新 session。先把当前 paneLayout 提升为 group，
       // 用 primaryBinding 固定原 session，再允许 shell active 跟随新 pane。
       const promoted = promotePaneLayoutToGroupAction(
-        { workspaceScope: shellScope, sessionId },
-        usePaneLayoutStore.getState(),
+        hasPrimary && sessionId ? { workspaceScope: shellScope, sessionId } : null,
+        sourceLayout,
       );
       if (promoted) {
         // promotion 是布局 owner 转移，不是复制后双写。group 已持有完整
         // workspace scope/binding 后立即消费 source，避免刷新或 group GC 时旧 split 复活。
         resetPaneLayoutAction();
       }
-      return promoted;
+      // 主草稿已关闭时所有可见绑定都归 layout，shell 导航不会再覆盖其他面板。
+      return promoted || !hasPrimary;
     },
     [
       activeGroup,
@@ -577,10 +602,23 @@ export function V4WorkspaceChatArea({
 
   return (
     <div ref={containerRef} style={containerStyle} className="relative h-full min-h-0 w-full">
+      {/* 标签数量复用可见叶子，点击复用同一焦点入口；每个 pane 自己投影标题，避免串用主会话数据。 */}
+      {conversationTabsContainer
+        ? createPortal(
+            <WorkbenchConversationTabs
+              paneIds={tabPaneIds}
+              focusedPaneId={focusedPaneId}
+              onActivate={handleFocusRequest}
+              onContentContainerChange={handleTabContainerChange}
+            />,
+            conversationTabsContainer,
+          )
+        : null}
       {layout.leaves.map((leaf) => (
         <WorkbenchLeafPane
           key={leaf.paneId}
           paneId={leaf.paneId}
+          conversationTabContainer={tabContainers[leaf.paneId] ?? null}
           rect={leaf.rect}
           // Settings 只把 workspace 设为 inert，Pane 之前仍保留 focused=true，
           // 会在隐藏状态提前消费 Plugin 试用的一次性预填。可见性并入 focus 后，

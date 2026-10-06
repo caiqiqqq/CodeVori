@@ -21,6 +21,7 @@ import type { WorkspaceHeaderVariant } from "@/WorkspaceHeaderSections/shared.js
 export function WorkspaceHeader({
   variant = "task",
   acpTitle,
+  onConversationTabsContainerChange,
 
   draftDropTargetController,
   readOnlyReason,
@@ -65,6 +66,7 @@ export function WorkspaceHeader({
   reloadSessionPending,
 }: {
   variant?: WorkspaceHeaderVariant;
+  onConversationTabsContainerChange?: (element: HTMLDivElement | null) => void;
   /** Host 会话标题的只读投影；不作为原生 taskId 或任务菜单的依据。 */
   acpTitle?: string | null;
   draftDropTargetController?: ConversationDropTargetController | null;
@@ -162,9 +164,10 @@ export function WorkspaceHeader({
           headerWindowControlsPaddingClass,
         )}
       >
-        {variant !== "draft" ? (
+        {variant !== "draft" || onConversationTabsContainerChange ? (
           <WorkspaceHeaderTitleSection
             variant={variant}
+            onConversationTabsContainerChange={onConversationTabsContainerChange}
             readOnlyReason={readOnlyReason}
             workspaceAbsPath={workspaceAbsPath}
             remoteSessionId={remoteSessionId}

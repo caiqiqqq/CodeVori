@@ -44,8 +44,7 @@ function setRef<T>(ref: Ref<T> | undefined, value: T | null) {
     return;
   }
   if (typeof ref === "function") {
-    ref(value);
-    return;
+    return ref(value);
   }
   ref.current = value;
 }
@@ -79,8 +78,17 @@ export function ControlHintTooltip({
   // 这里必须稳定 callback ref 身份，否则每次 render 都会触发 ref detach/attach 并形成更新循环。
   const composedTriggerRef = useCallback(
     (value: HTMLElement | null) => {
-      setRef(childRef, value);
-      setRef(triggerRef, value);
+      const childCleanup = setRef(childRef, value);
+      const triggerCleanup = setRef(triggerRef, value);
+      // React 19 用 ref 返回的清理函数替代 ref(null)，不能在组合时丢弃。
+      if (typeof childCleanup === "function" || typeof triggerCleanup === "function") {
+        return () => {
+          if (typeof childCleanup === "function") childCleanup();
+          else setRef(childRef, null);
+          if (typeof triggerCleanup === "function") triggerCleanup();
+          else setRef(triggerRef, null);
+        };
+      }
     },
     [childRef, triggerRef],
   );

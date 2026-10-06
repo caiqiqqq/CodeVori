@@ -73,8 +73,11 @@ export const OFFICIAL_BROWSER_USE_REQUIRED_SEED_PATHS = [
 
 const OFFICIAL_CUA_REQUIRED_SEED_PATHS = [
   "docs/computer-use.md",
-  "scripts/computer-use-client.mjs",
   "skills/computer-use/SKILL.md",
+  "dist/mcp/server.js",
+  "dist/native/OpenZCodeNative",
+  "dist/LICENSE",
+  "dist/NOTICE",
 ] as const;
 
 // zcode-guide 原本没有 requiredSeedPaths，seed 丢文件时会静默装出一个
@@ -333,12 +336,14 @@ export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = 
     // packages/shared/src/plugin-marketplaces.ts 的名单（bootstrap 单测机械对照两者）、
     // isZCodeCuaInternalFeatureEnabled（打包层默认 true）与输入框入口 hidden 默认值的联动语义。
     name: "computer-use",
-    hostMcpServerNames: ["node_repl"],
     // 用户露出名统一为「Computer Use / 电脑控制」。包名与 producer 仓库仍保持 zcode-cua，
     // 以兼容原生 Helper identity；EN 描述基线走 manifest
     // description，这里只放 zh-CN 覆盖；resolveLocalizedText 在 en-US 时回退到 manifest。
     listing: {
-      author: ZAI_AUTHOR,
+      author: {
+        name: "Open ZCode Computer Use contributors",
+        url: "https://github.com/hqhq1025/open-zcode-computer-use",
+      },
       category: "productivity",
       displayName: "Computer Use",
       displayName_i18n: { "zh-CN": "电脑控制" },
@@ -353,13 +358,14 @@ export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = 
       "../zcode-cua-plugin",
       "../../zcode-cua-plugin",
       "../../../zcode-cua-plugin",
+      // 根 workspace 的开源插件与 CLI 包分开；dev Agent 位于 cli/dist。
+      "../../../../../packages/zcode-cua-plugin",
     ],
     requiredSeedPaths: OFFICIAL_CUA_REQUIRED_SEED_PATHS,
-    // 当前 CUA 为不可用占位包，无需复制 native runtime；避免把本地旧依赖继续带入缓存。
-    runtimeTopLevelPaths: [],
+    runtimeTopLevelPaths: ["dist"],
     // 这里的 version 追踪上游 zcode-cua runtime 版本，使插件 UI 展示、缓存路径、
     // marketplace 条目都对齐；具体版本由原子 producer bump 工作流维护。
-    version: "0.6.3",
+    version: "0.6.4",
   },
 ];
 

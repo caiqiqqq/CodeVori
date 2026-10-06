@@ -6,6 +6,7 @@ import { reportSessionCreate } from "@/lib/sessionCreateTelemetry.js";
 import { getLocalTtftObserver } from "@/v4/telemetry/localTtftObserver.js";
 /* oxlint-disable eslint(max-lines) -- SessionPane 是单 pane 竖切的命令编排收口（订阅/发送/停止/fork/edit/retry/queue/slash 全集），与旧 ChatView 同粒度；HEAD 已超限（693 行计数），拆散命令组会打散 dispatchCommand/snapshotRef 的闭包纪律。 */
 import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
+import { createPortal } from "react-dom";
 import {
   useCallback,
   useEffect,
@@ -125,6 +126,8 @@ import { shouldIgnoreEscapeForStopGeneration } from "@/v4/composer/escapeStop.js
 import { ConversationDraftEmptyState } from "@/v4/ConversationDraftEmptyState.js";
 import { ConversationDraftSuggestedPromptsContainer } from "@/v4/ConversationDraftSuggestedPromptsContainer.js";
 import { ConversationHeader, type PaneWorkspaceBadge } from "@/v4/ConversationHeader.js";
+import { WorkbenchConversationTabContent } from "@/v4/WorkbenchConversationTabContent.js";
+import { resolveWorkbenchConversationTabPresentation } from "@/v4/workbenchConversationTabPresentation.js";
 import { AcpConversationStatus, AcpHomeStatus } from "@/v4/AcpConversationContent.js";
 import { acpEntryRowId, buildAcpConversationRows } from "@/v4/acpConversationRows.js";
 import { useAcpConversation } from "@/v4/useAcpConversation.js";
@@ -292,6 +295,7 @@ import {
 
 export interface SessionPaneProps {
   paneId: string;
+  conversationTabContainer?: HTMLElement | null;
   sessionId: string | null;
   /** 低基数打开入口，由 pane 宿主提供；缺省仅用于兼容旧调用。 */
   openTrigger?: SessionOpenTrigger;
@@ -503,6 +507,7 @@ function shouldRestoreQueuedComposerFromAck(status: CommandAck["status"]): boole
  */
 export function SessionPane({
   paneId,
+  conversationTabContainer,
   sessionId,
   openTrigger,
   rootSessionId,
@@ -4860,6 +4865,31 @@ export function SessionPane({
     </ConversationBottomDockTransition>
   ) : null;
 
+  // 打开请求只在消费前限制投影；消费后需跟随当前选择，否则切回 API 或其他 ACP 仍显示旧图标。
+  const pendingAcpTabOpenRequest =
+    sessionId === null &&
+    acpOpenRequest?.session.workspacePath === workspacePath &&
+    (acpOpenRequest.session.workspaceIdentity?.trim() || workspacePath) ===
+      (workspaceIdentity?.trim() || workspacePath) &&
+    (lastAcpOpenRequestIdRef.current?.requestId !== acpOpenRequest.requestId ||
+      lastAcpOpenRequestIdRef.current.sessionId !== acpOpenRequest.session.id)
+      ? acpOpenRequest
+      : null;
+  const conversationTab = conversationTabContainer
+    ? resolveWorkbenchConversationTabPresentation({
+        sessionId,
+        snapshot,
+        draftConfig,
+        acpAgent: pendingAcpTabOpenRequest?.session.agent ?? acpAgent,
+        acpSessionId: pendingAcpTabOpenRequest?.session.id,
+        acpSession: acpConversation.selected,
+        labels: {
+          newTask: intl.formatMessage({ id: "taskList.newThread" }),
+          untitled: intl.formatMessage({ id: "taskList.untitled" }),
+        },
+      })
+    : null;
+
   return (
     <div
       data-testid={testId(TID_V4_SESSION_PANE, paneId)}
@@ -4878,6 +4908,16 @@ export function SessionPane({
       onDrop={acpAgent ? undefined : effectiveDropTargetController?.onDrop}
       className="relative flex h-full min-h-0 flex-col"
     >
+      {conversationTabContainer && conversationTab
+        ? createPortal(
+            <WorkbenchConversationTabContent
+              {...conversationTab}
+              workspacePath={workspacePath}
+              workspaceIdentity={workspaceIdentity}
+            />,
+            conversationTabContainer,
+          )
+        : null}
       {!acpAgent && effectiveDropTargetController?.active ? (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-accent/55 backdrop-blur-sm">
           <div className="flex items-center gap-2 rounded-full border border-border bg-accent px-4 py-2 text-ui-base text-foreground shadow-sm">

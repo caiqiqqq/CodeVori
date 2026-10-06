@@ -1,4 +1,4 @@
-import type { WorkTaskCreate } from "@zcode/shared";
+import type { WorkTaskAttachmentImport, WorkTaskCreate } from "@zcode/shared";
 import type { IWorkTaskService } from "./contract.js";
 
 export async function saveWorkTaskDraft(service: IWorkTaskService, draft: WorkTaskCreate) {
@@ -6,5 +6,29 @@ export async function saveWorkTaskDraft(service: IWorkTaskService, draft: WorkTa
   return service.list({
     workspacePath: task.workspacePath,
     workspaceIdentity: task.workspaceIdentity,
+  });
+}
+
+export async function saveAttachedWorkTaskDraft(
+  service: IWorkTaskService,
+  draft: WorkTaskCreate,
+  file: WorkTaskAttachmentImport,
+) {
+  const attachment = await service.attachmentImport(file);
+  return service.create({ ...draft, attachments: [...(draft.attachments ?? []), attachment] });
+}
+
+export async function mergeReviewedWorkTask(
+  service: IWorkTaskService,
+  draft: WorkTaskCreate,
+  id: string,
+  targetBranch: string,
+) {
+  return service.merge({
+    workspacePath: draft.workspacePath,
+    workspaceIdentity: draft.workspaceIdentity,
+    remoteSessionId: draft.remoteSessionId,
+    id,
+    targetBranch,
   });
 }

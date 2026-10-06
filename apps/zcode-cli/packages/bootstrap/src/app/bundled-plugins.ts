@@ -11,7 +11,7 @@ import {
 import { dirname, join, resolve, sep } from "node:path";
 import { writeBundledOfficialMarketplacePartitionSync } from "@zcode/adapters";
 import { ZCODE_OFFICIAL_PLUGIN_MARKETPLACE, type Logger } from "@zcode/contracts";
-import { isZCodeCuaInternalFeatureEnabled, ZCODE_CUA_OFFICIAL_PLUGIN_ID } from "@zcode/shared";
+import { ZCODE_CUA_OFFICIAL_PLUGIN_ID } from "@zcode/shared";
 import {
   createOfficialPluginCacheRetryBudget,
   getOfficialPluginCacheRetryAttempts,
@@ -231,12 +231,6 @@ export function resolveOfficialPluginRoots(input: {
   storageRoot: string;
   suppressedBuiltins?: ReadonlySet<string>;
 }): string[] {
-  const suppressedBuiltins = new Set(input.suppressedBuiltins ?? []);
-  // zcode-cua 内置 plugin 默认不启用，由 feature flag 控制加载。在 seed/discovery 层门控
-  // （而非只隐藏某个 UI 面），这样开关关闭时用户无法经 plugin 列表/marketplace/MCP 设置/CLI 命令看到它。
-  if (!isZCodeCuaInternalFeatureEnabled(input.env ?? process.env)) {
-    suppressedBuiltins.add(ZCODE_CUA_OFFICIAL_PLUGIN_ID);
-  }
   const failedSeeds = seedBundledOfficialPlugins({
     logger: input.logger,
     storageRoot: input.storageRoot,
@@ -343,6 +337,8 @@ function readSeaManifest(sea: SeaModule): SeaOfficialPluginManifest | undefined 
 }
 
 function resolveFilesystemPluginRoot(definition: OfficialPluginDefinition): string | undefined {
+  // 仅桌面 Main 指定本机 native 的 Host 播种电脑控制；远端/CLI 不能误连本机桌面。
+  if (definition.name === "computer-use" && (!process.env.ZCODE_OPEN_CUA_NATIVE || process.platform !== "darwin")) return undefined;
   for (const baseDir of candidateBaseDirs()) {
     for (const relativePath of definition.rootCandidates) {
       const rootPath = resolve(baseDir, relativePath);

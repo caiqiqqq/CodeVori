@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
-import { CircleCheck, ListTodo, Play } from "lucide-react";
+import { Clock3, ListTodo, Play } from "lucide-react";
 import type { WorkTaskScope } from "@zcode/shared";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { Button } from "@/components/ui/button.js";
@@ -10,7 +10,7 @@ import { countWorkTasks, workTaskSidebarScopes } from "@/lib/workTaskSidebarCoun
 
 interface CountProjection {
   running: number | null;
-  done: number | null;
+  waiting: number | null;
   loading: boolean;
 }
 
@@ -26,11 +26,11 @@ function ProjectCounts({
   const { board, loading, error } = useWorkTasks(scope, false);
   const counts = board && !loading && !error ? countWorkTasks(board.tasks) : null;
   const running = counts?.running ?? null;
-  const done = counts?.done ?? null;
+  const waiting = counts?.waiting ?? null;
   // 只发布计数投影；服务切换时在绘制前撤销旧数量，不复制任务或执行状态。
   useLayoutEffect(() => {
-    onChange(scopeKey, { running, done, loading });
-  }, [scopeKey, onChange, running, done, loading]);
+    onChange(scopeKey, { running, waiting, loading });
+  }, [scopeKey, onChange, running, waiting, loading]);
   useLayoutEffect(() => () => onChange(scopeKey, null), [scopeKey, onChange]);
   return null;
 }
@@ -58,7 +58,7 @@ export function WorkTasksSidebarButton({
       const old = previous[key];
       if (
         old?.running === projection.running &&
-        old?.done === projection.done &&
+        old?.waiting === projection.waiting &&
         old?.loading === projection.loading
       )
         return previous;
@@ -66,18 +66,21 @@ export function WorkTasksSidebarButton({
     });
   }, []);
   let running = 0;
-  let done = 0;
+  let waiting = 0;
   let available = true;
   let loading = false;
   for (const { key } of scopes) {
     const projection = projections[key];
     loading ||= !projection || projection.loading;
-    if (projection?.running == null || projection.done == null) available = false;
+    if (projection?.running == null || projection.waiting == null) available = false;
     else {
       running += projection.running;
-      done += projection.done;
+      waiting += projection.waiting;
     }
   }
+  // 零计数连同图标隐藏；未知数量仍保留占位，不能误报为没有任务。
+  const showRunning = !available || running > 0;
+  const showWaiting = !available || waiting > 0;
   const title = intl.formatMessage({ id: "workTasks.title" });
   const summary = intl.formatMessage(
     {
@@ -87,7 +90,7 @@ export function WorkTasksSidebarButton({
           ? "workTasks.sidebar.loading"
           : "workTasks.sidebar.unavailable",
     },
-    { running, done },
+    { running, waiting },
   );
   return (
     <>
@@ -111,25 +114,36 @@ export function WorkTasksSidebarButton({
         >
           <ListTodo className="size-4 shrink-0" />
           <span className="min-w-0 flex-1 truncate text-left">{title}</span>
-          <span
-            aria-hidden="true"
-            className="flex shrink-0 items-center gap-2 text-ui-xs tabular-nums"
-          >
+          {showRunning || showWaiting ? (
             <span
-              data-testid="work-tasks-sidebar-running"
-              className="flex items-center gap-1 text-icon-blue"
+              aria-hidden="true"
+              data-testid="work-tasks-sidebar-counts"
+              className="flex shrink-0 items-center gap-2 whitespace-nowrap text-ui-xs tabular-nums"
             >
-              <Play className="size-3!" />
-              {available ? running : "-"}
+              {showRunning ? (
+                <span className="flex items-center gap-1 text-icon-blue">
+                  <Play
+                    data-testid="work-tasks-sidebar-running-icon"
+                    className="size-3! shrink-0"
+                  />
+                  <span data-testid="work-tasks-sidebar-running" className="min-w-3 text-right">
+                    {available ? running : "-"}
+                  </span>
+                </span>
+              ) : null}
+              {showWaiting ? (
+                <span className="flex items-center gap-1 text-warning">
+                  <Clock3
+                    data-testid="work-tasks-sidebar-waiting-icon"
+                    className="size-3! shrink-0"
+                  />
+                  <span data-testid="work-tasks-sidebar-waiting" className="min-w-3 text-right">
+                    {available ? waiting : "-"}
+                  </span>
+                </span>
+              ) : null}
             </span>
-            <span
-              data-testid="work-tasks-sidebar-done"
-              className="flex items-center gap-1 text-success"
-            >
-              <CircleCheck className="size-3!" />
-              {available ? done : "-"}
-            </span>
-          </span>
+          ) : null}
         </Button>
       </ControlHintTooltip>
     </>

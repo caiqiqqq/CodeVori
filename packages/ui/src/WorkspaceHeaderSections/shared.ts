@@ -21,6 +21,7 @@ export interface WorkspaceHeaderReloadSessionOptions {
 
 export interface WorkspaceHeaderTitleSectionProps {
   variant?: WorkspaceHeaderVariant;
+  onConversationTabsContainerChange?: (element: HTMLDivElement | null) => void;
   readOnlyReason?: string;
   workspaceAbsPath: string;
   remoteSessionId?: string;

@@ -39,9 +39,10 @@ try {
     const noop=()=>{};
     const tasks:any=['api','acp','pending','other'].map((kind,index)=>({id:kind,title:kind+' task',prompt:'Synthetic task',runText:'Synthetic task',workspacePath:kind==='other'?'/synthetic/other':'/synthetic/main',status:kind==='pending'?'todo':'running',execution:kind==='acp'?{kind:'acp',agent:'codex',config:[]}:{kind:'api',modelSelection:{providerId:'test',modelId:'model'},mode:'build'},...(kind==='pending'?{}:{session:{kind:kind==='acp'?'acp':'api',id:kind+'-session'},worktree:{rootPath:'/synthetic/trees',path:'/synthetic/trees/'+kind+'/project',projectPath:'/synthetic/main',branchName:'worktree/'+kind,baseCommit:'abcdef'}}),archived:false,stopPending:false,runSeq:1,createdAt:index,updatedAt:index,commandId:'command',sessionRequestId:'request'}));
     const changed=new Set();state.archive=(id:string)=>{tasks.find(t=>t.id===id).archived=true;for(const listener of changed)listener()};
+    state.review=(id:string)=>{Object.assign(tasks.find(t=>t.id===id),{status:'review',sourceBranch:'release'});for(const listener of changed)listener()};
     const services:any={
       workTaskService:{async list(scope:any){return {tasks:structuredClone(tasks.filter(task=>task.workspacePath===scope.workspacePath&&!task.archived)),concurrency:1}},onDynamicChanged:()=>listener=>{changed.add(listener);return {dispose:()=>changed.delete(listener)}}},
-      gitService:{async getWorkspaceRepositoryInfo(r:any){return {...r,isGitAvailable:true,kind:'main-tree',repoRoot:r.workspacePath}},async refresh(r:any){state.calls.push({op:'git',...r});return {summary:{...r,repoRoot:r.workspacePath,workspaceInRepoPath:'.',autoRefreshWatchPaths:[],branchName:'main',trackingBranchName:null,headRefType:'branch',ahead:0,behind:0,isDirty:false,isGitAvailable:true},unstagedChanges:[],stagedChanges:[]}}},
+      gitService:{async getLocalBranches(r:any){state.calls.push({op:'branches',...r});return {headRefType:'branch',currentBranchName:'main',branches:['main','release'].map(name=>({name,isCurrent:name==='main',upstreamName:null,commitHash:'abcdef',commitTimestampMs:1}))}},async getWorkspaceRepositoryInfo(r:any){return {...r,isGitAvailable:true,kind:'main-tree',repoRoot:r.workspacePath}},async refresh(r:any){state.calls.push({op:'git',...r});return {summary:{...r,repoRoot:r.workspacePath,workspaceInRepoPath:'.',autoRefreshWatchPaths:[],branchName:'main',trackingBranchName:null,headRefType:'branch',ahead:0,behind:0,isDirty:false,isGitAvailable:true},unstagedChanges:[],stagedChanges:[]}}},
       zcodeAgentService:{},zcodeSessionService:{},
     };
     const platform:any={isWeb:true,async getInstalledEditors(){return [{id:'finder',name:'Finder',iconDataUrl:icon}]},async openInEditor(editor:string,path:string,options:any){state.calls.push({op:'editor',editor,path,options});return {success:true}},async openExternal(url:string){state.calls.push({op:'external',url})}};
@@ -58,6 +59,7 @@ try {
         activeTaskId={null} sidePaneOwnerId='main-draft' projectName='Main' isWorkspaceVisible isDesktop={true} isMacDesktop={false} isWindowsDesktop={false} isMacFullscreen={false}
         isSidebarVisible={false} isSidePaneOpen={!panels.isSidePaneCollapsed} isBrowserOpen={false} supportsEmbeddedBrowser={false} gitState={gitState} activeGitSourceId='unstaged'
         handleToggleSidePane={panels.handleToggleSidePaneCollapse} handleRefreshGit={noop} setGitSelectedSourceId={noop} handleBrowserUrlChange={noop} activeTaskTitle=''
+        handleOpenGitReview={()=>panels.handleOpenGit()}
         commandCenterCommands={[]} commandCenterWorkspaceTabs={[]} commandCenterOpen={false} onCommandCenterOpenChange={noop} onCommandCenterSearchResultHighlightRequest={noop} onCommandCenterOpenCodeViewer={noop}
         remoteWorkspaceSessions={[]} reconnectingRemoteWorkspaceKeys={[]} remoteWorkspaceErrorByWorkspaceKey={{}} browserRestoreUrls={{}} onOpenWorkspace={noop} onCreateTask={noop}
         onConnectRemote={noop} onSelectRemoteProject={noop} onCancelRemoteProject={noop} onReconnectRemoteWorkspace={noop} handleSelectTask={noop} handleStartDraftInWorkspace={noop}
@@ -185,6 +187,44 @@ try {
     await session.dispose();
     await page.screenshot({ path: join(artifacts, `${id}-tools.png`) });
   }
+  for (const id of ["api", "acp"]) {
+    await card(id).click();
+    await page.evaluate((id) => window.__tools.review(id), id);
+    const content = panel.getByTestId("work-task-content");
+    const merge = side.getByTestId("work-task-merge-controls");
+    assert.equal(await content.getByTestId("work-task-merge-controls").count(), 0);
+    await selectedHeader().getByTestId("side-pane-toggle").click();
+    await merge.getByTestId("work-task-merge-target").waitFor();
+    assert.ok((await merge.getByTestId("work-task-merge-target").innerText()).includes("release"));
+    const session = await page.getByTestId("tool-session").elementHandle();
+    const draft = page.getByRole("textbox", { name: "Synthetic draft", exact: true });
+    await draft.fill(`Review ${id} draft`);
+    await merge.getByTestId("work-task-merge-target").click();
+    await page.getByRole("option", { name: "main", exact: true }).click();
+    await page.getByRole("listbox").waitFor({ state: "detached" });
+    await closeSide();
+    await selectedHeader().getByTestId("side-pane-toggle").click();
+    await merge.getByTestId("work-task-merge-target").waitFor();
+    assert.ok((await merge.getByTestId("work-task-merge-target").innerText()).includes("main"));
+    await side.locator('[data-side-pane-tab-id="git"]').getByRole("button").click();
+    await merge.waitFor({ state: "detached" });
+    // 标签关闭后显式重开审查，复用同一个草稿所有者，不依赖 tab DOM 保活。
+    await closeSide();
+    await selectedHeader().getByTestId("side-pane-toggle").click();
+    await merge.getByTestId("work-task-merge-target").waitFor();
+    assert.ok((await merge.getByTestId("work-task-merge-target").innerText()).includes("main"));
+    assert.equal(await draft.inputValue(), `Review ${id} draft`);
+    assert.equal(await page.evaluate((element) => element.isConnected, session), true);
+    await session.dispose();
+    assert.ok(
+      (await page.evaluate(() => window.__tools.calls)).some(
+        (call) => call.op === "branches" && call.workspacePath === "/synthetic/main",
+      ),
+      "merge branch reads must use the task's main project, not the viewed worktree",
+    );
+    await page.screenshot({ path: join(artifacts, `${id}-merge-review.png`) });
+    await closeSide();
+  }
   await card("pending").click();
   await page.waitForFunction(() => window.__tools.target?.workspacePath === "/synthetic/main");
   await selectedHeader().getByRole("button", { name: "在 Finder 中打开", exact: true }).click();
@@ -225,7 +265,7 @@ try {
   assert.equal(await page.evaluate(() => window.__tools.target), null);
   assert.deepEqual(errors, []);
   process.stdout.write(
-    `PASS: shared task/normal shell tools, API/ACP terminal cwd and retention, side terminal and Git worktree scopes, pending project tools, draft/node retention, project/root changes, stale cleanup and archive. Screenshots: ${artifacts}\n`,
+    `PASS: shared task/normal shell tools, API/ACP review merge slots and reopen retention, terminal cwd, Git worktree scopes, pending project tools, draft/node retention, project/root changes, stale cleanup and archive. Screenshots: ${artifacts}\n`,
   );
 } catch (error) {
   if (browser)

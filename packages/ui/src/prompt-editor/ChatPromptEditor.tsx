@@ -45,6 +45,8 @@ export function ChatPromptEditor({
   taskId,
   skillCatalogSessionId,
   initialValue,
+  initialEditorStateJson,
+  embedded = false,
   syncInitialValueOnMount = true,
   placeholder,
   disabled = false,
@@ -94,6 +96,7 @@ export function ChatPromptEditor({
   excludedSlashCommandNames,
   appSlashCommands,
   enableMentionPanel,
+  filesOnlyMentions = false,
   enableSlashCommands,
 }: {
   workspacePath: string;
@@ -102,6 +105,9 @@ export function ChatPromptEditor({
   /** 仅供 Composer Skill catalog；可为草稿的 prewarm Session。 */
   skillCatalogSessionId?: string | null;
   initialValue?: string;
+  initialEditorStateJson?: string;
+  /** Used inside an existing form, such as the task editor. */
+  embedded?: boolean;
   syncInitialValueOnMount?: boolean;
   placeholder?: string;
   disabled?: boolean;
@@ -160,6 +166,7 @@ export function ChatPromptEditor({
   appSlashCommands?: readonly AppSlashCommand[];
   /** mention 面板开关（透传 LexicalChatInput）。 */
   enableMentionPanel?: boolean;
+  filesOnlyMentions?: boolean;
   enableSlashCommands?: boolean;
 }) {
   const { intl } = useZCodeIntl();
@@ -193,7 +200,7 @@ export function ChatPromptEditor({
     if (!syncInitialValueOnMount) {
       return;
     }
-    if (initialValue === undefined) {
+    if (initialValue === undefined && !initialEditorStateJson) {
       return;
     }
     if (hasSyncedInitialValueRef.current) {
@@ -201,16 +208,20 @@ export function ChatPromptEditor({
     }
     hasSyncedInitialValueRef.current = true;
 
-    latestTextRef.current = initialValue;
+    latestTextRef.current = initialValue ?? "";
     runAfterFrame(() => {
+      if (initialEditorStateJson) {
+        resolvedInputApiRef.current?.setEditorStateJson(initialEditorStateJson);
+        return;
+      }
       // task 草稿恢复时外层 input state 已经更新，但 Lexical 内部文本不会自动跟随 props。
       // 同时普通打字也会更新 input prop，必须先比较当前编辑器文本，避免每个字符都程序化重写编辑器。
       if (resolvedInputApiRef.current?.getMarkdown() === initialValue) {
         return;
       }
-      resolvedInputApiRef.current?.setText(initialValue);
+      resolvedInputApiRef.current?.setText(initialValue ?? "");
     });
-  }, [initialValue, resolvedInputApiRef, syncInitialValueOnMount]);
+  }, [initialEditorStateJson, initialValue, resolvedInputApiRef, syncInitialValueOnMount]);
 
   const handleTextChange = useCallback(
     (value: string) => {
@@ -220,7 +231,7 @@ export function ChatPromptEditor({
     [onChange],
   );
 
-  const handleSubmit: FormEventHandler<HTMLFormElement> = useCallback(
+  const handleSubmit: FormEventHandler<HTMLElement> = useCallback(
     (event) => {
       event.preventDefault();
       onSubmit(resolvedInputApiRef.current?.getMarkdown() ?? latestTextRef.current);
@@ -228,7 +239,7 @@ export function ChatPromptEditor({
     [onSubmit, resolvedInputApiRef],
   );
 
-  const handleKeyDown: KeyboardEventHandler<HTMLFormElement> = useCallback(
+  const handleKeyDown: KeyboardEventHandler<HTMLElement> = useCallback(
     (event) => {
       if (event.key !== "Escape" || !onCancel || submitting) {
         return;
@@ -343,8 +354,13 @@ export function ChatPromptEditor({
       ? dragAttachmentHint
       : undefined;
 
+  const Container = embedded ? "div" : "form";
   return (
-    <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className={cn("relative", className)}>
+    <Container
+      onSubmit={embedded ? undefined : handleSubmit}
+      onKeyDown={handleKeyDown}
+      className={cn("relative", className)}
+    >
       {triggerPanelContainer ? null : (
         <div
           ref={setInternalTriggerPanelContainer}
@@ -396,6 +412,7 @@ export function ChatPromptEditor({
           excludedSlashCommandNames={excludedSlashCommandNames}
           appSlashCommands={appSlashCommands}
           enableMentionPanel={enableMentionPanel}
+          filesOnlyMentions={filesOnlyMentions}
           skillsOnlyMentions={acpMode}
           acpSessionId={acpMode ? acpSessionId : null}
           enableSlashCommands={enableSlashCommands}
@@ -420,7 +437,8 @@ export function ChatPromptEditor({
                   workspaceIdentity={workspaceIdentity}
                   sessionId={taskId}
                   container={resolvedTriggerPanelContainer}
-                  showPlugins={acpMode || enableMentionPanel !== false}
+                  showPlugins={!filesOnlyMentions && (acpMode || enableMentionPanel !== false)}
+                  filesOnly={filesOnlyMentions}
                 />
               ) : null}
               {/* 权限/模式选择曾作为 leadingActions 先于动作菜单渲染，导致常驻顺序与产品规范相反。*/}
@@ -469,6 +487,6 @@ export function ChatPromptEditor({
           </div>
         </div>
       </div>
-    </form>
+    </Container>
   );
 }

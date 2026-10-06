@@ -160,7 +160,8 @@ export default defineConfig([
     // undici 如果被 main ESM bundle 直接内联，运行时会落到它内部的 CommonJS require("assert")，
     // Electron 加载 main 产物时会报 Dynamic require of "assert" is not supported。
     // desktop 保持 undici 为外部依赖，remote 单文件 bundle 再单独内联。
-    external: desktopNodeRuntimeExternals,
+    // original-fs 由 Electron 提供，不能打包为普通 Node fs，否则会重新走 ASAR 虚拟 stat。
+    external: [...desktopNodeRuntimeExternals, "original-fs"],
     noExternal: [
       "@zcode/server",
       "@zcode/shared",

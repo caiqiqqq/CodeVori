@@ -15,6 +15,7 @@ import {
   type CuaPermissionDragPanel,
 } from "./cuaPermissionDragPanel.js";
 import { createSystemSettingsWindowWatcher } from "./cuaSystemSettingsWindowWatcher.js";
+import { createCurrentCuaApplicationTarget } from "./openCuaPermissionTarget.js";
 
 const execFileAsync = promisify(execFile);
 const MACOS_SYSTEM_SETTINGS_BUNDLE_ID = "com.apple.systempreferences";
@@ -253,6 +254,7 @@ function createDragPanelForSession(
     warn: (...args: unknown[]) => void;
   },
   getLocale: () => Locale,
+  onWindowCreated: (webContentsId: number) => void,
 ): CuaPermissionDragPanel {
   const watcher = createSystemSettingsWindowWatcher({
     binaryPath: resolveWindowBoundsBinaryPath(),
@@ -267,6 +269,7 @@ function createDragPanelForSession(
       preloadPath: join(import.meta.dirname, "../preload/cuaPermissionPanel.cjs"),
       rendererDir: join(import.meta.dirname, "../renderer"),
       rendererDevUrl: process.env["ELECTRON_RENDERER_URL"],
+      onWindowCreated,
     }),
     getDisplayWorkArea: () => screen.getPrimaryDisplay().workArea,
     getSettingsBounds: () => watcher.latest(),
@@ -297,6 +300,7 @@ export function registerCuaPermissionIpcHandlers(options: {
   };
   currentApplicationLocale: () => Locale;
 }) {
+  const permissionTarget = createCurrentCuaApplicationTarget();
   // operationId 只在同一个 webContents id 命名空间内有效，避免另一个 renderer 猜中 id 后取消
   // 不属于自己的 participant。invoke 终态一定删除；destroyed 仍由原有 signal 路径兜底。
   const onboardingControllers = new Map<string, AbortController>();
@@ -310,9 +314,11 @@ export function registerCuaPermissionIpcHandlers(options: {
   // Helper 的 bundle display name。浮窗 tile 显示它而不是硬编码字符串 —— macOS 权限列表里
   // 那一行的名字就是这个值（dev 下带 Dev 后缀），两边一致用户才能确认「拖进去的就是它」。
   let verifiedHelperDisplayName: string | null = null;
-  // 当前会话的浮窗。拖拽落地后要通知它冻结位置，而 StartDrag 与 onboarding 是两个独立
-  // handler，故提到这一层共享；会话终态置回 null。
-  let activeDragPanel: CuaPermissionDragPanel | null = null;
+  // 按真实浮窗 sender 路由，不再让另一窗口加入会话时覆盖可见浮窗的取消/隐藏目标。
+  const permissionPanels = new Map<
+    number,
+    { panel: () => CuaPermissionDragPanel | null; cancel: () => void }
+  >();
 
   function cacheVerifiedHelper(
     helperAppPath: string,
@@ -331,7 +337,10 @@ export function registerCuaPermissionIpcHandlers(options: {
   }
 
   async function refreshVerifiedHelperAppPath(): Promise<void> {
-    const result = await prepareCuaHelperPermissionDrag({ logger: options.logger });
+    const result = await prepareCuaHelperPermissionDrag({
+      ...permissionTarget,
+      logger: options.logger,
+    });
     if (result.success && result.helperAppPath && result.helperBundleFingerprint) {
       cacheVerifiedHelper(
         result.helperAppPath,
@@ -396,7 +405,7 @@ export function registerCuaPermissionIpcHandlers(options: {
       );
     }
     // 拖拽已落地：系统设置随后会弹模态提示，继续跟踪窗口会让浮窗追着提示框跑并被压到它下面。
-    activeDragPanel?.freezePosition();
+    permissionPanels.get(event.sender.id)?.panel()?.freezePosition();
     // 后续若收到 dragend/mouseup 会把浮窗直接收走（见下方 handler）；freeze 是那条信号
     // 不到时的兜底 —— 至少不让浮窗追着系统提示框跑。
     // 后台刷新缓存（Helper 可能被后台重装/升级），保证下次拖拽仍是最新的已验证路径 + 指纹。
@@ -405,12 +414,17 @@ export function registerCuaPermissionIpcHandlers(options: {
 
   // 拖拽手势结束 —— 授权已落地，浮窗让位给设置页和系统的重启提示。用 hide 而非 destroy：
   // 下一个权限阶段还要复用同一个窗口。hide 幂等，dragend 与 mouseup 重复通知无害。
-  ipcMain.on(PlatformChannels.NotifyCuaHelperPermissionDragEnded, () => {
-    activeDragPanel?.hide();
+  ipcMain.on(PlatformChannels.NotifyCuaHelperPermissionDragEnded, (event) => {
+    permissionPanels.get(event.sender.id)?.panel()?.hide();
   });
 
   ipcMain.on(PlatformChannels.CancelCuaPermissionOnboarding, (event, payload) => {
     const senderId = event.sender?.id;
+    // 浮窗关闭只能消费 Main 登记的 sender 能力，普通 renderer 不能冒充或跨窗口取消。
+    if (payload?.surface === "permission-panel") {
+      permissionPanels.get(senderId)?.cancel();
+      return;
+    }
     const operationId = normalizeOnboardingOperationId(
       payload && typeof payload === "object"
         ? (payload as Record<string, unknown>).operationId
@@ -461,9 +475,25 @@ export function registerCuaPermissionIpcHandlers(options: {
     // 任何一步抛异常都不该击穿整个授权引导 —— 那样用户连设置页都打不开，而没有浮窗时
     // 设置页仍可用（用户能自己从 Finder 拖 .app 进列表）。降级 > 全盘失败。
     let dragPanel: CuaPermissionDragPanel | null = null;
+    let cancelStage: (() => void) | null = null;
+    const panelSenderIds = new Set<number>();
     if (process.platform === "darwin") {
       try {
-        dragPanel = createDragPanelForSession(options.logger, options.currentApplicationLocale);
+        dragPanel = createDragPanelForSession(
+          options.logger,
+          options.currentApplicationLocale,
+          (senderId) => {
+            panelSenderIds.add(senderId);
+            permissionPanels.set(senderId, {
+              panel: () => dragPanel,
+              cancel: () => {
+                dragPanel?.destroy();
+                cancelStage?.();
+                originController.abort(new Error("CUA permission onboarding panel closed"));
+              },
+            });
+          },
+        );
       } catch (error) {
         options.logger.warn(
           "[cua-permission-onboarding] drag panel unavailable; continuing with settings pane only",
@@ -471,11 +501,11 @@ export function registerCuaPermissionIpcHandlers(options: {
         );
       }
     }
-    activeDragPanel = dragPanel;
 
     let result: Awaited<ReturnType<typeof openCuaPermissionOnboarding>>;
     try {
       result = await openCuaPermissionOnboarding({
+        ...permissionTarget,
         initialPermission:
           payloadRecord?.initialPermission === "screen_recording"
             ? "screen_recording"
@@ -488,15 +518,17 @@ export function registerCuaPermissionIpcHandlers(options: {
         // 每个 stage：打开设置页的同时弹出拖拽浮窗（Helper 进入 TCC 列表的唯一途径），
         // 该 stage 的等待结束就收走。整个会话的终态清理在下面的 finally 里。
         openSettingsAndWaitForReturn: async (stage) => {
+          cancelStage = stage.cancel;
           try {
             await waitForCuaApplicationReturn({
               ...stage,
               openSettings: async () => {
                 await stage.openSettings();
-                dragPanel?.show(stage.permission);
+                if (!stage.signal.aborted) dragPanel?.show(stage.permission);
               },
             });
           } finally {
+            cancelStage = null;
             dragPanel?.hide();
           }
         },
@@ -506,7 +538,7 @@ export function registerCuaPermissionIpcHandlers(options: {
       // 会话终态（成功/取消/超时/origin destroyed）一律销毁浮窗。PiP 面板曾因为缺少这条
       // 无条件清理而凭空常驻，这里放在 finally 里，不依赖任何成功路径。
       dragPanel?.destroy();
-      if (activeDragPanel === dragPanel) activeDragPanel = null;
+      for (const senderId of panelSenderIds) permissionPanels.delete(senderId);
       sender.removeListener?.("destroyed", abortForDestroyedOrigin);
       if (
         participantOperationKey &&

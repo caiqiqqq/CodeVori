@@ -55,6 +55,7 @@
   },
   "globals": {},
   "ignorePatterns": [
+    "packages/zcode-cua/vendor/open-zcode-computer-use",
     "dist-release",
     "packages/ui/src/components/ui",
     "packages/ui/src/components/ai-elements",

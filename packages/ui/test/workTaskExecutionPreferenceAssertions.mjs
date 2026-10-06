@@ -61,7 +61,7 @@ export async function exerciseWorkTaskExecutionPreferences(page, artifacts) {
   await open();
   await assertCodex();
   assert.equal(await editor.getByTestId("work-task-title").inputValue(), "");
-  assert.equal(await editor.getByTestId("work-task-prompt").inputValue(), "");
+  assert.equal((await editor.getByTestId("work-task-prompt").innerText()).trim(), "");
   await close();
   await page.reload();
   await open();

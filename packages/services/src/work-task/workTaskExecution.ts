@@ -1,5 +1,6 @@
 import { commitWorkTaskExecution as commit } from "./workTaskExecutionState.js";
 import { prepareWorkTaskWorktree } from "./workTaskWorktree.js";
+import { assertWorkTaskNativeIdle } from "./workTaskConversationAdmission.js";
 import { uuidv7, type WorkTask } from "@zcode/shared";
 import {
   applyConversationDeltas,
@@ -68,7 +69,7 @@ async function executeAcp(
   });
   void aborted.catch(() => {});
   const onAbort = () => {
-    stop ??= deps.acp.stop({ ...target, id });
+    stop ??= deps.acp.stop({ ...target, id, expectedCommandId: task.commandId });
     void stop.catch(() => {});
     rejectAbort(abortError());
   };
@@ -98,8 +99,15 @@ async function executeAcp(
         id,
         text: task.runText,
         commandId: task.commandId,
-        attachments: [],
-        workspaceFiles: [],
+        attachments:
+          task.runUsesPromptAssets === false
+            ? []
+            : (task.attachments ?? []).map((attachment) => ({
+                path: attachment.ref,
+                fileName: attachment.fileName,
+                mimeType: attachment.mime,
+              })),
+        workspaceFiles: task.runUsesPromptAssets === false ? [] : (task.workspaceFiles ?? []),
       }),
       aborted,
     ]);
@@ -302,19 +310,14 @@ async function executeApiConnection(
     const firstSnapshot = await initial;
     context.signal.throwIfAborted();
     const current = readSnapshot() ?? firstSnapshot;
-    if (
-      current.control.phase === "running" ||
-      current.control.phase === "prewarming" ||
-      current.control.activeWorks.length ||
-      current.inputRouting.mode !== "startNow" ||
-      current.queue.items.length ||
-      current.pendingInteractions.length
-    )
-      throw new Error("work-task.session-busy");
+    assertWorkTaskNativeIdle(current);
     await commit(context, { status: "running" });
     dispatched = true;
     const ack = await command("sendText", task.commandId, id, {
       text: task.runText,
+      ...(task.runUsesPromptAssets !== false && task.attachments?.length
+        ? { attachments: task.attachments }
+        : {}),
       modelSelection: task.execution.modelSelection,
       mode: task.execution.mode,
       planEnabled: task.execution.mode === "plan",
@@ -340,8 +343,17 @@ export function createWorkTaskExecution(deps: Dependencies): WorkTaskExecutionPo
         throw new Error("work-task.remote-unsupported");
       context.signal.throwIfAborted();
       const worktree = await prepareWorkTaskWorktree(deps, task, context);
-      if (task.execution.kind === "acp") await executeAcp(deps, task, context, worktree.path);
-      else await executeApi(deps, task, context, worktree.path);
+      await executeWorkTaskConversation(deps, task, context, worktree.path);
     },
   };
+}
+
+export async function executeWorkTaskConversation(
+  deps: Dependencies,
+  task: WorkTask,
+  context: WorkTaskExecutionContext,
+  workspacePath: string,
+) {
+  if (task.execution.kind === "acp") await executeAcp(deps, task, context, workspacePath);
+  else await executeApi(deps, task, context, workspacePath);
 }

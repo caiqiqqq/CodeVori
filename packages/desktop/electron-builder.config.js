@@ -573,6 +573,15 @@ export default {
     ...(targetPlatform.os === "darwin"
       ? [
           {
+            from: resolve(
+              workspaceRoot,
+              "packages/zcode-cua/native-bin",
+              targetPlatform.key,
+              "OpenZCodeNative",
+            ),
+            to: "open-computer-use/OpenZCodeNative",
+          },
+          {
             // CUA 权限浮窗的吸附数据源（CGWindowListCopyWindowInfo，不需要任何 TCC 权限）。
             // 主进程按 process.resourcesPath 解析；缺失时 watcher fail-open，浮窗仍可用
             // 只是不吸附，所以这里不做存在性断言。
@@ -686,7 +695,8 @@ export default {
     // CUA Helper 在独立 job 中已完成 Developer ID 签名和 notarization staple；
     // electron-builder 若再次签名嵌套 Helper 会改变 CDHash，使最终用户包中的 staple 失效。
     signIgnore: [
-      "[/\\\\]Contents[/\\\\]Resources[/\\\\]glm([/\\\\]|$)",
+      // 新插件 native 没有历史预签名阶段；跳过它会让公证失败，必须由主包签名覆盖。
+      "[/\\\\]Contents[/\\\\]Resources[/\\\\]glm([/\\\\]|$)(?!packages[/\\\\]zcode-cua-plugin[/\\\\]dist[/\\\\]native[/\\\\]OpenZCodeNative$)",
       "[/\\\\]Contents[/\\\\]Resources[/\\\\]tools([/\\\\]|$)",
     ],
   },

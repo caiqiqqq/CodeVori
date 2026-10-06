@@ -153,6 +153,47 @@ test("lost ownership after ACP create never sends a prompt", async () => {
   }
 });
 
+test("ACP sends saved attachments and worktree-relative file references, but not for feedback", async () => {
+  const f = await setup();
+  try {
+    f.task.attachments = [
+      {
+        ref: join(f.dir, "reference.txt"),
+        fileName: "reference.txt",
+        mime: "text/plain",
+        bytes: 12,
+      },
+    ];
+    f.task.workspaceFiles = ["src/main.ts"];
+    const prompts: Parameters<IAcpService["prompt"]>[0][] = [];
+    f.acp.prompt = async (input) => {
+      prompts.push(input);
+      return { status: "idle" } as Awaited<ReturnType<IAcpService["prompt"]>>;
+    };
+    const port = createWorkTaskExecution({
+      git: f.git,
+      acp: f.acp,
+      agent: f.agent,
+      settings: {} as ISettingService,
+      ensureWorkspaceSubscription: () => {},
+    });
+    const context = { signal: new AbortController().signal, update: async () => true };
+    await port.execute(f.task, context);
+    assert.deepEqual(prompts[0]!.attachments, [
+      { path: f.task.attachments[0]!.ref, fileName: "reference.txt", mimeType: "text/plain" },
+    ]);
+    assert.deepEqual(prompts[0]!.workspaceFiles, ["src/main.ts"]);
+    assert.equal(prompts[0]!.workspacePath, f.task.worktree!.path);
+    f.task.runUsesPromptAssets = false;
+    f.task.runText = "continue";
+    await port.execute(f.task, context);
+    assert.deepEqual(prompts[1]!.attachments, []);
+    assert.deepEqual(prompts[1]!.workspaceFiles, []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("ACP defaults do not write configuration and unsupported choices fail before prompting", async () => {
   const f = await setup();
   try {

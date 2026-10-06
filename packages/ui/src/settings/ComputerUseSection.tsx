@@ -78,13 +78,12 @@ export function ComputerUseSection({
     !remoteSessionId &&
     !remoteTarget &&
     !(workspaceIdentity?.trim() && isRemoteWorkspaceIdentity(workspaceIdentity.trim()));
-  // Windows 只复用插件总开关；macOS 才具备 TCC 权限、Helper 状态和附加设置能力。
+  // 开源 runtime 只有 macOS 实现；不能仅因为是本地桌面就显示可用开关。
   const supportsLocalMacWorkspace =
     !isWindowsDesktop &&
     (isMacDesktop ?? supportsLocalMacCuaPermissionOnboarding(platform)) &&
     isLocalWorkspace;
-  const supportsLocalWindowsWorkspace = isWindowsDesktop && isLocalWorkspace;
-  const supportsComputerUseSettings = supportsLocalMacWorkspace || supportsLocalWindowsWorkspace;
+  const supportsComputerUseSettings = supportsLocalMacWorkspace;
   const availability = resolveComputerUseAvailability({
     isDesktop: isDesktop || isWindowsDesktop || supportsLocalMacWorkspace,
     isMacDesktop: isMacDesktop || supportsLocalMacWorkspace,
@@ -475,6 +474,8 @@ export function ComputerUseSection({
           // 同一 renderer 对 main session 的重复 join 只刷新；不同窗口各自会拿到本 host 的 recovery。
           refresh();
         }
+        // 取消不代表授权成功；只读刷新真实状态，不启动恢复链或重新打开引导。
+        if (result?.canceled) refresh();
         if (result?.success === false && !result.canceled) {
           toast(
             intl.formatMessage(
@@ -691,7 +692,7 @@ export function ComputerUseSection({
         <p className="mt-1 text-ui-sm text-foreground-subtle">
           {intl.formatMessage({
             id: isComputerUseRemoteOrLinux(availability)
-              ? availability.kind === "local-linux"
+              ? availability.kind === "local-linux" || availability.kind === "local-windows"
                 ? "settings.computerUse.unsupported.linuxDescription"
                 : "settings.computerUse.unsupported.remoteDescription"
               : "settings.computerUse.unsupported.remoteDescription",
@@ -751,13 +752,13 @@ export function ComputerUseSection({
           {/* macOS 版本低于 CUA Helper 承诺地板时，授权在低版本系统上无法完成
               （Helper 被 LaunchServices -10825 拒启），整卡替换为升级提示。 */}
           {macOsBelowCuaFloor ? (
-            <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+            <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-ui-sm text-warning">
               <p className="font-medium">
                 {intl.formatMessage(
                   { id: "cuaPermission.osFloorTitle" },
                   {
-                    minimum: osSupport?.minimumMacOs ?? "12.0",
-                    current: osSupport?.currentMacOs ?? "12 以下",
+                    minimum: osSupport?.minimumMacOs ?? "14.0",
+                    current: osSupport?.currentMacOs ?? "14 以下",
                   },
                 )}
               </p>

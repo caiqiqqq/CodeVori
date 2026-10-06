@@ -75,7 +75,10 @@ export async function exerciseWorkTaskEditRestart(page, artifacts) {
       );
       assert.ok(await editor.getByTestId("work-task-save").isDisabled());
       assert.ok(await editor.getByRole("button", { name: "取消", exact: true }).isDisabled());
-      assert.ok(await editor.getByTestId("work-task-prompt").isDisabled());
+      assert.equal(
+        await editor.getByTestId("work-task-prompt").getAttribute("contenteditable"),
+        "false",
+      );
       for (const theme of ["zai-light", "zai-dark"]) {
         await page.evaluate((theme) => {
           document.documentElement.className =
@@ -131,7 +134,7 @@ export async function exerciseWorkTaskEditRestart(page, artifacts) {
       await editor.getByRole("alert").waitFor();
       assert.equal(await editor.getByRole("alert").innerText(), "Synthetic save failed");
       assert.equal(
-        await editor.getByTestId("work-task-prompt").inputValue(),
+        await editor.getByTestId("work-task-prompt").innerText(),
         `Edited ${kind} instructions`,
       );
       assert.deepEqual(

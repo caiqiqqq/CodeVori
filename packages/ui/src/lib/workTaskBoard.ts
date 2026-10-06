@@ -1,4 +1,10 @@
-import type { WorkTask, WorkTaskStatus } from "@zcode/shared";
+import { isWorkTaskMerging, type WorkTask, type WorkTaskStatus } from "@zcode/shared";
+
+export function canCompleteWorkTask(task: WorkTask): boolean {
+  return (
+    task.status === "review" && !task.archived && !task.stopPending && !isWorkTaskMerging(task)
+  );
+}
 
 export const WORK_TASK_COLUMNS = ["todo", "inProgress", "attention", "done"] as const;
 export type WorkTaskColumn = (typeof WORK_TASK_COLUMNS)[number];

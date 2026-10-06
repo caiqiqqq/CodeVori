@@ -1,7 +1,9 @@
 import { lazy, Suspense } from "react";
-import { ChevronLeft, Info, MessageSquare, X } from "lucide-react";
-import type { WorkTask } from "@zcode/shared";
+import { Check, ChevronLeft, GitMerge, Info, MessageSquare, X } from "lucide-react";
+import { isWorkTaskMerging, type WorkTask } from "@zcode/shared";
 import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
+import { canCompleteWorkTask } from "@/lib/workTaskBoard.js";
+import { Button } from "@/components/ui/button.js";
 import { workTaskConversationBinding } from "@/lib/workTaskConversation.js";
 import { ScopedErrorBoundary } from "@/ErrorBoundary.js";
 import {
@@ -31,7 +33,7 @@ export type WorkTaskConversationTools = Pick<
   | "onToggleTerminal"
   | "onToggleSidePane"
   | "toggleSidePaneShortcutLabel"
->;
+> & { onOpenReview?(): void };
 
 export function WorkTaskConversationPane({
   task,
@@ -41,8 +43,11 @@ export function WorkTaskConversationPane({
   onClose,
   onDetails,
   onEdit,
+  onComplete,
   onOpenConversation,
   onOpenNativeSession,
+  showMergeConversation = false,
+  onToggleMergeConversation,
 }: {
   task: WorkTask | null;
   panel: ReturnType<typeof useWorkTasks>;
@@ -51,12 +56,18 @@ export function WorkTaskConversationPane({
   onClose(id: string): void;
   onDetails(task: WorkTask): void;
   onEdit(task: WorkTask): void;
+  onComplete(task: WorkTask): void;
   onOpenConversation(task: WorkTask): void;
   onOpenNativeSession?: OpenWorkTaskNativeSession;
+  showMergeConversation?: boolean;
+  onToggleMergeConversation?(): void;
 }) {
   const t = useWorkTaskMessages();
-  const binding = task ? workTaskConversationBinding(task) : null;
-  const toolTarget = task ? workTaskWorkspaceToolTarget(task) : null;
+  const binding = task ? workTaskConversationBinding(task, showMergeConversation) : null;
+  const toolTarget = task ? workTaskWorkspaceToolTarget(task, showMergeConversation) : null;
+  const hasReview = Boolean(
+    task && ((task.status === "review" && !task.archived && task.worktree) || task.merge),
+  );
   return (
     <section
       className="flex h-full min-h-0 min-w-0 flex-col bg-background"
@@ -78,6 +89,20 @@ export function WorkTaskConversationPane({
                 {task.title}
               </h2>
               <WorkTaskStatus task={task} />
+              {task.merge?.session && onToggleMergeConversation ? (
+                <WorkTaskIconButton
+                  label={t(showMergeConversation ? "originalConversation" : "mergeConversation")}
+                  data-testid="work-task-toggle-merge-conversation"
+                  disabled={isWorkTaskMerging(task)}
+                  onClick={onToggleMergeConversation}
+                >
+                  {showMergeConversation ? (
+                    <MessageSquare className="size-4" />
+                  ) : (
+                    <GitMerge className="size-4" />
+                  )}
+                </WorkTaskIconButton>
+              ) : null}
               <WorkTaskIconButton label={t("details")} onClick={() => onDetails(task)}>
                 <Info className="size-4" />
               </WorkTaskIconButton>
@@ -87,16 +112,35 @@ export function WorkTaskConversationPane({
                 showConversation={false}
                 menu
                 onEdit={onEdit}
+                onComplete={onComplete}
                 onOpenConversation={onOpenConversation}
               />
               <WorkTaskIconButton label={t("closeConversation")} onClick={() => onClose(task.id)}>
                 <X className="size-4" />
               </WorkTaskIconButton>
             </div>
+            {canCompleteWorkTask(task) ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                disabled={panel.busy}
+                onClick={() => onComplete(task)}
+                data-testid="work-task-complete"
+              >
+                <Check className="size-4" />
+                {t("complete")}
+              </Button>
+            ) : null}
             {workspaceTools && toolTarget ? (
               <div className="ml-auto shrink-0" data-testid="work-task-workspace-tools">
                 <WorkspaceHeaderActionSection
                   {...workspaceTools}
+                  onToggleSidePane={
+                    hasReview && !workspaceTools.isSidePaneOpen && workspaceTools.onOpenReview
+                      ? workspaceTools.onOpenReview
+                      : workspaceTools.onToggleSidePane
+                  }
                   workspaceAbsPath={toolTarget.workspacePath}
                   workspaceIdentity={toolTarget.workspaceIdentity}
                 />
@@ -122,6 +166,11 @@ export function WorkTaskConversationPane({
                     key={`${task.id}:${binding.kind}:${binding.sessionId}:${binding.workspacePath}`}
                     task={task}
                     binding={binding}
+                    readOnly={
+                      isWorkTaskMerging(task)
+                        ? !showMergeConversation || task.merge?.phase === "applying"
+                        : showMergeConversation
+                    }
                     options={options}
                     onClose={onClose}
                     onOpenNativeSession={onOpenNativeSession}

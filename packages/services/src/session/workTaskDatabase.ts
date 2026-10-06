@@ -1,11 +1,85 @@
 import { mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
-import { resolveWorkspaceKey, workTaskSchema, type WorkTask } from "@zcode/shared";
+import {
+  isWorkTaskMerging,
+  resolveWorkspaceKey,
+  uuidv7,
+  workTaskSchema,
+  type WorkTask,
+} from "@zcode/shared";
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
 export type WorkTaskDatabase = InstanceType<typeof DatabaseSync>;
+
+export function appendWorkTaskQueue(db: WorkTaskDatabase, id: string) {
+  const position = db
+    .prepare("SELECT COALESCE(MAX(queue_position),0)+1 AS position FROM work_tasks")
+    .get() as { position: number };
+  db.prepare("UPDATE work_tasks SET queue_position=? WHERE id=?").run(position.position, id);
+}
+
+/** Must run inside the owner's BEGIN IMMEDIATE transaction. */
+export function claimNextWorkTask(
+  db: WorkTaskDatabase,
+  owner: string,
+  now: number,
+  leaseMs: number,
+): WorkTask | null {
+  const queued = db
+    .prepare(
+      "SELECT data FROM work_tasks WHERE status='queued' AND owner IS NULL ORDER BY queue_position,id",
+    )
+    .all() as { data: string }[];
+  for (const row of queued) {
+    const task = workTaskSchema.parse(JSON.parse(row.data));
+    if (isWorkTaskMerging(task)) {
+      const owned = db.prepare("SELECT data FROM work_tasks WHERE owner IS NOT NULL").all() as {
+        data: string;
+      }[];
+      // 同一仓库可来自不同项目子目录；目标分支锁不能只按 workspace scope 计算。
+      if (
+        owned.some((item) => {
+          const other = workTaskSchema.parse(JSON.parse(item.data));
+          return (
+            isWorkTaskMerging(other) &&
+            other.merge?.projectPath === task.merge?.projectPath &&
+            other.merge?.targetBranch === task.merge?.targetBranch
+          );
+        })
+      )
+        continue;
+    }
+    const key = resolveWorkspaceKey(task);
+    const active = db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM work_tasks WHERE workspace_key=? AND owner IS NOT NULL",
+      )
+      .get(key) as { count: number };
+    const settings = db
+      .prepare("SELECT concurrency FROM work_task_projects WHERE workspace_key=?")
+      .get(key) as { concurrency: number } | undefined;
+    if (active.count >= (settings?.concurrency ?? 1)) continue;
+    return writeWorkTask(
+      db,
+      {
+        ...task,
+        runSeq: task.runSeq + 1,
+        commandId: uuidv7(),
+        status: "preparing",
+        ...(isWorkTaskMerging(task)
+          ? { merge: { ...task.merge!, phase: "preparing" as const } }
+          : {}),
+        updatedAt: now,
+      },
+      "claimed",
+      owner,
+      now + leaseMs,
+    );
+  }
+  return null;
+}
 
 export function listWorkTaskConversations(db: WorkTaskDatabase): WorkTask[] {
   const rows = db
@@ -18,6 +92,7 @@ export function listWorkTaskConversations(db: WorkTaskDatabase): WorkTask[] {
     .filter(
       (task) =>
         !task.archived &&
+        !isWorkTaskMerging(task) &&
         !task.workspaceIdentity &&
         !task.remoteSessionId &&
         task.session &&

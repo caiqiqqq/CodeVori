@@ -62,6 +62,7 @@ export type {
 interface UploadTarget {
   sessionId: string | null;
   acpMode: boolean;
+  collectionOnly: boolean;
   workspacePath: string;
   workspaceIdentity?: string;
   remoteSessionId?: string;
@@ -109,7 +110,9 @@ interface UseComposerAttachmentsOptions {
   scopeId: string;
   attachmentSessionId?: string | null;
   acpMode?: boolean;
-  attachmentPut: AttachmentPutFn;
+  /** Task editor collects drafts without a session, transfer or Agent upload. */
+  collectionOnly?: boolean;
+  attachmentPut?: AttachmentPutFn;
   onRuntimeRestart?: (listener: () => void) => () => void;
   /**
    * 承载 transport 暴露 runtime 存活态时优先用它，替代 onRuntimeRestart。
@@ -126,6 +129,10 @@ interface UseComposerAttachmentsOptions {
    */
   listenAddToChatEvents?: boolean;
 }
+
+const rejectAttachmentUpload: AttachmentPutFn = async () => {
+  throw new Error("Attachment upload is unavailable");
+};
 
 async function selectAttachmentLocalPaths(
   platform: Pick<IPlatformService, "selectFile" | "selectFiles">,
@@ -197,7 +204,8 @@ export function useComposerAttachments(
     scopeId,
     attachmentSessionId = null,
     acpMode = false,
-    attachmentPut,
+    collectionOnly = false,
+    attachmentPut = rejectAttachmentUpload,
     onRuntimeRestart,
     onRuntimeLifecycle,
     disabled = false,
@@ -233,6 +241,7 @@ export function useComposerAttachments(
   targetsRef.current.set(scopeKey, {
     sessionId: attachmentSessionId,
     acpMode,
+    collectionOnly,
     workspacePath,
     workspaceIdentity,
     remoteSessionId,
@@ -517,6 +526,7 @@ export function useComposerAttachments(
       const waitingForRemoteSession = Boolean(
         target && item.localPath && isRemoteAttachmentTarget(target) && !target.remoteSessionId,
       );
+      if (target?.collectionOnly) continue;
       if (!target?.sessionId || waitingForRemoteSession) {
         updateItem(entry.scopeKey, entry.attachmentId, (current) => ({
           ...current,
@@ -531,6 +541,7 @@ export function useComposerAttachments(
   pumpQueueRef.current = pumpQueue;
 
   useEffect(() => {
+    if (collectionOnly) return;
     const current = readComposerAttachmentScope(scopeKey);
     const remoteTargetReady =
       !isRemoteAttachmentTarget({ remoteSessionId, workspaceIdentity }) || Boolean(remoteSessionId);
@@ -586,6 +597,7 @@ export function useComposerAttachments(
       }
     }
   }, [
+    collectionOnly,
     acpMode,
     attachmentSessionId,
     enqueueUpload,
@@ -718,17 +730,20 @@ export function useComposerAttachments(
           attachment.localPath && target && !isRemoteAttachmentTarget(target),
         );
         const inlineAcpReady = Boolean(target?.acpMode && attachment.file && !attachment.localPath);
+        const collectedReady = Boolean(
+          target?.collectionOnly && (attachment.file || attachment.localPath),
+        );
         return {
           ...attachment,
           referenceOwnership: "composer",
           operationId: `prompt-attachment-${attachment.id}`,
           uploadStatus:
-            localZeroCopy || inlineAcpReady
+            localZeroCopy || inlineAcpReady || collectedReady
               ? "ready"
               : target?.sessionId
                 ? "queued"
                 : "waitingSession",
-          uploadProgress: localZeroCopy || inlineAcpReady ? 100 : 0,
+          uploadProgress: localZeroCopy || inlineAcpReady || collectedReady ? 100 : 0,
           ...(localZeroCopy && attachment.localPath
             ? {
                 attachmentRef: {
@@ -839,6 +854,19 @@ export function useComposerAttachments(
       if (!shouldCreateClipboardTextAttachment(text)) return;
       event.preventDefault();
       event.stopPropagation?.();
+      if (collectionOnly) {
+        const file = new File([text], createClipboardTextAttachmentFilenameForDate(), {
+          type: "text/plain",
+        });
+        addPreparedAttachments([
+          {
+            ...createChatComposerAttachment(file),
+            sourceKind: "clipboard-text",
+            lineCount: text.split("\n").length,
+          },
+        ]);
+        return;
+      }
       void (async () => {
         try {
           const attachment = await platform.createTempTextAttachment?.({
@@ -858,7 +886,7 @@ export function useComposerAttachments(
         }
       })();
     },
-    [addAttachmentFiles, addPreparedAttachments, disabled, intl, platform],
+    [addAttachmentFiles, addPreparedAttachments, collectionOnly, disabled, intl, platform],
   );
 
   const clearDragFeedbackTimer = useCallback(() => {
@@ -1087,6 +1115,7 @@ export function useComposerAttachments(
           filename: attachmentRef.fileName,
           mimeType: attachmentRef.mime,
           sizeBytes: attachmentRef.bytes,
+          ...(collectionOnly ? { localPath: attachmentRef.ref } : {}),
           referenceOwnership: "session",
           uploadStatus: "ready",
           uploadProgress: 100,
@@ -1106,7 +1135,7 @@ export function useComposerAttachments(
       setAttachmentError(null);
       return true;
     },
-    [commitScope, scopeKey],
+    [collectionOnly, commitScope, scopeKey],
   );
 
   const prepareForSend = useCallback(async (): Promise<AttachmentRef[] | null> => {
@@ -1140,6 +1169,12 @@ export function useComposerAttachments(
     },
     [scopeKey, updateItem],
   );
+
+  useEffect(() => {
+    if (!collectionOnly) return;
+    // 任务编辑器是一次性独立草稿；退出释放预览，不影响仍挂载的普通会话草稿。
+    return () => clearAttachments();
+  }, [clearAttachments, collectionOnly]);
 
   return useMemo(
     () => ({

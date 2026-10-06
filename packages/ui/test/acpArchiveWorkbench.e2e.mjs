@@ -138,7 +138,7 @@ try {
     false,
   );
 
-  // Primary ACP archive reuses existing group dissolution and notifies the matching shell.
+  // Primary ACP archive removes only that pane and notifies the matching shell.
   await page.evaluate(() => {
     const { groups, acp, primary } = window.__workbench;
     groups.getState().resetWorkbenchGroups();
@@ -150,9 +150,18 @@ try {
       "acp-history",
   );
   await archive("workspace-main");
-  await page.waitForFunction(() => window.__workbench.groups.getState().activeGroupId === null);
-  assert.deepEqual((await snapshot()).groups, {});
-  assert.deepEqual((await snapshot()).events.archives, ["acp-history"]);
+  await page.getByTestId("archive-boundary-workspace-main").waitFor({ state: "detached" });
+  group = Object.values((await snapshot()).groups)[0];
+  assert.equal(group.primaryBinding, null);
+  assert.deepEqual(
+    Object.values(group.panes).map((binding) => binding.sessionId),
+    ["native-primary"],
+  );
+  assert.deepEqual((await snapshot()).events.archives, [
+    "acp-history",
+    "acp-history",
+    "acp-history",
+  ]);
   assert.equal((await snapshot()).events.nativeDeletes, 0);
   assert.equal(
     (await snapshot()).events.nativeSelections.some((event) => event.id === "acp-history"),
@@ -162,6 +171,7 @@ try {
   // Same path/id on a different identity belongs to that pane, not the current shell.
   await page.evaluate(() => {
     const { groups, acp, primary } = window.__workbench;
+    groups.getState().resetWorkbenchGroups();
     const other = {
       ...acp,
       workspaceScope: {
@@ -178,11 +188,21 @@ try {
       "acp-history",
   );
   await archive("workspace-main");
-  await page.waitForFunction(() => window.__workbench.groups.getState().activeGroupId === null);
-  assert.deepEqual((await snapshot()).events.archives, ["acp-history"]);
+  await page.getByTestId("archive-boundary-workspace-main").waitFor({ state: "detached" });
+  group = Object.values((await snapshot()).groups)[0];
+  assert.equal(group.primaryBinding, null);
+  assert.deepEqual(
+    Object.values(group.panes).map((binding) => binding.sessionId),
+    ["native-primary"],
+  );
+  assert.deepEqual((await snapshot()).events.archives, [
+    "acp-history",
+    "acp-history",
+    "acp-history",
+  ]);
   assert.deepEqual(errors, []);
   process.stdout.write(
-    "PASS: real workbench closes exact ACP split binding, preserves other panes, persists cleanup, follows primary group dissolution and isolates workspace identity/native routing.\n",
+    "PASS: real workbench closes exact ACP split binding, preserves other panes including single-pane groups, persists cleanup and isolates workspace identity/native routing.\n",
   );
 } finally {
   await browser?.close();

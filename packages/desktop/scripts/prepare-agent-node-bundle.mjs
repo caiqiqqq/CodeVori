@@ -90,6 +90,23 @@ const browserUseRequiredRuntimePaths = [
   "skills/web-gui-tester/SKILL.md",
 ];
 const officialPluginPackages = [
+  ...(platform === "darwin"
+    ? [
+        {
+          packageName: "@zcode/zcode-cua-plugin",
+          relativePath: "packages/zcode-cua-plugin",
+          requiresRuntime: true,
+          requiredRuntimePaths: [
+            "dist/mcp/server.js",
+            "dist/native/OpenZCodeNative",
+            "dist/LICENSE",
+            "dist/NOTICE",
+          ],
+          runtimeBuildScript: "scripts/build.mjs",
+          stagedPath: "packages/zcode-cua-plugin",
+        },
+      ]
+    : []),
   {
     // browser-use 只携带自己的 client script 与 skill/docs；node_repl MCP runtime 归
     // @zcode/node-repl-host（见上方常量注释）。
@@ -179,20 +196,20 @@ function buildOfficialPluginRuntimes() {
       continue;
     }
 
-    runCommand(
-      "pnpm",
-      ["--dir", resolve(repoRoot, "apps/zcode-cli"), "--filter", plugin.packageName, "build"],
-      {
-        cwd: repoRoot,
-        env: pnpmRunEnv,
-      },
-    );
+    runCommand("pnpm", ["--filter", plugin.packageName, "build"], {
+      cwd: repoRoot,
+      env: pnpmRunEnv,
+    });
     assertOfficialPluginRuntime(plugin);
   }
 }
 
 function buildOfficialPluginRuntimeForBootstrap(plugin) {
   const pluginRoot = resolve(repoRoot, plugin.relativePath);
+  if (plugin.packageName === "@zcode/zcode-cua-plugin") {
+    runCommand(process.execPath, [plugin.runtimeBuildScript], { cwd: pluginRoot, env: pnpmRunEnv });
+    return;
+  }
   const hasCompleteRuntime = plugin.requiredRuntimePaths.every((relativePath) =>
     existsSync(resolve(pluginRoot, ...relativePath.split("/"))),
   );

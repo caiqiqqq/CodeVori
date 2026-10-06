@@ -12,6 +12,7 @@ export interface GitCommandExecutionOptions {
   args: string[];
   timeoutMs?: number;
   maxOutputBytes?: number;
+  stdoutCapture?: "full" | "first-byte";
   env?: NodeJS.ProcessEnv;
   credentialRemote?: string;
 }
@@ -263,7 +264,15 @@ export function createGitCommandProvider(options?: {
           }
         };
 
-        const appendStdoutChunk = (chunk: Buffer) => appendChunk(chunk, "stdout");
+        const appendStdoutChunk = (chunk: Buffer) => {
+          // 存在性查询只保留首字节；持续排空并等待退出，避免大状态超限或把失败当成干净。
+          if (command.stdoutCapture === "first-byte") {
+            if (stdoutBytes === 0 && chunk.byteLength > 0)
+              appendChunk(chunk.subarray(0, 1), "stdout");
+            return;
+          }
+          appendChunk(chunk, "stdout");
+        };
         const appendStderrChunk = (chunk: Buffer) => appendChunk(chunk, "stderr");
 
         child.once("error", (error) => {

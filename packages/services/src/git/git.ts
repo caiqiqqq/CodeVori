@@ -20,6 +20,12 @@ import type {
   GitGenerateCommitMessageRequest,
   GitGenerateCommitMessageResult,
   GitIdentity,
+  GitResolveLocalBranchRequest,
+  GitResolvedLocalBranch,
+  GitPrepareTaskMergeRequest,
+  GitTaskMergePreparation,
+  GitFinalizeTaskMergeRequest,
+  GitApplyTaskMergeRequest,
   GitIgnoredPathsRequest,
   GitLocalBranchListResult,
   GitPathMutationRequest,
@@ -82,6 +88,10 @@ export interface IGitService {
   getRepositorySummary(params: GitRepositoryRequest): Promise<GitRepositorySummary>;
   getWorkspaceRepositoryInfo(params: GitRepositoryRequest): Promise<GitWorkspaceRepositoryInfo>;
   getLocalBranches(params: GitRepositoryRequest): Promise<GitLocalBranchListResult>;
+  resolveLocalBranch(params: GitResolveLocalBranchRequest): Promise<GitResolvedLocalBranch>;
+  prepareTaskMerge(params: GitPrepareTaskMergeRequest): Promise<GitTaskMergePreparation>;
+  finalizeTaskMerge(params: GitFinalizeTaskMergeRequest): Promise<{ commitHash: string }>;
+  applyTaskMerge(params: GitApplyTaskMergeRequest): Promise<void>;
   getCommitGraph(params: GitCommitGraphRequest): Promise<GitCommitGraphResult>;
   switchBranch(params: GitSwitchBranchRequest): Promise<GitBranchMutationResult>;
   createBranchAndSwitch(params: GitCreateBranchRequest): Promise<GitBranchMutationResult>;

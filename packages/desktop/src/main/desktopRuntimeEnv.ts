@@ -37,6 +37,7 @@ import {
   type ResolveRemoteCdnOptions,
 } from "./remoteCdn.js";
 import { getElectronAppPath, isElectronAppPackaged } from "./desktopElectronApp.js";
+import { resolveCurrentCuaApplicationPath } from "./openCuaPermissionTarget.js";
 
 const isLocalDevelopmentRuntime = !isElectronAppPackaged();
 export const desktopRuntimeEnv: ZCodeRuntimeEnv = isLocalDevelopmentRuntime
@@ -533,9 +534,25 @@ export function buildHostProcessEnv(hostProcessLocalEnv: Record<string, string>)
   // 三层里有两层不写这个键，空对象无法覆盖 inheritedEnv，所以先无条件删掉继承值再按决策 spread 回去。
   // 少了这一行，production 包和 dev 的非法取值都会原样穿透到 Host。
   delete inheritedEnv[ZCODE_DYNAMIC_WORKFLOW_MODE_ENV];
+  // Main 确定随包 native 和授权主体，不能继承 shell 的任意可执行文件覆盖。
+  delete inheritedEnv.ZCODE_OPEN_CUA_NATIVE;
+  delete inheritedEnv.ZCODE_OPEN_CUA_PERMISSION_APP_PATH;
 
   return {
     ...inheritedEnv,
+    ...(process.platform === "darwin"
+      ? {
+          ZCODE_OPEN_CUA_NATIVE: packagedDesktop
+            ? join(process.resourcesPath, "open-computer-use", "OpenZCodeNative")
+            : resolve(
+                import.meta.dirname,
+                "../../../zcode-cua/native-bin",
+                `darwin-${process.arch}`,
+                "OpenZCodeNative",
+              ),
+          ZCODE_OPEN_CUA_PERMISSION_APP_PATH: resolveCurrentCuaApplicationPath() ?? "",
+        }
+      : {}),
     // OTLP 凭据只定向传到 host；host 初始化 services 时会立即捕获并从 process.env 清除，
     // 后续只在启动 Agent 时短暂注入，不会进入 Bash/MCP/tool env。
     ...agentTelemetryEnv,

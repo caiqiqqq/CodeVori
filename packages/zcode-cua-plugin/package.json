@@ -1,0 +1,17 @@
+{
+  "name": "@zcode/zcode-cua-plugin",
+  "version": "0.6.4",
+  "private": true,
+  "description": "Built-in macOS computer control powered by Open ZCode Computer Use",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "@zcode/zcode-cua": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

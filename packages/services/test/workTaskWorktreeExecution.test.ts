@@ -18,100 +18,121 @@ import { getConversationWorkspaceDir, getDataBaseDir, setDataBaseDir } from "../
 
 const gitCommand = promisify(execFile);
 
-test("real Git project subdirectory creates the missing worktree root and retry reuses HEAD, tree and session", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "zcode-task-git-"));
-  const project = join(directory, "project");
-  const worktreeRoot = join(directory, "missing", ".code", "worktrees");
-  await mkdir(project);
-  const workspacePath = join(project, "src");
-  await mkdir(workspacePath);
-  const git = (args: string[]) => gitCommand("git", ["-C", project, ...args]);
-  try {
-    await git(["init", "-q", "-b", "main"]);
-    await git(["config", "user.name", "Task Test"]);
-    await git(["config", "user.email", "task@example.invalid"]);
-    await writeFile(join(project, "README.md"), "main branch\n");
-    await git(["add", "README.md"]);
-    await git(["commit", "-qm", "Initial"]);
-    const head = (await git(["rev-parse", "HEAD"])).stdout.trim();
-    await git(["checkout", "-qb", "unrelated"]);
-    await writeFile(join(project, "README.md"), "another branch\n");
-    await git(["commit", "-qam", "Unrelated commit"]);
-    await git(["checkout", "-q", "main"]);
-    let task: WorkTask = {
-      id: uuidv7(),
-      workspacePath,
-      title: "Feature",
-      prompt: "Build",
-      execution: { kind: "acp", agent: "codex", config: [] },
-      status: "preparing",
-      archived: false,
-      stopPending: false,
-      runSeq: 1,
-      runText: "Build",
-      commandId: uuidv7(),
-      sessionRequestId: uuidv7(),
-      createdAt: 1,
-      updatedAt: 1,
-    };
-    const service = createGitService({ repo: createGitCliRepo() });
-    let trees = 0;
-    let sessions = 0;
-    let prompts = 0;
-    const acp = {
-      create: async () => {
-        assert.ok(task.worktree, "allocation must be persisted before creating session");
-        sessions++;
-        return { id: "session" };
-      },
-      list: async () => [{ id: "session", agent: "codex", status: "idle" }],
-      prompt: async () => {
-        assert.equal(task.session?.id, "session", "binding must be persisted before prompt");
-        prompts++;
-        return { status: "idle" };
-      },
-      onDynamicSessionChanged: () => new Emitter<AcpSessionChanged>().event,
-    } as unknown as IAcpService;
-    const execution = createWorkTaskExecution({
-      homeDirectory: directory,
-      git: {
-        ...service,
-        createWorktree: async (input) => {
-          assert.equal(task.worktree?.path, input.worktreePath, "allocation must precede Git");
-          trees++;
-          return service.createWorktree(input);
+for (const selectedSource of [undefined, "unrelated", "missing"] as const) {
+  test(`real Git source ${selectedSource ?? "HEAD"} is pinned on allocation and never switches the main project`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "zcode-task-git-"));
+    const project = join(directory, "project");
+    const worktreeRoot = join(directory, "missing", ".code", "worktrees");
+    await mkdir(project);
+    const workspacePath = join(project, "src");
+    await mkdir(workspacePath);
+    const git = (args: string[]) => gitCommand("git", ["-C", project, ...args]);
+    try {
+      await git(["init", "-q", "-b", "main"]);
+      await git(["config", "user.name", "Task Test"]);
+      await git(["config", "user.email", "task@example.invalid"]);
+      await writeFile(join(project, "README.md"), "main branch\n");
+      await git(["add", "README.md"]);
+      await git(["commit", "-qm", "Initial"]);
+      const head = (await git(["rev-parse", "HEAD"])).stdout.trim();
+      await git(["checkout", "-qb", "unrelated"]);
+      await writeFile(join(project, "README.md"), "another branch\n");
+      await git(["commit", "-qam", "Unrelated commit"]);
+      await git(["checkout", "-q", "main"]);
+      let task: WorkTask = {
+        id: uuidv7(),
+        workspacePath,
+        title: "Feature",
+        prompt: "Build",
+        sourceBranch: selectedSource,
+        execution: { kind: "acp", agent: "codex", config: [] },
+        status: "preparing",
+        archived: false,
+        stopPending: false,
+        runSeq: 1,
+        runText: "Build",
+        commandId: uuidv7(),
+        sessionRequestId: uuidv7(),
+        createdAt: 1,
+        updatedAt: 1,
+      };
+      const service = createGitService({ repo: createGitCliRepo() });
+      let trees = 0;
+      let sessions = 0;
+      let prompts = 0;
+      const acp = {
+        create: async () => {
+          assert.ok(task.worktree, "allocation must be persisted before creating session");
+          sessions++;
+          return { id: "session" };
         },
-      },
-      settings: { get: async () => ({ worktreeRootDirectory: worktreeRoot }) } as ISettingService,
-      acp,
-      agent: {} as IZCodeAgentService,
-      ensureWorkspaceSubscription: () => {},
-    });
-    const context = {
-      signal: new AbortController().signal,
-      update: async (patch: object) => {
-        task = { ...task, ...patch };
-        return true;
-      },
-    };
-    await execution.execute(task, context);
-    assert.equal(task.worktree?.rootPath, worktreeRoot);
-    assert.equal(task.worktree?.baseCommit, head);
-    assert.match(task.worktree!.path, /worktrees\/[0-9a-f]{4}\/project$/);
-    assert.equal(basename(task.worktree!.path), "project");
-    assert.equal(await readFile(join(task.worktree!.path, "README.md"), "utf8"), "main branch\n");
-    const first = structuredClone(task.worktree);
-    task = { ...task, runSeq: 2, commandId: uuidv7(), runText: "Continue" };
-    await execution.execute(task, context);
-    assert.deepEqual(task.worktree, first);
-    assert.equal(trees, 1);
-    assert.equal(sessions, 1);
-    assert.equal(prompts, 2);
-    assert.equal((await git(["branch", "--show-current"])).stdout.trim(), "main");
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
+        list: async () => [{ id: "session", agent: "codex", status: "idle" }],
+        prompt: async () => {
+          assert.equal(task.session?.id, "session", "binding must be persisted before prompt");
+          prompts++;
+          return { status: "idle" };
+        },
+        onDynamicSessionChanged: () => new Emitter<AcpSessionChanged>().event,
+      } as unknown as IAcpService;
+      const execution = createWorkTaskExecution({
+        homeDirectory: directory,
+        git: {
+          ...service,
+          createWorktree: async (input) => {
+            assert.equal(task.worktree?.path, input.worktreePath, "allocation must precede Git");
+            trees++;
+            return service.createWorktree(input);
+          },
+        },
+        settings: { get: async () => ({ worktreeRootDirectory: worktreeRoot }) } as ISettingService,
+        acp,
+        agent: {} as IZCodeAgentService,
+        ensureWorkspaceSubscription: () => {},
+      });
+      const context = {
+        signal: new AbortController().signal,
+        update: async (patch: object) => {
+          task = { ...task, ...patch };
+          return true;
+        },
+      };
+      if (selectedSource === "missing") {
+        await assert.rejects(execution.execute(task, context), /work-task.branch-not-found/);
+        assert.equal(task.worktree, undefined);
+        assert.equal(trees, 0);
+        assert.equal(sessions, 0);
+        assert.equal(prompts, 0);
+        assert.equal((await git(["branch", "--show-current"])).stdout.trim(), "main");
+        return;
+      }
+      const expectedBase = selectedSource
+        ? (await git(["rev-parse", selectedSource])).stdout.trim()
+        : head;
+      await execution.execute(task, context);
+      assert.equal(task.worktree?.rootPath, worktreeRoot);
+      assert.equal(task.worktree?.baseCommit, expectedBase);
+      assert.match(task.worktree!.path, /worktrees\/[0-9a-f]{4}\/project$/);
+      assert.equal(basename(task.worktree!.path), "project");
+      const expectedContent = selectedSource ? "another branch\n" : "main branch\n";
+      assert.equal(await readFile(join(task.worktree!.path, "README.md"), "utf8"), expectedContent);
+      const first = structuredClone(task.worktree);
+      await git(["checkout", "-q", selectedSource ?? "main"]);
+      await writeFile(join(project, "README.md"), "source advanced\n");
+      await git(["commit", "-qam", "Advance source after allocation"]);
+      await git(["checkout", "-q", "main"]);
+      task = { ...task, runSeq: 2, commandId: uuidv7(), runText: "Continue" };
+      await execution.execute(task, context);
+      assert.deepEqual(task.worktree, first);
+      assert.equal(trees, 1);
+      assert.equal(sessions, 1);
+      assert.equal(prompts, 2);
+      assert.equal(await readFile(join(task.worktree!.path, "README.md"), "utf8"), expectedContent);
+      assert.equal((await git(["branch", "--show-current"])).stdout.trim(), "main");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
 
 test("default conversation workspace refuses its parent Git repo before any Git or Agent call, including stale allocations and aliases", async () => {
   const directory = await mkdtemp(join(tmpdir(), "zcode-task-default-"));

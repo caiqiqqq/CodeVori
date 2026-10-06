@@ -1914,6 +1914,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - propagating-hammerjs@3.0.0 — MIT
 
+- proper-lockfile@4.1.2 — MIT
+
 - property-information@7.1.0 — MIT
 
 - protobufjs@7.5.5 — BSD-3-Clause
@@ -2027,6 +2029,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 - responselike@2.0.1 — MIT
 
 - restore-cursor@5.1.0 — MIT
+
+- retry@0.12.0 — MIT
 
 - rettime@0.11.7 — MIT
 
@@ -2462,6 +2466,8 @@ The original import revisions of copied components are not recorded in the curre
 
 ## Copied source and assets
 
+- Open ZCode Computer Use (MIT): packages/zcode-cua/vendor/open-zcode-computer-use/src, packages/zcode-cua/vendor/open-zcode-computer-use/native/Package.swift, packages/zcode-cua/vendor/open-zcode-computer-use/native/Sources, packages/zcode-cua/vendor/open-zcode-computer-use/tests, packages/zcode-cua/vendor/open-zcode-computer-use/fixtures, packages/zcode-cua/vendor/open-zcode-computer-use/docs, packages/zcode-cua/vendor/open-zcode-computer-use/README.md, packages/zcode-cua/vendor/open-zcode-computer-use/NOTICE, packages/zcode-cua/vendor/open-zcode-computer-use/ZCODE-CHANGES.md. License reference: https://github.com/hqhq1025/open-zcode-computer-use/tree/202395e65218f83086b30daceb0f11d2f3430dd8. Original import revision: 202395e65218f83086b30daceb0f11d2f3430dd8.
+
 - shadcn (MIT): packages/ui/src/components/ui, packages/ui/src/styles.css. License reference: https://raw.githubusercontent.com/shadcn-ui/ui/a87a63b2ca25143d26c8bd0903e4e9bc77b3f824/LICENSE.md. Original import revision: not recorded.
 
 - ai-elements (Apache-2.0): packages/ui/src/components/ai-elements, .agents/skills/ai-elements. License reference: https://raw.githubusercontent.com/vercel/ai-elements/6a9d5b1822ffb10bba4bd97175f01edd7d8651cd/LICENSE. Original import revision: not recorded.
@@ -2497,6 +2503,10 @@ Electron/Chromium target-specific notices are shipped separately under Resources
 - @ai-sdk/openai-compatible@2.0.60: modified by ZCode; the changes are recorded in patches/@ai-sdk__openai-compatible@2.0.60.patch in the source repository.
 
 - @ai-sdk/anthropic@3.0.81: modified by ZCode; the changes are recorded in patches/@ai-sdk__anthropic@3.0.81.patch in the source repository.
+
+- @radix-ui/react-slot@1.2.3: modified by ZCode; the changes are recorded in patches/@radix-ui__react-slot@1.2.3.patch in the source repository.
+
+- @radix-ui/react-dropdown-menu@2.1.16: modified by ZCode; the changes are recorded in patches/@radix-ui__react-dropdown-menu@2.1.16.patch in the source repository.
 
 ## License and NOTICE texts
 
@@ -12098,6 +12108,8 @@ MIT License
 
 - cross-spawn@7.0.6: LICENSE
 
+- proper-lockfile@4.1.2: LICENSE
+
 
 
 ````text
@@ -12128,6 +12140,8 @@ THE SOFTWARE.
 ### Notice ae23bc497387d4df92901cf403625e16c228dc6ef366a5f74d9ba0117a3bfce0
 
 - cross-spawn@7.0.6: README.md (license section)
+
+- proper-lockfile@4.1.2: README.md (license section)
 
 
 
@@ -33614,6 +33628,51 @@ THE SOFTWARE.
 
 ````
 
+### Notice 01ad164273e8e095abc9dbd1c21e194594a671af7d528cb43ee7b4c903ba7da3
+
+- retry@0.12.0: License
+
+
+
+````text
+Copyright (c) 2011:
+Tim Koschützki (tim@debuggable.com)
+Felix Geisendörfer (felix@debuggable.com)
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+
+````
+
+### Notice 4065d2ca50b8827ab26a82470cfdd6d3e71dfa72889caabc0a0ccaf3f4e93f44
+
+- retry@0.12.0: README.md (license section)
+
+
+
+````text
+## License
+
+retry is licensed under the MIT license.
+
+
+````
+
 ### Notice 29de6bd2570e11d73396880c41a2f1dea7e072782012f160e4dbf17f39e2db03
 
 - rettime@0.11.7: LICENSE.md
@@ -39371,6 +39430,38 @@ SOFTWARE.
 [one]: #onevalue-rest
 
 [handler]: #function-handlervalue-rest
+
+````
+
+### Notice ec5433f4ba767d5d74b5b4140e02d76750abf460f9cd45412897d666aea53b91
+
+- Open ZCode Computer Use: https://github.com/hqhq1025/open-zcode-computer-use/tree/202395e65218f83086b30daceb0f11d2f3430dd8
+
+
+
+````text
+MIT License
+
+Copyright (c) 2026 Leo
+Copyright (c) 2026 The Maka Authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ````
 
