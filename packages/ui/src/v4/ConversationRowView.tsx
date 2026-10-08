@@ -8,7 +8,6 @@ import {
   CopyIcon,
   FileClockIcon,
   FileIcon,
-  WrenchIcon,
   GitBranchIcon,
   GoalIcon,
   PencilIcon,
@@ -74,7 +73,6 @@ import {
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning.js";
 import { cn } from "@/components/lib/utils.js";
-import { ToolLayout } from "@/ToolCallBlocks/ToolLayout.js";
 import { ACP_DISPLAY_TOOL_NAME } from "@/v4/acpConversationRows.js";
 import { Button } from "@/components/ui/button.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
@@ -1904,7 +1902,16 @@ const AcpToolCallRowView = memo(function AcpToolCallRowView({
   row: ToolCallRow;
   context: ConversationRowRenderContext;
 }) {
-  const { intl } = useZCodeIntl();
+  const toolCallNode = useMemo(() => {
+    const node = toolCallRowToLegacyNode(row);
+    node.toolCall.raw = {
+      ...(typeof node.toolCall.raw === "object" && node.toolCall.raw !== null
+        ? node.toolCall.raw
+        : {}),
+      acpPersistOpenKey: `${context.logEpoch ?? "acp"}:${row.toolCallId}`,
+    };
+    return node;
+  }, [row, context.logEpoch]);
   const workflow = context.workflowRunByToolCallId?.get(row.toolCallId);
   if (workflow && row.display?.kind === "create_workflow") {
     return (
@@ -1916,32 +1923,21 @@ const AcpToolCallRowView = memo(function AcpToolCallRowView({
           graph={row.display.causalityGraph}
           summary={workflow}
           {...(context.onOpenAcpWorkflowArtifact
-            ? { onOpenArtifact: (artifactId) => context.onOpenAcpWorkflowArtifact?.(workflow.runId, artifactId) }
+            ? {
+                onOpenArtifact: (artifactId) =>
+                  context.onOpenAcpWorkflowArtifact?.(workflow.runId, artifactId),
+              }
             : {})}
           {...(context.onCancelBackgroundWork && workflow.status === "running"
-            ? { onCancel: () => context.onCancelBackgroundWork?.(workflow.runId) } : {})}
+            ? { onCancel: () => context.onCancelBackgroundWork?.(workflow.runId) }
+            : {})}
           {...(context.onResumeWorkflowRun && workflow.resumable
-            ? { onResume: () => context.onResumeWorkflowRun?.(workflow.runId, row.inputText) } : {})}
+            ? { onResume: () => context.onResumeWorkflowRun?.(workflow.runId, row.inputText) }
+            : {})}
         />
       </RowShell>
     );
   }
-  const statusKey =
-    row.status === "success"
-      ? "completed"
-      : row.status === "error"
-        ? "failed"
-        : row.status === "cancelled"
-          ? "stopped"
-          : row.status === "inputStreaming"
-            ? "pending"
-            : "running";
-  const statusLabel = intl.formatMessage({
-    id:
-      row.error?.code === "ACP_TOOL_UNCONFIRMED"
-        ? "acp.toolResultUnknown"
-        : `chat.toolCall.status.${statusKey}`,
-  });
   return (
     <RowShell rowId={row.rowId} className="py-0">
       <div
@@ -1951,24 +1947,11 @@ const AcpToolCallRowView = memo(function AcpToolCallRowView({
         data-tool-name={row.inputText}
         data-status={row.status}
       >
-        <ToolLayout
-          toolId={row.toolCallId}
-          persistOpenKey={`${context.logEpoch ?? "acp"}:${row.toolCallId}`}
-          icon={<WrenchIcon className="size-4 shrink-0 text-foreground-subtle" />}
-          kindLabel="ACP"
-          primaryText={row.inputText}
-          secondaryText={row.status === "error" ? undefined : statusLabel}
-          statusLabel={row.status === "error" ? statusLabel : undefined}
-          statusTooltip={row.error?.message}
-          showFailureStatus={row.status === "error"}
-          isRunning={row.status === "running" || row.status === "inputStreaming"}
-          title={row.inputText}
-          canToggle={Boolean(row.output?.text)}
-          renderContent={() => (
-            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface px-3 py-2 font-mono text-ui-sm text-foreground-subtle">
-              {row.output?.text}
-            </pre>
-          )}
+        <ToolCallBlock
+          toolCallNode={toolCallNode}
+          workspacePath={context.workspacePath}
+          theme={context.theme}
+          codePreviewSettings={context.codePreviewSettings}
         />
       </div>
     </RowShell>

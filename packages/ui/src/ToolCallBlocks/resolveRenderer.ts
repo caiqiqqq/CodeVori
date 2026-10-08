@@ -53,8 +53,14 @@ import { TodoToolCallBlock } from "@/ToolCallBlocks/renderers/todo.js";
 import { AskQuestionToolCallBlock } from "@/ToolCallBlocks/renderers/ask-question.js";
 import { resolveToolCallIdentity } from "@/lib/toolIdentity.js";
 import type { ToolCallBlockRenderContext } from "@/ToolCallBlocks/shared.js";
+import { ACP_DISPLAY_TOOL_NAME } from "@/lib/acpToolPresentation.js";
+import { AcpToolCallBlock } from "@/ToolCallBlocks/renderers/acp.js";
 
 export function resolveToolCallRenderer(context: ToolCallBlockRenderContext) {
+  // 分组只借用 ACP kind 做展示分类，子项始终回到 ACP 明细，避免进入原生能力卡。
+  if (context.toolCallNode.toolCall.toolName === ACP_DISPLAY_TOOL_NAME) {
+    return AcpToolCallBlock;
+  }
   if (context.toolCallNode.toolCall.kind === "changesGroup") {
     return ChangesGroupToolCallBlock;
   }

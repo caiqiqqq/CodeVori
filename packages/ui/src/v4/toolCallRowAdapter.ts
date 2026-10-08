@@ -5,6 +5,12 @@ import { buildZCodeStreamingToolInputPreview } from "@zcode/shared";
 import type { ToolCallRow } from "@zcode/shared/zcode-protocol-v4";
 import type { TaskChatToolCallTreeNode } from "@/lib/toolCallTree.js";
 import { normalizeWrappedErrorText } from "@/lib/toolError.js";
+import {
+  ACP_DISPLAY_TOOL_NAME,
+  acpToolGroupingKind,
+  acpToolSummaryInput,
+  readAcpToolEntry,
+} from "@/lib/acpToolPresentation.js";
 
 // v4 status → 旧 ChatToolCall.status（mapToolStatus 的输入词表：
 // pending/in_progress/completed/failed/stopped）。
@@ -83,6 +89,7 @@ export function toolCallRowToLegacyNode(row: ToolCallRow): TaskChatToolCallTreeN
   const legacyStatus = STATUS_MAP[row.status];
   const errorText = resolveV4ToolErrorText(row);
   const inputPreview = resolveToolInputPreview(row);
+  const acpTool = row.toolName === ACP_DISPLAY_TOOL_NAME ? readAcpToolEntry(row.input) : undefined;
   // CUA 等结构化展示事实位于 output.display；顶层 display 仅是旧 Node REPL 图片通道。
   // 优先读取 canonical output，同时保留旧快照和 Browser 轮尾截图的兼容路径。
   const display = row.output?.display ?? row.display;
@@ -93,9 +100,10 @@ export function toolCallRowToLegacyNode(row: ToolCallRow): TaskChatToolCallTreeN
     toolCall: {
       toolId: row.toolCallId,
       toolName: row.toolName,
-      // kind 兼容旧聚合分类：v4 下没有旧 ZCode Agent 快照形态，直接用固定工具名。
-      kind: row.toolName,
-      input: inputPreview.input,
+      // API 使用固定工具名；ACP 只借用上报 kind 做展示聚合，toolName 仍保留隔离身份。
+      kind: acpTool ? acpToolGroupingKind(acpTool) : row.toolName,
+      input: acpTool ? acpToolSummaryInput(acpTool) : inputPreview.input,
+      ...(row.toolName === ACP_DISPLAY_TOOL_NAME ? { title: row.inputText } : {}),
       status: legacyStatus,
       output: row.output?.text,
       // V4 ToolCallRow 没有 legacy taskNotification raw；background Agent
@@ -110,6 +118,7 @@ export function toolCallRowToLegacyNode(row: ToolCallRow): TaskChatToolCallTreeN
       raw: {
         error: row.error,
         rawOutput: row.output?.text,
+        ...(acpTool ? { acpTool } : {}),
         outputPreview: row.outputPreview,
         outputTruncated: row.output?.truncated,
         status: legacyStatus,

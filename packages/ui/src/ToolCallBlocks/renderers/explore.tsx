@@ -9,6 +9,7 @@ import { buildReadSummary, ReadFileChip } from "@/ToolCallBlocks/renderers/read.
 import { getSearchPrimaryText } from "@/ToolCallBlocks/renderers/search.js";
 import { renderFilePath } from "@/ToolCallBlocks/shared.js";
 import { resolveToolCallIdentity } from "@/lib/toolIdentity.js";
+import { ACP_DISPLAY_TOOL_NAME } from "@/lib/acpToolPresentation.js";
 import { ToolLayout } from "../ToolLayout.js";
 import type { ToolCallBlockRenderContext } from "../shared.js";
 import { useCallback, type ReactNode } from "react";
@@ -291,6 +292,15 @@ function getLatestExploreChildSummary(
   context: ToolCallBlockRenderContext,
   options: { includeChildActionKindLabel?: boolean } = {},
 ): ExploreChildSummary | null {
+  if (childToolCall.toolName === ACP_DISPLAY_TOOL_NAME) {
+    // ACP 的 read/search 参数由各 Agent 定义；摘要只用上报标题，不能推断原生文件链接或能力。
+    const title = childToolCall.title ?? "";
+    return {
+      animationKey: `acp:${childToolCall.toolId}:${title}`,
+      primaryText: <span className="min-w-0 truncate">{title}</span>,
+      title,
+    };
+  }
   const childIdentity = resolveToolCallIdentity(childToolCall);
   const actionKindLabel =
     options.includeChildActionKindLabel === true

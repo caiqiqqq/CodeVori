@@ -1,8 +1,9 @@
 import type { AcpEntry, AcpSession } from "@zcode/shared";
 import type { ConversationRow, ToolCallRow } from "@zcode/shared/zcode-protocol-v4";
+import { ACP_DISPLAY_TOOL_NAME } from "@/lib/acpToolPresentation.js";
 
 /** 展示用工具身份与 ZCode CLI 工具名隔离，避免 Read/Task 等误入原生能力卡。 */
-export const ACP_DISPLAY_TOOL_NAME = "ACP external tool";
+export { ACP_DISPLAY_TOOL_NAME } from "@/lib/acpToolPresentation.js";
 
 export function acpEntryRowId(entryIndex: number): number {
   return entryIndex * 2 + 2;
@@ -110,6 +111,8 @@ export function buildAcpConversationRows(
         toolName: ACP_DISPLAY_TOOL_NAME,
         status: mappedStatus,
         inputText: entry.title,
+        // Host 已有工具类型与明细；作为只读展示载荷进入共用分组，不新增协议事实。
+        input: entry,
         ...(entry.workflow
           ? {
               display: {

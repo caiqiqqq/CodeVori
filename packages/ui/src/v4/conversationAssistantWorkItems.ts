@@ -6,6 +6,7 @@ import {
 } from "@/lib/exploreToolCall.js";
 import type { TaskChatToolCallTreeNode } from "@/lib/toolCallTree.js";
 import { resolveToolCallIdentity } from "@/lib/toolIdentity.js";
+import { ACP_DISPLAY_TOOL_NAME } from "@/lib/acpToolPresentation.js";
 import {
   isConversationReasoningRowVisible,
   type ConversationReasoningVisibility,
@@ -96,12 +97,16 @@ function isExecuteToolCallRow(row: AssistantWorkRow): row is ToolCallRow {
 }
 
 function isChangesToolCallRow(row: AssistantWorkRow): row is ToolCallRow {
-  if (!isToolCallRow(row)) return false;
+  if (!isToolCallRow(row) || row.toolName === ACP_DISPLAY_TOOL_NAME) return false;
   return resolveToolCallIdentity(toolCallRowToLegacyNode(row).toolCall).family === "file-write";
 }
 
 function shouldDeferUnclassifiedShellToolCall(row: AssistantWorkRow): boolean {
-  if (!isToolCallRow(row) || (row.status !== "inputStreaming" && row.status !== "running")) {
+  if (
+    !isToolCallRow(row) ||
+    row.toolName === ACP_DISPLAY_TOOL_NAME ||
+    (row.status !== "inputStreaming" && row.status !== "running")
+  ) {
     return false;
   }
   const legacyNode = toolCallRowToLegacyNode(row);
