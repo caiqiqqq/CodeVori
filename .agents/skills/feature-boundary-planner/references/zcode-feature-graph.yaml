@@ -395,7 +395,7 @@ nodes:
     label: ACP conversation target inside the existing pane
     codeSeeds:
       - file: packages/ui/src/v4/AcpConversationContent.tsx
-        symbol: AcpConversationControls
+        symbol: AcpConversationStatus
       - file: packages/ui/src/v4/SessionPane.tsx
         symbol: SessionPane
       - file: packages/ui/src/v4/ConversationComposer.tsx
@@ -410,6 +410,15 @@ nodes:
         symbol: TaskList
       - file: packages/ui/src/hooks/useAcpSidebarSessions.ts
         symbol: useAcpSidebarSessions
+      - file: packages/ui/src/v4/workbenchSessionPlacement.ts
+        symbol: buildPrimaryWorkbenchSessionBinding
+      - file: packages/ui/src/v4/V4WorkspaceChatArea.tsx
+        symbol: V4WorkspaceChatArea
+      - file: packages/ui/src/app-shell/WorkspaceShellLayout.tsx
+        symbol: handleSelectAcpSession
+    invariants:
+      - Cross-workspace split placement captures the visible ACP identity before native shell navigation; group/layout stores retain pane bindings and drafts.
+      - Selecting a grouped ACP session focuses its existing pane; temporary secondary selection clears native navigation without starting a new draft or resetting layout.
   - id: capability.work-tasks
     kind: capability
     label: Project work tasks

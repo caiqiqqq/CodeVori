@@ -4,6 +4,12 @@ import { resolve } from "node:path";
 import test from "node:test";
 import config from "../electron-builder.config.js";
 
+test("local macOS builds retain valid ad-hoc signing without a release certificate", () => {
+  if (process.env.ZCODE_ENABLE_MAC_SIGN === "1") return;
+  assert.equal(config.mac.identity, "-");
+  assert.equal(config.mac.notarize, false);
+});
+
 test("computer control native copies participate in signing without resigning existing runtime assets", () => {
   const ignored = (path) => config.mac.signIgnore.some((pattern) => new RegExp(pattern).test(path));
   const resources = "/tmp/Example.app/Contents/Resources";

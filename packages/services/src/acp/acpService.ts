@@ -24,6 +24,8 @@ import {
   type AcpSessionSearchItem,
   type AcpSessionChanged,
   type AcpWorkspace,
+  type AcpAttachmentReadInput,
+  type AcpAttachmentReadResult,
   type AcpAppUsageAgent,
   type AppUsageRequest,
   type AcpWorkflowControl,
@@ -58,6 +60,8 @@ export interface IAcpService {
   /** Read-only history query; returns bounded display metadata without connecting an Agent. */
   search(input: AcpSessionSearchInput): Promise<AcpSessionSearchItem[]>;
   read(input: AcpWorkspace & { id: string }): Promise<AcpSession>;
+  /** Bounded read of an accepted attachment; no Agent connection or arbitrary Host path. */
+  readAttachment(input: AcpAttachmentReadInput): Promise<AcpAttachmentReadResult>;
   /** Exact target-Host snapshot path; never a native task or Agent log path. */
   getSessionFilePath(input: AcpWorkspace & { id: string }): Promise<string>;
   /** Exact target-Host per-session metadata log path; never an Agent-owned log. */

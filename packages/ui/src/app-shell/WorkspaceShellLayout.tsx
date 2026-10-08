@@ -25,6 +25,7 @@ import {
 import type { ConversationDropTargetController } from "@/v4/composer/conversationDropTarget.js";
 import type { WorkbenchSessionBinding } from "@/v4/workbenchGroupStore.js";
 import {
+  buildPrimaryWorkbenchSessionBinding,
   canPlaceWorkbenchSessionInSplit,
   placeWorkbenchSessionInSplit,
   selectWorkbenchSession,
@@ -982,17 +983,22 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   );
   const shellWorkbenchBinding = useMemo<WorkbenchSessionBinding | null>(
     () =>
-      activeTaskId
-        ? {
-            workspaceScope: {
-              workspacePath: workspaceAbsPath,
-              ...(workspaceIdentity?.trim() ? { workspaceIdentity } : {}),
-              ...(workspaceRemoteSessionId ? { remoteSessionId: workspaceRemoteSessionId } : {}),
-            },
-            sessionId: activeTaskId,
-          }
-        : null,
-    [activeTaskId, workspaceAbsPath, workspaceIdentity, workspaceRemoteSessionId],
+      buildPrimaryWorkbenchSessionBinding(
+        {
+          workspacePath: workspaceAbsPath,
+          ...(workspaceIdentity?.trim() ? { workspaceIdentity } : {}),
+          ...(workspaceRemoteSessionId ? { remoteSessionId: workspaceRemoteSessionId } : {}),
+        },
+        activeTaskId,
+        visibleAcpSession,
+      ),
+    [
+      activeTaskId,
+      visibleAcpSession,
+      workspaceAbsPath,
+      workspaceIdentity,
+      workspaceRemoteSessionId,
+    ],
   );
   const handleCreateAutomationInChat = useCallback(
     (prompt: string, targetWorkspace?: { workspacePath: string; workspaceIdentity?: string }) => {
@@ -1401,6 +1407,33 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
         addLocalWorkspaceTab: (path) => tabStoreApi.getState().addTab(path),
       });
       if (!workspaceResult.accepted) return;
+      // 已由分屏 owner 持有的 ACP 只聚焦/替换窗格；起主草稿会退出 group 并清掉另一会话。
+      if (
+        selectWorkbenchSession(
+          shellWorkbenchBinding,
+          {
+            workspacePath: session.workspacePath,
+            ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
+            ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
+            sessionId: session.id,
+            kind: "acp",
+            agent: session.agent,
+          },
+          () => {
+            // 临时布局的 native 选择只是 secondary 的导航投影；替换为 ACP 后必须清理，
+            // 否则旧 API id 不再匹配窗格，会重新出现在空主草稿中。复用原 owner，保留布局。
+            const store = useZCodeSessionStore.getState();
+            store.setActiveTaskId(workspaceAbsPath, null, workspaceIdentity);
+            if (targetKey !== workspaceKey) {
+              store.setActiveTaskId(session.workspacePath, null, session.workspaceIdentity);
+            }
+          },
+        )
+      ) {
+        setAcpOpenRequest(null);
+        showChatMainView();
+        return;
+      }
       // 修复原因：ACP 点击只把主 pane 切回 draft 容器，然后指定 Host id；
       // 绝不把该 id 送进 handleSelectTask 的 CLI task 路由。
       if (
@@ -1417,6 +1450,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     [
       activeTaskId,
       handleStartDraftInWorkspaceInChat,
+      shellWorkbenchBinding,
       showChatMainView,
       tabStoreApi,
       workspaceAbsPath,
@@ -2341,6 +2375,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                 isDesktop={isDesktop === true}
                                 remoteSessionId={workspaceRemoteSessionId}
                                 sessionId={activeTaskId}
+                                primaryConversationBinding={shellWorkbenchBinding}
                                 activeSelectionSideChatSessionId={activeSelectionSideChatSessionId}
                                 provider={activeTaskProvider ?? undefined}
                                 onSessionCreated={handleV4SessionCreated}

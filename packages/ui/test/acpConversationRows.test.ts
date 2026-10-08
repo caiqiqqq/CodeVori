@@ -62,6 +62,33 @@ test("legacy entries have no invented date and interrupted turns preserve partia
   assert.equal(rows[3]?.kind === "assistantText" && rows[3].text, "partial");
 });
 
+test("ACP saved attachments use native user rows without putting image names into text", () => {
+  const attachments = [
+    {
+      ref: "acp-attachment:11111111-1111-4111-8111-111111111111/0",
+      fileName: "a.png",
+      mime: "image/png",
+      bytes: 12,
+    },
+  ];
+  const rows = buildAcpConversationRows(
+    session([
+      {
+        id: "user:image",
+        kind: "user",
+        text: "Look",
+        attachments,
+        attachmentNames: ["a.png", "src/index.ts"],
+      },
+    ]),
+  );
+  const row = rows[1];
+  assert.equal(row?.kind, "userInput");
+  if (row?.kind !== "userInput") throw new Error("missing input");
+  assert.equal(row.text, "Look\n\n📎 src/index.ts");
+  assert.deepEqual(row.attachments, attachments);
+});
+
 test("Host status ends stale tools and represents the running turn before its first reply", () => {
   const entries: AcpSession["entries"] = [{ id: "user:cmd", kind: "user", text: "wait" }];
   const rows = buildAcpConversationRows(session(entries, "running"));

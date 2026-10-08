@@ -134,6 +134,7 @@ import { AgentDelegationPanel } from "@/delegation/AgentDelegationPanel.js";
 import { useAgentDelegation } from "@/hooks/useAgentDelegation.js";
 import { acpEntryRowId, buildAcpConversationRows } from "@/v4/acpConversationRows.js";
 import { useAcpConversation } from "@/v4/useAcpConversation.js";
+import { useAcpAttachmentReader } from "@/hooks/useAcpAttachmentReader.js";
 import { useAcpComposerConfigPreview } from "@/v4/composer/useAcpComposerConfigPreview.js";
 import type {
   AcpConversationOpenRequest,
@@ -2472,9 +2473,21 @@ export function SessionPane({
     ],
   );
 
-  // 修复原因：复用展示时不能把原生会话的附件读取、workflow 与 rewind 命令绑定到 ACP 行。
+  const acpAttachmentReader = useAcpAttachmentReader(
+    acpService,
+    {
+      workspacePath,
+      ...(workspaceIdentity ? { workspaceIdentity } : {}),
+      ...(remoteSessionId ? { remoteSessionId } : {}),
+    },
+    acpConversation.selected?.id ?? null,
+  );
+  // 修复原因：ACP 图片要复用消息预览组件，读取必须绑定对应 Host，不能调用原生 CLI。
   const acpRowContext = useMemo<ConversationRowRenderContext>(
     () => ({
+      sessionId: acpConversation.selected?.id,
+      readAttachment: acpAttachmentReader.readAttachment,
+      readAttachmentRange: acpAttachmentReader.readAttachmentRange,
       workspacePath,
       workspaceHomePath,
       workspaceIdentity,
@@ -2550,6 +2563,7 @@ export function SessionPane({
       acpConversation.selected?.pendingPermission,
       acpConversation.selected?.workflowRuns,
       acpService,
+      acpAttachmentReader,
       theme,
       codePreviewSettings,
       messageStreamShowReasoning,
@@ -5132,7 +5146,8 @@ export function SessionPane({
               onLoadAllOlder={acpAgent ? undefined : handleLoadAllOlder}
               turnNavigatorDirectoryRevision={state.turnNavigatorDirectoryRevision}
               bottomDock={conversationBottomDock}
-              hideTurnNavigator={Boolean(acpAgent) || (shareActive && shareInSelectionStage)}
+              // 修复原因：ACP 已投影为 realUser 行，不能再按 Agent 类型隐藏共用轮次导航。
+              hideTurnNavigator={shareActive && shareInSelectionStage}
               backgroundScrollLocked={resolveConversationShareBackgroundScrollLocked({
                 partialShareActive: !acpAgent && shareActive,
                 stage: shareDraft?.stage ?? "selection",

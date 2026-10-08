@@ -31,8 +31,10 @@ function toolStatus(status: string, turnStatus: AcpSession["status"]): ToolCallR
 }
 
 function displayText(entry: Extract<AcpEntry, { kind: "user" }>): string {
-  if (!entry.attachmentNames?.length) return entry.text;
-  const names = entry.attachmentNames.map((name) => `📎 ${name}`).join("\n");
+  // 已保存的图片/文件交给共用附件组件；尾部工作区文件提示与旧会话名称仍保留。
+  const remainingNames = entry.attachmentNames?.slice(entry.attachments?.length ?? 0);
+  if (!remainingNames?.length) return entry.text;
+  const names = remainingNames.map((name) => `📎 ${name}`).join("\n");
   return entry.text ? `${entry.text}\n\n${names}` : names;
 }
 
@@ -76,7 +78,13 @@ export function buildAcpConversationRows(
       createdAtSeq: index,
     };
     if (entry.kind === "user") {
-      rows.push({ ...base, kind: "userInput", origin: "realUser", text: displayText(entry) });
+      rows.push({
+        ...base,
+        kind: "userInput",
+        origin: "realUser",
+        text: displayText(entry),
+        ...(entry.attachments?.length ? { attachments: entry.attachments } : {}),
+      });
     } else if (entry.kind === "assistant") {
       rows.push({
         ...base,
@@ -103,8 +111,15 @@ export function buildAcpConversationRows(
         status: mappedStatus,
         inputText: entry.title,
         ...(entry.workflow
-          ? { display: { kind: "create_workflow" as const, ok: true, errorCount: 0,
-              diagnostics: [], ...(entry.workflow.graph ? { causalityGraph: entry.workflow.graph } : {}) } }
+          ? {
+              display: {
+                kind: "create_workflow" as const,
+                ok: true,
+                errorCount: 0,
+                diagnostics: [],
+                ...(entry.workflow.graph ? { causalityGraph: entry.workflow.graph } : {}),
+              },
+            }
           : {}),
         ...(entry.content ? { output: { text: entry.content } } : {}),
         ...(mappedStatus === "error"

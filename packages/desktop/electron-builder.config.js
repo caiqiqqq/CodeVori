@@ -679,7 +679,9 @@ export default {
     // z-code 之前只有本地未签名打包配置，CI 即使注入了证书变量，
     // electron-builder 也不会自动切到 hardened runtime / entitlement 这套发布参数。
     // 这里显式收拢到环境开关，保证本地开发不被签名配置绑死，CI 发布时再按需打开。
-    identity: shouldEnableMacSigning ? macSigningIdentity : null,
+    // arm64 跳过签名会留下 Electron 原包的过期资源封印，重命名后的应用完整性校验失败。
+    // 没有发布证书时仍使用本地 ad-hoc 签名；它不等同于 Developer ID 或 Apple 公证。
+    identity: shouldEnableMacSigning ? macSigningIdentity : "-",
     // macOS 产物采用“build 阶段签名 + 独立公证阶段”的两段式流水线。
     // 如果这里不显式关闭 electron-builder 内置 notarize，它会在 build 阶段读取 Apple 凭据后直接尝试公证，
     // 并强制要求 APPLE_APP_SPECIFIC_PASSWORD，导致 build 还没产出 DMG 就提前失败。

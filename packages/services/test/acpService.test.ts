@@ -926,12 +926,18 @@ test("ACP goal persists while prompt blocks and attachment bytes never enter the
     });
     const snapshot = await service.read({ ...target, id: session.id });
     assert.equal(snapshot.goal, "Summarize accurately");
+    const entry = snapshot.entries[0];
+    assert.equal(entry?.kind, "user");
+    if (entry?.kind !== "user") throw new Error("missing input");
+    const ref = entry.attachments?.[0]?.ref;
+    assert.match(ref ?? "", /^acp-attachment:[0-9a-f-]{36}\/0$/i);
     assert.deepEqual(snapshot.entries[0], {
       id: "user:one",
       kind: "user",
       text: "Read the image and notes",
       createdAt: snapshot.entries[0]?.createdAt,
       attachmentNames: ["pixel.png", "notes.txt"],
+      attachments: [{ ref, fileName: "pixel.png", mime: "image/png", bytes: 3 }],
     });
     assert.doesNotMatch(JSON.stringify(snapshot), /cG5n|zcode-attachment/);
     const restarted = createAcpService({ directory: dir, connect: factory });

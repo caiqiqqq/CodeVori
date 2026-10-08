@@ -34,7 +34,7 @@ async function fileBase64(file: File): Promise<string> {
   return btoa(result);
 }
 
-/** Bytes stay in this RPC only; the Host persists display names, never content. */
+/** RPC 携带输入内容；Host 单独保存附件副本，快照仅记录名称与不透明引用。 */
 export async function acpAttachmentsFromComposer(
   attachments: readonly ComposerAttachmentUploadItem[],
   remote: boolean,

@@ -19,6 +19,8 @@ import {
   acpCreateInputSchema,
   acpDiagnosticEventSchema,
   acpPromptInputSchema,
+  acpAttachmentReadInputSchema,
+  acpAttachmentReadResultSchema,
   acpStopInputSchema,
   acpSessionSchema,
   acpSessionRowUpdateSchema,
@@ -47,6 +49,7 @@ import type { ISkillsService } from "../skills/skills.js";
 import type { IAcpService } from "./acpService.js";
 import { AcpSessionLoadError, connectAcpAgent } from "./acpStdioConnection.js";
 import { buildAcpPromptBlocks } from "./acpPromptBlocks.js";
+import { AcpAttachmentStore } from "./acpAttachmentStore.js";
 import { projectAcpPluginMcpServers } from "./acpMcpServers.js";
 import { createAcpWorkflowMcp } from "./acpWorkflowMcp.js";
 import { AcpWorkflowHost } from "./acpWorkflowHost.js";
@@ -146,6 +149,8 @@ export function createAcpService(
   } = {},
 ): IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } {
   const directory = options.directory ?? join(getZCodeDataRootDir(), "acp-sessions");
+  const attachmentStore = new AcpAttachmentStore(join(directory, "attachments"));
+  const attachmentWrites = new Map<string, Set<Promise<void>>>();
   const connect = options.connect ?? connectAcpAgent;
   const agentManager =
     options.agentManager ??
@@ -262,7 +267,8 @@ export function createAcpService(
         try {
           await writeFile(temporary, JSON.stringify(snapshot), { mode: 0o600 });
           await rename(temporary, file(snapshot.id));
-          if (!disposed) emitter.fire({ kind: "updated", session: snapshot });
+          if (!disposed && !removed.has(session.id))
+            emitter.fire({ kind: "updated", session: snapshot });
         } finally {
           await rm(temporary, { force: true });
         }
@@ -924,6 +930,18 @@ export function createAcpService(
     async read(input) {
       return structuredClone(await scoped(input));
     },
+    async readAttachment(input) {
+      const params = acpAttachmentReadInputSchema.parse(input);
+      const session = await scoped(params);
+      if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
+      const attachment = session.entries
+        .flatMap((entry) => (entry.kind === "user" ? (entry.attachments ?? []) : []))
+        .find((item) => item.ref === params.ref);
+      if (!attachment) throw new Error("ACP attachment does not belong to this session");
+      return acpAttachmentReadResultSchema.parse(
+        await attachmentStore.read(session.id, attachment, params.offset, params.limit),
+      );
+    },
     async getSessionFilePath(input) {
       const session = await scoped(input);
       if (removed.has(session.id) || disposed || !isAcpHistorySession(session))
@@ -1161,6 +1179,17 @@ export function createAcpService(
       active.set(session.id, commandId);
       const goal = session.goal;
       let admitted = false;
+      let attachmentGroup: string | null = null;
+      let attachmentWrite: Promise<void> | undefined;
+      let finishAttachmentWrite: (() => void) | undefined;
+      const finishAttachmentIO = () => {
+        if (!attachmentWrite) return;
+        const inFlight = attachmentWrites.get(session.id);
+        inFlight?.delete(attachmentWrite);
+        if (!inFlight?.size) attachmentWrites.delete(session.id);
+        finishAttachmentWrite?.();
+        attachmentWrite = undefined;
+      };
       try {
         if (!internalResults.has(commandId)) await options.delegation?.onInput(session);
         const port = await attach(session);
@@ -1215,6 +1244,35 @@ export function createAcpService(
           attachments: prompt.attachments,
           capabilities: port.promptCapabilities,
         });
+        if (
+          active.get(session.id) !== commandId ||
+          removed.has(session.id) ||
+          disposed ||
+          connections.get(session.id) !== port
+        )
+          return structuredClone(session);
+        // 图片必须保存发送时的内容；快照只记录引用，不能把临时路径或 base64 当成历史。
+        if (prompt.attachments.length) {
+          attachmentWrite = new Promise<void>((resolve) => {
+            finishAttachmentWrite = resolve;
+          });
+          const inFlight = attachmentWrites.get(session.id) ?? new Set<Promise<void>>();
+          inFlight.add(attachmentWrite);
+          attachmentWrites.set(session.id, inFlight);
+        }
+        const savedAttachments = await attachmentStore.save(
+          session.id,
+          prompt.attachments,
+          blocks.slice(1 + prompt.workspaceFiles.length),
+        );
+        attachmentGroup = savedAttachments.group;
+        if (
+          active.get(session.id) !== commandId ||
+          removed.has(session.id) ||
+          disposed ||
+          connections.get(session.id) !== port
+        )
+          return structuredClone(session);
         if (workflowInstruction) blocks.unshift({ type: "text", text: workflowInstruction });
         if (delegationInstruction) blocks.unshift({ type: "text", text: delegationInstruction });
         const notifications = workflowNotifications.get(session.id);
@@ -1234,7 +1292,7 @@ export function createAcpService(
         if (active.get(session.id) !== commandId || removed.has(session.id)) {
           return structuredClone(session);
         }
-        const provisionalBeforeAdmission = session.provisional ? structuredClone(session) : null;
+        const beforeAdmission = structuredClone(session);
         try {
           await mutate(session, () => {
             // 修复原因：预连接只存在于 Host 内存；首条有效消息与会话一起落盘。
@@ -1250,6 +1308,9 @@ export function createAcpService(
               kind: "user",
               text: prompt.text,
               createdAt: Date.now(),
+              ...(savedAttachments.attachments.length
+                ? { attachments: savedAttachments.attachments }
+                : {}),
               ...(prompt.attachments.length || prompt.workspaceFiles.length
                 ? {
                     attachmentNames: [
@@ -1261,10 +1322,11 @@ export function createAcpService(
             });
           });
           admitted = true;
+          finishAttachmentIO();
           await appendDiagnostic(session, { kind: "prompt-accepted" });
         } catch (error) {
           // 首次落盘失败时恢复内存草稿，保持原文可重试且历史不会出现半条消息。
-          if (provisionalBeforeAdmission) Object.assign(session, provisionalBeforeAdmission);
+          Object.assign(session, beforeAdmission);
           throw error;
         }
         if (active.get(session.id) !== commandId || removed.has(session.id)) {
@@ -1306,6 +1368,13 @@ export function createAcpService(
           throw error;
         }
         // 用户已停止本轮或旧进程已退出：结果由 Host 快照决定，不重复报告取消为发送失败。
+      } finally {
+        // stop 后新轮可先完成，不能覆盖旧轮 IO；删除/关闭必须等到所有未接受副本清理完。
+        try {
+          if (!admitted) await attachmentStore.discard(session.id, attachmentGroup);
+        } finally {
+          finishAttachmentIO();
+        }
       }
       return structuredClone(session);
     },
@@ -1470,6 +1539,8 @@ export function createAcpService(
       detach(session.id);
       await writes.get(session.id);
       await diagnosticWrites.get(session.id);
+      await Promise.allSettled(attachmentWrites.get(session.id) ?? []);
+      await attachmentStore.remove(session.id);
       await rm(file(session.id), { force: true });
       await rm(diagnosticFile(session.id), { force: true });
       sessions.delete(session.id);
@@ -1519,6 +1590,7 @@ export function createAcpService(
       await workflowHost.settleAll();
       await Promise.allSettled([...notificationTasks]);
       await Promise.allSettled([...writes.values()]);
+      await Promise.allSettled([...attachmentWrites.values()].flatMap((tasks) => [...tasks]));
     },
   };
   return service;

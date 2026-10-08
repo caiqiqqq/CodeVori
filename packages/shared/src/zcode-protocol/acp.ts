@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { acpTokenUsageSchema, acpUsageTurnSchema } from "../acp-usage.js";
 import { workflowRunsStateSchema } from "../zcode-protocol-v4/workflow-runs.js";
+import { attachmentRefSchema } from "../zcode-protocol-v4/attachment-ref.js";
 import { acpWorkflowToolSchema } from "./acpWorkflow.js";
 
 /** ACP Agent identity is independent of the ZCode model Provider registry. */
@@ -273,6 +274,43 @@ export const acpPromptInputSchema = z.object({
 });
 export type AcpPromptInput = z.input<typeof acpPromptInputSchema>;
 
+export const ACP_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
+export const ACP_ATTACHMENT_READ_CHUNK_BYTES = 128 * 1024;
+/** Host-owned content refs, never paths or inline content in session snapshots. */
+export const acpAttachmentRefSchema = attachmentRefSchema
+  .omit({ previewRef: true })
+  .extend({
+    ref: z.string().regex(/^acp-attachment:[0-9a-f-]{36}\/[0-7]$/i),
+    fileName: z.string().min(1).max(255),
+    mime: z.string().min(1).max(128),
+    bytes: z.number().int().nonnegative().max(ACP_ATTACHMENT_MAX_BYTES),
+  })
+  .strict();
+export type AcpAttachmentRef = z.infer<typeof acpAttachmentRefSchema>;
+export const acpAttachmentReadInputSchema = acpWorkspaceSchema
+  .extend({
+    id: z.string().uuid(),
+    ref: acpAttachmentRefSchema.shape.ref,
+    offset: z.number().int().nonnegative().default(0),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .max(ACP_ATTACHMENT_READ_CHUNK_BYTES)
+      .default(ACP_ATTACHMENT_READ_CHUNK_BYTES),
+  })
+  .strict();
+export type AcpAttachmentReadInput = z.input<typeof acpAttachmentReadInputSchema>;
+export const acpAttachmentReadResultSchema = z
+  .object({
+    dataBase64: z.string().max(Math.ceil(ACP_ATTACHMENT_READ_CHUNK_BYTES / 3) * 4),
+    mediaType: z.string().min(1).max(128),
+    totalBytes: z.number().int().nonnegative().max(ACP_ATTACHMENT_MAX_BYTES),
+    nextOffset: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+export type AcpAttachmentReadResult = z.infer<typeof acpAttachmentReadResultSchema>;
+
 export const acpPermissionOptionSchema = z.object({
   optionId: z.string().min(1),
   name: z.string(),
@@ -343,6 +381,7 @@ export const acpEntrySchema = z.discriminatedUnion("kind", [
     text: z.string(),
     createdAt: z.number().optional(),
     attachmentNames: z.array(z.string()).optional(),
+    attachments: z.array(acpAttachmentRefSchema).max(8).optional(),
   }),
   z.object({
     id: z.string(),

@@ -1,5 +1,6 @@
 import { logger } from "@/logger.js";
 import type { AcpAgent } from "@zcode/shared";
+import type { AcpConversationProjection } from "@/lib/acpSidebarSessions.js";
 import {
   V4_PRIMARY_PANE_ID,
   canAddPane,
@@ -23,6 +24,18 @@ export interface WorkbenchSessionTarget extends PaneWorkspaceScope {
   readonly sessionId: string;
   readonly kind?: "native" | "acp";
   readonly agent?: AcpAgent;
+}
+
+export function buildPrimaryWorkbenchSessionBinding(
+  workspaceScope: PaneWorkspaceScope,
+  nativeSessionId: string | null,
+  acpSession: Pick<AcpConversationProjection, "id" | "agent"> | null,
+): WorkbenchSessionBinding | null {
+  // ACP 的 Host id 不在 activeTaskId 中；以当前可见投影为准，避免把已打开会话误当草稿。
+  if (acpSession) {
+    return { workspaceScope, sessionId: acpSession.id, kind: "acp", agent: acpSession.agent };
+  }
+  return nativeSessionId ? { workspaceScope, sessionId: nativeSessionId } : null;
 }
 
 interface WorkbenchSplitPlacementOptions {
@@ -212,28 +225,33 @@ export function placeWorkbenchSessionInSplit(
 export function selectWorkbenchSession(
   shellBinding: WorkbenchSessionBinding | null,
   target: WorkbenchSessionTarget,
-): void {
+  onSecondarySelected?: () => void,
+): boolean {
   const groups = useWorkbenchGroupStore.getState();
   const layout = usePaneLayoutStore.getState();
   const binding = targetBinding(target);
-  if (
-    !groups.activeGroupId &&
-    !groups.sessionIndex[buildWorkbenchSessionKey(target, target.sessionId, target.kind)] &&
-    draftPrimaryOwnsLayout(shellBinding)
-  ) {
+  const ownedByGroup = Boolean(
+    groups.sessionIndex[buildWorkbenchSessionKey(target, target.sessionId, target.kind)],
+  );
+  let ownedBySecondary = false;
+  if (!groups.activeGroupId && !ownedByGroup && draftPrimaryOwnsLayout(shellBinding)) {
     const existingPaneId = findPaneIdForSession(layout, target, target.sessionId, target.kind);
     const paneId = existingPaneId ?? effectiveFocusedPaneId(layout);
     if (existingPaneId) {
+      onSecondarySelected?.();
       layout.focusPane(existingPaneId);
+      ownedBySecondary = true;
     } else if (paneId !== V4_PRIMARY_PANE_ID && layout.panes[paneId]) {
       const previousSessionId = layout.panes[paneId]?.sessionId ?? null;
-      // shell activeTaskId 先切换会把新 session 灌进 primary draft；
-      // 必须先原子替换 focused secondary 的完整 binding。
+      // 新 native 选择提前同步会灌进主草稿；ACP 则要清理旧 native 投影。
+      // 同一事务完成清理和完整 binding 替换，再允许调用方更新导航。
+      onSecondarySelected?.();
       layout.replacePaneBinding(paneId, {
         workspaceScope: binding.workspaceScope,
         sessionId: binding.sessionId,
         ...(binding.kind === "acp" ? { kind: "acp" as const, agent: binding.agent } : {}),
       });
+      ownedBySecondary = true;
       logger.debug("[v4-workbench] draft split focused pane replaced", {
         paneId,
         previousSessionId,
@@ -243,4 +261,5 @@ export function selectWorkbenchSession(
     }
   }
   groups.openSessionFromSidebar(binding);
+  return ownedByGroup || ownedBySecondary;
 }

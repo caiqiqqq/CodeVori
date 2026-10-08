@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 import * as identity from "../scripts/desktop-product-identity.mjs";
 import {
   DEV_ELECTRON_APP_NAME,
@@ -7,6 +13,36 @@ import {
   patchDevElectronInfoPlist,
   resolveDevElectronAppBundlePath,
 } from "../scripts/devElectronAppBundle.mjs";
+
+test("public brand entrypoint is typed for Agent consumers without allowJs", async () => {
+  const require = createRequire(import.meta.url);
+  const profile = await mkdtemp(join(tmpdir(), "codevori-brand-types-"));
+  try {
+    const brand = resolve(import.meta.dirname, "../../shared/src/product-brand.mjs");
+    const entry = join(profile, "consumer.mts");
+    await writeFile(
+      entry,
+      `import {PRODUCT_NAME,PRODUCT_MARK_VIEW_BOX,PRODUCT_MARK_PATH} from ${JSON.stringify(brand)};\nconst brand: string = PRODUCT_NAME;\nconst geometry: readonly string[] = [PRODUCT_MARK_VIEW_BOX,PRODUCT_MARK_PATH];\n`,
+    );
+    await promisify(execFile)(
+      process.execPath,
+      [
+        require.resolve("typescript/bin/tsc"),
+        "--noEmit",
+        "--strict",
+        "--module",
+        "nodenext",
+        "--target",
+        "es2024",
+        "--skipLibCheck",
+        entry,
+      ],
+      { timeout: 30_000 },
+    );
+  } finally {
+    await rm(profile, { recursive: true, force: true });
+  }
+});
 
 test("renaming changes display names while preserving installation identities", () => {
   for (const [flavor, productName, appId, linuxExecutableName] of [

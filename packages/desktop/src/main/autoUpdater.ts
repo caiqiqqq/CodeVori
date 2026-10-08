@@ -1353,6 +1353,10 @@ export function refreshAutoUpdaterReleaseChannel(
   receivePreviewUpdates: boolean,
   reason = "settings receivePreviewUpdates changed",
 ) {
+  // 已禁用的更新器不能因旧设置切换渠道而重新请求官方 manifest。
+  if (autoUpdaterDisabledForProductFlavor) {
+    return;
+  }
   const nextChannel: ElectronReleaseChannel = receivePreviewUpdates ? "preview" : "stable";
 
   if (!canUseAutoUpdaterInCurrentRuntime()) {
@@ -1466,6 +1470,8 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
       clearInterval(autoUpdatePollTimer);
       autoUpdatePollTimer = null;
     }
+    // 禁用时原先只停轮询，状态仍报 enabled:true；正式首版必须同步原生菜单和 Renderer。
+    setAutoUpdaterMenuState({ kind: "idle", enabled: false });
     logger.info("[auto-update] disabled for this desktop product flavor");
     return;
   }
@@ -1777,6 +1783,10 @@ export function requestForceAutoUpdate(
   logger.info(`[force-update] 自动升级开始 reason=${reason}`);
   onStateChange({ kind: "checking" });
 
+  if (autoUpdaterDisabledForProductFlavor) {
+    onStateChange({ kind: "dev-skipped", message: "desktop updates disabled" });
+    return dispose;
+  }
   if (!canUseAutoUpdaterInCurrentRuntime()) {
     const message = "not packaged";
     logger.info(`[force-update] 自动升级跳过：${message}`);

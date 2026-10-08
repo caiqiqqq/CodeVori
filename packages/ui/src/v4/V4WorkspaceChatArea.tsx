@@ -30,6 +30,7 @@ import {
   effectiveFocusedPaneId,
   leafPaneIds,
   MAX_WORKBENCH_PANES,
+  paneBindingMatchesSession,
   paneWorkspaceKey,
   usePaneLayoutStore,
   V4_PRIMARY_PANE_ID,
@@ -85,6 +86,8 @@ interface V4WorkspaceChatAreaProps {
   remoteSessionId?: string;
   /** primary pane 绑定的 CLI session（既有选择态 activeTaskId）；null = draft。 */
   sessionId: string | null;
+  /** 壳从当前可见会话派生的只读身份；ACP Host id 不能当作原生 sessionId。 */
+  primaryConversationBinding?: WorkbenchSessionBinding | null;
   conversationTabsContainer?: HTMLElement | null;
   activeSelectionSideChatSessionId?: string | null;
   provider?: ZCodeProvider;
@@ -162,6 +165,7 @@ export function V4WorkspaceChatArea({
   foregroundEnabled = true,
   remoteSessionId,
   sessionId,
+  primaryConversationBinding,
   conversationTabsContainer,
   activeSelectionSideChatSessionId = null,
   provider,
@@ -256,20 +260,41 @@ export function V4WorkspaceChatArea({
   const focusedPaneId = activeGroup?.focusedPaneId ?? paneFocusedPaneId;
   const layout = useMemo(() => collectWorkbenchLayout(root), [root]);
   const tabPaneIds = useMemo(() => layout.leaves.map((leaf) => leaf.paneId), [layout.leaves]);
+  const shellScope = useMemo<PaneWorkspaceScope>(
+    () => ({
+      workspacePath,
+      ...(workspaceIdentity ? { workspaceIdentity } : {}),
+      ...(remoteSessionId ? { remoteSessionId } : {}),
+    }),
+    [remoteSessionId, workspacePath, workspaceIdentity],
+  );
+  const visiblePrimaryBinding = useMemo<WorkbenchSessionBinding | null>(
+    () =>
+      primaryConversationBinding !== undefined
+        ? primaryConversationBinding
+        : sessionId
+          ? { workspaceScope: shellScope, sessionId }
+          : null,
+    [primaryConversationBinding, sessionId, shellScope],
+  );
   const shellSessionOwnedBySplitPane = useMemo(() => {
-    if (activeGroup || !sessionId) {
+    if (activeGroup || !visiblePrimaryBinding) {
       return false;
     }
-    return Object.values(paneBindings).some(
-      (binding) =>
-        binding.kind !== "acp" &&
-        binding.sessionId === sessionId &&
-        paneWorkspaceKey(binding.workspaceScope) === shellWorkspaceKey,
+    return Object.values(paneBindings).some((binding) =>
+      paneBindingMatchesSession(
+        binding,
+        visiblePrimaryBinding.workspaceScope,
+        visiblePrimaryBinding.sessionId,
+        visiblePrimaryBinding.kind,
+      ),
     );
-  }, [activeGroup, paneBindings, sessionId, shellWorkspaceKey]);
+  }, [activeGroup, paneBindings, visiblePrimaryBinding]);
   // primary draft 没有自己的 sessionId；拖入 session 时 shell active
   // 可能已经切到右侧 pane 的 session，不能再把这个 sessionId 下发给 primary。
   const primaryPaneSessionId = shellSessionOwnedBySplitPane ? null : sessionId;
+  // context menu 与拖拽/首发提升共用可见身份；不能只从 native sessionId 推导 ACP 主会话。
+  const placementShellBinding = shellSessionOwnedBySplitPane ? null : visiblePrimaryBinding;
 
   // 占比接线：store 值只在提交（pointerup/恢复）时变化；拖动中由分隔条直写 CSS 变量。
   const containerStyle = useMemo<CSSProperties>(() => {
@@ -283,20 +308,6 @@ export function V4WorkspaceChatArea({
   const paneCount = layout.leaves.length;
   const showFocusIndicator = paneCount > 1;
   const canSplit = paneCount < MAX_WORKBENCH_PANES;
-
-  const shellScope = useMemo<PaneWorkspaceScope>(
-    () => ({
-      workspacePath,
-      ...(workspaceIdentity ? { workspaceIdentity } : {}),
-      ...(remoteSessionId ? { remoteSessionId } : {}),
-    }),
-    [remoteSessionId, workspacePath, workspaceIdentity],
-  );
-  const placementShellBinding = useMemo<WorkbenchSessionBinding | null>(
-    () =>
-      primaryPaneSessionId ? { workspaceScope: shellScope, sessionId: primaryPaneSessionId } : null,
-    [primaryPaneSessionId, shellScope],
-  );
 
   const shell = useMemo<WorkbenchShellBinding>(
     () => ({
@@ -411,9 +422,7 @@ export function V4WorkspaceChatArea({
           return selectWorkbenchGroupPaneBinding(activeGroup, paneId);
         }
         if (paneId === V4_PRIMARY_PANE_ID) {
-          return primaryPaneSessionId
-            ? { workspaceScope: shellScope, sessionId: primaryPaneSessionId }
-            : null;
+          return placementShellBinding;
         }
         const binding = paneBindings[paneId];
         return binding?.sessionId
@@ -425,7 +434,7 @@ export function V4WorkspaceChatArea({
             }
           : null;
       },
-    [activeGroup, paneBindings, primaryPaneSessionId, shellScope],
+    [activeGroup, paneBindings, placementShellBinding],
   );
 
   const syncShellActiveSession = useCallback(
@@ -548,7 +557,7 @@ export function V4WorkspaceChatArea({
       bindPaneSessionAction(paneId, createdSessionId);
       const sourceLayout = usePaneLayoutStore.getState();
       const hasPrimary = leafPaneIds(sourceLayout.root).includes(V4_PRIMARY_PANE_ID);
-      if (hasPrimary && !sessionId) {
+      if (hasPrimary && !placementShellBinding) {
         return false;
       }
       // 非 primary draft 首发会先产生新 session；若此时直接
@@ -556,7 +565,7 @@ export function V4WorkspaceChatArea({
       // 会跟着显示右侧新 session。先把当前 paneLayout 提升为 group，
       // 用 primaryBinding 固定原 session，再允许 shell active 跟随新 pane。
       const promoted = promotePaneLayoutToGroupAction(
-        hasPrimary && sessionId ? { workspaceScope: shellScope, sessionId } : null,
+        hasPrimary ? placementShellBinding : null,
         sourceLayout,
       );
       if (promoted) {
@@ -573,7 +582,7 @@ export function V4WorkspaceChatArea({
       bindPaneSessionAction,
       promotePaneLayoutToGroupAction,
       resetPaneLayoutAction,
-      sessionId,
+      placementShellBinding,
       shellScope,
     ],
   );
