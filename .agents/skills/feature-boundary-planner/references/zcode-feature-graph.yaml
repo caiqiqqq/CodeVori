@@ -367,6 +367,8 @@ nodes:
       - Codex 原生配置
       - Codex 官方模型目录
       - 外部 Agent 会话
+      - ACP 调用轨迹
+      - ACP 执行轨迹
     codeSeeds:
       - file: packages/services/src/acp/acpServiceImpl.ts
         symbol: createAcpService
@@ -374,6 +376,8 @@ nodes:
         symbol: connectAcpAgent
       - file: packages/shared/src/zcode-protocol/acp.ts
         symbol: ACP_AGENT_CATALOG
+      - file: packages/shared/src/zcode-protocol/acp.ts
+        symbol: acpDiagnosticEventSchema
       - file: packages/services/src/acp/acpAgentManager.ts
         symbol: createAcpAgentManager
       - file: packages/services/src/acp/acpCodexConfig.ts
@@ -390,6 +394,8 @@ nodes:
       - Codex native credentials and model choices are owned by the target Host's Codex files and apply to new ACP connections.
       - ACP new and load use enabled MCP settings on the target Host; unsupported authentication and transports fail before session admission.
       - ACP explicitly named skills use the current settings owner; API and ZCode keep the native runtime catalog.
+      - ACP tool details belong to the existing session snapshot; diagnostics contain only bounded correlated metadata and continue after log rotation.
+      - Trace subscriptions use the target workspace identity and do not create, authenticate or reconnect an Agent.
   - id: surface.acp-conversation
     kind: ui-surface
     label: ACP conversation target inside the existing pane
@@ -416,6 +422,8 @@ nodes:
         symbol: V4WorkspaceChatArea
       - file: packages/ui/src/app-shell/WorkspaceShellLayout.tsx
         symbol: handleSelectAcpSession
+      - file: packages/ui/src/AcpExecutionTracePane.tsx
+        symbol: AcpExecutionTracePane
     invariants:
       - Cross-workspace split placement captures the visible ACP identity before native shell navigation; group/layout stores retain pane bindings and drafts.
       - Selecting a grouped ACP session focuses its existing pane; temporary secondary selection clears native navigation without starting a new draft or resetting layout.

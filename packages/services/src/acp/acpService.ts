@@ -19,6 +19,7 @@ import {
   type AcpStopInput,
   type AcpSession,
   type AcpDiagnosticEvent,
+  type AcpExecutionTraceChanged,
   type AcpSessionRowUpdate,
   type AcpSessionSearchInput,
   type AcpSessionSearchItem,
@@ -68,6 +69,8 @@ export interface IAcpService {
   getDiagnosticLogPath(input: AcpWorkspace & { id: string }): Promise<string>;
   /** Bounded, metadata-only ACP events from the same log. */
   getExecutionTrace(input: AcpWorkspace & { id: string }): Promise<AcpDiagnosticEvent[]>;
+  /** Persisted metadata stream; reconnect by subscribing before reading the latest trace. */
+  onDynamicExecutionTraceChanged(workspace: AcpWorkspace): Event<AcpExecutionTraceChanged>;
   /** Mutates only the target Host's durable ACP sidebar metadata. */
   updateRow(input: AcpSessionRowUpdate): Promise<AcpSession>;
   /** Reconnects an existing display snapshot so its Agent-owned options are current. */

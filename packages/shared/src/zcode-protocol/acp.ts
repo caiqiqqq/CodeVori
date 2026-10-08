@@ -374,6 +374,32 @@ export const acpAgentConfigCatalogSchema = z
   .array(acpAgentConfigSnapshotSchema)
   .max(ACP_AGENT_CATALOG.length);
 
+export const ACP_TOOL_DETAIL_MAX_CHARS = 64 * 1024;
+export const acpToolKindSchema = z.enum([
+  "read",
+  "edit",
+  "delete",
+  "move",
+  "search",
+  "execute",
+  "think",
+  "fetch",
+  "switch_mode",
+  "other",
+]);
+export const acpStopReasonSchema = z.enum([
+  "end_turn",
+  "max_tokens",
+  "max_turn_requests",
+  "refusal",
+  "cancelled",
+]);
+export type AcpStopReason = z.infer<typeof acpStopReasonSchema>;
+export const acpTraceSelectionSchema = z.object({
+  name: z.string(),
+  value: z.union([z.string(), z.boolean()]),
+});
+
 export const acpEntrySchema = z.discriminatedUnion("kind", [
   z.object({
     id: z.string(),
@@ -382,6 +408,9 @@ export const acpEntrySchema = z.discriminatedUnion("kind", [
     createdAt: z.number().optional(),
     attachmentNames: z.array(z.string()).optional(),
     attachments: z.array(acpAttachmentRefSchema).max(8).optional(),
+    /** 接纳时的选项与该轮错误属于原会话；后续配置/成功不能覆盖旧轨迹。 */
+    traceSelections: z.array(acpTraceSelectionSchema).optional(),
+    traceError: z.string().optional(),
   }),
   z.object({
     id: z.string(),
@@ -395,6 +424,13 @@ export const acpEntrySchema = z.discriminatedUnion("kind", [
     title: z.string(),
     status: z.string(),
     content: z.string().optional(),
+    toolKind: acpToolKindSchema.optional(),
+    toolName: z.string().max(256).optional(),
+    input: z.string().max(ACP_TOOL_DETAIL_MAX_CHARS).optional(),
+    output: z.string().max(ACP_TOOL_DETAIL_MAX_CHARS).optional(),
+    inputTruncated: z.boolean().optional(),
+    outputTruncated: z.boolean().optional(),
+    contentTruncated: z.boolean().optional(),
     createdAt: z.number().optional(),
     workflow: acpWorkflowToolSchema.optional(),
   }),
@@ -445,9 +481,17 @@ export const acpSessionSchema = acpWorkspaceSchema.extend({
 });
 export type AcpSession = z.infer<typeof acpSessionSchema>;
 
-/** Host diagnostic facts; no prompt, tool payload, stderr or vendor model-IO content. */
+/** Host diagnostic facts; details are referenced by immutable snapshot row indexes, never logged. */
 export const acpDiagnosticEventSchema = z.object({
   timestamp: z.number().int().nonnegative(),
+  eventId: z.string().uuid().optional(),
+  turnIndex: z.number().int().nonnegative().optional(),
+  entryIndex: z.number().int().nonnegative().optional(),
+  requestId: z.string().uuid().optional(),
+  permissionDecision: z
+    .enum(["allow_once", "allow_always", "reject_once", "reject_always", "cancelled", "unknown"])
+    .optional(),
+  stopReason: acpStopReasonSchema.optional(),
   kind: z.enum([
     "prompt-accepted",
     "tool-update",
@@ -457,10 +501,18 @@ export const acpDiagnosticEventSchema = z.object({
     "turn-interrupted",
     "turn-stopped",
     "adapter-exited",
+    "trace-truncated",
   ]),
   status: z.enum(["pending", "in_progress", "completed", "failed", "unknown"]).optional(),
 });
 export type AcpDiagnosticEvent = z.infer<typeof acpDiagnosticEventSchema>;
+export const acpExecutionTraceChangedSchema = acpWorkspaceSchema
+  .extend({
+    id: z.string().uuid(),
+    event: acpDiagnosticEventSchema,
+  })
+  .strict();
+export type AcpExecutionTraceChanged = z.infer<typeof acpExecutionTraceChangedSchema>;
 
 export const acpSessionRowUpdateSchema = acpWorkspaceSchema
   .extend({

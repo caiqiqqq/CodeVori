@@ -25,6 +25,82 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
 });
 `;
 
+test("stdio preserves ACP raw tool details, diff and explicit empty partial updates with real stop reasons", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "acp-trace-wire-"));
+  const path = join(directory, "agent.cjs");
+  const updates: AcpUpdate[] = [];
+  let port: Awaited<ReturnType<typeof connectAcpAgent>> | undefined;
+  try {
+    await writeFile(
+      path,
+      `
+      const send = value => process.stdout.write(JSON.stringify({jsonrpc:'2.0',...value})+'\\n');
+      let prompts=0;
+      require('node:readline').createInterface({input:process.stdin}).on('line', line => {
+        const message=JSON.parse(line);
+        if(message.method==='initialize') send({id:message.id,result:{protocolVersion:1}});
+        else if(message.method==='session/new') send({id:message.id,result:{sessionId:'trace-native'}});
+        else if(message.method==='session/prompt') {
+          const notify=update=>send({method:'session/update',params:{sessionId:'trace-native',update}});
+          notify({sessionUpdate:'tool_call',toolCallId:'edit',title:'Edit file',status:'pending',kind:'edit',name:'apply_patch',rawInput:{path:'fixture.ts'}});
+          notify({sessionUpdate:'tool_call_update',toolCallId:'edit',status:'completed',rawOutput:{ok:true},content:[{type:'diff',path:'fixture.ts',oldText:'before',newText:'after'}]});
+          notify({sessionUpdate:'tool_call_update',toolCallId:'edit',rawOutput:'',content:[]});
+          send({id:message.id,result:{stopReason:++prompts===1?'max_tokens':'cancelled'}});
+        }
+      });
+    `,
+    );
+    port = await connectAcpAgent({
+      agent: "codex",
+      workspacePath: directory,
+      launch: { command: process.execPath, args: [path], env: process.env },
+      onUpdate: async (update) => {
+        updates.push(update);
+      },
+      onPermission: async () => null,
+      onExit: () => {},
+    });
+    assert.equal(port.lastStopReason, undefined);
+    await port.prompt("fixture");
+    assert.equal(port.lastStopReason, "max_tokens");
+    assert.deepEqual(updates, [
+      {
+        kind: "tool",
+        id: "edit",
+        title: "Edit file",
+        status: "pending",
+        toolKind: "edit",
+        toolName: "apply_patch",
+        input: '{\n  "path": "fixture.ts"\n}',
+        inputTruncated: false,
+      },
+      {
+        kind: "tool",
+        id: "edit",
+        status: "completed",
+        output: '{\n  "ok": true\n}',
+        outputTruncated: false,
+        content: "fixture.ts\nbefore\n→\nafter",
+        contentTruncated: false,
+      },
+      {
+        kind: "tool",
+        id: "edit",
+        output: "",
+        outputTruncated: false,
+        content: "",
+        contentTruncated: false,
+      },
+    ]);
+    await port.prompt("fixture again");
+    assert.equal(port.lastStopReason, "cancelled");
+  } finally {
+    port?.close();
+    await port?.closed;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("stdio ACP delivers plugin MCP in new/load wire params and isolates unsupported plugin components", async () => {
   const directory = await mkdtemp(join(tmpdir(), "zcode-acp-plugin-wire-"));
   const agent = join(directory, "agent.cjs");
@@ -464,13 +540,14 @@ test("stdio ACP creates, resumes, streams tool/text and waits for an explicit pe
     assert.deepEqual(permissions, ["Inspect"]);
     assert.deepEqual(updates, [
       { kind: "tool", id: "tool-1", title: "Inspect", status: "pending" },
+      { kind: "tool", id: "tool-1", title: "Inspect" },
       { kind: "tool", id: "tool-1", status: "completed" },
       { kind: "text", text: "hello from fake ACP", messageId: "answer-1" },
     ]);
     first.close();
     await first.closed;
     const resumed = await connect(first.sessionId);
-    assert.equal(updates.length, 3, "loaded history should not be duplicated");
+    assert.equal(updates.length, 4, "loaded history should not be duplicated");
     resumed.close();
     await resumed.closed;
     await assert.rejects(connect("missing-native"), (error: unknown) => {

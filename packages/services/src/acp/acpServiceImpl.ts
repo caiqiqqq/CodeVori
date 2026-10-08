@@ -18,6 +18,7 @@ import {
   acpAgentDefinition,
   acpCreateInputSchema,
   acpDiagnosticEventSchema,
+  acpExecutionTraceChangedSchema,
   acpPromptInputSchema,
   acpAttachmentReadInputSchema,
   acpAttachmentReadResultSchema,
@@ -32,6 +33,8 @@ import {
   type AcpModeState,
   type AcpEntry,
   type AcpDiagnosticEvent,
+  type AcpExecutionTraceChanged,
+  type AcpStopReason,
   type AcpSession,
   type AcpSessionChanged,
   type AcpWorkspace,
@@ -56,6 +59,7 @@ import { AcpWorkflowHost } from "./acpWorkflowHost.js";
 import { acpConfigValues } from "./acpConfigOptions.js";
 import { acpAgentConfigFingerprint, readAcpAgentConfigs } from "./acpAgentConfigs.js";
 import { projectAcpContextUsage } from "./acpContextUsage.js";
+import type { AcpToolDetails } from "./acpToolDetails.js";
 import { searchAcpSessions } from "./acpSessionSearch.js";
 import { recordAcpPromptUsage, summarizeAcpUsage } from "./acpUsageStats.js";
 import {
@@ -71,12 +75,13 @@ import {
 
 export type AcpUpdate =
   | { kind: "text"; text: string; messageId?: string }
-  | { kind: "tool"; id: string; title?: string; status?: string; content?: string }
+  | ({ kind: "tool"; id: string; title?: string; status?: string } & AcpToolDetails)
   | { kind: "config"; configOptions: AcpConfigOption[] }
   | { kind: "mode"; modeId: string }
   | { kind: "context_usage"; usage: AcpSession["contextUsage"] };
 export interface AcpPermission {
   requestId: string;
+  toolCallId?: string;
   title: string;
   options: Array<{ optionId: string; name: string; kind: string }>;
 }
@@ -87,6 +92,8 @@ export interface AcpConnectionPort {
   provisionedMcpNames?: ReadonlySet<string>;
   configOptions: AcpConfigOption[];
   modeState: AcpModeState | null;
+  /** Last completed ACP response; absent when a custom port does not report a stop reason. */
+  readonly lastStopReason?: AcpStopReason;
   /** undefined: no initial report; null: Agent explicitly reported unknown capacity. */
   contextUsage?: AcpSession["contextUsage"];
   setConfigOption(configId: string, value: string | boolean): Promise<AcpConfigOption[]>;
@@ -181,6 +188,8 @@ export function createAcpService(
     Array<{
       request: AcpPermission;
       runId?: string;
+      receivedAt: number;
+      trace: Pick<AcpDiagnosticEvent, "turnIndex" | "entryIndex" | "requestId">;
       resolve(value: string | null): void;
     }>
   >();
@@ -188,6 +197,7 @@ export function createAcpService(
   const workflowNotifying = new Set<string>();
   const notificationTasks = new Set<Promise<void>>();
   const emitter = new Emitter<AcpSessionChanged>();
+  const traceEmitter = new Emitter<AcpExecutionTraceChanged>();
   let disposed = false;
 
   const file = (id: string): string => {
@@ -200,13 +210,22 @@ export function createAcpService(
   const appendDiagnostic = (
     session: AcpSession,
     event: Omit<AcpDiagnosticEvent, "timestamp">,
+    receivedAt = Date.now(),
+    snapshotWrite?: Promise<void>,
   ): Promise<void> => {
     if (session.provisional || removed.has(session.id)) return Promise.resolve();
     const id = session.id;
+    // 时间必须在接收事实时获取；在 IO 队列中取时间会把写盘耗时误算为工具执行时间。
+    const record = acpDiagnosticEventSchema.parse({
+      ...event,
+      eventId: randomUUID(),
+      timestamp: receivedAt,
+    });
     const previous = diagnosticWrites.get(id) ?? Promise.resolve();
     // 修复原因：ACP 更新可能并发到达；日志按 Host 接收顺序串行写入，且仅记录白名单元数据。
     const next = previous
       .then(async () => {
+        await snapshotWrite;
         if (removed.has(id)) return;
         await mkdir(diagnosticDirectory, { recursive: true });
         const path = diagnosticFile(id);
@@ -216,18 +235,70 @@ export function createAcpService(
             if (error.code === "ENOENT") return 0;
             throw error;
           });
-        if (bytes >= MAX_DIAGNOSTIC_BYTES) return;
-        await appendFile(
-          path,
-          `${JSON.stringify(acpDiagnosticEventSchema.parse({ ...event, timestamp: Date.now() }))}\n`,
-          { mode: 0o600 },
-        );
+        if (bytes >= MAX_DIAGNOSTIC_BYTES) {
+          // 原上限策略永久停止后续记录，长会话看不到新调用；轮转只保留最近有界元数据。
+          const retained = (await readFile(path, "utf8"))
+            .split("\n")
+            .filter(Boolean)
+            .slice(-250)
+            .flatMap((line) => {
+              try {
+                const parsed = acpDiagnosticEventSchema.safeParse(JSON.parse(line));
+                return parsed.success ? [JSON.stringify(parsed.data)] : [];
+              } catch {
+                return [];
+              }
+            });
+          const marker = acpDiagnosticEventSchema.parse({
+            kind: "trace-truncated",
+            timestamp: record.timestamp,
+            eventId: randomUUID(),
+          });
+          const temp = `${path}.tmp`;
+          await writeFile(temp, `${JSON.stringify(marker)}\n${retained.join("\n")}\n`, {
+            mode: 0o600,
+          });
+          await rename(temp, path);
+          if (!disposed && !removed.has(id))
+            traceEmitter.fire(
+              acpExecutionTraceChangedSchema.parse({
+                workspacePath: session.workspacePath,
+                ...(session.workspaceIdentity
+                  ? { workspaceIdentity: session.workspaceIdentity }
+                  : {}),
+                ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
+                id,
+                event: marker,
+              }),
+            );
+        }
+        await appendFile(path, `${JSON.stringify(record)}\n`, { mode: 0o600 });
+        if (!disposed && !removed.has(id))
+          traceEmitter.fire(
+            acpExecutionTraceChangedSchema.parse({
+              workspacePath: session.workspacePath,
+              ...(session.workspaceIdentity
+                ? { workspaceIdentity: session.workspaceIdentity }
+                : {}),
+              ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
+              id,
+              event: record,
+            }),
+          );
       })
       .catch((error) =>
         logger.warn(undefined, "ACP diagnostic write failed", { error: failureMessage(error) }),
       );
     diagnosticWrites.set(id, next);
     return next;
+  };
+  const turnIndexForCommand = (
+    session: AcpSession,
+    commandId: string | undefined,
+  ): number | undefined => {
+    if (!commandId) return undefined;
+    const index = session.entries.findIndex((entry) => entry.id === `user:${commandId}`);
+    return index < 0 ? undefined : index;
   };
   const ensureDiagnosticFile = async (session: AcpSession): Promise<string> => {
     if (!isAcpHistorySession(session) || removed.has(session.id) || disposed)
@@ -336,7 +407,21 @@ export function createAcpService(
     }
     return session;
   };
-  const settlePermission = (id: string): void => {
+  const settlePermission = (id: string, receivedAt = Date.now()): void => {
+    const request = permissionQueues.get(id)?.[0];
+    const session = sessions.get(id);
+    if (session && request && pending.get(id)?.requestId === request.request.requestId) {
+      // 取消也属于授权事实；关联沿用请求接收时的轮次，不能用已释放的 active 猜测。
+      void appendDiagnostic(
+        session,
+        {
+          kind: "permission-resolved",
+          ...request.trace,
+          permissionDecision: "cancelled",
+        },
+        receivedAt,
+      );
+    }
     pending.get(id)?.resolve(null);
     pending.delete(id);
     for (const request of permissionQueues.get(id) ?? []) request.resolve(null);
@@ -349,7 +434,23 @@ export function createAcpService(
   ): Promise<string | null> =>
     new Promise((resolve) => {
       const queue = permissionQueues.get(session.id) ?? [];
-      queue.push({ request, runId, resolve });
+      const commandId = active.get(session.id);
+      const toolIndex = runId
+        ? -1
+        : session.entries.findIndex(
+            (entry) => entry.id === `tool:${commandId}:${request.toolCallId}`,
+          );
+      queue.push({
+        request,
+        runId,
+        resolve,
+        receivedAt: Date.now(),
+        trace: {
+          turnIndex: runId ? undefined : turnIndexForCommand(session, commandId),
+          ...(toolIndex >= 0 ? { entryIndex: toolIndex } : {}),
+          ...(/^[0-9a-f-]{36}$/i.test(request.requestId) ? { requestId: request.requestId } : {}),
+        },
+      });
       permissionQueues.set(session.id, queue);
       if (queue.length === 1) void showNextPermission(session);
     });
@@ -362,6 +463,11 @@ export function createAcpService(
     else permissionQueues.delete(session.id);
     if (activeRequest && pending.get(session.id)?.requestId === activeRequest.request.requestId) {
       pending.delete(session.id);
+      await appendDiagnostic(session, {
+        kind: "permission-resolved",
+        ...activeRequest.trace,
+        permissionDecision: "cancelled",
+      });
       // 修复原因：取消一个后台 run 时只撤销它的权限，不能清掉主 ACP 回合或其它 run 的请求。
       await mutate(session, () => {
         session.pendingPermission = null;
@@ -375,10 +481,21 @@ export function createAcpService(
     if (!next || pending.has(session.id) || removed.has(session.id)) return;
     pending.set(session.id, { requestId: next.request.requestId, resolve: next.resolve });
     try {
-      await mutate(session, () => {
+      const snapshotWrite = mutate(session, () => {
         session.pendingPermission = next.request;
       });
-      await appendDiagnostic(session, { kind: "permission-requested" });
+      // 先按接收顺序占住诊断队列，队列内部等快照落盘，避免 stop 比请求记录更早写入。
+      const diagnosticWrite = appendDiagnostic(
+        session,
+        {
+          kind: "permission-requested",
+          ...next.trace,
+        },
+        next.receivedAt,
+        snapshotWrite,
+      );
+      await snapshotWrite;
+      await diagnosticWrite;
     } catch (error) {
       logger.warn(undefined, "ACP permission persistence failed", { error: failureMessage(error) });
       settlePermission(session.id);
@@ -539,6 +656,7 @@ export function createAcpService(
         ...(plugins ? { pluginServers: plugins.servers } : {}),
         ...(launch ? { launch } : {}),
         onUpdate: async (update) => {
+          const receivedAt = Date.now();
           if (generations.get(session.id) !== generation || removed.has(session.id)) return;
           if (update.kind === "context_usage") {
             receivedContextUsage = true;
@@ -574,8 +692,12 @@ export function createAcpService(
             return;
           }
           const commandId = active.get(session.id);
-          if (!commandId) return;
-          await mutate(session, () => {
+          // 完成快照已接纳但日志仍在写入时 active 尚未释放；迟到正文不能重写本轮终态。
+          if (!commandId || session.status !== "running") return;
+          let toolIndex: number | undefined;
+          let statusChanged = false;
+          let toolStatus: string | undefined;
+          const snapshotWrite = mutate(session, () => {
             if (update.kind === "text") {
               const baseId = `assistant:${commandId}:${update.messageId ?? "default"}`;
               const previous = session.entries.at(-1);
@@ -594,39 +716,68 @@ export function createAcpService(
                   id,
                   kind: "assistant",
                   text: update.text,
-                  createdAt: Date.now(),
+                  createdAt: receivedAt,
                 });
               }
             } else {
               const id = `tool:${commandId}:${update.id}`;
               const index = session.entries.findIndex((entry) => entry.id === id);
               const previous = session.entries[index];
+              statusChanged =
+                previous?.kind !== "tool" ||
+                (update.status !== undefined && update.status !== previous.status);
+              toolIndex = index < 0 ? session.entries.length : index;
               const tool: AcpEntry = {
+                ...(previous?.kind === "tool" ? previous : {}),
                 id,
                 kind: "tool",
                 title: update.title ?? (previous?.kind === "tool" ? previous.title : update.id),
-                createdAt: previous?.createdAt ?? Date.now(),
+                createdAt: previous?.createdAt ?? receivedAt,
                 status:
-                  update.status ?? (previous?.kind === "tool" ? previous.status : "in_progress"),
+                  // 首次只收到局部字段时没有真实起始状态，不能伪造执行中及开始时间。
+                  update.status ?? (previous?.kind === "tool" ? previous.status : "unknown"),
               };
-              if (update.content) tool.content = update.content;
-              else if (previous?.kind === "tool" && previous.content)
-                tool.content = previous.content;
+              toolStatus = tool.status;
+              // ACP 局部通知只替换明确给出的字段；空串是真实空结果，不可复活旧输出。
+              for (const key of [
+                "content",
+                "toolKind",
+                "toolName",
+                "input",
+                "output",
+                "inputTruncated",
+                "outputTruncated",
+                "contentTruncated",
+              ] as const) {
+                if (update[key] !== undefined) Object.assign(tool, { [key]: update[key] });
+              }
               if (index >= 0) session.entries[index] = tool;
               else session.entries.push(tool);
             }
           });
-          if (update.kind === "tool")
-            await appendDiagnostic(session, {
-              kind: "tool-update",
-              status: diagnosticToolStatus(update.status),
-            });
+          const diagnosticWrite =
+            update.kind === "tool" && statusChanged
+              ? appendDiagnostic(
+                  session,
+                  {
+                    kind: "tool-update",
+                    status: diagnosticToolStatus(toolStatus),
+                    turnIndex: turnIndexForCommand(session, commandId),
+                    entryIndex: toolIndex,
+                  },
+                  receivedAt,
+                  snapshotWrite,
+                )
+              : undefined;
+          await snapshotWrite;
+          await diagnosticWrite;
         },
         onPermission: async (request) => {
           if (!active.has(session.id) || generations.get(session.id) !== generation) return null;
           return requestPermission(session, request);
         },
         onExit: (reason) => {
+          const receivedAt = Date.now();
           if (generations.get(session.id) !== generation) return;
           generations.delete(session.id);
           workflowHost.stopSession(session.id);
@@ -635,9 +786,10 @@ export function createAcpService(
           // Adapter root 已退出仍需回收其进程组内可能存活的 App Server 后代。
           connections.get(session.id)?.close();
           connections.delete(session.id);
-          settlePermission(session.id);
+          settlePermission(session.id, receivedAt);
           session.usageBaselineKnown = false;
           if (!active.has(session.id)) return;
+          const commandId = active.get(session.id);
           active.delete(session.id);
           scheduleWorkflowNotifications(session);
           void mutate(session, () => {
@@ -645,8 +797,17 @@ export function createAcpService(
             session.status = "interrupted";
             session.usageBaselineKnown = false;
             session.error = reason;
+            const turnIndex = turnIndexForCommand(session, commandId);
+            const entry = turnIndex === undefined ? undefined : session.entries[turnIndex];
+            if (entry?.kind === "user") entry.traceError = reason;
           })
-            .then(() => appendDiagnostic(session, { kind: "adapter-exited" }))
+            .then(() =>
+              appendDiagnostic(
+                session,
+                { kind: "adapter-exited", turnIndex: turnIndexForCommand(session, commandId) },
+                receivedAt,
+              ),
+            )
             .catch((error) =>
               logger.warn(undefined, "ACP process exit update failed", {
                 error: failureMessage(error),
@@ -1293,6 +1454,7 @@ export function createAcpService(
           return structuredClone(session);
         }
         const beforeAdmission = structuredClone(session);
+        const admittedAt = Date.now();
         try {
           await mutate(session, () => {
             // 修复原因：预连接只存在于 Host 内存；首条有效消息与会话一起落盘。
@@ -1307,7 +1469,19 @@ export function createAcpService(
               id: `user:${commandId}`,
               kind: "user",
               text: prompt.text,
-              createdAt: Date.now(),
+              createdAt: admittedAt,
+              ...(session.configOptions.length
+                ? {
+                    traceSelections: session.configOptions.map((option) => ({
+                      name: option.name,
+                      value: option.currentValue,
+                    })),
+                  }
+                : session.modeState
+                  ? {
+                      traceSelections: [{ name: "Mode", value: session.modeState.currentModeId }],
+                    }
+                  : {}),
               ...(savedAttachments.attachments.length
                 ? { attachments: savedAttachments.attachments }
                 : {}),
@@ -1323,7 +1497,11 @@ export function createAcpService(
           });
           admitted = true;
           finishAttachmentIO();
-          await appendDiagnostic(session, { kind: "prompt-accepted" });
+          await appendDiagnostic(
+            session,
+            { kind: "prompt-accepted", turnIndex: turnIndexForCommand(session, commandId) },
+            admittedAt,
+          );
         } catch (error) {
           // 首次落盘失败时恢复内存草稿，保持原文可重试且历史不会出现半条消息。
           Object.assign(session, beforeAdmission);
@@ -1333,6 +1511,7 @@ export function createAcpService(
           return structuredClone(session);
         }
         const usage = await port.prompt(prompt.text, blocks);
+        const completedAt = Date.now();
         if (
           active.get(session.id) === commandId &&
           connections.get(session.id) === port &&
@@ -1343,12 +1522,21 @@ export function createAcpService(
             session.status = "idle";
             session.pendingPermission = null;
           });
-          await appendDiagnostic(session, { kind: "turn-completed" });
+          await appendDiagnostic(
+            session,
+            {
+              kind: "turn-completed",
+              turnIndex: turnIndexForCommand(session, commandId),
+              stopReason: port.lastStopReason,
+            },
+            completedAt,
+          );
           active.delete(session.id);
           // 修复原因：工作流可在主回合占用 ACP 连接时先完成；释放连接后必须主动派送结果。
           scheduleWorkflowNotifications(session);
         }
       } catch (error) {
+        const interruptedAt = Date.now();
         if (active.get(session.id) === commandId) {
           active.delete(session.id);
           // Capability/file validation precedes admission: rejected input never enters history.
@@ -1358,12 +1546,19 @@ export function createAcpService(
             session.usageBaselineKnown = false;
             session.pendingPermission = null;
             session.error = failureMessage(error);
+            const turnIndex = turnIndexForCommand(session, commandId);
+            const entry = turnIndex === undefined ? undefined : session.entries[turnIndex];
+            if (entry?.kind === "user") entry.traceError = failureMessage(error);
           }).catch((persistenceError) => {
             logger.warn(undefined, "ACP turn interruption persistence failed", {
               error: failureMessage(persistenceError),
             });
           });
-          await appendDiagnostic(session, { kind: "turn-interrupted" });
+          await appendDiagnostic(
+            session,
+            { kind: "turn-interrupted", turnIndex: turnIndexForCommand(session, commandId) },
+            interruptedAt,
+          );
           scheduleWorkflowNotifications(session);
           throw error;
         }
@@ -1445,6 +1640,8 @@ export function createAcpService(
       if (parsed.expectedCommandId && active.get(session.id) !== parsed.expectedCommandId) return;
       if (stopping.has(session.id)) return;
       const hadActive = active.has(session.id);
+      const commandId = active.get(session.id);
+      const stoppedAt = Date.now();
       stopping.add(session.id);
       active.delete(session.id);
       try {
@@ -1452,13 +1649,21 @@ export function createAcpService(
         await options.delegation?.onStop(session);
         workflowHost.stopSession(session.id);
         if (!hadActive) return;
-        settlePermission(session.id);
+        settlePermission(session.id, stoppedAt);
         await mutate(session, () => {
           session.status = "idle";
           session.usageBaselineKnown = false;
           session.pendingPermission = null;
         });
-        await appendDiagnostic(session, { kind: "turn-stopped" });
+        await appendDiagnostic(
+          session,
+          {
+            kind: "turn-stopped",
+            turnIndex: turnIndexForCommand(session, commandId),
+            stopReason: "cancelled",
+          },
+          stoppedAt,
+        );
         await connections.get(session.id)?.cancel();
       } finally {
         // 取消后终止旧连接，避免旧 prompt 未结束时新轮进入同一 Agent 进程。
@@ -1488,6 +1693,7 @@ export function createAcpService(
       return workflowHost.getArtifact(session, params.runId, params.artifactId);
     },
     async decide(input) {
+      const receivedAt = Date.now();
       const session = await scoped(input);
       const decision = pending.get(session.id);
       if (!decision || decision.requestId !== input.requestId)
@@ -1495,6 +1701,10 @@ export function createAcpService(
       if (!session.pendingPermission?.options.some((item) => item.optionId === input.optionId)) {
         throw new Error("Invalid ACP permission option");
       }
+      const selectedKind = session.pendingPermission.options.find(
+        (item) => item.optionId === input.optionId,
+      )?.kind;
+      const requestTrace = permissionQueues.get(session.id)?.[0]?.trace ?? {};
       await mutate(session, () => {
         session.pendingPermission = null;
       });
@@ -1507,7 +1717,22 @@ export function createAcpService(
       }
       // 修复原因：先完成 Host 轨迹再允许适配器恢复，否则 fast adapter 的完成事件可跑在授权记录前。
       await diagnosticWrites.get(session.id);
-      await appendDiagnostic(session, { kind: "permission-resolved" });
+      await appendDiagnostic(
+        session,
+        {
+          kind: "permission-resolved",
+          ...requestTrace,
+          ...(/^[0-9a-f-]{36}$/i.test(input.requestId) ? { requestId: input.requestId } : {}),
+          permissionDecision:
+            selectedKind === "allow_once" ||
+            selectedKind === "allow_always" ||
+            selectedKind === "reject_once" ||
+            selectedKind === "reject_always"
+              ? selectedKind
+              : "unknown",
+        },
+        receivedAt,
+      );
       if (
         pending.get(session.id) !== decision ||
         (!active.has(session.id) && !workflowHost.ownsLive(session.id))
@@ -1552,6 +1777,17 @@ export function createAcpService(
         ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
       });
     },
+    onDynamicExecutionTraceChanged(workspace) {
+      const target = acpWorkspaceSchema.parse(workspace);
+      return (listener) =>
+        traceEmitter.event((change) => {
+          if (
+            workspaceKey(change) === workspaceKey(target) &&
+            change.workspacePath === target.workspacePath
+          )
+            listener(change);
+        });
+    },
     onDynamicSessionChanged(workspace) {
       const target = acpWorkspaceSchema.parse(workspace);
       return (listener) =>
@@ -1577,6 +1813,7 @@ export function createAcpService(
       for (const id of pending.keys()) settlePermission(id);
       workflowMcp.dispose();
       emitter.dispose();
+      traceEmitter.dispose();
       if (!options.agentManager) agentManager.dispose();
     },
     async disposeAllAndWait() {
@@ -1590,6 +1827,7 @@ export function createAcpService(
       await workflowHost.settleAll();
       await Promise.allSettled([...notificationTasks]);
       await Promise.allSettled([...writes.values()]);
+      await Promise.allSettled(diagnosticWrites.values());
       await Promise.allSettled([...attachmentWrites.values()].flatMap((tasks) => [...tasks]));
     },
   };

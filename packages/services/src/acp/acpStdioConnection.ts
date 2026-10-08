@@ -7,7 +7,6 @@ import {
   ndJsonStream,
   PROTOCOL_VERSION,
   type Client,
-  type ToolCallContent,
   type Implementation,
 } from "@agentclientprotocol/sdk";
 import {
@@ -19,6 +18,7 @@ import { projectAcpConfigOptions, projectAcpModeState } from "./acpConfigOptions
 import { projectAcpPromptUsage } from "./acpUsageResponse.js";
 import { projectAcpContextUsage } from "./acpContextUsage.js";
 import { projectAcpMcpServers, projectAcpPluginMcpServers } from "./acpMcpServers.js";
+import { projectAcpToolDetails } from "./acpToolDetails.js";
 
 const START_TIMEOUT_MS = 20_000;
 const MAX_INITIAL_USAGE_SESSIONS = 16;
@@ -29,16 +29,6 @@ export class AcpSessionLoadError extends Error {
     super(cause instanceof Error ? cause.message : String(cause), { cause });
     this.name = "AcpSessionLoadError";
   }
-}
-
-function contentText(content?: ToolCallContent[] | null): string | undefined {
-  const text = content
-    ?.filter((part) => part.type === "content" && part.content.type === "text")
-    .map((part) =>
-      part.type === "content" && part.content.type === "text" ? part.content.text : "",
-    )
-    .join("\n");
-  return text || undefined;
 }
 
 export const connectAcpAgent: AcpConnectionFactory = async (input) => {
@@ -139,13 +129,12 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         update.sessionUpdate === "tool_call" ||
         update.sessionUpdate === "tool_call_update"
       ) {
-        const content = contentText(update.content);
         mapped = {
           kind: "tool",
           id: update.toolCallId,
           ...(update.title ? { title: update.title } : {}),
           ...(update.status ? { status: update.status } : {}),
-          ...(content ? { content } : {}),
+          ...projectAcpToolDetails(update),
         };
       }
       if (mapped) await input.onUpdate(mapped);
@@ -154,8 +143,17 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       if (!receivingLiveUpdates || request.sessionId !== sessionId) {
         return { outcome: { outcome: "cancelled" } };
       }
+      // 部分适配器只在授权请求中给出工具信息；先交给同一 Host owner，避免丢失参数和关联行。
+      await input.onUpdate({
+        kind: "tool",
+        id: request.toolCall.toolCallId,
+        ...(request.toolCall.title ? { title: request.toolCall.title } : {}),
+        ...(request.toolCall.status ? { status: request.toolCall.status } : {}),
+        ...projectAcpToolDetails(request.toolCall),
+      });
       const optionId = await input.onPermission({
         requestId: randomUUID(),
+        toolCallId: request.toolCall.toolCallId,
         title: request.toolCall.title ?? request.toolCall.toolCallId,
         options: request.options.map(({ optionId, name, kind }) => ({ optionId, name, kind })),
       });
@@ -256,6 +254,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
     initialUsageBySession.clear();
     receivingLiveUpdates = true;
     const activeSessionId = sessionId;
+    let lastStopReason: AcpConnectionPort["lastStopReason"];
     return {
       sessionId: activeSessionId,
       closed: closedPromise,
@@ -263,6 +262,9 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       provisionedMcpNames,
       configOptions,
       modeState,
+      get lastStopReason() {
+        return lastStopReason;
+      },
       ...(initialUsage ? { contextUsage: initialUsage.usage } : {}),
       async setConfigOption(configId, value) {
         const result = await connection.setSessionConfigOption({
@@ -280,6 +282,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
           sessionId: activeSessionId,
           prompt: blocks ?? [{ type: "text", text }],
         });
+        lastStopReason = response.stopReason;
         return projectAcpPromptUsage(input.agent, agentInfo, response);
       },
       async cancel() {

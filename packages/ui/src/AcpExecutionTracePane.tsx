@@ -1,107 +1,173 @@
-import { useCallback, useEffect, useState } from "react";
-import type { AcpDiagnosticEvent } from "@zcode/shared";
+import { useDeferredValue, useMemo, useState } from "react";
+import { RefreshCwIcon, XIcon } from "lucide-react";
+import { acpAgentDefinition } from "@zcode/shared";
+import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { Button } from "@/components/ui/button.js";
+import { Input } from "@/components/ui/input.js";
+import { Checkbox } from "@/components/ui/checkbox.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { logger } from "@/logger.js";
-import { useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
+import { useAcpExecutionTrace } from "@/hooks/useAcpExecutionTrace.js";
+import { buildAcpExecutionTrace, filterAcpTraceTurns } from "@/lib/acpExecutionTrace.js";
+import { AcpTraceEvents } from "@/AcpTraceEvents.js";
+import { AcpTraceDisclosure, AcpTraceTurnCard } from "@/AcpTraceTurnCard.js";
 
-/** Host metadata log projection; never synthesizes Agent-internal model I/O. */
-export function AcpExecutionTracePane({
-  sessionId,
-  workspacePath,
-  workspaceIdentity,
-  remoteSessionId,
-  onClose,
-}: {
+interface Props {
   sessionId: string;
   workspacePath: string;
   workspaceIdentity?: string;
   remoteSessionId?: string;
   onClose: () => void;
-}) {
-  const { intl } = useZCodeIntl();
-  const services = useWorkspaceServices(workspacePath, remoteSessionId, workspaceIdentity);
-  const [events, setEvents] = useState<AcpDiagnosticEvent[]>([]);
-  const [error, setError] = useState(false);
-  const [revision, setRevision] = useState(0);
-  const refresh = useCallback(() => setRevision((value) => value + 1), []);
-  useEffect(() => {
-    let disposed = false;
-    setError(false);
-    // 修复原因：轨迹路径由当前 workspace 的目标 Host 解析，切换 tab/会话后旧 RPC 不能覆盖新列表。
-    void services.acpService
-      .getExecutionTrace({
-        id: sessionId,
-        workspacePath,
-        ...(workspaceIdentity ? { workspaceIdentity } : {}),
-        ...(remoteSessionId ? { remoteSessionId } : {}),
-      })
-      .then((value) => {
-        if (!disposed) setEvents(value);
-      })
-      .catch((failure: unknown) => {
-        if (!disposed) {
-          setError(true);
-          logger.warn("[acp-trace] 读取执行轨迹失败", { error: failure });
-        }
-      });
-    return () => {
-      disposed = true;
-    };
-  }, [services, sessionId, workspacePath, workspaceIdentity, remoteSessionId, revision]);
+}
 
+export function AcpExecutionTracePane(props: Props) {
+  // 身份切换同步清空查询/展开状态，不能闪现另一 workspace 的轨迹正文。
+  return (
+    <TracePane
+      key={JSON.stringify([
+        props.workspaceIdentity?.trim() || props.workspacePath,
+        props.remoteSessionId,
+        props.sessionId,
+      ])}
+      {...props}
+    />
+  );
+}
+
+function TracePane({
+  sessionId,
+  workspacePath,
+  workspaceIdentity,
+  remoteSessionId,
+  onClose,
+}: Props) {
+  const { intl } = useZCodeIntl();
+  const { session, events, loading, error, refresh } = useAcpExecutionTrace(
+    workspacePath,
+    sessionId,
+    workspaceIdentity,
+    remoteSessionId,
+  );
+  const [query, setQuery] = useState("");
+  const [failedOnly, setFailedOnly] = useState(false);
+  const [expansion, setExpansion] = useState({ open: true, revision: 0 });
+  const deferredQuery = useDeferredValue(query);
+  const trace = useMemo(() => buildAcpExecutionTrace(session, events), [session, events]);
+  const turns = useMemo(
+    () => filterAcpTraceTurns(trace.turns, deferredQuery, failedOnly),
+    [trace.turns, deferredQuery, failedOnly],
+  );
+  const tools = trace.turns.reduce((sum, turn) => sum + turn.tools.length, 0);
+  const failures = trace.turns.filter(
+    (turn) => turn.state === "failed" || turn.tools.some(({ entry }) => entry.status === "failed"),
+  ).length;
+  const message = (id: string) => intl.formatMessage({ id });
   return (
     <section
-      className="flex h-full min-h-0 flex-col bg-panel text-foreground"
+      className="flex h-full min-h-0 min-w-0 flex-col bg-panel text-foreground"
       data-testid="acp-execution-trace"
     >
-      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <h2 className="text-ui-base font-medium">{intl.formatMessage({ id: "acpTrace.title" })}</h2>
-        <div className="flex gap-1">
-          <Button type="button" variant="ghost" size="sm" onClick={refresh}>
-            {intl.formatMessage({ id: "acpTrace.refresh" })}
+      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          {session ? <AcpAgentIcon agent={session.agent} /> : null}
+          <h2 className="truncate text-ui-base font-medium">{message("acpTrace.title")}</h2>
+        </div>
+        <div className="flex shrink-0 gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={refresh}
+            aria-label={message("acpTrace.refresh")}
+            disabled={loading}
+          >
+            <RefreshCwIcon className="size-3.5" />
           </Button>
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="icon-sm"
             onClick={onClose}
             aria-label={intl.formatMessage(
               { id: "sidePane.closeTab" },
-              { title: intl.formatMessage({ id: "acpTrace.title" }) },
+              { title: message("acpTrace.title") },
             )}
           >
-            ×
+            <XIcon className="size-3.5" />
           </Button>
         </div>
       </header>
-      <p className="px-3 py-2 text-ui-sm text-foreground-subtle">
-        {intl.formatMessage({ id: "acpTrace.description" })}
-      </p>
-      <div className="min-h-0 overflow-auto px-3 pb-3 text-ui-sm">
+      <div className="shrink-0 space-y-2 border-b border-border px-3 py-2">
+        {session ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ui-sm text-foreground-subtle">
+            <span>{acpAgentDefinition(session.agent).name}</span>
+            <span>
+              {intl.formatMessage(
+                { id: "acpTrace.summary" },
+                { turns: trace.turns.length, tools, failures },
+              )}
+            </span>
+            <span role="status">
+              {message(loading ? "modelTrajectory.loading" : "acpTrace.live")}
+            </span>
+          </div>
+        ) : null}
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={message("acpTrace.search")}
+          aria-label={message("acpTrace.search")}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={failedOnly}
+              onCheckedChange={(value) => setFailedOnly(value === true)}
+            />
+            {message("acpTrace.failedOnly")}
+          </label>
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() =>
+              setExpansion((value) => ({ open: !value.open, revision: value.revision + 1 }))
+            }
+          >
+            {message(expansion.open ? "modelTrajectory.collapseAll" : "modelTrajectory.expandAll")}
+          </Button>
+        </div>
+        <p className="text-ui-sm text-foreground-subtlest">{message("acpTrace.description")}</p>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto px-3 py-3 text-ui-sm">
         {error ? (
-          <p role="alert">{intl.formatMessage({ id: "acpTrace.loadFailed" })}</p>
-        ) : events.length === 0 ? (
-          <p>{intl.formatMessage({ id: "acpTrace.empty" })}</p>
-        ) : (
-          <ol className="space-y-1">
-            {events.map((event, index) => (
-              <li
-                key={`${index}:${event.timestamp}`}
-                className="rounded-md bg-surface px-2 py-1 font-mono"
-              >
-                <time dateTime={new Date(event.timestamp).toISOString()}>
-                  {new Date(event.timestamp).toLocaleString()}
-                </time>
-                {" · "}
-                {intl.formatMessage({ id: `acpTrace.event.${event.kind}` })}
-                {event.status
-                  ? ` · ${intl.formatMessage({ id: `acpTrace.status.${event.status}` })}`
-                  : ""}
-              </li>
+          <p role="alert" className="mb-3 text-destructive">
+            {message("acpTrace.loadFailed")}
+          </p>
+        ) : null}
+        {events.length >= 500 || events.some((event) => event.kind === "trace-truncated") ? (
+          <p className="mb-3 text-foreground-subtle">{message("acpTrace.truncated")}</p>
+        ) : null}
+        {loading && !session ? (
+          <p>{message("modelTrajectory.loading")}</p>
+        ) : turns.length ? (
+          <div className="space-y-3">
+            {turns.map((turn) => (
+              <AcpTraceTurnCard key={turn.entryIndex} turn={turn} expansion={expansion} />
             ))}
-          </ol>
-        )}
+          </div>
+        ) : !error ? (
+          <p className="text-foreground-subtle">
+            {message(trace.turns.length ? "acpTrace.noMatches" : "acpTrace.empty")}
+          </p>
+        ) : null}
+        {!query && !failedOnly && trace.uncorrelatedEvents.length ? (
+          <AcpTraceDisclosure
+            expansion={expansion.revision ? expansion : { ...expansion, open: false }}
+            className="mt-3 rounded-xl border border-border p-3 text-foreground-subtle"
+            title={message("acpTrace.uncorrelated")}
+          >
+            <AcpTraceEvents events={trace.uncorrelatedEvents} />
+          </AcpTraceDisclosure>
+        ) : null}
       </div>
     </section>
   );
