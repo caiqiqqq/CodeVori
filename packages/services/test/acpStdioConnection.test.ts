@@ -25,6 +25,63 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
 });
 `;
 
+test("stdio forwards live thoughts and full plans, excluding native-session mismatch and load replay", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "acp-thought-wire-"));
+  const path = join(directory, "agent.cjs");
+  const updates: AcpUpdate[] = [];
+  let port: Awaited<ReturnType<typeof connectAcpAgent>> | undefined;
+  try {
+    await writeFile(
+      path,
+      `
+      const send=value=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',...value})+'\\n');
+      const thought={sessionUpdate:'agent_thought_chunk',messageId:'thinking',content:{type:'text',text:'reported thought'}};
+      const plan={sessionUpdate:'plan',entries:[{content:'verify source',priority:'high',status:'in_progress'}]};
+      const notify=(sessionId,update)=>send({method:'session/update',params:{sessionId,update}});
+      require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
+        const message=JSON.parse(line);
+        if(message.method==='initialize') send({id:message.id,result:{protocolVersion:1,agentCapabilities:{loadSession:true}}});
+        else if(message.method==='session/load') {
+          notify('thought-native',thought); notify('thought-native',plan);
+          send({id:message.id,result:{}});
+        } else if(message.method==='session/prompt') {
+          notify('other-native',thought); notify('other-native',plan);
+          notify('thought-native',thought); notify('thought-native',plan);
+          notify('thought-native',{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'answer'}});
+          notify('thought-native',{sessionUpdate:'plan',entries:[]});
+          send({id:message.id,result:{stopReason:'end_turn'}});
+        }
+      });
+    `,
+    );
+    port = await connectAcpAgent({
+      agent: "codex",
+      sessionId: "thought-native",
+      workspacePath: directory,
+      launch: { command: process.execPath, args: [path], env: process.env },
+      onUpdate: async (update) => {
+        updates.push(update);
+      },
+      onPermission: async () => null,
+      onExit: () => {},
+    });
+    assert.deepEqual(updates, []);
+    await port.prompt("fixture");
+    assert.deepEqual(updates, [
+      { kind: "thought", text: "reported thought", messageId: "thinking" },
+      {
+        kind: "plan",
+        entries: [{ content: "verify source", priority: "high", status: "in_progress" }],
+      },
+      { kind: "text", text: "answer", messageId: undefined },
+      { kind: "plan", entries: [] },
+    ]);
+  } finally {
+    port?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("stdio preserves ACP raw tool details, diff and explicit empty partial updates with real stop reasons", async () => {
   const directory = await mkdtemp(join(tmpdir(), "acp-trace-wire-"));
   const path = join(directory, "agent.cjs");
@@ -491,9 +548,22 @@ test("stdio reports context occupancy independently of verified prompt spend", a
         if (agent === "claude")
           assert.deepEqual(report, {
             scope: "turn",
-            usage: { totalTokens: 20, inputTokens: 17, outputTokens: 3 },
+            usage: {
+              totalTokens: 20,
+              inputTokens: 17,
+              outputTokens: 3,
+              cacheReadTokens: 10,
+              cacheWriteTokens: 2,
+            },
             models: [
-              { modelId: "claude-sonnet", totalTokens: 20, inputTokens: 17, outputTokens: 3 },
+              {
+                modelId: "claude-sonnet",
+                totalTokens: 20,
+                inputTokens: 17,
+                outputTokens: 3,
+                cacheReadTokens: 10,
+                cacheWriteTokens: 2,
+              },
             ],
           });
         else assert.equal(report, null);
@@ -666,6 +736,64 @@ test("stdio ACP projects each Agent catalog, config changes and mode notificatio
     await resumed.closed;
   } finally {
     process.env.PATH = originalPath;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("Codex stdio reads its launch HOME numeric totals on load and prompt without trusting last-request ACP usage", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "acp-native-wire-"));
+  const id = "019c7714-3b77-74d1-9866-e1f484aae2ab";
+  const script = join(directory, "agent.cjs");
+  let port: Awaited<ReturnType<typeof connectAcpAgent>> | undefined;
+  try {
+    await writeFile(
+      script,
+      `
+      const fs=require('node:fs'); const path=require('node:path');
+      const send=value=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',...value})+'\\n');
+      const id=process.env.ACP_NATIVE_ID;
+      const dir=path.join(process.env.CODEX_HOME,'sessions','2026','10','08');
+      fs.mkdirSync(dir,{recursive:true});
+      const file=path.join(dir,'rollout-'+id+'.jsonl');
+      const report=(input,output)=>({type:'event_msg',payload:{type:'token_count',info:{total_token_usage:{input_tokens:input,output_tokens:output,total_tokens:input+output,cached_input_tokens:input/2}}}});
+      require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
+        const message=JSON.parse(line);
+        if(message.method==='initialize') send({id:message.id,result:{protocolVersion:1,agentInfo:{name:'@agentclientprotocol/codex-acp',version:'1.13.1'},agentCapabilities:{loadSession:true}}});
+        else if(message.method==='session/load' || message.method==='session/new') {
+          fs.writeFileSync(file,[{type:'session_meta',payload:{id,cwd:process.cwd()}},report(100,20)].map(JSON.stringify).join('\\n')+'\\n');
+          send({id:message.id,result:message.method==='session/new'?{sessionId:id}:{}});
+        } else if(message.method==='session/prompt') {
+          fs.appendFileSync(file,JSON.stringify(report(200,40))+'\\n');
+          send({id:message.id,result:{stopReason:'end_turn',usage:{inputTokens:1,outputTokens:1,totalTokens:2}}});
+        }
+      });
+    `,
+    );
+    for (const sessionId of [id, undefined]) {
+      port = await connectAcpAgent({
+        agent: "codex",
+        sessionId,
+        workspacePath: directory,
+        launch: {
+          command: process.execPath,
+          args: [script],
+          env: { ...process.env, CODEX_HOME: join(directory, "custom"), ACP_NATIVE_ID: id },
+        },
+        onUpdate: async () => {},
+        onPermission: async () => null,
+        onExit: () => {},
+      });
+      assert.equal(port.nativeUsage?.usage.totalTokens, 120);
+      assert.equal(await port.prompt("fixture"), null);
+      assert.equal(port.nativeUsage?.usage.totalTokens, 240);
+      assert.equal(port.nativeUsage?.usage.cacheReadTokens, 100);
+      assert.equal(port.nativeUsage?.usage.cacheWriteTokens, undefined);
+      const closed = port.closed;
+      port.close();
+      await closed;
+    }
+  } finally {
+    port?.close();
     await rm(directory, { recursive: true, force: true });
   }
 });

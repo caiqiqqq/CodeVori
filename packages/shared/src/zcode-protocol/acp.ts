@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- ACP wire schemas stay together so session snapshots remain compatible across Host and UI. */
 import { z } from "zod";
+import { acpPlanStepSchema } from "../acp-plan.js";
 import { acpTokenUsageSchema, acpUsageTurnSchema } from "../acp-usage.js";
 import { workflowRunsStateSchema } from "../zcode-protocol-v4/workflow-runs.js";
 import { attachmentRefSchema } from "../zcode-protocol-v4/attachment-ref.js";
@@ -287,6 +288,52 @@ export const acpAttachmentRefSchema = attachmentRefSchema
   })
   .strict();
 export type AcpAttachmentRef = z.infer<typeof acpAttachmentRefSchema>;
+
+/** Host-owned pending user input; content bytes remain in the attachment store. */
+export const acpQueueItemSchema = z
+  .object({
+    commandId: z.string().trim().min(1),
+    text: z.string(),
+    attachments: z.array(acpAttachmentRefSchema).max(8).default([]),
+    workspaceFiles: z.array(z.string().min(1)).max(20).default([]),
+    createdAt: z.number().int().nonnegative(),
+    state: z.enum(["queued", "reserved"]),
+  })
+  .strict();
+export type AcpQueueItem = z.infer<typeof acpQueueItemSchema>;
+export const acpQueueStateSchema = z
+  .object({
+    items: z.array(acpQueueItemSchema).max(100).default([]),
+    autoDrain: z.boolean().default(true),
+    pauseReason: z.enum(["stopped", "manual", "error"]).optional(),
+    /** Accepted then deleted inputs must not reappear after an ambiguous prompt retry. */
+    discardedCommandIds: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+export const acpQueueItemInputSchema = acpWorkspaceSchema
+  .extend({
+    id: z.string().uuid(),
+    queueItemId: z.string().trim().min(1),
+  })
+  .strict();
+export type AcpQueueItemInput = z.infer<typeof acpQueueItemInputSchema>;
+export const acpQueueEditInputSchema = acpQueueItemInputSchema
+  .extend({ text: z.string() })
+  .strict();
+export type AcpQueueEditInput = z.infer<typeof acpQueueEditInputSchema>;
+export const acpQueueReorderInputSchema = acpQueueItemInputSchema
+  .extend({
+    beforeQueueItemId: z.string().trim().min(1).nullable(),
+  })
+  .strict();
+export type AcpQueueReorderInput = z.infer<typeof acpQueueReorderInputSchema>;
+export const acpQueueAutoDrainInputSchema = acpWorkspaceSchema
+  .extend({
+    id: z.string().uuid(),
+    autoDrain: z.boolean(),
+  })
+  .strict();
+export type AcpQueueAutoDrainInput = z.infer<typeof acpQueueAutoDrainInputSchema>;
 export const acpAttachmentReadInputSchema = acpWorkspaceSchema
   .extend({
     id: z.string().uuid(),
@@ -403,6 +450,20 @@ export const acpTraceSelectionSchema = z.object({
 export const acpEntrySchema = z.discriminatedUnion("kind", [
   z.object({
     id: z.string(),
+    kind: z.literal("thought"),
+    text: z.string(),
+    state: z.enum(["streaming", "complete", "interrupted"]),
+    createdAt: z.number().optional(),
+    durationMs: z.number().nonnegative().optional(),
+  }),
+  z.object({
+    id: z.string(),
+    kind: z.literal("plan"),
+    entries: z.array(acpPlanStepSchema),
+    createdAt: z.number().optional(),
+  }),
+  z.object({
+    id: z.string(),
     kind: z.literal("user"),
     text: z.string(),
     createdAt: z.number().optional(),
@@ -464,8 +525,17 @@ export const acpSessionSchema = acpWorkspaceSchema.extend({
     .nullable()
     .default(null),
   entries: z.array(acpEntrySchema),
+  queue: acpQueueStateSchema.default({ items: [], autoDrain: true }),
   /** 与 API 共用有界投影；旧快照缺席，Host 按 journal 恢复。 */
   workflowRuns: workflowRunsStateSchema.optional(),
+  /** Native cumulative facts are separate from per-command accounting. */
+  nativeUsage: z
+    .object({
+      nativeSessionId: z.string().min(1),
+      usage: acpTokenUsageSchema,
+    })
+    .nullable()
+    .optional(),
   /** Old snapshots cannot use an unverified cumulative report as a new turn's usage. */
   usageBaselineKnown: z.boolean().default(false),
   usageBaseline: acpTokenUsageSchema.nullable().default(null),
@@ -528,10 +598,14 @@ export const acpSessionRowUpdateSchema = acpWorkspaceSchema
 export type AcpSessionRowUpdate = z.infer<typeof acpSessionRowUpdateSchema>;
 
 /** 已接受消息的时间是活动事实；查看、配置和快照 revision 不改变排序。 */
-export function acpSessionActivity(session: Pick<AcpSession, "entries" | "legacySavedAt">) {
+export function acpSessionActivity(
+  session: Pick<AcpSession, "entries" | "legacySavedAt"> & Partial<Pick<AcpSession, "queue">>,
+) {
   const times = session.entries
     .map((entry) => entry.createdAt)
-    .filter((value): value is number => typeof value === "number");
+    .filter((value): value is number => typeof value === "number")
+    .concat(session.queue?.items.map((item) => item.createdAt) ?? [])
+    .sort((a, b) => a - b);
   return {
     createdAt: session.legacySavedAt ?? times[0] ?? 0,
     updatedAt: times.at(-1) ?? session.legacySavedAt ?? 0,
@@ -542,7 +616,7 @@ export function isAcpHistorySession(session: AcpSession): boolean {
   return (
     !session.provisional &&
     !session.supersededBy &&
-    session.entries.some((entry) => entry.kind === "user")
+    (session.entries.some((entry) => entry.kind === "user") || Boolean(session.queue?.items.length))
   );
 }
 

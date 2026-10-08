@@ -3,7 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import type { AcpUsageReport } from "@zcode/shared";
+import { acpSessionSchema, type AcpUsageReport } from "@zcode/shared";
+import { recordAcpPromptUsage, summarizeAcpUsage } from "../src/acp/acpUsageStats.js";
 import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
 import { projectAcpPromptUsage } from "../src/acp/acpUsageResponse.js";
 
@@ -243,10 +244,23 @@ test("verified Claude usage includes cache and actual model facts, while Codex l
     projectAcpPromptUsage("claude", { name: "@agentclientprotocol/claude-agent-acp" }, response),
     {
       scope: "turn",
-      usage: { totalTokens: 27, inputTokens: 23, outputTokens: 4 },
+      usage: { totalTokens: 27, inputTokens: 23, outputTokens: 4, cacheReadTokens: 14 },
       models: [
-        { modelId: "claude-sonnet", totalTokens: 20, inputTokens: 17, outputTokens: 3 },
-        { modelId: "claude-haiku", totalTokens: 7, inputTokens: 6, outputTokens: 1 },
+        {
+          modelId: "claude-sonnet",
+          totalTokens: 20,
+          inputTokens: 17,
+          outputTokens: 3,
+          cacheReadTokens: 10,
+          cacheWriteTokens: 2,
+        },
+        {
+          modelId: "claude-haiku",
+          totalTokens: 7,
+          inputTokens: 6,
+          outputTokens: 1,
+          cacheReadTokens: 4,
+        },
       ],
     },
   );
@@ -261,6 +275,168 @@ test("verified Claude usage includes cache and actual model facts, while Codex l
       { name: "@agentclientprotocol/claude-agent-acp" },
       { ...response, _meta: {} },
     ),
-    { scope: "turn", usage: { totalTokens: 20, inputTokens: 17, outputTokens: 3 }, models: [] },
+    {
+      scope: "turn",
+      usage: {
+        totalTokens: 20,
+        inputTokens: 17,
+        outputTokens: 3,
+        cacheReadTokens: 10,
+        cacheWriteTokens: 2,
+      },
+      models: [],
+    },
   );
+});
+
+test("Host persists native totals on create/resume/turn without attributing history to a user command", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "zcode-native-total-"));
+  let total = 100;
+  let wrongId = false;
+  const connect: AcpConnectionFactory = async () => ({
+    sessionId: "native",
+    configOptions: [],
+    modeState: null,
+    get nativeUsage() {
+      return {
+        nativeSessionId: wrongId ? "other" : "native",
+        usage: { totalTokens: total, inputTokens: total - 10, outputTokens: 10 },
+      };
+    },
+    async setConfigOption() {
+      return [];
+    },
+    async setMode() {},
+    async cancel() {},
+    close() {},
+    async prompt() {
+      total += 20;
+      return null;
+    },
+  });
+  let service = createAcpService({ directory, connect });
+  try {
+    const created = await service.create({ ...workspace, agent: "codex" });
+    const input = { ...workspace, id: created.id };
+    assert.equal(created.nativeUsage?.usage.totalTokens, 100);
+    await service.prompt({ ...input, commandId: "one", text: "hello" });
+    assert.equal((await service.read(input)).nativeUsage?.usage.totalTokens, 120);
+    assert.equal((await service.getUsageStats(request))[0]?.totalTokens, 0);
+    wrongId = true;
+    await service.prompt({ ...input, commandId: "two", text: "next" });
+    assert.equal((await service.read(input)).nativeUsage?.usage.totalTokens, 120);
+    service.disposeAll();
+    service = createAcpService({ directory, connect });
+    assert.equal((await service.read(input)).nativeUsage?.usage.totalTokens, 120);
+    wrongId = false;
+    total = 180;
+    assert.equal((await service.refresh(input)).nativeUsage?.usage.totalTokens, 180);
+  } finally {
+    service.disposeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("late native totals after stop or deletion cannot mutate the Host snapshot", async () => {
+  for (const action of ["stop", "remove"] as const) {
+    const directory = await mkdtemp(join(tmpdir(), "zcode-native-stale-"));
+    const started = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    let nativeUsage: import("@zcode/shared").AcpSession["nativeUsage"] = null;
+    const connect: AcpConnectionFactory = async () => ({
+      sessionId: "native",
+      configOptions: [],
+      modeState: null,
+      get nativeUsage() {
+        return nativeUsage;
+      },
+      async setConfigOption() {
+        return [];
+      },
+      async setMode() {},
+      async cancel() {},
+      close() {},
+      async prompt() {
+        started.resolve();
+        await finish.promise;
+        nativeUsage = {
+          nativeSessionId: "native",
+          usage: { totalTokens: 12, inputTokens: 10, outputTokens: 2 },
+        };
+      },
+    });
+    const service = createAcpService({ directory, connect });
+    try {
+      const created = await service.create({ ...workspace, agent: "codex" });
+      const input = { ...workspace, id: created.id };
+      const running = service.prompt({ ...input, commandId: "one", text: "hello" });
+      await started.promise;
+      await service[action](input);
+      finish.resolve();
+      await running;
+      if (action === "stop") assert.equal((await service.read(input)).nativeUsage, undefined);
+      else assert.deepEqual(await service.list(workspace), []);
+    } finally {
+      finish.resolve();
+      service.disposeAll();
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+test("cumulative cache deltas require a known continuous dimension and model summaries retain complete dimensions only", () => {
+  const value = acpSessionSchema.parse({
+    ...workspace,
+    id: crypto.randomUUID(),
+    agent: "claude",
+    acpSessionId: "native",
+    title: "fixture",
+    revision: 0,
+    status: "idle",
+    entries: [],
+    pendingPermission: null,
+    error: null,
+    usageBaselineKnown: true,
+  });
+  const report = (input: number, cacheReadTokens?: number): AcpUsageReport => ({
+    scope: "session",
+    usage: {
+      totalTokens: input + 2,
+      inputTokens: input,
+      outputTokens: 2,
+      ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
+    },
+    models: [],
+  });
+  recordAcpPromptUsage(value, "baseline", report(100));
+  recordAcpPromptUsage(value, "cache-first", report(110, 60));
+  recordAcpPromptUsage(value, "cache-next", report(120, 66));
+  assert.equal(value.usageTurns[1]?.cacheReadTokens, undefined);
+  assert.equal(value.usageTurns[2]?.cacheReadTokens, 6);
+  value.usageTurns = [];
+  for (const [commandId, cache] of [
+    ["one", 10],
+    ["two", 20],
+    ["legacy", undefined],
+  ] as const) {
+    value.entries.push({ id: `user:${commandId}`, kind: "user", text: commandId });
+    recordAcpPromptUsage(value, commandId, {
+      scope: "turn",
+      usage: { totalTokens: 50, inputTokens: 40, outputTokens: 10 },
+      models: [
+        {
+          modelId: "claude-sonnet",
+          totalTokens: 50,
+          inputTokens: 40,
+          outputTokens: 10,
+          ...(cache === undefined ? {} : { cacheReadTokens: cache }),
+        },
+      ],
+    });
+    const [group] = summarizeAcpUsage([value], request);
+    assert.equal(
+      group?.models[0]?.cacheReadTokens,
+      commandId === "one" ? 10 : commandId === "two" ? 30 : undefined,
+    );
+  }
 });

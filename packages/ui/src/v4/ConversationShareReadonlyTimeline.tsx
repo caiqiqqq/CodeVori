@@ -3,6 +3,7 @@
  * 公开页 bundle 体积与无 Desktop 宿主（window.zcode / PlatformProvider / tab store）的运行环境；
  * Desktop 专属能力（如 open-with 子树）一律由消费方经组件注入，不得静态 import。 */
 import { PRODUCT_NAME } from "@zcode/shared";
+import { ConversationPlanRowView } from "@/v4/ConversationPlanRowView.js";
 import {
   createContext,
   Fragment,
@@ -545,6 +546,8 @@ function renderReadonlyRow(
       );
     case "reasoning":
       return <ReasoningPresentation key={row.rowId} row={row} />;
+    case "plan":
+      return <ConversationPlanRowView key={row.rowId} row={row} />;
     case "toolCall":
       return (
         <ToolCallPresentation

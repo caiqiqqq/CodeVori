@@ -41,6 +41,8 @@ export function projectAcpPromptUsage(
     totalTokens: raw.totalTokens,
     inputTokens: raw.inputTokens + (raw.cachedReadTokens ?? 0) + (raw.cachedWriteTokens ?? 0),
     outputTokens: raw.outputTokens,
+    ...(raw.cachedReadTokens != null ? { cacheReadTokens: raw.cachedReadTokens } : {}),
+    ...(raw.cachedWriteTokens != null ? { cacheWriteTokens: raw.cachedWriteTokens } : {}),
   };
   if (usage.totalTokens !== usage.inputTokens + usage.outputTokens) return null;
 
@@ -54,6 +56,8 @@ export function projectAcpPromptUsage(
         totalTokens: row.totalTokens,
         inputTokens: row.inputTokens + row.cachedInputTokens + (row.cachedWriteTokens ?? 0),
         outputTokens: row.outputTokens,
+        cacheReadTokens: row.cachedInputTokens,
+        ...(row.cachedWriteTokens !== undefined ? { cacheWriteTokens: row.cachedWriteTokens } : {}),
       }))
     : [];
   const completeRows =
@@ -69,6 +73,12 @@ export function projectAcpPromptUsage(
         totalTokens: modelTotal,
         inputTokens: models.reduce((sum, row) => sum + row.inputTokens, 0),
         outputTokens: models.reduce((sum, row) => sum + row.outputTokens, 0),
+        cacheReadTokens: models.reduce((sum, row) => sum + row.cacheReadTokens!, 0),
+        ...(models.every((row) => row.cacheWriteTokens !== undefined)
+          ? {
+              cacheWriteTokens: models.reduce((sum, row) => sum + row.cacheWriteTokens!, 0),
+            }
+          : {}),
       },
       models,
     };

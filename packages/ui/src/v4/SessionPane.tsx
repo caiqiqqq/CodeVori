@@ -1,6 +1,8 @@
 import { resolveSelectionSideInheritedModel } from "@/lib/selectionSideInheritedModel.js";
 import { useStartPlanRecommendation } from "@/hooks/useStartPlanRecommendation.js";
 import type { SessionCreateSource } from "@zcode/shared";
+import { projectAcpTokenUsage } from "@/v4/acpTokenUsage.js";
+import { projectAcpStatusPanel } from "@/v4/acpStatusPanel.js";
 import { acpAgentDefinition, type AcpAgent } from "@zcode/shared";
 import { reportSessionCreate } from "@/lib/sessionCreateTelemetry.js";
 import { getLocalTtftObserver } from "@/v4/telemetry/localTtftObserver.js";
@@ -134,6 +136,7 @@ import { AgentDelegationPanel } from "@/delegation/AgentDelegationPanel.js";
 import { useAgentDelegation } from "@/hooks/useAgentDelegation.js";
 import { acpEntryRowId, buildAcpConversationRows } from "@/v4/acpConversationRows.js";
 import { useAcpConversation } from "@/v4/useAcpConversation.js";
+import { AcpConversationQueuePanel } from "@/v4/AcpConversationQueuePanel.js";
 import { useAcpAttachmentReader } from "@/hooks/useAcpAttachmentReader.js";
 import { useAcpComposerConfigPreview } from "@/v4/composer/useAcpComposerConfigPreview.js";
 import type {
@@ -4173,6 +4176,51 @@ export function SessionPane({
     return () => setSelectionSideChatBlocked(sessionId, false);
   }, [blockingInteractionId, selectionSideChat, sessionId]);
   const isOfficeMode = useIsOfficeMode();
+  const acpTokenUsage = useMemo(
+    () =>
+      projectAcpTokenUsage(
+        acpConversation.selected?.agent === acpAgent ? acpConversation.selected : null,
+      ),
+    [acpConversation.selected, acpAgent],
+  );
+  const acpStatusPanel = useMemo(
+    () => projectAcpStatusPanel(acpConversation.selected),
+    [acpConversation.selected],
+  );
+  // 修复原因：ACP 与 API 共用面板，但事实来源必须随当前目标切换，不能复用后台 API 快照。
+  const statusPanelFacts = useMemo(
+    () =>
+      acpAgent
+        ? {
+            reportedGoal: acpStatusPanel.reportedGoal,
+            goal: null,
+            plan: acpStatusPanel.plan,
+            workflowRuns: acpStatusPanel.workflowRuns,
+            sessionPlans: undefined,
+            backgroundWorks: undefined,
+            runningSubagents: undefined,
+          }
+        : {
+            reportedGoal: null,
+            goal: selectionSideChat ? null : (snapshot?.goal ?? null),
+            plan: snapshot?.plan ?? null,
+            workflowRuns: snapshot?.workflowRuns?.runs,
+            sessionPlans: state.sessionPlans,
+            backgroundWorks: snapshot?.backgroundWorks,
+            runningSubagents: subagents.running,
+          },
+    [
+      acpAgent,
+      acpStatusPanel,
+      selectionSideChat,
+      snapshot?.goal,
+      snapshot?.plan,
+      snapshot?.workflowRuns,
+      snapshot?.backgroundWorks,
+      state.sessionPlans,
+      subagents.running,
+    ],
+  );
   const statusPanelModel = useMemo(
     () =>
       buildConversationStatusPanelModel({
@@ -4181,26 +4229,15 @@ export function SessionPane({
         gitSummary,
         gitDirtyFileCount,
         gitWorktreeChangeSummary,
-        goal: selectionSideChat ? null : (snapshot?.goal ?? null),
-        sessionPlans: state.sessionPlans,
-        plan: snapshot?.plan ?? null,
-        backgroundWorks: snapshot?.backgroundWorks ?? [],
-        runningSubagents: subagents.running,
-        workflowRuns: snapshot?.workflowRuns?.runs ?? [],
+        ...statusPanelFacts,
       }),
     [
       isOfficeMode,
-      gitDirtyFileCount,
-      gitSummary,
-      gitWorktreeChangeSummary,
-      snapshot?.backgroundWorks,
-      snapshot?.goal,
-      snapshot?.plan,
-      snapshot?.workflowRuns,
-      state.sessionPlans,
-      selectionSideChat,
-      subagents.running,
       workspacePath,
+      gitSummary,
+      gitDirtyFileCount,
+      gitWorktreeChangeSummary,
+      statusPanelFacts,
     ],
   );
   const runningBackgroundWorkCount =
@@ -4234,8 +4271,9 @@ export function SessionPane({
   // 详情页的 workflow run 时，徽标点击直接开它的 side tab，胶囊不动。判定吃胶囊的同一份模型；
   // 宿主没给 onOpenWorkflowRun（面板行同样不可点）时不直达。
   const soleRunningWorkflowRunTarget = useMemo(
-    () => (onOpenWorkflowRun ? resolveSoleRunningWorkflowRunTarget(statusPanelModel) : null),
-    [onOpenWorkflowRun, statusPanelModel],
+    () =>
+      !acpAgent && onOpenWorkflowRun ? resolveSoleRunningWorkflowRunTarget(statusPanelModel) : null,
+    [acpAgent, onOpenWorkflowRun, statusPanelModel],
   );
   const handleOpenRunningBackgroundWorks = useCallback(() => {
     if (runningBackgroundWorkCount === 0) return;
@@ -4265,7 +4303,7 @@ export function SessionPane({
   // 若只有 status panel 内部知道自动展开态，而 timeline/composer 未同步调整布局，
   // 宽屏下就会出现面板覆盖内容。因此外层布局也必须使用同一展开状态。
   const shouldUseStatusPanelInlineLayout =
-    !isDraft &&
+    !visibleEmptyDraft &&
     shouldUseConversationStatusPanelInlineLayout({
       hasContent: statusPanelModel.hasContent,
       variant: statusPanelVariant,
@@ -4707,6 +4745,7 @@ export function SessionPane({
       }
       acpAgent={acpAgent}
       acpSessionId={acpConversation.selected?.id ?? null}
+      acpTokenUsage={acpTokenUsage}
       acpContextUsage={
         acpConversation.selected?.agent === acpAgent ? acpConversation.selected.contextUsage : null
       }
@@ -4716,7 +4755,10 @@ export function SessionPane({
         !acpConversation.sending &&
         !acpConversation.busy
       }
-      acpRunning={acpConversation.selected?.status === "running"}
+      acpRunning={
+        acpConversation.selected?.status === "running" ||
+        Boolean(acpConversation.selected?.queue?.items.some((item) => item.state === "reserved"))
+      }
       onSendAcpText={acpConversation.send}
       acpGoal={acpConversation.selected?.goal}
       onSetAcpGoal={acpConversation.setGoal}
@@ -4749,7 +4791,9 @@ export function SessionPane({
       onSelectThought={handleSelectThought}
       onSwitchMode={handleSwitchMode}
       onOpenRunningBackgroundWorks={
-        sessionId && runningBackgroundWorkCount > 0 ? handleOpenRunningBackgroundWorks : undefined
+        (acpAgent ? acpConversation.selected?.id : sessionId) && runningBackgroundWorkCount > 0
+          ? handleOpenRunningBackgroundWorks
+          : undefined
       }
       backgroundWorkOpenTarget={soleRunningWorkflowRunTarget ? "workflow-run" : "panel"}
       // 父轮结束后 subagents.running 的目录投影可能短暂落后于仍为 running 的
@@ -4850,6 +4894,13 @@ export function SessionPane({
           workspacePath={workspacePath}
           workspaceIdentity={workspaceIdentity}
           admission={snapshot.workspaceHookAdmission}
+        />
+      ) : null}
+      {acpAgent && acpConversation.selected?.queue ? (
+        <AcpConversationQueuePanel
+          key={acpConversation.selected.id}
+          queue={acpConversation.selected.queue}
+          actions={acpConversation.queueActions}
         />
       ) : null}
       {!acpAgent && sessionId && snapshot ? (
@@ -5018,7 +5069,7 @@ export function SessionPane({
         sessionId ? (
           <ConversationShareSelectionReopenTab onOpen={() => showShareSelectionPanel(sessionId)} />
         ) : null}
-        {!acpAgent && !isDraft ? (
+        {!visibleEmptyDraft ? (
           <ConversationStatusPanel
             workspacePath={workspacePath}
             workspaceIdentity={workspaceIdentity}
@@ -5026,16 +5077,11 @@ export function SessionPane({
             gitDirtyFileCount={gitDirtyFileCount}
             gitWorktreeReviewSourceId={gitWorktreeReviewSourceId}
             gitWorktreeChangeSummary={gitWorktreeChangeSummary}
-            activeTaskChangeSummary={activeTaskChangeSummary}
-            goal={selectionSideChat ? null : (snapshot?.goal ?? null)}
-            sessionPlans={state.sessionPlans}
-            plan={snapshot?.plan ?? null}
-            backgroundWorks={snapshot?.backgroundWorks ?? []}
-            runningSubagents={subagents.running}
-            workflowRuns={snapshot?.workflowRuns?.runs ?? []}
-            endedSubagentCount={subagents.endedTotal}
-            rootSessionId={rootSessionId ?? sessionId ?? undefined}
-            parentSessionId={sessionId ?? undefined}
+            activeTaskChangeSummary={acpAgent ? null : activeTaskChangeSummary}
+            {...statusPanelFacts}
+            endedSubagentCount={acpAgent ? 0 : subagents.endedTotal}
+            rootSessionId={acpAgent ? undefined : (rootSessionId ?? sessionId ?? undefined)}
+            parentSessionId={acpAgent ? undefined : (sessionId ?? undefined)}
             layoutMode={statusPanelLayout}
             summaryPanelVariantOverride={effectiveSummaryPanelVariantOverride}
             onVariantChange={handleSummaryPanelVariantChange}
@@ -5050,18 +5096,24 @@ export function SessionPane({
             onOpenWorkspacePath={onOpenWorkspacePath}
             allowWorktreeCreation={allowWorktreeCreation}
             onPauseGoal={
-              !readOnly && !selectionSideChat && snapshot?.availability.pauseGoal.allowed
+              !acpAgent &&
+              !readOnly &&
+              !selectionSideChat &&
+              snapshot?.availability.pauseGoal.allowed
                 ? handlePauseGoal
                 : undefined
             }
             onResumeGoal={
-              !readOnly && !selectionSideChat && snapshot?.availability.resumeGoal.allowed
+              !acpAgent &&
+              !readOnly &&
+              !selectionSideChat &&
+              snapshot?.availability.resumeGoal.allowed
                 ? handleResumeGoal
                 : undefined
             }
-            onOpenPlanDetail={onOpenPlanDetail ? handleOpenPlanDetail : undefined}
+            onOpenPlanDetail={!acpAgent && onOpenPlanDetail ? handleOpenPlanDetail : undefined}
             onOpenBackgroundBash={
-              onOpenBackgroundBash && sessionId
+              !acpAgent && onOpenBackgroundBash && sessionId
                 ? (work) =>
                     onOpenBackgroundBash({
                       workspacePath,
@@ -5074,17 +5126,23 @@ export function SessionPane({
                     })
                 : undefined
             }
-            onCancelBackgroundWork={readOnly ? undefined : handleCancelBackgroundWork}
-            onOpenSubagentSession={onOpenSubagentSession ? handleOpenSubagentSession : undefined}
+            onCancelBackgroundWork={acpAgent || readOnly ? undefined : handleCancelBackgroundWork}
+            onOpenSubagentSession={
+              !acpAgent && onOpenSubagentSession ? handleOpenSubagentSession : undefined
+            }
             onOpenSubagentDirectory={
-              onOpenSubagentDirectory ? handleOpenSubagentDirectory : undefined
+              !acpAgent && onOpenSubagentDirectory ? handleOpenSubagentDirectory : undefined
             }
             onOpenWorkflowRun={
-              onOpenWorkflowRun && sessionId ? handleOpenWorkflowRunFromPanel : undefined
+              !acpAgent && onOpenWorkflowRun && sessionId
+                ? handleOpenWorkflowRunFromPanel
+                : undefined
             }
-            endedWorkflowRunCount={endedWorkflowRunCount}
+            endedWorkflowRunCount={acpAgent ? 0 : endedWorkflowRunCount}
             onOpenWorkflowRunDirectory={
-              onOpenWorkflowRunDirectory ? handleOpenWorkflowRunDirectoryFromPanel : undefined
+              !acpAgent && onOpenWorkflowRunDirectory
+                ? handleOpenWorkflowRunDirectoryFromPanel
+                : undefined
             }
           />
         ) : null}
@@ -5198,7 +5256,7 @@ export function SessionPane({
                 ) : null
               }
               centerEmptyStateWithDock={visibleEmptyDraft}
-              summaryPanelLayout={acpAgent ? "none" : statusPanelLayout}
+              summaryPanelLayout={statusPanelLayout}
               conversationFindQuery={(acpAgent || !isDraft) && focused ? conversationFindQuery : ""}
               conversationFindActiveIndex={
                 (acpAgent || !isDraft) && focused ? conversationFindActiveIndex : -1

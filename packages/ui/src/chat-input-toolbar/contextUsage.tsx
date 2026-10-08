@@ -20,6 +20,7 @@ import {
   ContextContent,
   ContextTrigger,
 } from "@/components/ai-elements/context.js";
+import { ContextTokenUsage, type ContextTokenUsageData } from "./contextTokenUsage.js";
 import { cn } from "@/components/lib/utils.js";
 import { Progress } from "@/components/ui/progress.js";
 import { useOptionalTabStore } from "@/store/TabStoreProvider.js";
@@ -237,6 +238,7 @@ export function ChatContextUsage({
   startPlanBalance,
   taskUsage,
   showUnknownUsage = false,
+  tokenUsageData,
   selectedProvider: _selectedProvider,
   intl,
   locale,
@@ -251,6 +253,7 @@ export function ChatContextUsage({
   } | null;
   /** ACP 能力入口保持可见；未上报时明确显示未知，不继承 API 用量。 */
   showUnknownUsage?: boolean;
+  tokenUsageData?: ContextTokenUsageData | null;
   selectedProvider: ZCodeProvider;
   intl: ReturnType<typeof useZCodeIntl>["intl"];
   locale: string;
@@ -936,6 +939,9 @@ export function ChatContextUsage({
                 {intl.formatMessage({ id: "chat.contextUsage.unavailable" })}
               </p>
             </div>
+          ) : null}
+          {tokenUsageData ? (
+            <ContextTokenUsage data={tokenUsageData} intl={intl} locale={locale} />
           ) : null}
           {renderableTaskUsage && (breakdownSegments.length > 0 || cacheHitRateLabel) ? (
             <>

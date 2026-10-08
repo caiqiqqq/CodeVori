@@ -94,12 +94,27 @@ export function buildAcpConversationRows(
         state:
           isLastTurn && index === lastAssistantIndex
             ? status === "running"
-              ? "streaming"
+              ? index === entries.length - 1
+                ? "streaming"
+                : "complete"
               : status === "interrupted"
                 ? "interrupted"
                 : "complete"
             : "complete",
       });
+    } else if (entry.kind === "thought") {
+      rows.push({
+        ...base,
+        kind: "reasoning",
+        text: entry.text,
+        state:
+          entry.state === "streaming" && (!isLastTurn || status !== "running")
+            ? "interrupted"
+            : entry.state,
+        ...(entry.durationMs !== undefined ? { durationMs: entry.durationMs } : {}),
+      });
+    } else if (entry.kind === "plan") {
+      rows.push({ ...base, kind: "plan", planId: entry.id, entries: entry.entries });
     } else {
       const mappedStatus = toolStatus(entry.status, isLastTurn ? status : "idle");
       const unconfirmed =

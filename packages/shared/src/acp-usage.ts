@@ -5,6 +5,8 @@ export const acpTokenUsageSchema = z.object({
   totalTokens: z.number().int().nonnegative(),
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
+  cacheReadTokens: z.number().int().nonnegative().optional(),
+  cacheWriteTokens: z.number().int().nonnegative().optional(),
 });
 export type AcpTokenUsage = z.infer<typeof acpTokenUsageSchema>;
 export const acpModelTokenUsageSchema = acpTokenUsageSchema.extend({

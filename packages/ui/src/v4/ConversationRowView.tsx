@@ -1,5 +1,6 @@
 /* oxlint-disable eslint(max-lines) -- v4 逐行 row 渲染分发集中收口（每种 row 一个 memo 叶子 + timelineMarker 分隔线），拆分会打散行类型对照。 */
 import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
+import { ConversationPlanRowView } from "@/v4/ConversationPlanRowView.js";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArchiveIcon,
@@ -2210,6 +2211,12 @@ function ConversationRowViewImpl({
       // 是该轮最小必要思考提示，必须由 turn 全序派生的 rowId 保留下来。
       return isConversationReasoningRowVisible(row.rowId, context) ? (
         <ReasoningRowView row={row} contentVariant={reasoningContentVariant} />
+      ) : null;
+    case "plan":
+      return context.messageStreamShowTodos === true ? (
+        <RowShell rowId={row.rowId}>
+          <ConversationPlanRowView row={row} />
+        </RowShell>
       ) : null;
     case "turnHeader":
       return <TurnHeaderRowView row={row} />;

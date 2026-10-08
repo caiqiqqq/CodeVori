@@ -1,6 +1,11 @@
 /* oxlint-disable eslint(max-lines) -- ACP Host owner keeps admission, persistence, permission and process-generation checks in one state machine. */
 import { randomUUID } from "node:crypto";
 import {
+  appendAcpConversationEntry,
+  finishAcpThoughts,
+  type AcpConversationUpdate,
+} from "./acpConversationEntries.js";
+import {
   appendFile,
   mkdir,
   readFile,
@@ -20,6 +25,11 @@ import {
   acpDiagnosticEventSchema,
   acpExecutionTraceChangedSchema,
   acpPromptInputSchema,
+  acpQueueItemInputSchema,
+  acpQueueEditInputSchema,
+  acpQueueReorderInputSchema,
+  acpQueueAutoDrainInputSchema,
+  type AcpQueueItem,
   acpAttachmentReadInputSchema,
   acpAttachmentReadResultSchema,
   acpStopInputSchema,
@@ -52,6 +62,7 @@ import type { ISkillsService } from "../skills/skills.js";
 import type { IAcpService } from "./acpService.js";
 import { AcpSessionLoadError, connectAcpAgent } from "./acpStdioConnection.js";
 import { buildAcpPromptBlocks } from "./acpPromptBlocks.js";
+import { AcpQueueGate } from "./acpQueueGate.js";
 import { AcpAttachmentStore } from "./acpAttachmentStore.js";
 import { projectAcpPluginMcpServers } from "./acpMcpServers.js";
 import { createAcpWorkflowMcp } from "./acpWorkflowMcp.js";
@@ -61,6 +72,7 @@ import { acpAgentConfigFingerprint, readAcpAgentConfigs } from "./acpAgentConfig
 import { projectAcpContextUsage } from "./acpContextUsage.js";
 import type { AcpToolDetails } from "./acpToolDetails.js";
 import { searchAcpSessions } from "./acpSessionSearch.js";
+import { readCodexUsageHistories, type CodexUsageHistory } from "./acpNativeUsage.js";
 import { recordAcpPromptUsage, summarizeAcpUsage } from "./acpUsageStats.js";
 import {
   availableAcpPlugins,
@@ -74,7 +86,7 @@ import {
 } from "./acpAgentManager.js";
 
 export type AcpUpdate =
-  | { kind: "text"; text: string; messageId?: string }
+  | AcpConversationUpdate
   | ({ kind: "tool"; id: string; title?: string; status?: string } & AcpToolDetails)
   | { kind: "config"; configOptions: AcpConfigOption[] }
   | { kind: "mode"; modeId: string }
@@ -94,6 +106,8 @@ export interface AcpConnectionPort {
   modeState: AcpModeState | null;
   /** Last completed ACP response; absent when a custom port does not report a stop reason. */
   readonly lastStopReason?: AcpStopReason;
+  /** Latest adapter-native cumulative numeric report, scoped to this native session. */
+  readonly nativeUsage?: AcpSession["nativeUsage"];
   /** undefined: no initial report; null: Agent explicitly reported unknown capacity. */
   contextUsage?: AcpSession["contextUsage"];
   setConfigOption(configId: string, value: string | boolean): Promise<AcpConfigOption[]>;
@@ -176,6 +190,10 @@ export function createAcpService(
   const writes = new Map<string, Promise<void>>();
   const diagnosticWrites = new Map<string, Promise<void>>();
   const active = new Map<string, string>();
+  const activeTokens = new Map<string, object>();
+  const queueGate = new AcpQueueGate();
+  const queueTasks = new Map<string, Promise<void>>();
+  const promptTasks = new Map<string, Promise<AcpSession>>();
   const internalResults = new Set<string>();
   const delegationRegistrations = new Map<string, { revoke(): void; canDelegate?: boolean }>();
   const stopping = new Set<string>();
@@ -199,6 +217,7 @@ export function createAcpService(
   const emitter = new Emitter<AcpSessionChanged>();
   const traceEmitter = new Emitter<AcpExecutionTraceChanged>();
   let disposed = false;
+  let usageHistoryRead: Promise<Map<string, CodexUsageHistory>> | null = null;
 
   const file = (id: string): string => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid ACP session id");
@@ -349,6 +368,12 @@ export function createAcpService(
   };
   const mutate = async (session: AcpSession, change: () => void): Promise<void> => {
     change();
+    if (session.status !== "running")
+      finishAcpThoughts(
+        session,
+        session.status === "interrupted" ? "interrupted" : "complete",
+        Date.now(),
+      );
     session.revision += 1;
     await save(session);
   };
@@ -377,11 +402,21 @@ export function createAcpService(
       if (wasRunning) {
         // 进程已重启，旧执行结果未知；不能把磁盘上的 running 当作仍可取消的活轮。
         session.status = "interrupted";
+        finishAcpThoughts(session, "interrupted", Date.now());
         session.usageBaselineKnown = false;
         session.pendingPermission = null;
         session.error = "ACP Agent 已断开，请重试发送新的消息。";
       }
-      if (migratedLegacyTime || wasRunning) {
+      const recoveredQueue = session.queue.items.length > 0;
+      if (recoveredQueue) {
+        session.queue.items = session.queue.items.filter(
+          (item) => !session.entries.some((entry) => entry.id === `user:${item.commandId}`),
+        );
+        for (const item of session.queue.items) item.state = "queued";
+        session.queue.autoDrain = false;
+        session.queue.pauseReason = "error";
+      }
+      if (migratedLegacyTime || wasRunning || recoveredQueue) {
         session.revision += 1;
         await save(session);
       }
@@ -506,6 +541,9 @@ export function createAcpService(
       disposed ||
       removed.has(session.id) ||
       active.has(session.id) ||
+      stopping.has(session.id) ||
+      configuring.has(session.id) ||
+      session.queue.items.length > 0 ||
       workflowNotifying.has(session.id)
     )
       return;
@@ -523,9 +561,21 @@ export function createAcpService(
       });
       const text = `ZCode 工作流运行结果：${JSON.stringify(notifications)}。请根据结果继续回答用户原来的问题。`;
       const usage = await port.prompt(text, [{ type: "text", text }]);
-      if (active.get(session.id) === commandId) {
+      const completedAt = Date.now();
+      if (
+        active.get(session.id) === commandId &&
+        connections.get(session.id) === port &&
+        !removed.has(session.id) &&
+        !disposed
+      ) {
         await mutate(session, () => {
           recordAcpPromptUsage(session, commandId, usage);
+          recordNativeUsage(session, port);
+          finishAcpThoughts(
+            session,
+            port.lastStopReason && port.lastStopReason !== "end_turn" ? "interrupted" : "complete",
+            completedAt,
+          );
           session.status = "idle";
         });
         delivered = true;
@@ -546,6 +596,7 @@ export function createAcpService(
     } finally {
       if (active.get(session.id) === commandId) active.delete(session.id);
       workflowNotifying.delete(session.id);
+      scheduleQueueDrain(session);
       // 修复原因：上一轮发送通知时另一个 run 可能结算；成功后继续清空队列。
       // 本次发送失败时保留通知，等待下一个用户回合，不在失败连接上忙循环。
       if (delivered && workflowNotifications.get(session.id)?.length)
@@ -698,30 +749,12 @@ export function createAcpService(
           let statusChanged = false;
           let toolStatus: string | undefined;
           const snapshotWrite = mutate(session, () => {
-            if (update.kind === "text") {
-              const baseId = `assistant:${commandId}:${update.messageId ?? "default"}`;
-              const previous = session.entries.at(-1);
-              // 修复原因：多数 ACP 适配器不传 messageId；工具后的正文不能继续拼到工具前，
-              // 否则原时间线无法识别最终答复。相邻 chunk 复用同一段，跨工具按 Host 行序新建。
-              if (
-                previous?.kind === "assistant" &&
-                (previous.id === baseId || previous.id.startsWith(`${baseId}:segment:`))
-              ) {
-                previous.text += update.text;
-              } else {
-                const id = session.entries.some((entry) => entry.id === baseId)
-                  ? `${baseId}:segment:${session.entries.length}`
-                  : baseId;
-                session.entries.push({
-                  id,
-                  kind: "assistant",
-                  text: update.text,
-                  createdAt: receivedAt,
-                });
-              }
+            if (update.kind === "text" || update.kind === "thought" || update.kind === "plan") {
+              appendAcpConversationEntry(session, commandId, update, receivedAt);
             } else {
               const id = `tool:${commandId}:${update.id}`;
               const index = session.entries.findIndex((entry) => entry.id === id);
+              if (index < 0) finishAcpThoughts(session, "complete", receivedAt);
               const previous = session.entries[index];
               statusChanged =
                 previous?.kind !== "tool" ||
@@ -788,15 +821,20 @@ export function createAcpService(
           connections.delete(session.id);
           settlePermission(session.id, receivedAt);
           session.usageBaselineKnown = false;
-          if (!active.has(session.id)) return;
+          if (!active.has(session.id) && !session.queue.items.length) return;
           const commandId = active.get(session.id);
           active.delete(session.id);
+          activeTokens.delete(session.id);
+          queueTasks.delete(session.id);
           scheduleWorkflowNotifications(session);
           void mutate(session, () => {
             session.pendingPermission = null;
             session.status = "interrupted";
             session.usageBaselineKnown = false;
             session.error = reason;
+            session.queue.autoDrain = false;
+            session.queue.pauseReason = "error";
+            for (const item of session.queue.items) item.state = "queued";
             const turnIndex = turnIndexForCommand(session, commandId);
             const entry = turnIndex === undefined ? undefined : session.entries[turnIndex];
             if (entry?.kind === "user") entry.traceError = reason;
@@ -831,6 +869,7 @@ export function createAcpService(
           // 修复原因：新进程重新连接已有 ACP 会话后，适配器可能重置累计计数；
           // 首份报告必须先重建基线，不能与上一个进程的快照直接求差。
           session.usageBaselineKnown = false;
+          recordNativeUsage(session, port);
           if (!receivedConfig) session.configOptions = port.configOptions ?? [];
           // 修复原因：握手期间的容量此前随历史消息被丢弃；只在连接成功后合入快照。
           // 实时通知可能早于握手结果被 Host 接收，不能用初始值反向覆盖较新的通知。
@@ -840,6 +879,7 @@ export function createAcpService(
           if (session.modeState && updatedModeId) session.modeState.currentModeId = updatedModeId;
         });
       } else {
+        recordNativeUsage(session, port);
         if (!receivedConfig) session.configOptions = port.configOptions ?? [];
         if (!receivedContextUsage && port.contextUsage !== undefined)
           session.contextUsage = projectAcpContextUsage(port.contextUsage);
@@ -990,6 +1030,499 @@ export function createAcpService(
       .filter((value) => !removed.has(value.id));
   };
 
+  const ensureOpen = (session: AcpSession): void => {
+    if (disposed || removed.has(session.id)) throw new Error("ACP session closed");
+  };
+  const editableQueueItem = (session: AcpSession, id: string): AcpQueueItem => {
+    const item = session.queue.items.find((candidate) => candidate.commandId === id);
+    if (!item) throw new Error("ACP queue item missing");
+    if (item.state !== "queued") throw new Error("ACP queue item is not editable");
+    return item;
+  };
+  const changeQueue = async (session: AcpSession, change: () => void): Promise<void> => {
+    const before = structuredClone(session.queue);
+    try {
+      await mutate(session, change);
+    } catch (error) {
+      // 修复原因：队列 IO 失败只能回滚队列，不能用旧快照覆盖并发流式正文。
+      session.queue = before;
+      throw error;
+    }
+  };
+  const enqueuePrompt = async (
+    session: AcpSession,
+    prompt: ReturnType<typeof acpPromptInputSchema.parse>,
+  ): Promise<void> => {
+    if (session.queue.items.length >= 100) throw new Error("ACP queue is full (100 messages)");
+    const port = await attach(session);
+    const blocks = await buildAcpPromptBlocks({
+      ...prompt,
+      workspacePath: session.workspacePath,
+      capabilities: port.promptCapabilities,
+    });
+    const saved = await attachmentStore.save(
+      session.id,
+      prompt.attachments,
+      blocks.slice(1 + prompt.workspaceFiles.length),
+    );
+    const wasProvisional = session.provisional;
+    const previousTitle = session.title;
+    try {
+      ensureOpen(session);
+      if (connections.get(session.id) !== port)
+        throw new Error("ACP session changed while queuing");
+      await changeQueue(session, () => {
+        delete session.provisional;
+        if (!session.entries.length && !session.queue.items.length)
+          session.title = prompt.text.trim().slice(0, 72) || "Attachments";
+        session.queue.items.push({
+          commandId: prompt.commandId,
+          text: prompt.text,
+          attachments: saved.attachments,
+          workspaceFiles: prompt.workspaceFiles,
+          createdAt: Date.now(),
+          state: "queued",
+        });
+      });
+    } catch (error) {
+      session.provisional = wasProvisional;
+      session.title = previousTitle;
+      await attachmentStore.discard(session.id, saved.group);
+      throw error;
+    }
+  };
+  const reserveQueuedPrompt = async (session: AcpSession, item: AcpQueueItem): Promise<void> => {
+    if (active.has(session.id) || stopping.has(session.id) || configuring.has(session.id))
+      throw new Error("ACP session is running");
+    active.set(session.id, item.commandId);
+    activeTokens.set(session.id, {});
+    try {
+      await changeQueue(session, () => {
+        item.state = "reserved";
+      });
+    } catch (error) {
+      active.delete(session.id);
+      session.queue.autoDrain = false;
+      session.queue.pauseReason = "error";
+      session.error = failureMessage(error);
+      await save(session).catch(() => {});
+      throw error;
+    }
+  };
+  const launchQueuedPrompt = (session: AcpSession, item: AcpQueueItem): void => {
+    const token = activeTokens.get(session.id);
+    const ownsRun = () =>
+      active.get(session.id) === item.commandId && activeTokens.get(session.id) === token;
+    const task = (async () => {
+      try {
+        const attachments = await attachmentStore.promptInputs(session.id, item.attachments);
+        if (!ownsRun() || disposed || removed.has(session.id)) return;
+        await executePrompt(
+          session,
+          {
+            commandId: item.commandId,
+            text: item.text,
+            attachments,
+            workspaceFiles: item.workspaceFiles,
+          },
+          item,
+        );
+      } catch (error) {
+        await queueGate.run(session.id, async () => {
+          if (
+            disposed ||
+            removed.has(session.id) ||
+            activeTokens.get(session.id) !== token ||
+            stopping.has(session.id) ||
+            (active.has(session.id) && !ownsRun())
+          )
+            return;
+          if (ownsRun()) active.delete(session.id);
+          await changeQueue(session, () => {
+            const current = session.queue.items.find(
+              (candidate) => candidate.commandId === item.commandId,
+            );
+            if (current) current.state = "queued";
+            session.queue.autoDrain = false;
+            session.queue.pauseReason = "error";
+            session.error = failureMessage(error);
+          });
+        });
+      }
+    })();
+    queueTasks.set(session.id, task);
+    notificationTasks.add(task);
+    void task
+      .catch((error) =>
+        logger.warn(undefined, "ACP queue dispatch failed", { error: failureMessage(error) }),
+      )
+      .finally(() => {
+        notificationTasks.delete(task);
+        if (queueTasks.get(session.id) === task) {
+          queueTasks.delete(session.id);
+          scheduleQueueDrain(session);
+        }
+      });
+  };
+  const scheduleQueueDrain = (session: AcpSession): void => {
+    if (
+      disposed ||
+      removed.has(session.id) ||
+      queueTasks.has(session.id) ||
+      active.has(session.id) ||
+      stopping.has(session.id) ||
+      configuring.has(session.id) ||
+      !session.queue.autoDrain ||
+      session.queue.items[0]?.state !== "queued"
+    )
+      return;
+    const task = queueGate.run(session.id, async () => {
+      const item = session.queue.items[0];
+      if (
+        disposed ||
+        removed.has(session.id) ||
+        active.has(session.id) ||
+        stopping.has(session.id) ||
+        configuring.has(session.id) ||
+        !session.queue.autoDrain ||
+        item?.state !== "queued"
+      )
+        return;
+      // 修复依据：预留与 active 栅栏同属 Host；不能从 Renderer 或 timer 另起一轮。
+      await reserveQueuedPrompt(session, item);
+      launchQueuedPrompt(session, item);
+    });
+    queueTasks.set(session.id, task);
+    notificationTasks.add(task);
+    void task
+      .catch((error) =>
+        logger.warn(undefined, "ACP queue reservation failed", { error: failureMessage(error) }),
+      )
+      .finally(() => {
+        notificationTasks.delete(task);
+        if (queueTasks.get(session.id) === task) queueTasks.delete(session.id);
+      });
+  };
+
+  const executePrompt = async (
+    session: AcpSession,
+    prompt: ReturnType<typeof acpPromptInputSchema.parse>,
+    queued?: AcpQueueItem,
+  ): Promise<AcpSession> => {
+    const commandId = prompt.commandId.trim();
+    const token = activeTokens.get(session.id);
+    const ownsRun = () =>
+      active.get(session.id) === commandId && activeTokens.get(session.id) === token;
+    const goal = session.goal;
+    let admitted = false;
+    let attachmentGroup: string | null = null;
+    let attachmentWrite: Promise<void> | undefined;
+    let finishAttachmentWrite: (() => void) | undefined;
+    const finishAttachmentIO = () => {
+      if (!attachmentWrite) return;
+      const inFlight = attachmentWrites.get(session.id);
+      inFlight?.delete(attachmentWrite);
+      if (!inFlight?.size) attachmentWrites.delete(session.id);
+      finishAttachmentWrite?.();
+      attachmentWrite = undefined;
+    };
+    try {
+      if (!internalResults.has(commandId)) await options.delegation?.onInput(session);
+      const port = await attach(session);
+      const delegationInstruction =
+        port.provisionedMcpNames?.has("zcode-delegation") &&
+        delegationRegistrations.get(session.id)?.canDelegate !== false
+          ? "用户提到委派或 @智能体时，使用 zcode-delegation 的 ListDelegationAgents / DelegateTask；保持当前主智能体，显式传递必要上下文，不复制全部历史。子任务完成只汇总，不自动继续修改、合并或推送。"
+          : undefined;
+      const workflowInstruction = /^\/workflow(?:\s|$)/i.test(prompt.text.trimStart())
+        ? `Use the ZCode zcode-workflows MCP ReadWorkflowInstructions tool, then call CreateWorkflow for this request: ${prompt.text.trimStart().replace(/^\/workflow\s*/i, "")}`
+        : undefined;
+      const references = referencedAcpPlugins(prompt.text);
+      const [pluginSnapshot, pluginSkills] = references.length
+        ? await Promise.all([
+            options.pluginSource?.getAcpPluginCapabilities({
+              workspacePath: session.workspacePath,
+              ...(session.workspaceIdentity
+                ? { workspaceIdentity: session.workspaceIdentity }
+                : {}),
+              ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
+            }),
+            options.skillsService?.list?.({
+              workspacePath: session.workspacePath,
+              ...(session.workspaceIdentity
+                ? { workspaceIdentity: session.workspaceIdentity }
+                : {}),
+            }),
+          ])
+        : [undefined, undefined];
+      if (references.length && !pluginSnapshot) throw new Error("目标 Host 不支持 ACP 插件引用");
+      const available = pluginSnapshot
+        ? availableAcpPlugins(
+            pluginSnapshot,
+            pluginSkills?.skills ?? [],
+            port.provisionedMcpNames ?? new Set(),
+          )
+        : [];
+      const skillContext = await options.skillsService?.buildPromptContext({
+        workspacePath: session.workspacePath,
+        ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
+        prompt: prompt.text,
+      });
+      const blocks = await buildAcpPromptBlocks({
+        text: buildAcpPluginPrompt(
+          skillContext?.prompt ?? prompt.text,
+          references,
+          available,
+          pluginSkills?.skills ?? [],
+        ),
+        workspacePath: session.workspacePath,
+        workspaceFiles: prompt.workspaceFiles,
+        attachments: prompt.attachments,
+        capabilities: port.promptCapabilities,
+      });
+      if (!ownsRun() || removed.has(session.id) || disposed || connections.get(session.id) !== port)
+        return structuredClone(session);
+      // 图片必须保存发送时的内容；快照只记录引用，不能把临时路径或 base64 当成历史。
+      if (prompt.attachments.length) {
+        attachmentWrite = new Promise<void>((resolve) => {
+          finishAttachmentWrite = resolve;
+        });
+        const inFlight = attachmentWrites.get(session.id) ?? new Set<Promise<void>>();
+        inFlight.add(attachmentWrite);
+        attachmentWrites.set(session.id, inFlight);
+      }
+      const savedAttachments = queued
+        ? { attachments: queued.attachments, group: null }
+        : await attachmentStore.save(
+            session.id,
+            prompt.attachments,
+            blocks.slice(1 + prompt.workspaceFiles.length),
+          );
+      attachmentGroup = savedAttachments.group;
+      if (!ownsRun() || removed.has(session.id) || disposed || connections.get(session.id) !== port)
+        return structuredClone(session);
+      if (workflowInstruction) blocks.unshift({ type: "text", text: workflowInstruction });
+      if (delegationInstruction) blocks.unshift({ type: "text", text: delegationInstruction });
+      const notifications = workflowNotifications.get(session.id);
+      if (notifications?.length) {
+        workflowNotifications.delete(session.id);
+        blocks.unshift({
+          type: "text",
+          text: `ZCode 工作流运行结果：${JSON.stringify(notifications)}`,
+        });
+      }
+      if (goal) {
+        // 目标属于 Host 会话，不是 ZCode CLI 的 /goal 命令；仅向 Agent 传入本轮有效目标。
+        blocks.unshift({ type: "text", text: `Session objective: ${goal}` });
+      }
+      if (internalResults.has(commandId))
+        await options.delegation?.onResultInput(session, commandId);
+      if (!ownsRun() || removed.has(session.id)) {
+        return structuredClone(session);
+      }
+      const admittedAt = Date.now();
+      await queueGate.run(session.id, async () => {
+        if (!ownsRun() || disposed || removed.has(session.id)) return;
+        const beforeAdmission = structuredClone(session);
+        try {
+          await mutate(session, () => {
+            // 修复原因：预连接只存在于 Host 内存；首条有效消息与会话一起落盘。
+            delete session.provisional;
+            session.status = "running";
+            session.error = null;
+            session.title =
+              session.entries.length === 0
+                ? prompt.text.trim().slice(0, 72) || "Attachments"
+                : session.title;
+            if (queued)
+              session.queue.items = session.queue.items.filter(
+                (item) => item.commandId !== commandId,
+              );
+            session.entries.push({
+              id: `user:${commandId}`,
+              kind: "user",
+              text: prompt.text,
+              createdAt: admittedAt,
+              ...(session.configOptions.length
+                ? {
+                    traceSelections: session.configOptions.map((option) => ({
+                      name: option.name,
+                      value: option.currentValue,
+                    })),
+                  }
+                : session.modeState
+                  ? {
+                      traceSelections: [{ name: "Mode", value: session.modeState.currentModeId }],
+                    }
+                  : {}),
+              ...(savedAttachments.attachments.length
+                ? { attachments: savedAttachments.attachments }
+                : {}),
+              ...(prompt.attachments.length || prompt.workspaceFiles.length
+                ? {
+                    attachmentNames: [
+                      ...prompt.attachments.map((item) => item.fileName),
+                      ...prompt.workspaceFiles,
+                    ],
+                  }
+                : {}),
+            });
+          });
+          admitted = true;
+          finishAttachmentIO();
+          await appendDiagnostic(
+            session,
+            { kind: "prompt-accepted", turnIndex: turnIndexForCommand(session, commandId) },
+            admittedAt,
+          );
+        } catch (error) {
+          // 首次落盘失败时恢复内存草稿，保持原文可重试且历史不会出现半条消息。
+          Object.assign(session, beforeAdmission);
+          throw error;
+        }
+      });
+      if (!admitted || !ownsRun() || removed.has(session.id)) {
+        return structuredClone(session);
+      }
+      const usage = await port.prompt(prompt.text, blocks);
+      const completedAt = Date.now();
+      await queueGate.run(session.id, async () => {
+        if (ownsRun() && connections.get(session.id) === port && !disposed) {
+          await mutate(session, () => {
+            recordAcpPromptUsage(session, commandId, usage);
+            recordNativeUsage(session, port);
+            session.status = "idle";
+            finishAcpThoughts(
+              session,
+              port.lastStopReason && port.lastStopReason !== "end_turn"
+                ? "interrupted"
+                : "complete",
+              completedAt,
+            );
+            session.pendingPermission = null;
+            // 修复依据：只有正常 end_turn 可自动继续，Agent 自行取消/拒绝/限额需暂停。
+            if (port.lastStopReason && port.lastStopReason !== "end_turn") {
+              session.queue.autoDrain = false;
+              session.queue.pauseReason = port.lastStopReason === "cancelled" ? "stopped" : "error";
+            }
+          });
+          await appendDiagnostic(
+            session,
+            {
+              kind: "turn-completed",
+              turnIndex: turnIndexForCommand(session, commandId),
+              stopReason: port.lastStopReason,
+            },
+            completedAt,
+          );
+          active.delete(session.id);
+          // 修复原因：工作流可在主回合占用 ACP 连接时先完成；释放连接后必须主动派送结果。
+          scheduleQueueDrain(session);
+          scheduleWorkflowNotifications(session);
+        }
+      });
+    } catch (error) {
+      const interruptedAt = Date.now();
+      await queueGate.run(session.id, async () => {
+        if (ownsRun()) {
+          active.delete(session.id);
+          // Capability/file validation precedes admission: rejected input never enters history.
+          if (!admitted) {
+            // 另一条输入可在本轮准备阶段入队；准备失败也必须暂停这些已接受输入。
+            if (session.queue.items.length) {
+              await changeQueue(session, () => {
+                session.queue.autoDrain = false;
+                session.queue.pauseReason = "error";
+                for (const item of session.queue.items) item.state = "queued";
+              }).catch(() => {});
+            }
+            throw error;
+          }
+          await mutate(session, () => {
+            session.status = "interrupted";
+            session.queue.autoDrain = false;
+            session.queue.pauseReason = "error";
+            session.usageBaselineKnown = false;
+            session.pendingPermission = null;
+            session.error = failureMessage(error);
+            const turnIndex = turnIndexForCommand(session, commandId);
+            const entry = turnIndex === undefined ? undefined : session.entries[turnIndex];
+            if (entry?.kind === "user") entry.traceError = failureMessage(error);
+          }).catch((persistenceError) => {
+            logger.warn(undefined, "ACP turn interruption persistence failed", {
+              error: failureMessage(persistenceError),
+            });
+          });
+          await appendDiagnostic(
+            session,
+            { kind: "turn-interrupted", turnIndex: turnIndexForCommand(session, commandId) },
+            interruptedAt,
+          );
+          scheduleWorkflowNotifications(session);
+          throw error;
+        }
+      });
+      // 用户已停止本轮或旧进程已退出：结果由 Host 快照决定，不重复报告取消为发送失败。
+    } finally {
+      // stop 后新轮可先完成，不能覆盖旧轮 IO；删除/关闭必须等到所有未接受副本清理完。
+      try {
+        if (!admitted) await attachmentStore.discard(session.id, attachmentGroup);
+      } finally {
+        finishAttachmentIO();
+      }
+    }
+    return structuredClone(session);
+  };
+
+  const stopSession = async (
+    session: AcpSession,
+    parsed?: ReturnType<typeof acpStopInputSchema.parse>,
+  ): Promise<void> => {
+    // 待办观察取消只针对其实际 command；旧取消请求不能停止用户后续的新消息或工作流。
+    if (parsed?.expectedCommandId && active.get(session.id) !== parsed?.expectedCommandId) return;
+    if (stopping.has(session.id)) return;
+    const hadActive = active.has(session.id);
+    const commandId = active.get(session.id);
+    const stoppedAt = Date.now();
+    stopping.add(session.id);
+    active.delete(session.id);
+    // 修复原因：取消结束后新队列无需等待旧异步准备返回；旧 task 只负责清理，失去消费权。
+    activeTokens.delete(session.id);
+    queueTasks.delete(session.id);
+    try {
+      // 停止栅栏先占位，再异步暂停委派；不能在 await 间隙接收新轮消息。
+      await options.delegation?.onStop(session);
+      workflowHost.stopSession(session.id);
+      await changeQueue(session, () => {
+        session.queue.autoDrain = false;
+        session.queue.pauseReason = "stopped";
+        for (const item of session.queue.items) item.state = "queued";
+      });
+      if (!hadActive) return;
+      settlePermission(session.id, stoppedAt);
+      await mutate(session, () => {
+        finishAcpThoughts(session, "interrupted", stoppedAt);
+        session.status = "idle";
+        session.usageBaselineKnown = false;
+        session.pendingPermission = null;
+      });
+      await appendDiagnostic(
+        session,
+        {
+          kind: "turn-stopped",
+          turnIndex: turnIndexForCommand(session, commandId),
+          stopReason: "cancelled",
+        },
+        stoppedAt,
+      );
+      await connections.get(session.id)?.cancel();
+    } finally {
+      // 取消后终止旧连接，避免旧 prompt 未结束时新轮进入同一 Agent 进程。
+      if (hadActive) detach(session.id);
+      stopping.delete(session.id);
+    }
+  };
+
   const service: IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } = {
     async listPlugins(input): Promise<AcpPlugin[]> {
       const target = acpWorkspaceSchema.parse(input);
@@ -1071,7 +1604,10 @@ export function createAcpService(
       // Host 自身的 active/workflow 所有者先拒绝运行，再仅断开空闲适配器。
       if (
         scopedSessions.some(
-          (session) => active.has(session.id) || workflowHost.ownsLive(session.id),
+          (session) =>
+            active.has(session.id) ||
+            session.queue.items.length > 0 ||
+            workflowHost.ownsLive(session.id),
         )
       ) {
         return false;
@@ -1082,7 +1618,31 @@ export function createAcpService(
     async getUsageStats(request) {
       if (request.range !== "all" && request.range !== "7d" && request.range !== "30d")
         throw new Error("Invalid app usage range");
-      return summarizeAcpUsage(await listAllSessions(), request);
+      const current = await listAllSessions();
+      // 修复原因：统计页从未接入 Codex 原生请求，因而全是未知轮次；只读回溯
+      // 不启动 Agent，也不把会话累计硬塞给当前用户消息。并发区间查询共用一次 IO。
+      if (!usageHistoryRead) {
+        usageHistoryRead = (async () => {
+          const root = await agentManager.resolveCodexHome?.();
+          return root
+            ? readCodexUsageHistories(current, root)
+            : new Map<string, CodexUsageHistory>();
+        })().catch(() => new Map<string, CodexUsageHistory>());
+      }
+      const flight = usageHistoryRead;
+      let histories: Map<string, CodexUsageHistory>;
+      try {
+        histories = await flight;
+      } finally {
+        if (usageHistoryRead === flight) usageHistoryRead = null;
+      }
+      if (disposed) throw new Error("ACP service closed");
+      return summarizeAcpUsage(
+        current.filter((session) => !removed.has(session.id)),
+        request,
+        Date.now(),
+        histories,
+      );
     },
     async search(input) {
       const query = acpSessionSearchInputSchema.parse(input);
@@ -1182,6 +1742,7 @@ export function createAcpService(
           !(error instanceof AcpSessionLoadError) ||
           session.status !== "idle" ||
           session.entries.length > 0 ||
+          session.queue.items.length > 0 ||
           session.goal !== null
         )
           throw error;
@@ -1243,6 +1804,7 @@ export function createAcpService(
           modeState: null,
           contextUsage: null,
           entries: [],
+          queue: { items: [], autoDrain: true },
           usageBaselineKnown: true,
           usageBaseline: null,
           usageTurns: [],
@@ -1284,6 +1846,7 @@ export function createAcpService(
         active.has(session.id) ||
         stopping.has(session.id) ||
         configuring.has(session.id) ||
+        session.queue.items.length > 0 ||
         session.status === "running"
       )
         return false;
@@ -1321,256 +1884,136 @@ export function createAcpService(
     },
     async prompt(input) {
       const session = await scoped(input);
-      if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
-      const prompt = acpPromptInputSchema.parse(input);
-      const commandId = prompt.commandId.trim();
-      if (!prompt.text.trim() && !prompt.attachments.length && !prompt.workspaceFiles.length) {
-        throw new Error("ACP prompt is empty");
-      }
-      if (session.entries.some((entry) => entry.id === `user:${commandId}`)) {
-        return structuredClone(session);
-      }
-      if (
-        active.has(session.id) ||
-        stopping.has(session.id) ||
-        configuring.has(session.id) ||
-        session.status === "running"
-      )
+      if (stopping.has(session.id) || configuring.has(session.id))
         throw new Error("ACP session is running");
-      active.set(session.id, commandId);
-      const goal = session.goal;
-      let admitted = false;
-      let attachmentGroup: string | null = null;
-      let attachmentWrite: Promise<void> | undefined;
-      let finishAttachmentWrite: (() => void) | undefined;
-      const finishAttachmentIO = () => {
-        if (!attachmentWrite) return;
-        const inFlight = attachmentWrites.get(session.id);
-        inFlight?.delete(attachmentWrite);
-        if (!inFlight?.size) attachmentWrites.delete(session.id);
-        finishAttachmentWrite?.();
-        attachmentWrite = undefined;
-      };
-      try {
-        if (!internalResults.has(commandId)) await options.delegation?.onInput(session);
-        const port = await attach(session);
-        const delegationInstruction =
-          port.provisionedMcpNames?.has("zcode-delegation") &&
-          delegationRegistrations.get(session.id)?.canDelegate !== false
-            ? "用户提到委派或 @智能体时，使用 zcode-delegation 的 ListDelegationAgents / DelegateTask；保持当前主智能体，显式传递必要上下文，不复制全部历史。子任务完成只汇总，不自动继续修改、合并或推送。"
-            : undefined;
-        const workflowInstruction = /^\/workflow(?:\s|$)/i.test(prompt.text.trimStart())
-          ? `Use the ZCode zcode-workflows MCP ReadWorkflowInstructions tool, then call CreateWorkflow for this request: ${prompt.text.trimStart().replace(/^\/workflow\s*/i, "")}`
-          : undefined;
-        const references = referencedAcpPlugins(prompt.text);
-        const [pluginSnapshot, pluginSkills] = references.length
-          ? await Promise.all([
-              options.pluginSource?.getAcpPluginCapabilities({
-                workspacePath: session.workspacePath,
-                ...(session.workspaceIdentity
-                  ? { workspaceIdentity: session.workspaceIdentity }
-                  : {}),
-                ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
-              }),
-              options.skillsService?.list?.({
-                workspacePath: session.workspacePath,
-                ...(session.workspaceIdentity
-                  ? { workspaceIdentity: session.workspaceIdentity }
-                  : {}),
-              }),
-            ])
-          : [undefined, undefined];
-        if (references.length && !pluginSnapshot) throw new Error("目标 Host 不支持 ACP 插件引用");
-        const available = pluginSnapshot
-          ? availableAcpPlugins(
-              pluginSnapshot,
-              pluginSkills?.skills ?? [],
-              port.provisionedMcpNames ?? new Set(),
-            )
-          : [];
-        const skillContext = await options.skillsService?.buildPromptContext({
-          workspacePath: session.workspacePath,
-          ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
-          prompt: prompt.text,
-        });
-        const blocks = await buildAcpPromptBlocks({
-          text: buildAcpPluginPrompt(
-            skillContext?.prompt ?? prompt.text,
-            references,
-            available,
-            pluginSkills?.skills ?? [],
-          ),
-          workspacePath: session.workspacePath,
-          workspaceFiles: prompt.workspaceFiles,
-          attachments: prompt.attachments,
-          capabilities: port.promptCapabilities,
-        });
+      const prompt = acpPromptInputSchema.parse(input);
+      prompt.commandId = prompt.commandId.trim();
+      if (
+        !prompt.commandId ||
+        (!prompt.text.trim() && !prompt.attachments.length && !prompt.workspaceFiles.length)
+      )
+        throw new Error("ACP prompt is empty");
+      const receipt = await queueGate.run(session.id, async () => {
+        ensureOpen(session);
         if (
-          active.get(session.id) !== commandId ||
-          removed.has(session.id) ||
-          disposed ||
-          connections.get(session.id) !== port
+          session.entries.some((entry) => entry.id === `user:${prompt.commandId}`) ||
+          session.queue.items.some((item) => item.commandId === prompt.commandId) ||
+          session.queue.discardedCommandIds?.includes(prompt.commandId)
         )
-          return structuredClone(session);
-        // 图片必须保存发送时的内容；快照只记录引用，不能把临时路径或 base64 当成历史。
-        if (prompt.attachments.length) {
-          attachmentWrite = new Promise<void>((resolve) => {
-            finishAttachmentWrite = resolve;
-          });
-          const inFlight = attachmentWrites.get(session.id) ?? new Set<Promise<void>>();
-          inFlight.add(attachmentWrite);
-          attachmentWrites.set(session.id, inFlight);
-        }
-        const savedAttachments = await attachmentStore.save(
-          session.id,
-          prompt.attachments,
-          blocks.slice(1 + prompt.workspaceFiles.length),
-        );
-        attachmentGroup = savedAttachments.group;
+          return { snapshot: structuredClone(session) };
+        const existing = promptTasks.get(`${session.id}:${prompt.commandId}`);
+        if (existing) return { turn: existing };
+        if (stopping.has(session.id) || configuring.has(session.id))
+          throw new Error("ACP session is running");
         if (
-          active.get(session.id) !== commandId ||
-          removed.has(session.id) ||
-          disposed ||
-          connections.get(session.id) !== port
+          internalResults.has(prompt.commandId) &&
+          (active.has(session.id) || session.queue.items.length)
         )
-          return structuredClone(session);
-        if (workflowInstruction) blocks.unshift({ type: "text", text: workflowInstruction });
-        if (delegationInstruction) blocks.unshift({ type: "text", text: delegationInstruction });
-        const notifications = workflowNotifications.get(session.id);
-        if (notifications?.length) {
-          workflowNotifications.delete(session.id);
-          blocks.unshift({
-            type: "text",
-            text: `ZCode 工作流运行结果：${JSON.stringify(notifications)}`,
-          });
+          throw new Error("ACP session is running");
+        if (active.has(session.id) || session.status === "running" || session.queue.items.length) {
+          await enqueuePrompt(session, prompt);
+          return { snapshot: structuredClone(session) };
         }
-        if (goal) {
-          // 目标属于 Host 会话，不是 ZCode CLI 的 /goal 命令；仅向 Agent 传入本轮有效目标。
-          blocks.unshift({ type: "text", text: `Session objective: ${goal}` });
-        }
-        if (internalResults.has(commandId))
-          await options.delegation?.onResultInput(session, commandId);
-        if (active.get(session.id) !== commandId || removed.has(session.id)) {
-          return structuredClone(session);
-        }
-        const beforeAdmission = structuredClone(session);
-        const admittedAt = Date.now();
-        try {
-          await mutate(session, () => {
-            // 修复原因：预连接只存在于 Host 内存；首条有效消息与会话一起落盘。
-            delete session.provisional;
-            session.status = "running";
-            session.error = null;
-            session.title =
-              session.entries.length === 0
-                ? prompt.text.trim().slice(0, 72) || "Attachments"
-                : session.title;
-            session.entries.push({
-              id: `user:${commandId}`,
-              kind: "user",
-              text: prompt.text,
-              createdAt: admittedAt,
-              ...(session.configOptions.length
-                ? {
-                    traceSelections: session.configOptions.map((option) => ({
-                      name: option.name,
-                      value: option.currentValue,
-                    })),
-                  }
-                : session.modeState
-                  ? {
-                      traceSelections: [{ name: "Mode", value: session.modeState.currentModeId }],
-                    }
-                  : {}),
-              ...(savedAttachments.attachments.length
-                ? { attachments: savedAttachments.attachments }
-                : {}),
-              ...(prompt.attachments.length || prompt.workspaceFiles.length
-                ? {
-                    attachmentNames: [
-                      ...prompt.attachments.map((item) => item.fileName),
-                      ...prompt.workspaceFiles,
-                    ],
-                  }
-                : {}),
-            });
-          });
-          admitted = true;
-          finishAttachmentIO();
-          await appendDiagnostic(
-            session,
-            { kind: "prompt-accepted", turnIndex: turnIndexForCommand(session, commandId) },
-            admittedAt,
-          );
-        } catch (error) {
-          // 首次落盘失败时恢复内存草稿，保持原文可重试且历史不会出现半条消息。
-          Object.assign(session, beforeAdmission);
-          throw error;
-        }
-        if (active.get(session.id) !== commandId || removed.has(session.id)) {
-          return structuredClone(session);
-        }
-        const usage = await port.prompt(prompt.text, blocks);
-        const completedAt = Date.now();
-        if (
-          active.get(session.id) === commandId &&
-          connections.get(session.id) === port &&
-          !disposed
-        ) {
-          await mutate(session, () => {
-            recordAcpPromptUsage(session, commandId, usage);
-            session.status = "idle";
-            session.pendingPermission = null;
-          });
-          await appendDiagnostic(
-            session,
-            {
-              kind: "turn-completed",
-              turnIndex: turnIndexForCommand(session, commandId),
-              stopReason: port.lastStopReason,
-            },
-            completedAt,
-          );
-          active.delete(session.id);
-          // 修复原因：工作流可在主回合占用 ACP 连接时先完成；释放连接后必须主动派送结果。
-          scheduleWorkflowNotifications(session);
-        }
-      } catch (error) {
-        const interruptedAt = Date.now();
-        if (active.get(session.id) === commandId) {
-          active.delete(session.id);
-          // Capability/file validation precedes admission: rejected input never enters history.
-          if (!admitted) throw error;
-          await mutate(session, () => {
-            session.status = "interrupted";
-            session.usageBaselineKnown = false;
-            session.pendingPermission = null;
-            session.error = failureMessage(error);
-            const turnIndex = turnIndexForCommand(session, commandId);
-            const entry = turnIndex === undefined ? undefined : session.entries[turnIndex];
-            if (entry?.kind === "user") entry.traceError = failureMessage(error);
-          }).catch((persistenceError) => {
-            logger.warn(undefined, "ACP turn interruption persistence failed", {
-              error: failureMessage(persistenceError),
-            });
-          });
-          await appendDiagnostic(
-            session,
-            { kind: "turn-interrupted", turnIndex: turnIndexForCommand(session, commandId) },
-            interruptedAt,
-          );
-          scheduleWorkflowNotifications(session);
-          throw error;
-        }
-        // 用户已停止本轮或旧进程已退出：结果由 Host 快照决定，不重复报告取消为发送失败。
-      } finally {
-        // stop 后新轮可先完成，不能覆盖旧轮 IO；删除/关闭必须等到所有未接受副本清理完。
-        try {
-          if (!admitted) await attachmentStore.discard(session.id, attachmentGroup);
-        } finally {
-          finishAttachmentIO();
-        }
-      }
+        active.set(session.id, prompt.commandId);
+        activeTokens.set(session.id, {});
+        const turn = executePrompt(session, prompt);
+        const key = `${session.id}:${prompt.commandId}`;
+        promptTasks.set(key, turn);
+        void turn
+          .finally(() => {
+            if (promptTasks.get(key) === turn) promptTasks.delete(key);
+          })
+          .catch(() => {});
+        return { turn };
+      });
+      scheduleQueueDrain(session);
+      return receipt.turn ? receipt.turn : receipt.snapshot!;
+    },
+    async deleteQueueItem(input) {
+      const parsed = acpQueueItemInputSchema.parse(input);
+      const session = await scoped(parsed);
+      await queueGate.run(session.id, async () => {
+        ensureOpen(session);
+        if (session.queue.discardedCommandIds?.includes(parsed.queueItemId)) return;
+        const item = editableQueueItem(session, parsed.queueItemId);
+        await changeQueue(session, () => {
+          session.queue.items = session.queue.items.filter((candidate) => candidate !== item);
+          (session.queue.discardedCommandIds ??= []).push(item.commandId);
+        });
+        await attachmentStore.discardRefs(session.id, item.attachments);
+      });
+      scheduleQueueDrain(session);
+      scheduleWorkflowNotifications(session);
+      return structuredClone(session);
+    },
+    async editQueueItem(input) {
+      const parsed = acpQueueEditInputSchema.parse(input);
+      const session = await scoped(parsed);
+      await queueGate.run(session.id, async () => {
+        ensureOpen(session);
+        const item = editableQueueItem(session, parsed.queueItemId);
+        if (!parsed.text.trim() && !item.attachments.length && !item.workspaceFiles.length)
+          throw new Error("ACP prompt is empty");
+        await changeQueue(session, () => {
+          item.text = parsed.text;
+        });
+      });
+      return structuredClone(session);
+    },
+    async reorderQueueItem(input) {
+      const parsed = acpQueueReorderInputSchema.parse(input);
+      const session = await scoped(parsed);
+      await queueGate.run(session.id, async () => {
+        ensureOpen(session);
+        const item = editableQueueItem(session, parsed.queueItemId);
+        if (parsed.beforeQueueItemId === item.commandId) return;
+        if (parsed.beforeQueueItemId) editableQueueItem(session, parsed.beforeQueueItemId);
+        await changeQueue(session, () => {
+          const items = session.queue.items.filter((candidate) => candidate !== item);
+          const index = parsed.beforeQueueItemId
+            ? items.findIndex((candidate) => candidate.commandId === parsed.beforeQueueItemId)
+            : items.length;
+          items.splice(index, 0, item);
+          session.queue.items = items;
+        });
+      });
+      scheduleQueueDrain(session);
+      return structuredClone(session);
+    },
+    async setQueueAutoDrain(input) {
+      const parsed = acpQueueAutoDrainInputSchema.parse(input);
+      const session = await scoped(parsed);
+      await queueGate.run(session.id, async () => {
+        ensureOpen(session);
+        await changeQueue(session, () => {
+          session.queue.autoDrain = parsed.autoDrain;
+          if (parsed.autoDrain) delete session.queue.pauseReason;
+          else session.queue.pauseReason = "manual";
+        });
+      });
+      scheduleQueueDrain(session);
+      return structuredClone(session);
+    },
+    async sendQueuedNow(input) {
+      const parsed = acpQueueItemInputSchema.parse(input);
+      const session = await scoped(parsed);
+      await queueGate.run(session.id, async () => {
+        ensureOpen(session);
+        if (configuring.has(session.id)) throw new Error("ACP session is running");
+        const item = editableQueueItem(session, parsed.queueItemId);
+        const previous = {
+          autoDrain: session.queue.autoDrain,
+          pauseReason: session.queue.pauseReason,
+        };
+        await stopSession(session);
+        ensureOpen(session);
+        await changeQueue(session, () => {
+          session.queue.autoDrain = previous.autoDrain;
+          session.queue.pauseReason = previous.pauseReason;
+        });
+        await reserveQueuedPrompt(session, item);
+        launchQueuedPrompt(session, item);
+      });
       return structuredClone(session);
     },
     async setGoal(input) {
@@ -1631,45 +2074,16 @@ export function createAcpService(
         return structuredClone(session);
       } finally {
         configuring.delete(session.id);
+        scheduleQueueDrain(session);
       }
     },
     async stop(input) {
       const parsed = acpStopInputSchema.parse(input);
       const session = await scoped(parsed);
-      // 待办观察取消只针对其实际 command；旧取消请求不能停止用户后续的新消息或工作流。
-      if (parsed.expectedCommandId && active.get(session.id) !== parsed.expectedCommandId) return;
-      if (stopping.has(session.id)) return;
-      const hadActive = active.has(session.id);
-      const commandId = active.get(session.id);
-      const stoppedAt = Date.now();
-      stopping.add(session.id);
-      active.delete(session.id);
-      try {
-        // 停止栅栏先占位，再异步暂停委派；不能在 await 间隙接收新轮消息。
-        await options.delegation?.onStop(session);
-        workflowHost.stopSession(session.id);
-        if (!hadActive) return;
-        settlePermission(session.id, stoppedAt);
-        await mutate(session, () => {
-          session.status = "idle";
-          session.usageBaselineKnown = false;
-          session.pendingPermission = null;
-        });
-        await appendDiagnostic(
-          session,
-          {
-            kind: "turn-stopped",
-            turnIndex: turnIndexForCommand(session, commandId),
-            stopReason: "cancelled",
-          },
-          stoppedAt,
-        );
-        await connections.get(session.id)?.cancel();
-      } finally {
-        // 取消后终止旧连接，避免旧 prompt 未结束时新轮进入同一 Agent 进程。
-        if (hadActive) detach(session.id);
-        stopping.delete(session.id);
-      }
+      await queueGate.run(session.id, () => {
+        ensureOpen(session);
+        return stopSession(session, parsed);
+      });
     },
     async cancelWorkflow(input) {
       const params = acpWorkflowControlSchema.parse(input);
@@ -1753,9 +2167,17 @@ export function createAcpService(
     },
     async remove(input) {
       const session = await scoped(input);
-      workflowHost.stopSession(session.id);
-      // 修复原因：用户切换智能体时的迟到清理不得删除已经接受首条消息的会话。
-      if (input.provisionalOnly && (!session.provisional || active.has(session.id))) return;
+      const admitted = await queueGate.run(session.id, async () => {
+        // 修复原因：与 enqueue/admission 共用栅栏，清理预连接不能删除刚接受的队列。
+        if (input.provisionalOnly && (!session.provisional || active.has(session.id))) return false;
+        workflowHost.stopSession(session.id);
+        removed.add(session.id);
+        active.delete(session.id);
+        activeTokens.delete(session.id);
+        detach(session.id);
+        return true;
+      });
+      if (!admitted) return;
       await options.delegation?.onStop(session);
       for (const [key, id] of created) if (id === session.id) created.delete(key);
       removed.add(session.id);
@@ -1807,6 +2229,10 @@ export function createAcpService(
     },
     disposeAll() {
       disposed = true;
+      // Host 换代即撤销全部旧轮消费权；迟到 rejection 不能再写入新 Host 已恢复的快照。
+      active.clear();
+      activeTokens.clear();
+      queueTasks.clear();
       workflowHost.dispose();
       for (const id of connections.keys()) detach(id);
       for (const id of connecting.keys()) detach(id);
@@ -1824,6 +2250,8 @@ export function createAcpService(
       this.disposeAll();
       await Promise.allSettled(inFlight);
       await Promise.allSettled(closed);
+      // 排队复制属于同一 admission 栅栏；关闭 Host 也必须等未接受附件完成清理。
+      await queueGate.settle();
       await workflowHost.settleAll();
       await Promise.allSettled([...notificationTasks]);
       await Promise.allSettled([...writes.values()]);
@@ -1832,4 +2260,15 @@ export function createAcpService(
     },
   };
   return service;
+}
+
+function recordNativeUsage(session: AcpSession, port: AcpConnectionPort): void {
+  const report = port.nativeUsage;
+  // 修复原因：原生文件迟到或恢复到其它会话时，不能将旧 ID 的累计量串入当前快照。
+  if (
+    report &&
+    report.nativeSessionId === port.sessionId &&
+    (!session.acpSessionId || session.acpSessionId === port.sessionId)
+  )
+    session.nativeUsage = structuredClone(report);
 }

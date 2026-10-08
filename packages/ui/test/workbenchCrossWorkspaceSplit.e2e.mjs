@@ -54,7 +54,7 @@ try {
     const services:any={zcodeAgentService:{},zcodeSessionService:{}};
     const platform:any={isWeb:true};
     const tabs=[{...project,label:'Project',workspacePurpose:'project'},{...tasks,label:'Tasks',workspacePurpose:'conversation'}];
-    const gitState={summary:null,datasets:{staged:{sections:[]},unstaged:{sections:[]}}};
+    const gitStateFor=workspacePath=>({summary:{workspacePath,repoRoot:workspacePath,branchName:'scoped-shell:'+workspacePath,isGitAvailable:true,isRepository:true,isDirty:true,headRefType:'branch',ahead:0,behind:0},datasets:{staged:{sections:[]},unstaged:{sections:[]}}});
     function Fixture(){
       const [workspacePath,setWorkspacePath]=useState(project.workspacePath);
       const nativeSessionId=useZCodeSessionStore(state=>state.getWorkspaceState(workspacePath).activeTaskId);
@@ -72,8 +72,8 @@ try {
       return <div className='h-dvh'><WorkspaceShellLayout services={services} platform={platform} workspaceAbsPath={selection.workspacePath} workspaceMainView={mainView} onWorkspaceMainViewChange={setMainView}
         workspaceTabs={tabs} workspaceShellZCodeState={{draftFocusVersion:1,selectedProvider:'glm',activeTaskId:selection.id}} theme='zai-light'
         activeTaskId={selection.id} sidePaneOwnerId='fixture' projectName='Project' isWorkspaceVisible isDesktop isMacDesktop={false} isWindowsDesktop={false} isMacFullscreen={false}
-        isSidebarVisible isTerminalOpen={false} isSidePaneOpen={false} isBrowserOpen={false} supportsEmbeddedBrowser={false} gitState={gitState} activeGitSourceId='unstaged' sidePaneState={{tabs:[],activeTabId:null}}
-        handleToggleSidebar={noop} handleToggleSidePane={noop} handleRefreshGit={noop} setGitSelectedSourceId={noop} handleBrowserUrlChange={noop} activeTaskTitle={selection.id??''}
+        isSidebarVisible isTerminalOpen={false} isSidePaneOpen={false} isBrowserOpen={false} supportsEmbeddedBrowser={false} gitState={gitStateFor(selection.workspacePath)} activeGitSourceId='unstaged' sidePaneState={{tabs:[],activeTabId:null}}
+        handleToggleSidebar={noop} handleToggleSidePane={noop} handleRefreshGit={noop} handleOpenGitReview={noop} gitWorktreeReviewSourceId='unstaged' gitWorktreeChangeSummary={{added:12,removed:3}} setGitSelectedSourceId={noop} handleBrowserUrlChange={noop} activeTaskTitle={selection.id??''}
         commandCenterCommands={[]} commandCenterWorkspaceTabs={[]} commandCenterOpen={false} onCommandCenterOpenChange={noop} onCommandCenterSearchResultHighlightRequest={noop} onCommandCenterOpenCodeViewer={noop}
         remoteWorkspaceSessions={[]} reconnectingRemoteWorkspaceKeys={[]} remoteWorkspaceErrorByWorkspaceKey={{}} browserRestoreUrls={{}} onOpenWorkspace={noop} onCreateTask={()=>startDraft(selection.workspacePath)}
         onConnectRemote={noop} onSelectRemoteProject={noop} onCancelRemoteProject={noop} onReconnectRemoteWorkspace={noop}
@@ -137,7 +137,7 @@ try {
         const session=acpId??props.sessionId,agent=acpId?request?.agent:null;
         R.useEffect(()=>{const e=window.__split.events;e.mounts[props.paneId]=(e.mounts[props.paneId]??0)+1;return ()=>{e.unmounts[props.paneId]=(e.unmounts[props.paneId]??0)+1}},[]);
         R.useEffect(()=>{props.onAcpSessionChange?.(acpId?{id:acpId,agent,title:acpId}:null)},[acpId,agent,props.onAcpSessionChange]);
-        return R.createElement('section',{'data-testid':'conversation-'+props.paneId,'data-session':session??'','data-kind':acpId?'acp':'native','data-workspace':props.workspacePath,'data-native-id':props.sessionId??'',className:'relative flex h-full min-h-0 min-w-0 flex-col'},
+        return R.createElement('section',{'data-testid':'conversation-'+props.paneId,'data-session':session??'','data-kind':acpId?'acp':'native','data-workspace':props.workspacePath,'data-native-id':props.sessionId??'','data-git-branch':props.gitSummary?.branchName??'','data-git-added':props.gitWorktreeChangeSummary?.added??'','data-git-refresh':Boolean(props.onRefreshGit),'data-git-review':Boolean(props.onOpenGitReview),className:'relative flex h-full min-h-0 min-w-0 flex-col'},
           props.conversationTabContainer?window.__createPortal(R.createElement(window.__TabContent,{title:session??'新建任务',agent,model:'bigmodel-api/GLM-5.3',workspacePath:props.workspacePath}),props.conversationTabContainer):null,
           R.createElement(ConversationHeader,{title:session??'新建任务',onClosePane:props.onClosePane}),
           R.createElement('h2',{className:'truncate p-3 pt-12'},session??'新建任务'),
@@ -201,19 +201,53 @@ try {
         ["projectApi", "taskAcp"],
         ["projectAcp", "taskAcp"],
         ["projectApi", "taskApi"],
+        ["projectApi", "projectAcp"],
+        ["projectAcp", "projectApi"],
       ]) {
         await reset();
         await page.getByTestId("open-" + primary).click();
         const primaryId = primary === "projectAcp" ? "project-acp" : "project-api";
-        const targetId = target === "taskAcp" ? "task-acp" : "task-api";
+        const targetId = {
+          taskAcp: "task-acp",
+          taskApi: "task-api",
+          projectAcp: "project-acp",
+          projectApi: "project-api",
+        }[target];
+        const targetWorkspace = target.startsWith("project")
+          ? "/fixture/project"
+          : "/fixture/tasks";
         const primaryKind = primary === "projectAcp" ? "acp" : "native",
-          targetKind = target === "taskAcp" ? "acp" : "native";
+          targetKind = target.endsWith("Acp") ? "acp" : "native";
         await assertSession("workspace-main", primaryId, "/fixture/project", primaryKind);
         await page.getByTestId("draft-workspace-main").fill("保留项目会话草稿");
         const before = await snapshot(),
           element = await conversation("workspace-main").elementHandle();
         await page.getByTestId("split-" + target).click();
-        await assertSession("pane-1", targetId, "/fixture/tasks", targetKind);
+        await assertSession("pane-1", targetId, targetWorkspace, targetKind);
+        // 修复依据：共享面板只消费同一 workspace 的 shell Git 事实和操作，不能串到跨项目窗格。
+        const shellWorkspace = (await snapshot()).selection.workspacePath;
+        for (const [id, workspace] of [
+          ["workspace-main", "/fixture/project"],
+          ["pane-1", targetWorkspace],
+        ]) {
+          const sameWorkspace = workspace === shellWorkspace;
+          assert.equal(
+            await conversation(id).getAttribute("data-git-branch"),
+            sameWorkspace ? "scoped-shell:" + shellWorkspace : "",
+          );
+          assert.equal(
+            await conversation(id).getAttribute("data-git-added"),
+            sameWorkspace ? "12" : "",
+          );
+          assert.equal(
+            await conversation(id).getAttribute("data-git-refresh"),
+            String(sameWorkspace),
+          );
+          assert.equal(
+            await conversation(id).getAttribute("data-git-review"),
+            String(sameWorkspace),
+          );
+        }
         await page.getByTestId("draft-pane-1").fill("保留任务会话草稿");
         await page.getByTestId("workbench-conversation-tab-pane-1").click();
         await assertSession("workspace-main", primaryId, "/fixture/project", primaryKind);

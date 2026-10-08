@@ -57,7 +57,7 @@ try {
             acpMode={Boolean(view.agent)} acpAgent={view.agent} enableMentionPanel={false} enableSlashCommands={false}
             submitControl={<div className="flex items-center gap-1" data-testid="composer-context-fixture">
               <V4ComposerModelControls workspacePath="/fixture" sessionId={null} phase={null}
-                usage={view.native} disabled={false} acpAgent={view.agent} acpContextUsage={view.context}
+                usage={view.native} disabled={false} acpAgent={view.agent} acpContextUsage={view.context} acpTokenUsage={view.tokens}
                 activeConfigPicker={picker} onConfigPickerOpenChange={(kind, open) => setPicker(open ? kind : null)}
                 onSelectAcpAgent={agent => setView(current => ({ ...current, agent, context: null }))}
                 onSelectModel={() => {}} onSelectThought={() => {}} onSwitchMode={() => {}} />
@@ -185,6 +185,57 @@ try {
             ?.getAttribute("aria-label") === "智能体尚未返回上下文用量",
       );
     }
+    // 已知消耗与未知容量独立；真实零命中率和缺失写入必须准确显示。
+    await page.evaluate(() =>
+      window.__setContextView((view) => ({
+        ...view,
+        agent: "codex",
+        context: null,
+        tokens: {
+          source: "native",
+          usage: { totalTokens: 120, inputTokens: 100, outputTokens: 20, cacheReadTokens: 0 },
+        },
+      })),
+    );
+    if (width === 375) await trigger.tap();
+    else await trigger.hover();
+    await page.getByTestId("context-token-usage").waitFor();
+    assert.equal(await page.getByTestId("context-token-input").locator("dd").textContent(), "100");
+    assert.equal(await page.getByTestId("context-token-output").locator("dd").textContent(), "20");
+    assert.equal(await page.getByTestId("context-token-total").locator("dd").textContent(), "120");
+    assert.equal(await page.getByTestId("context-token-hitRate").locator("dd").textContent(), "0%");
+    assert.equal(
+      await page.getByTestId("context-token-cacheWrite").locator("dd").textContent(),
+      "—",
+    );
+    await page.evaluate(() =>
+      window.__setContextView((view) => ({
+        ...view,
+        tokens: {
+          source: "turns",
+          measuredTurns: 2,
+          usage: {
+            totalTokens: 240,
+            inputTokens: 200,
+            outputTokens: 40,
+            cacheReadTokens: 100,
+            cacheWriteTokens: 20,
+          },
+        },
+      })),
+    );
+    await page.getByText("已统计轮次：2", { exact: true }).waitFor();
+    assert.equal(
+      await page.getByTestId("context-token-cacheWrite").locator("dd").textContent(),
+      "20",
+    );
+    assert.equal(
+      await page.getByTestId("context-token-hitRate").locator("dd").textContent(),
+      "50%",
+    );
+    await page.mouse.move(0, 0);
+    if (width === 375) await page.touchscreen.tap(4, 4);
+    else await input.click();
     await page.evaluate(() =>
       window.__setContextView((view) => ({
         ...view,
@@ -193,6 +244,7 @@ try {
       })),
     );
     await assertCapacityLabel(/2,000.*8,000/);
+    assert.equal(await page.getByTestId("context-token-usage").count(), 0);
     assert.equal(await input.textContent(), "保留草稿");
     assert.equal(
       await page.evaluate(

@@ -1,5 +1,6 @@
+import { projectAppUsageCharts } from "./appUsageSources.js";
 import { RefreshCcw } from "lucide-react";
-import { Fragment, lazy, useState } from "react";
+import { Fragment, lazy, useMemo, useState } from "react";
 import { APP_USAGE_RANGES, acpAgentDefinition } from "@zcode/shared";
 import type { AppUsageRange, AppUsageSnapshot } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
@@ -54,9 +55,20 @@ export function AppUsagePanel() {
           inputTokens: 0,
           outputTokens: 0,
           models: [],
+          dailyUsage: [],
         }
       : undefined);
-  const showNativeCharts = source === "all" || source === "native";
+  const chartSnapshot = useMemo(
+    () =>
+      snapshot
+        ? projectAppUsageCharts(
+            snapshot,
+            source,
+            intl.formatMessage({ id: "settings.usage.unknownModel" }),
+          )
+        : null,
+    [snapshot, source, intl],
+  );
 
   if (loading && !snapshot) {
     return (
@@ -133,13 +145,23 @@ export function AppUsagePanel() {
         </TabsList>
       </Tabs>
       {selectedAgent ? <AcpUsageSourceDetails agent={selectedAgent} /> : null}
-      {showNativeCharts ? (
-        <section className="space-y-5" data-testid="app-usage-native-charts">
+      {chartSnapshot ? (
+        <section
+          className="space-y-5"
+          data-testid={selectedAgent ? "app-usage-acp-charts" : "app-usage-native-charts"}
+        >
           <h3 className="text-ui-base font-medium text-foreground">
-            {intl.formatMessage({ id: "settings.usage.nativeModelCharts" })}
+            {intl.formatMessage({
+              id:
+                source === "native"
+                  ? "settings.usage.nativeModelCharts"
+                  : "settings.usage.allModelCharts",
+            })}
           </h3>
-          <AppUsageLifetimeSummaryStrip snapshot={lifetimeSnapshot} nativeOnly />
-          {lifetimeSnapshot?.heatmap.weeks.length ? (
+          {source === "native" ? (
+            <AppUsageLifetimeSummaryStrip snapshot={lifetimeSnapshot} nativeOnly />
+          ) : null}
+          {source === "native" && lifetimeSnapshot?.heatmap.weeks.length ? (
             <UsageHeatmap locale={locale} intl={intl} weeks={lifetimeSnapshot.heatmap.weeks} />
           ) : null}
           <UsageChartLoadBoundary
@@ -149,7 +171,7 @@ export function AppUsagePanel() {
               id: "settings.usage.appUsageLoadingDescription",
             })}
           >
-            <AppUsageDailyModelTrendChart snapshot={snapshot} />
+            <AppUsageDailyModelTrendChart snapshot={chartSnapshot} />
           </UsageChartLoadBoundary>
           <UsageChartLoadBoundary
             scope="settings.usage.app-model-pie-chart"
@@ -158,7 +180,7 @@ export function AppUsagePanel() {
               id: "settings.usage.appUsageLoadingDescription",
             })}
           >
-            <AppUsageModelUsagePieChart snapshot={snapshot} />
+            <AppUsageModelUsagePieChart snapshot={chartSnapshot} />
           </UsageChartLoadBoundary>
         </section>
       ) : null}

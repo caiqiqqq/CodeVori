@@ -110,6 +110,8 @@ interface ConversationStatusPanelProps {
   gitWorktreeChangeSummary?: { added: number; removed: number } | null;
   activeTaskChangeSummary?: ZCodeTaskChangeSummary | null;
   goal?: GoalState | null;
+  /** ACP objective text; has no native verification, timing or pause/resume semantics. */
+  reportedGoal?: string | null;
   sessionPlans?: readonly ToolCallRow[];
   plan?: PlanState | null;
   backgroundWorks?: readonly BackgroundWorkSummary[];
@@ -1660,6 +1662,10 @@ function StatusSummaryRow({
         {latestSessionPlan.title ?? intl.formatMessage({ id: "chat.statusPanel.planFallback" })}
       </span>
     </StatusSummaryMetric>
+  ) : model.reportedGoal ? (
+    <StatusSummaryMetric icon={<GoalIcon className="size-4 text-[var(--color-foreground)]" />}>
+      <span className="min-w-0 truncate">{model.reportedGoal}</span>
+    </StatusSummaryMetric>
   ) : runningCount > 0 ? (
     <StatusSummaryMetric
       icon={<RunningSummaryIcon className="size-4 text-[var(--color-foreground)]" />}
@@ -1717,6 +1723,7 @@ function ConversationStatusPanelImpl({
   gitWorktreeChangeSummary,
   activeTaskChangeSummary,
   goal,
+  reportedGoal,
   sessionPlans,
   plan,
   backgroundWorks = EMPTY_BACKGROUND_WORKS,
@@ -1762,6 +1769,7 @@ function ConversationStatusPanelImpl({
         gitDirtyFileCount,
         gitWorktreeChangeSummary,
         goal,
+        reportedGoal,
         sessionPlans,
         workspacePath,
         plan,
@@ -1776,6 +1784,7 @@ function ConversationStatusPanelImpl({
       gitSummary,
       gitWorktreeChangeSummary,
       goal,
+      reportedGoal,
       sessionPlans,
       plan,
       runningSubagents,
@@ -1801,7 +1810,7 @@ function ConversationStatusPanelImpl({
     [miniWidth],
   );
   const canRenderGit = Boolean(model.git && gitSummary && onRefreshGit);
-  const canRenderGoal = Boolean(model.goal);
+  const canRenderGoal = Boolean(model.goal || model.reportedGoal);
   const canRenderSessionPlans = Boolean(model.sessionPlans);
   const canRenderPlan = Boolean(model.plan);
   const canRenderTerminals = model.runningBashWorks.length > 0;
@@ -1888,7 +1897,7 @@ function ConversationStatusPanelImpl({
         data-state={variant === "mini" ? "collapsed" : "expanded"}
         data-display-mode={variant}
         data-goal-status={model.goal?.status}
-        data-goal-objective={model.goal?.objective}
+        data-goal-objective={model.goal?.objective ?? model.reportedGoal ?? undefined}
         data-running-background-count={
           model.runningBashWorks.length +
           model.runningSubagentWorks.length +
@@ -1986,7 +1995,17 @@ function ConversationStatusPanelImpl({
                 useVerticalFloatingPanels={useVerticalFloatingPanels}
               />
             ) : null}
-            {canRenderGoal ? (
+            {model.reportedGoal ? (
+              <StatusSection
+                section="goal"
+                separated={canRenderGit}
+                title={intl.formatMessage({ id: "chat.target.title" })}
+              >
+                <div className="break-words px-2 py-1 text-ui-base" data-acp-objective="true">
+                  {model.reportedGoal}
+                </div>
+              </StatusSection>
+            ) : canRenderGoal ? (
               <GoalStatusSection
                 model={model}
                 separated={canRenderGit}

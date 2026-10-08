@@ -83,6 +83,33 @@ export class AcpAttachmentStore {
     await rm(this.sessionDirectory(id), { recursive: true, force: true });
   }
 
+  async promptInputs(
+    id: string,
+    attachments: readonly AcpAttachmentRef[],
+  ): Promise<AcpPromptAttachment[]> {
+    return Promise.all(
+      attachments.map(async (attachment) => {
+        // 修复原因：排队不能重读可变源文件；同会话引用先校验，再使用 Host 冻结副本。
+        await this.read(id, attachment, 0, 0);
+        return {
+          fileName: attachment.fileName,
+          mimeType: attachment.mime,
+          path: join(this.sessionDirectory(id), attachment.ref.slice("acp-attachment:".length)),
+        };
+      }),
+    );
+  }
+
+  async discardRefs(id: string, attachments: readonly AcpAttachmentRef[]) {
+    const groups = new Set(
+      attachments.map((item) => item.ref.slice("acp-attachment:".length).split("/")[0]!),
+    );
+    for (const group of groups) {
+      if (!/^[0-9a-f-]{36}$/i.test(group)) throw new Error("Invalid ACP attachment ref");
+      await this.discard(id, group);
+    }
+  }
+
   async read(
     id: string,
     attachment: AcpAttachmentRef,

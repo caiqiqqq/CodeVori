@@ -179,6 +179,8 @@ export interface AcpAgentManager {
   updateGeminiProviders(input: AcpGeminiProvidersUpdate): Promise<AcpGeminiProviders>;
   manageAgent(input: AcpAgentManagement): Promise<AcpAgentInfo>;
   resolveLaunch(agent: AcpAgent): Promise<AcpAgentLaunch>;
+  /** Read native usage history without availability probes or process startup. */
+  resolveCodexHome?(): Promise<string>;
   onAgentOperation: Event<AcpAgentOperationEvent>;
   dispose(): void;
 }
@@ -672,6 +674,7 @@ export function createAcpAgentManager(
         busy = false;
       }
     },
+    resolveCodexHome: codexHome,
     async resolveLaunch(agent) {
       const definition = acpAgentDefinition(agent);
       // 修复原因：status 会为 Node/npm/适配器运行 --version，Qoder 未登录提示因此晚约一秒；

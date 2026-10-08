@@ -15,6 +15,7 @@ import {
 } from "../process/processTreeTerminator.js";
 import type { AcpConnectionFactory, AcpConnectionPort, AcpUpdate } from "./acpServiceImpl.js";
 import { projectAcpConfigOptions, projectAcpModeState } from "./acpConfigOptions.js";
+import { readCodexNativeUsage } from "./acpNativeUsage.js";
 import { projectAcpPromptUsage } from "./acpUsageResponse.js";
 import { projectAcpContextUsage } from "./acpContextUsage.js";
 import { projectAcpMcpServers, projectAcpPluginMcpServers } from "./acpMcpServers.js";
@@ -119,9 +120,22 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
           kind: "context_usage",
           usage: projectAcpContextUsage(update),
         };
-      } else if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
+      } else if (update.sessionUpdate === "plan") {
         mapped = {
-          kind: "text",
+          kind: "plan",
+          entries: update.entries.map(({ content, priority, status }) => ({
+            content,
+            priority,
+            status,
+          })),
+        };
+      } else if (
+        (update.sessionUpdate === "agent_message_chunk" ||
+          update.sessionUpdate === "agent_thought_chunk") &&
+        update.content.type === "text"
+      ) {
+        mapped = {
+          kind: update.sessionUpdate === "agent_thought_chunk" ? "thought" : "text",
           text: update.content.text,
           messageId: update.messageId ?? undefined,
         };
@@ -255,6 +269,15 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
     receivingLiveUpdates = true;
     const activeSessionId = sessionId;
     let lastStopReason: AcpConnectionPort["lastStopReason"];
+    const readNativeUsage = () =>
+      input.agent === "codex" && agentInfo?.name === "@agentclientprotocol/codex-acp"
+        ? readCodexNativeUsage({
+            sessionId: activeSessionId,
+            workspacePath: input.workspacePath,
+            env: launch.env,
+          })
+        : Promise.resolve(null);
+    let nativeUsage = await readNativeUsage();
     return {
       sessionId: activeSessionId,
       closed: closedPromise,
@@ -262,6 +285,9 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       provisionedMcpNames,
       configOptions,
       modeState,
+      get nativeUsage() {
+        return nativeUsage;
+      },
       get lastStopReason() {
         return lastStopReason;
       },
@@ -283,6 +309,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
           prompt: blocks ?? [{ type: "text", text }],
         });
         lastStopReason = response.stopReason;
+        nativeUsage = await readNativeUsage();
         return projectAcpPromptUsage(input.agent, agentInfo, response);
       },
       async cancel() {

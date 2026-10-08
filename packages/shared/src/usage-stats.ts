@@ -250,6 +250,7 @@ export const acpAppUsageAgentSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
   models: z.array(acpModelTokenUsageSchema).default([]),
+  dailyUsage: z.array(appUsageDailyModelUsageSchema).optional(),
 });
 export type AcpAppUsageAgent = z.infer<typeof acpAppUsageAgentSchema>;
 

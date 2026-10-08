@@ -1,21 +1,15 @@
-import { ArrowRightIcon, CircleCheckIcon, CircleIcon, ListTodoIcon } from "lucide-react";
+import { ListTodoIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { extractPlanStepsFromToolInput, extractPlanStepsFromToolOutput } from "@zcode/shared";
 import type { ZCodePlanStep } from "@zcode/shared";
+import { PlanSteps } from "@/ToolCallBlocks/PlanSteps.js";
 import { ToolCallBody } from "@/ToolCallBlocks/ToolCallBody.js";
 import { ToolSnapshotFieldNotice } from "@/ToolCallBlocks/ToolSnapshotFieldNotice.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { cn } from "@/components/lib/utils.js";
 import { ToolLayout } from "../ToolLayout.js";
 import type { ToolCallBlockRenderContext } from "../shared.js";
 
 const TODO_TOOL_ICON = <ListTodoIcon className="size-4 shrink-0 text-foreground-subtle" />;
-
-const todoTextClasses: Record<ZCodePlanStep["status"], string> = {
-  pending: "text-foreground-subtle",
-  in_progress: "text-foreground",
-  completed: "text-foreground-subtlest line-through",
-};
 
 function readTodoPlan(context: ToolCallBlockRenderContext): ZCodePlanStep[] | null {
   const { toolCall } = context.toolCallNode;
@@ -31,18 +25,6 @@ function readTodoPlan(context: ToolCallBlockRenderContext): ZCodePlanStep[] | nu
       input: toolCall.input,
     })
   );
-}
-
-function TodoStatusIcon({ status }: { status: ZCodePlanStep["status"] }) {
-  if (status === "completed") {
-    return <CircleCheckIcon className="size-3.5 shrink-0 text-success" />;
-  }
-  if (status === "in_progress") {
-    // 工具输出里的 todo running 状态会长时间留在页面上；
-    // 用静态箭头表达当前项，避免和加载动画语义混在一起。
-    return <ArrowRightIcon className="size-3.5 shrink-0 text-foreground" />;
-  }
-  return <CircleIcon className="size-3.5 shrink-0 text-foreground-subtlest" />;
 }
 
 export function TodoToolCallBlock(context: ToolCallBlockRenderContext) {
@@ -75,16 +57,7 @@ export function TodoToolCallBlock(context: ToolCallBlockRenderContext) {
     () =>
       plan ? (
         <div className="space-y-1 rounded-xl bg-surface px-3 py-2">
-          {plan.map((step) => (
-            <div key={step.id} className="flex min-w-0 items-center gap-2 py-1">
-              <TodoStatusIcon status={step.status} />
-              <span
-                className={cn("min-w-0 break-words text-ui-base", todoTextClasses[step.status])}
-              >
-                {step.title}
-              </span>
-            </div>
-          ))}
+          <PlanSteps steps={plan} />
           <ToolSnapshotFieldNotice
             refs={toolCall.snapshotRefs ?? []}
             onLoadFullToolCallFields={

@@ -72,6 +72,11 @@ export function formatSharedContextV1(
       case "reasoning":
         sections.push(`## Reasoning\n\n${row.text}`);
         break;
+      case "plan":
+        sections.push(
+          `## Plan\n\n${row.entries.map((step) => `- [${step.status}] ${step.content}`).join("\n")}`,
+        );
+        break;
       case "toolCall":
         sections.push(
           `## Tool: ${row.toolName}\n\n### Input\n\n${fenced(row.inputText)}${

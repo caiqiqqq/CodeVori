@@ -107,6 +107,8 @@ function isHookInvocationRow(row: ConversationRow): row is HookInvocationRow {
 }
 
 function isVisibleAssistantWorkRow(row: AssistantWorkRow): boolean {
+  // 修复原因：ACP 的空计划代表清除旧步骤；保留 Host 事实，但不留下空折叠行。
+  if (row.kind === "plan" && row.entries.length === 0) return false;
   if (row.kind === "reasoning" && row.text.trim().length === 0) {
     // reasoning_start/reasoning_end 可能形成空的终态 block；只在共享
     // render-unit 边界裁掉它，避免 completed 状态绕过 streaming renderer 的空行过滤。

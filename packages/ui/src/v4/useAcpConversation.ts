@@ -458,7 +458,8 @@ export function useAcpConversation(
   );
 
   useEffect(() => {
-    if (!selected || !loaded || selected.status === "running" || selected.provisional) return;
+    // 修复原因：重开/远控重连 running 会话也需确认同一 Host 连接，才能接纳后续排队输入。
+    if (!selected || !loaded || selected.provisional) return;
     // 修复原因：Codeg 选择历史会话时就恢复 ACP，实时配置和认证错误应在发送前可见。
     refreshSession(selected);
   }, [loaded, refreshSession, selected]);
@@ -504,14 +505,7 @@ export function useAcpConversation(
 
   const send = useCallback(
     async (input: Omit<AcpPromptInput, "commandId">): Promise<string> => {
-      if (
-        !agent ||
-        !selected ||
-        !loaded ||
-        busy ||
-        !readyIds.current.has(selected.id) ||
-        selected.status === "running"
-      ) {
+      if (!agent || !selected || !loaded || busy || !readyIds.current.has(selected.id)) {
         throw new Error("ACP session is not ready");
       }
       const key = `${targetKey}:${agent}`;
@@ -530,7 +524,10 @@ export function useAcpConversation(
       const commandId = same ? retry.commandId : crypto.randomUUID();
       retries.current.set(key, { input, commandId });
       try {
-        const session = await service.refresh({ ...target, id: selected.id });
+        const session =
+          selected.status === "running"
+            ? selected
+            : await service.refresh({ ...target, id: selected.id });
         if (
           targetKeyRef.current !== targetKey ||
           agentRef.current !== agent ||
@@ -572,6 +569,43 @@ export function useAcpConversation(
   const stop = useCallback(() => {
     if (selected) void run(() => service.stop({ ...target, id: selected.id }), selected.agent);
   }, [run, selected, service, target]);
+
+  const queueAction = useCallback(
+    async (operation: (input: AcpWorkspace & { id: string }) => Promise<AcpSession>) => {
+      if (!selected) throw new Error("ACP session is not ready");
+      try {
+        const snapshot = await operation({ ...target, id: selected.id });
+        if (targetKeyRef.current !== targetKey || selectedRef.current?.id !== selected.id) return;
+        setSessions((previous) =>
+          previous.map((item) =>
+            item.id === snapshot.id && item.revision <= snapshot.revision ? snapshot : item,
+          ),
+        );
+      } catch (cause) {
+        if (targetKeyRef.current === targetKey && selectedRef.current?.id === selected.id)
+          setErrorState({ agent: selected.agent, message: messageOf(cause) });
+        throw cause;
+      }
+    },
+    [selected, target, targetKey],
+  );
+  const queueActions = useMemo(
+    () => ({
+      deleteItem: (queueItemId: string) =>
+        queueAction((input) => service.deleteQueueItem({ ...input, queueItemId })),
+      editItem: (queueItemId: string, text: string) =>
+        queueAction((input) => service.editQueueItem({ ...input, queueItemId, text })),
+      moveItem: (queueItemId: string, beforeQueueItemId: string | null) =>
+        queueAction((input) =>
+          service.reorderQueueItem({ ...input, queueItemId, beforeQueueItemId }),
+        ),
+      sendNow: (queueItemId: string) =>
+        queueAction((input) => service.sendQueuedNow({ ...input, queueItemId })),
+      resume: () =>
+        queueAction((input) => service.setQueueAutoDrain({ ...input, autoDrain: true })),
+    }),
+    [queueAction, service],
+  );
   const setGoal = useCallback(
     async (goal: string | null): Promise<void> => {
       if (!selected) throw new Error("ACP session is not ready");
@@ -706,6 +740,7 @@ export function useAcpConversation(
     sending: Boolean(agent && sendingIds.has(`${targetKey}:${agent}`)),
     create,
     send,
+    queueActions,
     setGoal,
     setConfigOption,
     stop,

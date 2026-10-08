@@ -1449,7 +1449,7 @@ test("Codex and Claude ACP stay isolated from each other and from another worksp
   }
 });
 
-test("permission requires the matching choice; stop cancels a pending turn and prevents a second admission", async () => {
+test("permission requires the matching choice; busy input queues and stop pauses it", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zcode-acp-permission-"));
   let permission: string | null | undefined;
   let release: (() => void) | undefined;
@@ -1482,10 +1482,13 @@ test("permission requires the matching choice; stop cancels a pending turn and p
     await waitFor(
       async () => (await service.read({ ...workspace, id: session.id })).pendingPermission,
     );
-    await assert.rejects(
-      service.prompt({ ...workspace, id: session.id, commandId: "second", text: "again" }),
-      /running/,
-    );
+    const queued = await service.prompt({
+      ...workspace,
+      id: session.id,
+      commandId: "second",
+      text: "again",
+    });
+    assert.equal(queued.queue.items[0]?.commandId, "second");
     await assert.rejects(
       service.decide({ ...workspace, id: session.id, requestId: "wrong", optionId: "accept" }),
     );
@@ -1503,6 +1506,8 @@ test("permission requires the matching choice; stop cancels a pending turn and p
     const ended: AcpSession = await service.read({ ...workspace, id: session.id });
     assert.equal(ended.status, "idle");
     assert.equal(ended.pendingPermission, null);
+    assert.equal(ended.queue.autoDrain, false);
+    assert.equal(ended.queue.items[0]?.commandId, "second");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -110,6 +110,7 @@ export interface ConversationStatusPanelModel {
   hasContent: boolean;
   git: ConversationStatusPanelGitModel | null;
   goal: GoalState | null;
+  reportedGoal: string | null;
   sessionPlans: ConversationStatusPanelSessionPlansModel | null;
   plan: ConversationStatusPanelPlanModel | null;
   runningBashWorks: BackgroundWorkSummary[];
@@ -123,6 +124,7 @@ interface BuildConversationStatusPanelModelInput {
   gitDirtyFileCount?: number;
   gitWorktreeChangeSummary?: { added: number; removed: number } | null;
   goal?: GoalState | null;
+  reportedGoal?: string | null;
   sessionPlans?: readonly ToolCallRow[];
   workspacePath?: string;
   plan?: PlanState | null;
@@ -300,6 +302,7 @@ export function buildConversationStatusPanelModel(
 ): ConversationStatusPanelModel {
   const git = input.isOfficeMode ? null : buildGitModel(input);
   const goal = input.goal ?? null;
+  const reportedGoal = input.reportedGoal?.trim() || null;
   const sessionPlans = buildSessionPlansModel(input.sessionPlans, input.workspacePath);
   const plan = buildPlanModel(input.plan);
   const runningBashWorks: BackgroundWorkSummary[] = [];
@@ -367,6 +370,7 @@ export function buildConversationStatusPanelModel(
   return {
     git,
     goal,
+    reportedGoal,
     sessionPlans,
     plan,
     runningBashWorks,
@@ -375,6 +379,7 @@ export function buildConversationStatusPanelModel(
     hasContent: Boolean(
       git ||
       goal ||
+      reportedGoal ||
       sessionPlans ||
       plan ||
       runningBashWorks.length > 0 ||

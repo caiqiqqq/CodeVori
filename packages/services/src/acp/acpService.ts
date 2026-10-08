@@ -16,6 +16,10 @@ import {
   type AcpGeminiProvidersUpdate,
   type AcpCreateInput,
   type AcpPromptInput,
+  type AcpQueueItemInput,
+  type AcpQueueEditInput,
+  type AcpQueueReorderInput,
+  type AcpQueueAutoDrainInput,
   type AcpStopInput,
   type AcpSession,
   type AcpDiagnosticEvent,
@@ -78,6 +82,12 @@ export interface IAcpService {
   /** Optional preconnection returns an in-memory draft; the first accepted prompt persists it. */
   create(input: AcpCreateInput): Promise<AcpSession>;
   prompt(input: AcpWorkspace & { id: string } & AcpPromptInput): Promise<AcpSession>;
+  /** Host queue operations share prompt admission and the same persisted session revision. */
+  deleteQueueItem(input: AcpQueueItemInput): Promise<AcpSession>;
+  editQueueItem(input: AcpQueueEditInput): Promise<AcpSession>;
+  reorderQueueItem(input: AcpQueueReorderInput): Promise<AcpSession>;
+  sendQueuedNow(input: AcpQueueItemInput): Promise<AcpSession>;
+  setQueueAutoDrain(input: AcpQueueAutoDrainInput): Promise<AcpSession>;
   /** Admit a Host result only to an already connected, idle conversation; never reconnect. */
   notifyResult(
     input: AcpWorkspace & { id: string; commandId: string; text: string },

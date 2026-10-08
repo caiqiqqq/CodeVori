@@ -3692,6 +3692,7 @@ const enUS: Record<string, string> = {
   "settings.usage.sourceAll": "All sources",
   "settings.usage.sourceNative": `${PRODUCT_NAME} / API`,
   "settings.usage.sourceAcp": "ACP agents",
+  "settings.usage.allModelCharts": "Model usage and trends",
   "settings.usage.nativeModelCharts": `${PRODUCT_NAME} / API model usage and activity`,
   "settings.usage.acpTurns": "Submitted turns",
   "settings.usage.acpModels": "Actual model usage",
@@ -3702,7 +3703,7 @@ const enUS: Record<string, string> = {
   "settings.usage.acpModelUnknown":
     "Only models reported with actual usage are shown. Remaining tokens cannot be reliably attributed to a model.",
   "settings.usage.codexUsageUnknown":
-    "The current Codex ACP adapter reports only the last model request, so full-turn tokens remain unknown.",
+    "Readable Codex native usage has been restored; turns with missing records or incomplete usage remain unknown.",
   "settings.usage.codingPlanRange.today": "Today",
   "settings.usage.codingPlanRange.7d": "7 days",
   "settings.usage.codingPlanRange.30d": "30 days",
@@ -4977,6 +4978,8 @@ const enUS: Record<string, string> = {
   "chat.queue.sendNow": "Steer",
   "chat.queue.runNow": "Run now",
   "chat.queue.edit": "Edit",
+  "acp.queue.editDescription":
+    "Edit the queued message while keeping its attachments and file references.",
   "chat.queue.editDraftConflict":
     "Send or clear the current draft before editing a queued message.",
   "chat.queue.editRestoreFailed": "Couldn't return the queued message to the composer. Try again.",
@@ -5005,6 +5008,15 @@ const enUS: Record<string, string> = {
   "chat.reasoning.durationFewSeconds": "a few seconds",
   "chat.reasoning.durationSeconds": "{seconds} seconds",
   "chat.contextUsage": "Context usage {used} of {total}",
+  "chat.contextTokens.native": "Agent cumulative usage",
+  "chat.contextTokens.turns": "Measured turns: {count}",
+  "chat.contextTokens.input": "Input",
+  "chat.contextTokens.output": "Output",
+  "chat.contextTokens.cacheRead": "Cache read",
+  "chat.contextTokens.cacheWrite": "Cache write",
+  "chat.contextTokens.total": "Total tokens",
+  "chat.contextTokens.inputHint":
+    "Input includes cache reads and writes; unavailable values show —.",
   "chat.contextUsage.title": "Context windows",
   "chat.contextUsage.unavailable": "The agent has not reported context usage yet",
   "chat.contextUsageDescription":

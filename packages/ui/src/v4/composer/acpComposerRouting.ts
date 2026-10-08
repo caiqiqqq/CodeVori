@@ -8,9 +8,15 @@ export interface AcpComposerContext {
 
 /** 空 ACP 会话仍属于首页草稿；首条记录产生后才切到普通对话时间线。 */
 export function hasAcpConversationContent(
-  session: Pick<import("@zcode/shared").AcpSession, "entries" | "pendingPermission"> | null,
+  session:
+    | (Pick<import("@zcode/shared").AcpSession, "entries" | "pendingPermission"> &
+        Partial<Pick<import("@zcode/shared").AcpSession, "queue">>)
+    | null,
 ): boolean {
-  return Boolean(session && (session.entries.length > 0 || session.pendingPermission));
+  return Boolean(
+    session &&
+    (session.entries.length > 0 || session.pendingPermission || session.queue?.items.length),
+  );
 }
 
 /** 原生结构化上下文仍需独立 Host 契约；附件通过 ACP 内容块发送。 */

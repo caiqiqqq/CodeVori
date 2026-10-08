@@ -19,7 +19,7 @@ export function searchAcpSessions(
     if (query) {
       for (const entry of session.entries) {
         // 修复原因：ACP 不进入原生 tasks-index；仅搜索可见聊天正文，不能把工具日志或配置混入搜索。
-        if (entry.kind === "tool") continue;
+        if (entry.kind !== "user" && entry.kind !== "assistant") continue;
         const index = entry.text.toLocaleLowerCase().indexOf(query);
         if (index < 0) continue;
         const start = Math.max(0, index - 60);

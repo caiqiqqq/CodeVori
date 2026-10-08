@@ -343,6 +343,13 @@ function projectRow(row: ConversationRow, index: number, ids: PublicIdMaps): Con
         state: row.state,
         ...(row.durationMs === undefined ? {} : { durationMs: row.durationMs }),
       };
+    case "plan":
+      return {
+        ...base,
+        kind: "plan",
+        planId: `plan:${base.rowId}`,
+        entries: row.entries.map((step) => ({ ...step })),
+      };
     case "toolCall":
       return {
         ...base,

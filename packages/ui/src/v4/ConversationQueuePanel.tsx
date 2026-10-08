@@ -270,7 +270,7 @@ const QueueRow = memo(function QueueRow({
 
 /**
  * 竖切 queue 面板：渲染 projection.queue.items + 单项删除入口。
- * queue 在运行中的 turn 期间存在（sendText 排队），是 CLI 投影权威态（非 renderer-local）。
+ * API/ACP queue 均读取所属 Host 的权威投影，Renderer 不保留第二份已接受队列。
  */
 function ConversationQueuePanelImpl({
   queue,

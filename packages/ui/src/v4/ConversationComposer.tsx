@@ -1,3 +1,4 @@
+import type { AcpContextTokenUsage } from "@/v4/acpTokenUsage.js";
 /* oxlint-disable eslint(max-lines) -- composer 集中收口输入区 wiring（附件/草稿/历史/mention），拆分会打散收口粒度。 */
 import { getLocalTtftObserver } from "@/v4/telemetry/localTtftObserver.js";
 /**
@@ -413,6 +414,7 @@ interface ConversationComposerProps {
   acpAgent?: AcpAgent | null;
   acpSessionId?: string | null;
   acpContextUsage?: AcpSession["contextUsage"];
+  acpTokenUsage?: AcpContextTokenUsage | null;
   acpReady?: boolean;
   acpRunning?: boolean;
   onSendAcpText?: (input: Omit<AcpPromptInput, "commandId">) => Promise<string>;
@@ -537,6 +539,7 @@ function ConversationComposerImpl({
   acpAgent = null,
   acpSessionId = null,
   acpContextUsage = null,
+  acpTokenUsage = null,
   acpReady = false,
   acpRunning = false,
   onSendAcpText,
@@ -1191,12 +1194,7 @@ function ConversationComposerImpl({
   const routingAllowsSend = draftMode || (snapshot !== null && mode !== "reject");
   const attachmentsReady = !attachmentsApi.hasUnreadyAttachments;
   const canSend = acpAgent
-    ? !disabled &&
-      !pending &&
-      acpReady &&
-      !acpRunning &&
-      (hasText || hasAttachments) &&
-      attachmentsReady
+    ? !disabled && !pending && acpReady && (hasText || hasAttachments) && attachmentsReady
     : !disabled &&
       !pending &&
       hasDraftToSubmit &&
@@ -1204,7 +1202,7 @@ function ConversationComposerImpl({
       attachmentsReady &&
       submissionReady;
   // 旧 UI 状态机：streaming + 空草稿 → Stop；有草稿 → 发送键（入队）。
-  const showStopControl = acpAgent ? canStop : canStop && !hasDraftToSubmit;
+  const showStopControl = canStop && !hasDraftToSubmit;
 
   useEffect(() => {
     if (!canSend) setSendTooltipOpen(false);
@@ -1359,7 +1357,7 @@ function ConversationComposerImpl({
         return;
       }
       if (acpAgent) {
-        if ((!trimmed && !hasAttachments) || !acpReady || acpRunning || !onSendAcpText) return;
+        if ((!trimmed && !hasAttachments) || !acpReady || !onSendAcpText) return;
         // 原生结构化上下文仍需专门的 Host 接口；附件走 ACP 内容块。
         const blocked = getAcpComposerBlockingReason({
           codeComments: getCodeCommentContexts().length > 0,
@@ -1395,7 +1393,7 @@ function ConversationComposerImpl({
             attachments,
             workspaceFiles,
           });
-          // 修复原因：Agent 的 prompt RPC 会等整轮结束；Host 接纳用户行即是草稿提交边界。
+          // 修复原因：Agent prompt 会等整轮结束；Host 接纳 user row 或队列项即清空本次草稿。
           // 清掉仍排队的草稿落盘，避免迟到 debounce 在清空后重新写回已发送正文。
           if (
             contentRevisionRef.current === submittedRevision &&
@@ -1919,7 +1917,9 @@ function ConversationComposerImpl({
   // 有历史空闲 → followUpAsk；有历史处理中 → followUpQueue。
   const placeholder = intl.formatMessage({
     id: acpAgent
-      ? "acp.prompt"
+      ? acpRunning
+        ? "chat.placeholder.followUpQueue"
+        : "acp.prompt"
       : resolveChatPlaceholderKey({
           hasHistoryMessages: (snapshot?.rows.totalCount ?? 0) > 0,
           isTaskProcessing: canStop,
@@ -1927,7 +1927,13 @@ function ConversationComposerImpl({
         }),
   });
   const sendTooltipTitle = intl.formatMessage({
-    id: acpAgent ? "acp.send" : mode === "enqueue" ? "chat.queue.enqueue" : "chat.send",
+    id: acpAgent
+      ? acpRunning
+        ? "chat.queue.enqueue"
+        : "acp.send"
+      : mode === "enqueue"
+        ? "chat.queue.enqueue"
+        : "chat.send",
   });
   const modifierTooltip = resolveFollowupModifierTooltip({
     enabled: modifiedEnterReversesDelivery,
@@ -2377,6 +2383,7 @@ function ConversationComposerImpl({
             disabled={disabled}
             acpAgent={acpAgent}
             acpContextUsage={acpContextUsage}
+            acpTokenUsage={acpTokenUsage}
             activeConfigPicker={activeConfigPicker}
             onConfigPickerOpenChange={handleConfigPickerOpenChange}
             onSelectModel={handleSelectModelTrace}
@@ -2431,6 +2438,7 @@ function ConversationComposerImpl({
       composerPhase,
       composerUsage,
       acpContextUsage,
+      acpTokenUsage,
       disabled,
       draftConfig,
       draftMode,

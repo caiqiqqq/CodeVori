@@ -1,3 +1,4 @@
+import type { AcpContextTokenUsage } from "@/v4/acpTokenUsage.js";
 /* oxlint-disable eslint(max-lines) -- V4ComposerToolbar 汇聚模型/思考深度/context usage 三件套；继续拆分会打散工具条热键与模型目录 memo 的共享状态。 */
 /**
  * V4 composer 工具条。
@@ -354,6 +355,7 @@ export interface V4ComposerToolbarProps {
   disabled: boolean;
   acpAgent?: AcpAgent | null;
   acpContextUsage?: AcpSession["contextUsage"];
+  acpTokenUsage?: AcpContextTokenUsage | null;
   onSelectAcpAgent?: (agent: AcpAgent) => void;
   modelFocusSelector?: string;
   /** 单个 composer 内的配置 picker 排他 owner；只属于 renderer-local presentation。 */
@@ -394,6 +396,7 @@ function V4ComposerModelControlsImpl({
   disabled,
   acpAgent = null,
   acpContextUsage = null,
+  acpTokenUsage = null,
   onSelectAcpAgent,
   modelFocusSelector,
   activeConfigPicker,
@@ -1034,6 +1037,7 @@ function V4ComposerModelControlsImpl({
       <ChatContextUsage
         codingPlanUsageRemaining={acpAgent ? undefined : codingPlanUsageRemaining}
         taskUsage={taskUsage}
+        tokenUsageData={acpAgent ? acpTokenUsage : null}
         showUnknownUsage={Boolean(acpAgent)}
         startPlanBalance={acpAgent ? undefined : contextStartPlanBalance}
         selectedProvider={displayProvider}

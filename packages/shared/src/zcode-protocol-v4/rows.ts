@@ -2,6 +2,7 @@
 // 三条结构性规则：row 自包含（渲染任一行不需看别的行）；
 // 结构变化换整行（row.upserted），文本增长用 append（row.delta）；turn 是 row 上的标签不是容器。
 import { z } from "zod";
+import { planRowFields } from "./plan-row.js";
 import { executionOutputPreviewSchema } from "../execution-output-preview.js";
 import { timestampSchema } from "./core.js";
 import { backgroundResultOriginMetaSchema, workflowLaunchMetaSchema } from "./workflow-row-meta.js";
@@ -417,11 +418,14 @@ export const timelineMarkerRowSchema = z.object({
 });
 export type TimelineMarkerRow = z.infer<typeof timelineMarkerRowSchema>;
 
+export const planRowSchema = z.object({ ...rowBaseFields, ...planRowFields });
+export type PlanRow = z.infer<typeof planRowSchema>;
 export const conversationRowSchema = z.discriminatedUnion("kind", [
   turnHeaderRowSchema,
   userInputRowSchema,
   assistantTextRowSchema,
   reasoningRowSchema,
+  planRowSchema,
   toolCallRowSchema,
   artifactRowSchema,
   subagentRowSchema,
