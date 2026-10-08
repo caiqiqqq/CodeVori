@@ -638,8 +638,15 @@ export function WorkspaceTimelineTasksSection({
   }
 
   if (displayItems.length === 0) {
+    // 工作树项目复用普通任务行，空提示也必须沿用 TaskList 的缩进和弱提示颜色。
     return (
-      <div className="px-3 py-2 text-ui-base text-foreground-subtle">
+      <div
+        className={
+          taskRowVariant === "default"
+            ? "px-8.5 py-2 text-ui-base text-foreground-subtlest"
+            : "px-3 py-2 text-ui-base text-foreground-subtle"
+        }
+      >
         {emptyMessage ?? intl.formatMessage({ id: "taskList.noTasks" })}
       </div>
     );

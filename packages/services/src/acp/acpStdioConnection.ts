@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
-import { acpAgentDefinition } from "@zcode/shared";
+import { PRODUCT_NAME, acpAgentDefinition } from "@zcode/shared";
 import {
   ClientSideConnection,
   ndJsonStream,
@@ -182,7 +182,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         const initialized = await connection.initialize({
           protocolVersion: PROTOCOL_VERSION,
           clientCapabilities: { session: { configOptions: { boolean: {} } } },
-          clientInfo: { name: "ZCode", version: "3.14.0" },
+          clientInfo: { name: PRODUCT_NAME, version: "3.14.0" },
         });
         if (initialized.protocolVersion !== PROTOCOL_VERSION) {
           throw new Error(`不支持的 ACP 协议版本: ${initialized.protocolVersion}`);
@@ -206,7 +206,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         for (const workflow of workflowServers) {
           if (mcpServers.some((server) => server.name === workflow.name))
             throw new Error(
-              `MCP 名称 ${workflow.name} 已由 ZCode 工作流占用，请重命名用户 MCP 配置`,
+              `MCP 名称 ${workflow.name} 已由 ${PRODUCT_NAME} 工作流占用，请重命名用户 MCP 配置`,
             );
         }
         mcpServers.push(...workflowServers);

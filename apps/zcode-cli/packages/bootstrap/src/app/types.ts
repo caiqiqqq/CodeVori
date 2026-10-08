@@ -126,6 +126,8 @@ export interface ZCodeAppOptions {
   version?: string;
   traceContext?: TraceContext;
   runtimeConfig?: ZCodeAppRuntimeConfigInput;
+  /** 临时 Host capability overlay；不替换用户 MCP，也不写入持久化配置。 */
+  hostMcpServers?: Record<string, import("@zcode/contracts").McpServerConfig>;
   /**
    * stdio 协议模式的 agent 进程由 Electron host 拉起，模型服务需要看到 electron 来源。
    * 普通 CLI 不传，继续使用 cli 默认值。

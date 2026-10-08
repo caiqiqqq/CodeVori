@@ -101,6 +101,7 @@ export const ServiceChannels = {
   /** Independent Codex/Claude ACP Agent sessions; never a model Provider. */
   Acp: "acp",
   WorkTask: "work-task",
+  AgentDelegation: "agent-delegation",
   /** 会话分享发布、预览与 continuation API 编排 */
   ConversationShare: "conversation-share",
   /** 文件系统监视服务 */
@@ -521,6 +522,7 @@ export const HostMessageTypes = {
   OffPeakRun: "off-peak-run",
   /** main → host：browser-use 命令执行结果（CDP 执行完回传，按 requestId 关联） */
   BrowserExecuteResult: "browser-execute-result",
+  ForgeWebMediaResult: "forge-web-media-result",
   /** main → host：本地视频 canonical path 授权结果 */
   LocalMediaPreviewPathAuthorizeResult: "local-media-preview-path-authorize-result",
   /** Main → Host：全局前台 ZCode 窗口派生的 producer focus fact。 */
@@ -618,6 +620,7 @@ export const HostResponseTypes = {
   OffPeakSchedulerWakeRequest: "off-peak-scheduler-wake-request",
   /** host → main：执行一条 browser-use 命令（main 用 WebContentsView+CDP 执行，按 requestId 关联） */
   BrowserExecuteRequest: "browser-execute-request",
+  ForgeWebMediaRequest: "forge-web-media-request",
   /** host → main：请求授权 Agent 已精确校验的本地视频路径 */
   LocalMediaPreviewPathAuthorizeRequest: "local-media-preview-path-authorize-request",
   /** host → main：RPC 网络遥测批次（channel.command 成功率/耗时） */

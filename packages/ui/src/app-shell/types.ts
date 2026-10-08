@@ -152,7 +152,7 @@ export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackS
   onOpenAutomationConsumed: () => void;
   handleOpenAutomations: OpenAutomationsMain;
   handleOpenPluginStore: () => void;
-  handleOpenRepository: () => void;
+  handleOpenRepository: (target?: { workspacePath: string; workspaceIdentity?: string }) => void;
   handleOpenWorkTasks: () => void;
   handleManageInstalledPlugins: () => void;
   workspaceShellZCodeState: WorkspaceShellZCodeState;

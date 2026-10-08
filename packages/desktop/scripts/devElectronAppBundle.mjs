@@ -1,8 +1,9 @@
 import { access, cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { PRODUCT_NAME } from "@zcode/shared/product-brand";
 
 export const DEV_ELECTRON_PROTOCOL_SCHEME = "zcode";
-export const DEV_ELECTRON_APP_NAME = "ZCode Dev";
+export const DEV_ELECTRON_APP_NAME = `${PRODUCT_NAME} Dev`;
 export const DEV_ELECTRON_APP_BUNDLE_ID = "dev.zcode.app.development";
 // 副本布局版本，见 prepareDevElectronAppBundle 中的指纹说明。
 export const DEV_ELECTRON_BUNDLE_FORMAT = 2;
@@ -45,6 +46,12 @@ export function patchDevElectronInfoPlist(plist) {
   let patched = replacePlistString(plist, "CFBundleDisplayName", DEV_ELECTRON_APP_NAME);
   patched = replacePlistString(patched, "CFBundleIdentifier", DEV_ELECTRON_APP_BUNDLE_ID);
   patched = replacePlistString(patched, "CFBundleName", DEV_ELECTRON_APP_NAME);
+  patched = patched.includes("<key>CFBundleIconFile</key>")
+    ? replacePlistString(patched, "CFBundleIconFile", "codevori.icns")
+    : patched.replace(
+        /(?=<\/dict>\s*<\/plist>)/u,
+        "\t<key>CFBundleIconFile</key>\n\t<string>codevori.icns</string>\n",
+      );
   return appendProtocolDeclaration(patched);
 }
 
@@ -57,7 +64,9 @@ export async function prepareDevElectronAppBundle({
   runtimeRoot,
   electronVersion,
   arch,
+  productIconPath = new URL("../build/icon.icns", import.meta.url),
 }) {
+  const productIcon = await readFile(productIconPath);
   const appPath = resolveDevElectronAppBundlePath({ runtimeRoot, electronVersion, arch });
   const infoPlistPath = join(appPath, "Contents", "Info.plist");
   const sourceExecutablePath = join(electronAppPath, "Contents", "MacOS", "Electron");
@@ -110,6 +119,22 @@ export async function prepareDevElectronAppBundle({
     await writeFile(infoPlistPath, patchedInfoPlist, "utf8");
     // 指纹最后写：中途失败时下次仍会判定为需要重拷，不会留下半成品缓存。
     if (sourceStamp !== undefined) await writeFile(sourceStampPath, sourceStamp, "utf8");
+  }
+
+  // Dock 运行时覆盖不会更新 Finder 的 bundle 图标；缓存命中后也必须同步产品 ICNS。
+  // 图标变化不重拷 Electron，仅在内容改变时更新本开发副本，不改 node_modules 源文件。
+  const currentPlist = await readFile(infoPlistPath, "utf8");
+  const patchedPlist = patchDevElectronInfoPlist(currentPlist);
+  if (patchedPlist !== currentPlist) await writeFile(infoPlistPath, patchedPlist, "utf8");
+  const resourcePath = join(appPath, "Contents", "Resources");
+  const installedIconPath = join(resourcePath, "codevori.icns");
+  const installedIcon = await readFile(installedIconPath).catch((error) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (!installedIcon?.equals(productIcon)) {
+    await mkdir(resourcePath, { recursive: true });
+    await writeFile(installedIconPath, productIcon);
   }
 
   return {

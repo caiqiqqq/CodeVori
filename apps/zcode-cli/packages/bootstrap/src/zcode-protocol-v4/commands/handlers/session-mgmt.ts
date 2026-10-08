@@ -49,6 +49,8 @@ async function createSession(
   }
   const { sessionId } = await host.createSessionRecord({
     workspaceId: payload.workspaceId,
+    // 子会话在 create ACK 前就请求工具，用创建命令关联已持久化的委派任务。
+    createRequestId: envelope.commandId,
     mcpServers: payload.mcpServers,
     offPeakToolEnabled: payload.offPeakToolEnabled,
     dynamicWorkflowEnabled: payload.dynamicWorkflowEnabled,

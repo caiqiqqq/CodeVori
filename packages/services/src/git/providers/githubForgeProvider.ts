@@ -6,6 +6,7 @@ import {
   count,
   errorCode,
   item,
+  itemMetadata,
   labels,
   page,
   record,
@@ -59,7 +60,11 @@ export function createGithubForgeProvider(
     },
     async getItem(request): Promise<ForgeItemDetail> {
       const raw = record((await api(itemPath(request))).data);
-      const result: ForgeItemDetail = { ...item(raw, request.kind, "github"), change: null };
+      const result: ForgeItemDetail = {
+        ...item(raw, request.kind, "github"),
+        change: null,
+        metadata: itemMetadata(raw, "github"),
+      };
       if (request.kind === "issue") return result;
       const head = record(raw.head);
       const base = record(raw.base);

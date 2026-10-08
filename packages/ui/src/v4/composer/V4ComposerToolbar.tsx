@@ -37,7 +37,12 @@ import type {
   SessionPhase,
   SessionUsageState,
 } from "@zcode/shared/zcode-protocol-v4";
-import { ModelConfigSelect, type ModelSelectGroup } from "@/ModelConfigSelect.js";
+import {
+  ModelConfigSelect,
+  type ModelSelectGroup,
+  type ModelSelectGroupItem,
+} from "@/ModelConfigSelect.js";
+import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import {
   acpAgentFromModelValue,
   acpModelValue,
@@ -109,6 +114,11 @@ export { V4ComposerModeSwitch } from "@/v4/composer/V4ComposerModeControls.js";
 
 const V4_COMPOSER_INPUT_SELECTOR = `[data-testid="${TID_V4_COMPOSER_INPUT}"]`;
 const MODEL_SELECTION_LOADING_STATE: ModelSelectionState = { status: "loading" };
+
+function renderAcpModelItemIcon(item: ModelSelectGroupItem) {
+  const agent = acpAgentFromModelValue(item.value);
+  return agent ? <AcpAgentIcon agent={agent} /> : null;
+}
 
 /** 稳定空回调（热键 hook 单实例只处理本组件拥有的选项，其余动作占位）。 */
 function noop(): void {}
@@ -1054,7 +1064,9 @@ function V4ComposerModelControlsImpl({
       ) : modelMenuVisible ? (
         <ModelConfigSelect
           modelGroups={modelSelectGroups}
+          renderItemIcon={renderAcpModelItemIcon}
           normalizedValue={normalizedModelValue}
+          triggerIcon={acpAgent ? <AcpAgentIcon agent={acpAgent} /> : undefined}
           triggerLabel={modelTriggerDisplay.fullLabel}
           triggerLabelPrefix={modelTriggerDisplay.providerPrefix}
           triggerLabelValue={modelTriggerDisplay.modelLabel}
@@ -1089,7 +1101,11 @@ function V4ComposerModelControlsImpl({
           indicatorClassName="block group-data-[composer-model-icon=true]/toolbar:hidden"
           triggerLabelClassName="block min-w-0 text-left group-data-[composer-model-icon=true]/toolbar:hidden [&>span]:max-w-full [&>span>span]:block [&>span>span]:truncate"
           triggerClassName="composer-model-trigger group-data-[composer-model-icon=true]/toolbar:size-7 group-data-[composer-model-icon=true]/toolbar:p-0 group-data-[composer-model-icon=true]/toolbar:gap-0 group-data-[composer-model-icon=true]/toolbar:justify-center"
-          triggerIconClassName="hidden group-data-[composer-model-icon=true]/toolbar:inline-flex"
+          triggerIconClassName={
+            acpAgent
+              ? "inline-flex"
+              : "hidden group-data-[composer-model-icon=true]/toolbar:inline-flex"
+          }
           focusSelectorOnClose={modelFocusSelector ?? V4_COMPOSER_INPUT_SELECTOR}
           providerSubmenuClassName={providerSubmenuClassName}
         />

@@ -3,6 +3,7 @@ export { type ServiceDescriptor, createServiceDescriptor } from "./descriptors.j
 export { ServiceCollection } from "./collection.js";
 export { IAcpService } from "./acp/acpService.js";
 export { IWorkTaskService } from "./session/contract.js";
+export { IAgentDelegationService } from "./delegation/contract.js";
 export {
   IModelSelectionService,
   IProviderSettingsService,

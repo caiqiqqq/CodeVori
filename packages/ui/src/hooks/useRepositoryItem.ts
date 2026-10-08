@@ -3,6 +3,7 @@ import type {
   ForgeComment,
   ForgeChangedFile,
   ForgeItemDetail,
+  ForgeItemExtras,
   ForgeItemRequest,
   ForgeMergeMethod,
   ForgePage,
@@ -20,6 +21,8 @@ interface DetailState {
   commentsError: string | null;
   files: ForgePage<ForgeChangedFile> | null;
   filesError: string | null;
+  extras: ForgeItemExtras | null;
+  extrasError: string | null;
 }
 const initial = (owner: object): DetailState => ({
   owner,
@@ -30,9 +33,15 @@ const initial = (owner: object): DetailState => ({
   commentsError: null,
   files: null,
   filesError: null,
+  extras: null,
+  extrasError: null,
 });
 
-export function useRepositoryItem(request: ForgeItemRequest, gitService: IGitService) {
+export function useRepositoryItem(
+  request: ForgeItemRequest,
+  gitService: IGitService,
+  withExtras = false,
+) {
   const owner = useMemo(() => ({}), [gitService, request]);
   const [state, setState] = useState<DetailState>(() => initial(owner));
   const [revision, setRevision] = useState(0);
@@ -52,6 +61,11 @@ export function useRepositoryItem(request: ForgeItemRequest, gitService: IGitSer
       (comments) => update({ comments }),
       (error: unknown) => update({ commentsError: forgeErrorId(error) }),
     );
+    if (withExtras)
+      void gitService.getForgeItemExtras(request).then(
+        (extras) => update({ extras }),
+        (error: unknown) => update({ extrasError: forgeErrorId(error) }),
+      );
     if (request.kind === "pull-request")
       void gitService.listForgeFiles({ ...request, page: 1, pageSize: 30 }).then(
         (files) => update({ files }),
@@ -60,7 +74,7 @@ export function useRepositoryItem(request: ForgeItemRequest, gitService: IGitSer
     return () => {
       alive = false;
     };
-  }, [gitService, owner, request, revision]);
+  }, [gitService, owner, request, revision, withExtras]);
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   const loadMore = async (section: "comments" | "files") => {
     const snapshot = state[section];
@@ -111,8 +125,21 @@ export function useRepositoryItem(request: ForgeItemRequest, gitService: IGitSer
     if (result) refresh();
     return Boolean(result);
   };
+  const current = state.owner === owner ? state : initial(owner);
+  const item = useMemo(() => {
+    if (!current.item || !current.extras) return current.item;
+    const { labels, ...metadata } = current.extras;
+    const colors = new Map(labels?.map((label) => [label.name, label]) ?? []);
+    return {
+      ...current.item,
+      labels: current.item.labels.map((label) => colors.get(label.name) ?? label),
+      metadata: current.item.metadata ? { ...current.item.metadata, ...metadata } : undefined,
+    };
+  }, [current.item, current.extras]);
   return {
-    ...(state.owner === owner ? state : initial(owner)),
+    ...current,
+    item,
+    extrasLoading: withExtras && !current.extras && !current.extrasError,
     mutation,
     refresh,
     loadMore,

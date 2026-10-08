@@ -5,7 +5,15 @@ import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { groupWorktreeProjectTabs } from "@/lib/worktreeProjectGrouping.js";
 import { logger } from "@/logger.js";
 
-export function useWorktreeProjectGroups(tabs: readonly WorkspaceTabState[]) {
+interface WorktreeRelationsSnapshot {
+  gitService: ReturnType<typeof useBaseWorkspaceServices>["gitService"];
+  pathsSignature: string;
+  infoByPath: Record<string, GitWorkspaceRepositoryInfo>;
+}
+
+const EMPTY_REPOSITORY_INFO: Readonly<Record<string, GitWorkspaceRepositoryInfo>> = {};
+
+export function useWorktreeProjectGroupsResolution(tabs: readonly WorkspaceTabState[]) {
   const services = useBaseWorkspaceServices();
   const localPaths = useMemo(
     () =>
@@ -19,7 +27,13 @@ export function useWorktreeProjectGroups(tabs: readonly WorkspaceTabState[]) {
     [tabs],
   );
   const pathsSignature = JSON.stringify(localPaths);
-  const [infoByPath, setInfoByPath] = useState<Record<string, GitWorkspaceRepositoryInfo>>({});
+  const [snapshot, setSnapshot] = useState<WorktreeRelationsSnapshot | null>(null);
+  const infoByPath =
+    snapshot?.gitService === services.gitService ? snapshot.infoByPath : EMPTY_REPOSITORY_INFO;
+  // 工作树关系未确认时不能短暂提供可选条目；加载态由查询身份派生，不另存一份状态。
+  const loading =
+    localPaths.length > 0 &&
+    (snapshot?.gitService !== services.gitService || snapshot.pathsSignature !== pathsSignature);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,12 +55,17 @@ export function useWorktreeProjectGroups(tabs: readonly WorkspaceTabState[]) {
       for (const info of results) {
         if (info) next[info.workspacePath] = info;
       }
-      setInfoByPath(next);
+      setSnapshot({ gitService: services.gitService, pathsSignature, infoByPath: next });
     });
     return () => {
       cancelled = true;
     };
   }, [pathsSignature, services.gitService]);
 
-  return useMemo(() => groupWorktreeProjectTabs(tabs, infoByPath), [tabs, infoByPath]);
+  const groups = useMemo(() => groupWorktreeProjectTabs(tabs, infoByPath), [tabs, infoByPath]);
+  return { groups, loading };
+}
+
+export function useWorktreeProjectGroups(tabs: readonly WorkspaceTabState[]) {
+  return useWorktreeProjectGroupsResolution(tabs).groups;
 }

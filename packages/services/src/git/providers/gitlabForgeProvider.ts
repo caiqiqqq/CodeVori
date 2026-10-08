@@ -1,10 +1,16 @@
-import type { ForgeItemDetail, ForgeMergeMethod } from "@zcode/shared";
+import {
+  forgeImagePreviewSchema,
+  type ForgeItemDetail,
+  type ForgeItemExtras,
+  type ForgeMergeMethod,
+} from "@zcode/shared";
 import type { ForgeProviderAdapter } from "./forgeProvider.js";
 import {
   author,
   checkState,
   errorCode,
   item,
+  itemMetadata,
   labels,
   page,
   record,
@@ -13,10 +19,17 @@ import {
   string,
   type ForgeApiClient,
 } from "./forgeApiClient.js";
+import { gitlabUploadApiPath } from "./forgeMedia.js";
+import { listGitlabActivity } from "./gitlabForgeActivity.js";
 
 export function createGitlabForgeProvider(
   api: ForgeApiClient,
   repository: string,
+  repositoryUrl?: string,
+  media?: {
+    readLegacy(url: string): Promise<import("@zcode/shared").ForgeImagePreview>;
+    authenticate(url: string): Promise<void>;
+  },
 ): ForgeProviderAdapter {
   const repo = `projects/${encodeURIComponent(repository)}`;
   const itemPath = (request: { kind: string; number: number }) =>
@@ -32,6 +45,8 @@ export function createGitlabForgeProvider(
           page: request.page,
           per_page: request.pageSize,
           scope: "all",
+          // 列表默认只返回标签名；请求详情字段，才能沿用与详情页一致的真实标签颜色。
+          with_labels_details: "true",
           ...(request.search ? { search: request.search } : {}),
           ...(request.labels.length ? { labels: request.labels.join(",") } : {}),
           order_by: request.sort === "updated" ? "updated_at" : "created_at",
@@ -53,7 +68,11 @@ export function createGitlabForgeProvider(
     },
     async getItem(request): Promise<ForgeItemDetail> {
       const raw = record((await api(itemPath(request))).data);
-      const result: ForgeItemDetail = { ...item(raw, request.kind, "gitlab"), change: null };
+      const result: ForgeItemDetail = {
+        ...item(raw, request.kind, "gitlab"),
+        change: null,
+        metadata: itemMetadata(raw, "gitlab"),
+      };
       if (request.kind === "issue") return result;
       let checksError: string | null = null;
       let mergeOptionsError: string | null = null;
@@ -102,27 +121,64 @@ export function createGitlabForgeProvider(
       };
       return result;
     },
-    async listComments(request) {
-      const response = await api(`${itemPath(request)}/notes`, {
-        page: request.page,
-        per_page: request.pageSize,
-        sort: "asc",
-        order_by: "created_at",
-      });
-      const all = records(response.data);
-      const result = page(all, response, request);
-      return {
-        ...result,
-        items: all
-          .filter((note) => !note.system)
-          .map((note) => ({
-            id: String(note.id),
-            body: string(note.body),
-            author: author(note.author),
-            createdAt: string(note.created_at) || null,
-            url: null,
-          })),
+    async getItemExtras(request) {
+      if (request.kind !== "issue") return {};
+      const extras: ForgeItemExtras = {};
+      // 附加权限/版本错误不能阻塞正文和关闭议题；解析错误也必须隔离到对应属性。
+      const readSection = async (
+        section: "participants" | "links" | "labels",
+        path: string,
+        parse: (response: Awaited<ReturnType<ForgeApiClient>>) => void,
+      ) => {
+        try {
+          parse(await api(path, { per_page: 100, page: 1 }));
+        } catch (error) {
+          (extras.errors ??= {})[section] = errorCode(error);
+        }
       };
+      await Promise.all([
+        readSection("participants", `${itemPath(request)}/participants`, (response) => {
+          const rows = records(response.data);
+          extras.participants = rows.map(author);
+          extras.participantsHasMore = page(rows, response, { page: 1, pageSize: 100 }).hasMore;
+        }),
+        readSection("links", `${itemPath(request)}/links`, (response) => {
+          const rows = records(response.data);
+          extras.linkedItems = rows.map((row) => {
+            const related = item(row, "issue", "gitlab");
+            return {
+              number: related.number,
+              title: related.title,
+              state: related.state,
+              url: related.url,
+            };
+          });
+          extras.linkedItemsHasMore = page(rows, response, { page: 1, pageSize: 100 }).hasMore;
+        }),
+        readSection("labels", `${repo}/labels`, (response) => {
+          extras.labels = labels(records(response.data));
+        }),
+      ]);
+      return extras;
+    },
+    async readImage(request) {
+      if (!repositoryUrl) throw new Error("FORGE_MEDIA_UNAVAILABLE");
+      const path = gitlabUploadApiPath(repository, repositoryUrl, request.url);
+      try {
+        return forgeImagePreviewSchema.parse((await api(path, {}, undefined, "image")).data);
+      } catch (error) {
+        // 17.4 才提供下载 API。仅 404 使用旧版附件路径，鉴权/解析失败不能绕过原接口。
+        if (errorCode(error) !== "FORGE_NOT_FOUND" || !media) throw error;
+        return media.readLegacy(request.url);
+      }
+    },
+    async authenticateImage(request) {
+      if (!repositoryUrl || !media) throw new Error("FORGE_MEDIA_AUTHENTICATION_UNAVAILABLE");
+      gitlabUploadApiPath(repository, repositoryUrl, request.url);
+      await media.authenticate(request.url);
+    },
+    async listComments(request) {
+      return listGitlabActivity(api, itemPath(request), request);
     },
     async listFiles(request) {
       const response = await api(`${itemPath(request)}/diffs`, {

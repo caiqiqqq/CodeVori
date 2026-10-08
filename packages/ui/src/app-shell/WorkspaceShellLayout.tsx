@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- workspace shell 当前集中编排 sidebar、chat、terminal 和 browser pane 的布局联动，先保持单文件收口，避免为满足行数限制打散关键布局状态。*/
+import { PRODUCT_NAME } from "@zcode/shared";
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CSSProperties,
@@ -1867,7 +1868,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
 
   return (
     <DesktopWindowFrame
-      title={`ZCode / ${getPathLeaf(workspaceAbsPath)}`}
+      title={`${PRODUCT_NAME} / ${getPathLeaf(workspaceAbsPath)}`}
       showHeader
       isDesktop={isDesktop}
       isMacDesktop={isMacDesktop}
@@ -1974,7 +1975,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                     automationsActive={workspaceMainView === "automations"}
                     onOpenPluginStore={handleOpenPluginStore}
                     pluginStoreActive={workspaceMainView === "plugin-store"}
-                    onOpenRepository={handleOpenRepository}
+                    onOpenRepository={() => handleOpenRepository()}
                     repositoryActive={workspaceMainView === "repository"}
                     onOpenWorkTasks={handleOpenWorkTasks}
                     workTasksActive={workspaceMainView === "work-tasks"}
@@ -2306,6 +2307,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                   workspacePath={workspaceAbsPath}
                                   workspaceIdentity={workspaceIdentity}
                                   remoteSessionId={workspaceRemoteSessionId}
+                                  workspaceTabs={workspaceTabs}
+                                  onSelectProject={handleOpenRepository}
                                   theme={theme}
                                   onCreateTask={handleCreateTaskInChat}
                                 />

@@ -14,6 +14,10 @@ import {
   buildLocalMediaPreviewUrl,
   isProviderProvisioningAccountCredentialKey,
   type ProviderProvisioningTrigger,
+  resolveWorkspaceKey,
+  type AcpSession,
+  type DelegationParent,
+  type WorkTaskScope,
 } from "@zcode/shared";
 
 export {
@@ -73,6 +77,11 @@ export {
   ZCODE_WINDOWS_APP_INSTALL_DIR_ENV,
 } from "./paths.js";
 export { createGitService } from "./git/gitService.js";
+export {
+  gitlabUploadApiPath,
+  readForgeImageResponse,
+  readForgeResponseBytes,
+} from "./git/providers/forgeMedia.js";
 export { GitCommitMessageGenerator } from "./git/gitCommitMessageGenerator.js";
 export { createGitCheckpointService } from "./git/gitCheckpointService.js";
 export { createSystemService } from "./system/systemService.js";
@@ -300,6 +309,14 @@ import { IAcpService } from "./acp/acpService.js";
 import { IWorkTaskService } from "./session/contract.js";
 import { WorkTaskRepo } from "./session/workTaskRepo.js";
 import { WorkTaskService } from "./session/workTaskService.js";
+import { IAgentDelegationService } from "./delegation/contract.js";
+import { AgentDelegationService } from "./delegation/agentDelegationService.js";
+import { listApiDelegationTargets } from "./delegation/delegationTargets.js";
+import { createDelegationMcp, delegationProtocolServer } from "./delegation/delegationMcp.js";
+import {
+  createDelegationExecution,
+  createDelegationDelivery,
+} from "./delegation/delegationExecution.js";
 import { WorkTaskAttachmentStore } from "./session/workTaskAttachmentStore.js";
 import { createWorkTaskExecution } from "./work-task/workTaskExecution.js";
 import { createWorkTaskMerge } from "./work-task/workTaskMerge.js";
@@ -1310,6 +1327,7 @@ export function createLocalServices(options: {
   hostApiNetworkTransport?: HostApiNetworkTransport;
   /** Desktop Host 请求 Main 登记 Agent 已授权的精确本地视频路径。 */
   authorizeLocalMediaPreviewPath?: (path: string) => Promise<string>;
+  forgeWebMedia?: import("@zcode/shared").ForgeWebMediaPort;
   feedback?: Partial<
     Omit<CreateFeedbackServiceOptions, "apiClient" | "credentialService" | "oauthService">
   >;
@@ -2113,7 +2131,42 @@ export function createLocalServices(options: {
           resolveOffPeakClientConfig: () => codingPlanSubscriptionService.getOffPeakClientConfig(),
           resolveOffPeakTaskService: () => offPeakTaskServiceForAgent,
         };
+  let agentDelegationService: AgentDelegationService | undefined;
+  let delegationMcp: ReturnType<typeof createDelegationMcp> | undefined;
+  const liveDelegationParents = new Map<string, string>();
+  const liveParentKey = (workspace: WorkTaskScope, sessionId: string) =>
+    JSON.stringify([resolveWorkspaceKey(workspace), sessionId]);
   const zcodeAgentService = createZCodeAgentService({
+    pauseDelegations: async (workspace, sessionId) => {
+      await agentDelegationService?.pauseParent({ ...workspace, kind: "api", sessionId });
+    },
+    resolveDelegationMcp: async (workspace, sessionId, createRequestId) => {
+      if (
+        !delegationMcp ||
+        workspace.workspaceIdentity ||
+        workspace.remoteSessionId ||
+        isDesktopAttachedRemote
+      )
+        return [];
+      const registration = await delegationMcp.register(
+        { ...workspace, kind: "api", sessionId },
+        createRequestId,
+      );
+      if (!registration) return [];
+      liveDelegationParents.set(
+        liveParentKey(workspace, sessionId),
+        resolveWorkspaceKey(workspace),
+      );
+      return [delegationProtocolServer(registration.record)];
+    },
+    onDelegationConversationCommand: async (workspace, envelope) => {
+      if (envelope.sessionId)
+        await agentDelegationService?.beforeParentCommand(
+          { ...workspace, kind: "api", sessionId: envelope.sessionId },
+          envelope.type,
+          envelope.commandId,
+        );
+    },
     ...(agentAccountProviderConfigSource
       ? { accountProviderConfigSource: agentAccountProviderConfigSource }
       : {}),
@@ -2336,7 +2389,32 @@ export function createLocalServices(options: {
     taskIndexSyncer: zcodeTaskIndexSyncer,
     cuaProductMcpServerResolver,
   });
+  const acpDelegationParent = (session: AcpSession): DelegationParent => ({
+    workspacePath: session.workspacePath,
+    kind: "acp",
+    sessionId: session.id,
+    ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
+    ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
+  });
   const acpService = createAcpService({
+    delegation: {
+      register: (session) =>
+        delegationMcp?.register(acpDelegationParent(session), session.createRequestId) ??
+        Promise.resolve(undefined),
+      onInput: async (session) => {
+        await agentDelegationService?.armParent(acpDelegationParent(session));
+      },
+      onStop: async (session) => {
+        await agentDelegationService?.pauseParent(acpDelegationParent(session));
+      },
+      onResultInput: async (session, commandId) => {
+        await agentDelegationService?.beforeParentCommand(
+          acpDelegationParent(session),
+          "sendText",
+          commandId,
+        );
+      },
+    },
     mcpSyncService,
     skillsService,
     pluginSource: {
@@ -2372,6 +2450,7 @@ export function createLocalServices(options: {
     forgeOptions: {
       credentials: createVersionControlRepo({ credentialService }),
       fetcher: hostApiNetworkTransport.fetch,
+      webMedia: options?.forgeWebMedia,
     },
     commitMessageGenerator: gitCommitMessageGenerator,
     prepareWorktreeRemoval: async (worktreePath) => {
@@ -2518,9 +2597,47 @@ export function createLocalServices(options: {
       zcodeTaskIndexSyncer.ensureWorkspaceSubscription(target),
   };
   const workTaskExecution = createWorkTaskExecution(workTaskExecutionDependencies);
+  const workTaskAttachments = new WorkTaskAttachmentStore(
+    join(getZCodeDataRootDir(), "work-task-attachments"),
+  );
+  const deliverDelegation = createDelegationDelivery(workTaskExecutionDependencies);
+  agentDelegationService = new AgentDelegationService({
+    path: join(getZCodeDataRootDir(), "agent-delegations.sqlite"),
+    targets: () => acpService.listAvailableAgents(),
+    apiTargets: () => listApiDelegationTargets(providerRuntime.modelSelection),
+    execute: createDelegationExecution(workTaskExecutionDependencies),
+    validateAssets: (input) => workTaskAttachments.validate(input, input.attachments ?? []),
+    allowExecution: !isDesktopAttachedRemote,
+    deliver: async (task, commandId, text) => {
+      if (
+        task.parent.kind === "api" &&
+        !liveDelegationParents.has(liveParentKey(task.parent, task.parent.sessionId))
+      )
+        return false;
+      return deliverDelegation(task, commandId, text);
+    },
+  });
+  delegationMcp = createDelegationMcp(
+    join(getZCodeDataRootDir(), "delegation-mcp"),
+    agentDelegationService,
+  );
+  const delegationLifecycle = zcodeAgentService.onAgentRuntimeLifecycle?.((event) => {
+    if (event.state === "unavailable") {
+      delegationMcp?.revokeWorkspace(event.workspaceKey);
+      for (const [key, workspaceKey] of liveDelegationParents)
+        if (workspaceKey === event.workspaceKey) liveDelegationParents.delete(key);
+    }
+  });
+  const delegationDispose = agentDelegationService.disposeAll.bind(agentDelegationService);
+  agentDelegationService.disposeAll = () => {
+    delegationLifecycle?.dispose();
+    delegationMcp?.dispose();
+    delegationDispose();
+  };
+  agentDelegationService.startScheduler();
   const workTaskService = new WorkTaskService({
     repo: new WorkTaskRepo(join(getZCodeDataRootDir(), "work-tasks.sqlite")),
-    attachments: new WorkTaskAttachmentStore(join(getZCodeDataRootDir(), "work-task-attachments")),
+    attachments: workTaskAttachments,
     execute: (task, context) => workTaskExecution.execute(task, context),
     merge: createWorkTaskMerge(workTaskExecutionDependencies),
     conversation: createWorkTaskConversation({ acp: acpService, agent: zcodeAgentService }),
@@ -2543,6 +2660,7 @@ export function createLocalServices(options: {
     .register(IZCodeSessionService, zcodeSessionService)
     .register(IAcpService, acpService)
     .register(IWorkTaskService, workTaskService)
+    .register(IAgentDelegationService, agentDelegationService)
     .register(ICuaPermissionService, cuaPermissionService)
     .register(ICuaPipSessionService, cuaPipSessionService)
     .register(IConversationShareService, conversationShareService)
@@ -2838,6 +2956,7 @@ export function disposeServiceResources(services: ServiceCollection): void {
   // terminal/task wrapper 这类会拉起子进程的服务只能等宿主进程自己结束，时序上可能留下短暂残留。
   // 这里集中调用各服务的本地 disposeAll 钩子，把“退出 app = 回收所有托管资源”落成机械动作。
   const disposableServices = [
+    services.getOptional(IAgentDelegationService),
     services.getOptional(IWorkTaskService),
     services.getOptional(ITerminalService),
     services.getOptional(IZCodeTaskService),
@@ -2874,6 +2993,7 @@ export async function disposeServiceResourcesAndWait(services: ServiceCollection
   // app 关闭时 host 需要等 agent 进程树完成 graceful + force 清理。
   // 旧的同步 dispose 会在 host 退出时丢掉强杀 timer，导致 zcode-cli/app-server 变成孤儿进程。
   const disposableServices = [
+    services.getOptional(IAgentDelegationService),
     services.getOptional(IWorkTaskService),
     services.getOptional(ITerminalService),
     services.getOptional(IZCodeTaskService),

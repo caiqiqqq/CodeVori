@@ -9,7 +9,7 @@ import { getSessionMentionWorkspaceScope } from "@/mentions/mentionPanelRouting.
 import { useChatViewActiveTaskProvider } from "@/v4/activeTaskProvider.js";
 import { useMemo, useRef, useState, type MutableRefObject } from "react";
 import type { EditorState } from "lexical";
-import { GoalIcon, Info, PaperclipIcon, PlusIcon, Workflow } from "lucide-react";
+import { GoalIcon, Info, PaperclipIcon, PlusIcon, Users, Workflow } from "lucide-react";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { Button } from "@/components/ui/button.js";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover.js";
@@ -24,10 +24,11 @@ import { usePluginsMentionProvider } from "@/mentions/providers/pluginsMentionPr
 import { AcpGoalEditor } from "@/prompt-editor/AcpGoalEditor.js";
 
 /**
- * 「添加」分区里紧随附件之后的命令快捷项，选中即插入与 `/` 面板相同的命令标签。
- * 两者都只在消息开头解析/展开，所以只对严格空草稿提供。
+ * 「添加」分区复用快捷项渲染：委派打开表单，命令插入与 `/` 面板相同的标签。
+ * 命令只在消息开头解析/展开，所以只对严格空草稿提供；委派不改写主草稿。
  */
 const QUICK_COMMANDS = {
+  delegation: { id: "delegate-task", labelId: "delegation.new", Icon: Users },
   goal: { id: "add-goal", labelId: "chat.goalBanner.label", Icon: GoalIcon },
   workflow: { id: "add-workflow", labelId: "chat.composer.addWorkflow", Icon: Workflow },
 } as const;
@@ -40,6 +41,7 @@ export function ChatPromptActionMenu({
   acpSessionId,
   acpGoal,
   onSetAcpGoal,
+  onDelegateTask,
   disabled,
   disabledReason,
   inputApiRef,
@@ -62,6 +64,7 @@ export function ChatPromptActionMenu({
   acpSessionId?: string | null;
   acpGoal?: string | null;
   onSetAcpGoal?: (goal: string | null) => Promise<void>;
+  onDelegateTask?: () => void;
   disabled?: boolean;
   disabledReason?: string;
   inputApiRef: MutableRefObject<LexicalChatInputHandle | null>;
@@ -81,6 +84,7 @@ export function ChatPromptActionMenu({
   const selectionStateRef = useRef<EditorState | undefined>(undefined);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const restoreEditorFocusRef = useRef(false);
+  const handoffFocusRef = useRef(false);
   const anchorRef = useMemo(
     () => ({
       current: {
@@ -137,7 +141,7 @@ export function ChatPromptActionMenu({
   const attachmentCount = attachmentAction ? 1 : 0;
   const options = [
     ...(attachmentAction ? [{ disabled: false }] : []),
-    ...quickCommands.map(() => ({ disabled: false })),
+    ...quickCommands.map((command) => ({ disabled: command === "delegation" && !onDelegateTask })),
     ...mentionItems,
   ];
   const sections: MentionPanelSection[] = [
@@ -173,7 +177,7 @@ export function ChatPromptActionMenu({
             id,
             label,
             description: "",
-            disabled: false,
+            disabled: command === "delegation" && !onDelegateTask,
             content: (
               <>
                 <Icon className="size-4 shrink-0" />
@@ -223,6 +227,11 @@ export function ChatPromptActionMenu({
       return;
     }
     const command = quickCommands[index - attachmentCount];
+    if (command === "delegation") {
+      handoffFocusRef.current = true;
+      onDelegateTask?.();
+      return;
+    }
     if (acpMode && command === "goal") {
       setGoalEditing(true);
       setOpen(true);
@@ -259,6 +268,7 @@ export function ChatPromptActionMenu({
             filesOnly
               ? []
               : [
+                  ...(onDelegateTask ? (["delegation"] as const) : []),
                   ...(acpMode || offered("goal", sessionId === null) ? (["goal"] as const) : []),
                   ...(acpMode ? (["workflow"] as const) : []),
                   ...(offered(
@@ -316,7 +326,11 @@ export function ChatPromptActionMenu({
           contentRef.current?.focus();
         }}
         onCloseAutoFocus={(event) => {
-          if (restoreEditorFocusRef.current) {
+          if (handoffFocusRef.current) {
+            // 委派弹窗已接管焦点，菜单关闭不能再把焦点抢回 + 按钮。
+            event.preventDefault();
+            handoffFocusRef.current = false;
+          } else if (restoreEditorFocusRef.current) {
             event.preventDefault();
             restoreEditorFocusRef.current = false;
             inputApiRef.current?.focus();

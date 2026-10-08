@@ -25,6 +25,72 @@ export const forgeTargetRequestSchema = forgeRepositoryRequestSchema.extend({
   accountId: z.string().uuid(),
 });
 export type ForgeTargetRequest = z.infer<typeof forgeTargetRequestSchema>;
+export const forgeImageRequestSchema = forgeTargetRequestSchema.extend({
+  url: z.string().min(1).max(8192).url(),
+});
+export type ForgeImageRequest = z.infer<typeof forgeImageRequestSchema>;
+export const forgeImagePreviewSchema = z.object({
+  mediaType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"]),
+  dataBase64: z
+    .string()
+    .min(1)
+    .max(16 * 1024 * 1024)
+    .regex(/^[A-Za-z0-9+/]*={0,2}$/),
+  totalBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(12 * 1024 * 1024),
+});
+export type ForgeImagePreview = z.infer<typeof forgeImagePreviewSchema>;
+// 仅用于 Window Host 与 Main 的原生传输；不携带账号令牌或浏览器 Cookie。
+export const forgeWebMediaContextSchema = z
+  .object({
+    accountId: z.string().uuid(),
+    username: z.string().trim().min(1).max(256),
+    serverUrl: z.string().url().max(8192),
+    repository: z.string().min(1).max(4096),
+    repositoryUrl: z.string().url().max(8192),
+    url: z.string().url().max(8192),
+    loginUrl: z.string().url().max(8192),
+  })
+  .strict();
+export type ForgeWebMediaContext = z.infer<typeof forgeWebMediaContextSchema>;
+export const hostForgeWebMediaRequestSchema = z.discriminatedUnion("action", [
+  z
+    .object({
+      type: z.literal("forge-web-media-request"),
+      requestId: z.string().uuid(),
+      action: z.enum(["read", "authenticate"]),
+      context: forgeWebMediaContextSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("forge-web-media-request"),
+      requestId: z.string().uuid(),
+      action: z.literal("cancel"),
+    })
+    .strict(),
+]);
+export const hostForgeWebMediaResultSchema = z
+  .object({
+    type: z.literal("forge-web-media-result"),
+    requestId: z.string().uuid(),
+    ok: z.boolean(),
+    preview: forgeImagePreviewSchema.optional(),
+    error: z
+      .string()
+      .regex(/^FORGE_[A-Z_]+$/)
+      .optional(),
+  })
+  .strict();
+export type HostForgeWebMediaRequest = z.infer<typeof hostForgeWebMediaRequestSchema>;
+export type HostForgeWebMediaResult = z.infer<typeof hostForgeWebMediaResultSchema>;
+export interface ForgeWebMediaPort {
+  read(context: ForgeWebMediaContext): Promise<ForgeImagePreview>;
+  authenticate(context: ForgeWebMediaContext): Promise<void>;
+}
 const pageSchema = z.number().int().min(1).max(100_000);
 const pageSizeSchema = z.number().int().min(1).max(100);
 export const forgeListRequestSchema = forgeTargetRequestSchema.extend({
@@ -99,6 +165,7 @@ export interface ForgeLabel {
 export interface ForgeAuthor {
   username: string;
   avatarUrl: string | null;
+  displayName?: string;
 }
 export interface ForgeItem {
   number: number;
@@ -131,6 +198,13 @@ export interface ForgeComment {
   author: ForgeAuthor;
   createdAt: string | null;
   url: string | null;
+  system?: boolean;
+  /** GitLab 标签资源事件不属于 notes；保留结构化内容，避免把标签名称当作 Markdown。 */
+  labelActivity?: {
+    action: "add" | "remove";
+    /** 已删除的标签由平台返回 null，界面显示本地化占位。 */
+    labels: Array<ForgeLabel | null>;
+  };
 }
 export interface ForgeChangedFile {
   path: string;
@@ -159,4 +233,24 @@ export interface ForgeChange {
 }
 export interface ForgeItemDetail extends ForgeItem {
   change: ForgeChange | null;
+  metadata?: ForgeItemMetadata;
 }
+
+export interface ForgeItemMetadata {
+  assignees: ForgeAuthor[];
+  milestone: { title: string; url: string | null } | null;
+  dueDate?: string | null;
+  timeStats?: { estimateSeconds: number; spentSeconds: number } | null;
+  confidential?: boolean | null;
+  participants?: ForgeAuthor[];
+  participantsHasMore?: boolean;
+  taskStatus?: { total: number; completed: number };
+  linkedItems?: Array<{ number: number; title: string; state: ForgeItemState; url: string | null }>;
+  linkedItemsHasMore?: boolean;
+  errors?: Partial<Record<"participants" | "links" | "labels", string>>;
+}
+
+export type ForgeItemExtras = Pick<
+  ForgeItemMetadata,
+  "participants" | "participantsHasMore" | "linkedItems" | "linkedItemsHasMore" | "errors"
+> & { labels?: ForgeLabel[] };

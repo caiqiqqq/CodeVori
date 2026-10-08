@@ -6,14 +6,15 @@ import type { NativeMcpServerRecord } from "@zcode/shared";
 
 export interface WorkflowMcpEndpoint {
   names: readonly string[];
+  tools?: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
   call(name: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
 const proxySource = `import { createInterface } from "node:readline";
 const input = createInterface({ input: process.stdin });
-let tail = Promise.resolve();
+const pending = new Set();
 for await (const line of input) {
-  tail = tail.then(async () => {
+  const task = (async () => {
     let request;
     try {
       request = JSON.parse(line);
@@ -29,9 +30,11 @@ for await (const line of input) {
       if (request?.id !== undefined) process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id,
         error: { code: -32000, message: String(error) } }) + "\\n");
     }
-  });
+  })();
+  pending.add(task);
+  task.finally(() => pending.delete(task));
 }
-await tail;
+await Promise.allSettled(pending);
 `;
 
 function toolInputSchema(name: string): Record<string, unknown> {
@@ -111,11 +114,13 @@ export function createAcpWorkflowMcp(directory: string) {
               break;
             case "tools/list":
               result = {
-                tools: endpoint.names.map((name) => ({
-                  name,
-                  description: `ZCode workflow: ${name}`,
-                  inputSchema: toolInputSchema(name),
-                })),
+                tools:
+                  endpoint.tools ??
+                  endpoint.names.map((name) => ({
+                    name,
+                    description: `ZCode workflow: ${name}`,
+                    inputSchema: toolInputSchema(name),
+                  })),
               };
               break;
             case "tools/call": {

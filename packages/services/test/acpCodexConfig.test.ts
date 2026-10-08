@@ -40,6 +40,7 @@ test("Codex 原生配置按当前文件补丁保存，保留未知键、注释�
     assert.match(toml, /\[features\]\nskills = true/);
     assert.match(toml, /\[model_providers\.other\]\nbase_url = "https:\/\/other\.example\/v1"/);
     assert.match(toml, /\[model_providers\.zcode\]/);
+    assert.match(toml, /name = "CodeVori"/);
     const auth = JSON.parse(await readFile(join(home, "auth.json"), "utf8"));
     assert.equal(auth.OPENAI_API_KEY, "new-secret");
     assert.deepEqual(auth.tokens, { access_token: "fake-token" });

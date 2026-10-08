@@ -71,6 +71,7 @@ export function ChatPromptEditor({
   acpSessionId,
   acpGoal,
   onSetAcpGoal,
+  onDelegateTask,
   betweenCancelAndSubmitAction,
   submitControl,
   inputTestId,
@@ -137,6 +138,7 @@ export function ChatPromptEditor({
   acpSessionId?: string | null;
   acpGoal?: string | null;
   onSetAcpGoal?: (goal: string | null) => Promise<void>;
+  onDelegateTask?: () => void;
   /** 行内编辑专用：固定插在取消与主提交之间的第二动作。 */
   betweenCancelAndSubmitAction?: ReactNode;
   submitControl?: ReactNode;
@@ -194,7 +196,8 @@ export function ChatPromptEditor({
     id: "chat.composer.workspaceFileDragHint",
   });
   // ACP 和原生输入共用同一个添加菜单入口。
-  const hasActionMenu = Boolean(attachmentAction) || showMentionButton || showSlashButton;
+  const hasActionMenu =
+    Boolean(attachmentAction || onDelegateTask) || showMentionButton || showSlashButton;
 
   useEffect(() => {
     if (!syncInitialValueOnMount) {
@@ -430,6 +433,7 @@ export function ChatPromptEditor({
                   acpSessionId={acpSessionId}
                   acpGoal={acpGoal}
                   onSetAcpGoal={onSetAcpGoal}
+                  onDelegateTask={onDelegateTask}
                   disabled={disabled}
                   disabledReason={disabledReason}
                   inputApiRef={resolvedInputApiRef}

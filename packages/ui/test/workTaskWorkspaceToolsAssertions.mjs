@@ -23,9 +23,6 @@ export async function exerciseWorkTaskWorkspaceTools(page, panel, card, artifact
     await header.getByRole("button", { name: "选择打开方式", exact: true }).click();
     await page.getByRole("menuitemradio", { name: /Finder/ }).click();
     await page.getByRole("menu").waitFor({ state: "detached" });
-    await header.getByRole("button", { name: "帮助", exact: true }).click();
-    await page.getByRole("menuitem", { name: "产品文档", exact: true }).click();
-    await page.getByRole("menu").waitFor({ state: "detached" });
     await header.getByTestId("terminal-toggle").click();
     await header.getByTestId("side-pane-toggle").click();
     const calls = await page.evaluate(() => window.__tasks.toolCalls);

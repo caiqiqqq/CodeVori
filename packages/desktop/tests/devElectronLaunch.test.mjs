@@ -8,8 +8,8 @@ import {
 
 const options = {
   platform: "darwin",
-  executablePath: "/fixture/ZCode Dev.app/Contents/MacOS/Electron",
-  appPath: "/fixture/ZCode Dev.app",
+  executablePath: "/fixture/CodeVori Dev.app/Contents/MacOS/Electron",
+  appPath: "/fixture/CodeVori Dev.app",
   cwd: "/fixture/project/packages/desktop",
   rendererUrl: "http://localhost:5174",
   env: { ZCODE_ENV: "production", EXAMPLE_PRIVATE_TOKEN: "not-for-argv" },

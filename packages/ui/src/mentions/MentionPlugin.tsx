@@ -18,6 +18,9 @@ import {
   KEY_TAB_COMMAND,
 } from "lexical";
 import { useZCodeIntl } from "../i18n/IntlProvider.js";
+import { acpAgentDefinition, getDelegationAgentReference } from "@zcode/shared";
+import { buildDelegationMentionMarkdown } from "@/mentions/mentionMarkdown.js";
+import { useDelegationTargets } from "@/hooks/useAgentDelegation.js";
 import {
   extractActivePromptInputTrigger,
   getActivePromptInputTokenTailLength,
@@ -228,9 +231,55 @@ export function MentionPlugin({
     skillsOnly,
     acpSessionId,
   );
+  const delegationTargets = useDelegationTargets(
+    workspacePath,
+    workspaceIdentity,
+    isOpen && isContextTrigger && !filesOnly,
+  );
+  const delegationItems = useMemo<MentionItem[]>(
+    () =>
+      delegationTargets.map((item) => {
+        const reference = getDelegationAgentReference(item);
+        const label =
+          item.kind === "acp"
+            ? acpAgentDefinition(item.agent).name
+            : `${item.execution.modelSelection.modelId} (${item.providerName})`;
+        return {
+          id: `delegation:${reference}`,
+          category: "subagents",
+          label,
+          description: item.kind === "api" ? "API" : intl.formatMessage({ id: "delegation.new" }),
+          value: reference,
+          markdown:
+            item.kind === "acp"
+              ? `@${reference}`
+              : buildDelegationMentionMarkdown(label, reference),
+          keywords:
+            item.kind === "acp"
+              ? [item.agent, label]
+              : [item.execution.modelSelection.modelId, item.providerName, "API"],
+          data:
+            item.kind === "acp"
+              ? { acpAgent: item.agent }
+              : {
+                  providerId: item.execution.modelSelection.providerId,
+                  model: item.execution.modelSelection.modelId,
+                },
+        };
+      }),
+    [delegationTargets, intl],
+  );
 
   const panelGroups = useMemo<MentionResultGroup<MentionItem>[]>(() => {
     const groupsById = {
+      delegation: {
+        id: "delegation",
+        title: intl.formatMessage({ id: "delegation.agents" }),
+        items: delegationItems,
+        loading: false,
+        errorText: null,
+        emptyText: intl.formatMessage({ id: "delegation.noAgents" }),
+      },
       files: {
         id: "files",
         title: fileResult.title,
@@ -279,11 +328,13 @@ export function MentionPlugin({
       (filesOnly
         ? (["files"] as const)
         : skillsOnly && isContextTrigger
-          ? (["plugins"] as const)
+          ? (["delegation", "plugins"] as const)
           : getMentionPanelGroupOrder(activeTrigger?.trigger)
       ).map((groupId) => groupsById[groupId]),
     );
   }, [
+    delegationItems,
+    intl,
     fileResult.emptyText,
     fileResult.error,
     fileResult.items,
@@ -331,9 +382,14 @@ export function MentionPlugin({
           disabledReason: item.disabledReason,
           // @ 面板之前只用 label/description 自己拼文件行，导致图标、文件名和路径展示
           // 跟输入框里的 mention token 不一致。这里统一复用 fileDisplay，让面板和 token 使用同一套文件语义展示。
+          // 智能体分组曾落到无图标的默认行，复用现有渲染器恢复 ACP 品牌与 API 供应商图标。
           content:
-            item.category === "files" ? (
-              <ContextMentionOptionContent item={item} workspacePath={workspacePath} />
+            item.category === "files" || item.category === "subagents" ? (
+              <ContextMentionOptionContent
+                item={item}
+                workspacePath={workspacePath}
+                workspaceIdentity={workspaceIdentity}
+              />
             ) : item.category === "skills" ? (
               <span className="min-w-0 flex flex-1 items-center gap-2">
                 {/* skills 候选项需要和命令类项保持一致的主次信息密度，
@@ -372,7 +428,7 @@ export function MentionPlugin({
         errorText: group.errorText,
         emptyText: group.emptyText,
       })),
-    [intl, panelGroups, workspacePath],
+    [intl, panelGroups, workspacePath, workspaceIdentity],
   );
 
   useEffect(() => {

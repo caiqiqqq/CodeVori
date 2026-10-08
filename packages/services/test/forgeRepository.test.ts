@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createForgeService } from "../src/git/forgeService.js";
 import type { PrivateGitAccount } from "../src/git/repo/versionControlRepo.js";
+import type { ForgeWebMediaContext, ForgeWebMediaPort } from "@zcode/shared";
 
 const accountId = "3c88bcca-98b9-4aaa-9c0c-2f869f0c1b01";
 const account = (
@@ -19,9 +20,15 @@ const account = (
   createdAt: "2026-01-01T00:00:00.000Z",
 });
 
-function fixture(remote: string, accounts: PrivateGitAccount[], replies: unknown[] = []) {
+function fixture(
+  remote: string,
+  accounts: PrivateGitAccount[],
+  replies: unknown[] = [],
+  webMedia?: ForgeWebMediaPort,
+) {
   const state = { remote, accounts, calls: [] as Array<{ url: URL; init: RequestInit }> };
   const service = createForgeService({
+    webMedia,
     gitRepo: {
       async resolveRepository(workspacePath) {
         return {
@@ -105,6 +112,255 @@ test("repository discovery resolves public and self-hosted remotes without netwo
   }
 });
 
+const uploadId = "0123456789abcdef0123456789abcdef";
+const png = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII=",
+  "base64",
+);
+test("GitLab private upload images use the bound account API without exposing credentials", async () => {
+  const f = fixture(
+    "https://forge.example.invalid/git/team/sub/project.git",
+    [account("gitlab", "https://forge.example.invalid/git")],
+    [new Response(png, { headers: { "content-type": "image/png" } })],
+  );
+  const preview = await f.service.readForgeImage({
+    ...(await f.target()),
+    url: `https://forge.example.invalid/git/team/sub/project/uploads/${uploadId}/image.png`,
+  });
+  assert.equal(preview.mediaType, "image/png");
+  assert.equal(preview.dataBase64, png.toString("base64"));
+  assert.equal(
+    f.state.calls[0]?.url.pathname,
+    `/git/api/v4/projects/team%2Fsub%2Fproject/uploads/${uploadId}/image.png`,
+  );
+  assert.equal(
+    new Headers(f.state.calls[0]?.init.headers).get("PRIVATE-TOKEN"),
+    "synthetic-forge-token",
+  );
+  assert.equal(f.state.calls[0]?.init.redirect, "error");
+  assert.doesNotMatch(JSON.stringify(preview), /synthetic-forge-token/);
+});
+
+const legacyUrl = `https://forge.example.invalid/git/team/sub/project/uploads/${uploadId}/image.png`;
+const legacyProject = {
+  path_with_namespace: "team/sub/project",
+  web_url: "https://web.example.invalid/git/team/sub/project",
+};
+const legacyFixture = (replies: unknown[], webMedia?: ForgeWebMediaPort) =>
+  fixture(
+    "https://forge.example.invalid/git/team/sub/project.git",
+    [account("gitlab", "https://forge.example.invalid/git")],
+    replies,
+    webMedia,
+  );
+const missingUpload = () => new Response(null, { status: 404 });
+const privateUpload = () =>
+  new Response(null, {
+    status: 302,
+    headers: { Location: "https://web.example.invalid/git/users/sign_in" },
+  });
+test("old GitLab public uploads fall back after API 404 without web credentials", async () => {
+  const f = legacyFixture([
+    missingUpload(),
+    new Response(png, { headers: { "content-type": "image/png" } }),
+  ]);
+  assert.equal(
+    (await f.service.readForgeImage({ ...(await f.target()), url: legacyUrl })).dataBase64,
+    png.toString("base64"),
+  );
+  assert.equal(f.state.calls.length, 2);
+  const call = f.state.calls[1]!;
+  assert.equal(call.url.href, legacyUrl);
+  assert.equal(call.init.redirect, "manual");
+  assert.equal(call.init.credentials, "omit");
+  assert.equal(new Headers(call.init.headers).get("PRIVATE-TOKEN"), null);
+  assert.equal(new Headers(call.init.headers).get("Authorization"), null);
+  assert.equal(new Headers(call.init.headers).get("Cookie"), null);
+});
+
+test("legacy private reads use an attested native session without automatically authenticating", async () => {
+  const contexts: ForgeWebMediaContext[] = [];
+  let signIns = 0;
+  const f = legacyFixture([missingUpload(), privateUpload(), legacyProject], {
+    async read(context) {
+      contexts.push(context);
+      throw new Error("FORGE_MEDIA_AUTHENTICATION");
+    },
+    async authenticate() {
+      signIns += 1;
+    },
+  });
+  const request = { ...(await f.target()), url: legacyUrl };
+  await assert.rejects(f.service.readForgeImage(request), /FORGE_MEDIA_AUTHENTICATION$/);
+  assert.equal(signIns, 0);
+  assert.equal(contexts[0]!.loginUrl, "https://web.example.invalid/git/users/sign_in");
+  assert.equal(contexts[0]!.serverUrl, "https://forge.example.invalid/git");
+  assert.equal(contexts[0]!.accountId, accountId);
+  assert.doesNotMatch(JSON.stringify(contexts), /synthetic-forge-token|Cookie|secret/);
+  assert.equal(
+    new Headers(f.state.calls[2]!.init.headers).get("PRIVATE-TOKEN"),
+    "synthetic-forge-token",
+  );
+});
+
+test("authenticated native previews and explicit login stay on the selected Host", async () => {
+  const actions: string[] = [];
+  const f = legacyFixture([missingUpload(), privateUpload(), legacyProject, legacyProject], {
+    async read() {
+      actions.push("read");
+      return { mediaType: "image/png", dataBase64: png.toString("base64"), totalBytes: png.length };
+    },
+    async authenticate() {
+      actions.push("authenticate");
+    },
+  });
+  const request = { ...(await f.target()), url: legacyUrl };
+  const image = await f.service.readForgeImage(request);
+  assert.equal(image.totalBytes, png.length);
+  await f.service.authenticateForgeImage(request);
+  assert.deepEqual(actions, ["read", "authenticate"]);
+  assert.doesNotMatch(JSON.stringify(image), /synthetic-forge-token/);
+});
+
+test("old GitLab without native authentication reports capability unavailable", async () => {
+  const f = legacyFixture([missingUpload(), privateUpload()]);
+  const request = { ...(await f.target()), url: legacyUrl };
+  await assert.rejects(f.service.readForgeImage(request), /FORGE_MEDIA_AUTHENTICATION_UNAVAILABLE/);
+  await assert.rejects(
+    f.service.authenticateForgeImage(request),
+    /FORGE_MEDIA_AUTHENTICATION_UNAVAILABLE/,
+  );
+  assert.equal(
+    f.state.calls.length,
+    2,
+    "An unavailable Host cannot route to another Host or open a browser",
+  );
+});
+
+test("only API 404 allows compatibility; unauthorized, malformed, redirect and network failures never fall back", async () => {
+  for (const reply of [
+    new Response(null, { status: 401 }),
+    new Response(null, { status: 403 }),
+    new Response(null, { status: 302 }),
+    new Error("synthetic-network-error"),
+    new Response("<html>bad</html>", { headers: { "content-type": "image/png" } }),
+  ]) {
+    const f = legacyFixture([reply]);
+    await assert.rejects(f.service.readForgeImage({ ...(await f.target()), url: legacyUrl }));
+    assert.equal(f.state.calls.length, 1);
+  }
+});
+
+test("canonical login origins must be attested to the exact project", async () => {
+  for (const project of [
+    { ...legacyProject, path_with_namespace: "other/project" },
+    { ...legacyProject, web_url: "https://web.example.invalid/git/other/project" },
+    { ...legacyProject, web_url: "https://token@web.example.invalid/git/team/sub/project" },
+    { ...legacyProject, web_url: "not a URL" },
+    { ...legacyProject, web_url: "https://web.example.invalid/git/team/sub/project?token=secret" },
+  ]) {
+    let invoked = false;
+    const f = legacyFixture([project], {
+      async read() {
+        throw new Error("unexpected");
+      },
+      async authenticate() {
+        invoked = true;
+      },
+    });
+    await assert.rejects(
+      f.service.authenticateForgeImage({ ...(await f.target()), url: legacyUrl }),
+    );
+    assert.equal(invoked, false);
+  }
+});
+
+test("removed, rotated and changed targets cannot accept late login completion", async () => {
+  for (const change of ["removed", "rotated", "username", "remote"] as const) {
+    let started!: () => void;
+    let finish!: () => void;
+    const began = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const completed = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const f = legacyFixture([legacyProject], {
+      async read() {
+        throw new Error("unexpected");
+      },
+      async authenticate() {
+        started();
+        await completed;
+      },
+    });
+    const rejected = assert.rejects(
+      f.service.authenticateForgeImage({ ...(await f.target()), url: legacyUrl }),
+      /FORGE_(MISSING_ACCOUNT|TARGET_CHANGED)/,
+    );
+    await began;
+    if (change === "removed") f.state.accounts = [];
+    if (change === "rotated")
+      f.state.accounts = [{ ...f.state.accounts[0]!, secret: "synthetic-rotated-token" }];
+    if (change === "username")
+      f.state.accounts = [{ ...f.state.accounts[0]!, username: "synthetic-other-user" }];
+    if (change === "remote") f.state.remote = "https://forge.example.invalid/git/team/other.git";
+    finish();
+    await rejected;
+  }
+});
+test("private media rejects foreign origins, projects, credentials and traversal before HTTP", async () => {
+  const f = fixture("https://forge.example.invalid/team/project.git", [
+    account("gitlab", "https://forge.example.invalid"),
+  ]);
+  const target = await f.target();
+  for (const url of [
+    `https://other.example.invalid/team/project/uploads/${uploadId}/image.png`,
+    `https://forge.example.invalid/other/project/uploads/${uploadId}/image.png`,
+    `https://forge.example.invalid/team/project/uploads/${uploadId}/%2e%2e%2fsecret.png`,
+    `https://user:pass@forge.example.invalid/team/project/uploads/${uploadId}/image.png`,
+    "file:///private/image.png",
+    "https://forge.example.invalid/admin/users",
+  ])
+    await assert.rejects(f.service.readForgeImage({ ...target, url }));
+  assert.equal(f.state.calls.length, 0);
+  f.state.remote = "https://forge.example.invalid/other/project.git";
+  await assert.rejects(
+    f.service.readForgeImage({
+      ...target,
+      url: `https://forge.example.invalid/team/project/uploads/${uploadId}/image.png`,
+    }),
+    /FORGE_TARGET_CHANGED/,
+  );
+  assert.equal(f.state.calls.length, 0);
+});
+test("media payloads reject HTML, SVG, oversized content and redirects", async () => {
+  for (const response of [
+    new Response("<html>private</html>", { headers: { "content-type": "image/png" } }),
+    new Response("<svg></svg>", { headers: { "content-type": "image/svg+xml" } }),
+    new Response(png, {
+      status: 302,
+      headers: { location: "https://other.example.invalid/image.png" },
+    }),
+    new Response(new Uint8Array(12 * 1024 * 1024 + 1), {
+      headers: { "content-type": "image/png" },
+    }),
+  ]) {
+    const f = fixture(
+      "https://forge.example.invalid/team/project.git",
+      [account("gitlab", "https://forge.example.invalid")],
+      [response],
+    );
+    await assert.rejects(
+      f.service.readForgeImage({
+        ...(await f.target()),
+        url: `https://forge.example.invalid/team/project/uploads/${uploadId}/image.png`,
+      }),
+    );
+    assert.equal(f.state.calls.length, 1);
+  }
+});
+
 test("unknown hosts and absent/generic/mismatched credentials do not receive forge requests", async () => {
   for (const [remote, accounts, status] of [
     ["https://github.com/team/project.git", [], "missing-account"],
@@ -180,6 +436,10 @@ test("a removed target account is rejected even when unrelated accounts remain",
   assert.equal((await f.repository()).status, "account-mismatch");
   await assert.rejects(
     f.service.getForgeItem({ ...target, kind: "issue", number: 1 }),
+    /FORGE_MISSING_ACCOUNT/,
+  );
+  await assert.rejects(
+    f.service.getForgeItemExtras({ ...target, kind: "issue", number: 1 }),
     /FORGE_MISSING_ACCOUNT/,
   );
   await assert.rejects(

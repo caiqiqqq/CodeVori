@@ -1,4 +1,5 @@
 /* oxlint-disable eslint(max-lines) -- footer 聚合账户、主题、模式和快捷键菜单。 */
+import { PRODUCT_NAME } from "@zcode/shared";
 import type { Locale, UserInfo } from "@zcode/shared";
 import { memo, useCallback, useEffect, useState } from "react";
 import {
@@ -63,7 +64,7 @@ function getSidebarProfileName(user?: UserInfo | null): string {
     return username;
   }
 
-  return "ZCode";
+  return PRODUCT_NAME;
 }
 
 function getSidebarProfileBadge(user: UserInfo | null | undefined): string {
@@ -71,7 +72,7 @@ function getSidebarProfileBadge(user: UserInfo | null | undefined): string {
     return getSidebarProfileName(user);
   }
 
-  return "ZCode";
+  return PRODUCT_NAME;
 }
 
 function getAvatarFallbackText(user: UserInfo | null | undefined): string {

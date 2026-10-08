@@ -51,6 +51,7 @@ import type {
   ForgeItemList,
   ForgeItemRequest,
   ForgeItemDetail,
+  ForgeItemExtras,
   ForgePageRequest,
   ForgePage,
   ForgeComment,
@@ -62,6 +63,8 @@ import type {
   ForgeCommentRequest,
   ForgeStateRequest,
   ForgeMergeRequest,
+  ForgeImageRequest,
+  ForgeImagePreview,
 } from "@zcode/shared";
 import { ServiceChannels } from "@zcode/shared";
 import { createServiceDescriptor } from "../descriptors.js";
@@ -70,6 +73,9 @@ export interface IGitService {
   getForgeRepository(params: ForgeRepositoryRequest): Promise<ForgeRepositoryInfo>;
   listForgeItems(params: ForgeListRequest): Promise<ForgeItemList>;
   getForgeItem(params: ForgeItemRequest): Promise<ForgeItemDetail>;
+  getForgeItemExtras(params: ForgeItemRequest): Promise<ForgeItemExtras>;
+  readForgeImage(params: ForgeImageRequest): Promise<ForgeImagePreview>;
+  authenticateForgeImage(params: ForgeImageRequest): Promise<void>;
   listForgeComments(params: ForgePageRequest): Promise<ForgePage<ForgeComment>>;
   listForgeFiles(params: ForgePageRequest): Promise<ForgePage<ForgeChangedFile>>;
   listForgeLabels(params: ForgeTargetRequest): Promise<ForgeLabel[]>;

@@ -418,6 +418,7 @@ interface ConversationComposerProps {
   onSendAcpText?: (input: Omit<AcpPromptInput, "commandId">) => Promise<string>;
   acpGoal?: string | null;
   onSetAcpGoal?: (goal: string | null) => Promise<void>;
+  onDelegateTask?: () => void;
   acpConfigOptions?: AcpConfigOption[];
   acpModeState?: AcpModeState | null;
   acpConfigLoading?: boolean;
@@ -541,6 +542,7 @@ function ConversationComposerImpl({
   onSendAcpText,
   acpGoal,
   onSetAcpGoal,
+  onDelegateTask,
   acpConfigOptions = [],
   acpModeState = null,
   acpConfigLoading = false,
@@ -2637,6 +2639,7 @@ function ConversationComposerImpl({
           acpSessionId={acpSessionId}
           acpGoal={acpGoal}
           onSetAcpGoal={onSetAcpGoal}
+          onDelegateTask={onDelegateTask}
           inputTestId={TID_V4_COMPOSER_INPUT}
           inputApiRef={inputApiRef}
           promptHistory={promptHistory}

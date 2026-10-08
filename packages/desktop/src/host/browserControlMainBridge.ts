@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "@zcode/shared";
 import { randomUUID } from "node:crypto";
 import { HostResponseTypes } from "@zcode/shared";
 import type {
@@ -138,7 +139,7 @@ export function createBrowserControlMainBridge(deps: {
     id: browserId,
     generation: browserGeneration,
     type: "iab",
-    name: "ZCode In-app Browser",
+    name: `${PRODUCT_NAME} In-app Browser`,
     capabilities: {
       // capability collection 只列 optional capability；tabs/cua/screenshot/dialog 是 core API，
       // 不能伪装成 capability。viewport 是 Playwright-like Tab 核心 API；browser capability

@@ -3,6 +3,7 @@ import { readFile, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "smol-toml";
 import {
+  PRODUCT_NAME,
   acpCodexConfigUpdateSchema,
   type AcpCodexConfig,
   type AcpCodexConfigUpdate,
@@ -101,7 +102,7 @@ function patchProvider(text: string, baseUrl: string): string {
   const lines = text.trimEnd().split("\n");
   const start = lines.findIndex((line) => /^\s*\[model_providers\.zcode\]\s*(?:#.*)?$/.test(line));
   const fields = [
-    ["name", "ZCode"],
+    ["name", PRODUCT_NAME],
     ["base_url", baseUrl],
     ["wire_api", "responses"],
   ] as const;

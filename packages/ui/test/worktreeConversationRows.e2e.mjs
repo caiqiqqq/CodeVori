@@ -22,6 +22,7 @@ try {
     import { createRoot } from 'react-dom/client';
     import { WorkspaceTimelineTasksSection } from '../../../ui/src/WorkspaceTimelineTasksSection.tsx';
     import { WorkspacePinnedTasksSection } from '../../../ui/src/WorkspacePinnedTasksSection.tsx';
+    import { TaskList } from '../../../ui/src/TaskList.tsx';
     import { PlatformProvider } from '../../../ui/src/hooks/usePlatform.tsx';
     import { ServiceProvider } from '../../../ui/src/hooks/useServices.tsx';
     import { TabStoreProvider } from '../../../ui/src/store/TabStoreProvider.tsx';
@@ -34,6 +35,9 @@ try {
     const paths = [mainPath, treePath, otherPath];
     const tabs = paths.map((workspacePath, i) => ({ id: String(i), kind: 'workspace', label: 'repo', workspacePath }));
     const treeKeys = new Set([treePath, otherPath]);
+    const emptyMode = new URLSearchParams(location.search).has('empty');
+    const emptyTabs = ['/fixture/empty/repo','/fixture/empty/worktrees/ab12/repo'].map((workspacePath, i) =>
+      ({id:'empty-'+i,kind:'workspace',label:'empty',workspacePath}));
     const now = Date.now();
     const api = Array.from({length: 25}, (_, i) => ({ taskId: 'api-' + i, workspacePath: paths[i % 3],
       title: 'API 对话 ' + i, provider: 'glm', status: 'idle', createdAt: now - i * 10000, updatedAt: now - (24 - i) * 10000 }));
@@ -78,6 +82,18 @@ try {
         onSelectTask:(workspacePath,id)=>{ window.__rowSelections.push({workspacePath,id,kind:'api'}); setActive({workspacePath,id,kind:'api'}); },
         onSelectAcpSession:session=>{ window.__rowSelections.push({workspacePath:session.workspacePath,id:session.id,kind:'acp'}); setActive({workspacePath:session.workspacePath,id:session.id,kind:'acp'}); },
       };
+      if (emptyMode) return <main style={{width:'min(300px, calc(100vw - 24px))',margin:'20px 12px',backgroundColor:'var(--color-sidebar)'}}>
+        <section data-testid="empty-ordinary"><TaskList workspacePath={emptyTabs[0].workspacePath}
+          tasks={[]} acpSessions={[]} activeTaskId={null} onSelectTask={()=>{}} loading={false}
+          showCreateButton={false} showFooter={false} onRenameTask={async()=>null}
+          onSetTaskPinned={async()=>null} onArchiveTask={async()=>null} onSetTaskUnread={async()=>null}/></section>
+        <section data-testid="empty-worktree"><WorkspaceTimelineTasksSection workspaceTabs={emptyTabs}
+          activeWorkspacePath={emptyTabs[0].workspacePath} activeTaskId={null} taskSortBy="updated"
+          taskRowVariant="default" groupByDate={false} onSelectTask={()=>{}}/></section>
+        <section data-testid="empty-timeline"><WorkspaceTimelineTasksSection workspaceTabs={emptyTabs}
+          activeWorkspacePath={emptyTabs[0].workspacePath} activeTaskId={null} taskSortBy="updated"
+          taskRowVariant="timeline" groupByDate={false} onSelectTask={()=>{}}/></section>
+      </main>;
       return <main style={{width:'min(300px, calc(100vw - 24px))',margin:'20px 12px',backgroundColor:'var(--color-sidebar)'}} data-testid="rows-fixture" data-variant={variant}>
         {pinned ? <WorkspacePinnedTasksSection {...props as never}/> : <WorkspaceTimelineTasksSection {...props as never} taskRowVariant={variant} groupByDate={false}/>}
       </main>;
@@ -96,6 +112,51 @@ try {
       page.setDefaultTimeout(10000);
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
+      await page.emulateMedia({ colorScheme: theme });
+      await page.goto(`http://localhost:5174/${name}.html?empty`);
+      await page.evaluate((value) => {
+        document.documentElement.className =
+          value === "dark" ? "dark theme-zai-dark" : "theme-zai-light";
+      }, theme);
+      const ordinaryEmpty = page
+        .getByTestId("empty-ordinary")
+        .getByText("暂无任务", { exact: true });
+      const worktreeEmpty = page
+        .getByTestId("empty-worktree")
+        .getByText("暂无任务", { exact: true });
+      const timelineEmpty = page
+        .getByTestId("empty-timeline")
+        .getByText("暂无任务", { exact: true });
+      await ordinaryEmpty.waitFor();
+      await worktreeEmpty.waitFor();
+      await timelineEmpty.waitFor();
+      const emptyPresentation = async (locator) =>
+        locator.evaluate((element) => {
+          const style = getComputedStyle(element);
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return {
+            textLeft: range.getBoundingClientRect().left,
+            color: style.color,
+            fontSize: style.fontSize,
+            fontWeight: style.fontWeight,
+            lineHeight: style.lineHeight,
+            height: element.getBoundingClientRect().height,
+            overflow: element.scrollWidth > element.clientWidth,
+          };
+        });
+      const ordinaryPresentation = await emptyPresentation(ordinaryEmpty);
+      const worktreePresentation = await emptyPresentation(worktreeEmpty);
+      const timelinePresentation = await emptyPresentation(timelineEmpty);
+      await page.screenshot({ path: `/tmp/codevori-project-empty-${width}-${theme}.png` });
+      assert.deepEqual(
+        worktreePresentation,
+        ordinaryPresentation,
+        "普通项目和工作树项目的空提示应具有相同的文字位置、颜色和字号",
+      );
+      assert.equal(ordinaryPresentation.overflow, false);
+      assert.ok(timelinePresentation.textLeft < ordinaryPresentation.textLeft);
+      assert.notEqual(timelinePresentation.color, ordinaryPresentation.color);
       await page.goto(`http://localhost:5174/${name}.html`);
       await page.evaluate(
         (theme) => document.documentElement.classList.toggle("dark", theme === "dark"),
@@ -311,7 +372,7 @@ try {
     }
   }
   process.stdout.write(
-    "PASS: idle worktree markers swap with API/ACP pin/archive on hover/focus/confirmation, both variants, pinned layout, real path selection, merged sorting/pagination, desktop/mobile widths and themes.\n",
+    "PASS: project empty hints align in both widths/themes; idle worktree markers swap with API/ACP pin/archive on hover/focus/confirmation, both variants, pinned layout, real path selection, merged sorting/pagination.\n",
   );
 } finally {
   await browser?.close();

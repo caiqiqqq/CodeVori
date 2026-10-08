@@ -133,6 +133,16 @@ export function createAcpService(
     pluginSource?: {
       getAcpPluginCapabilities(params: AcpWorkspace): Promise<ZCodePluginsAcpCapabilitiesResult>;
     };
+    delegation?: {
+      register(
+        session: AcpSession,
+      ): Promise<
+        { record: NativeMcpServerRecord; revoke(): void; canDelegate?: boolean } | undefined
+      >;
+      onInput(session: AcpSession): Promise<void>;
+      onStop(session: AcpSession): Promise<void>;
+      onResultInput(session: AcpSession, commandId: string): Promise<void>;
+    };
   } = {},
 ): IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } {
   const directory = options.directory ?? join(getZCodeDataRootDir(), "acp-sessions");
@@ -154,6 +164,8 @@ export function createAcpService(
   const writes = new Map<string, Promise<void>>();
   const diagnosticWrites = new Map<string, Promise<void>>();
   const active = new Map<string, string>();
+  const internalResults = new Set<string>();
+  const delegationRegistrations = new Map<string, { revoke(): void; canDelegate?: boolean }>();
   const stopping = new Set<string>();
   const configuring = new Set<string>();
   const pending = new Map<string, { requestId: string; resolve(value: string | null): void }>();
@@ -475,6 +487,8 @@ export function createAcpService(
     settlePermission(id);
     workflowRegistrations.get(id)?.revoke();
     workflowRegistrations.delete(id);
+    delegationRegistrations.get(id)?.revoke();
+    delegationRegistrations.delete(id);
     connections.get(id)?.close();
     connections.delete(id);
     connecting.delete(id);
@@ -505,12 +519,17 @@ export function createAcpService(
       ]);
       const workflowRegistration = await workflowHost.register(session);
       workflowRegistrations.set(session.id, workflowRegistration);
+      const delegationRegistration = await options.delegation?.register(session);
+      if (delegationRegistration) delegationRegistrations.set(session.id, delegationRegistration);
       return connect({
         agent: session.agent,
         workspacePath: session.workspacePath,
         sessionId: session.acpSessionId || undefined,
         ...(mcpSettings ? { mcpServers: mcpSettings.servers } : {}),
-        workflowServers: [workflowRegistration.record],
+        workflowServers: [
+          workflowRegistration.record,
+          ...(delegationRegistration ? [delegationRegistration.record] : []),
+        ],
         ...(plugins ? { pluginServers: plugins.servers } : {}),
         ...(launch ? { launch } : {}),
         onUpdate: async (update) => {
@@ -1076,6 +1095,51 @@ export function createAcpService(
         creating.delete(key);
       }
     },
+    async notifyResult(input) {
+      const session = await scoped(input);
+      if (session.entries.some((entry) => entry.id === `user:${input.commandId}`)) return true;
+      if (
+        disposed ||
+        removed.has(session.id) ||
+        !connections.has(session.id) ||
+        active.has(session.id) ||
+        stopping.has(session.id) ||
+        configuring.has(session.id) ||
+        session.status === "running"
+      )
+        return false;
+      // 复用普通 prompt 的唯一 admission；只等待落盘，不阻塞委派 lease 心跳。
+      let resolveAdmission!: (value: boolean) => void;
+      let rejectAdmission!: (error: unknown) => void;
+      const receipt = new Promise<boolean>((resolve, reject) => {
+        resolveAdmission = resolve;
+        rejectAdmission = reject;
+      });
+      const listener = emitter.event((change) => {
+        if (
+          change.kind === "updated" &&
+          change.session.id === session.id &&
+          change.session.entries.some((entry) => entry.id === `user:${input.commandId}`)
+        )
+          resolveAdmission(true);
+      });
+      internalResults.add(input.commandId);
+      const prompt = service.prompt({ ...input, attachments: [], workspaceFiles: [] });
+      void prompt
+        .then(
+          () =>
+            resolveAdmission(
+              session.entries.some((entry) => entry.id === `user:${input.commandId}`),
+            ),
+          rejectAdmission,
+        )
+        .finally(() => internalResults.delete(input.commandId));
+      try {
+        return await receipt;
+      } finally {
+        listener.dispose();
+      }
+    },
     async prompt(input) {
       const session = await scoped(input);
       if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
@@ -1098,7 +1162,13 @@ export function createAcpService(
       const goal = session.goal;
       let admitted = false;
       try {
+        if (!internalResults.has(commandId)) await options.delegation?.onInput(session);
         const port = await attach(session);
+        const delegationInstruction =
+          port.provisionedMcpNames?.has("zcode-delegation") &&
+          delegationRegistrations.get(session.id)?.canDelegate !== false
+            ? "用户提到委派或 @智能体时，使用 zcode-delegation 的 ListDelegationAgents / DelegateTask；保持当前主智能体，显式传递必要上下文，不复制全部历史。子任务完成只汇总，不自动继续修改、合并或推送。"
+            : undefined;
         const workflowInstruction = /^\/workflow(?:\s|$)/i.test(prompt.text.trimStart())
           ? `Use the ZCode zcode-workflows MCP ReadWorkflowInstructions tool, then call CreateWorkflow for this request: ${prompt.text.trimStart().replace(/^\/workflow\s*/i, "")}`
           : undefined;
@@ -1146,6 +1216,7 @@ export function createAcpService(
           capabilities: port.promptCapabilities,
         });
         if (workflowInstruction) blocks.unshift({ type: "text", text: workflowInstruction });
+        if (delegationInstruction) blocks.unshift({ type: "text", text: delegationInstruction });
         const notifications = workflowNotifications.get(session.id);
         if (notifications?.length) {
           workflowNotifications.delete(session.id);
@@ -1158,6 +1229,8 @@ export function createAcpService(
           // 目标属于 Host 会话，不是 ZCode CLI 的 /goal 命令；仅向 Agent 传入本轮有效目标。
           blocks.unshift({ type: "text", text: `Session objective: ${goal}` });
         }
+        if (internalResults.has(commandId))
+          await options.delegation?.onResultInput(session, commandId);
         if (active.get(session.id) !== commandId || removed.has(session.id)) {
           return structuredClone(session);
         }
@@ -1301,12 +1374,16 @@ export function createAcpService(
       const session = await scoped(parsed);
       // 待办观察取消只针对其实际 command；旧取消请求不能停止用户后续的新消息或工作流。
       if (parsed.expectedCommandId && active.get(session.id) !== parsed.expectedCommandId) return;
-      workflowHost.stopSession(session.id);
-      if (!active.has(session.id)) return;
+      if (stopping.has(session.id)) return;
+      const hadActive = active.has(session.id);
       stopping.add(session.id);
       active.delete(session.id);
-      settlePermission(session.id);
       try {
+        // 停止栅栏先占位，再异步暂停委派；不能在 await 间隙接收新轮消息。
+        await options.delegation?.onStop(session);
+        workflowHost.stopSession(session.id);
+        if (!hadActive) return;
+        settlePermission(session.id);
         await mutate(session, () => {
           session.status = "idle";
           session.usageBaselineKnown = false;
@@ -1316,7 +1393,7 @@ export function createAcpService(
         await connections.get(session.id)?.cancel();
       } finally {
         // 取消后终止旧连接，避免旧 prompt 未结束时新轮进入同一 Agent 进程。
-        detach(session.id);
+        if (hadActive) detach(session.id);
         stopping.delete(session.id);
       }
     },
@@ -1385,6 +1462,7 @@ export function createAcpService(
       workflowHost.stopSession(session.id);
       // 修复原因：用户切换智能体时的迟到清理不得删除已经接受首条消息的会话。
       if (input.provisionalOnly && (!session.provisional || active.has(session.id))) return;
+      await options.delegation?.onStop(session);
       for (const [key, id] of created) if (id === session.id) created.delete(key);
       removed.add(session.id);
       active.delete(session.id);

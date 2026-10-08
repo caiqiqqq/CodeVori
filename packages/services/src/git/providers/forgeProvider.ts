@@ -4,6 +4,7 @@ import type {
   ForgeChangedFile,
   ForgeItem,
   ForgeItemDetail,
+  ForgeItemExtras,
   ForgeItemList,
   ForgeItemRequest,
   ForgeLabel,
@@ -13,11 +14,16 @@ import type {
   ForgePage,
   ForgePageRequest,
   ForgeStateRequest,
+  ForgeImageRequest,
+  ForgeImagePreview,
 } from "@zcode/shared";
 
 export interface ForgeProviderAdapter {
   listItems(request: ForgeListQuery): Promise<ForgeItemList>;
   getItem(request: ForgeItemRequest): Promise<ForgeItemDetail>;
+  getItemExtras?(request: ForgeItemRequest): Promise<ForgeItemExtras>;
+  readImage?(request: ForgeImageRequest): Promise<ForgeImagePreview>;
+  authenticateImage?(request: ForgeImageRequest): Promise<void>;
   listComments(request: ForgePageRequest): Promise<ForgePage<ForgeComment>>;
   listFiles(request: ForgePageRequest): Promise<ForgePage<ForgeChangedFile>>;
   listLabels(): Promise<ForgeLabel[]>;

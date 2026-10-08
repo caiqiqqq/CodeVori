@@ -7,6 +7,7 @@ import {
   count,
   errorCode,
   item,
+  itemMetadata,
   labels,
   page,
   record,
@@ -43,7 +44,11 @@ export function createGiteaForgeProvider(
         (await api(`${repo}/${request.kind === "issue" ? "issues" : "pulls"}/${request.number}`))
           .data,
       );
-      const result: ForgeItemDetail = { ...item(raw, request.kind, "gitea"), change: null };
+      const result: ForgeItemDetail = {
+        ...item(raw, request.kind, "gitea"),
+        change: null,
+        metadata: itemMetadata(raw, "gitea"),
+      };
       if (request.kind === "issue") return result;
       const head = record(raw.head);
       const base = record(raw.base);

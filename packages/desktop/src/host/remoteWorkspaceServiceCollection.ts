@@ -15,6 +15,7 @@ import {
   IZCodeSessionService,
   IAcpService,
   IWorkTaskService,
+  IAgentDelegationService,
   IConversationShareService,
   IBotsService,
   IFileWatcherService,
@@ -386,6 +387,8 @@ export function createRemoteWorkspaceServiceCollection(params: {
   if (params.connectionServices.workTaskService) {
     services.register(IWorkTaskService, params.connectionServices.workTaskService);
   }
+  if (params.connectionServices.agentDelegationService)
+    services.register(IAgentDelegationService, params.connectionServices.agentDelegationService);
   registerHostApiNetworkTransportForDispose(services, hostApiNetworkTransport);
   registerRemoteProviderProvisioningExecutor(services, remoteProviderProvisioningService);
   return services;

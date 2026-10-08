@@ -333,6 +333,7 @@ async function stop(
     // 继续 abort 外层 controller 会误杀用户没看到的新执行。execution id 不匹配只能 noop。
     throw new V4CommandNoopError("guard.stopTargetChanged");
   }
+  await host.pauseDelegations?.(record.app.sessionId);
   if (runtimeStop?.kind === "stopped") {
     // 先打断 runtime-owned verifier/continuation，再等待 goal pause；否则 verifier 可能在
     // pause RPC 完成前通过并接入下一次 continuation。

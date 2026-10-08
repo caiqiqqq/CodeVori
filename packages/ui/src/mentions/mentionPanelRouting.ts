@@ -1,9 +1,16 @@
 import type { PromptInputTrigger } from "@/lib/promptInputTriggers.js";
 
-export type MentionPanelGroupId = "plugins" | "files" | "sessions" | "whiteboards" | "skills";
+export type MentionPanelGroupId =
+  | "plugins"
+  | "files"
+  | "sessions"
+  | "whiteboards"
+  | "skills"
+  | "delegation";
 export type SessionMentionWorkspaceScope = "current-workspace" | "same-authority-workspaces";
 
 const CONTEXT_GROUP_ORDER: readonly MentionPanelGroupId[] = [
+  "delegation",
   "plugins",
   "files",
   "sessions",

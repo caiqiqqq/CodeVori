@@ -553,7 +553,86 @@ nodes:
       - Allocate under the configured Worktrees root; retry reuses only a verified project and branch binding.
       - Resolve the selected local source branch only at first allocation and persist its base commit; retries never follow later branch movement.
       - Use canonical filesystem paths for ownership; do not touch an unrelated directory or branch.
+  - id: capability.agent-delegation
+    kind: capability
+    label: Cross-agent delegation from an existing conversation
+    aliases: [智能体委派, 跨智能体协作, agent delegation, ACP subagent]
+    codeSeeds:
+      - file: packages/shared/src/agent-delegation.ts
+        symbol: delegationCreateSchema
+      - file: packages/services/src/delegation/contract.ts
+        symbol: IAgentDelegationService
+    invariants:
+      - Delegation does not switch the main model or replace native API subagents.
+      - Local execution only; remote identity must never fall back to local cwd.
+  - id: surface.agent-delegation
+    kind: ui-surface
+    label: Delegation panel, shared chat editor and agent settings
+    codeSeeds:
+      - file: packages/ui/src/delegation/AgentDelegationPanel.tsx
+        symbol: AgentDelegationPanel
+      - file: packages/ui/src/delegation/DelegationEditor.tsx
+        symbol: DelegationEditor
+      - file: packages/ui/src/hooks/useAgentDelegation.ts
+        symbol: useAgentDelegation
+  - id: service.agent-delegation-owner
+    kind: service
+    label: Durable delegation task, attempt, lease and outbox owner
+    codeSeeds:
+      - file: packages/services/src/delegation/agentDelegationService.ts
+        symbol: AgentDelegationService
+      - file: packages/services/src/delegation/delegationRepository.ts
+        symbol: DelegationRepository
+  - id: boundary.agent-delegation-mcp
+    kind: boundary
+    label: Session capability bridge and native reverse protocol
+    codeSeeds:
+      - file: packages/services/src/delegation/delegationMcp.ts
+        symbol: createDelegationMcp
+      - file: apps/zcode-cli/packages/bootstrap/src/zcode-protocol/delegation-lifecycle.ts
+        symbol: pauseHostDelegations
+    invariants:
+      - Tokens are ephemeral; child result submission checks the current command and lease.
+      - Stop must validate foreground identity before pausing delegation.
 edges:
+  - from: capability.agent-delegation
+    to: surface.agent-delegation
+    type: renders-in
+    rank: must-inspect
+  - from: surface.agent-delegation
+    to: service.agent-delegation-owner
+    type: sends-commands-to
+    rank: must-inspect
+  - from: boundary.agent-delegation-mcp
+    to: service.agent-delegation-owner
+    type: scopes-admission-to
+    rank: must-inspect
+  - from: service.agent-delegation-owner
+    to: service.work-task-execution
+    type: reuses-conversation-executor
+    rank: must-inspect
+  - from: service.agent-delegation-owner
+    to: service.host-model-selection
+    type: reads-api-target-registry-from
+    rank: must-inspect
+  - from: service.agent-delegation-owner
+    to: boundary.work-task-worktree
+    type: reuses-worktree-allocation
+    rank: conditional
+    condition: Edit tasks use the configured managed worktree root; analysis shares the project.
+  - from: service.agent-delegation-owner
+    to: persistence.work-task-attachments
+    type: reuses-managed-attachments
+    rank: must-inspect
+  - from: boundary.agent-delegation-mcp
+    to: service.conversation-command-inbox
+    type: requires-native-result-admission-through
+    rank: must-inspect
+  - from: surface.composer-at-context-picker
+    to: capability.agent-delegation
+    type: discovers-targets-without-connecting
+    rank: conditional
+    condition: Agent mentions preserve the current conversation selection.
   - from: capability.work-tasks
     to: surface.work-tasks-board
     type: renders-in

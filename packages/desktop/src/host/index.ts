@@ -28,6 +28,7 @@ import { registerHostServiceResourceTelemetry } from "./hostServiceResourceTelem
 import { resolveResourceTelemetryEnvironmentKey } from "./hostResourceTelemetryEnvironment.js";
 import { reportHostSessionCreate } from "./hostSessionCreateTelemetry.js";
 import { createBrowserControlMainBridge } from "./browserControlMainBridge.js";
+import { createForgeWebMediaMainBridge } from "./forgeWebMediaMainBridge.js";
 import { materializeBrowserRecordingArtifact } from "./browserRecordingArtifactMaterializer.js";
 import {
   ServiceCollection,
@@ -183,6 +184,10 @@ type RemoteAssetDirs = Pick<
 >;
 
 const { parentPort } = process;
+const forgeWebMediaBridge = createForgeWebMediaMainBridge((message) => {
+  if (!parentPort) throw new Error("FORGE_MEDIA_AUTHENTICATION_UNAVAILABLE");
+  parentPort.postMessage(message);
+});
 
 // 进程检索体验优化：host 由 utilityProcess 拉起时外壳仍是 Electron Helper，
 // 这里根据 main 传入的窗口 label 补一层稳定的 zcode-* title，方便系统进程列表过滤。
@@ -2125,6 +2130,7 @@ function disposeAttachedServicePorts(): void {
 }
 
 async function disposeHostResources(reason: string): Promise<HostShutdownResult> {
+  forgeWebMediaBridge.dispose();
   databaseStartup?.dispose();
   pendingStartupAttachments.clear();
   if (hasDisposedHostResources) {
@@ -2435,6 +2441,11 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
       requestId: msg.requestId,
       result: msg.result,
     });
+    return;
+  }
+
+  if (msg.type === HostMessageTypes.ForgeWebMediaResult) {
+    forgeWebMediaBridge.handleResult(msg);
     return;
   }
 
@@ -2875,6 +2886,7 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
               // browser-use：agent 的 interaction/browserExecute 经 zcodeAgentService 转到这个 executor，
               // 再经 parentPort 到 main 的 WebContentsView+CDP 执行。
               browserControlExecutor: browserControlMainBridge,
+              forgeWebMedia: forgeWebMediaBridge.port,
               // CUA 顶部提示属于物理 Windows 桌面投影；非 Windows 和远端 authority 都不得上报。
               cuaOperationStateReporter:
                 process.platform === "win32" ? cuaOperationStateReporter : undefined,

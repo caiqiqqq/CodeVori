@@ -77,6 +77,10 @@ export function buildSubagentMentionMarkdown(label: string): string {
   return `@${label}`;
 }
 
+export function buildDelegationMentionMarkdown(label: string, reference: string): string {
+  return `[${escapeMarkdownLabel(`@${label}`)}](delegation://${escapeMarkdownDestination(reference)})`;
+}
+
 export function buildSessionMentionMarkdown(sessionId: string, label?: string): string {
   const trimmedLabel = label?.trim();
   if (!trimmedLabel || trimmedLabel === sessionId) {
@@ -200,6 +204,9 @@ export function parseMentionMarkdown(content: string): MentionTextPart[] {
         label: label.startsWith("@") ? label.slice(1) : label,
         ...(pluginId ? { pluginId } : {}),
       });
+    } else if (/^delegation:\/\/api\.[0-9a-f]+\.[0-9a-f]+$/.test(destination)) {
+      // API 身份包含 provider，展示名可能带中文/斜杠；不能把智能体引用还原成项目文件。
+      parts.push({ type: "subagent", label: label.startsWith("@") ? label.slice(1) : label });
     } else if (label.startsWith("$")) {
       parts.push({ type: "skill", label: label.slice(1) });
     } else if (isDirectoryMentionDestination(destination)) {

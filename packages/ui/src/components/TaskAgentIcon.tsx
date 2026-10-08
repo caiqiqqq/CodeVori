@@ -12,6 +12,7 @@ import type { deriveTaskLeadingIndicator } from "@/lib/taskListItemPresentation.
 
 interface TaskAgentIconProps {
   task: Pick<ZCodeTaskMeta, "model" | "workspacePath" | "workspaceIdentity">;
+  providerId?: string;
   indicator?: ReturnType<typeof deriveTaskLeadingIndicator>;
   className?: string;
 }
@@ -57,11 +58,13 @@ function resolveTaskProviderId(model: string | undefined): string | undefined {
 
 function TaskAgentIconContent({
   task,
+  providerId: explicitProviderId,
   settings,
   indicator = "none",
   className,
 }: TaskAgentIconProps & { settings: ProviderSettingsView | null }) {
-  const providerId = resolveTaskProviderId(task.model);
+  // 委派目录已有完整身份，直接使用它，避免从不可逆 Picker 文本解析含斜杠的供应商 ID。
+  const providerId = explicitProviderId ?? resolveTaskProviderId(task.model);
   // 修复依据：模型设置使用 effectiveConfig.logo；API 行必须按自己的模型供应商复用同一素材。
   const logo = settings?.providers.find((provider) => provider.providerId === providerId)
     ?.effectiveConfig.logo;

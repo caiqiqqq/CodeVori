@@ -1,7 +1,7 @@
 {
   "name": "@zcode/desktop",
   "private": true,
-  "description": "ZCode Desktop App",
+  "description": "CodeVori Desktop App",
   "author": "ZCode",
   "type": "module",
   "main": "out/main/index.js",
@@ -83,5 +83,5 @@
     "typescript": "^6.0.2",
     "vite": "^8.0.2"
   },
-  "productName": "ZCode"
+  "productName": "CodeVori"
 }

@@ -45,6 +45,7 @@ import {
   ZCODE_SESSION_RUNTIME_PREFERENCES_REQUEST_TIMEOUT_MS,
   zcodeProtocolErrorCodes,
   zcodeProtocolMethods,
+  zcodeDelegationMcpResponseSchema,
   zcodeSessionCancelBackgroundTaskParamsSchema,
   zcodeSessionCompactParamsSchema,
   zcodeSessionCloseParamsSchema,
@@ -104,6 +105,7 @@ import {
   type ZCodeProtocolToolInputTransmissionState,
 } from "./server-types.js";
 import { createWorkspaceZCodeApp, ensureSessionModelAvailable } from "./workspace-model-runtime.js";
+import { pauseHostDelegations } from "./delegation-lifecycle.js";
 import { buildAppUsageSnapshot, resolveTzOffsetMs } from "./usage-stats-builder.js";
 import { createProtocolInteractionBroker } from "./interaction-broker.js";
 import { createProtocolAutomationPort } from "./automation-port.js";
@@ -138,7 +140,7 @@ type ZCodeSessionRecordParams = (
       // 共用 record 初始化函数；resume 兼容分支也必须声明该策略字段。
       titleGenerationEnabled?: ZCodeSessionCreateParams["titleGenerationEnabled"];
     })
-) & { taskType?: SessionTaskType };
+) & { taskType?: SessionTaskType; createRequestId?: string };
 
 interface SessionStartupPreferences {
   memoryEnabled: boolean;
@@ -1229,10 +1231,17 @@ export async function createSession(
 export async function createSessionRecordForV4(
   context: ZCodeProtocolAgentServerContext,
   rawParams: unknown,
+  createRequestId?: string,
 ) {
-  return createSessionWithProjection(context, rawParams, undefined, async (record) => ({
-    value: { sessionId: record.app.sessionId },
-  }));
+  return createSessionWithProjection(
+    context,
+    rawParams,
+    undefined,
+    async (record) => ({
+      value: { sessionId: record.app.sessionId },
+    }),
+    createRequestId,
+  );
 }
 
 async function createSessionWithProjection<T>(
@@ -1242,6 +1251,7 @@ async function createSessionWithProjection<T>(
   project: (
     record: ZCodeProtocolSessionRecord,
   ) => Promise<{ value: T; phaseDurationsMs?: SnapshotPhaseDurationsMs; messageCount?: number }>,
+  createRequestId?: string,
 ): Promise<T> {
   const params = parseParams(zcodeSessionCreateParamsSchema, rawParams);
   const startedAt = Date.now();
@@ -1270,7 +1280,7 @@ async function createSessionWithProjection<T>(
   const recordStartedAt = Date.now();
   const record = await materializeSessionRecord(
     context,
-    { ...params, workspace },
+    { ...params, workspace, createRequestId },
     sessionId,
     false,
     { kind: "host" },
@@ -2592,6 +2602,7 @@ async function runGoalContinuationInBackground(
 export async function stopSession(context: ZCodeProtocolAgentServerContext, rawParams: unknown) {
   const params = parseParams(zcodeSessionStopParamsSchema, rawParams);
   const record = requireSession(context, params.sessionId);
+  await pauseHostDelegations(context, params.sessionId);
   const hadActivePrompt = Boolean(record.activeAbortController);
   let pausedTarget: ProtocolGoalTarget | null = null;
   context.logger?.info("ZCode Protocol session/stop received", {
@@ -2721,6 +2732,7 @@ export async function closeSession(context: ZCodeProtocolAgentServerContext, raw
     // immediate；条件关闭必须在 Agent record 上原子判断，不能依赖 renderer 的旧快照。
     return { closed: false };
   }
+  await pauseHostDelegations(context, params.sessionId);
   record.unsubscribe?.();
   await record.app.close?.();
   // v4 通道：会话关闭同时清 publisher / 订阅调度；重开会话走 snapshot 冷启动。
@@ -3313,7 +3325,25 @@ async function createRecord(
       ? (params.parentSessionId as SessionId)
       : undefined;
   const taskType = params.taskType ?? "interactive";
-  const runtimeMcp = protocolMcpServersToRuntimeMcpConfig(params.mcpServers);
+  // create/resume 都向当前 Host 取会话 capability，避免把临时 bearer 持久化或复用旧 Host 的地址。
+  const delegationServers =
+    taskType === "interactive"
+      ? await context
+          .requestClient(
+            zcodeProtocolMethods.interactionRequestDelegationMcp,
+            {
+              sessionId,
+              ...(params.createRequestId ? { createRequestId: params.createRequestId } : {}),
+            },
+            zcodeDelegationMcpResponseSchema,
+            { timeoutMs: 5000 },
+          )
+          .catch(() => [])
+      : [];
+  const runtimeMcp = protocolMcpServersToRuntimeMcpConfig(
+    params.mcpServers?.filter((server) => server.name !== "zcode-delegation"),
+  );
+  const hostMcpServers = protocolMcpServersToRuntimeMcpConfig(delegationServers)?.servers;
   context.logger?.info("ZCode Protocol createRecord MCP config", {
     event: "zcode_protocol.create_record.mcp_config",
     rootTraceId: traceContext.traceId,
@@ -3329,6 +3359,7 @@ async function createRecord(
   // 用可变持有者做惰性绑定：CronCreate 在 turn 中调用 create() 时 record 早已就绪。
   let ownSessionRecord: ZCodeProtocolSessionRecord | undefined;
   const app = await createWorkspaceZCodeApp(context, workspace, {
+    ...(hostMcpServers ? { hostMcpServers } : {}),
     env: context.deps.env,
     eventStore,
     resume,

@@ -143,6 +143,7 @@ try {
   for (const id of ["api", "acp"]) {
     await card(id).click();
     await page.locator(`[data-testid="tool-session"][data-session="${id}-session"]`).waitFor();
+    assert.equal(await selectedHeader().getByTestId("workspace-help-menu-trigger").count(), 0);
     const path = `/synthetic/trees/${id}/project`;
     await page.waitForFunction((path) => window.__tools.target?.workspacePath === path, path);
     const session = await page.getByTestId("tool-session").elementHandle();
@@ -251,6 +252,10 @@ try {
   await panel.getByTestId("work-task-no-selection").waitFor();
   assert.equal(await page.evaluate(() => window.__tools.target), null);
   await page.evaluate(() => window.__tools.view("chat"));
+  assert.equal(
+    await page.getByTestId("normal-chat-tools").getByTestId("workspace-help-menu-trigger").count(),
+    0,
+  );
   await page.getByTestId("normal-chat-tools").getByTestId("terminal-toggle").click();
   await page.waitForFunction(
     () =>

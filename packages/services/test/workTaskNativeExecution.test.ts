@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { Emitter } from "@zcode/rpc";
-import { uuidv7, type WorkTask } from "@zcode/shared";
+import { uuidv7, delegationTaskSchema, type WorkTask } from "@zcode/shared";
 import {
   conversationSnapshotSchema,
   encodeTopicWireFrames,
@@ -18,6 +18,7 @@ import type { IGitService } from "../src/git/git.js";
 import type { ISettingService } from "../src/setting/setting.js";
 import type { IZCodeAgentService } from "../src/zcode-agent/zcodeAgent.js";
 import { createWorkTaskExecution } from "../src/work-task/workTaskExecution.js";
+import { createDelegationExecution } from "../src/delegation/delegationExecution.js";
 
 function snapshot(phase: ConversationSnapshot["control"]["phase"] = "draft"): ConversationSnapshot {
   return conversationSnapshotSchema.parse({
@@ -169,6 +170,32 @@ async function fixture() {
     resyncConversationV4: async () => {
       throw new Error("resync unavailable");
     },
+    conversationRowsRangeV4: async (input: { workspacePath: string; sessionId: string }) => {
+      calls.push(`result:${input.workspacePath}:${input.sessionId}`);
+      return {
+        atSeq: 1,
+        atRevision: 1,
+        atLogEpoch: "epoch",
+        hasMore: false,
+        rows: [
+          { rowId: 1, turnId: "owned", kind: "turnHeader", sourceCommandId: task.commandId },
+          {
+            rowId: 2,
+            turnId: "owned",
+            kind: "assistantText",
+            state: "complete",
+            text: "API 子任务结果",
+          },
+          {
+            rowId: 3,
+            turnId: "other",
+            kind: "assistantText",
+            state: "complete",
+            text: "不是本次委派的回答",
+          },
+        ],
+      };
+    },
   } as unknown as IZCodeAgentService;
   const git = {
     getWorkspaceRepositoryInfo: async () => ({
@@ -182,7 +209,7 @@ async function fixture() {
     ],
   } as unknown as IGitService;
   const abort = new AbortController();
-  const port = createWorkTaskExecution({
+  const dependencies = {
     git,
     agent,
     acp: {} as IAcpService,
@@ -195,13 +222,55 @@ async function fixture() {
         calls.push("dispose");
       },
     }),
-  });
+  };
+  const port = createWorkTaskExecution(dependencies);
   const execute = () =>
     port.execute(task, {
       signal: abort.signal,
       update: async (patch) => {
         updates.push(patch);
         if (patch.session) calls.push(`bound:${patch.session.id}`);
+        return true;
+      },
+    });
+  const parent = { workspacePath: dir, kind: "acp", sessionId: "parent" };
+  const delegated = delegationTaskSchema.parse({
+    id: task.id,
+    requestId: uuidv7(),
+    parent,
+    rootParent: parent,
+    generation: 0,
+    depth: 1,
+    title: task.title,
+    task: task.prompt,
+    background: "",
+    constraints: "",
+    expectedResult: "",
+    execution: task.execution,
+    intent: "edit",
+    dependsOn: [],
+    status: "preparing",
+    attachments: task.attachments,
+    worktree: task.worktree,
+    attempts: [
+      {
+        sequence: 1,
+        commandId: task.commandId,
+        startedAt: 1,
+        status: "preparing",
+        deliveryCommandId: uuidv7(),
+      },
+    ],
+    sessionRequestId: task.sessionRequestId,
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  const executeDelegation = () =>
+    createDelegationExecution(dependencies)(delegated, {
+      signal: abort.signal,
+      update: async (patch) => {
+        updates.push(patch);
+        Object.assign(delegated, patch);
         return true;
       },
     });
@@ -246,12 +315,77 @@ async function fixture() {
     lifecycle,
     abort,
     execute,
+    delegated,
+    executeDelegation,
     emit,
     terminal,
     path,
     cleanup: () => rm(dir, { recursive: true, force: true }),
   };
 }
+
+test("API delegation reuses the native executor, saves this attempt's answer and follows up in its bound session", async () => {
+  const f = await fixture();
+  try {
+    f.delegated.attachments = [
+      {
+        ref: join(f.path, "evidence.txt"),
+        fileName: "evidence.txt",
+        mime: "text/plain",
+        bytes: 12,
+      },
+    ];
+    f.delegated.workspaceFiles = ["src/main.ts"];
+    const run = f.executeDelegation();
+    void run.catch(() => {});
+    await until(() => f.calls.includes("subscribe"));
+    f.emit(snapshot());
+    await until(() => f.calls.includes("sendText"));
+    const payload = f.commands.find((command) => command.type === "sendText")!.payload as {
+      modelSelection: unknown;
+      mode: string;
+      attachments: unknown;
+      text: string;
+    };
+    assert.equal(f.delegated.session?.kind, "api");
+    assert.deepEqual(
+      payload.modelSelection,
+      f.task.execution.kind === "api" ? f.task.execution.modelSelection : null,
+    );
+    assert.equal(payload.mode, "plan");
+    assert.deepEqual(payload.attachments, f.delegated.attachments);
+    assert.ok(payload.text.includes('项目文件：["src/main.ts"]'));
+    f.terminal("unrelated-command");
+    f.terminal();
+    const result = await run;
+    assert.equal(result.conclusion, "API 子任务结果");
+    assert.equal(result.structured, false);
+    assert.ok(f.calls.includes(`result:${f.path}:session`));
+    f.task.commandId = uuidv7();
+    f.delegated.attempts.push({
+      sequence: 2,
+      commandId: f.task.commandId,
+      status: "preparing",
+      startedAt: 2,
+      deliveryCommandId: uuidv7(),
+    });
+    const follow = f.executeDelegation();
+    void follow.catch(() => {});
+    await until(() => f.calls.filter((call) => call === "subscribe").length === 2);
+    f.emit(snapshot("completedSuccess"));
+    await until(() => f.calls.filter((call) => call === "sendText").length === 2);
+    f.terminal();
+    assert.equal((await follow).conclusion, "API 子任务结果");
+    assert.equal(f.commands.filter((command) => command.type === "createSession").length, 1);
+    assert.equal(
+      f.commands.filter((command) => command.type === "sendText").at(-1)?.sessionId,
+      "session",
+    );
+  } finally {
+    f.abort.abort();
+    await f.cleanup();
+  }
+});
 
 test(
   "native execution binds before sending and waits for the authoritative initial snapshot",

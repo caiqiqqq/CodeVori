@@ -8,9 +8,11 @@ import {
   RotateCw,
 } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import type { ForgeItem, ForgeLabel } from "@zcode/shared";
+import type { ForgeAuthor, ForgeItem, ForgeLabel } from "@zcode/shared";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { Button } from "@/components/ui/button.js";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar.js";
+import { safeRepositoryExternalUrl } from "@/lib/forgePanel.js";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 
@@ -60,6 +62,8 @@ const errorKeys = new Set([
   "MERGE_BLOCKED",
   "MERGE_UNSUPPORTED",
   "CONFLICT",
+  "INVALID_MEDIA",
+  "MEDIA_UNAVAILABLE",
 ]);
 export function RepositoryError({ error, retry }: { error: string; retry?: () => void }) {
   const t = useRepositoryMessages();
@@ -124,6 +128,22 @@ export function RepositoryItemStatus({
   );
 }
 
+export function RepositoryAuthor({ author }: { author: ForgeAuthor }) {
+  const name = author.displayName || author.username;
+  const avatarUrl = author.avatarUrl ? safeRepositoryExternalUrl(author.avatarUrl) : null;
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2 text-ui-sm">
+      <Avatar size="sm">
+        {avatarUrl ? <AvatarImage src={avatarUrl} alt="" referrerPolicy="no-referrer" /> : null}
+        <AvatarFallback>{name.slice(0, 1).toUpperCase()}</AvatarFallback>
+      </Avatar>
+      <span className="min-w-0 break-words [overflow-wrap:anywhere]" title={`@${author.username}`}>
+        {name}
+      </span>
+    </span>
+  );
+}
+
 export function RepositoryLabels({ labels }: { labels: ForgeLabel[] }) {
   return (
     <span className="flex min-w-0 flex-wrap gap-x-3 gap-y-1">
@@ -144,15 +164,30 @@ export function RepositoryLabels({ labels }: { labels: ForgeLabel[] }) {
   );
 }
 
-export function RepositoryTime({ value }: { value: string | null }) {
+export function RepositoryTime({
+  value,
+  dateOnly = false,
+}: {
+  value: string | null;
+  dateOnly?: boolean;
+}) {
   const { locale } = useZCodeIntl();
+  // 截止日是日历日期，按 UTC 展示以避免负时区退到前一天；事件时间仍按用户时区展示。
   const date = new Date(value ?? "");
   return Number.isFinite(date.getTime()) ? (
     <time
       dateTime={date.toISOString()}
-      title={date.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })}
+      title={
+        dateOnly
+          ? date.toLocaleDateString(locale, { dateStyle: "long", timeZone: "UTC" })
+          : date.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })
+      }
     >
-      {date.toLocaleDateString(locale, { month: "short", day: "numeric" })}
+      {date.toLocaleDateString(locale, {
+        month: "short",
+        day: "numeric",
+        ...(dateOnly ? { year: "numeric", timeZone: "UTC" } : {}),
+      })}
     </time>
   ) : null;
 }

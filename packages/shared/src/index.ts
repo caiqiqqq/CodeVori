@@ -314,3 +314,5 @@ export { redactFeedbackText } from "./feedbackPrivacy.js";
 export * from "./work-task.js";
 export * from "./worktree.js";
 export { isAbsoluteFilePath, joinFilePath } from "./file-path.js";
+export * from "./agent-delegation.js";
+export { PRODUCT_NAME, PRODUCT_MARK_PATH, PRODUCT_MARK_VIEW_BOX } from "./product-brand.mjs";

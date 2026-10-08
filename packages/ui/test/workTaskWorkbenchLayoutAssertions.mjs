@@ -86,8 +86,9 @@ export async function assertWorkTaskSessionTarget(panel, kind, id, path) {
   );
   for (const name of ["任务详情", "任务操作", "关闭任务查看"])
     assert.ok(await header.getByRole("button", { name, exact: true }).isVisible());
-  for (const name of ["在 Finder 中打开", "选择打开方式", "帮助"])
+  for (const name of ["在 Finder 中打开", "选择打开方式"])
     assert.ok(await header.getByRole("button", { name, exact: true }).isVisible());
+  assert.equal(await header.getByTestId("workspace-help-menu-trigger").count(), 0);
   assert.ok(await header.getByTestId("terminal-toggle").isVisible());
   // 展开侧栏后原顶部开关会隐藏，关闭入口由侧栏标题持有。
   if (await header.getByTestId("side-pane-toggle").count())

@@ -8,6 +8,9 @@ import {
   forgeRepositoryRequestSchema,
   forgeStateRequestSchema,
   forgeTargetRequestSchema,
+  forgeImageRequestSchema,
+  forgeImagePreviewSchema,
+  type ForgeWebMediaPort,
   type ForgeRepositoryInfo,
   type ForgeRepositoryRequest,
   type ForgeTargetRequest,
@@ -20,7 +23,8 @@ import {
   createGitCommandProvider,
   type GitCommandProvider,
 } from "./providers/gitCommandProvider.js";
-import { createForgeApiClient } from "./providers/forgeApiClient.js";
+import { createForgeApiClient, record } from "./providers/forgeApiClient.js";
+import { gitlabWebLoginUrl, readForgeImageResponse } from "./providers/forgeMedia.js";
 import {
   forgeRepository,
   knownForgeProvider,
@@ -36,6 +40,9 @@ export type ForgeService = Pick<
   | "getForgeRepository"
   | "listForgeItems"
   | "getForgeItem"
+  | "getForgeItemExtras"
+  | "readForgeImage"
+  | "authenticateForgeImage"
   | "listForgeComments"
   | "listForgeFiles"
   | "listForgeLabels"
@@ -50,6 +57,7 @@ export function createForgeService(options?: {
   commandProvider?: GitCommandProvider;
   credentials?: VersionControlRepo;
   fetcher?: typeof fetch;
+  webMedia?: ForgeWebMediaPort;
 }): ForgeService {
   const gitRepo = options?.gitRepo ?? createGitCliRepo();
   const commands = options?.commandProvider ?? createGitCommandProvider();
@@ -65,23 +73,33 @@ export function createForgeService(options?: {
     };
     const resolution = await gitRepo.resolveRepository(request.workspacePath);
     if (!resolution.isGitAvailable)
-      return { info: { ...empty, status: "git-unavailable" as const }, adapter: null };
+      return {
+        info: { ...empty, status: "git-unavailable" as const },
+        adapter: null,
+        account: null,
+      };
     if (!resolution.isRepository)
-      return { info: { ...empty, status: "not-repository" as const }, adapter: null };
+      return {
+        info: { ...empty, status: "not-repository" as const },
+        adapter: null,
+        account: null,
+      };
     const names = await commands.run({ cwd: resolution.repoRoot, args: ["remote"] });
     if (names.exitCode !== 0) throw new Error("FORGE_RESPONSE");
     const remoteNames = names.stdout.trim().split(/\r?\n/).filter(Boolean);
     const remoteName =
       request.remoteName ?? (remoteNames.includes("origin") ? "origin" : (remoteNames[0] ?? null));
     const info = { ...empty, remoteNames, remoteName };
-    if (!remoteName || !remoteNames.includes(remoteName)) return { info, adapter: null };
+    if (!remoteName || !remoteNames.includes(remoteName))
+      return { info, adapter: null, account: null };
     const remoteResult = await commands.run({
       cwd: resolution.repoRoot,
       args: ["remote", "get-url", remoteName],
     });
     if (remoteResult.exitCode !== 0) throw new Error("FORGE_RESPONSE");
     const remote = parseForgeRemote(remoteResult.stdout.trim());
-    if (!remote) return { info: { ...info, status: "unsupported" as const }, adapter: null };
+    if (!remote)
+      return { info: { ...info, status: "unsupported" as const }, adapter: null, account: null };
     info.host = remote.ssh ? remote.hostname : remote.host;
     info.provider = knownForgeProvider(remote);
     const accounts = (await credentials.read()).accounts;
@@ -96,21 +114,70 @@ export function createForgeService(options?: {
       return {
         info: { ...info, status },
         adapter: null,
+        account: null,
       };
     }
     const resolved = forgeRepository(remote, account);
-    if (!resolved) return { info: { ...info, status: "unsupported" as const }, adapter: null };
+    if (!resolved)
+      return { info: { ...info, status: "unsupported" as const }, adapter: null, account: null };
     const api = createForgeApiClient({
       baseUrl: resolved.apiBase,
       provider: resolved.repository.provider,
       secret: account.secret,
       fetcher: options?.fetcher ?? fetch,
     });
+    const mediaContext = async (url: string) => {
+      const project = record(
+        (await api(`projects/${encodeURIComponent(resolved.repository.name)}`)).data,
+      );
+      return {
+        accountId: account.id,
+        username: account.username,
+        serverUrl: account.serverUrl,
+        repository: resolved.repository.name,
+        repositoryUrl: resolved.repository.url,
+        url,
+        loginUrl: gitlabWebLoginUrl(
+          resolved.repository.name,
+          project.path_with_namespace,
+          project.web_url,
+        ),
+      };
+    };
     const adapter =
       resolved.repository.provider === "github"
         ? createGithubForgeProvider(api, resolved.repository.name)
         : resolved.repository.provider === "gitlab"
-          ? createGitlabForgeProvider(api, resolved.repository.name)
+          ? createGitlabForgeProvider(api, resolved.repository.name, resolved.repository.url, {
+              async readLegacy(url) {
+                // 旧版的公开附件可直接读取；私有附件必须交给账户隔离的原生会话，不能给网页发送 PAT。
+                let response: Response;
+                try {
+                  response = await (options?.fetcher ?? fetch)(url, {
+                    redirect: "manual",
+                    credentials: "omit",
+                    signal: AbortSignal.timeout(15_000),
+                    headers: { Accept: "image/png,image/jpeg,image/gif,image/webp,image/avif" },
+                  });
+                } catch {
+                  throw new Error("FORGE_NETWORK");
+                }
+                try {
+                  return await readForgeImageResponse(response);
+                } catch (error) {
+                  if (!(error instanceof Error) || error.message !== "FORGE_MEDIA_AUTHENTICATION")
+                    throw error;
+                  if (!options?.webMedia) throw new Error("FORGE_MEDIA_AUTHENTICATION_UNAVAILABLE");
+                  return forgeImagePreviewSchema.parse(
+                    await options.webMedia.read(await mediaContext(url)),
+                  );
+                }
+              },
+              async authenticate(url) {
+                if (!options?.webMedia) throw new Error("FORGE_MEDIA_AUTHENTICATION_UNAVAILABLE");
+                await options.webMedia.authenticate(await mediaContext(url));
+              },
+            })
           : createGiteaForgeProvider(api, resolved.repository.name);
     return {
       info: {
@@ -120,20 +187,22 @@ export function createForgeService(options?: {
         provider: resolved.repository.provider,
       },
       adapter,
+      account,
     };
   };
-  const target = async (request: ForgeTargetRequest) => {
-    const { info, adapter } = await resolve(request);
+  const verifiedTarget = async (request: ForgeTargetRequest) => {
+    const { info, adapter, account } = await resolve(request);
     if (
       info.status === "missing-account" ||
       info.status === "account-mismatch" ||
       (info.status === "unsupported" && request.accountId)
     )
       throw new Error("FORGE_MISSING_ACCOUNT");
-    if (!adapter || info.repository?.key !== request.repositoryKey)
+    if (!adapter || !account || info.repository?.key !== request.repositoryKey)
       throw new Error("FORGE_TARGET_CHANGED");
-    return adapter;
+    return { adapter, account };
   };
+  const target = async (request: ForgeTargetRequest) => (await verifiedTarget(request)).adapter;
   return {
     async getForgeRepository(input) {
       return (await resolve(forgeRepositoryRequestSchema.parse(input))).info;
@@ -145,6 +214,31 @@ export function createForgeService(options?: {
     async getForgeItem(input) {
       const request = forgeItemRequestSchema.parse(input);
       return (await target(request)).getItem(request);
+    },
+    async getForgeItemExtras(input) {
+      const request = forgeItemRequestSchema.parse(input);
+      const adapter = await target(request);
+      return adapter.getItemExtras ? adapter.getItemExtras(request) : {};
+    },
+    async readForgeImage(input) {
+      const request = forgeImageRequestSchema.parse(input);
+      const adapter = await target(request);
+      if (!adapter.readImage) throw new Error("FORGE_MEDIA_UNAVAILABLE");
+      return adapter.readImage(request);
+    },
+    async authenticateForgeImage(input) {
+      const request = forgeImageRequestSchema.parse(input);
+      const original = await verifiedTarget(request);
+      if (!original.adapter.authenticateImage)
+        throw new Error("FORGE_MEDIA_AUTHENTICATION_UNAVAILABLE");
+      await original.adapter.authenticateImage(request);
+      const latest = await verifiedTarget(request);
+      // 登录窗口打开期间账号可能被移除或轮换；旧请求不能给新目标报告授权成功。
+      if (
+        latest.account.secret !== original.account.secret ||
+        latest.account.username !== original.account.username
+      )
+        throw new Error("FORGE_TARGET_CHANGED");
     },
     async listForgeComments(input) {
       const request = forgePageRequestSchema.parse(input);

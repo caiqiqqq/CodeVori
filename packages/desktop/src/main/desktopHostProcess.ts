@@ -31,6 +31,8 @@ import {
   serializeLaunchMarks,
   type RemoteTarget,
   type WorkspacePurpose,
+  type ForgeWebMediaContext,
+  type ForgeImagePreview,
   ZCODE_DESKTOP_CONTEXT_PROMPT_ENABLED_ENV,
 } from "@zcode/shared";
 import { getMainLaunchPartialMarks } from "./desktopLaunchMarks.js";
@@ -245,6 +247,12 @@ export function spawnHostProcess(
     }) => Promise<{ ok: boolean; [k: string]: unknown }>;
     /** Host 已完成附件授权后，由 Main 将本地视频 realpath 加入精确协议授权集合。 */
     authorizeLocalMediaPreviewPath?: (path: string) => Promise<string>;
+    handleForgeWebMediaRequest?: (params: {
+      win: BrowserWindow;
+      action: "read" | "authenticate";
+      context: ForgeWebMediaContext;
+      signal: AbortSignal;
+    }) => Promise<ForgeImagePreview | void>;
   },
   options?: SpawnHostProcessOptions,
 ): ElectronUtilityProcess {
@@ -302,6 +310,11 @@ export function spawnHostProcess(
   });
 
   const databaseStartupRelay = bindDatabaseStartupRelay(win, child, hostId);
+  const forgeMediaRequests = new Map<string, AbortController>();
+  child.once("exit", () => {
+    for (const controller of forgeMediaRequests.values()) controller.abort();
+    forgeMediaRequests.clear();
+  });
   child.on("message", (message: unknown) => {
     const result = hostResponseMessageSchema.safeParse(message);
     if (!result.success) {
@@ -365,6 +378,50 @@ export function spawnHostProcess(
 
     if (result.data.type === HostResponseTypes.SessionCreateTelemetry) {
       dependencies.onSessionCreateTelemetry?.(result.data);
+      return;
+    }
+
+    if (result.data.type === HostResponseTypes.ForgeWebMediaRequest) {
+      const request = result.data;
+      if (request.action === "cancel") {
+        forgeMediaRequests.get(request.requestId)?.abort();
+        return;
+      }
+      const reply = (value: { ok: boolean; preview?: ForgeImagePreview; error?: string }) => {
+        try {
+          child.postMessage({
+            type: HostMessageTypes.ForgeWebMediaResult,
+            requestId: request.requestId,
+            ...value,
+          });
+        } catch {
+          /* Host 已退出；原生窗口由 exit/AbortSignal 关闭。 */
+        }
+      };
+      const execute = dependencies.handleForgeWebMediaRequest;
+      if (!execute || forgeMediaRequests.has(request.requestId)) {
+        reply({ ok: false, error: "FORGE_MEDIA_AUTHENTICATION_UNAVAILABLE" });
+        return;
+      }
+      const controller = new AbortController();
+      forgeMediaRequests.set(request.requestId, controller);
+      void execute({
+        win,
+        action: request.action,
+        context: request.context,
+        signal: controller.signal,
+      })
+        .then((preview) => reply({ ok: true, ...(preview ? { preview } : {}) }))
+        .catch((error: unknown) =>
+          reply({
+            ok: false,
+            error:
+              error instanceof Error && /^FORGE_[A-Z_]+$/.test(error.message)
+                ? error.message
+                : "FORGE_RESPONSE",
+          }),
+        )
+        .finally(() => forgeMediaRequests.delete(request.requestId));
       return;
     }
 
@@ -565,7 +622,6 @@ export function spawnHostProcess(
       });
       return;
     }
-
 
     if (result.data.type === HostResponseTypes.BotRemoteWorkspaceReconnectRequest) {
       const request = result.data;

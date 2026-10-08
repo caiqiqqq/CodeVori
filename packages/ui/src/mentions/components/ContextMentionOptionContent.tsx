@@ -1,13 +1,17 @@
 import { MessagesSquare } from "lucide-react";
 import { FileDisplayInline } from "@/lib/fileDisplay.js";
 import type { MentionItem } from "@/mentions/mentionTypes.js";
+import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
+import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
 
 export function ContextMentionOptionContent({
   item,
   workspacePath,
+  workspaceIdentity,
 }: {
   item: MentionItem;
   workspacePath: string;
+  workspaceIdentity?: string;
 }) {
   return item.category === "files" ? (
     <FileDisplayInline
@@ -25,7 +29,16 @@ export function ContextMentionOptionContent({
     />
   ) : (
     <span className="min-w-0 flex flex-1 items-center gap-2">
-      <MessagesSquare className="size-3.5 shrink-0 text-foreground" />
+      {item.data?.acpAgent ? (
+        <AcpAgentIcon agent={item.data.acpAgent} />
+      ) : item.category === "subagents" && item.data?.providerId ? (
+        <TaskAgentIcon
+          providerId={item.data.providerId}
+          task={{ workspacePath, workspaceIdentity }}
+        />
+      ) : (
+        <MessagesSquare className="size-3.5 shrink-0 text-foreground" />
+      )}
       <span className="min-w-0 truncate text-ui-base font-medium text-foreground">
         {item.label}
       </span>

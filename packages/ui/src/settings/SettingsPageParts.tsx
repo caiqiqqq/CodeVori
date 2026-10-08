@@ -117,8 +117,9 @@ export function SettingsRow({
   description?: ReactNode;
   control: ReactNode;
   detail?: ReactNode;
-  controlLayout?: "default" | "wide" | "balanced";
+  controlLayout?: "default" | "wide" | "balanced" | "compact";
 }) {
+  const inlineDetail = controlLayout === "wide" || controlLayout === "balanced";
   return (
     <div className="border-t border-border px-4 py-3 first:border-t-0">
       <div
@@ -128,7 +129,9 @@ export function SettingsRow({
             ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,45%)]"
             : controlLayout === "wide"
               ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_280px]"
-              : "grid-cols-[minmax(0,1fr)_192px]",
+              : controlLayout === "compact"
+                ? "grid-cols-[minmax(0,1fr)_auto]"
+                : "grid-cols-[minmax(0,1fr)_192px]",
         )}
       >
         <div className="min-w-0">
@@ -138,11 +141,13 @@ export function SettingsRow({
           ) : null}
         </div>
         <div className="flex w-full flex-nowrap items-center justify-end gap-2">
-          {controlLayout !== "default" ? detail : null}
+          {inlineDetail ? detail : null}
           {control}
         </div>
       </div>
-      {detail && controlLayout === "default" ? <div className="mt-3">{detail}</div> : null}
+      {detail && !inlineDetail ? (
+        <div className={controlLayout === "compact" ? "mt-1" : "mt-3"}>{detail}</div>
+      ) : null}
     </div>
   );
 }

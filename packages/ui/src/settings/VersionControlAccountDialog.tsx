@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "@zcode/shared";
 import { useState } from "react";
 import type { GitAccount, GitAccountProvider } from "@zcode/shared";
 import { Eye, EyeOff, ExternalLink, Loader2, Check, X } from "lucide-react";
@@ -67,10 +68,10 @@ export function VersionControlAccountDialog({
       const server = base.toString().replace(/\/+$/, "");
       const path =
         provider === "gitlab"
-          ? "/-/user_settings/personal_access_tokens?name=ZCode&scopes=api"
+          ? `/-/user_settings/personal_access_tokens?name=${PRODUCT_NAME}&scopes=api`
           : provider === "gitea"
             ? "/user/settings/applications"
-            : "/settings/tokens/new?description=ZCode&scopes=repo,read:org,workflow,read:user,user:email";
+            : `/settings/tokens/new?description=${PRODUCT_NAME}&scopes=repo,read:org,workflow,read:user,user:email`;
       platform.openExternal(`${server}${path}`);
     } catch {
       management.clearError();

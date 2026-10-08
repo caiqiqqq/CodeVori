@@ -10,14 +10,16 @@ const fakePluginAgent = `
 const fs = require('node:fs');
 const readline = require('node:readline');
 const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');
+let initialization;
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const message = JSON.parse(line);
   if (message.method === 'initialize') {
+    initialization = message.params;
     send({ id: message.id, result: { protocolVersion: 1, agentCapabilities: {
       loadSession: true, mcpCapabilities: process.env.ACP_PLUGIN_HTTP === '1' ? { http: true, sse: true } : {}
     } } });
   } else if (message.method === 'session/new' || message.method === 'session/load') {
-    fs.writeFileSync(process.env.ACP_PLUGIN_CAPTURE, JSON.stringify({ method: message.method, params: message.params }));
+    fs.writeFileSync(process.env.ACP_PLUGIN_CAPTURE, JSON.stringify({ method: message.method, params: message.params, initialization }));
     send({ id: message.id, result: message.method === 'session/new' ? { sessionId: 'plugin-native' } : {} });
   }
 });
@@ -90,6 +92,7 @@ test("stdio ACP delivers plugin MCP in new/load wire params and isolates unsuppo
         });
         try {
           const wire = JSON.parse(await readFile(capture, "utf8"));
+          assert.equal(wire.initialization.clientInfo.name, "CodeVori");
           assert.equal(wire.method, nativeId ? "session/load" : "session/new");
           assert.equal(wire.params.cwd, tmpdir());
           if (nativeId) assert.equal(wire.params.sessionId, nativeId);

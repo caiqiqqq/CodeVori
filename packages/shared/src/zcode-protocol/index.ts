@@ -652,6 +652,10 @@ export const zcodeProtocolMcpServerSchema = z.union([
     .strict(),
 ]);
 export type ZCodeProtocolMcpServer = z.infer<typeof zcodeProtocolMcpServerSchema>;
+export const zcodeDelegationMcpRequestParamsSchema = z
+  .object({ sessionId: nonEmptyString, createRequestId: nonEmptyString.optional() })
+  .strict();
+export const zcodeDelegationMcpResponseSchema = z.array(zcodeProtocolMcpServerSchema).max(1);
 
 export const zcodeMcpServerStatusKindSchema = z.enum([
   "connecting",
@@ -2653,22 +2657,26 @@ export const zcodePluginsAcpCapabilitiesParamsSchema = z
 export const zcodePluginsAcpCapabilitiesResultSchema = z
   .object({
     plugins: z.array(
-      z.object({
-        pluginId: nonEmptyString,
-        name: nonEmptyString,
-        description: z.string().optional(),
-        enabled: z.boolean(),
-        conflictingPluginIds: z.array(nonEmptyString),
-        mcpServerNames: z.array(nonEmptyString),
-      }).strict(),
+      z
+        .object({
+          pluginId: nonEmptyString,
+          name: nonEmptyString,
+          description: z.string().optional(),
+          enabled: z.boolean(),
+          conflictingPluginIds: z.array(nonEmptyString),
+          mcpServerNames: z.array(nonEmptyString),
+        })
+        .strict(),
     ),
     servers: z.array(
-      z.object({
-        pluginId: nonEmptyString,
-        name: nonEmptyString,
-        rootPath: nonEmptyString,
-        config: z.record(z.string(), z.unknown()),
-      }).strict(),
+      z
+        .object({
+          pluginId: nonEmptyString,
+          name: nonEmptyString,
+          rootPath: nonEmptyString,
+          config: z.record(z.string(), z.unknown()),
+        })
+        .strict(),
     ),
   })
   .strict();
@@ -3688,6 +3696,8 @@ export const zcodeProtocolMethods = {
   interactionRequestUserInput: "interaction/requestUserInput",
   interactionRequestProviderRuntimeHeaders: "interaction/requestProviderRuntimeHeaders",
   interactionRequestOfficialMcpAuthHeaders: "interaction/requestOfficialMcpAuthHeaders",
+  interactionRequestDelegationMcp: "interaction/requestDelegationMcp",
+  interactionPauseDelegations: "interaction/pauseDelegations",
   // browser-use 反向请求由 agent 发起，host 转给 main 中的 CDP executor。
   interactionBrowserList: "interaction/browserList",
   interactionBrowserExecute: "interaction/browserExecute",

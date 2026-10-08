@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "@zcode/shared";
 import {
   DEFAULT_FEEDBACK_TICKET_FRAMEWORK,
   type FeedbackTicketModule,
@@ -19,7 +20,7 @@ import {
   type FeedbackSubmissionJob,
 } from "@/feedback/feedbackSubmissionJob.js";
 
-const FEEDBACK_ZCODE_AGENT_LABEL = "ZCode Agent";
+const FEEDBACK_ZCODE_AGENT_LABEL = `${PRODUCT_NAME} Agent`;
 
 export const DEFAULT_FEEDBACK_TYPE: FeedbackTicketType = "bug";
 export const DEFAULT_FEEDBACK_SEVERITY: FeedbackTicketSeverity = "P2-中";

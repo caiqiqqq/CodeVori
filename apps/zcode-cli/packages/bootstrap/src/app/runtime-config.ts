@@ -93,6 +93,7 @@ export function resolveAppRuntimeConfig(input: {
   const configuredMcpServers = {
     ...pluginMcpServers,
     ...(options.runtimeConfig?.mcp?.servers ?? configResult.config.mcp.servers),
+    ...options.hostMcpServers,
     ...builtInMcpServers,
   };
   const trustedOfficialCuaServerNames = resolveTrustedOfficialCuaServerNames(

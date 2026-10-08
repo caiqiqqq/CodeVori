@@ -1,4 +1,5 @@
 import { readBackgroundBashOutputFromOwner } from "./background-work-owner.js";
+import { pauseHostDelegations } from "./delegation-lifecycle.js";
 // v4 网关 binder。
 // 定位：ConversationV4Gateway 是域无关的通道运行时，本文件把它绑到协议服务器上下文：
 // - 帧出口 = context.notify（stdio NDJSON notification，与旧 session/event 同一条管道并存）；
@@ -687,6 +688,7 @@ export function createConversationV4Gateway(
     autoDrainRetryTimers.set(sessionId, timer);
   };
   const coreHost: V4CommandCoreHost = {
+    pauseDelegations: (sessionId) => pauseHostDelegations(context, sessionId),
     // 同一注册表对象引用：view 是旧 record 的结构化窄视图，字段变更双向可见。
     getRecord: (sessionId) => context.sessions.get(sessionId),
     // 同一登记表实例：broker（旧目录）注册反向请求 deferred，
@@ -1089,6 +1091,7 @@ export function createConversationV4Gateway(
         // handler 已校验存在性；此处只兜并发竞态（重复删除幂等成功）。
         return;
       }
+      await pauseHostDelegations(context, sessionId);
       record.unsubscribe?.();
       await record.app.close?.();
       // v4 通道：会话关闭同时清 publisher / 订阅调度；重开会话走 snapshot 冷启动。
@@ -1104,6 +1107,7 @@ export function createConversationV4Gateway(
     // 语义决策（draft persistence / firstInput 走原生 prompt turn）在原生 handler。
     createSessionRecord: async ({
       workspaceId,
+      createRequestId,
       mcpServers,
       offPeakToolEnabled,
       dynamicWorkflowEnabled,
@@ -1117,20 +1121,24 @@ export function createConversationV4Gateway(
       //   （workspaceKey = identity，sessions-index topic / 隔离语义不变）。
       // shared parser 统一兼容 WSL legacy 与显式 user identity；非远程格式继续按
       // 本地 workspacePath 处理。
-      const created = await createSessionRecordForV4(context, {
-        workspace: resolveWorkspaceRefFromId(workspaceId),
-        // 一律 deferred（draft 不进 sqlite）；提升时机归原生 prompt-turn。
-        persistence: "deferred",
-        // MCP 是 runtime 创建期配置；v4 createSession 必须与 legacy
-        // session/create 等价透传，否则创建的 session 永远不会启动这些工具。
-        mcpServers,
-        // Off-Peak 工具面 flag 同为 runtime 创建期配置，必须随 create 进入 record。
-        ...(offPeakToolEnabled === true ? { offPeakToolEnabled: true } : {}),
-        // 动态工作流灰度门同为 runtime 创建期配置：
-        // v4 createSession 必须与 legacy session/create 等价透传，否则无界面创建的会话
-        // 会绕过 Host 的灰度判定，只剩进程级缺省。
-        ...(dynamicWorkflowEnabled === true ? { dynamicWorkflowEnabled: true } : {}),
-      });
+      const created = await createSessionRecordForV4(
+        context,
+        {
+          workspace: resolveWorkspaceRefFromId(workspaceId),
+          // 一律 deferred（draft 不进 sqlite）；提升时机归原生 prompt-turn。
+          persistence: "deferred",
+          // MCP 是 runtime 创建期配置；v4 createSession 必须与 legacy
+          // session/create 等价透传，否则创建的 session 永远不会启动这些工具。
+          mcpServers,
+          // Off-Peak 工具面 flag 同为 runtime 创建期配置，必须随 create 进入 record。
+          ...(offPeakToolEnabled === true ? { offPeakToolEnabled: true } : {}),
+          // 动态工作流灰度门同为 runtime 创建期配置：
+          // v4 createSession 必须与 legacy session/create 等价透传，否则无界面创建的会话
+          // 会绕过 Host 的灰度判定，只剩进程级缺省。
+          ...(dynamicWorkflowEnabled === true ? { dynamicWorkflowEnabled: true } : {}),
+        },
+        createRequestId,
+      );
       return { sessionId: created.sessionId };
     },
     createSelectionSideSession: async (sessionId, options) => {

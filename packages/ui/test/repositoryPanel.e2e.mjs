@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import { assertRepositoryListLabelColors } from "./repositoryListLabelAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__repository-panel-e2e-${process.pid}`;
@@ -37,7 +38,7 @@ try {
     const hosts:any={};
     const snapshots:any={};
     const label={key:'bug',name:'bug',color:'#d73a4a'};
-    const baseItem=(host:string,request:any)=>({number:7,kind:request.kind,title:host+' '+(request.remoteName||'origin')+' '+request.kind+' '+(request.page||1),body:'## Synthetic description\\n\\nA reproducible issue.',state:'open',draft:false,author:{username:'tester',avatarUrl:null},url:'https://forge.example.invalid/team/project/issues/7',createdAt:'2026-09-30T00:00:00Z',updatedAt:'2026-10-01T00:00:00Z',labels:[label],commentCount:1});
+    const baseItem=(host:string,request:any)=>({number:7,kind:request.kind,title:host+' '+(request.remoteName||'origin')+' '+request.kind+' '+(request.page||1),body:'## Synthetic description\\n\\nA reproducible issue.',state:'open',draft:false,author:{username:'tester',avatarUrl:null},url:'https://forge.example.invalid/team/project/issues/7',createdAt:'2026-09-30T00:00:00Z',updatedAt:'2026-10-01T00:00:00Z',labels:[label,{key:'优化',name:'优化',color:'#eee600'}],commentCount:1});
     const comment={id:'c1',body:'Synthetic comment',author:{username:'reviewer',avatarUrl:null},createdAt:'2026-10-01T00:00:00Z',url:null};
     const commentRows:any={A:[comment],B:[comment]};
     const states:any={A:'open',B:'open'};
@@ -52,6 +53,7 @@ try {
       async listForgeItems(r:any){state.calls.push({host,op:'list',...r});const result={items:[{...baseItem(host,r),state:states[host]}],page:r.page,pageSize:20,hasMore:r.page===1,total:21,reachableTotal:21,incomplete:false};if(state.delayList){state.delayList=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return clone(result)},
       async listForgeLabels(){return [label]},
       async getForgeItem(r:any){state.calls.push({host,op:'detail',...r});return {...baseItem(host,r),state:states[host],change:r.kind==='pull-request'?{headSha:'a'.repeat(40),headBranch:'feature',baseBranch:'main',mergeable:true,mergeMethods:['merge','squash'],mergeOptionsError:null,checks:[{id:'check',name:'tests',state:'success',url:null}],checksError:null}:null}},
+      async getForgeItemExtras(){return {}},
       async listForgeComments(r:any){return {items:clone(commentRows[host]),page:r.page,pageSize:30,hasMore:false,total:commentRows[host].length}},
       async listForgeFiles(r:any){return {items:[{path:'src/very-long-project-directory/a-very-long-filename-with-many-words.ts',previousPath:null,status:'modified',additions:1,deletions:1,patch:'@@ -1 +1 @@\\n-old\\n+new',truncated:false}],page:r.page,pageSize:30,hasMore:false,total:1}},
       async createForgeIssue(r:any){state.calls.push({host,op:'create',...r});if(state.failWrite){state.failWrite=false;throw new Error('FORGE_FORBIDDEN')}return {...baseItem(host,{kind:'issue',...r}),number:99,title:r.title,body:r.body}},
@@ -78,12 +80,15 @@ try {
       (ops) => window.__forge.calls.filter((call) => ops.includes(call.op)).length,
       ops,
     );
+  const assertListLabelColors = () => assertRepositoryListLabelColors(row);
   await row().waitFor();
+  await assertListLabelColors();
   assert.match(await row().innerText(), /A origin issue 1/);
   await panel.getByRole("button", { name: "下一页", exact: true }).click();
   await page.waitForFunction(() =>
     document.querySelector('[data-testid="repository-item-row"]')?.textContent?.includes("issue 2"),
   );
+  await assertListLabelColors();
   await panel.getByRole("button", { name: "上一页", exact: true }).click();
   const search = panel.getByRole("textbox", { name: "搜索标题和描述" });
   await search.fill("synthetic search");
@@ -139,6 +144,7 @@ try {
   assert.equal(handoff.autoSend, undefined);
   await detail.getByRole("button", { name: "关闭详情", exact: true }).click();
   await panel.getByRole("tab", { name: "拉取请求", exact: true }).click();
+  await assertListLabelColors();
   await row().click();
   await detail.getByRole("tab", { name: "文件变更", exact: true }).click();
   await detail
@@ -224,6 +230,7 @@ try {
     for (const width of [1120, 390, 320]) {
       await page.setViewportSize({ width, height: 850 });
       await settleVisuals();
+      await assertListLabelColors();
       assert.ok(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         theme + "/" + width + " list overflow",

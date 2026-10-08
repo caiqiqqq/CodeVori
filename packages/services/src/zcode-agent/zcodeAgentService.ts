@@ -71,6 +71,8 @@ import {
   zcodeProviderRuntimeHeadersRequestParamsSchema,
   zcodeProviderTestModelConnectivityResultSchema,
   zcodeOfficialMcpAuthHeadersRequestParamsSchema,
+  zcodeDelegationMcpRequestParamsSchema,
+  zcodeDelegationMcpResponseSchema,
   summarizeOfficialMcpIdentityHeaders,
   zcodeProtocolEmptyResultSchema,
   zcodeProtocolMethods,
@@ -893,6 +895,16 @@ interface CreateZCodeAgentServiceOptions extends Omit<
    * dynamicWorkflowEnabled。缺省不传（纯 CLI 装配）= 永远关闭，与 CLI 缺省一致。
    */
   resolveDynamicWorkflowClientConfig?: () => Promise<DynamicWorkflowClientConfig | undefined>;
+  resolveDelegationMcp?: (
+    workspace: ZCodeAgentWorkspaceTarget,
+    sessionId: string,
+    createRequestId?: string,
+  ) => Promise<import("@zcode/shared").ZCodeProtocolMcpServer[]>;
+  onDelegationConversationCommand?: (
+    workspace: ZCodeAgentWorkspaceTarget,
+    envelope: CommandEnvelope,
+  ) => Promise<void>;
+  pauseDelegations?: (workspace: ZCodeAgentWorkspaceTarget, sessionId: string) => Promise<void>;
   resolveOffPeakTaskService?: () =>
     | Pick<IOffPeakTaskService, "createTask" | "list" | "getCodingPlanSupport">
     | undefined;
@@ -2309,6 +2321,40 @@ export function createZCodeAgentService(
           return;
         }
 
+        if (
+          request.method === zcodeProtocolMethods.interactionRequestDelegationMcp ||
+          request.method === zcodeProtocolMethods.interactionPauseDelegations
+        ) {
+          const parsed = zcodeDelegationMcpRequestParamsSchema.safeParse(request.params);
+          if (!parsed.success) {
+            void client.respondError(request.id, {
+              code: -32602,
+              message: "Invalid delegation MCP request",
+            });
+            return;
+          }
+          // scope 来自已连接进程，不能信任智能体请求里的路径；token 只进入本次运行时。
+          void (async () => {
+            if (request.method === zcodeProtocolMethods.interactionPauseDelegations) {
+              await options?.pauseDelegations?.(workspace, parsed.data.sessionId);
+              await client.respond(request.id, {});
+              return;
+            }
+            const servers =
+              (await options?.resolveDelegationMcp?.(
+                workspace,
+                parsed.data.sessionId,
+                parsed.data.createRequestId,
+              )) ?? [];
+            await client.respond(request.id, zcodeDelegationMcpResponseSchema.parse(servers));
+          })().catch(() => {
+            void client.respondError(request.id, {
+              code: -32000,
+              message: "Delegation Host unavailable",
+            });
+          });
+          return;
+        }
         // 官方 Server MCP 身份头：纯 RPC 中继，host 自动解析并响应。
         // 不 emitSessionEvent、不进 pending map——该请求没有 UI 语义，renderer 不参与。
         if (request.method === zcodeProtocolMethods.interactionRequestOfficialMcpAuthHeaders) {
@@ -4457,8 +4503,11 @@ export function createZCodeAgentService(
           ...(params.remoteSessionId ? { remoteSessionId: params.remoteSessionId } : {}),
           ...(params.clientMode ? { clientMode: params.clientMode } : {}),
         }));
+      const inputId = params.inputId ?? randomUUID();
       const protocolParams: ZCodeAgentSendPromptParams = {
         ...params,
+        // 旧调用可不传 inputId；委派 admission 与实际协议必须共享同一个输入身份。
+        inputId,
         ...(browserAmbientContext ? { browserAmbientContext } : {}),
       };
       logger.info(logTraceId, "ZCode Agent session/send 开始", {
@@ -4473,6 +4522,14 @@ export function createZCodeAgentService(
         workspacePath: params.workspacePath,
       });
       try {
+        await options?.onDelegationConversationCommand?.(params, {
+          type: "sendText",
+          commandId: inputId,
+          sessionId: params.sessionId,
+          clientId: "legacy",
+          issuedAt: Date.now(),
+          payload: { text: params.content },
+        });
         const result = await client.request(
           zcodeProtocolMethods.sessionSend,
           buildSessionSendParams(protocolParams),
@@ -5087,6 +5144,8 @@ export function createZCodeAgentService(
         });
       }
       let envelope = await buildConversationCommandEnvelope(params);
+      if (envelope.type === "sendText" || envelope.type === "sendGoalCommand")
+        await options?.onDelegationConversationCommand?.(params, envelope);
       // TTFT 首版只允许可信桌面本地 continuous，手机/远端透传不能开启本地观测。
       if (
         commandClientMode !== "desktop-continuous" ||

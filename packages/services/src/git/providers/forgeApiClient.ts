@@ -5,8 +5,10 @@ import type {
   ForgeItemKind,
   ForgeLabel,
   ForgePage,
+  ForgeItemMetadata,
 } from "@zcode/shared";
 import { z } from "zod";
+import { readForgeImageResponse } from "./forgeMedia.js";
 
 export interface ForgeApiResponse {
   data: unknown;
@@ -16,7 +18,7 @@ export type ForgeApiClient = (
   path: string,
   query?: Record<string, string | number | undefined>,
   write?: { method: "POST" | "PUT" | "PATCH"; body: unknown },
-  format?: "json" | "text",
+  format?: "json" | "text" | "image",
 ) => Promise<ForgeApiResponse>;
 
 export function createForgeApiClient(options: {
@@ -30,7 +32,12 @@ export function createForgeApiClient(options: {
     for (const [key, value] of Object.entries(query))
       if (value !== undefined) url.searchParams.set(key, String(value));
     const headers = new Headers({
-      Accept: format === "json" ? "application/json" : "text/plain",
+      Accept:
+        format === "json"
+          ? "application/json"
+          : format === "image"
+            ? "image/png,image/jpeg,image/gif,image/webp,image/avif"
+            : "text/plain",
       "User-Agent": "ZCode",
     });
     if (options.provider === "gitlab") headers.set("PRIVATE-TOKEN", options.secret);
@@ -69,6 +76,8 @@ export function createForgeApiClient(options: {
     }
     try {
       if (response.status === 204) return { data: null, headers: response.headers };
+      if (format === "image")
+        return { data: await readForgeImageResponse(response), headers: response.headers };
       const reader = response.body?.getReader();
       if (!reader) throw new Error("Missing response");
       const chunks: Uint8Array[] = [];
@@ -84,7 +93,8 @@ export function createForgeApiClient(options: {
         }
         chunks.push(value);
       }
-      const text = Buffer.concat(chunks).toString("utf8");
+      const bytes = Buffer.concat(chunks);
+      const text = bytes.toString("utf8");
       return { data: format === "text" ? text : JSON.parse(text), headers: response.headers };
     } catch {
       throw new Error("FORGE_RESPONSE");
@@ -120,7 +130,51 @@ export function author(value: unknown): ForgeAuthor {
   return {
     username: string(raw.login || raw.username) || "unknown",
     avatarUrl: safeForgeUrl(raw.avatar_url),
+    ...(string(raw.name) ? { displayName: string(raw.name) } : {}),
   };
+}
+export function itemMetadata(
+  raw: Record<string, unknown>,
+  provider: "github" | "gitlab" | "gitea",
+): ForgeItemMetadata {
+  const milestone =
+    raw.milestone && typeof raw.milestone === "object" ? record(raw.milestone) : null;
+  const assignees = Array.isArray(raw.assignees)
+    ? raw.assignees
+    : raw.assignee
+      ? [raw.assignee]
+      : [];
+  const result: ForgeItemMetadata = {
+    assignees: assignees.map(author),
+    milestone:
+      milestone && string(milestone.title)
+        ? {
+            title: string(milestone.title),
+            url: safeForgeUrl(milestone.web_url || milestone.html_url),
+          }
+        : null,
+  };
+  if (provider === "gitlab") {
+    const stats =
+      raw.time_stats && typeof raw.time_stats === "object" ? record(raw.time_stats) : null;
+    const tasks =
+      raw.task_completion_status && typeof raw.task_completion_status === "object"
+        ? record(raw.task_completion_status)
+        : null;
+    result.dueDate = /^\d{4}-\d{2}-\d{2}$/.test(string(raw.due_date)) ? string(raw.due_date) : null;
+    result.confidential = typeof raw.confidential === "boolean" ? raw.confidential : null;
+    result.timeStats = stats
+      ? { estimateSeconds: count(stats.time_estimate), spentSeconds: count(stats.total_time_spent) }
+      : null;
+    if (tasks)
+      result.taskStatus = {
+        total: count(tasks.count),
+        completed: Math.min(count(tasks.count), count(tasks.completed_count)),
+      };
+  } else if (provider === "gitea" && raw.due_date) {
+    result.dueDate = string(raw.due_date) || null;
+  }
+  return result;
 }
 export function labels(value: unknown, ids = false): ForgeLabel[] {
   if (!Array.isArray(value)) return [];

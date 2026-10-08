@@ -9,7 +9,9 @@ import {
   isRepositoryNavEntry,
   isWorkTasksNavEntry,
   type AutomationsNavigationTab,
+  type RepositoryNavEntry,
 } from "@/lib/taskNavigationHistory.js";
+import { hasRemoteWorkspaceIdentity } from "@/lib/remoteWorkspaceHistory.js";
 import { shouldBlockTaskSelectionDuringModelRestart } from "@/lib/taskSwitchGuard.js";
 import { logger } from "@/logger.js";
 import { toast } from "@/components/ui/toast.js";
@@ -232,10 +234,49 @@ export function useWorkspaceTaskNavigation({
     onNavigateToPluginStore?.({ workspacePath: workspaceAbsPath, workspaceIdentity });
   }, [onNavigateToPluginStore, taskNavPushPluginStore, workspaceAbsPath, workspaceIdentity]);
 
-  const handleOpenRepository = useCallback(() => {
-    taskNavPushRepository(workspaceAbsPath, workspaceIdentity);
-    onNavigateToRepository?.({ workspacePath: workspaceAbsPath, workspaceIdentity });
-  }, [onNavigateToRepository, taskNavPushRepository, workspaceAbsPath, workspaceIdentity]);
+  const activateRepositoryWorkspace = useCallback(
+    (target: Omit<RepositoryNavEntry, "kind">, allowUnavailable = false) => {
+      const key = buildTaskWorkspaceKey(target.workspacePath, target.workspaceIdentity);
+      const tab = tabStoreApi
+        .getState()
+        .tabs.find(
+          (candidate) =>
+            isWorkspaceTab(candidate) &&
+            candidate.workspacePath === target.workspacePath &&
+            buildTaskWorkspaceKey(candidate.workspacePath, candidate.workspaceIdentity) === key,
+        );
+      // 按路径激活会回退同路径远端；仓库项目选择和历史回放必须先确认精确身份仍存在。
+      if (!tab || !isWorkspaceTab(tab)) return false;
+      if (
+        !allowUnavailable &&
+        (tab.availability === "unavailable-local-directory" ||
+          (hasRemoteWorkspaceIdentity(tab) &&
+            (!tab.remoteSessionId || !getRemoteWorkspaceSession(tab.remoteSessionId))))
+      ) {
+        return false;
+      }
+      return activateTabByPath(
+        tab.workspacePath,
+        tab.workspaceIdentity ? { workspaceIdentity: tab.workspaceIdentity } : undefined,
+      );
+    },
+    [activateTabByPath, tabStoreApi],
+  );
+  const handleOpenRepository = useCallback(
+    (target?: Omit<RepositoryNavEntry, "kind">) => {
+      if (target && !activateRepositoryWorkspace(target)) return;
+      const scope = target ?? { workspacePath: workspaceAbsPath, workspaceIdentity };
+      taskNavPushRepository(scope.workspacePath, scope.workspaceIdentity);
+      onNavigateToRepository?.(scope);
+    },
+    [
+      activateRepositoryWorkspace,
+      onNavigateToRepository,
+      taskNavPushRepository,
+      workspaceAbsPath,
+      workspaceIdentity,
+    ],
+  );
   const handleOpenWorkTasks = useCallback(() => {
     taskNavPushWorkTasks(workspaceAbsPath, workspaceIdentity);
     onNavigateToWorkTasks?.({ workspacePath: workspaceAbsPath, workspaceIdentity });
@@ -284,19 +325,22 @@ export function useWorkspaceTaskNavigation({
         });
         return;
       }
-      if (
-        isPluginStoreNavEntry(currentEntry) ||
-        isRepositoryNavEntry(currentEntry) ||
-        isWorkTasksNavEntry(currentEntry)
-      ) {
+      if (isRepositoryNavEntry(currentEntry)) {
+        if (activateRepositoryWorkspace(currentEntry, true)) {
+          onNavigateToRepository?.(currentEntry);
+          return;
+        }
+        entry = taskNavGoBack();
+        continue;
+      }
+      if (isPluginStoreNavEntry(currentEntry) || isWorkTasksNavEntry(currentEntry)) {
         activateTabByPath(
           currentEntry.workspacePath,
           currentEntry.workspaceIdentity
             ? { workspaceIdentity: currentEntry.workspaceIdentity }
             : undefined,
         );
-        if (isRepositoryNavEntry(currentEntry)) onNavigateToRepository?.(currentEntry);
-        else if (isWorkTasksNavEntry(currentEntry)) onNavigateToWorkTasks?.(currentEntry);
+        if (isWorkTasksNavEntry(currentEntry)) onNavigateToWorkTasks?.(currentEntry);
         else onNavigateToPluginStore?.(currentEntry);
         return;
       }
@@ -324,6 +368,7 @@ export function useWorkspaceTaskNavigation({
 
     toast(intl.formatMessage({ id: "taskNav.noMoreBack" }));
   }, [
+    activateRepositoryWorkspace,
     activateTabByPath,
     handleSelectTask,
     intl,
@@ -378,19 +423,22 @@ export function useWorkspaceTaskNavigation({
         });
         return;
       }
-      if (
-        isPluginStoreNavEntry(currentEntry) ||
-        isRepositoryNavEntry(currentEntry) ||
-        isWorkTasksNavEntry(currentEntry)
-      ) {
+      if (isRepositoryNavEntry(currentEntry)) {
+        if (activateRepositoryWorkspace(currentEntry, true)) {
+          onNavigateToRepository?.(currentEntry);
+          return;
+        }
+        entry = taskNavGoForward();
+        continue;
+      }
+      if (isPluginStoreNavEntry(currentEntry) || isWorkTasksNavEntry(currentEntry)) {
         activateTabByPath(
           currentEntry.workspacePath,
           currentEntry.workspaceIdentity
             ? { workspaceIdentity: currentEntry.workspaceIdentity }
             : undefined,
         );
-        if (isRepositoryNavEntry(currentEntry)) onNavigateToRepository?.(currentEntry);
-        else if (isWorkTasksNavEntry(currentEntry)) onNavigateToWorkTasks?.(currentEntry);
+        if (isWorkTasksNavEntry(currentEntry)) onNavigateToWorkTasks?.(currentEntry);
         else onNavigateToPluginStore?.(currentEntry);
         return;
       }
@@ -417,6 +465,7 @@ export function useWorkspaceTaskNavigation({
 
     toast(intl.formatMessage({ id: "taskNav.noMoreForward" }));
   }, [
+    activateRepositoryWorkspace,
     activateTabByPath,
     handleSelectTask,
     intl,

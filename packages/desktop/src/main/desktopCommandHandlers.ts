@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- 桌面命令分发需要共享窗口与平台上下文，集中维护更便于一致性 */
+import { PRODUCT_NAME } from "@zcode/shared";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { app, BrowserWindow, dialog, session, shell } from "electron";
@@ -307,7 +308,7 @@ function buildZCodeEndpointPromptHtml(currentValue: string): string {
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>ZCode Endpoint</title>
+    <title>${PRODUCT_NAME} Endpoint</title>
     <style>
       :root { color-scheme: light dark; }
       body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -320,7 +321,7 @@ function buildZCodeEndpointPromptHtml(currentValue: string): string {
   </head>
   <body>
     <form id="form">
-      <label for="endpoint">ZCode endpoint origin</label>
+      <label for="endpoint">${PRODUCT_NAME} endpoint origin</label>
       <input id="endpoint" value="${value}" placeholder="https://endpoint.example.com" spellcheck="false" />
       <div class="hint">Use an http or https origin, for example https://endpoint.example.com.</div>
       <div class="actions">
@@ -359,7 +360,7 @@ function showZCodeEndpointPromptWindow(options: {
       resizable: false,
       minimizable: false,
       maximizable: false,
-      title: "ZCode Endpoint",
+      title: `${PRODUCT_NAME} Endpoint`,
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
@@ -656,7 +657,7 @@ export async function executeDesktopCommand(options: {
       } catch (error) {
         await showMessageBoxWithOptionalParent(targetWindow, {
           type: "error",
-          title: "ZCode Endpoint",
+          title: `${PRODUCT_NAME} Endpoint`,
           message: "Endpoint 无效",
           detail: error instanceof Error ? error.message : String(error),
         });

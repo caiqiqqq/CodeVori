@@ -27,6 +27,7 @@ import {
 } from "@zcode/shared";
 import type {
   ConversationShareAccessMode,
+  DelegationParent,
   GitChangeSourceId,
   GitRepositorySummary,
   ZCodeProvider,
@@ -129,6 +130,8 @@ import { ConversationHeader, type PaneWorkspaceBadge } from "@/v4/ConversationHe
 import { WorkbenchConversationTabContent } from "@/v4/WorkbenchConversationTabContent.js";
 import { resolveWorkbenchConversationTabPresentation } from "@/v4/workbenchConversationTabPresentation.js";
 import { AcpConversationStatus, AcpHomeStatus } from "@/v4/AcpConversationContent.js";
+import { AgentDelegationPanel } from "@/delegation/AgentDelegationPanel.js";
+import { useAgentDelegation } from "@/hooks/useAgentDelegation.js";
 import { acpEntryRowId, buildAcpConversationRows } from "@/v4/acpConversationRows.js";
 import { useAcpConversation } from "@/v4/useAcpConversation.js";
 import { useAcpComposerConfigPreview } from "@/v4/composer/useAcpComposerConfigPreview.js";
@@ -623,6 +626,32 @@ export function SessionPane({
     ready: acpConversation.ready,
     error: acpConversation.error,
   });
+  const delegationParent = useMemo<DelegationParent>(
+    () => ({
+      workspacePath,
+      ...(workspaceIdentity ? { workspaceIdentity } : {}),
+      ...(remoteSessionId ? { remoteSessionId } : {}),
+      kind: acpAgent ? "acp" : "api",
+      sessionId: acpAgent
+        ? acpConversation.selected?.agent === acpAgent
+          ? acpConversation.selected.id
+          : ""
+        : (sessionId ?? ""),
+    }),
+    [
+      workspacePath,
+      workspaceIdentity,
+      remoteSessionId,
+      acpAgent,
+      acpConversation.selected,
+      sessionId,
+    ],
+  );
+  const delegation = useAgentDelegation(delegationParent, !readOnly);
+  const handleOpenDelegation = useCallback(
+    () => delegation.openEditor("new"),
+    [delegation.openEditor],
+  );
   useEffect(() => {
     acpConversation.resetSelection();
     setAcpAgent(null);
@@ -4677,6 +4706,7 @@ export function SessionPane({
       onSendAcpText={acpConversation.send}
       acpGoal={acpConversation.selected?.goal}
       onSetAcpGoal={acpConversation.setGoal}
+      onDelegateTask={delegation.available ? handleOpenDelegation : undefined}
       acpConfigOptions={acpConfigPreview.options}
       acpModeState={acpConfigPreview.modes}
       acpConfigLoading={acpConfigPreview.loading}
@@ -5132,9 +5162,18 @@ export function SessionPane({
                 ) : null
               }
               footerSlot={
-                acpAgent && acpHasConversationContent ? (
-                  <AcpConversationStatus agent={acpAgent} conversation={acpConversation} />
-                ) : null
+                <>
+                  {acpAgent && acpHasConversationContent ? (
+                    <AcpConversationStatus agent={acpAgent} conversation={acpConversation} />
+                  ) : null}
+                  {!readOnly && delegationParent.sessionId ? (
+                    <AgentDelegationPanel
+                      key={`${workspaceIdentity?.trim() || workspacePath}:${delegationParent.kind}:${delegationParent.sessionId}`}
+                      parent={delegationParent}
+                      controller={delegation}
+                    />
+                  ) : null}
+                </>
               }
               emptyState={
                 visibleEmptyDraft ? (

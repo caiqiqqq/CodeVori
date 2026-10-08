@@ -1,4 +1,5 @@
 /** English translations */
+import { PRODUCT_NAME } from "@zcode/shared";
 const enUS: Record<string, string> = {
   "workTasks.title": "Work Tasks",
   "workTasks.sidebar.summary": "Open projects: {running} running, {waiting} waiting",
@@ -217,6 +218,11 @@ const enUS: Record<string, string> = {
   "repositoryPanel.retry": "Retry",
   "repositoryPanel.refresh": "Refresh",
   "repositoryPanel.remote": "Git Remote",
+  "repositoryPanel.selectProject": "Select Project",
+  "repositoryPanel.searchProjects": "Search projects",
+  "repositoryPanel.noProjects": "No matching projects",
+  "repositoryPanel.project.unavailable": "Directory unavailable",
+  "repositoryPanel.project.disconnected": "Disconnected",
   "repositoryPanel.issues": "Issues",
   "repositoryPanel.pullRequests": "Pull Requests",
   "repositoryPanel.mergeRequests": "Merge Requests",
@@ -268,6 +274,53 @@ const enUS: Record<string, string> = {
   "repositoryPanel.creating": "Creating...",
   "repositoryPanel.cancel": "Cancel",
   "repositoryPanel.closeDetail": "Close Details",
+  "repositoryPanel.backToList": "Back to list",
+  "repositoryPanel.openedBy": "Created by",
+  "repositoryPanel.attributes": "Item attributes",
+  "repositoryPanel.assignees": "Assignees",
+  "repositoryPanel.unassigned": "Unassigned",
+  "repositoryPanel.milestone": "Milestone",
+  "repositoryPanel.openMilestone": "Open milestone",
+  "repositoryPanel.notSet": "Not set",
+  "repositoryPanel.dueDate": "Due date",
+  "repositoryPanel.timeTracking": "Time tracking",
+  "repositoryPanel.timeEstimate": "Estimated",
+  "repositoryPanel.timeSpent": "Spent",
+  "repositoryPanel.hours": "{count} h",
+  "repositoryPanel.minutes": "{count} min",
+  "repositoryPanel.seconds": "{count} s",
+  "repositoryPanel.visibility": "Visibility",
+  "repositoryPanel.confidential": "Confidential issue",
+  "repositoryPanel.notConfidential": "Non-confidential issue",
+  "repositoryPanel.participants": "Participants",
+  "repositoryPanel.noParticipants": "No participants",
+  "repositoryPanel.moreOnWeb": "View remaining items in your browser",
+  "repositoryPanel.createdAt": "Created",
+  "repositoryPanel.updatedAt": "Updated",
+  "repositoryPanel.tasks": "Task list",
+  "repositoryPanel.linkedIssues": "Linked issues",
+  "repositoryPanel.noLinkedIssues": "No linked issues",
+  "repositoryPanel.activity": "Activity",
+  "repositoryPanel.activityFilter": "Activity filter",
+  "repositoryPanel.allActivity": "All activity",
+  "repositoryPanel.commentsOnly": "Comments only",
+  "repositoryPanel.labelsAdded": "Added labels",
+  "repositoryPanel.labelsRemoved": "Removed labels",
+  "repositoryPanel.deletedLabel": "Deleted label",
+  "repositoryPanel.noActivity": "No activity yet",
+  "repositoryPanel.noCommentsOnPage": "No comments in the loaded activity",
+  "repositoryPanel.image": "Issue image",
+  "repositoryPanel.imageUnavailable": "Image could not be loaded",
+  "repositoryPanel.imageNeedsSignIn": "Private images on this GitLab version require web sign-in.",
+  "repositoryPanel.imageAuthUnavailable":
+    "This GitLab version requires web sign-in, which is unavailable on this connection. View the image on the original page.",
+  "repositoryPanel.signInGitLab": "Sign in to GitLab",
+  "repositoryPanel.signingInGitLab": "Signing in…",
+  "repositoryPanel.imageAccountMismatch":
+    "The GitLab web session belongs to a different version control account. Please sign in again.",
+  "repositoryPanel.imageSignInFailed":
+    "Sign-in did not complete. Retry with the selected version control account.",
+  "repositoryPanel.previewImage": "Preview image",
   "repositoryPanel.refreshDetail": "Refresh Details",
   "repositoryPanel.handle": "Handle with Agent",
   "repositoryPanel.closeIssue": "Close Issue",
@@ -333,6 +386,9 @@ const enUS: Record<string, string> = {
   "repositoryPanel.error.CONFLICT":
     "The hosting provider rejected the operation. Refresh the item and retry.",
   "repositoryPanel.error.RESPONSE": "Loading or submission failed. Try again later.",
+  "repositoryPanel.error.INVALID_MEDIA": "This image URL or format is not supported.",
+  "repositoryPanel.error.MEDIA_UNAVAILABLE":
+    "This provider cannot serve the image. Open it in your browser.",
   "startPlan.recommendation.subagentDescription":
     "Your Start Plan has quota available for {model}. Switch this subagent’s model to the Start Plan?",
   "startPlan.recommendation.preferenceSaveFailed":
@@ -345,7 +401,7 @@ const enUS: Record<string, string> = {
   "startPlan.recommendation.dismiss": "Don’t show again",
   "occupationOnboarding.stepMode": "UI mode",
   "occupationOnboarding.modeTitle": "Choose your UI mode",
-  "occupationOnboarding.modeDescription": "How would you like ZCode to show its work?",
+  "occupationOnboarding.modeDescription": `How would you like ${PRODUCT_NAME} to show its work?`,
   "occupationOnboarding.coding": "Coding mode",
   "occupationOnboarding.codingDescription":
     "I want to see code, command output, and change details throughout the development process.",
@@ -394,27 +450,25 @@ const enUS: Record<string, string> = {
   "occupationOnboarding.migration": "Migrate conversations",
   "occupationOnboarding.migrationDescription": "Migrate conversation history from Claude Code",
   "occupationOnboarding.memory": "Enable Workspace Memory",
-  "occupationOnboarding.memoryDescription": "Let ZCode remember your preferences and work context.",
+  "occupationOnboarding.memoryDescription": `Let ${PRODUCT_NAME} remember your preferences and work context.`,
   "occupationOnboarding.suggestions": "Enable proactive task suggestions",
   "occupationOnboarding.suggestionsDescription":
     "Show suggestions in new conversations. Click to fill the composer.",
   "occupationOnboarding.close": "Exit onboarding",
-  "startup.global.silent": "Starting ZCode",
+  "startup.global.silent": `Starting ${PRODUCT_NAME}`,
   "startup.global.upgrading": "Upgrading local data",
   "startup.global.initializing": "Initializing local data",
   "startup.global.waiting": "Waiting for database preparation",
   "startup.global.saving": "Saving updates",
   "startup.global.finishing": "Finishing startup",
-  "startup.global.servicesFailed":
-    "Local data is ready, but app services failed to start. Copy the diagnostics, then exit and reopen ZCode.",
+  "startup.global.servicesFailed": `Local data is ready, but app services failed to start. Copy the diagnostics, then exit and reopen ${PRODUCT_NAME}.`,
   "startup.global.starting": "Preparing local data",
   "startup.global.preparing_host_storage": "Preparing task index",
   "startup.global.preparing_session_storage": "Preparing chat history",
-  "startup.global.starting_services": "Starting ZCode",
+  "startup.global.starting_services": `Starting ${PRODUCT_NAME}`,
   "startup.global.ready": "Local data is ready",
   "startup.global.failed": "Startup preparation failed",
-  "startup.global.help":
-    "ZCode will open when preparation finishes. Large histories may take longer. Please keep the app running.",
+  "startup.global.help": `${PRODUCT_NAME} will open when preparation finishes. Large histories may take longer. Please keep the app running.`,
   "startup.global.diagnostic": "Diagnostic ID",
   "startup.global.copy": "Copy diagnostics",
   "startup.global.exit": "Exit",
@@ -434,16 +488,12 @@ const enUS: Record<string, string> = {
     "The migration records do not match this app version. Preserve your data and diagnostics and contact support.",
   "startup.global.error.open_failed":
     "The database could not be opened. Check that the data directory exists and is accessible, then retry.",
-  "startup.global.error.lock_timeout":
-    "Waiting for the database write lock timed out. Another ZCode or CLI process may be updating data. Retry after it finishes.",
+  "startup.global.error.lock_timeout": `Waiting for the database write lock timed out. Another ${PRODUCT_NAME} or CLI process may be updating data. Retry after it finishes.`,
   "startup.global.error.sql_failed":
     "Preparation did not finish. Copy the diagnostics and check the logs. Resolve the issue, then retry manually. The app will not retry automatically.",
-  "startup.global.error.startup_status_timeout":
-    "No startup status was received. Exit and reopen ZCode. If it fails again, provide the diagnostics to support.",
-  "startup.global.error.transport_closed":
-    "The preparation process exited or disconnected. Exit and reopen ZCode to check the migration records again.",
-  "startup.global.error.unsupported_runtime":
-    "The configured Agent does not support storage preparation. Restore the bundled Agent, then reopen ZCode.",
+  "startup.global.error.startup_status_timeout": `No startup status was received. Exit and reopen ${PRODUCT_NAME}. If it fails again, provide the diagnostics to support.`,
+  "startup.global.error.transport_closed": `The preparation process exited or disconnected. Exit and reopen ${PRODUCT_NAME} to check the migration records again.`,
+  "startup.global.error.unsupported_runtime": `The configured Agent does not support storage preparation. Restore the bundled Agent, then reopen ${PRODUCT_NAME}.`,
 
   "startup.database.checking": "Checking history",
   "startup.database.waiting_for_lock": "Waiting for another window to prepare data",
@@ -491,8 +541,7 @@ const enUS: Record<string, string> = {
   "offPeak.chatCreated.queued": "Queued for idle-time compute",
   "offPeak.chatCreated.queuedAt": "#{position} in queue",
   "offPeak.chatCreated.open": "Go to idle-time tasks",
-  "settings.computerUse.disabledToast":
-    "Computer Use is disabled. Existing conversations require a ZCode restart to take effect.",
+  "settings.computerUse.disabledToast": `Computer Use is disabled. Existing conversations require a ${PRODUCT_NAME} restart to take effect.`,
   "settings.modelProvider.connectionUnavailableNotice": "The current plan is unavailable.",
   "settings.modelProvider.switchConnection": "Switch to “{connection}”",
   "settings.modelProvider.connectionSuggestionStale":
@@ -529,7 +578,7 @@ const enUS: Record<string, string> = {
   "conversationShare.permission.linkViewerHint": "Cannot import and continue",
   "conversationShare.permission.linkViewerSummary": "Link holders can view",
   "conversationShare.permission.linkEditor": "Anyone with the link can import and continue",
-  "conversationShare.permission.linkEditorHint": "Import into ZCode",
+  "conversationShare.permission.linkEditorHint": `Import into ${PRODUCT_NAME}`,
   "conversationShare.permission.linkEditorSummary": "Link holders can import and continue",
   "conversationShare.permission.privateSummary": "Only me",
   "conversationShare.openLink": "Open share page",
@@ -755,8 +804,7 @@ const enUS: Record<string, string> = {
   "conversationShare.import.installing": "Installing shared files",
   "conversationShare.import.committing": "Creating the shared conversation",
   "conversationShare.import.complete": "Share import complete",
-  "conversationShare.import.loginRequired":
-    "This share cannot be imported anonymously. Sign in to ZCode and try again",
+  "conversationShare.import.loginRequired": `This share cannot be imported anonymously. Sign in to ${PRODUCT_NAME} and try again`,
   "conversationShare.import.notFound": "The share is unavailable for this account",
   "conversationShare.import.expired": "The share expired. Ask the author to create a new one",
   "conversationShare.import.integrityFailed": "Share file verification failed; import stopped",
@@ -882,7 +930,7 @@ const enUS: Record<string, string> = {
   "confirmDialog.projectRemoveDescription":
     "Project “{projectName}” will be removed from the sidebar, but files on disk will remain untouched.",
   "bots.title": "Bots",
-  "bots.description": "Connect external chats and webhooks to ZCode bots.",
+  "bots.description": `Connect external chats and webhooks to ${PRODUCT_NAME} bots.`,
   "bots.listTitle": "Bots",
   "bots.addBot": "New bot",
   "bots.addBinding": "Add binding",
@@ -935,10 +983,8 @@ const enUS: Record<string, string> = {
   "bots.setup.guide.telegram.bind.3": "Come back here after Telegram confirms the bind succeeded.",
   "bots.setup.guide.weixin.create.1":
     "Start Weixin QR login, scan the QR code with Weixin, then confirm on your phone.",
-  "bots.setup.guide.weixin.create.2":
-    "ZCode saves the bot_token returned by iLink automatically; after scanning, send any message to the bot in Weixin to activate the chat.",
-  "bots.setup.guide.weixin.create.3":
-    "ZCode uses a built-in iLink client: `/ilink/bot/getupdates` for long polling and `/ilink/bot/sendmessage` for replies.",
+  "bots.setup.guide.weixin.create.2": `${PRODUCT_NAME} saves the bot_token returned by iLink automatically; after scanning, send any message to the bot in Weixin to activate the chat.`,
+  "bots.setup.guide.weixin.create.3": `${PRODUCT_NAME} uses a built-in iLink client: \`/ilink/bot/getupdates\` for long polling and \`/ilink/bot/sendmessage\` for replies.`,
   "bots.setup.guide.weixin.bind.1": "Open the Weixin direct chat you want to bind.",
   "bots.setup.guide.weixin.bind.2": "Send {command}.",
   "bots.setup.guide.weixin.bind.3":
@@ -954,14 +1000,12 @@ const enUS: Record<string, string> = {
   "bots.setup.guide.feishu.bind.2": "Send {command} in that direct chat.",
   "bots.setup.guide.feishu.bind.3":
     "Return here after the bind succeeds to finish the workspace and CLI defaults.",
-  "bots.setup.guide.webhook.create.1":
-    "Webhook mode does not require a native bot in the third-party product; your integration only needs to POST messages to ZCode.",
+  "bots.setup.guide.webhook.create.1": `Webhook mode does not require a native bot in the third-party product; your integration only needs to POST messages to ${PRODUCT_NAME}.`,
   "bots.setup.guide.webhook.create.2":
     "Set a shared secret first; add an outbound webhook URL as well if you want asynchronous replies pushed back.",
   "bots.setup.guide.webhook.create.3":
     "Keep one stable userId per external user so binding and future context resolve to the same person.",
-  "bots.setup.guide.webhook.bind.1":
-    "POST a private-message callback to ZCode's `/api/bots/webhook` endpoint.",
+  "bots.setup.guide.webhook.bind.1": `POST a private-message callback to ${PRODUCT_NAME}'s \`/api/bots/webhook\` endpoint.`,
   "bots.setup.guide.webhook.bind.2":
     'The payload should at least include this botId, a stable userId, `chatType: "private"`, and set text to {command}.',
   "bots.setup.guide.webhook.bind.3":
@@ -1099,8 +1143,7 @@ const enUS: Record<string, string> = {
   "bots.runtime.telegramLongPollingRunning": "Telegram long polling is running.",
   "bots.runtime.telegramLongPollingStarting": "Telegram long polling is starting.",
   "bots.runtime.telegramLongPollingStopped": "Telegram long polling is stopped.",
-  "bots.runtime.telegramLongPollingHandledElsewhere":
-    "Telegram long polling is handled by another ZCode window.",
+  "bots.runtime.telegramLongPollingHandledElsewhere": `Telegram long polling is handled by another ${PRODUCT_NAME} window.`,
   "bots.runtime.telegramTokenMissing": "Telegram bot credential is missing.",
   "bots.runtime.telegramPollingFailedRetrying": "Telegram polling failed; retrying.",
   "bots.runtime.feishuWebSocketStarting": "Feishu WebSocket is starting.",
@@ -1188,14 +1231,14 @@ const enUS: Record<string, string> = {
   "bots.deleteFailed": "Failed to delete bot: {error}",
 
   // Welcome / Login
-  "welcome.title": "Welcome to ZCode",
+  "welcome.title": `Welcome to ${PRODUCT_NAME}`,
   "welcome.username": "Username",
   "welcome.password": "Password",
   "welcome.login": "Login",
   "welcome.loggingIn": "Logging in...",
   "welcome.loginFailed": "Login failed",
-  "login.title": "Welcome to ZCode",
-  "login.description": "Connect your account to start using ZCode",
+  "login.title": `Welcome to ${PRODUCT_NAME}`,
+  "login.description": `Connect your account to start using ${PRODUCT_NAME}`,
   "login.oauth.activeProviderHint":
     "Current active provider: {provider}. Signing in again replaces the current identity.",
   "login.oauth.loadingProviders": "Loading account providers...",
@@ -1238,7 +1281,7 @@ const enUS: Record<string, string> = {
   "app.currentTheme": "Current: {theme}",
   "app.login": "Connect",
   "app.logout": "Disconnect",
-  "logout.confirm.title": "Disconnect and restart ZCode?",
+  "logout.confirm.title": `Disconnect and restart ${PRODUCT_NAME}?`,
   "logout.confirm.descriptionWithRunningSessions":
     "{count} session(s) are currently running. Disconnecting will interrupt them and restart the app.",
   "logout.confirm.descriptionDefault":
@@ -1384,7 +1427,7 @@ const enUS: Record<string, string> = {
   "modelTrajectory.refresh": "Refresh",
   "modelTrajectory.close": "Close",
   "modelTrajectory.loading": "Loading trajectory…",
-  "modelTrajectory.empty": "No model calls recorded (only ZCode Agent writes model-io)",
+  "modelTrajectory.empty": `No model calls recorded (only ${PRODUCT_NAME} Agent writes model-io)`,
   "modelTrajectory.error": "Failed to load trajectory",
   "modelTrajectory.truncatedNotice": "Too many records, showing the most recent calls",
   "modelTrajectory.summaryCalls": "{count} calls",
@@ -1865,7 +1908,7 @@ const enUS: Record<string, string> = {
   "titleBar.menu.view.actualSize": "Actual size",
   "titleBar.menu.view.zoomIn": "Zoom in",
   "titleBar.menu.view.zoomOut": "Zoom out",
-  "titleBar.menu.help.about": "About ZCode",
+  "titleBar.menu.help.about": `About ${PRODUCT_NAME}`,
   "titleBar.menu.help.checkForUpdates": "Check for updates",
   "titleBar.menu.help.feedback": "Feedback",
   "sidebar.menu.community": "Community",
@@ -1918,7 +1961,7 @@ const enUS: Record<string, string> = {
   "update.toast.ready": "v{version} downloaded, restart to install",
   "update.toast.devSkipped": "Updates are disabled in dev builds",
   "update.toast.error": "Update check failed: {error}",
-  "forceUpdate.title": "Update ZCode to continue",
+  "forceUpdate.title": `Update ${PRODUCT_NAME} to continue`,
   "forceUpdate.description":
     "Your current version v{currentVersion} is below the minimum supported version v{minimalVersion}. Update first before continuing with this client.",
   "forceUpdate.currentVersion": "Current version",
@@ -1999,8 +2042,7 @@ const enUS: Record<string, string> = {
   "workspaceSidebar.connecting": "Connecting",
   "workspaceSidebar.notConnected": "Not connected",
   "workspaceSidebar.empty": "No workspaces yet. Open a workspace to get started.",
-  "workspaceSidebar.unavailableLocalDirectory":
-    "The workspace directory does not exist or cannot be accessed. You can only view history for now. Restore the directory and restart ZCode to continue.",
+  "workspaceSidebar.unavailableLocalDirectory": `The workspace directory does not exist or cannot be accessed. You can only view history for now. Restore the directory and restart ${PRODUCT_NAME} to continue.`,
   "workspaceSidebar.showSidebar": "Toggle sidebar",
   "workspaceSidebar.hideSidebar": "Toggle sidebar",
   "workspaceSidebar.toggleSidebar": "Toggle sidebar",
@@ -2042,8 +2084,7 @@ const enUS: Record<string, string> = {
   "ssh.assetInstallMode": "Resource download method",
   "ssh.assetInstallMode.local-download-upload": "Download locally, then upload",
   "ssh.assetInstallMode.remote-download": "Download on remote server",
-  "ssh.assetInstallModeDescription":
-    "Remote server download reduces upload waiting, but the server must reach the ZCode CDN and have download, extract, and checksum tools.",
+  "ssh.assetInstallModeDescription": `Remote server download reduces upload waiting, but the server must reach the ${PRODUCT_NAME} CDN and have download, extract, and checksum tools.`,
   "ssh.password": "Password",
   "ssh.passwordPlaceholder": "Enter your SSH password",
   "ssh.privateKey": "Private key",
@@ -2086,7 +2127,7 @@ const enUS: Record<string, string> = {
     "We are establishing the {method} connection. You can follow the live setup progress here.",
   "webRemoteControl.trigger": "Mobile remote control",
   "webRemoteControl.title": "Mobile remote control",
-  "webRemoteControl.description": "Control ZCode workspaces through chat bots.",
+  "webRemoteControl.description": `Control ${PRODUCT_NAME} workspaces through chat bots.`,
   "webRemoteControl.botChannel.title": "Use a bot channel",
   "webRemoteControl.botChannel.description": "Connect a chat bot for longer-running mobile access.",
   "webRemoteControl.botChannel.weixin.title": "Weixin",
@@ -2227,8 +2268,7 @@ const enUS: Record<string, string> = {
   "taskList.acpCopySnapshotFailed": "Could not copy task path",
   "taskList.acpCopyLogFailed": "Could not copy ACP diagnostic log path",
   "acpTrace.title": "ACP execution trace",
-  "acpTrace.description":
-    "ACP events received by ZCode. Internal Agent model requests and responses are not included.",
+  "acpTrace.description": `ACP events received by ${PRODUCT_NAME}. Internal Agent model requests and responses are not included.`,
   "acpTrace.empty": "No diagnostic events for this session. Logging for older sessions begins now.",
   "acpTrace.refresh": "Refresh trace",
   "acpTrace.loadFailed": "Could not read ACP execution trace",
@@ -2247,13 +2287,11 @@ const enUS: Record<string, string> = {
   "acpTrace.status.unknown": "Unknown status",
   "taskList.acpRestoreFailed": "Could not restore Agent session",
   "taskList.acpDeleteFailed": "Could not delete Agent session",
-  "taskList.acpDeleteDescription":
-    "This Agent session will be removed from ZCode and cannot be restored here.",
-  "taskList.archivedNativeTaskCount":
-    "{count} archived ZCode tasks (manage Agent sessions individually)",
-  "taskList.deleteAllArchivedNative": "Delete all archived ZCode tasks",
-  "taskList.deleteAllArchivedNativeMenu": "Delete all archived ZCode tasks…",
-  "taskList.deleteAllArchivedNativeTitle": "Delete {count} archived ZCode tasks?",
+  "taskList.acpDeleteDescription": `This Agent session will be removed from ${PRODUCT_NAME} and cannot be restored here.`,
+  "taskList.archivedNativeTaskCount": `{count} archived ${PRODUCT_NAME} tasks (manage Agent sessions individually)`,
+  "taskList.deleteAllArchivedNative": `Delete all archived ${PRODUCT_NAME} tasks`,
+  "taskList.deleteAllArchivedNativeMenu": `Delete all archived ${PRODUCT_NAME} tasks…`,
+  "taskList.deleteAllArchivedNativeTitle": `Delete {count} archived ${PRODUCT_NAME} tasks?`,
   "chat.toolCall.agent.openInSidePane": "Open in side pane",
   "v4Pane.splitRight": "Split right",
   "v4Pane.renamePlaceholder": "Rename session…",
@@ -2341,8 +2379,7 @@ const enUS: Record<string, string> = {
   "chat.changeSummary.reapply": "Reapply",
   "chat.changeSummary.reverted": "Undone",
   "chat.changeSummary.rewindDialog.title": "Undo file changes",
-  "chat.changeSummary.rewindDialog.description":
-    "ZCode checks current file content again before writing. If another process changed a file, no files will be written.",
+  "chat.changeSummary.rewindDialog.description": `${PRODUCT_NAME} checks current file content again before writing. If another process changed a file, no files will be written.`,
   "chat.changeSummary.rewindDialog.loading": "Checking reversible files…",
   "chat.changeSummary.rewindDialog.safeTitle": "Safe to undo {count}",
   "chat.changeSummary.rewindDialog.unsafeTitle": "Unsafe to undo {count}",
@@ -2599,8 +2636,7 @@ const enUS: Record<string, string> = {
   "settings.terminalProfileDescription":
     "When launching the built-in terminal, inherit login shell environment, proxy, Kubernetes variables, and local terminal font when possible.",
   "settings.terminalFontFamily": "Terminal font",
-  "settings.terminalFontFamilyDescription":
-    "Leave blank to auto-detect system terminal settings; set a value to override the ZCode terminal font.",
+  "settings.terminalFontFamilyDescription": `Leave blank to auto-detect system terminal settings; set a value to override the ${PRODUCT_NAME} terminal font.`,
   "settings.terminalFontFamilyPlaceholder": "Leave blank to inherit, e.g. MesloLGS NF, monospace",
   "settings.integratedTerminalShell": "Integrated terminal shell",
   "settings.integratedTerminalShellDescription":
@@ -2716,8 +2752,7 @@ const enUS: Record<string, string> = {
   "settings.toolGroupingChangesDescription":
     "Group consecutive Write, Edit, and ApplyPatch calls into a Changes section.",
   "settings.zcodeInteractionBehavior": "Interaction behavior",
-  "settings.zcodeInteractionBehaviorDescription":
-    "While ZCode is running, add follow-up actions to the queue or guide them to run after the next tool call.",
+  "settings.zcodeInteractionBehaviorDescription": `While ${PRODUCT_NAME} is running, add follow-up actions to the queue or guide them to run after the next tool call.`,
   "settings.zcodeInteractionBehavior.option.queue": "Queue",
   "settings.zcodeInteractionBehavior.option.guide": "Guide",
   "settings.askUserQuestionAutoResolution": "Automatically continue questions",
@@ -2746,8 +2781,7 @@ const enUS: Record<string, string> = {
   "settings.dataBaseDirSave": "Save",
   "settings.dataBaseDirCopying": "Copying data, please do not close the app...",
   "settings.dataBaseDirCopyFailed": "Data copy failed. Path was not changed.",
-  "settings.dataBaseDirForbiddenInstallDir":
-    "The data directory cannot be the ZCode installation folder on Windows. Choose a folder outside the app install location.",
+  "settings.dataBaseDirForbiddenInstallDir": `The data directory cannot be the ${PRODUCT_NAME} installation folder on Windows. Choose a folder outside the app install location.`,
   "settings.dataBaseDirRestartRequired": "Data saved. Please restart the app to take effect.",
   "settings.locale.system": "System default",
   "settings.locale.zh-CN": "中文简体",
@@ -2762,8 +2796,7 @@ const enUS: Record<string, string> = {
   "sidebar.settings.theme.dark": "Dark theme",
   "settings.migration.title": "Migration",
   "settings.migration.sectionTitle": "Claude History Migration",
-  "settings.migration.sectionDescription":
-    "Scan native Claude Code history on this machine, optionally filter by workspace and activity window, then import the selected sessions into their matching ZCode task lists.",
+  "settings.migration.sectionDescription": `Scan native Claude Code history on this machine, optionally filter by workspace and activity window, then import the selected sessions into their matching ${PRODUCT_NAME} task lists.`,
   "settings.migration.badge.localOnly": "Local Claude records",
   "settings.migration.badge.manualOnly": "Manual only",
   "settings.migration.currentWorkspace": "Current workspace",
@@ -2817,14 +2850,14 @@ const enUS: Record<string, string> = {
   "settings.usageTitle": "Usage stats",
   "settings.usageDescription":
     "Review rough activity and model usage aggregated from local sessions.",
-  "resourceManager.storage.summaryTotal": "Total used by ZCode",
+  "resourceManager.storage.summaryTotal": `Total used by ${PRODUCT_NAME}`,
   "resourceManager.storage.scanning": "Calculating…",
   "resourceManager.storage.lastScanned": "Last calculated {time}",
   "resourceManager.storage.idle": "Not calculated yet",
   "resourceManager.storage.failed": "Calculation failed",
   "resourceManager.storage.rescan": "Recalculate",
   "resourceManager.storage.disk": "Disk",
-  "resourceManager.storage.diskUsage": "ZCode uses {used}",
+  "resourceManager.storage.diskUsage": `${PRODUCT_NAME} uses {used}`,
   "resourceManager.storage.diskFree": "{free} free of {total}",
   "resourceManager.storage.diskUnknown": "Disk capacity unavailable",
   "resourceManager.storage.roots": "Data directories",
@@ -2892,7 +2925,7 @@ const enUS: Record<string, string> = {
   "settings.embeddedBrowserAllowInsecureCertificatesSavedHint":
     "Certificate setting saved. Restart the app to take effect.",
   "settings.browser.data.section": "Browser data",
-  "settings.browser.desktopOnly": "Browser data can only be managed in the ZCode desktop app.",
+  "settings.browser.desktopOnly": `Browser data can only be managed in the ${PRODUCT_NAME} desktop app.`,
   "settings.browser.import.title": "Import Chrome sign-in state",
   "settings.browser.import.description":
     "Bring your Chrome sign-in state into the built-in browser once, so the AI can open sites you are already signed in to and work more smoothly.",
@@ -2909,14 +2942,12 @@ const enUS: Record<string, string> = {
     "Confirm administrator access before importing Chrome cookies protected by App-Bound encryption.",
   "settings.browser.import.elevationCancelled":
     "Windows administrator access was canceled. No cookies were imported.",
-  "settings.browser.import.helperVerificationFailed":
-    "ZCode could not verify its Windows secure import component. Reinstall or update ZCode before importing cookies.",
+  "settings.browser.import.helperVerificationFailed": `${PRODUCT_NAME} could not verify its Windows secure import component. Reinstall or update ${PRODUCT_NAME} before importing cookies.`,
   "settings.browser.import.appBoundFailed":
     "Windows could not unlock Chrome's App-Bound cookies. No cookies were imported.",
   "settings.browser.import.adminConfirmTitle":
     "Allow administrator access to import Chrome cookies?",
-  "settings.browser.import.adminConfirmDescription":
-    "Chrome protects cookies with App-Bound encryption on Windows. For this import only, ZCode will request administrator access, start a temporary system service, and delete it immediately afterward. Chrome passwords are never read or imported.",
+  "settings.browser.import.adminConfirmDescription": `Chrome protects cookies with App-Bound encryption on Windows. For this import only, ${PRODUCT_NAME} will request administrator access, start a temporary system service, and delete it immediately afterward. Chrome passwords are never read or imported.`,
   "settings.browser.import.adminConsent":
     "I confirm administrator access for this cookie import only",
   "settings.browser.import.adminConfirmAction": "Continue and request access",
@@ -2975,7 +3006,7 @@ const enUS: Record<string, string> = {
   "settings.previewBadge.dark": "Dark",
   "settings.modelProviderTitle": "Model settings",
   "settings.mcpTitle": "MCP Servers",
-  "settings.mcp.description": "Manage MCP server configurations used by ZCode Agent.",
+  "settings.mcp.description": `Manage MCP server configurations used by ${PRODUCT_NAME} Agent.`,
   "settings.mcp.create.open": "Add MCP server",
   "settings.mcp.import.open": "Import MCP servers from external agents",
   "settings.mcp.import.action": "Import",
@@ -3051,8 +3082,7 @@ const enUS: Record<string, string> = {
   "settings.mcp.plugin.disconnectedDescription":
     "This plugin MCP server is loaded but not currently connected.",
   "settings.mcp.host.active": "Host built-in",
-  "settings.mcp.host.activeDescription":
-    "ZCode provides this MCP server for the {pluginName} plugin. Its runtime identity is managed by the host.",
+  "settings.mcp.host.activeDescription": `${PRODUCT_NAME} provides this MCP server for the {pluginName} plugin. Its runtime identity is managed by the host.`,
   "settings.mcp.plugin.disabled": "Plugin disabled",
   "settings.mcp.plugin.disabledDescription":
     "This MCP server is built into a plugin. Enable the plugin to load it.",
@@ -3063,8 +3093,7 @@ const enUS: Record<string, string> = {
   "settings.mcp.plugin.authorizationRequiredDescription":
     "Open authorization to finish connecting this plugin MCP server.",
   "settings.mcp.oauth.openAuthorization": "Open authorization",
-  "settings.mcp.statusOnlyUnsupported":
-    "This ZCode Agent cannot refresh OAuth status. Upgrade or restart ZCode, then reopen MCP settings to run a full refresh.",
+  "settings.mcp.statusOnlyUnsupported": `This ${PRODUCT_NAME} Agent cannot refresh OAuth status. Upgrade or restart ${PRODUCT_NAME}, then reopen MCP settings to run a full refresh.`,
   "settings.mcp.refreshFailed": "Failed to refresh MCP status: {error}",
   "settings.mcp.status.toolCount": "{count} tools",
   "settings.mcp.status.connectedReason": "Connected and available.",
@@ -3090,8 +3119,7 @@ const enUS: Record<string, string> = {
     "MCP authorization was not completed or timed out. Authorize again.",
   "settings.mcp.failure.official_origin_untrusted":
     "The MCP server URL failed the security check. The connection was blocked.",
-  "settings.mcp.failure.not_authenticated":
-    "You are not signed in. Sign in to ZCode to use this MCP server.",
+  "settings.mcp.failure.not_authenticated": `You are not signed in. Sign in to ${PRODUCT_NAME} to use this MCP server.`,
   "settings.mcp.failure.coding_plan_required":
     "This account has no available Coding Plan entitlement. Check the provider connection and plan status.",
   "settings.mcp.failure.server_not_found":
@@ -3161,7 +3189,7 @@ const enUS: Record<string, string> = {
   "settings.mcpServers.import.targetLabel": "Import target",
   "settings.mcpServers.import.target.global": "Import to Global",
   "settings.mcpServers.import.target.project": "Import to Project",
-  "settings.mcpServers.import.importing": "Importing MCP servers into ZCode",
+  "settings.mcpServers.import.importing": `Importing MCP servers into ${PRODUCT_NAME}`,
   "settings.mcpServers.import.imported": "Imported",
   "settings.mcpServers.import.skipped": "Skipped",
   "settings.mcpServers.import.failed": "Failed",
@@ -3288,8 +3316,7 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.startPlan.balance.used": "{value} used",
   "settings.modelProvider.startPlan.highlight.trial.label": "Trial period",
   "settings.modelProvider.startPlan.highlight.trial.value": "5 calendar days",
-  "settings.modelProvider.startPlan.highlight.trial.description":
-    "Timing starts after signing in to ZCode 3.x.",
+  "settings.modelProvider.startPlan.highlight.trial.description": `Timing starts after signing in to ${PRODUCT_NAME} 3.x.`,
   "settings.modelProvider.startPlan.highlight.quota.label": "Daily quota",
   "settings.modelProvider.startPlan.highlight.quota.value": "3M tokens daily",
   "settings.modelProvider.startPlan.highlight.quota.description":
@@ -3298,8 +3325,7 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.startPlan.highlight.metering.value": "After platform model use",
   "settings.modelProvider.startPlan.highlight.metering.description":
     "Metered only after using platform GLM flagship models.",
-  "settings.modelProvider.startPlan.compatibility":
-    "Supports BYOK and BYOA. Base URL, API format, and API Key are maintained by ZCode automatically.",
+  "settings.modelProvider.startPlan.compatibility": `Supports BYOK and BYOA. Base URL, API format, and API Key are maintained by ${PRODUCT_NAME} automatically.`,
   "settings.modelProvider.codingPlan.title": "{provider} - Coding Plan",
   "settings.modelProvider.codingPlan.status.loginRequired": "Not signed in",
   "settings.modelProvider.codingPlan.status.disconnected": "Not connected",
@@ -3392,8 +3418,7 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.restoreConfig": "Restore",
   "settings.modelProvider.resetForm": "Reset form",
   "settings.modelProvider.fieldHelp": "About {field}",
-  "settings.modelProvider.help.contextWindow":
-    "The context capacity the model can process at once, in tokens. ZCode uses this to manage context.\nDo not exceed the model's actual limit.",
+  "settings.modelProvider.help.contextWindow": `The context capacity the model can process at once, in tokens. ${PRODUCT_NAME} uses this to manage context.\nDo not exceed the model's actual limit.`,
   "settings.modelProvider.help.maxOutputTokens":
     "The maximum number of tokens a single model request may generate.\nDo not exceed the model's actual limit.",
   "settings.modelProvider.help.inputModalities":
@@ -3408,8 +3433,7 @@ const enUS: Record<string, string> = {
     "Use a CEL expression to map the current reasoning level, `reasoningLevel`, to model API request fields. The JSON object returned by the expression is merged into the outgoing request body.",
   "settings.modelProvider.help.advanced":
     "**MFJS tool schema**: Enables Moonshot Flavored JSON Schema compatibility, commonly used by Moonshot's Kimi model API. Enable only when the model API requires this format.",
-  "settings.modelProvider.help.followRecommendedConfig":
-    "Matches recommended configuration using the model ID, Base URL, and API format. ZCode continually updates recommendations and automatically syncs them to you.\nWhen you manually change a setting, that setting becomes manually managed and stops following recommendation updates; other settings remain managed by smart configuration.",
+  "settings.modelProvider.help.followRecommendedConfig": `Matches recommended configuration using the model ID, Base URL, and API format. ${PRODUCT_NAME} continually updates recommendations and automatically syncs them to you.\nWhen you manually change a setting, that setting becomes manually managed and stops following recommendation updates; other settings remain managed by smart configuration.`,
   "settings.modelProvider.modelDefaultsLoaded": "Smart configuration matched for this model",
   "settings.modelProvider.modelConfigIncomplete": "Model configuration is incomplete",
   "settings.modelProvider.models": "Model list",
@@ -3530,7 +3554,7 @@ const enUS: Record<string, string> = {
   "settings.usage.entitlementFiveHourUsage": "5-hour remaining",
   "settings.usage.entitlementWeeklyUsage": "Weekly remaining",
   "settings.usage.entitlementMonthlyMcpUsage": "Tool calls",
-  "settings.usage.entitlementServerMcpUsage": "ZCode MCP",
+  "settings.usage.entitlementServerMcpUsage": `${PRODUCT_NAME} MCP`,
   "settings.usage.entitlementResetAt": "Resets {time}",
   "settings.usage.entitlementUsageDetails": "Tool usage detail",
   "settings.usage.entitlementPromptCap": "5-hour prompt pool",
@@ -3586,9 +3610,9 @@ const enUS: Record<string, string> = {
   "sidebar.usage.plan.fiveHour": "5 hours",
   "sidebar.usage.plan.weekly": "Weekly",
   "sidebar.usage.plan.toolCalls": "Tool calls",
-  "sidebar.usage.plan.mcp": "ZCode MCP",
-  "sidebar.usage.plan.zcodeMcp": "ZCode MCP",
-  "sidebar.usage.plan.zcodeMcpDescription": "Daily aggregate quota for ZCode built-in plugin MCPs",
+  "sidebar.usage.plan.mcp": `${PRODUCT_NAME} MCP`,
+  "sidebar.usage.plan.zcodeMcp": `${PRODUCT_NAME} MCP`,
+  "sidebar.usage.plan.zcodeMcpDescription": `Daily aggregate quota for ${PRODUCT_NAME} built-in plugin MCPs`,
   "chat.planUsage.title": "Plan usage",
   "chat.planUsage.titleWithPlan": "{plan} Plan usage",
   "chat.planUsage.providerFallback": "Current provider",
@@ -3615,9 +3639,9 @@ const enUS: Record<string, string> = {
   "settings.usage.range.30d": "Last 30 days",
   "settings.usage.appUsageRangeTitle": "Time range",
   "settings.usage.sourceAll": "All sources",
-  "settings.usage.sourceNative": "ZCode / API",
+  "settings.usage.sourceNative": `${PRODUCT_NAME} / API`,
   "settings.usage.sourceAcp": "ACP agents",
-  "settings.usage.nativeModelCharts": "ZCode / API model usage and activity",
+  "settings.usage.nativeModelCharts": `${PRODUCT_NAME} / API model usage and activity`,
   "settings.usage.acpTurns": "Submitted turns",
   "settings.usage.acpModels": "Actual model usage",
   "settings.usage.measuredTurns": "Measured turns",
@@ -3824,11 +3848,9 @@ const enUS: Record<string, string> = {
   "settings.skills.import.modeHelp": "Import mode help",
   "settings.skills.import.mode.copy": "Copy",
   "settings.skills.import.mode.symlink": "Symlink",
-  "settings.skills.import.mode.copy.description":
-    "Copy the full skill directory into ZCode. Later changes in the external agent directory will not sync automatically.",
-  "settings.skills.import.mode.symlink.description":
-    "Create a directory link to the external agent skill. ZCode follows later source changes, but the skill depends on that source path remaining available.",
-  "settings.skills.import.importing": "Importing skills into ZCode",
+  "settings.skills.import.mode.copy.description": `Copy the full skill directory into ${PRODUCT_NAME}. Later changes in the external agent directory will not sync automatically.`,
+  "settings.skills.import.mode.symlink.description": `Create a directory link to the external agent skill. ${PRODUCT_NAME} follows later source changes, but the skill depends on that source path remaining available.`,
+  "settings.skills.import.importing": `Importing skills into ${PRODUCT_NAME}`,
   "settings.skills.import.imported": "Imported",
   "settings.skills.import.skipped": "Skipped",
   "settings.skills.import.failed": "Failed",
@@ -3970,22 +3992,20 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.ready": "Ready",
   "settings.acpAgents.missing": "Not found",
   "settings.acpAgents.source": "Install source",
-  "settings.acpAgents.managed": "Managed by ZCode",
+  "settings.acpAgents.managed": `Managed by ${PRODUCT_NAME}`,
   "settings.acpAgents.system": "System install",
   "settings.acpAgents.installedVersion": "Installed version",
   "settings.acpAgents.registryVersion": "Target version",
   "settings.acpAgents.unknown": "Unknown",
   "settings.acpAgents.adapterPath": "Adapter path",
-  "settings.acpAgents.adapterHint":
-    "Managed adapters live only in this Host's ZCode data directory and do not replace system commands.",
+  "settings.acpAgents.adapterHint": `Managed adapters live only in this Host's ${PRODUCT_NAME} data directory and do not replace system commands.`,
   "settings.acpAgents.nativeHint":
     "The vendor CLI and ACP adapter are separate commands. An installed codex/claude CLI does not mean its ACP adapter is installed.",
   "settings.acpAgents.diagnostics": "Runtime diagnostics",
   "settings.acpAgents.install": "Install adapter",
   "settings.acpAgents.upgrade": "Upgrade to target",
   "settings.acpAgents.uninstall": "Uninstall managed adapter",
-  "settings.acpAgents.uninstallConfirm":
-    "Only the adapter managed by ZCode on this Host is removed. System commands and saved sessions are kept.",
+  "settings.acpAgents.uninstallConfirm": `Only the adapter managed by ${PRODUCT_NAME} on this Host is removed. System commands and saved sessions are kept.`,
   "settings.acpAgents.systemInstallConfirm":
     "The system adapter {current} is in use. Installing managed version {target} makes new connections prefer it; the system command stays unchanged. Install it?",
   "settings.acpAgents.environment": "Agent environment variables",
@@ -4036,8 +4056,7 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.env.location": "Google Cloud location",
   "settings.acpAgents.env.credentialsFile": "Service account JSON path",
   "settings.acpAgents.env.agentTools": "Let the agent handle files and commands",
-  "settings.acpAgents.env.agentToolsHint":
-    "ZCode does not host ACP file or terminal channels; the agent applies its own sandbox and permissions.",
+  "settings.acpAgents.env.agentToolsHint": `${PRODUCT_NAME} does not host ACP file or terminal channels; the agent applies its own sandbox and permissions.`,
   "settings.acpAgents.env.saveGemini": "Save Gemini configuration",
   "settings.acpAgents.env.geminiTitle": "Gemini authentication",
   "settings.acpAgents.env.geminiAuthDocs": "View authentication docs",
@@ -4087,8 +4106,7 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.env.common": "Common fields",
   "settings.acpAgents.env.advancedHint":
     "One variable per line; comments starting with # are kept only while editing. The common fields below share this configuration. Saved credentials appear here in plain text.",
-  "settings.acpAgents.env.clearHint":
-    "Clear and save to remove ZCode's value for this agent. The agent may still read system variables and native configuration.",
+  "settings.acpAgents.env.clearHint": `Clear and save to remove ${PRODUCT_NAME}'s value for this agent. The agent may still read system variables and native configuration.`,
   "settings.acpAgents.env.qoderLogin":
     "Run this command in the target Host's terminal to log in to Qoder. Use the PAT above on hosts without a browser; Qoder does not read OPENAI_API_KEY or QODER_API_KEY.",
   "settings.acpAgents.env.method.oauth-personal": "Personal account (browser login)",
@@ -4132,8 +4150,7 @@ const enUS: Record<string, string> = {
     "Qoder uses its own browser login or QODER_PERSONAL_ACCESS_TOKEN; choose the model in the session.",
   "settings.acpAgents.env.hint.antigravity":
     "The authentication method is written to Antigravity's native settings.json; only credentials for the selected method are shown.",
-  "settings.subagents.description":
-    "Manage user-level subagent Markdown files consumed by ZCode Agent.",
+  "settings.subagents.description": `Manage user-level subagent Markdown files consumed by ${PRODUCT_NAME} Agent.`,
   "settings.subagents.workspaceScopeUnsupported":
     "Workspace-level creation or editing is unsupported",
   "settings.subagents.searchPlaceholder": "Search subagents...",
@@ -4274,8 +4291,7 @@ const enUS: Record<string, string> = {
   "settings.plugin.source.plugin": "Plugin",
   "settings.plugins.description":
     "Enable or disable installed plugins. Plugins bundle skills, commands, hooks, and MCP servers.",
-  "settings.plugins.store.subtitle":
-    "Extend ZCode with skills, commands, and MCP servers from plugins",
+  "settings.plugins.store.subtitle": `Extend ${PRODUCT_NAME} with skills, commands, and MCP servers from plugins`,
   "settings.plugins.store.searchPlaceholder": "Search plugins",
   "settings.plugins.store.searchResults": "Search results ({count})",
   "settings.plugins.store.searchEmpty": "No plugins match your search",
@@ -4479,11 +4495,9 @@ const enUS: Record<string, string> = {
   "settings.plugins.import.modeHelp": "Import mode help",
   "settings.plugins.import.mode.copy": "Copy",
   "settings.plugins.import.mode.symlink": "Symlink",
-  "settings.plugins.import.mode.copy.description":
-    "Copy the full plugin directory into ZCode and register it in plugins.dirs. Later changes in the external agent directory will not sync automatically.",
-  "settings.plugins.import.mode.symlink.description":
-    "Create a directory link to the external agent plugin and register it in plugins.dirs. ZCode follows later source changes, but the plugin depends on that source path remaining available.",
-  "settings.plugins.import.importing": "Importing plugins into ZCode",
+  "settings.plugins.import.mode.copy.description": `Copy the full plugin directory into ${PRODUCT_NAME} and register it in plugins.dirs. Later changes in the external agent directory will not sync automatically.`,
+  "settings.plugins.import.mode.symlink.description": `Create a directory link to the external agent plugin and register it in plugins.dirs. ${PRODUCT_NAME} follows later source changes, but the plugin depends on that source path remaining available.`,
+  "settings.plugins.import.importing": `Importing plugins into ${PRODUCT_NAME}`,
   "settings.plugins.import.imported": "Imported",
   "settings.plugins.import.skipped": "Skipped",
   "settings.plugins.import.failed": "Failed",
@@ -4491,10 +4505,9 @@ const enUS: Record<string, string> = {
   "settings.plugins.import.resultEmpty": "No plugin results were returned.",
   "settings.plugins.import.finish": "Done",
   "settings.commands.title": "Commands",
-  "settings.commands.description":
-    "Manage ZCode Agent .md command files. Commands can be invoked with /command-name in chat.",
+  "settings.commands.description": `Manage ${PRODUCT_NAME} Agent .md command files. Commands can be invoked with /command-name in chat.`,
   "settings.commands.sourceFilterLabel": "Source filter",
-  "settings.commands.source.zcodeAgent": "ZCode Agent",
+  "settings.commands.source.zcodeAgent": `${PRODUCT_NAME} Agent`,
   "settings.commands.add": "New",
   "settings.commands.addNew": "New command",
   "settings.commands.addDescription":
@@ -4553,11 +4566,9 @@ const enUS: Record<string, string> = {
   "settings.commands.import.modeHelp": "Import mode help",
   "settings.commands.import.mode.copy": "Copy",
   "settings.commands.import.mode.symlink": "Symlink",
-  "settings.commands.import.mode.copy.description":
-    "Copy the command file into ZCode. Later changes in the external agent file will not sync automatically.",
-  "settings.commands.import.mode.symlink.description":
-    "Create a file link to the external agent command. ZCode follows later source changes, but the command depends on that source path remaining available.",
-  "settings.commands.import.importing": "Importing commands into ZCode",
+  "settings.commands.import.mode.copy.description": `Copy the command file into ${PRODUCT_NAME}. Later changes in the external agent file will not sync automatically.`,
+  "settings.commands.import.mode.symlink.description": `Create a file link to the external agent command. ${PRODUCT_NAME} follows later source changes, but the command depends on that source path remaining available.`,
+  "settings.commands.import.importing": `Importing commands into ${PRODUCT_NAME}`,
   "settings.commands.import.imported": "Imported",
   "settings.commands.import.skipped": "Skipped",
   "settings.commands.import.failed": "Failed",
@@ -4653,8 +4664,8 @@ const enUS: Record<string, string> = {
   "settingsSync.action.rescanning": "Scanning...",
   "settingsSync.action.importSelected": "Import selected",
   "settingsSync.action.importing": "Importing...",
-  "settingsSync.action.finish": "Start using ZCode",
-  "settingsSync.agent.zcode": "ZCode Agent",
+  "settingsSync.action.finish": `Start using ${PRODUCT_NAME}`,
+  "settingsSync.agent.zcode": `${PRODUCT_NAME} Agent`,
   "settingsSync.agent.claudeCode": "Claude Code",
   "settingsSync.agent.codexCli": "Codex CLI",
   "settingsSync.agent.openCode": "OpenCode",
@@ -4702,18 +4713,17 @@ const enUS: Record<string, string> = {
   "settingsSync.discovery.title": "Found importable settings",
   "settingsSync.discovery.description":
     "Importable agent settings are no longer scanned automatically.",
-  "settingsSync.discovery.helper":
-    "Only missing items will be imported and your current ZCode settings will not be overwritten.",
+  "settingsSync.discovery.helper": `Only missing items will be imported and your current ${PRODUCT_NAME} settings will not be overwritten.`,
   "settingsSync.discovery.agentCount": "Agents found: {count}",
   "settingsSync.discovery.categoryCount": "Categories found: {count}",
   "settingsSync.discovery.error": "Scan failed: {error}",
   "settingsSync.discovery.continue": "Continue",
-  "onboarding.dialog.title": "Welcome to ZCode",
+  "onboarding.dialog.title": `Welcome to ${PRODUCT_NAME}`,
   "onboarding.dialog.description": "Choose how to start your first session.",
   "onboarding.wizard.label": "Migration guide",
   "onboarding.welcome.eyebrow": "First run setup",
-  "onboarding.welcome.title": "Welcome to ZCode",
-  "onboarding.welcome.start": "Start ZCode",
+  "onboarding.welcome.title": `Welcome to ${PRODUCT_NAME}`,
+  "onboarding.welcome.start": `Start ${PRODUCT_NAME}`,
   "onboarding.welcome.migrate": "Migration Guide",
   "onboarding.welcome.helper":
     "Import existing tool settings now, or skip and continue later from Settings.",
@@ -4734,8 +4744,7 @@ const enUS: Record<string, string> = {
     "Import selected plugins from external agents before the final migration.",
   "onboarding.stepDescription.commandsImport":
     "Import selected commands from external agents before the final migration.",
-  "onboarding.stepDescription.migration":
-    "Start migration and wait while ZCode imports your selections.",
+  "onboarding.stepDescription.migration": `Start migration and wait while ${PRODUCT_NAME} imports your selections.`,
   "onboarding.sessions.empty":
     "No workspaces yet. Scan local history, then pick workspaces to migrate.",
   "onboarding.sessions.count": "{count} sessions",
@@ -4752,8 +4761,7 @@ const enUS: Record<string, string> = {
     "Could not find ~/.claude/CLAUDE.md, so Claude user memory cannot be migrated.",
   "onboarding.agentsFile.error": "Could not check AGENTS.md migration status: {error}",
   "onboarding.agentsFile.confirmTitle": "Overwrite default AGENTS.md?",
-  "onboarding.agentsFile.confirmDescription":
-    "ZCode will copy {source} to {target}.\nIf the target file already exists, the ZCode default AGENTS configuration will be overwritten.",
+  "onboarding.agentsFile.confirmDescription": `${PRODUCT_NAME} will copy {source} to {target}.\nIf the target file already exists, the ${PRODUCT_NAME} default AGENTS configuration will be overwritten.`,
   "onboarding.agentsFile.confirmAction": "Overwrite and migrate",
   "onboarding.finish.summary.label.imported": "Imported",
   "onboarding.finish.summary.label.skipped": "Skipped",
@@ -4833,9 +4841,8 @@ const enUS: Record<string, string> = {
   "chat.emptyResult.title": "No visible output",
   "chat.emptyResult.description":
     "This task finished without any chat content. It may have been stopped before the model produced a response.",
-  "chat.placeholder.newTask":
-    "Ask ZCode anything, @ to add context, / for commands or capabilities",
-  "chat.placeholder.newTaskMobile": "Ask ZCode anything…",
+  "chat.placeholder.newTask": `Ask ${PRODUCT_NAME} anything, @ to add context, / for commands or capabilities`,
+  "chat.placeholder.newTaskMobile": `Ask ${PRODUCT_NAME} anything…`,
   "chat.placeholder.followUpAsk": "Ask for follow-up changes",
   "chat.placeholder.followUpQueue": "Keep typing to queue follow-up changes",
   "chat.placeholder.loading": "Initializing task...",
@@ -5097,8 +5104,7 @@ const enUS: Record<string, string> = {
   "chat.compact.queued": "Compaction queued and will run in order.",
   "chat.compact.duplicateBlocked": "A compaction is already running or queued.",
   "chat.modelSwitch.contextWindowGuard.title": "Compress context before switching models",
-  "chat.modelSwitch.contextWindowGuard.description":
-    "This conversation has used {used} tokens, which exceeds {modelName}'s available context of {target} tokens after reserving maximum output.\nCompress the current conversation with the current model first. If the compressed context fits, ZCode will continue switching models.",
+  "chat.modelSwitch.contextWindowGuard.description": `This conversation has used {used} tokens, which exceeds {modelName}'s available context of {target} tokens after reserving maximum output.\nCompress the current conversation with the current model first. If the compressed context fits, ${PRODUCT_NAME} will continue switching models.`,
   "chat.modelSwitch.contextWindowGuard.compress": "Compress",
   "chat.modelSwitch.contextWindowGuard.runningBlocked":
     "This conversation has used more context than the target model's available context after reserving maximum output. The conversation must be compressed before switching models, but the current task is still running and context compression cannot run now. Wait for the task to finish, then switch models again.",
@@ -5110,12 +5116,10 @@ const enUS: Record<string, string> = {
   "chat.toolbar.computerUse.tooltip.idle":
     "Computer Use is idle — it will start automatically on first use",
   "chat.toolbar.computerUse.tooltip.starting": "Enabling Computer Use plugin…",
-  "chat.toolbar.computerUse.tooltip.ready":
-    "Computer Use ready — just describe what you want ZCode to do",
+  "chat.toolbar.computerUse.tooltip.ready": `Computer Use ready — just describe what you want ${PRODUCT_NAME} to do`,
   "chat.toolbar.computerUse.tooltip.permissionRequired":
     "Missing macOS permissions — click to grant",
-  "chat.toolbar.computerUse.tooltip.error":
-    "Computer Use enablement failed. Please restart ZCode app and retry, or ask ZCode to investigate the logs",
+  "chat.toolbar.computerUse.tooltip.error": `Computer Use enablement failed. Please restart ${PRODUCT_NAME} app and retry, or ask ${PRODUCT_NAME} to investigate the logs`,
   "chat.toolbar.computerUse.tooltip.sessionBusy":
     "A conversation is running. Computer Use can't be toggled right now — try again after it finishes.",
   "chat.toolbar.mode.description":
@@ -5418,8 +5422,7 @@ const enUS: Record<string, string> = {
   "workflows.hub.global.noLocalRuntime":
     "Could not reach the local agent; global workflows are unavailable.",
   "workflows.hub.empty.title": "No saved workflows in your open projects yet",
-  "workflows.hub.empty.hint":
-    "Design a workflow with ZCode in chat, then have it save the workflow to a project once it works. Projects that aren't open don't appear here.",
+  "workflows.hub.empty.hint": `Design a workflow with ${PRODUCT_NAME} in chat, then have it save the workflow to a project once it works. Projects that aren't open don't appear here.`,
   "workflows.hub.noWorkspace": "Open a workspace to see its workflows.",
   "workflows.hub.loadError": "Could not read workflows: {error}",
   "workflows.hub.invalid": "{count} files could not be read",
@@ -5481,8 +5484,7 @@ const enUS: Record<string, string> = {
   "workflows.hub.detail.basics": "Basics",
   "workflows.hub.detail.description": "Description",
   "workflows.hub.detail.whenToUse": "When to use",
-  "workflows.hub.detail.whenToUse.help":
-    "A routing hint for ZCode: when this workflow is the right pick.",
+  "workflows.hub.detail.whenToUse.help": `A routing hint for ${PRODUCT_NAME}: when this workflow is the right pick.`,
   "workflows.hub.detail.args": "Arguments",
   "workflows.hub.detail.args.name": "Name",
   "workflows.hub.detail.args.type": "Type",
@@ -5502,8 +5504,7 @@ const enUS: Record<string, string> = {
   "workflows.hub.detail.meta.saveFailed": "Save failed: {reason}",
   "workflows.hub.detail.meta.descriptionRequired": "Description is required",
   "workflows.hub.detail.script": "Script",
-  "workflows.hub.detail.script.note":
-    "The script is read-only. To change it, revise it with ZCode in chat and save a new version.",
+  "workflows.hub.detail.script.note": `The script is read-only. To change it, revise it with ${PRODUCT_NAME} in chat and save a new version.`,
   "workflows.hub.detail.script.copy": "Copy script",
   "workflows.hub.detail.loadError": "Could not read this workflow: {reason}",
   "workflows.hub.detail.notFound": "This workflow is no longer in the project.",
@@ -6007,8 +6008,7 @@ const enUS: Record<string, string> = {
   "chat.slash.skills.empty": "No matching skills",
   "chat.slash.subagents.title": "Agents",
   "chat.slash.subagents.empty": "No matching agents",
-  "chat.slash.emptyUnavailable":
-    "No slash commands have been broadcast for the current ZCode Agent session",
+  "chat.slash.emptyUnavailable": `No slash commands have been broadcast for the current ${PRODUCT_NAME} Agent session`,
   "chat.slash.emptyResults": "No matching slash commands",
   // Errors
   "chat.error.connectionLost": "Connection to agent lost",
@@ -6050,10 +6050,8 @@ const enUS: Record<string, string> = {
     "The system is busy, and automatic retries have reached the maximum count. Please try again later.",
   "chat.quota.startPlan.concurrentLimit.switchModel":
     "The current model request concurrency limit has been reached. Switch models to continue your current task.",
-  "chat.quota.mcp.quotaExhausted":
-    'ZCode MCP "{server}" has used up today\'s quota. It resets tomorrow.',
-  "chat.quota.mcp.codingPlanRequired":
-    'No ZCode MCP "{server}" quota. Check your provider connection and entitlement.',
+  "chat.quota.mcp.quotaExhausted": `${PRODUCT_NAME} MCP "{server}" has used up today's quota. It resets tomorrow.`,
+  "chat.quota.mcp.codingPlanRequired": `No ${PRODUCT_NAME} MCP "{server}" quota. Check your provider connection and entitlement.`,
   "chat.quota.providerLimited":
     "The current account quota or plan limit has been reached. Switch providers or wait for the quota to reset.",
   "chat.quota.action.switchModel": "Switch model",
@@ -6252,7 +6250,7 @@ const enUS: Record<string, string> = {
   "resourceManager.cpu": "CPU",
   "resourceManager.memory": "Memory",
   "resourceManager.storage": "Storage",
-  "resourceManager.appUsage": "ZCode",
+  "resourceManager.appUsage": PRODUCT_NAME,
   "resourceManager.systemUsage": "System",
   "resourceManager.category.base": "Base services",
   "resourceManager.category.builtinPlugin": "Built-in plugins",
@@ -6496,7 +6494,7 @@ const enUS: Record<string, string> = {
   "feedback.submit.template.section.errorSummaryLine": "Error Summary: {message}",
   "feedback.submit.template.section.errorDetail": "Error Details",
   "feedback.submit.template.section.errorTraceId": "TraceID: {traceId}",
-  "feedback.submit.template.section.copyErrorHeading": "ZCode Error Info",
+  "feedback.submit.template.section.copyErrorHeading": `${PRODUCT_NAME} Error Info`,
   "feedback.submit.template.section.notProvided": "Not provided",
   "feedback.submit.template.section.remoteLogEmpty": "No connection logs captured",
   "feedback.submit.template.section.taskFeedbackTitle": "Feedback about task: {title}",
@@ -6656,7 +6654,7 @@ const enUS: Record<string, string> = {
   "automations.statusFilter.completed": "Completed",
   "automations.statusFilter.failed": "Failed",
   "automations.statusFilter.empty": "No tasks match this filter",
-  "offPeak.keepAwakeBanner": "Keep your computer awake while ZCode is running a chat.",
+  "offPeak.keepAwakeBanner": `Keep your computer awake while ${PRODUCT_NAME} is running a chat.`,
   "offPeak.sectionTitle": "Idle-time tasks",
   "offPeak.createButton": "Create idle-time task",
   "offPeak.templates.sectionTitle": "Idle-time task template",
@@ -6712,8 +6710,7 @@ const enUS: Record<string, string> = {
   "offPeak.form.titleLabel": "Task title",
   "offPeak.form.titlePlaceholder": "e.g. Nightly refactor",
   "offPeak.form.instructionsLabel": "Instructions",
-  "offPeak.form.instructionsPlaceholder":
-    "Describe a task ZCode can work on in the background, including the expected result and any constraints…",
+  "offPeak.form.instructionsPlaceholder": `Describe a task ${PRODUCT_NAME} can work on in the background, including the expected result and any constraints…`,
   "offPeak.form.permissionWarning":
     "Idle-time runs are unattended. Actions that need confirmation will pause the task until you respond.",
   "offPeak.form.modelLabel": "Model",
@@ -6907,10 +6904,8 @@ const enUS: Record<string, string> = {
   "automations.runs.prevPage": "Previous",
   "automations.runs.nextPage": "Next",
   // CUA (Computer Use)
-  "chat.cuaReadiness.toolsNotLoaded":
-    "ZCode Computer Use is still preparing — its tools aren't loaded yet ({count} loaded). Grant the permissions below; tools appear once the helper is ready.",
-  "chat.cuaReadiness.toolsPreparing":
-    "ZCode Computer Use is still preparing — its tools aren't loaded yet. Grant the permissions below; tools appear once the helper is ready.",
+  "chat.cuaReadiness.toolsNotLoaded": `${PRODUCT_NAME} Computer Use is still preparing — its tools aren't loaded yet ({count} loaded). Grant the permissions below; tools appear once the helper is ready.`,
+  "chat.cuaReadiness.toolsPreparing": `${PRODUCT_NAME} Computer Use is still preparing — its tools aren't loaded yet. Grant the permissions below; tools appear once the helper is ready.`,
   "chat.toolCall.cua.requestAccess": "Check Computer Use access",
   "chat.toolCall.cua.appName": "Computer Use",
   "chat.toolCall.cua.group.completedLabel": "Computer Use",
@@ -7038,9 +7033,8 @@ const enUS: Record<string, string> = {
   "cuaPermission.modal.restartButton": "Restart Helper",
   "cuaPermission.modal.restarting": "Restarting Helper…",
   "cuaPermission.modal.restartFailed": "Couldn't restart Helper: {error}",
-  "cuaPermission.modal.relaunchAppButton": "Restart ZCode",
-  "cuaPermission.modal.relaunchAppHint":
-    "Still not working after restarting Helper? Restart ZCode to fully reload the Helper process.",
+  "cuaPermission.modal.relaunchAppButton": `Restart ${PRODUCT_NAME}`,
+  "cuaPermission.modal.relaunchAppHint": `Still not working after restarting Helper? Restart ${PRODUCT_NAME} to fully reload the Helper process.`,
   "cuaPermission.status.granted": "Granted",
   "cuaPermission.status.missing": "Missing",
   "cuaPermission.status.unknown": "Unknown",
@@ -7053,8 +7047,7 @@ const enUS: Record<string, string> = {
   "cuaPermission.grantAlreadySatisfied": "This permission has already been granted.",
   "cuaPermission.tools.agentUpdateRequired":
     "The connected Agent is too old for a safe readiness check. Update or restart it, then check again.",
-  "cuaPermission.tools.untrustedRuntime":
-    "Computer Use tools were found, but they did not come from the verified ZCode plugin. Review the plugin installation, then check again.",
+  "cuaPermission.tools.untrustedRuntime": `Computer Use tools were found, but they did not come from the verified ${PRODUCT_NAME} plugin. Review the plugin installation, then check again.`,
   "cuaPermission.perm.accessibility": "Accessibility",
   "cuaPermission.perm.accessibility.purpose": "Read/drive UI elements + synthesize input",
   "cuaPermission.perm.screenRecording": "Screen Recording",
@@ -7064,8 +7057,7 @@ const enUS: Record<string, string> = {
   "cuaPermission.osFloorDescription":
     "Please upgrade macOS before using it. Permission setup cannot be completed on older versions.",
   "cuaPermission.ready": "Permissions ready",
-  "cuaPermission.ready.sessionValidationHint":
-    "ZCode will verify the Computer Use tools against the exact session when your first session starts.",
+  "cuaPermission.ready.sessionValidationHint": `${PRODUCT_NAME} will verify the Computer Use tools against the exact session when your first session starts.`,
   "settings.computerUse.title": "Computer Use",
   "settings.computerUse.toggleLabel": "Enable Computer Use",
   "settings.computerUse.toggleDescription":
@@ -7109,6 +7101,84 @@ const enUS: Record<string, string> = {
   "acp.goalSave": "Save objective",
   "acp.goalCancel": "Cancel",
   "acp.pluginsUnavailable": "No plugins are available to this ACP session",
+  "delegation.title": "Agent Delegation",
+  "delegation.new": "Delegate task",
+  "delegation.agents": "Agents",
+  "delegation.noAgents": "No available agents",
+  "delegation.queued": "Queued",
+  "delegation.preparing": "Preparing",
+  "delegation.running": "Running",
+  "delegation.awaiting_input": "Needs approval",
+  "delegation.completed": "Completed",
+  "delegation.failed": "Failed",
+  "delegation.interrupted": "Interrupted",
+  "delegation.canceled": "Canceled",
+  "delegation.cancelAll": "Cancel all",
+  "delegation.cancel": "Cancel task",
+  "delegation.retry": "Retry",
+  "delegation.resume": "Resume",
+  "delegation.followUp": "Follow up",
+  "delegation.open": "Open child conversation",
+  "delegation.result": "View result",
+  "delegation.redeliver": "Resend result",
+  "delegation.changedFiles": "Changed files",
+  "delegation.tests": "Tests and evidence",
+  "delegation.risks": "Risks",
+  "delegation.blockers": "Blockers",
+  "delegation.agent": "Select agent",
+  "delegation.intent": "Task type",
+  "delegation.edit": "Edit · isolated worktree",
+  "delegation.analysis": "Analyze · project directory",
+  "delegation.task": "Task description",
+  "delegation.background": "Relevant background",
+  "delegation.constraints": "Constraints",
+  "delegation.expectedResult": "Expected result",
+  "delegation.files": "Workspace-relative file paths",
+  "delegation.send": "Send",
+  "delegation.close": "Close",
+  "delegation.concurrency": "Parallel tasks per project",
+  "delegation.settingsTitle": "Multi-agent collaboration",
+  "delegation.settingsDescription": "Allow the current agent to delegate subtasks to other agents.",
+  "delegation.enabled": "Enable delegation",
+  "delegation.enabledDescription":
+    "New sessions hide delegation tools when disabled. Accepted tasks and results are retained.",
+  "delegation.maxDepth": "Maximum delegation depth",
+  "delegation.depthDescription":
+    "Range: 1–8. One allows direct children only; higher values allow further delegation.",
+  "delegation.completedCache": "Completed-result cache (MB)",
+  "delegation.cacheDescription":
+    "Caches completed task snapshots. The oldest cache entries are evicted above the budget; persisted results and child conversations are retained. Zero is unlimited. Stopping the parent clears its cache.",
+  "delegation.concurrencyDescription":
+    "Concurrent delegation tasks per project. Automatically coordinated with depth to keep children from being blocked.",
+  "delegation.attempt": "Attempt {number}",
+  "delegation.delivery.pending": "Pending delivery",
+  "delegation.delivery.sending": "Sending",
+  "delegation.delivery.delivered": "Delivered",
+  "delegation.delivery.uncertain": "Delivery unconfirmed",
+  "delegation.delivery.suppressed": "Delivery stopped",
+  "delegation.unstructured": "Final answer (no structured report)",
+  "delegation.closed": "Delegation service is closed. Reopen the project.",
+  "delegation.disabled":
+    "Delegation is disabled. Enable it in Settings → Multi-agent collaboration.",
+  "delegation.remote-unsupported": "Delegation is not available in remote projects yet.",
+  "delegation.target-unsupported": "Choose an ACP agent as the delegation target.",
+  "delegation.agent-unavailable": "This agent is not installed or enabled. Check agent settings.",
+  "delegation.model-unavailable":
+    "This API model is unavailable or its reasoning level is invalid. Check model settings.",
+  "delegation.result-changed":
+    "The child conversation changed while reading its result. Open it to verify the result.",
+  "delegation.result-pagination-invalid":
+    "The complete child result could not be read. Open the child conversation to verify it.",
+  "delegation.parent-stopped":
+    "The parent conversation is stopped. Send a new message there first.",
+  "delegation.nesting-disabled":
+    "Nested delegation is disabled or the depth limit has been reached.",
+  "delegation.nesting-capacity": "Maximum delegation depth cannot exceed project concurrency.",
+  "delegation.not-found": "Task not found in this conversation.",
+  "delegation.session-busy": "The child conversation is busy. Wait before following up.",
+  "delegation.not-resumable": "Only interrupted tasks can be resumed.",
+  "delegation.not-retryable": "Only failed tasks can be retried.",
+  "delegation.not-deliverable": "This result cannot be redelivered right now.",
 };
 
 export default enUS;

@@ -5,6 +5,7 @@ import {
   Settings2,
   Package,
   Bot,
+  Bubbles,
   Palette,
   Sun,
   BarChart3,
@@ -103,6 +104,12 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     id: "subagents",
     icon: Bot,
     titleId: "settings.subagents.title",
+    groupId: "agentCapabilities",
+  },
+  {
+    id: "delegation",
+    icon: Bubbles,
+    titleId: "delegation.settingsTitle",
     groupId: "agentCapabilities",
   },
   {

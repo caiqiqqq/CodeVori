@@ -1,26 +1,30 @@
 // Run with the desktop Vite server on 5174: node packages/ui/test/acpContextCapacity.e2e.mjs
 // Real shared editor/model toolbar with fake Host snapshots; no real Agent prompt or user data.
 import assert from "node:assert/strict";
-import { rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import { exerciseComposerAgentIcons } from "./composerAgentIconsAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__acp-context-e2e-${process.pid}`;
 const html = join(root, `${name}.html`);
 const moduleFile = join(root, `${name}.tsx`);
+const artifacts = await mkdtemp(join(tmpdir(), "codevori-composer-agent-icons-"));
 let browser;
 try {
   await Promise.all([
     writeFile(
       html,
-      `<!doctype html><html lang="zh-CN"><meta charset="UTF-8"/><div id="root"></div><script type="module" src="./${name}.tsx"></script></html>`,
+      `<!doctype html><html lang="zh-CN"><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><div id="root"></div><script type="module" src="./${name}.tsx"></script></html>`,
     ),
     writeFile(
       moduleFile,
       `
       import React, { useState } from "react";
       import { createRoot } from "react-dom/client";
+      import { ACP_AGENT_CATALOG } from "@zcode/shared";
       import { ChatPromptEditor } from "../../../ui/src/prompt-editor/ChatPromptEditor.tsx";
       import { V4ComposerModelControls } from "../../../ui/src/v4/composer/V4ComposerToolbar.tsx";
       import { ServiceProvider } from "../../../ui/src/hooks/useServices.tsx";
@@ -33,16 +37,14 @@ try {
         settingService: { get: async () => ({}) },
         clientConfigService: { getSnapshot: async () => ({ pluginStoreOrder: null }) },
         fileService: { searchWorkspaceFiles: async () => [] },
-        acpService: { listPlugins: async () => [], listAvailableAgents: async () => [
-          { agent: 'codex', enabled: true, ready: true },
-          { agent: 'claude', enabled: true, ready: true },
-        ] },
+        acpService: { listPlugins: async () => [], listAvailableAgents: async () => ACP_AGENT_CATALOG.map(({id}) => ({agent:id,enabled:true,ready:true})) },
         subagentsService: { list: async () => [] },
         zcodeSessionService: { list: async () => [] },
         skillsService: { list: async () => ({ skills: [], diagnostics: [], capability: { userScopeAvailable: true } }) },
         zcodeAgentService: { onAgentRuntimeRestarted: () => ({ dispose() {} }), onDynamicSessionsIndexFrame: () => () => ({ dispose() {} }), onAgentRuntimeLifecycleChanged: () => ({ dispose() {} }) },
       };
       const platform = { isMacOS: false, isWindows: false, isLinux: true, isWeb: true };
+      window.__composerAgents = ACP_AGENT_CATALOG.map(({id,name}) => ({id,name}));
       function Fixture() {
         const [view, setView] = useState<any>({ agent: null, context: null, native: {
           contextWindow: { usedTokens: 2000, maxTokens: 8000, cache: { hitRate: 0.25 } },
@@ -84,9 +86,23 @@ try {
     await trigger.waitFor({ timeout: 10000 }).catch((error) => {
       throw new Error(`Context fixture failed: ${errors.join("; ") || error.message}`);
     });
-    assert.match(await trigger.getAttribute("aria-label"), /2,000.*8,000/);
+    const assertCapacityLabel = async (expected) => {
+      // setState 返回不代表 React 已提交；等待实际展示值，不能仅等待一直存在的触发器。
+      await page.waitForFunction(
+        (pattern) =>
+          new RegExp(pattern).test(
+            document
+              .querySelector('[data-testid="chat-context-usage-trigger"]')
+              ?.getAttribute("aria-label") ?? "",
+          ),
+        expected.source,
+      );
+      assert.match(await trigger.getAttribute("aria-label"), expected);
+    };
+    await assertCapacityLabel(/2,000.*8,000/);
     const input = page.getByTestId("v4-composer-input");
     await input.waitFor();
+    await exerciseComposerAgentIcons(page, input, artifacts, width);
     await page.evaluate(() => {
       window.__originalComposerInput = document.querySelector('[data-testid="v4-composer-input"]');
     });
@@ -112,7 +128,8 @@ try {
       "unknown is not a numerical estimate",
     );
     await page.mouse.move(0, 0);
-    if (width === 375) await input.tap();
+    // 手机宽度下容量浮层覆盖输入框中心，触摸页面空白处关闭，而不是点进浮层正文。
+    if (width === 375) await page.touchscreen.tap(4, 4);
     else await input.click();
     await page.evaluate(() =>
       window.__setContextView((view) => ({
@@ -121,7 +138,7 @@ try {
       })),
     );
     await trigger.waitFor();
-    assert.match(await trigger.getAttribute("aria-label"), /9,000.*200,000/);
+    await assertCapacityLabel(/9,000.*200,000/);
     if (width === 375) await trigger.tap();
     else await trigger.hover();
     await page.getByText("上下文容量").waitFor();
@@ -147,7 +164,7 @@ try {
       })),
     );
     await trigger.waitFor();
-    assert.match(await trigger.getAttribute("aria-label"), /3,500.*10,000/);
+    await assertCapacityLabel(/3,500.*10,000/);
     await page.evaluate(() =>
       window.__setContextView((view) => ({
         ...view,
@@ -155,7 +172,7 @@ try {
         context: { used: 9000, size: 200000 },
       })),
     );
-    assert.match(await trigger.getAttribute("aria-label"), /9,000.*200,000/);
+    await assertCapacityLabel(/9,000.*200,000/);
     for (const context of [{ used: 0, size: 200000 }, { used: 9000, size: 0 }, null]) {
       await page.evaluate(
         (context) => window.__setContextView((view) => ({ ...view, context })),
@@ -175,7 +192,7 @@ try {
         context: null,
       })),
     );
-    assert.match(await trigger.getAttribute("aria-label"), /2,000.*8,000/);
+    await assertCapacityLabel(/2,000.*8,000/);
     assert.equal(await input.textContent(), "保留草稿");
     assert.equal(
       await page.evaluate(
@@ -193,7 +210,7 @@ try {
     await page.close();
   }
   process.stdout.write(
-    "PASS: real shared editor/toolbar, API/ACP capacity, unknown ring, hover/touch, target isolation at 1280/375px.\n",
+    `PASS: real shared editor/toolbar, 15 Agent menu icons, selected Agent icons in both themes, API return, retained draft, API/ACP capacity, unknown ring, hover/touch, target isolation at 1280/375px. Screenshots: ${artifacts}\n`,
   );
 } finally {
   await browser?.close();

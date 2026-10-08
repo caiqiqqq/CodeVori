@@ -382,6 +382,11 @@ export type MessageResponseProps = {
   onOpenCodeViewer?: (source: CodeViewerSource) => void;
   onOpenFileLink?: (target: MessageFileLinkTarget) => void;
   onOpenExternalUrl?: (url: string) => void;
+  /** 外部文档只解析网页链接与图片，不参与工作区文件和会话附件解析。 */
+  webContent?: {
+    resolveUrl: (source: string) => string | null;
+    renderImage: (props: MarkdownImageProps) => ReactNode;
+  };
   /** 仅 Assistant 正文开启：把完整 zcode-file-citation 投影为现有文件链接。 */
   renderZCodeFileCitations?: boolean;
 };
@@ -827,6 +832,28 @@ const messageRehypePlugins: PluggableList = [
   ...Object.values(defaultRehypePlugins),
 ];
 
+function webContentTargetsRehypePlugin(context: NonNullable<MessageResponseProps["webContent"]>) {
+  return () => (tree: HastElementNode) => {
+    const visitNode = (node: HastElementNode) => {
+      const property = node.tagName === "a" ? "href" : node.tagName === "img" ? "src" : null;
+      if (node.type === "element" && property && typeof node.properties?.[property] === "string") {
+        const resolved = context.resolveUrl(node.properties[property]);
+        if (resolved) node.properties[property] = resolved;
+        else delete node.properties[property];
+      }
+      node.children?.forEach(visitNode);
+    };
+    visitNode(tree);
+  };
+}
+
+function WebContentParagraph({ node, ...props }: ComponentProps<"p"> & { node?: HastElementNode }) {
+  const hasImage = (entry: HastElementNode): boolean =>
+    entry.tagName === "img" || Boolean(entry.children?.some(hasImage));
+  // 网页图片使用块级预览，不能嵌入 p；保持普通段落和聊天图片的原有语义不变。
+  return node && hasImage(node) ? <div {...props} /> : <p {...props} />;
+}
+
 const messageDefaultRemarkPlugins: PluggableList = Object.entries(defaultRemarkPlugins).map(
   ([name, plugin]) => {
     if (name !== "gfm") {
@@ -882,18 +909,15 @@ export function buildMessageStreamdownRenderKey(params: {
   ].join(":");
 }
 
-const attachmentReaderEpochs = new WeakMap<
-  NonNullable<MessageResponseProps["readAttachment"]>,
-  number
->();
-let nextAttachmentReaderEpoch = 1;
+const markdownContextEpochs = new WeakMap<object, number>();
+let nextMarkdownContextEpoch = 1;
 
-function getAttachmentReaderEpoch(readAttachment: MessageResponseProps["readAttachment"]): number {
-  if (!readAttachment) return 0;
-  const existing = attachmentReaderEpochs.get(readAttachment);
+function getMarkdownContextEpoch(context: object | undefined): number {
+  if (!context) return 0;
+  const existing = markdownContextEpochs.get(context);
   if (existing !== undefined) return existing;
-  const epoch = nextAttachmentReaderEpoch++;
-  attachmentReaderEpochs.set(readAttachment, epoch);
+  const epoch = nextMarkdownContextEpoch++;
+  markdownContextEpochs.set(context, epoch);
   return epoch;
 }
 
@@ -1309,7 +1333,8 @@ export const messageResponsePropsAreEqual = (
   nextProps.codePreviewSettings === prevProps.codePreviewSettings &&
   nextProps.onOpenCodeViewer === prevProps.onOpenCodeViewer &&
   nextProps.onOpenFileLink === prevProps.onOpenFileLink &&
-  nextProps.onOpenExternalUrl === prevProps.onOpenExternalUrl;
+  nextProps.onOpenExternalUrl === prevProps.onOpenExternalUrl &&
+  nextProps.webContent === prevProps.webContent;
 
 export const MessageResponse = memo(
   ({
@@ -1319,6 +1344,7 @@ export const MessageResponse = memo(
     onOpenCodeViewer,
     onOpenFileLink,
     onOpenExternalUrl,
+    webContent,
     renderZCodeFileCitations = false,
     workspacePath,
     workspaceHomePath,
@@ -1342,14 +1368,23 @@ export const MessageResponse = memo(
     );
     const targetMarkdown = useMemo(
       () =>
-        rewriteMarkdownArtifactImageSources(
-          normalizeMessageSingleDollarMath(
-            normalizeConsecutiveMarkdownImageBlocks(projectedCitationMarkdown),
-          ),
-        ),
-      [projectedCitationMarkdown],
+        webContent
+          ? normalizeMessageSingleDollarMath(projectedCitationMarkdown)
+          : rewriteMarkdownArtifactImageSources(
+              normalizeMessageSingleDollarMath(
+                normalizeConsecutiveMarkdownImageBlocks(projectedCitationMarkdown),
+              ),
+            ),
+      [projectedCitationMarkdown, webContent],
     );
     const streamdownMode = resolveMessageStreamdownMode(renderStreaming);
+    const rehypePlugins = useMemo<PluggableList>(
+      () =>
+        webContent
+          ? [webContentTargetsRehypePlugin(webContent), ...Object.values(defaultRehypePlugins)]
+          : messageRehypePlugins,
+      [webContent],
+    );
     const messageRemarkPlugins = useMemo<PluggableList>(
       () => [
         // 显式传 remarkPlugins 会覆盖 Streamdown 默认插件；
@@ -1399,7 +1434,7 @@ export const MessageResponse = memo(
     const streamdownRenderKey = useMemo(() => {
       return (
         buildMessageStreamdownRenderKey({
-          attachmentReaderEpoch: getAttachmentReaderEpoch(readAttachment),
+          attachmentReaderEpoch: getMarkdownContextEpoch(readAttachment),
           codeBlockTheme,
           fontSizePx: codePreviewSettings.fontSizePx,
           renderZCodeFileCitations,
@@ -1434,6 +1469,20 @@ export const MessageResponse = memo(
         }: ComponentProps<"a"> & { node?: unknown }) => {
           const resolvedHref =
             typeof href === "string" ? stripBalancedAssistantPathQuotes(href) : "";
+          if (webContent) {
+            const url = webContent.resolveUrl(resolvedHref);
+            return url && onOpenExternalUrl ? (
+              <MessageExternalLink
+                className={linkClassName}
+                href={url}
+                onOpenExternalUrl={onOpenExternalUrl}
+              >
+                {children}
+              </MessageExternalLink>
+            ) : (
+              <span className={cn(messageLinkClassName, linkClassName)}>{children}</span>
+            );
+          }
           const fileLink = resolveMarkdownFileLink(workspacePath, resolvedHref, {
             homePath: workspaceHomePath,
           });
@@ -1498,16 +1547,19 @@ export const MessageResponse = memo(
             </span>
           );
         },
-        img: (imageProps: MarkdownImageProps) => (
-          <MarkdownImage
-            {...imageProps}
-            workspacePath={workspacePath}
-            workspaceHomePath={workspaceHomePath}
-            sessionId={sessionId}
-            readAttachment={readAttachment}
-          />
-        ),
-        p: MarkdownImageParagraph,
+        img: (imageProps: MarkdownImageProps) =>
+          webContent ? (
+            webContent.renderImage(imageProps)
+          ) : (
+            <MarkdownImage
+              {...imageProps}
+              workspacePath={workspacePath}
+              workspaceHomePath={workspaceHomePath}
+              sessionId={sessionId}
+              readAttachment={readAttachment}
+            />
+          ),
+        p: webContent ? WebContentParagraph : MarkdownImageParagraph,
         h1: (headingProps: MarkdownHeadingProps) => (
           <MessageMarkdownHeading {...headingProps} headingLevel="h1" />
         ),
@@ -1599,6 +1651,7 @@ export const MessageResponse = memo(
         onOpenFileLink,
         onOpenCodeViewer,
         onOpenExternalUrl,
+        webContent,
         readAttachment,
         renderStreaming,
         sessionId,
@@ -1618,7 +1671,7 @@ export const MessageResponse = memo(
         scope={boundaryScope}
       >
         <Streamdown
-          key={streamdownRenderKey}
+          key={`${streamdownRenderKey}:web:${getMarkdownContextEpoch(webContent)}`}
           className={responseClassName}
           // Streamdown 自身是 memo，比较函数不看 components。app light/dark 切换时
           // codeBlockTheme 只存在于自定义 code renderer 闭包里，若不改 key，当前 task 已挂载的
@@ -1643,7 +1696,7 @@ export const MessageResponse = memo(
           controls={STREAMDOWN_CONTROLS}
           // Streamdown 的 harden 插件会在自定义 a renderer 之前把 file:// 标成 [blocked]。
           // 这里先把 file URI 规整成本地路径 href，让后续 resolveMarkdownFileLink 统一走预览/文件树打开逻辑。
-          rehypePlugins={messageRehypePlugins}
+          rehypePlugins={rehypePlugins}
           remarkPlugins={messageRemarkPlugins}
           shikiTheme={shikiTheme}
           // markdown 正文流式淡入会在重渲染时让历史文本整段重新闪烁。

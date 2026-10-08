@@ -162,7 +162,9 @@ interface ModelConfigSelectProps {
   labelVisibilityClassName?: string;
   indicatorClassName?: string;
   triggerClassName?: string;
+  triggerIcon?: ReactNode;
   triggerIconClassName?: string;
+  renderItemIcon?: (item: ModelSelectGroupItem) => ReactNode;
   triggerLabelClassName?: string;
   triggerTestId?: string;
   formatTriggerLabel?: (label: string) => string;
@@ -212,7 +214,9 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
   labelVisibilityClassName = "hidden @xl/composer:inline-flex",
   indicatorClassName,
   triggerClassName,
+  triggerIcon,
   triggerIconClassName = "hidden",
+  renderItemIcon,
   triggerLabelClassName: customTriggerLabelClassName,
   triggerTestId = TID_CHAT_MODEL_SELECT_TRIGGER,
   formatTriggerLabel,
@@ -302,6 +306,7 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
       const content = (
         <>
           <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+            {renderItemIcon?.(item)}
             <span className="min-w-0 truncate" title={item.name}>
               {item.name}
             </span>
@@ -389,6 +394,7 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
       isItemLocked,
       lockReasonMessage,
       normalizedValue,
+      renderItemIcon,
     ],
   );
 
@@ -515,10 +521,22 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
           triggerClassName,
         )}
       >
-        <PackageIcon
-          className={cn("pointer-events-none size-4 shrink-0 text-current", triggerIconClassName)}
-          aria-hidden="true"
-        />
+        {triggerIcon ? (
+          <span
+            className={cn(
+              "pointer-events-none inline-flex size-4 shrink-0 text-current",
+              triggerIconClassName,
+            )}
+            aria-hidden="true"
+          >
+            {triggerIcon}
+          </span>
+        ) : (
+          <PackageIcon
+            className={cn("pointer-events-none size-4 shrink-0 text-current", triggerIconClassName)}
+            aria-hidden="true"
+          />
+        )}
         <span className={triggerLabelClassName} title={currentTriggerTitle}>
           <RollingToolbarLabel
             label={currentTriggerLabel}

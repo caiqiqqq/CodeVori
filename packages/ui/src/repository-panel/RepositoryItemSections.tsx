@@ -1,18 +1,28 @@
 import { useMemo, useState } from "react";
-import { Check, ChevronRight, CircleMinus, Clock3, FileDiff, X } from "lucide-react";
+import { Activity, Check, ChevronRight, CircleMinus, Clock3, FileDiff, Tag, X } from "lucide-react";
 import type { ForgeChangedFile, ForgeCheck, ForgeItemDetail } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
-import { MessageResponse } from "@/components/ai-elements/message.js";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select.js";
 import { LightweightDiffPreview } from "@/components/ui/lightweight-diff-preview.js";
 import { getPlainTextPatchPreviewLines } from "@/lib/patchDiffPreview.js";
 import type { CodePreviewSettings } from "@/lib/codePreviewSettings.js";
 import type { Theme } from "@/useTheme.js";
 import type { useRepositoryItem } from "@/hooks/useRepositoryItem.js";
+import { RepositoryMarkdown, type RepositoryContentContext } from "./RepositoryMarkdown.js";
+import { RepositoryLabelActivity } from "./RepositoryLabelActivity.js";
 import {
+  RepositoryAuthor,
   RepositoryError,
   RepositoryExternalButton,
   RepositoryLoading,
+  RepositoryItemIcon,
   RepositoryTime,
   useRepositoryMessages,
 } from "./RepositoryParts.js";
@@ -89,23 +99,198 @@ function RepositoryCheckRow({
   );
 }
 
+interface RepositoryItemSectionsProps {
+  item: ForgeItemDetail;
+  detail: ReturnType<typeof useRepositoryItem>;
+  context: RepositoryContentContext;
+  theme: Theme;
+  codePreviewSettings: CodePreviewSettings;
+  onOpen: (url: string) => void;
+  withExtras: boolean;
+}
+
+function RepositoryConversation({
+  item,
+  detail,
+  context,
+  theme,
+  codePreviewSettings,
+  onOpen,
+  withExtras,
+}: RepositoryItemSectionsProps) {
+  const t = useRepositoryMessages();
+  const [activityFilter, setActivityFilter] = useState("all");
+  const metadata = item.metadata;
+  const comments =
+    detail.comments?.items.filter((comment) => activityFilter === "all" || !comment.system) ?? [];
+  return (
+    <div className="min-w-0">
+      <RepositoryMarkdown context={context} theme={theme} codePreviewSettings={codePreviewSettings}>
+        {item.body || t("noDescription")}
+      </RepositoryMarkdown>
+      {metadata?.taskStatus && metadata.taskStatus.total > 0 ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border py-3 text-ui-sm text-foreground-subtle">
+          <span>{t("tasks")}</span>
+          <span className="tabular-nums">
+            {metadata.taskStatus.completed} / {metadata.taskStatus.total}
+          </span>
+        </div>
+      ) : null}
+      {metadata?.linkedItems !== undefined || withExtras ? (
+        <section
+          data-testid="repository-links"
+          className="mt-5 min-w-0 border-t border-border pt-4"
+        >
+          <h2 className="mb-2 text-ui-base font-medium">{t("linkedIssues")}</h2>
+          {metadata?.errors?.links ? (
+            <RepositoryError error={metadata.errors.links} retry={detail.refresh} />
+          ) : detail.extrasError ? (
+            <RepositoryError error={detail.extrasError} retry={detail.refresh} />
+          ) : detail.extrasLoading ? (
+            <RepositoryLoading />
+          ) : metadata?.linkedItems?.length ? (
+            <ul className="min-w-0 divide-y divide-border">
+              {metadata.linkedItems.map((link) => (
+                <li key={link.number} className="flex min-w-0 items-center gap-2 py-2 text-ui-sm">
+                  <RepositoryItemIcon item={{ kind: "issue", state: link.state, draft: false }} />
+                  <span className="shrink-0 text-foreground-subtle">#{link.number}</span>
+                  <span className="min-w-0 flex-1 break-words">{link.title}</span>
+                  <RepositoryExternalButton url={link.url} label={t("openItem")} onOpen={onOpen} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="py-2 text-ui-sm text-foreground-subtle">{t("noLinkedIssues")}</p>
+          )}
+          {metadata?.linkedItemsHasMore ? (
+            <p className="mt-2 text-ui-sm text-foreground-subtle">{t("moreOnWeb")}</p>
+          ) : null}
+        </section>
+      ) : null}
+      <div className="mt-6 flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-border pb-2">
+        <h2 className="text-ui-base font-medium">{t("activity")}</h2>
+        <Select value={activityFilter} onValueChange={setActivityFilter}>
+          <SelectTrigger aria-label={t("activityFilter")} className="max-w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allActivity")}</SelectItem>
+            <SelectItem value="comments">{t("commentsOnly")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {detail.commentsError ? (
+        <RepositoryError error={detail.commentsError} retry={detail.refresh} />
+      ) : detail.comments ? (
+        <>
+          {comments.length ? (
+            comments.map((comment) =>
+              comment.system ? (
+                <div
+                  key={comment.id}
+                  data-testid="repository-system-note"
+                  className="flex min-w-0 items-start gap-3 border-b border-border py-3"
+                >
+                  {comment.labelActivity ? (
+                    <Tag className="mt-1 size-4 shrink-0 text-foreground-subtle" />
+                  ) : (
+                    <Activity className="mt-1 size-4 shrink-0 text-foreground-subtle" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex min-w-0 flex-wrap items-center justify-between gap-2 text-ui-sm text-foreground-subtle">
+                      <RepositoryAuthor author={comment.author} />
+                      <RepositoryTime value={comment.createdAt} />
+                    </div>
+                    {comment.labelActivity ? (
+                      <RepositoryLabelActivity activity={comment.labelActivity} />
+                    ) : (
+                      <RepositoryMarkdown
+                        context={context}
+                        theme={theme}
+                        codePreviewSettings={codePreviewSettings}
+                      >
+                        {comment.body || t("emptyComment")}
+                      </RepositoryMarkdown>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <section key={comment.id} className="min-w-0 border-b border-border py-4">
+                  <header className="mb-3 flex min-w-0 flex-wrap items-center gap-2 text-ui-sm text-foreground-subtle">
+                    <span className="min-w-0 flex-1 text-foreground">
+                      <RepositoryAuthor author={comment.author} />
+                    </span>
+                    <RepositoryTime value={comment.createdAt} />
+                    <RepositoryExternalButton
+                      url={comment.url}
+                      label={t("openComment")}
+                      onOpen={onOpen}
+                    />
+                  </header>
+                  <RepositoryMarkdown
+                    context={context}
+                    theme={theme}
+                    codePreviewSettings={codePreviewSettings}
+                  >
+                    {comment.body || t("emptyComment")}
+                  </RepositoryMarkdown>
+                </section>
+              ),
+            )
+          ) : (
+            <p className="py-4 text-ui-sm text-foreground-subtle">
+              {t(
+                activityFilter === "all"
+                  ? "noActivity"
+                  : detail.comments.hasMore || detail.comments.items.length
+                    ? "noCommentsOnPage"
+                    : "noComments",
+              )}
+            </p>
+          )}
+          {detail.comments.hasMore ? (
+            <Button
+              variant="outline"
+              className="mt-3"
+              disabled={detail.mutation.busy}
+              onClick={() => void detail.loadMore("comments")}
+            >
+              {t("loadMore")}
+            </Button>
+          ) : null}
+        </>
+      ) : (
+        <RepositoryLoading />
+      )}
+    </div>
+  );
+}
+
 export function RepositoryItemSections({
   item,
   detail,
   theme,
   codePreviewSettings,
   onOpen,
-}: {
-  item: ForgeItemDetail;
-  detail: ReturnType<typeof useRepositoryItem>;
-  theme: Theme;
-  codePreviewSettings: CodePreviewSettings;
-  onOpen: (url: string) => void;
-}) {
+  context,
+  withExtras,
+}: RepositoryItemSectionsProps) {
   const t = useRepositoryMessages();
+  const conversation = (
+    <RepositoryConversation
+      item={item}
+      detail={detail}
+      context={context}
+      theme={theme}
+      codePreviewSettings={codePreviewSettings}
+      onOpen={onOpen}
+      withExtras={withExtras}
+    />
+  );
+  if (!item.change) return conversation;
   return (
     <Tabs defaultValue="conversation" className="min-w-0">
-      <TabsList variant="line" className="sticky top-0 z-10 bg-popover">
+      <TabsList variant="line" className="sticky top-0 z-10 bg-background">
         <TabsTrigger value="conversation">{t("conversation")}</TabsTrigger>
         {item.change ? (
           <>
@@ -115,60 +300,7 @@ export function RepositoryItemSections({
         ) : null}
       </TabsList>
       <TabsContent value="conversation" className="min-w-0 pt-4">
-        <MessageResponse
-          theme={theme}
-          codePreviewSettings={codePreviewSettings}
-          onOpenExternalUrl={onOpen}
-        >
-          {item.body || t("noDescription")}
-        </MessageResponse>
-        <h3 className="mt-6 border-b border-border pb-2 text-ui-base font-medium">
-          {t("comments")}
-        </h3>
-        {detail.commentsError ? (
-          <RepositoryError error={detail.commentsError} retry={detail.refresh} />
-        ) : detail.comments ? (
-          <>
-            {detail.comments.items.length ? (
-              detail.comments.items.map((comment) => (
-                <section key={comment.id} className="min-w-0 border-b border-border py-4">
-                  <header className="mb-2 flex items-center gap-2 text-ui-sm text-foreground-subtle">
-                    <span className="min-w-0 flex-1 break-all font-medium text-foreground">
-                      {comment.author.username}
-                    </span>
-                    <RepositoryTime value={comment.createdAt} />
-                    <RepositoryExternalButton
-                      url={comment.url}
-                      label={t("openComment")}
-                      onOpen={onOpen}
-                    />
-                  </header>
-                  <MessageResponse
-                    theme={theme}
-                    codePreviewSettings={codePreviewSettings}
-                    onOpenExternalUrl={onOpen}
-                  >
-                    {comment.body || t("emptyComment")}
-                  </MessageResponse>
-                </section>
-              ))
-            ) : (
-              <p className="py-4 text-ui-sm text-foreground-subtle">{t("noComments")}</p>
-            )}
-            {detail.comments.hasMore ? (
-              <Button
-                variant="outline"
-                className="mt-3"
-                disabled={detail.mutation.busy}
-                onClick={() => void detail.loadMore("comments")}
-              >
-                {t("loadMore")}
-              </Button>
-            ) : null}
-          </>
-        ) : (
-          <RepositoryLoading />
-        )}
+        {conversation}
       </TabsContent>
       {item.change ? (
         <>

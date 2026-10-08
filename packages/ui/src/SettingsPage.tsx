@@ -64,6 +64,7 @@ import {
 import { buildPersonalCodingPlanUsageSource } from "@/lib/codingPlanUsageSources.js";
 import { SubagentsSection } from "@/settings/SubagentsSection.js";
 import { AcpAgentsSection } from "@/settings/AcpAgentsSection.js";
+import { DelegationSettingsSection } from "@/settings/DelegationSettingsSection.js";
 import { isMatchingAcpWorkspaceTab } from "@/settings/acpAgentSettingsCatalog.js";
 import { AutomationsSection } from "@/settings/AutomationsSection.js";
 import { SegmentPill } from "@/settings/PluginStoreListView.js";
@@ -1886,6 +1887,13 @@ export function SettingsPage({
                           />
                         ) : activeSection === "acpAgents" ? (
                           <AcpAgentsSection
+                            workspacePath={activeWorkspacePath}
+                            workspaceIdentity={activeWorkspaceIdentity}
+                            remoteSessionId={acpWorkspaceTab?.remoteSessionId}
+                            remoteTarget={acpWorkspaceTab?.remoteTarget}
+                          />
+                        ) : activeSection === "delegation" ? (
+                          <DelegationSettingsSection
                             workspacePath={activeWorkspacePath}
                             workspaceIdentity={activeWorkspaceIdentity}
                             remoteSessionId={acpWorkspaceTab?.remoteSessionId}

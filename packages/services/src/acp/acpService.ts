@@ -71,6 +71,10 @@ export interface IAcpService {
   /** Optional preconnection returns an in-memory draft; the first accepted prompt persists it. */
   create(input: AcpCreateInput): Promise<AcpSession>;
   prompt(input: AcpWorkspace & { id: string } & AcpPromptInput): Promise<AcpSession>;
+  /** Admit a Host result only to an already connected, idle conversation; never reconnect. */
+  notifyResult(
+    input: AcpWorkspace & { id: string; commandId: string; text: string },
+  ): Promise<boolean>;
   setGoal(input: AcpWorkspace & { id: string; goal: string | null }): Promise<AcpSession>;
   setConfigOption(
     input: AcpWorkspace & { id: string; configId: string; value: string | boolean },
