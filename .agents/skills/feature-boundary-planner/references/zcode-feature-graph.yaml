@@ -372,6 +372,8 @@ nodes:
       - ACP 思考
       - ACP 计划
       - ACP 状态面板
+      - ACP 结构化提问
+      - ACP 表单交互
     codeSeeds:
       - file: packages/services/src/acp/acpServiceImpl.ts
         symbol: createAcpService
@@ -401,6 +403,7 @@ nodes:
       - ACP tool details belong to the existing session snapshot; diagnostics contain only bounded correlated metadata and continue after log rotation.
       - Trace subscriptions use the target workspace identity and do not create, authenticate or reconnect an Agent.
       - Reported ACP thoughts and full plans belong to Host snapshots; transcript replay does not duplicate them.
+      - ACP session-scoped form elicitation shares the Host blocking queue with tool permissions; answers are validated before adapter receipt and are not persisted.
   - id: surface.acp-conversation
     kind: ui-surface
     label: ACP conversation target inside the existing pane
