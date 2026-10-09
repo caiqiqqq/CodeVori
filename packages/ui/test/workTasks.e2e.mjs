@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chromium } from "playwright-core";
+import { launchWorkTaskBrowser } from "./workTaskScenarios.mjs";
 import {
   assertWorkTaskBoardOnly,
   exerciseWorkTaskBoardResize,
@@ -129,7 +129,7 @@ try {
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><StoreProvider broadcastService={broadcast}><TabStoreProvider><Fixture/></TabStoreProvider></StoreProvider></TooltipProvider></ZCodeIntlProvider></PlatformProvider>);
   `,
   );
-  browser = await chromium.launch({ headless: true });
+  browser = await launchWorkTaskBrowser();
   const page = await browser.newPage({ viewport: { width: 1280, height: 850 } });
   page.setDefaultTimeout(Number(process.env.ZCODE_E2E_TIMEOUT_MS ?? 15000));
   page.on("pageerror", (error) => errors.push(error.stack ?? error.message));

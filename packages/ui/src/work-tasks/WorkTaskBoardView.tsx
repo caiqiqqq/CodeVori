@@ -70,8 +70,9 @@ export function WorkTaskBoardView({
                   {columns[key].length}
                 </span>
               </h3>
+              {/* 分组独立滚动时，滚动条会单独挤窄卡片；统一预留占位保证各组等宽。 */}
               <div
-                className="min-h-0 flex-1 overflow-y-auto px-4"
+                className="min-h-0 flex-1 overflow-y-auto px-4 [scrollbar-gutter:stable]"
                 data-testid="work-task-column-content"
               >
                 {columns[key].length ? (
