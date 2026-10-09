@@ -4,7 +4,7 @@ import { join } from "node:path";
 export async function exerciseWorkTaskAcpCreation(page, panel, card) {
   const editor = page.getByTestId("work-task-editor");
   await panel.getByTestId("work-task-new").click();
-  await editor.getByTestId("work-task-title").fill("ACP task");
+
   await editor.getByTestId("work-task-prompt").fill("Implement an ACP task");
   await editor.getByTestId("work-task-model").click();
   await page.getByTestId("chat-model-select-item-acp:codex").waitFor();
@@ -32,7 +32,7 @@ export async function exerciseWorkTaskAcpCreation(page, panel, card) {
   });
   await editor.getByTestId("work-task-save").click();
   await editor.getByRole("alert").waitFor();
-  assert.equal(await editor.getByTestId("work-task-title").inputValue(), "ACP task");
+  assert.equal(await editor.getByTestId("work-task-title").count(), 0);
   assert.equal(await editor.getByTestId("work-task-prompt").innerText(), "Implement an ACP task");
   await editor.getByTestId("work-task-save").click();
   await editor.waitFor({ state: "detached" });
@@ -70,7 +70,7 @@ export async function exerciseWorkTaskAgentConfigSelection(page, panel, artifact
     0,
     "a failed/unsupported catalog read must not subscribe to a new Host event",
   );
-  await editor.getByTestId("work-task-title").fill("Agent configuration draft");
+
   await editor.getByTestId("work-task-prompt").fill("Keep this draft without running an agent");
   await select("acp:codex");
   await editor.getByTestId("acp-config-trigger-model").waitFor();
@@ -118,10 +118,7 @@ export async function exerciseWorkTaskAgentConfigSelection(page, panel, artifact
   });
   await editor.getByRole("alert").waitFor();
   assert.match(await editor.getByRole("alert").innerText(), /Synthetic catalog failed/);
-  assert.equal(
-    await editor.getByTestId("work-task-title").inputValue(),
-    "Agent configuration draft",
-  );
+  assert.equal(await editor.getByTestId("work-task-title").count(), 0);
   await editor.getByTestId("work-task-config-retry").click();
   await editor.getByRole("alert").waitFor({ state: "detached" });
 
@@ -201,7 +198,7 @@ export async function exerciseWorkTaskAgentConfigPersistence(page, panel) {
     await editor.waitFor({ state: "detached" });
   };
   await panel.getByTestId("work-task-new").click();
-  await editor.getByTestId("work-task-title").fill("ACP default task");
+
   await editor.getByTestId("work-task-prompt").fill("Synthetic default configuration");
   await select("claude");
   await choice("mode", "plan");

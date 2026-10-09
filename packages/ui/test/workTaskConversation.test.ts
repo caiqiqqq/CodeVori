@@ -151,3 +151,20 @@ test("merge conversations and tools use the saved integration binding without re
   );
   assert.equal(bound.session?.id, "native");
 });
+
+test("direct API/ACP bindings and tools use the persisted project directory", () => {
+  for (const kind of ["api", "acp"] as const) {
+    const direct: WorkTask = {
+      ...task,
+      useWorktree: false,
+      sourceBranch: "feature",
+      directBranch: "feature",
+      session: { kind, id: "direct-session" },
+      execution: kind === "api" ? task.execution : { kind, agent: "codex", config: [] },
+    };
+    assert.equal(workTaskConversationBinding(direct)?.workspacePath, task.workspacePath);
+    assert.equal(workTaskWorkspaceToolTarget(direct).workspacePath, task.workspacePath);
+    assert.equal(workTaskConversationBinding({ ...direct, directBranch: undefined }), null);
+    assert.equal(workTaskConversationBinding({ ...direct, remoteSessionId: "remote" }), null);
+  }
+});

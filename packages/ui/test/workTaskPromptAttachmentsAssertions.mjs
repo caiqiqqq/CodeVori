@@ -56,7 +56,7 @@ export async function exerciseWorkTaskPromptAttachments(page, artifacts) {
   for (let i = 0; i < binary.length; i++) binary[i] = i % 256;
   for (const kind of ["api", "acp"]) {
     await panel.getByTestId("work-task-new").click();
-    await editor.getByTestId("work-task-title").fill(`${kind} attachments`);
+
     await prompt.fill("Use the supplied files");
     await select(kind === "api" ? "custom:api:TestModel" : "acp:codex");
     if (kind === "api") {
@@ -284,7 +284,7 @@ export async function exerciseWorkTaskPromptAttachments(page, artifacts) {
   }
 
   await panel.getByTestId("work-task-new").click();
-  await editor.getByTestId("work-task-title").fill("Bounded attachment draft");
+
   await prompt.fill("Keep the draft when attachment saving is rejected");
   const pastedText = "Pasted reference text\n".repeat(1000);
   await prompt.evaluate((element, text) => {
@@ -310,7 +310,7 @@ export async function exerciseWorkTaskPromptAttachments(page, artifacts) {
     pastedText,
   );
   await panel.getByTestId("work-task-new").click();
-  await editor.getByTestId("work-task-title").fill("Bounded attachment draft");
+
   await prompt.fill("Keep the draft when attachment saving is rejected");
   await choose(
     Array.from({ length: 9 }, (_, i) => ({

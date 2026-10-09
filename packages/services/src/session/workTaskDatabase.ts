@@ -6,6 +6,7 @@ import {
   resolveWorkspaceKey,
   uuidv7,
   workTaskSchema,
+  workTaskExecutionPath,
   type WorkTask,
 } from "@zcode/shared";
 
@@ -34,6 +35,14 @@ export function claimNextWorkTask(
     .all() as { data: string }[];
   for (const row of queued) {
     const task = workTaskSchema.parse(JSON.parse(row.data));
+    // 直接执行共用项目目录，不能让两个已认领任务交错切分支；隔离任务仍可并发。
+    if (task.useWorktree === false) {
+      const owned = db.prepare("SELECT data FROM work_tasks WHERE owner IS NOT NULL").all() as {
+        data: string;
+      }[];
+      if (owned.some((item) => workTaskSchema.parse(JSON.parse(item.data)).useWorktree === false))
+        continue;
+    }
     if (isWorkTaskMerging(task)) {
       const owned = db.prepare("SELECT data FROM work_tasks WHERE owner IS NOT NULL").all() as {
         data: string;
@@ -87,7 +96,7 @@ export function listWorkTaskConversations(db: WorkTaskDatabase): WorkTask[] {
         !task.workspaceIdentity &&
         !task.remoteSessionId &&
         task.session &&
-        task.worktree,
+        workTaskExecutionPath(task),
     );
 }
 

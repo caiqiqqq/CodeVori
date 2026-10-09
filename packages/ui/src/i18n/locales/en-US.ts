@@ -12,7 +12,6 @@ const enUS: Record<string, string> = {
   "workTasks.save": "Save",
   "workTasks.saveAndStart": "Save and restart",
   "workTasks.close": "Cancel",
-  "workTasks.taskTitle": "Task name",
   "workTasks.prompt": "Description",
   "workTasks.error.work-task.attachments-unsupported":
     "This Host does not support task attachments. Update and restart the app.",
@@ -81,6 +80,17 @@ const enUS: Record<string, string> = {
   "workTasks.loading": "Loading...",
   "workTasks.emptyColumn": "No tasks",
   "workTasks.branch": "Branch",
+  "workTasks.useWorktree": "Use worktree",
+  "workTasks.worktreeHint": "Run in a separate worktree to isolate changes.",
+  "workTasks.directBranchHint":
+    "Edit the selected branch in the project directory; changes are shared.",
+  "workTasks.error.work-task.execution-workspace-locked":
+    "The execution directory is bound; worktree mode cannot be changed.",
+  "workTasks.error.work-task.source-branch-required": "Select a local branch for direct execution.",
+  "workTasks.error.work-task.direct-branch-changed":
+    "The project branch changed. Switch back to the task branch before retrying.",
+  "workTasks.error.work-task.branch-switch-failed":
+    "Cannot switch to the selected branch. Check the project Git status.",
   "workTasks.sourceBranch": "Source branch",
   "workTasks.currentHead": "Current commit (HEAD)",
   "workTasks.selectBranch": "Select branch",
@@ -107,7 +117,7 @@ const enUS: Record<string, string> = {
   "workTasks.error.work-task.branch-not-found":
     "The selected local branch no longer exists. Select another branch.",
   "workTasks.error.work-task.source-branch-locked":
-    "The worktree is already allocated; its source branch cannot change.",
+    "The execution directory is bound; its source branch cannot change.",
   "workTasks.error.work-task.merge-invalid-target":
     "Select a local target other than the task branch.",
   "workTasks.error.work-task.merge-target-dirty":

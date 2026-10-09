@@ -1,6 +1,33 @@
 import { isDeepStrictEqual } from "node:util";
-import { isWorkTaskMerging, type WorkTask } from "@zcode/shared";
+import {
+  isWorkTaskMerging,
+  workTaskExecutionPath,
+  type WorkTask,
+  type WorkTaskUpdate,
+  type WorkTaskCreate,
+} from "@zcode/shared";
 import type { WorkTaskConversationEvent } from "./workTask.js";
+
+export function assertWorkTaskWorkspaceEditable(
+  task: WorkTask | null,
+  input: WorkTaskUpdate | WorkTaskCreate,
+) {
+  if (input.useWorktree === false && !input.sourceBranch)
+    throw new Error("work-task.source-branch-required");
+  if (!task) return;
+  if (
+    task.runSeq > 0 &&
+    (input.execution.kind !== task.execution.kind ||
+      (input.execution.kind === "acp" &&
+        task.execution.kind === "acp" &&
+        input.execution.agent !== task.execution.agent))
+  )
+    throw new Error("work-task.executor-locked");
+  if (!task.worktree && !task.directBranch) return;
+  if (input.sourceBranch !== task.sourceBranch) throw new Error("work-task.source-branch-locked");
+  if ((input.useWorktree !== false) !== (task.useWorktree !== false))
+    throw new Error("work-task.execution-workspace-locked");
+}
 
 export function workTaskRunPrompt(task: WorkTask, feedback?: string) {
   // 文字追问不是原始描述的重发；失败重试则保留该轮的附件归属。
@@ -25,13 +52,14 @@ export function continueWorkTaskConversation(
     current.archived ||
     current.stopPending ||
     !current.session ||
-    !current.worktree ||
+    !workTaskExecutionPath(current) ||
     !["failed", "review"].includes(current.status) ||
     (event.status !== "running" && event.status !== "awaiting_input") ||
     event.commandId === current.commandId ||
     event.startedAt < current.updatedAt ||
     !isDeepStrictEqual(watched.session, current.session) ||
-    !isDeepStrictEqual(watched.worktree, current.worktree)
+    !isDeepStrictEqual(watched.worktree, current.worktree) ||
+    watched.directBranch !== current.directBranch
   )
     return null;
   return {

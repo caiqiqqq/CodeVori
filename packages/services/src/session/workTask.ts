@@ -50,6 +50,7 @@ export interface WorkTaskExecutionUpdate {
   status?: "running" | "awaiting_input";
   session?: NonNullable<WorkTask["session"]>;
   worktree?: NonNullable<WorkTask["worktree"]>;
+  directBranch?: string;
   merge?: WorkTaskMerge;
 }
 export interface WorkTaskExecutionContext {

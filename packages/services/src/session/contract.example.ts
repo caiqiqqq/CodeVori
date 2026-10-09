@@ -9,6 +9,14 @@ export async function saveWorkTaskDraft(service: IWorkTaskService, draft: WorkTa
   });
 }
 
+export async function saveDirectBranchTask(
+  service: IWorkTaskService,
+  draft: WorkTaskCreate,
+  sourceBranch: string,
+) {
+  return service.create({ ...draft, useWorktree: false, sourceBranch });
+}
+
 export async function saveAttachedWorkTaskDraft(
   service: IWorkTaskService,
   draft: WorkTaskCreate,

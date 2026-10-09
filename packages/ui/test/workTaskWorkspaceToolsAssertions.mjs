@@ -4,8 +4,8 @@ import { assertWorkTaskSessionTarget } from "./workTaskWorkbenchLayoutAssertions
 export async function exerciseWorkTaskWorkspaceTools(page, panel, card, artifacts) {
   const before = await page.evaluate(() => window.__tasks.calls);
   for (const [kind, id, title] of [
-    ["api", "task-0", "API task"],
-    ["acp", "task-1", "ACP task"],
+    ["api", "task-0", "Implement an API task"],
+    ["acp", "task-1", "Implement an ACP task"],
   ]) {
     await card(id).getByRole("button", { name: title, exact: true }).click();
     const path = `/synthetic/trees/${id}/project`;
@@ -62,5 +62,5 @@ export async function exerciseWorkTaskWorkspaceTools(page, panel, card, artifact
   await panel.getByTestId("work-task-no-selection").waitFor();
   assert.equal(await page.evaluate(() => window.__tasks.toolTarget), null);
   assert.equal(await panel.getByTestId("work-task-workspace-tools").count(), 0);
-  await card("task-1").getByRole("button", { name: "ACP task", exact: true }).click();
+  await card("task-1").getByRole("button", { name: "Implement an ACP task", exact: true }).click();
 }

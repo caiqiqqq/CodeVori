@@ -132,7 +132,10 @@ export async function exerciseWorkTaskSelection(page, panel, card, cardAction, a
     "session-task-1",
     "/synthetic/trees/task-1/project",
   );
-  const apiButton = card("task-0").getByRole("button", { name: "API task", exact: true });
+  const apiButton = card("task-0").getByRole("button", {
+    name: "Implement an API task",
+    exact: true,
+  });
   await apiButton.focus();
   await apiButton.press("Enter");
   await assertWorkTaskSessionTarget(
@@ -141,7 +144,10 @@ export async function exerciseWorkTaskSelection(page, panel, card, cardAction, a
     "session-task-0",
     "/synthetic/trees/task-0/project",
   );
-  const acpButton = card("task-1").getByRole("button", { name: "ACP task", exact: true });
+  const acpButton = card("task-1").getByRole("button", {
+    name: "Implement an ACP task",
+    exact: true,
+  });
   await acpButton.focus();
   await acpButton.press("Space");
   await assertWorkTaskSessionTarget(

@@ -100,7 +100,7 @@ test("API task sendText carries saved attachment refs without Agent upload", asy
   }
 });
 
-async function fixture() {
+async function fixture(direct = false) {
   const dir = await mkdtemp(join(tmpdir(), "zcode-task-native-"));
   const path = join(dir, "abcd", "project");
   await mkdir(path, { recursive: true });
@@ -197,7 +197,15 @@ async function fixture() {
       };
     },
   } as unknown as IZCodeAgentService;
+  if (direct) {
+    task.useWorktree = false;
+    task.sourceBranch = "feature";
+    task.directBranch = "feature";
+    task.worktree = undefined;
+  }
   const git = {
+    getLocalBranches: async () => ({ currentBranchName: "feature" }),
+    resolveLocalBranch: async () => ({ commitHash: "abcdef" }),
     getWorkspaceRepositoryInfo: async () => ({
       kind: "linked-worktree",
       repoRoot: path,
@@ -323,6 +331,29 @@ async function fixture() {
     cleanup: () => rm(dir, { recursive: true, force: true }),
   };
 }
+
+test("direct API execution uses the original project cwd and unchanged native admission", async () => {
+  const f = await fixture(true);
+  try {
+    const run = f.execute();
+    await until(() => f.calls.includes("subscribe"));
+    f.emit(snapshot());
+    await until(() => f.calls.includes("sendText"));
+    assert.equal(
+      (f.commands[0].payload as { workspaceId: string }).workspaceId,
+      f.task.workspacePath,
+    );
+    assert.equal(
+      f.updates.some((patch) => !!(patch as { worktree?: unknown }).worktree),
+      false,
+    );
+    f.terminal();
+    await run;
+  } finally {
+    f.abort.abort();
+    await f.cleanup();
+  }
+});
 
 test("API delegation reuses the native executor, saves this attempt's answer and follows up in its bound session", async () => {
   const f = await fixture();

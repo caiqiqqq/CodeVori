@@ -60,7 +60,7 @@ export async function exerciseWorkTaskResponsiveLayout(page, panel, artifacts) {
       await assertWorkTaskCompactToolbar(panel);
       await noOverflow(`${theme}/${width}/board`);
       await page.screenshot({ path: join(artifacts, `${theme}-${width}-board.png`) });
-      await card.getByRole("button", { name: "ACP task", exact: true }).click();
+      await card.getByRole("button", { name: "Implement an ACP task", exact: true }).click();
       await assertWorkTaskSessionTarget(
         panel,
         "acp",
