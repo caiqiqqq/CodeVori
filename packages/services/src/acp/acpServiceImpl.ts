@@ -81,7 +81,7 @@ import { acpAgentConfigFingerprint, readAcpAgentConfigs } from "./acpAgentConfig
 import { projectAcpContextUsage } from "./acpContextUsage.js";
 import type { AcpToolDetails } from "./acpToolDetails.js";
 import { searchAcpSessions } from "./acpSessionSearch.js";
-import { readCodexUsageHistories, type CodexUsageHistory } from "./acpNativeUsage.js";
+import { createCodexUsageHistoryReader, type CodexUsageHistory } from "./acpNativeUsage.js";
 import { recordAcpPromptUsage, summarizeAcpUsage } from "./acpUsageStats.js";
 import {
   availableAcpPlugins,
@@ -269,6 +269,7 @@ export function createAcpService(
   const emitter = new Emitter<AcpSessionChanged>();
   const traceEmitter = new Emitter<AcpExecutionTraceChanged>();
   let disposed = false;
+  const usageHistoryReader = createCodexUsageHistoryReader();
   let usageHistoryRead: Promise<Map<string, CodexUsageHistory>> | null = null;
 
   const file = (id: string): string => {
@@ -1857,7 +1858,7 @@ export function createAcpService(
         usageHistoryRead = (async () => {
           const root = await agentManager.resolveCodexHome?.();
           return root
-            ? readCodexUsageHistories(current, root)
+            ? usageHistoryReader.read(current, root)
             : new Map<string, CodexUsageHistory>();
         })().catch(() => new Map<string, CodexUsageHistory>());
       }
@@ -2474,6 +2475,7 @@ export function createAcpService(
     },
     disposeAll() {
       disposed = true;
+      usageHistoryReader.dispose();
       for (const admission of promptAdmissions.values())
         admission.reject(new Error("ACP service closed before admission"));
       // Host 换代即撤销全部旧轮消费权；迟到 rejection 不能再写入新 Host 已恢复的快照。

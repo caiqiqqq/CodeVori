@@ -264,6 +264,8 @@ body {
   --color-destructive-foreground: var(--color-foreground-inverse);
   --color-warning: var(--color-yellow-600);
   --color-feedback-privacy-hint: var(--color-yellow-600);
+  /* 等待响应角标独立用黄色，避免 Zai warning 橙色或次要文字灰色降低辨识度。 */
+  --color-task-running-indicator: var(--color-yellow-600);
   --color-warning-foreground: var(--color-foreground-inverse);
   --color-diff-added: var(--color-green-600);
   --color-diff-added-foreground: var(--color-foreground-inverse);
@@ -415,6 +417,7 @@ body {
   --color-destructive-foreground: var(--color-foreground-inverse);
   --color-warning: var(--color-yellow-500);
   --color-feedback-privacy-hint: var(--color-yellow-300);
+  --color-task-running-indicator: var(--color-yellow-300);
   --color-warning-foreground: var(--color-foreground-inverse);
   --color-diff-added: var(--color-green-500);
   --color-diff-added-foreground: var(--color-foreground-inverse);
@@ -558,6 +561,7 @@ body {
   --color-destructive-foreground: #ffffff;
   --color-warning: #e07b00;
   --color-feedback-privacy-hint: var(--color-yellow-600);
+  --color-task-running-indicator: var(--color-yellow-600);
   --color-warning-foreground: #ffffff;
   --color-diff-added: #1e8a3e;
   --color-diff-added-foreground: #ffffff;
@@ -702,6 +706,7 @@ body {
   --color-destructive-foreground: #ffffff;
   --color-warning: #ff8a30;
   --color-feedback-privacy-hint: var(--color-yellow-300);
+  --color-task-running-indicator: var(--color-yellow-300);
   --color-warning-foreground: #000000;
   --color-diff-added: #46bf72;
   --color-diff-added-foreground: #000000;

@@ -24,7 +24,7 @@ desktop / mobile：各自 UI 偏好；业务仍由同一 Host 管理，沿用 co
 
 项目选择器与侧栏统计复用同一窗口、同一 Git Service 的工作树关系读取。关系尚未确认时，待办项目选择器禁用并显示原加载占位，不把主项目和 linked worktree 临时当作两个可选项目，也不查询临时 worktree 的任务。确认后沿用 Git 主项目归组；不同路径或远端 identity 的同名项目保留独立选项，并显示路径（远端补充 identity）作为辅助信息，不能按名称去重。Git 查询失败仍保留独立项目，不猜测归属。
 
-`WorkTaskService` / SQLite 继续是唯一任务事实所有者。UI 的共享读取投影按 Service 实例、`workspaceIdentity?.trim() || workspacePath`、remoteSessionId 和 includeArchived 隔离；侧栏统计、面板及详情共享一次首读和一个 Host 事件订阅，不保存新的执行队列。首次读取显示加载态；已有看板在后台重读时保持内容及所选任务，失败保留旧内容并显示错误。并发读合并；在途读取期间收到 Host 事件或 mutation 完成，立即发起新读并丢弃迟到旧结果，不能等待旧 RPC 返回或用旧结果覆盖更新。
+`WorkTaskService` / SQLite 继续是唯一任务事实所有者。UI 的共享读取投影按 Service 实例、`workspaceIdentity?.trim() || workspacePath`、remoteSessionId 和 includeArchived 隔离；侧栏统计、面板及详情共享一次首读和一个 Host 事件订阅，不保存新的执行队列。首次读取显示加载态；已有看板在后台重读时保持内容及所选任务，失败保留旧内容并显示错误。并发读合并；在途读取期间收到 Host 新事件或未收到通知的 mutation 完成，立即发起新读并丢弃迟到旧结果，不能等待旧 RPC 返回或用旧结果覆盖更新。
 
 最后一个观察者卸载时释放 Host 订阅、清空投影并使迟到结果失效。换项目、换 Service、远端断连和重连不得展示旧 Host 的任务或回落本机。桌面 continuous 与手机 replayable 会话链路、任务命令、owner/lease/runSeq 及持久化格式保持原协议。
 
@@ -44,6 +44,23 @@ Host mutation / 事件 -> 在途旧读失效 -> 立即重读 -> 看板与侧栏�
 定时执行、无人值守自动执行、项目验收脚本、PR 交付、自动清理工作树及任务模板不在本阶段。普通确认完成为用户明确接受结果，不代表已合并代码；另提供用户明确触发的本地“提交并合并”。分支、工作树和会话全部保留，不自动推送远程。非 Git 项目不能执行。远端断连不得回退到本机；本阶段不提供远端工作树执行。
 
 ## 来源分支与审查合并
+
+### 保存反馈与列表刷新
+
+新建任务只有附件保存及原 `create` 持久化成功后才关闭编辑器，但不再等待全量列表读取；已有任务仍先 `update`、再按原规则 `start`，两者成功后关闭。命令失败保留草稿及错误，不自动重发；列表读取失败只影响看板/侧栏投影，不把已成功保存的任务报告为保存失败，也不阻止再次新建任务。
+
+Host / `WorkTaskService` 仍是唯一已接受任务状态所有者。UI 的 共享读取投影按 service 实例（Host/连接）、`workspaceIdentity?.trim() || workspacePath`、实际 path、remoteSessionId 和 includeArchived 隔离；同 scope 看板与侧栏共用一个订阅和最新在途列表读取，不新增任务写入、持久化缓存或 optimistic 任务。变更发生在读取中时立即重读并丢弃旧结果，不能等待旧 RPC 或用固定延时防抖漏掉新事实。命令返回后，若期间已收到通知则复用通知读取；否则发起一次后台补读。失败读取保留上次投影并显示错误，下次通知或显式刷新可恢复。
+
+最后一个消费者卸载时释放订阅、清空投影并使旧请求失效；切项目/Host、断连重连均不得采纳旧结果或回落本机。仅改变 UI 读取和保存反馈，不修改公开协议、SQLite、owner/lease、CommandInbox 或原执行时序；desktop continuous 通知和 mobile replay/reconnect 后的全量重读仍由同一 Host 事实驱动。
+
+```text
+编辑器草稿 -> 附件事务 -> 原 create / update(+start) -> Host 持久化/准入 -> 关闭编辑器
+                                      └-> 变更通知 -> 同 scope 共享读取投影 -> 看板 + 侧栏
+命令返回且未收到通知 -> 后台补读；读取中的新通知 -> 立即重读 + 旧响应失效
+最后消费者退出 / Host 切换 -> 释放订阅 + 清空投影 + 旧请求失效
+```
+
+验收：至少 20 条任务、API/ACP、桌面/320px 窄屏和两主题下，延迟列表响应不阻塞保存成功后的关窗；附件/命令失败保留草稿、已有任务 update/start 顺序及连续提交锁不变。看板+侧栏同 scope 共用读取和订阅；延迟读取中多次变更最终显示最新事实；保存后读取失败可见且不重复创建。Host/identity/remoteSessionId/includeArchived 隔离、最后订阅释放、旧响应丢弃及重订阅重新读取均有可控请求测试。
 
 ### 任务编辑器与直接分支执行
 

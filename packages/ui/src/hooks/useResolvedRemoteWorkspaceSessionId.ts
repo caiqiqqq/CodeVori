@@ -55,6 +55,7 @@ export function useResolvedRemoteWorkspaceSessionId(
   preferredRemoteSessionId?: string | null,
   workspaceIdentity?: string | null,
   remoteTarget?: unknown,
+  scopeIsExplicit = false,
 ): string | null {
   const activeWorkspaceTab = useTabStore((state) => {
     if (!workspacePath || !state.activeTabId) {
@@ -74,13 +75,19 @@ export function useResolvedRemoteWorkspaceSessionId(
   });
 
   return useRemoteWorkspaceSessionStore((state) =>
-    resolveRemoteWorkspaceSessionIdForTarget({
-      workspacePath,
-      preferredRemoteSessionId,
-      workspaceIdentity,
-      remoteTarget,
-      activeTab: activeWorkspaceTab,
-      state,
-    }),
+    // 分屏 binding 已明确本地 scope，不能从同路径的当前远端标签补出 attachment。
+    scopeIsExplicit &&
+    !workspaceIdentity?.trim() &&
+    !preferredRemoteSessionId?.trim() &&
+    !remoteTarget
+      ? null
+      : resolveRemoteWorkspaceSessionIdForTarget({
+          workspacePath,
+          preferredRemoteSessionId,
+          workspaceIdentity,
+          remoteTarget,
+          activeTab: activeWorkspaceTab,
+          state,
+        }),
   );
 }

@@ -56,13 +56,47 @@ failure store on the connection. Errors do not fabricate Token or provider facts
 
 Project each turn's saved notices onto an optional shared turn-header notice field.
 Render them after that turn's content, outside the work-history fold, using the API
-`ChatErrorBanner` (details, copy, feedback). ACP operation/home errors reuse that
+`ChatErrorBanner` (details, copy). ACP operation/home errors reuse that
 component; remove duplicate footer errors already represented by the turn. Only
 existing supported operation actions are exposed; Agent action hints do not imply
 ZCode implements login, native retry or new-session recovery. Dismissal only changes
 the local operation overlay, never erases saved failures. No auto retry.
 Legacy `traceError` projects to a neutral error notice. Failed turns and partial
 assistant rows retain failed state after subsequent prompts and replay.
+
+Warnings are temporary presentation, not terminal errors. Only the current running
+turn projects warning banners; each warning is visible for five seconds and does
+not reappear on unrelated renders. A changed warning title/severity is a new
+presentation. Completed, interrupted and historical turns retain saved diagnostics
+but do not replay warning banners. Confirmed errors remain visible with details and
+copy actions. Remove error-specific report-issue actions, feedback drafts and their
+unused translations from both banners and subscription error panels; the general
+feedback center remains a separate feature.
+
+The ACP Host remains the sole owner of accepted progress and saved diagnostics.
+The warning component owns only local visibility: capture the turn's accepted
+assistant/tool/plan/compaction content when a warning appears, then hide it as soon
+as that content changes or the turn stops running. Header/notice revisions and
+unrelated renders are not progress. Preserve all saved failure revisions so stale
+notifications cannot resurrect a resolved incident at the Host. No timers decide
+whether a connection has recovered; the UI timer only expires a warning's display.
+No protocol/schema or owner/lease changes are needed. Desktop continuous updates
+and mobile replayable snapshots project the same Host state; historical warnings
+are not shown on either path.
+
+```mermaid
+sequenceDiagram
+  participant A as ACP Agent
+  participant H as Existing ACP Host owner
+  participant U as Desktop/mobile timeline
+  A->>H: scoped connection warning
+  H->>U: saved warning in running-turn snapshot
+  U->>U: show warning for up to five seconds
+  A->>H: accepted live progress for same command/generation
+  H->>U: accepted progress in continuous update / replayable snapshot
+  U->>U: hide warning on changed turn content; retain confirmed failures
+  H->>U: turn ends; warning banners no longer projected
+```
 
 Copying full error details shows success or clipboard failure feedback at the
 horizontal and vertical center of the originating session pane, for both API and
@@ -101,3 +135,8 @@ sequenceDiagram
 5. Error-copy feedback is centered in its originating pane on desktop split views
    and mobile, in both themes; resizing follows the pane, focus changes do not
    retarget it, clipboard failure uses the same position, and it auto-dismisses.
+6. Ordinary warnings auto-dismiss after five seconds without repeat on unrelated
+   renders; live recovery, turn completion and replay do not leave reconnect
+   warnings visible. Confirmed errors survive recovery and later successful turns.
+7. Error and subscription panels have no report-issue button or feedback draft path;
+   copy/details and supported reconnect/dismiss actions continue working.

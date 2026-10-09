@@ -18,6 +18,7 @@ export function getWorkTaskReadModel(
   };
   const key = JSON.stringify([
     scope.workspaceIdentity || scope.workspacePath,
+    scope.workspacePath,
     scope.remoteSessionId || "",
     includeArchived,
   ]);

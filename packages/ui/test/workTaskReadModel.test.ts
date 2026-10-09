@@ -133,4 +133,45 @@ test("identity fallback, attachment, archived view and Host instances isolate re
     getWorkTaskReadModel(h.service, remote, false),
     getWorkTaskReadModel(h.service, { ...remote, remoteSessionId: "b" }, false),
   );
+  assert.notEqual(
+    getWorkTaskReadModel(h.service, remote, false),
+    getWorkTaskReadModel(h.service, { ...remote, workspacePath: "/other" }, false),
+  );
+});
+
+test("successful mutation reuses its notification read without waiting or querying twice", async () => {
+  const h = host();
+  const read = getWorkTaskReadModel(h.service, scope, false);
+  const close = read.subscribe(() => {});
+  h.reads[0]!.resolve(board(1));
+  await settle();
+  const version = read.getEventVersion();
+  for (const listener of h.listeners) listener();
+  assert.equal(read.refreshAfterMutation(version), undefined);
+  assert.equal(h.reads.length, 2);
+  h.reads[1]!.resolve(board(2));
+  await settle();
+  read.refreshAfterMutation(version);
+  assert.equal(h.reads.length, 2, "completed notification must also prevent a redundant read");
+  assert.equal(read.getSnapshot().data?.concurrency, 2);
+  close();
+});
+
+test("mutation without notification starts background repair and list failure remains a read error", async () => {
+  const h = host();
+  const read = getWorkTaskReadModel(h.service, scope, false);
+  const close = read.subscribe(() => {});
+  h.reads[0]!.resolve(board(1));
+  await settle();
+  assert.equal(read.refreshAfterMutation(read.getEventVersion()), undefined);
+  assert.equal(h.reads.length, 2);
+  h.reads[1]!.reject(new Error("Synthetic list failed"));
+  await settle();
+  assert.equal(read.getSnapshot().data?.concurrency, 1);
+  assert.equal(read.getSnapshot().error, "Synthetic list failed");
+  for (const listener of h.listeners) listener();
+  h.reads[2]!.resolve(board(2));
+  await settle();
+  assert.equal(read.getSnapshot().error, null);
+  close();
 });

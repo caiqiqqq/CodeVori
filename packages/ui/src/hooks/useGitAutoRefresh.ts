@@ -27,6 +27,7 @@ export function useGitAutoRefresh({
   gitSummaryWorkspaceKey,
   enabled,
   onRefreshGit,
+  scopeIsExplicit = false,
 }: {
   workspacePath: string;
   workspaceIdentity?: string | null;
@@ -35,8 +36,15 @@ export function useGitAutoRefresh({
   gitSummaryWorkspaceKey: string;
   enabled: boolean;
   onRefreshGit: () => void;
+  scopeIsExplicit?: boolean;
 }) {
-  const workspaceServices = useWorkspaceServices(workspacePath, remoteSessionId, workspaceIdentity);
+  const workspaceServices = useWorkspaceServices(
+    workspacePath,
+    remoteSessionId,
+    workspaceIdentity,
+    undefined,
+    scopeIsExplicit,
+  );
   const { fileWatcherService, systemService } = workspaceServices;
   const refreshRef = useRef(onRefreshGit);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
