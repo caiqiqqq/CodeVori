@@ -32,7 +32,12 @@ export async function exerciseWorkTaskProjectReadRace(page, panel, card, assertB
   await page.getByRole("option", { name: "Project", exact: true }).click();
   await card("task-1").waitFor();
   await assertBoardOnly();
-  await panel.getByTestId("work-task-no-selection").waitFor();
+  await assertWorkTaskSessionTarget(
+    panel,
+    "acp",
+    "session-task-1",
+    "/synthetic/trees/task-1/project",
+  );
 }
 
 export async function assertWorkTaskCompactToolbar(panel) {

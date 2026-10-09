@@ -1,9 +1,11 @@
-import { useCallback, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { useStore } from "zustand";
 import { ListTodo, Play, Plus } from "lucide-react";
 import { isWorkTaskMerging, type WorkTask, type WorkTaskScope } from "@zcode/shared";
 import { useWorkTasks } from "@/hooks/useWorkTasks.js";
 import { useWorktreeProjectGroupsResolution } from "@/hooks/useWorktreeProjectGroups.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
+import { workTaskNavigationKey, workTaskNavigationStore } from "@/store/workTaskNavigationStore.js";
 import { workTaskProjectOptions } from "@/lib/workTaskProjectOptions.js";
 import {
   canCompleteWorkTask,
@@ -79,10 +81,10 @@ export function WorkTasksPanel(props: Props) {
         (props.workspaceIdentity?.trim() || props.workspacePath),
     ),
   )?.tab;
-  const [selection, setSelection] = useState<string | null>(null);
+  const selection = useStore(workTaskNavigationStore, (state) => state.project);
   // 普通对话不是任务项目；不能在未选项目时回退默认 cwd 并继承用户主目录仓库。
   const selected =
-    projects.find((tab) => (tab.workspaceIdentity?.trim() || tab.workspacePath) === selection) ??
+    projects.find((tab) => workTaskNavigationKey(tab) === selection) ??
     projects.find((tab) => tab === current) ??
     projects[0];
   const scope = selected
@@ -96,14 +98,22 @@ export function WorkTasksPanel(props: Props) {
         workspaceIdentity: props.workspaceIdentity,
         remoteSessionId: props.remoteSessionId,
       };
-  const key = scope.workspaceIdentity?.trim() || scope.workspacePath;
+  const key = workTaskNavigationKey(scope);
+  useEffect(() => {
+    // 项目关系确认后才保存默认选择，防止启动占位覆盖上次选中的项目。
+    if (hasResolvedRelations && !projectsLoading && selected)
+      workTaskNavigationStore.getState().selectProject(selected);
+  }, [hasResolvedRelations, projectsLoading, selected]);
   const header = (
     <header className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-3">
       <ListTodo className="size-4 shrink-0 text-foreground-subtle" />
       <h2 className="min-w-0 flex-1 text-ui-base font-medium">{t("title")}</h2>
       <Select
         value={selected ? key : ""}
-        onValueChange={setSelection}
+        onValueChange={(value) => {
+          const project = projects.find((tab) => workTaskNavigationKey(tab) === value);
+          if (project) workTaskNavigationStore.getState().selectProject(project);
+        }}
         disabled={projectsLoading || !projects.length}
       >
         <SelectTrigger
@@ -116,7 +126,7 @@ export function WorkTasksPanel(props: Props) {
         <SelectContent>
           {!projectsLoading &&
             options.map(({ tab, label, description }) => (
-              <SelectItem key={tab.id} value={tab.workspaceIdentity?.trim() || tab.workspacePath}>
+              <SelectItem key={workTaskNavigationKey(tab)} value={workTaskNavigationKey(tab)}>
                 <span className="flex min-w-0 flex-col" title={description}>
                   <span>{label}</span>
                   {description ? (
@@ -184,7 +194,8 @@ function WorkTasksBoard({
 }) {
   const t = useWorkTaskMessages();
   const [editor, setEditor] = useState<{ task: WorkTask | null } | null>(null);
-  const [selection, setSelection] = useState<string | null>(null);
+  const selectionKey = workTaskNavigationKey(scope);
+  const selection = useStore(workTaskNavigationStore, (state) => state.tasks[selectionKey] ?? null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [completionId, setCompletionId] = useState<string | null>(null);
   const [conversationView, setConversationView] = useState<{
@@ -214,12 +225,15 @@ function WorkTasksBoard({
   }, [onWorkspaceToolTargetChange, toolTarget]);
   useLayoutEffect(() => () => onWorkspaceToolTargetChange?.(null), [onWorkspaceToolTargetChange]);
   const details = panel.board?.tasks.find((task) => task.id === detailsId);
-  // Host 归档或取消任务后立即收起观察窗格，任务恢复可见时不能重开旧历史。
-  if (selection && panel.board && !panel.loading && !selected) setSelection(null);
+  useEffect(() => {
+    // 首次成功读取才能确认任务已不可见；断连、加载或读取失败不清除恢复位置。
+    if (selection && panel.board && !panel.loading && !panel.error && !selected)
+      workTaskNavigationStore.getState().clearTask(scope, selection);
+  }, [scope, selection, selected, panel.board, panel.loading, panel.error]);
   const columns = useMemo(() => groupWorkTasksByColumn(tasks), [tasks]);
   const selectTask = (id: string) => {
     setCompletionId(null);
-    setSelection(id);
+    workTaskNavigationStore.getState().selectTask(scope, id);
   };
   const openInline = (task: WorkTask) => selectTask(task.id);
   const requestCompletion = (task: WorkTask) => {
@@ -228,10 +242,12 @@ function WorkTasksBoard({
   const closeCompletion = useCallback((id: string) => {
     setCompletionId((current) => (current === id ? null : current));
   }, []);
-  const closeSelection = useCallback((id: string) => {
-    // 旧 pane 的迟到归档/删除事件只能关闭当时选择的任务。
-    setSelection((current) => (current === id ? null : current));
-  }, []);
+  const closeSelection = useCallback(
+    (id: string) => {
+      workTaskNavigationStore.getState().clearTask(scope, id);
+    },
+    [scope],
+  );
   const edit = (task: WorkTask) => {
     setDetailsId(null);
     setEditor({ task });
