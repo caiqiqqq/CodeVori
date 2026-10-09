@@ -444,6 +444,7 @@ import { createSubagentsService } from "./subagents/subagentsService.js";
 import { createCommandsService } from "./commands/commandsService.js";
 import { createHooksService } from "./hooks/hooksService.js";
 import { createMemoryService } from "./memory/memoryService.js";
+import { createProjectMemoryContext } from "./memory/projectMemoryContext.js";
 import { createSettingsSyncService } from "./settings-sync/settingsSyncService.js";
 import {
   createFeedbackService,
@@ -2397,6 +2398,10 @@ export function createLocalServices(options: {
     ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
   });
   const acpService = createAcpService({
+    memoryContext: createProjectMemoryContext({
+      cliStorageRoot: join(getZCodeDataRootDir(), "cli"),
+      isEnabled: async () => (await settingService.get()).memoryEnabled === true,
+    }),
     delegation: {
       register: (session) =>
         delegationMcp?.register(acpDelegationParent(session), session.createRequestId) ??
@@ -2641,6 +2646,18 @@ export function createLocalServices(options: {
     execute: (task, context) => workTaskExecution.execute(task, context),
     merge: createWorkTaskMerge(workTaskExecutionDependencies),
     conversation: createWorkTaskConversation({ acp: acpService, agent: zcodeAgentService }),
+    removeWorktree: async (task) => {
+      const allocation = task.worktree;
+      if (!allocation) throw new Error("work-task.not-cleanable");
+      const result = await gitService.removeManagedWorktree({
+        worktreeRootPath: allocation.rootPath,
+        worktreePath: allocation.path,
+        projectPath: allocation.projectPath,
+        expectedBranchName: allocation.branchName,
+        allowMissing: true,
+      });
+      if (!result.ok) throw new Error(`work-task.worktree-remove-${result.issue}`);
+    },
     allowExecution: !isDesktopAttachedRemote,
   });
   workTaskService.startScheduler();

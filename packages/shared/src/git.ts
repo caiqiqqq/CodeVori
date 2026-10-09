@@ -239,6 +239,10 @@ export interface GitManagedWorktreeRootRequest {
 export interface GitRemoveManagedWorktreeRequest extends GitManagedWorktreeRootRequest {
   projectPath: string;
   worktreePath: string;
+  /** Task cleanup must match the persisted allocation before removing a registered tree. */
+  expectedBranchName?: string;
+  /** Retry a completed removal; missing but still registered trees remain invalid. */
+  allowMissing?: boolean;
 }
 
 export type GitManagedWorktreeRemovalIssue =

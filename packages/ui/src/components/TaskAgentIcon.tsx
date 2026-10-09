@@ -1,4 +1,4 @@
-import { LoaderIcon } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { parseModelPickerValue, type ZCodeTaskMeta } from "@zcode/shared";
 import type { IProviderSettingsService, ProviderSettingsView } from "@zcode/services";
 import { cn } from "@/components/lib/utils.js";
@@ -82,12 +82,19 @@ function TaskAgentIconContent({
       {indicator !== "none" ? (
         <span
           data-task-status-indicator={indicator}
-          className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-card"
+          // 修复依据：10px 放射状转圈不易辨认；仅放大等待圆环并隔离品牌底色，保持原有状态优先级。
+          className={cn(
+            "absolute flex items-center justify-center rounded-full bg-card",
+            indicator === "loading"
+              ? "-bottom-1 -right-1 size-3.5 ring-2 ring-card"
+              : "-bottom-0.5 -right-0.5 size-2.5",
+          )}
         >
           {indicator === "loading" ? (
-            <LoaderIcon
+            <LoaderCircle
               data-task-running-indicator="true"
-              className="size-2.5 animate-spin text-task-running-indicator"
+              strokeWidth={3}
+              className="size-3.5 animate-spin text-task-running-indicator"
             />
           ) : (
             <span

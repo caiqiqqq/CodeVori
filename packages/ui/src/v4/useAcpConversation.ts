@@ -5,6 +5,7 @@ import type { IAcpService } from "@zcode/services";
 import type { AcpAgent, AcpPromptInput, AcpSession, AcpWorkspace } from "@zcode/shared";
 import { selectAcpSession } from "@/v4/composer/acpModelSelection.js";
 import { ACP_HOST_UPGRADE_REQUIRED, waitForAcpPromptAdmission } from "@/v4/acpPromptAdmission.js";
+import { visibleAcpQueueSubmission, type AcpQueueSubmission } from "@/v4/acpQueueProjection.js";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -34,7 +35,9 @@ export function useAcpConversation(
   );
   const error =
     errorState && (!errorState.agent || errorState.agent === agent) ? errorState.message : null;
-  const [sendingIds, setSendingIds] = useState<Set<string>>(() => new Set());
+  const [sendingInputs, setSendingInputs] = useState<
+    Map<string, AcpQueueSubmission & { queueing: boolean }>
+  >(() => new Map());
   const [reloadKey, setReloadKey] = useState(0);
   const submitting = useRef(new Set<string>());
   const retries = useRef(
@@ -57,11 +60,10 @@ export function useAcpConversation(
   ]);
   const [draftEpoch, setDraftEpoch] = useState(0);
   const [busyCounts, setBusyCounts] = useState<Record<string, number>>({});
-  const busy = Boolean(agent && busyCounts[`${targetKey}:${draftEpoch}:${agent}`]);
   const changeBusy = useCallback(
-    (activeAgent: AcpAgent | null, delta: number) => {
+    (activeAgent: AcpAgent | null, delta: number, sessionId?: string) => {
       if (!activeAgent) return;
-      const key = `${targetKey}:${draftEpoch}:${activeAgent}`;
+      const key = `${targetKey}:${draftEpoch}:${activeAgent}:${sessionId ?? "draft"}`;
       // 修复原因：旧智能体、工作区或草稿的迟到连接不能阻塞当前目标的配置和输入。
       setBusyCounts((previous) => {
         const count = Math.max(0, (previous[key] ?? 0) + delta);
@@ -88,6 +90,11 @@ export function useAcpConversation(
   const selected = agent
     ? selectAcpSession(scopedSessions, agent, selectedIds[agent] ?? null)
     : null;
+  // 修复原因：同 Agent 的 A 恢复可能迟迟不返回；切到 B 后只等待 B 的操作，
+  // 不能让 A 的计数占住 B 的配置/发送按钮。草稿连接仍绑定独立 epoch。
+  const busy = Boolean(
+    agent && busyCounts[`${targetKey}:${draftEpoch}:${agent}:${selected?.id ?? "draft"}`],
+  );
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const sessionsRef = useRef(sessions);
@@ -279,17 +286,22 @@ export function useAcpConversation(
     async (
       action: () => Promise<void>,
       nextAgent: AcpAgent | null,
+      sessionId?: string,
       isCurrent: () => boolean = () => true,
     ) => {
-      changeBusy(nextAgent, 1);
+      changeBusy(nextAgent, 1, sessionId);
       setErrorState(null);
       try {
         await action();
       } catch (cause) {
-        if (targetKeyRef.current === targetKey && isCurrent())
+        if (
+          targetKeyRef.current === targetKey &&
+          (!sessionId || selectedRef.current?.id === sessionId) &&
+          isCurrent()
+        )
           setErrorState({ agent: nextAgent, message: messageOf(cause) });
       } finally {
-        changeBusy(nextAgent, -1);
+        changeBusy(nextAgent, -1, sessionId);
       }
     },
     [changeBusy, targetKey],
@@ -364,6 +376,7 @@ export function useAcpConversation(
           setSelectedIds((previous) => ({ ...previous, [nextAgent]: session.id }));
         },
         nextAgent,
+        undefined,
         () => agentRef.current === nextAgent && createRequestIds.current.get(key) === requestId,
       );
     },
@@ -419,7 +432,7 @@ export function useAcpConversation(
       refreshed.current.add(session.id);
       const request = {};
       refreshRequests.current.set(session.id, request);
-      changeBusy(session.agent, 1);
+      changeBusy(session.agent, 1, session.id);
       void service
         .refresh({ ...target, id: session.id })
         .then((next) => {
@@ -455,7 +468,7 @@ export function useAcpConversation(
           )
             setErrorState({ agent: session.agent, message: messageOf(cause) });
         })
-        .finally(() => changeBusy(session.agent, -1));
+        .finally(() => changeBusy(session.agent, -1, session.id));
     },
     [changeBusy, closeArchivedSelection, service, target, targetKey],
   );
@@ -515,7 +528,6 @@ export function useAcpConversation(
       const key = `${targetKey}:${agent}:${selected.id}`;
       if (submitting.current.has(key)) throw new Error("ACP session is not ready");
       submitting.current.add(key);
-      setSendingIds((previous) => new Set(previous).add(key));
       setErrorState(null);
       // 修复原因：预连接时只保留 Host 内存草稿，首次发送沿用该原生会话并提交显示记录。
       // RPC ACK 丢失后，同一草稿重试继续复用 prompt 的幂等键。
@@ -527,26 +539,30 @@ export function useAcpConversation(
         JSON.stringify(retry.input.workspaceFiles) === JSON.stringify(input.workspaceFiles);
       const commandId = same ? retry.commandId : crypto.randomUUID();
       retries.current.set(key, { input, commandId });
+      // 修复原因：只等持久 ACK 才显示队列会造成几秒无正文反馈；发送锁同时持有临时摘要，
+      // 不写入 Host queue、不提前清草稿，live 接受或 ACK 后让位于权威投影。
+      setSendingInputs((previous) =>
+        new Map(previous).set(key, {
+          commandId,
+          text:
+            input.text.trim() ||
+            [
+              ...(input.attachments ?? []).map((item) => item.fileName),
+              ...(input.workspaceFiles ?? []),
+            ].join(", "),
+          queueing: selected.status === "running" || selected.queue.items.length > 0,
+        }),
+      );
       try {
-        const session =
-          selected.status === "running"
-            ? selected
-            : await service.refresh({ ...target, id: selected.id });
+        // 修复原因：打开时已完成 refresh；重复恢复 RPC 只延长发送等待。
+        // 连接失效仍由 Host submitPrompt 的唯一 admission/attach 路径核验。
+        const session = selected;
         if (
           targetKeyRef.current !== targetKey ||
           agentRef.current !== agent ||
           selectedRef.current?.id !== selected.id
         )
           throw new Error("ACP workspace changed while sending");
-        setSessions((previous) => {
-          const current = previous.find((item) => item.id === session.id);
-          const merged = current && current.revision > session.revision ? current : session;
-          return [
-            merged,
-            ...previous.filter((item) => item.id !== session.id && item.id !== selected?.id),
-          ];
-        });
-        setSelectedIds((previous) => ({ ...previous, [agent]: session.id }));
         const accepted = await waitForAcpPromptAdmission(service, target, {
           ...target,
           id: session.id,
@@ -574,8 +590,8 @@ export function useAcpConversation(
         throw cause;
       } finally {
         submitting.current.delete(key);
-        setSendingIds((previous) => {
-          const next = new Set(previous);
+        setSendingInputs((previous) => {
+          const next = new Map(previous);
           next.delete(key);
           return next;
         });
@@ -585,7 +601,8 @@ export function useAcpConversation(
   );
 
   const stop = useCallback(() => {
-    if (selected) void run(() => service.stop({ ...target, id: selected.id }), selected.agent);
+    if (selected)
+      void run(() => service.stop({ ...target, id: selected.id }), selected.agent, selected.id);
   }, [run, selected, service, target]);
 
   const queueAction = useCallback(
@@ -647,7 +664,7 @@ export function useAcpConversation(
         busy
       )
         throw new Error("ACP session is not ready");
-      changeBusy(selected.agent, 1);
+      changeBusy(selected.agent, 1, selected.id);
       setErrorState(null);
       try {
         await service.setConfigOption({
@@ -663,7 +680,7 @@ export function useAcpConversation(
           setErrorState({ agent: selected.agent, message: messageOf(cause) });
         throw cause;
       } finally {
-        changeBusy(selected.agent, -1);
+        changeBusy(selected.agent, -1, selected.id);
       }
     },
     [busy, changeBusy, loaded, selected, service, target, targetKey],
@@ -674,18 +691,27 @@ export function useAcpConversation(
         void run(
           () => service.decide({ ...target, id: selected.id, requestId, optionId }),
           selected.agent,
+          selected.id,
         );
     },
     [run, selected, service, target],
   );
   const remove = useCallback(() => {
     if (!selected) return;
-    void run(async () => {
-      await service.remove({ ...target, id: selected.id });
-      if (targetKeyRef.current !== targetKey) return;
-      setSessions((previous) => previous.filter((item) => item.id !== selected.id));
-      setSelectedIds((previous) => ({ ...previous, [selected.agent]: undefined }));
-    }, selected.agent);
+    void run(
+      async () => {
+        await service.remove({ ...target, id: selected.id });
+        if (targetKeyRef.current !== targetKey) return;
+        setSessions((previous) => previous.filter((item) => item.id !== selected.id));
+        setSelectedIds((previous) =>
+          previous[selected.agent] === selected.id
+            ? { ...previous, [selected.agent]: undefined }
+            : previous,
+        );
+      },
+      selected.agent,
+      selected.id,
+    );
   }, [run, selected, service, target, targetKey]);
   const select = useCallback(
     (session: AcpSession) => {
@@ -753,6 +779,8 @@ export function useAcpConversation(
     }
   }, [agent, connectNew, loaded, refreshSession, selected, selectedIds]);
 
+  const sendingInput =
+    agent && selected ? sendingInputs.get(`${targetKey}:${agent}:${selected.id}`) : null;
   return {
     selected,
     loaded,
@@ -761,7 +789,9 @@ export function useAcpConversation(
     ),
     error,
     busy,
-    sending: Boolean(agent && selected && sendingIds.has(`${targetKey}:${agent}:${selected.id}`)),
+    sending: Boolean(sendingInput),
+    queueSubmission:
+      selected && sendingInput?.queueing ? visibleAcpQueueSubmission(selected, sendingInput) : null,
     create,
     send,
     queueActions,

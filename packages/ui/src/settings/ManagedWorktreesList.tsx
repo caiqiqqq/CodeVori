@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FolderGit2, MessageSquare, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { toast } from "@/components/ui/toast.js";
@@ -9,7 +9,8 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { getPathLeaf } from "@/lib/path.js";
 import {
   requestWorktreeSettingsConversation,
-  type WorktreeSettingsConversationTarget,
+  resolveWorktreeSettingsConversation,
+  type WorktreeHistoryConversationTarget,
 } from "@/lib/worktreeSettingsNavigation.js";
 import { logger } from "@/logger.js";
 import { useTabStoreApi } from "@/store/TabStoreProvider.js";
@@ -30,17 +31,33 @@ export function ManagedWorktreesList({
   const { projects, conversations, failedPaths, loading, error, refresh } =
     useManagedWorktrees(root);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const navigationVersion = useRef(0);
+  useEffect(
+    () => () => {
+      navigationVersion.current += 1;
+    },
+    [root, services],
+  );
   const t = (id: string) => intl.formatMessage({ id });
 
   const navigate = useCallback(
-    (target: WorktreeSettingsConversationTarget) => {
-      const workspacePath =
-        target.kind === "api" ? target.workspacePath : target.session.workspacePath;
-      // addTab 只复用本地 tab；同路径的远程连接不能接管 Git 本机工作树对话。
-      tabStore.getState().addTab(workspacePath);
-      requestWorktreeSettingsConversation(target);
+    async (projectPath: string, target: WorktreeHistoryConversationTarget) => {
+      const version = ++navigationVersion.current;
+      try {
+        const resolved = await resolveWorktreeSettingsConversation(
+          services.workTaskService,
+          projectPath,
+          target,
+        );
+        // 归属读取可能晚于下一次点击/换目录；迟到结果不能覆盖用户的新导航。
+        if (version === navigationVersion.current) requestWorktreeSettingsConversation(resolved);
+      } catch (cause) {
+        if (version !== navigationVersion.current) return;
+        logger.warn("[ManagedWorktreesList] 读取待办对话归属失败", { cause });
+        toast(intl.formatMessage({ id: "settings.worktrees.conversationsFailed" }));
+      }
     },
-    [tabStore],
+    [services, intl],
   );
 
   const remove = useCallback(
@@ -198,7 +215,8 @@ export function ManagedWorktreesList({
                       type="button"
                       className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-ui-sm text-foreground hover:bg-surface-hover"
                       onClick={() =>
-                        navigate(
+                        void navigate(
+                          project.projectPath,
                           conversation.kind === "api"
                             ? {
                                 kind: "api",

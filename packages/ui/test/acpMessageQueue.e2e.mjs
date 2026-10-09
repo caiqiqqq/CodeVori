@@ -33,6 +33,7 @@ try {
       import '../../../ui/src/styles.css';
       const workspacePath='/synthetic/queue';
       const listeners=new Set(); const events=[];
+      let holdNext=false, held=null, dropAcceptance=false;
       let snapshot={id:crypto.randomUUID(),agent:'codex',workspacePath,acpSessionId:'native-fixture',
         title:'queue fixture',revision:1,status:'running',entries:[{id:'user:first',kind:'user',text:'first task'}],
         configOptions:[],modeState:null,contextUsage:null,usageTurns:[],goal:null,pendingPermission:null,error:null,
@@ -45,7 +46,7 @@ try {
         listAvailableAgents:async()=>[{agent:'codex',available:true}],listAgentConfigs:async()=>[],
         listPlugins:async()=>[], onDynamicAgentConfigsChanged:()=>()=>({dispose(){}}),
         onDynamicSessionChanged:()=>listener=>{listeners.add(listener);return {dispose:()=>listeners.delete(listener)}} ,
-        submitPrompt:async input=>{events.push('prompt:'+input.text);snapshot.queue.items.push({commandId:input.commandId,text:input.text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});return publish()},
+        submitPrompt:async input=>{events.push('prompt:'+input.text);if(holdNext){holdNext=false;await new Promise((resolve,reject)=>held={input,resolve,reject});}if(!snapshot.queue.items.some(item=>item.commandId===input.commandId))snapshot.queue.items.push({commandId:input.commandId,text:input.text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});if(dropAcceptance){dropAcceptance=false;snapshot.revision++;return copy()}return publish()},
         editQueueItem:async ({queueItemId,text})=>{requireItem(queueItemId).text=text;events.push('edit');return publish()},
         deleteQueueItem:async ({queueItemId})=>{requireItem(queueItemId);snapshot.queue.items=snapshot.queue.items.filter(item=>item.commandId!==queueItemId);events.push('delete');return publish()},
         reorderQueueItem:async ({queueItemId,beforeQueueItemId})=>{const item=requireItem(queueItemId);snapshot.queue.items=snapshot.queue.items.filter(candidate=>candidate!==item);const index=beforeQueueItemId?snapshot.queue.items.findIndex(item=>item.commandId===beforeQueueItemId):snapshot.queue.items.length;snapshot.queue.items.splice(index,0,item);events.push('move');return publish()},
@@ -63,7 +64,7 @@ try {
       const platform={isMacOS:false,isWindows:false,isLinux:false,isWeb:true};
       function Fixture(){
         const [epoch,setEpoch]=useState(0);
-        window.__queue={events,read:copy,replay:()=>{publish();setEpoch(n=>n+1)},pause:()=>{snapshot.queue.autoDrain=false;snapshot.queue.pauseReason='error';publish()}};
+        window.__queue={events,read:copy,hold:()=>holdNext=true,release:()=>{held?.resolve();held=null},reject:()=>{held?.reject(Error('synthetic admission failed'));held=null},acceptBeforeAck:()=>{const input=held.input;snapshot.queue.items.push({commandId:input.commandId,text:input.text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});publish()},dropAcceptance:()=>dropAcceptance=true,replay:()=>{publish();setEpoch(n=>n+1)},pause:()=>{snapshot.queue.autoDrain=false;snapshot.queue.pauseReason='error';publish()}};
         return <main className="h-screen bg-background text-foreground p-2" data-fixture-ready="true">
           <SessionPane key={epoch} paneId="queue-fixture" workspacePath={workspacePath} sessionId={null} focused
             acpBoundSessionId={snapshot.id} acpOpenRequest={{requestId:epoch+1,session:copy()}} />
@@ -84,6 +85,60 @@ try {
       throw new Error(errors.join("\n") || error.message);
     });
     await page.locator('[data-testid="v4-stop"]').waitFor();
+    const pending = page.locator('[data-testid="v4-queue-submission"]');
+    // No timer: the Host stays unaccepted until explicitly released by this test.
+    await page.evaluate(() => window.__queue.hold());
+    await input.fill("delayed admission");
+    await page.locator('[data-testid="v4-composer-send"]').click();
+    await pending.waitFor({ timeout: 1000 });
+    assert.match(await pending.textContent(), /delayed admission.*正在添加/);
+    assert.equal(await pending.locator("button").count(), 0);
+    assert.equal(await page.evaluate(() => window.__queue.read().queue.items.length), 0);
+    assert.equal(
+      await page.locator('[data-testid="v4-queue"]').getAttribute("data-queue-count"),
+      "0",
+    );
+    assert.equal(await input.textContent(), "delayed admission");
+    await page.screenshot({ path: join(artifacts, `pending-${width}.png`) });
+    // Failure rolls back feedback only. Retry must keep the commandId and original draft.
+    const failedCommandId = await pending.getAttribute("data-command-id");
+    await page.evaluate(() => window.__queue.reject());
+    await pending.waitFor({ state: "detached" });
+    assert.equal(await input.textContent(), "delayed admission");
+    await page.evaluate(() => window.__queue.hold());
+    await page.locator('[data-testid="v4-composer-send"]').click();
+    await pending.waitFor({ timeout: 1000 });
+    assert.equal(await pending.getAttribute("data-command-id"), failedCommandId);
+    await input.fill("new input during admission");
+    // Live acceptance before ACK replaces pending without two copies of the same command.
+    await page.evaluate(() => window.__queue.acceptBeforeAck());
+    await pending.waitFor({ state: "detached" });
+    await page.locator(`[data-testid="v4-queue-item-${failedCommandId}"]`).waitFor();
+    assert.equal(await input.textContent(), "new input during admission");
+    await page.evaluate(() => window.__queue.release());
+    await page.waitForFunction(
+      () => !document.querySelector('[data-testid="v4-composer-send"]')?.disabled,
+    );
+    assert.equal(await input.textContent(), "new input during admission");
+    await page.locator(`[data-testid="v4-queue-item-delete-${failedCommandId}"]`).click();
+    await page.waitForFunction(() => window.__queue.read().queue.items.length === 0);
+
+    // Direct ACK is sufficient even if no live acceptance notification is delivered.
+    await page.evaluate(() => {
+      window.__queue.hold();
+      window.__queue.dropAcceptance();
+    });
+    await input.fill("silent admission");
+    await page.locator('[data-testid="v4-composer-send"]').click();
+    await pending.waitFor({ timeout: 1000 });
+    const silentCommandId = await pending.getAttribute("data-command-id");
+    await page.evaluate(() => window.__queue.release());
+    await pending.waitFor({ state: "detached" });
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="v4-composer-input"]')?.textContent === "",
+    );
+    await page.locator(`[data-testid="v4-queue-item-delete-${silentCommandId}"]`).click();
+    await page.waitForFunction(() => window.__queue.read().queue.items.length === 0);
     const send = async (text) => {
       await input.fill(text);
       await page.locator('[data-testid="v4-composer-send"]').click();
@@ -156,7 +211,7 @@ try {
     await page.close();
   }
   console.log(
-    `PASS: running composer admission, edit/delete/drag/send-now/resume and replay at 1280/375px in both themes. Screenshots: ${artifacts}`,
+    `PASS: immediate pending feedback, failure/retry, live-before-ACK, silent ACK, newer drafts, running composer admission, edit/delete/drag/send-now/resume and replay at 1280/375px in both themes. Screenshots: ${artifacts}`,
   );
 } finally {
   await browser?.close();

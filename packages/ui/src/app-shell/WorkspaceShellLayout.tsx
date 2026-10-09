@@ -45,10 +45,7 @@ import {
 } from "@/v4/composer/composerDraftStore.js";
 import type { AcpAgent } from "@zcode/shared";
 import { resolveWorktreeRootPath } from "@/lib/worktree.js";
-import {
-  listenWorktreeSettingsConversation,
-  consumeWorktreeSettingsConversation,
-} from "@/lib/worktreeSettingsNavigation.js";
+import { useWorktreeSettingsConversation } from "@/hooks/useWorktreeSettingsConversation.js";
 import { ChatEmptyWorkspacePreviewMenu } from "@/ChatEmptyState.js";
 import { DesktopTopOverlay } from "@/DesktopTopOverlay.js";
 import { DesktopWindowFrame } from "@/DesktopWindowFrame.js";
@@ -1482,15 +1479,11 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     },
     [handleSelectAcpSession, handleSelectTaskInChat, tabStoreApi],
   );
-  useEffect(
-    () =>
-      listenWorktreeSettingsConversation((target) => {
-        consumeWorktreeSettingsConversation(target);
-        if (target.kind === "acp") handleSelectAcpSession(target.session);
-        else handleSelectTaskInChat(target.workspacePath, target.taskId);
-      }),
-    [handleSelectAcpSession, handleSelectTaskInChat],
-  );
+  useWorktreeSettingsConversation({
+    selectAcp: handleSelectAcpSession,
+    selectApi: handleSelectTaskInChat,
+    openWorkTasks: handleOpenWorkTasks,
+  });
   const activeWorkspacePurpose =
     workspaceTabs.find(
       (tab) =>
@@ -2012,7 +2005,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                     pluginStoreActive={workspaceMainView === "plugin-store"}
                     onOpenRepository={() => handleOpenRepository()}
                     repositoryActive={workspaceMainView === "repository"}
-                    onOpenWorkTasks={handleOpenWorkTasks}
+                    onOpenWorkTasks={() => handleOpenWorkTasks()}
                     workTasksActive={workspaceMainView === "work-tasks"}
                     onFileTreeOpenChange={setIsSidebarFileTreeOpen}
                   />

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   appendAcpConversationEntry,
   finishAcpThoughts,
+  finishAcpTurn,
   type AcpConversationUpdate,
 } from "./acpConversationEntries.js";
 import {
@@ -67,6 +68,7 @@ import type { ISkillsService } from "../skills/skills.js";
 import type { IAcpService } from "./acpService.js";
 import { AcpSessionLoadError, connectAcpAgent } from "./acpStdioConnection.js";
 import { buildAcpPromptBlocks } from "./acpPromptBlocks.js";
+import type { ProjectMemoryContext } from "../memory/projectMemoryContext.js";
 import { AcpQueueGate } from "./acpQueueGate.js";
 import { AcpAttachmentStore } from "./acpAttachmentStore.js";
 import { projectAcpPluginMcpServers } from "./acpMcpServers.js";
@@ -174,6 +176,7 @@ export function createAcpService(
     directory?: string;
     connect?: AcpConnectionFactory;
     agentManager?: AcpAgentManager;
+    memoryContext?: ProjectMemoryContext;
     mcpSyncService?: Pick<IMcpSyncService, "loadMcpFromUserDirectory">;
     skillsService?: Pick<ISkillsService, "buildPromptContext"> &
       Partial<Pick<ISkillsService, "list">>;
@@ -981,6 +984,7 @@ export function createAcpService(
           queueTasks.delete(session.id);
           scheduleWorkflowNotifications(session);
           void mutate(session, () => {
+            finishAcpTurn(session, commandId, receivedAt);
             session.pendingPermission = null;
             session.status = "interrupted";
             session.usageBaselineKnown = false;
@@ -1458,6 +1462,12 @@ export function createAcpService(
         ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
         prompt: prompt.text,
       });
+      // 记忆由目标 Host 读取，不能借用桌面路径；只附加到模型请求，保留用户原始历史。
+      const memoryContext = await options.memoryContext?.buildPromptContext({
+        workspacePath: session.workspacePath,
+        ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
+        ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
+      });
       const blocks = await buildAcpPromptBlocks({
         text: buildAcpPluginPrompt(
           skillContext?.prompt ?? prompt.text,
@@ -1470,6 +1480,7 @@ export function createAcpService(
         attachments: prompt.attachments,
         capabilities: port.promptCapabilities,
       });
+      if (memoryContext) blocks.push({ type: "text", text: memoryContext });
       if (!ownsRun() || removed.has(session.id) || disposed || connections.get(session.id) !== port)
         return structuredClone(session);
       // 图片必须保存发送时的内容；快照只记录引用，不能把临时路径或 base64 当成历史。
@@ -1583,6 +1594,7 @@ export function createAcpService(
       await queueGate.run(session.id, async () => {
         if (ownsRun() && connections.get(session.id) === port && !disposed) {
           await mutate(session, () => {
+            finishAcpTurn(session, commandId, completedAt);
             recordAcpPromptUsage(session, commandId, usage);
             recordNativeUsage(session, port);
             // 修复原因：Codex 的结构化失败也返回 end_turn；不能以 RPC 成功判断本轮成功。
@@ -1635,6 +1647,7 @@ export function createAcpService(
             throw error;
           }
           await mutate(session, () => {
+            finishAcpTurn(session, commandId, interruptedAt);
             session.status = "interrupted";
             session.queue.autoDrain = false;
             session.queue.pauseReason = "error";
@@ -1704,6 +1717,7 @@ export function createAcpService(
       if (!hadActive) return;
       settlePermission(session.id, stoppedAt);
       await mutate(session, () => {
+        finishAcpTurn(session, commandId, stoppedAt);
         finishAcpThoughts(session, "interrupted", stoppedAt);
         session.status = "idle";
         session.usageBaselineKnown = false;
