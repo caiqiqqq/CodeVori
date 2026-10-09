@@ -26,9 +26,7 @@ import {
 } from "./components/ui/dialog.js";
 import { cn } from "./components/lib/utils.js";
 import { toast } from "./components/ui/toast.js";
-import { useFeedbackStore } from "@/feedback/feedbackStore.js";
 import { getProviderBusinessErrorMessageId } from "@/lib/providerBusinessError.js";
-import { buildErrorFeedbackDescription } from "@/lib/errorFeedbackDraft.js";
 import {
   isSuspiciousEmptyModelResultMessage,
   resolveOffPeakTicketExpiredBusinessCode,
@@ -64,7 +62,7 @@ function isModelConfigMissingError(error: Pick<ZCodeUiError, "code" | "message">
   // 桌面端发送前 registry 为空时，agent 会退回 CLI config 并抛 Model config is missing。
   // 真实原因是“当前没有可用模型”，不能把 CLI 配置路径直接暴露给桌面用户。
   // 这里只按结构化 code 识别，避免 UNKNOWN/SEND_FAILED 等包装错误的可读 message
-  // 碰巧包含同一段文本时被误判，并连带隐藏复制、反馈等诊断入口。
+  // 碰巧包含同一段文本时被误判，并连带隐藏复制等诊断入口。
   return Boolean(error.code && MODEL_CONFIG_MISSING_CODES.has(error.code));
 }
 
@@ -120,7 +118,6 @@ export function ChatErrorBanner({
   onOpenModelSettings?: () => void;
 }) {
   const { intl } = useZCodeIntl();
-  const openFeedbackSubmit = useFeedbackStore((state) => state.openSubmit);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const actionButtonClassName = "shrink-0";
   const iconButtonClassName = "shrink-0";
@@ -130,25 +127,6 @@ export function ChatErrorBanner({
   if (shouldSuppressChatErrorBanner(error)) {
     return null;
   }
-
-  const handleOpenFeedback = async () => {
-    openFeedbackSubmit({
-      title: localizedErrorMessage.slice(0, 80),
-      type: "bug",
-      module: "模型调用报错",
-      severity: "P2-中",
-      includeLogs: false,
-      description: buildErrorFeedbackDescription({
-        message: localizedErrorMessage,
-        detail: error.detail,
-        traceId: error.traceId,
-        formatMessage: (id: string, values?: Record<string, string>) =>
-          intl.formatMessage({ id }, values),
-      }),
-      screenshots: [],
-    });
-    toast(intl.formatMessage({ id: "chat.error.feedbackOpened" }));
-  };
 
   const handleCopyError = async (event: MouseEvent<HTMLButtonElement>) => {
     // 默认 Toast 固定在窗口顶部，会挡住会话标题；在 await 前捕获来源，避免切换焦点后错位。
@@ -273,26 +251,6 @@ export function ChatErrorBanner({
           >
             <CopyIcon className="size-3.5" />
             {intl.formatMessage({ id: "chat.error.copyFull" })}
-          </Button>
-        ) : null}
-
-        {/* 错误横幅本身就是异常态，不能再经过 Radix Tooltip 的 Popper/Slot 状态链。
-            这里改成普通 Button，避免无可用模型等错误触发横幅时发生 Maximum update depth 循环。 */}
-        {!modelConfigMissing ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void handleOpenFeedback();
-            }}
-            // ChatErrorBanner 这里之前混用了原生 button，导致按钮体系、焦点态和禁用态都绕开了设计系统。
-            // 统一收口到 Button 组件后，错误横幅里的所有操作按钮才能保持同一套交互和主题表现。
-            className={cn(actionButtonClassName)}
-            aria-label={intl.formatMessage({ id: "chat.error.feedback" })}
-            title={error.traceId}
-          >
-            {intl.formatMessage({ id: "chat.error.feedback" })}
           </Button>
         ) : null}
 
