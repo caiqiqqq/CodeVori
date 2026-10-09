@@ -175,9 +175,18 @@ test("stop saves pending chunks and rejects late text from the stopped generatio
   try {
     const updates = Array.from({ length: 128 }, () => f.update({ kind: "text", text: "停" }));
     await f.service.stop(f.target);
+    const stopped = await f.disk();
+    const user = stopped.entries[0]!;
+    assert.ok(user.kind === "user" && user.endedAt !== undefined);
     await Promise.all(updates);
+    await f.turn;
     await f.update({ kind: "text", text: "迟到" });
     assert.equal(textOf(await f.disk()), "停".repeat(128));
+    assert.deepEqual(
+      (await f.disk()).entries[0],
+      user,
+      "Late prompt completion must not rewrite stopped time",
+    );
     assert.equal((await f.disk()).status, "idle");
     assert.equal(f.changes.at(-1)?.status, "idle");
   } finally {
@@ -193,6 +202,16 @@ test("Host shutdown waits for pending stream persistence and suppresses late bro
     assert.equal(textOf(await f.disk()), "关".repeat(128));
     assert.equal(f.changes.length, 0);
     await Promise.all(updates);
+    const restarted = createAcpService({ directory: f.directory });
+    try {
+      const restored = await restarted.read(f.target);
+      assert.equal(restored.status, "interrupted");
+      const user = restored.entries[0]!;
+      assert.ok(user.kind === "user");
+      assert.equal(user.endedAt, undefined, "Host recovery cannot invent the old turn's end time");
+    } finally {
+      await restarted.disposeAllAndWait();
+    }
   } finally {
     await f.cleanup();
   }

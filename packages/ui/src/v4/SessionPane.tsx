@@ -5276,7 +5276,6 @@ export function SessionPane({
               }
               scrollMemoryKey={acpAgent ? null : timelineScrollMemoryKey}
               rowContext={acpAgent ? acpRowContext : rowContext}
-              workDurationAvailable={!acpAgent}
               onFork={!acpAgent && forkActionsEnabled ? handleFork : undefined}
               onRetry={!acpAgent && retryActionsEnabled ? handleRetry : undefined}
               onFeedbackChange={
