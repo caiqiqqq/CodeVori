@@ -1,7 +1,8 @@
 import { lazy, Suspense } from "react";
 import { Check, ChevronLeft, GitMerge, Info, MessageSquare, X } from "lucide-react";
 import { isWorkTaskMerging, type WorkTask } from "@zcode/shared";
-import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
+import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
+import { workTaskSelectionKey } from "@/store/workTaskNavigationStore.js";
 import { canCompleteWorkTask } from "@/lib/workTaskBoard.js";
 import { Button } from "@/components/ui/button.js";
 import { workTaskConversationBinding } from "@/lib/workTaskConversation.js";
@@ -50,7 +51,7 @@ export function WorkTaskConversationPane({
   onToggleMergeConversation,
 }: {
   task: WorkTask | null;
-  panel: ReturnType<typeof useWorkTasks>;
+  panel: WorkTaskPanel;
   options?: WorkTaskConversationOptions;
   workspaceTools?: WorkTaskConversationTools;
   onClose(id: string): void;
@@ -151,7 +152,12 @@ export function WorkTaskConversationPane({
             {binding ? (
               <ScopedErrorBoundary
                 scope="work-task-conversation"
-                resetKeys={[task.id, binding.kind, binding.workspacePath, binding.sessionId]}
+                resetKeys={[
+                  workTaskSelectionKey(task),
+                  binding.kind,
+                  binding.workspacePath,
+                  binding.sessionId,
+                ]}
                 variant="panel"
                 className="h-full"
               >
@@ -163,7 +169,7 @@ export function WorkTaskConversationPane({
                   }
                 >
                   <WorkTaskSessionView
-                    key={`${task.id}:${binding.kind}:${binding.sessionId}:${binding.workspacePath}`}
+                    key={`${workTaskSelectionKey(task)}:${binding.kind}:${binding.sessionId}:${binding.workspacePath}`}
                     task={task}
                     binding={binding}
                     readOnly={
@@ -178,7 +184,7 @@ export function WorkTaskConversationPane({
                 </Suspense>
               </ScopedErrorBoundary>
             ) : (
-              <WorkTaskPendingConversation key={task.id} task={task} />
+              <WorkTaskPendingConversation key={workTaskSelectionKey(task)} task={task} />
             )}
           </div>
         </>
