@@ -108,100 +108,97 @@ export function WorkTaskExecutionControls({
     });
   };
   return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <span className="text-ui-sm text-foreground-subtle">{t("executor")}</span>
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <ModelConfigSelect
-          modelGroups={groups}
-          normalizedValue={value}
-          triggerLabel={resolveModelDisplayName(groups, value) ?? t("selectModel")}
-          showManageModelsAction={false}
-          lockReasonMessage={t("executorLocked")}
-          isItemLocked={(candidate) =>
-            lockedExecutor &&
-            (task?.execution.kind === "acp"
-              ? candidate !== acpModelValue(task.execution.agent)
-              : !!acpAgentFromModelValue(candidate))
+    <>
+      <ModelConfigSelect
+        modelGroups={groups}
+        normalizedValue={value}
+        triggerLabel={resolveModelDisplayName(groups, value) ?? t("selectModel")}
+        showManageModelsAction={false}
+        lockReasonMessage={t("executorLocked")}
+        isItemLocked={(candidate) =>
+          lockedExecutor &&
+          (task?.execution.kind === "acp"
+            ? candidate !== acpModelValue(task.execution.agent)
+            : !!acpAgentFromModelValue(candidate))
+        }
+        onValueChange={selectModel}
+        onOpenChange={(open) => {
+          if (open) {
+            models.refreshAgents();
+            void models.refreshConfigs();
           }
-          onValueChange={selectModel}
-          onOpenChange={(open) => {
-            if (open) {
-              models.refreshAgents();
-              void models.refreshConfigs();
-            }
-          }}
+        }}
+        disabled={busy}
+        focusSelectorOnClose={null}
+        triggerTestId="work-task-model"
+        contentSide="bottom"
+        labelVisibilityClassName="inline-flex min-w-0 truncate"
+        triggerClassName="max-w-full"
+      />
+      {execution?.kind === "api" ? (
+        <WorkTaskApiConfigControls
+          execution={execution}
+          thought={thought}
           disabled={busy}
-          focusSelectorOnClose={null}
-          triggerTestId="work-task-model"
-          contentSide="bottom"
-          labelVisibilityClassName="inline-flex min-w-0 truncate"
-          triggerClassName="max-w-full"
+          onChange={changeExecution}
         />
-        {execution?.kind === "api" ? (
-          <WorkTaskApiConfigControls
-            execution={execution}
-            thought={thought}
+      ) : agent ? (
+        <div className="min-w-0 max-w-full [&>div]:flex-wrap">
+          <AcpComposerConfigControls
+            agent={agent}
+            options={options}
+            modes={modes}
             disabled={busy}
-            onChange={changeExecution}
+            loading={models.configStatus === "loading" && !options.length && !modes}
+            onChange={updateAcpOption}
+            defaultOption={{
+              label: t("agentDefault"),
+              selectedIds: (options.length
+                ? options.map((option) => option.id)
+                : modes
+                  ? ["mode"]
+                  : []
+              ).filter(
+                (id) =>
+                  execution?.kind === "acp" &&
+                  !execution.config.some((item) => item.configId === id),
+              ),
+              onSelect: useAgentDefault,
+            }}
+            focusSelectorOnClose={null}
           />
-        ) : agent ? (
-          <div className="min-w-0 [&>div]:flex-wrap">
-            <AcpComposerConfigControls
-              agent={agent}
-              options={options}
-              modes={modes}
-              disabled={busy}
-              loading={models.configStatus === "loading" && !options.length && !modes}
-              onChange={updateAcpOption}
-              defaultOption={{
-                label: t("agentDefault"),
-                selectedIds: (options.length
-                  ? options.map((option) => option.id)
-                  : modes
-                    ? ["mode"]
-                    : []
-                ).filter(
-                  (id) =>
-                    execution?.kind === "acp" &&
-                    !execution.config.some((item) => item.configId === id),
-                ),
-                onSelect: useAgentDefault,
-              }}
-              focusSelectorOnClose={null}
-            />
-            {models.configStatus !== "loading" &&
-            !options.length &&
-            !modes &&
-            execution?.kind === "acp" &&
-            !execution.config.length ? (
-              <span
-                data-testid="work-task-agent-default"
-                className="text-ui-sm text-foreground-subtle"
-              >
-                {t("agentDefault")}
-              </span>
-            ) : null}
-            {execution?.kind === "acp"
-              ? execution.config
-                  .filter(
-                    (item) =>
-                      !options.some((option) => option.id === item.configId) &&
-                      !(item.configId === "mode" && modes),
-                  )
-                  .map((item) => (
-                    <span
-                      key={item.configId}
-                      className="break-all font-mono text-ui-sm text-foreground-subtle"
-                    >
-                      {item.configId}: {String(item.value)}
-                    </span>
-                  ))
-              : null}
-          </div>
-        ) : null}
-      </div>
+          {models.configStatus !== "loading" &&
+          !options.length &&
+          !modes &&
+          execution?.kind === "acp" &&
+          !execution.config.length ? (
+            <span
+              data-testid="work-task-agent-default"
+              className="text-ui-sm text-foreground-subtle"
+            >
+              {t("agentDefault")}
+            </span>
+          ) : null}
+          {execution?.kind === "acp"
+            ? execution.config
+                .filter(
+                  (item) =>
+                    !options.some((option) => option.id === item.configId) &&
+                    !(item.configId === "mode" && modes),
+                )
+                .map((item) => (
+                  <span
+                    key={item.configId}
+                    className="break-all font-mono text-ui-sm text-foreground-subtle"
+                  >
+                    {item.configId}: {String(item.value)}
+                  </span>
+                ))
+            : null}
+        </div>
+      ) : null}
       {agent && models.configError ? (
-        <div className="flex min-w-0 items-start gap-1">
+        <div className="flex min-w-0 basis-full items-start gap-1">
           <WorkTaskError error={t("configReadFailed", { message: models.configError })} />
           <WorkTaskIconButton
             label={t("configRetry")}
@@ -215,6 +212,6 @@ export function WorkTaskExecutionControls({
           </WorkTaskIconButton>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

@@ -4,6 +4,7 @@ import {
   type ForgeItemExtras,
   type ForgeMergeMethod,
 } from "@zcode/shared";
+import { readForgeIssueOptions, forgeIssueAttributes } from "./forgeIssueOptions.js";
 import type { ForgeProviderAdapter } from "./forgeProvider.js";
 import {
   author,
@@ -212,6 +213,9 @@ export function createGitlabForgeProvider(
     async listLabels() {
       return labels((await api(`${repo}/labels`, { per_page: 100 })).data);
     },
+    getIssueOptions() {
+      return readForgeIssueOptions(api, repo, "gitlab");
+    },
     async createIssue(request) {
       return item(
         record(
@@ -219,7 +223,14 @@ export function createGitlabForgeProvider(
             await api(
               `${repo}/issues`,
               {},
-              { method: "POST", body: { title: request.title, description: request.body } },
+              {
+                method: "POST",
+                body: {
+                  title: request.title,
+                  description: request.body,
+                  ...forgeIssueAttributes(request, "gitlab"),
+                },
+              },
             )
           ).data,
         ),

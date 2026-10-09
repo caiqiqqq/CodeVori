@@ -218,20 +218,23 @@ export function WorkTaskEditor({
               {t(useWorktree ? "worktreeHint" : "directBranchHint")}
             </p>
           </div>
-          <WorkTaskExecutionControls
-            task={task}
-            models={models}
-            execution={execution}
-            busy={busy}
-            thought={thought}
-            changeExecution={changeExecution}
-          />
+
           <WorkTaskPromptField
             scope={scope}
             task={task}
             busy={busy}
             assets={assets}
             inputApiRef={inputApiRef}
+            leadingActions={
+              <WorkTaskExecutionControls
+                task={task}
+                models={models}
+                execution={execution}
+                busy={busy}
+                thought={thought}
+                changeExecution={changeExecution}
+              />
+            }
             onChange={setPrompt}
           />
           <WorkTaskError error={submission.error ?? assets.attachmentError ?? error} />

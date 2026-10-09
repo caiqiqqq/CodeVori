@@ -10,12 +10,15 @@ export interface AcpComposerContext {
 export function hasAcpConversationContent(
   session:
     | (Pick<import("@zcode/shared").AcpSession, "entries" | "pendingPermission"> &
-        Partial<Pick<import("@zcode/shared").AcpSession, "queue">>)
+        Partial<Pick<import("@zcode/shared").AcpSession, "queue" | "pendingElicitation">>)
     | null,
 ): boolean {
   return Boolean(
     session &&
-    (session.entries.length > 0 || session.pendingPermission || session.queue?.items.length),
+    (session.entries.length > 0 ||
+      session.pendingPermission ||
+      session.pendingElicitation ||
+      session.queue?.items.length),
   );
 }
 

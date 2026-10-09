@@ -16,6 +16,7 @@ import type {
   ForgeStateRequest,
   ForgeImageRequest,
   ForgeImagePreview,
+  ForgeIssueOptions,
 } from "@zcode/shared";
 
 export interface ForgeProviderAdapter {
@@ -27,6 +28,7 @@ export interface ForgeProviderAdapter {
   listComments(request: ForgePageRequest): Promise<ForgePage<ForgeComment>>;
   listFiles(request: ForgePageRequest): Promise<ForgePage<ForgeChangedFile>>;
   listLabels(): Promise<ForgeLabel[]>;
+  getIssueOptions(): Promise<ForgeIssueOptions>;
   createIssue(request: ForgeNewIssueRequest): Promise<ForgeItem>;
   createComment(request: ForgeCommentRequest): Promise<void>;
   setState(request: ForgeStateRequest): Promise<void>;
