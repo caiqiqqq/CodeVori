@@ -2,6 +2,8 @@
 
 ## Product rules
 
+- ACP 高频分片的写入合并与持久化屏障遵循 [ACP 流式快照写入](acp-streaming-snapshots.md)。
+
 - ACP 应用统计的历史补录、时间/实际模型归属及来源图表遵循 [ACP 应用使用统计](acp-app-usage.md)。
 
 - ACP 右上角状态面板遵循 [ACP status panel](acp-status-panel.md)：共用 Git/布局展示，读取所属工作区 Git 与当前 ACP Host 事实，不混用 API 控制与会话状态。
