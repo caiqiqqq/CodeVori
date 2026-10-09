@@ -76,7 +76,7 @@ export function AppUsageModelUsagePieChart({ snapshot }: { snapshot: AppUsageSna
           })}
         />
       ) : (
-        <div className="grid gap-4 px-3 py-3 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
           <div className="relative mx-auto h-56 w-full max-w-64 self-center md:h-64 md:max-w-72">
             <ChartContainer config={chartConfig} className="relative z-20 h-56 w-full md:h-64">
               <PieChart accessibilityLayer margin={APP_USAGE_MODEL_PIE_CHART_MARGIN}>
@@ -90,6 +90,8 @@ export function AppUsageModelUsagePieChart({ snapshot }: { snapshot: AppUsageSna
                   paddingAngle={chartData.length > 1 ? 2 : 0}
                   stroke="var(--color-surface)"
                   strokeWidth={2}
+                  // 统计切换使用最终占比，避免 100% 圆环在动画中暂时呈现缺口。
+                  isAnimationActive={false}
                 >
                   {chartData.map((slice) => (
                     <Cell key={slice.key} fill={`var(--color-${slice.key})`} />

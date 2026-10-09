@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import type { AppUsageRange } from "@zcode/shared";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { formatCompactTokenNumber } from "@/lib/tokenNumberFormat.js";
@@ -7,6 +8,33 @@ export const USAGE_STATS_TABS_LIST_CLASS =
   "flex h-7 rounded-full bg-surface p-0.5 group-data-horizontal/tabs:h-7";
 export const USAGE_STATS_TABS_TRIGGER_CLASS =
   "h-6 flex-none justify-center rounded-full border-transparent bg-transparent px-2.5 py-0 text-ui-sm font-medium text-foreground-subtle data-active:border-transparent data-active:bg-background data-active:text-foreground data-active:shadow-none dark:data-active:border-transparent dark:data-active:bg-background";
+
+export function UsageSummaryMetrics({
+  items,
+  testId,
+}: {
+  items: readonly { label: string; value: string }[];
+  testId?: string;
+}) {
+  return (
+    <div
+      className="flex flex-col overflow-hidden rounded-xl bg-surface sm:flex-row sm:items-center"
+      data-testid={testId}
+    >
+      {items.map((item, index) => (
+        <Fragment key={item.label}>
+          {index > 0 ? (
+            <div aria-hidden="true" className="hidden h-7 w-px bg-border sm:block" />
+          ) : null}
+          <div className="min-w-0 flex-1 px-4 py-3 text-center">
+            <div className="truncate text-ui-lg font-medium text-foreground">{item.value}</div>
+            <div className="mt-1 text-ui-base text-foreground-subtle">{item.label}</div>
+          </div>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
 
 export function formatCompactNumber(locale: string, value: number): string {
   if (!Number.isFinite(value)) {

@@ -261,7 +261,7 @@ export function AppUsageDailyModelTrendChart({ snapshot }: { snapshot: AppUsageS
           })}
         />
       ) : (
-        <div className="px-3 py-3">
+        <div>
           <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2" role="list">
             {topModels.map((model, index) => (
               <div
@@ -275,7 +275,7 @@ export function AppUsageDailyModelTrendChart({ snapshot }: { snapshot: AppUsageS
                     backgroundColor: getAppUsageModelChartColor(index),
                   }}
                 />
-                <span className="truncate text-foreground-subtle">
+                <span className="truncate font-mono text-foreground-subtle">
                   {resolveModelLabel(intl, model.modelId)}
                 </span>
               </div>
@@ -304,6 +304,8 @@ export function AppUsageDailyModelTrendChart({ snapshot }: { snapshot: AppUsageS
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
+                  // 切换来源/范围时直接展示完整统计，避免绘制动画让已知曲线暂时缺段。
+                  isAnimationActive={false}
                 />
               ))}
             </LineChart>
