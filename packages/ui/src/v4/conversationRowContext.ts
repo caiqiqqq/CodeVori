@@ -2,6 +2,7 @@
 // 注入模式对齐 PermissionDialog（store 耦合剥离）：展示组件不自取 store，
 // theme / codePreviewSettings 在宿主（SessionPane）处取，向下走稳定 props。
 import type { CodePreviewSettings } from "@/lib/codePreviewSettings.js";
+import type { ReactNode } from "react";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import type { AssistantPreviewCardsAutoOpenRequest } from "@/lib/assistantPreviewCards.js";
 import type { OpenAutomationsMain } from "@/lib/taskNavigationHistory.js";
@@ -22,6 +23,7 @@ import type {
 } from "@/lib/workspaceSidePane.js";
 import type {
   CommandAck,
+  AttachmentRef,
   ConversationRowTarget,
   TurnHeaderRow,
   V4ConversationFileChangesResult,
@@ -179,6 +181,11 @@ export interface ConversationRowRenderContext {
     target: ConversationRowTarget,
   ) => Promise<V4ConversationFileRewindPreviewResult>;
   applyFileRewind?: (target: ConversationRowTarget) => Promise<CommandAck>;
+  /** 未绑定任务等只读投影注入自己的附件预览，不伪造会话或使用会话 transport。 */
+  renderUserInputAttachments?: (
+    attachments: readonly AttachmentRef[],
+    kind: "media" | "file",
+  ) => ReactNode;
   /** 已发送 image/video 预览；由 pane 绑定的 workspace transport 注入。 */
   readAttachment?: (
     params: ConversationAttachmentReadParams,

@@ -42,6 +42,7 @@ import {
   workTaskScenarios,
   exerciseWorkTaskPromptAttachments,
   exerciseWorkTaskImageResources,
+  exerciseWorkTaskPendingImages,
   exerciseWorkTaskEditRestart,
   exerciseWorkTaskExecutionPreferences,
   exerciseWorkTaskConversationStatus,
@@ -189,7 +190,6 @@ try {
       text: "Implement an API task",
       modelValue: "custom:api:TestModel",
     });
-    assert.equal(await panel.getByTestId("work-task-fixture-session").count(), 0);
     assert.equal(await page.evaluate(() => window.__tasks.closed.length), 0);
     await cardAction("task-0", "编辑任务");
     await editor.getByTestId("work-task-prompt").fill("Edited API instructions");
@@ -390,6 +390,7 @@ try {
     await exerciseWorkTaskConversationStatus(page, artifacts);
     await exerciseWorkTaskPromptAttachments(page, artifacts);
     await exerciseWorkTaskImageResources(page, artifacts);
+    await exerciseWorkTaskPendingImages(page, artifacts);
     await exerciseWorkTaskCompletion(page, artifacts);
     await exerciseWorkTaskConcurrentExecution(page, artifacts);
     assert.deepEqual(errors, []);

@@ -1,6 +1,7 @@
 import { exerciseWorkTaskWorkspaceMode } from "./workTaskWorkspaceModeAssertions.mjs";
 import { exerciseWorkTaskPromptAttachments } from "./workTaskPromptAttachmentsAssertions.mjs";
 import { exerciseWorkTaskImageResources } from "./workTaskImageResourcesAssertions.mjs";
+import { exerciseWorkTaskPendingImages } from "./workTaskPendingImagesAssertions.mjs";
 import { exerciseWorkTaskBranchesAndMerge } from "./workTaskMergeAssertions.mjs";
 import { exerciseWorkTaskEditRestart } from "./workTaskEditRestartAssertions.mjs";
 import { exerciseWorkTaskExecutionPreferences } from "./workTaskExecutionPreferenceAssertions.mjs";
@@ -11,6 +12,7 @@ import { exerciseWorkTaskCompletion } from "./workTaskCompletionAssertions.mjs";
 export {
   exerciseWorkTaskPromptAttachments,
   exerciseWorkTaskImageResources,
+  exerciseWorkTaskPendingImages,
   exerciseWorkTaskBranchesAndMerge,
   exerciseWorkTaskEditRestart,
   exerciseWorkTaskExecutionPreferences,
@@ -22,6 +24,7 @@ export const workTaskScenarios = {
   "workspace-mode": exerciseWorkTaskWorkspaceMode,
   "prompt-attachments": exerciseWorkTaskPromptAttachments,
   "image-resources": exerciseWorkTaskImageResources,
+  "pending-images": exerciseWorkTaskPendingImages,
   "branches-merge": exerciseWorkTaskBranchesAndMerge,
   "edit-restart": exerciseWorkTaskEditRestart,
   "execution-preferences": exerciseWorkTaskExecutionPreferences,

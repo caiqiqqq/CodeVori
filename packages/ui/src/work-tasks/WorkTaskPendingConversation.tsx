@@ -16,6 +16,8 @@ import { AcpComposerConfigControls } from "@/v4/composer/AcpComposerConfigContro
 import { V4ComposerModeSwitch } from "@/v4/composer/V4ComposerModeControls.js";
 import { acpModelValue } from "@/v4/composer/acpModelSelection.js";
 import { WorkTaskError, useWorkTaskMessages } from "./WorkTaskParts.js";
+import { WorkTaskAttachments } from "./WorkTaskAttachments.js";
+import type { ConversationRowRenderContext } from "@/v4/conversationRowContext.js";
 
 const EMPTY_MODEL_GROUPS: readonly ModelSelectGroup[] = [];
 function ignoreChange() {}
@@ -162,15 +164,25 @@ export function WorkTaskPendingConversation({ task }: { task: WorkTask }) {
       task.attachments,
     ],
   );
-  const rowContext = useMemo(
+  const rowContext = useMemo<ConversationRowRenderContext>(
     () => ({
       workspacePath: task.workspacePath,
       workspaceIdentity: task.workspaceIdentity,
       workspaceRemoteSessionId: task.remoteSessionId,
       theme,
       codePreviewSettings,
+      // 待办附件是 Host 保存的文件，不属于会话；原读取器要求 sessionId，因而只显示占位图。
+      // 复用任务预览的文件 IO 和资源生命周期，不为显示图片创建或伪造会话。
+      renderUserInputAttachments: (attachments, kind) => (
+        <WorkTaskAttachments
+          scope={task}
+          saved={attachments}
+          attachmentKind={kind}
+          presentation="conversation"
+        />
+      ),
     }),
-    [task.workspacePath, task.workspaceIdentity, task.remoteSessionId, theme, codePreviewSettings],
+    [task, theme, codePreviewSettings],
   );
   const preparing = task.status === "preparing";
   const status = t(preparing ? "preparingConversation" : "noConversation");

@@ -19,25 +19,34 @@ export function WorkTaskAttachments({
   saved,
   onRemove,
   disabled = false,
+  attachmentKind = "all",
+  presentation = "compact",
 }: {
   scope: WorkTaskScope;
   items?: readonly ChatComposerAttachment[];
   saved?: readonly WorkTaskAttachment[];
   onRemove?: (id: string) => void;
   disabled?: boolean;
+  attachmentKind?: "all" | "media" | "file";
+  presentation?: "compact" | "conversation";
 }) {
   const { intl } = useZCodeIntl();
   const attachments: readonly ChatComposerAttachment[] = useMemo(
     () =>
       items ??
-      (saved ?? []).map((item) => ({
-        id: item.ref,
-        filename: item.fileName,
-        mimeType: item.mime,
-        sizeBytes: item.bytes,
-        localPath: item.ref,
-      })),
-    [items, saved],
+      (saved ?? [])
+        .filter((item) => {
+          const media = /^(image|video)\//.test(item.mime);
+          return attachmentKind === "all" || (attachmentKind === "media" ? media : !media);
+        })
+        .map((item) => ({
+          id: item.ref,
+          filename: item.fileName,
+          mimeType: item.mime,
+          sizeBytes: item.bytes,
+          localPath: item.ref,
+        })),
+    [items, saved, attachmentKind],
   );
   const preview = useWorkTaskAttachmentPreview(scope, attachments);
   if (!attachments.length) return null;
@@ -45,7 +54,7 @@ export function WorkTaskAttachments({
     <>
       <Attachments
         variant="inline"
-        className="max-w-full gap-2"
+        className={`max-w-full gap-2 ${presentation === "conversation" ? "justify-end" : ""}`}
         data-testid="work-task-attachments"
       >
         {attachments.map((attachment) => {
@@ -67,7 +76,9 @@ export function WorkTaskAttachments({
               variant={media ? "grid" : "inline"}
               className={
                 media
-                  ? "size-12 rounded-lg border border-border bg-surface"
+                  ? presentation === "conversation"
+                    ? "size-20 rounded-xl border border-border bg-surface"
+                    : "size-12 rounded-lg border border-border bg-surface"
                   : "h-12 max-w-full min-w-0 gap-2 rounded-lg border border-border bg-surface p-1.5 pr-6 [--attachment-bg:var(--color-surface)]"
               }
               data={{
