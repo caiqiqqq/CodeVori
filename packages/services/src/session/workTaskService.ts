@@ -30,17 +30,12 @@ import {
   type WorkTaskTarget,
   type WorkTaskUpdate,
   type WorkTaskMergeRequest,
+  type WorkTaskArchive,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
-import type {
-  IWorkTaskService,
-  WorkTaskExecutionContext,
-  WorkTaskConversationEvent,
-  WorkTaskConversationPort,
-  WorkTaskMergePort,
-} from "./workTask.js";
-import { WorkTaskRepo } from "./workTaskRepo.js";
-import type { WorkTaskAttachmentStore } from "./workTaskAttachmentStore.js";
+import type { IWorkTaskService, WorkTaskConversationEvent } from "./workTask.js";
+import { archiveWorkTask } from "./workTaskArchive.js";
+import type { WorkTaskServiceOptions } from "./workTaskServiceOptions.js";
 
 interface Run {
   task: WorkTask;
@@ -56,6 +51,7 @@ export class WorkTaskService implements IWorkTaskService {
   private readonly runs = new Map<string, Run>();
   private readonly events = new Map<string, Emitter<void>>();
   private readonly observations = new Map<string, { key: string; subscription: IDisposable }>();
+  private readonly cleaning = new Set<string>();
   private revisions = new Map<string, number>();
   private initialized: Promise<void> | null = null;
   private ticking: Promise<void> | null = null;
@@ -63,17 +59,7 @@ export class WorkTaskService implements IWorkTaskService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private closed = false;
   private disposal: Promise<void> | null = null;
-  constructor(
-    private readonly options: {
-      repo: WorkTaskRepo;
-      attachments?: WorkTaskAttachmentStore;
-      execute(task: WorkTask, context: WorkTaskExecutionContext): Promise<void>;
-      merge?: WorkTaskMergePort;
-      conversation?: WorkTaskConversationPort;
-      pollIntervalMs?: number;
-      allowExecution?: boolean;
-    },
-  ) {}
+  constructor(private readonly options: WorkTaskServiceOptions) {}
 
   startScheduler() {
     void this.ready().catch((error) =>
@@ -347,10 +333,15 @@ export class WorkTaskService implements IWorkTaskService {
     this.wake();
     return task;
   }
-  async archive(input: WorkTaskTarget & { archived: boolean }) {
+  async archive(input: WorkTaskArchive) {
     const parsed = workTaskArchiveSchema.parse(input);
+    if (parsed.removeWorktree) this.assertLocal(parsed);
     await this.ready();
-    const task = this.options.repo.archive(parsed, parsed.id, parsed.archived);
+    const task = await archiveWorkTask(this.options.repo, parsed, {
+      active: this.cleaning,
+      remove: this.options.removeWorktree,
+      isClosed: () => this.closed,
+    });
     this.publish();
     return task;
   }

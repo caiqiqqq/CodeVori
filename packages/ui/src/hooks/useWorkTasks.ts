@@ -108,6 +108,8 @@ export function useWorkTasks(
       run((target) => target.merge({ ...scope, id, targetBranch })),
     archive: (id: string, archived: boolean) =>
       run((target) => target.archive({ ...scope, id, archived })),
+    archiveAndRemoveWorktree: (id: string) =>
+      run((target) => target.archive({ ...scope, id, archived: true, removeWorktree: true })),
     setConcurrency: (concurrency: number) =>
       run((target) => target.setConcurrency({ ...scope, concurrency })),
   };
