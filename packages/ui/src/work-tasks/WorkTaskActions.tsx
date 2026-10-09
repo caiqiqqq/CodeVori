@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { WORK_TASK_ACTIVE_STATUSES, type WorkTask } from "@zcode/shared";
-import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
+import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import { canCompleteWorkTask } from "@/lib/workTaskBoard.js";
 import { WorkTaskIconButton, useWorkTaskMessages } from "./WorkTaskParts.js";
 import { Button } from "@/components/ui/button.js";
@@ -36,7 +36,7 @@ export function WorkTaskActions({
   menu = false,
 }: {
   task: WorkTask;
-  panel: ReturnType<typeof useWorkTasks>;
+  panel: WorkTaskPanel;
   onOpenConversation(task: WorkTask): void;
   onEdit(task: WorkTask): void;
   onComplete(task: WorkTask): void;

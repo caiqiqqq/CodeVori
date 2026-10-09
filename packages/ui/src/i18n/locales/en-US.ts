@@ -5,6 +5,7 @@ const enUS: Record<string, string> = {
   "workTasks.sidebar.summary": "Open projects: {running} running, {waiting} waiting",
   "workTasks.sidebar.loading": "Loading task counts",
   "workTasks.sidebar.unavailable": "Task counts are unavailable",
+  "workTasks.allProjects": "All",
   "workTasks.project": "Project",
   "workTasks.noProject": "No project selected",
   "workTasks.create": "New task",

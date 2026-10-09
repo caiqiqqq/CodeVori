@@ -3,114 +3,165 @@ import type { IWorkTaskService } from "@zcode/services";
 import type { WorkTaskCreate, WorkTaskScope, WorkTaskUpdate } from "@zcode/shared";
 import { useBaseWorkspaceServices } from "./useWorkspaceServices.js";
 import { useRemoteWorkspaceSessionStore } from "@/store/remoteWorkspaceSessionStore.js";
+import { workTaskNavigationKey } from "@/store/workTaskNavigationStore.js";
 import { resolveWorkspaceServices } from "@/lib/workspaceServiceResolver.js";
 import { workTaskErrorMessage } from "@/lib/workTaskBoard.js";
 import { getWorkTaskReadModel } from "./workTaskReadModel.js";
+import { combineWorkTaskReads } from "./workTaskCombinedRead.js";
 
-const subscribeToNothing = () => () => {};
-const unavailableSnapshot = { data: null, error: null, loading: false };
-const getUnavailableSnapshot = () => unavailableSnapshot;
-
-export function useWorkTasks(
-  input: WorkTaskScope,
-  includeArchived: boolean,
-  projectSelected = true,
-) {
-  const scope = useMemo(
-    () => ({
-      workspacePath: input.workspacePath,
-      ...(input.workspaceIdentity ? { workspaceIdentity: input.workspaceIdentity } : {}),
-      ...(input.remoteSessionId ? { remoteSessionId: input.remoteSessionId } : {}),
-    }),
-    [input.workspacePath, input.workspaceIdentity, input.remoteSessionId],
-  );
-  const baseServices = useBaseWorkspaceServices();
-  const remoteState = useRemoteWorkspaceSessionStore((state) => state);
-  // 待办已有显式项目作用域；按活动 tab 推断会把同路径的本地查询误发到远端 Host。
-  const resolution = useMemo(
-    () => resolveWorkspaceServices(scope, baseServices, remoteState),
-    [scope, baseServices, remoteState],
-  );
-  const service = resolution?.services.workTaskService;
-  const rpcReady = !!resolution;
-  const resource = useMemo(
-    () => (service && rpcReady ? getWorkTaskReadModel(service, scope, includeArchived) : null),
-    [service, rpcReady, scope, includeArchived],
-  );
-  const read = useSyncExternalStore(
-    resource?.subscribe ?? subscribeToNothing,
-    resource?.getSnapshot ?? getUnavailableSnapshot,
-    resource?.getSnapshot ?? getUnavailableSnapshot,
-  );
-  const owner = useMemo(() => ({}), [resource, scope]);
-  const [mutation, setMutation] = useState<{
-    owner: typeof owner;
-    error: string | null;
-    busy: boolean;
-  }>({
-    owner,
-    error: null,
-    busy: false,
-  });
-  const ownerRef = useRef(owner);
-  ownerRef.current = owner;
-  const refresh = useCallback(async () => {
-    await resource?.refresh(true);
-  }, [resource]);
-  const run = useCallback(
-    async (action: (target: IWorkTaskService) => Promise<unknown>): Promise<boolean> => {
-      if (!service || !resource || !rpcReady) return false;
-      const version = resource.getEventVersion();
-      setMutation({ owner, error: null, busy: true });
-      try {
-        await action(service);
-        resource.refreshAfterMutation(version);
-        if (ownerRef.current === owner) setMutation({ owner, error: null, busy: false });
-        return ownerRef.current === owner;
-      } catch (error) {
-        // update 成功而 start 失败仍投影已保存内容；列表失败不能覆盖命令错误。
-        resource.refreshAfterMutation(version);
-        if (ownerRef.current === owner)
-          setMutation({ owner, error: workTaskErrorMessage(error), busy: false });
-        return false;
-      }
-    },
-    [owner, service, resource, rpcReady],
-  );
-  const current = resource
-    ? { board: read.data, loading: read.loading, error: read.error }
-    : {
-        board: null,
-        loading: false,
-        error: !rpcReady ? "work-task.disconnected" : "work-task.unsupported-host",
-      };
+type Run = (
+  scope: WorkTaskScope,
+  action: (target: IWorkTaskService) => Promise<unknown>,
+) => Promise<boolean>;
+function scopeOnly(input: WorkTaskScope): WorkTaskScope {
+  // 项目 tab 和任务记录都包含额外字段；严格协议只接受三项 scope，不能直接展开整条记录。
   return {
-    ...current,
+    workspacePath: input.workspacePath,
+    ...(input.workspaceIdentity ? { workspaceIdentity: input.workspaceIdentity } : {}),
+    ...(input.remoteSessionId ? { remoteSessionId: input.remoteSessionId } : {}),
+  };
+}
+function commands(scope: WorkTaskScope, run: Run) {
+  return {
     scope,
-    error: mutation.owner === owner && mutation.error ? mutation.error : current.error,
-    busy: mutation.owner === owner && mutation.busy,
-    executable: projectSelected && rpcReady && !resolution.isRemoteWorkspace && !!service,
-    refresh,
     create: (draft: Omit<WorkTaskCreate, keyof WorkTaskScope>) =>
-      run((target) => target.create({ ...scope, ...draft })),
+      run(scope, (target) => target.create({ ...scope, ...draft })),
     update: (draft: Omit<WorkTaskUpdate, keyof WorkTaskScope>, startAfterSave = false) =>
-      run(async (target) => {
+      run(scope, async (target) => {
         // 保存与入队共用一次忙碌操作，避免两次请求之间恢复按钮或使用尚未保存的描述。
         await target.update({ ...scope, ...draft });
         if (startAfterSave) await target.start({ ...scope, id: draft.id });
       }),
     start: (id: string, feedback?: string) =>
-      run((target) => target.start({ ...scope, id, ...(feedback ? { feedback } : {}) })),
-    startAll: () => run((target) => target.startAll(scope)),
-    cancel: (id: string) => run((target) => target.cancel({ ...scope, id })),
-    complete: (id: string) => run((target) => target.complete({ ...scope, id })),
+      run(scope, (target) => target.start({ ...scope, id, ...(feedback ? { feedback } : {}) })),
+    startAll: () => run(scope, (target) => target.startAll(scope)),
+    cancel: (id: string) => run(scope, (target) => target.cancel({ ...scope, id })),
+    complete: (id: string) => run(scope, (target) => target.complete({ ...scope, id })),
     merge: (id: string, targetBranch: string) =>
-      run((target) => target.merge({ ...scope, id, targetBranch })),
+      run(scope, (target) => target.merge({ ...scope, id, targetBranch })),
     archive: (id: string, archived: boolean) =>
-      run((target) => target.archive({ ...scope, id, archived })),
+      run(scope, (target) => target.archive({ ...scope, id, archived })),
     archiveAndRemoveWorktree: (id: string) =>
-      run((target) => target.archive({ ...scope, id, archived: true, removeWorktree: true })),
+      run(scope, (target) =>
+        target.archive({ ...scope, id, archived: true, removeWorktree: true }),
+      ),
     setConcurrency: (concurrency: number) =>
-      run((target) => target.setConcurrency({ ...scope, concurrency })),
+      run(scope, (target) => target.setConcurrency({ ...scope, concurrency })),
+  };
+}
+
+export type WorkTaskPanel = ReturnType<typeof commands> & {
+  board: import("@zcode/shared").WorkTaskBoard | null;
+  loading: boolean;
+  settled: boolean;
+  error: string | null;
+  busy: boolean;
+  executable: boolean;
+  refresh(): Promise<void>;
+};
+
+export function useWorkTasks(
+  input: WorkTaskScope,
+  includeArchived: boolean,
+  projectSelected = true,
+  projectScopes?: readonly WorkTaskScope[],
+): WorkTaskPanel & { forScope(scope: WorkTaskScope): WorkTaskPanel } {
+  const scope = useMemo(
+    () => scopeOnly(input),
+    [input.workspacePath, input.workspaceIdentity, input.remoteSessionId],
+  );
+  const baseServices = useBaseWorkspaceServices();
+  const remoteState = useRemoteWorkspaceSessionStore((state) => state);
+  const sources = useMemo(() => {
+    const unique = new Map(
+      (projectScopes ?? [scope]).map((item) => [workTaskNavigationKey(item), item]),
+    );
+    return [...unique.values()].map((input) => {
+      const item = scopeOnly(input);
+      // 显式 scope 避免同路径本地查询误发远端；断连绝不回落本机。
+      const resolution = resolveWorkspaceServices(item, baseServices, remoteState);
+      const service = resolution?.services.workTaskService;
+      return {
+        scope: item,
+        service,
+        resource: service ? getWorkTaskReadModel(service, item, includeArchived) : null,
+        error: !resolution
+          ? "work-task.disconnected"
+          : !service
+            ? "work-task.unsupported-host"
+            : null,
+        executable: projectSelected && !!service && !resolution?.isRemoteWorkspace,
+      };
+    });
+  }, [scope, projectScopes, baseServices, remoteState, includeArchived, projectSelected]);
+  const resource = useMemo(() => combineWorkTaskReads(sources), [sources]);
+  const read = useSyncExternalStore(resource.subscribe, resource.getSnapshot, resource.getSnapshot);
+  const owner = useMemo(() => ({}), [resource]);
+  const [mutation, setMutation] = useState<{
+    owner: typeof owner;
+    error: string | null;
+    busy: boolean;
+  }>({ owner, error: null, busy: false });
+  const ownerRef = useRef(owner);
+  ownerRef.current = owner;
+  const run = useCallback<Run>(
+    async (targetScope, action) => {
+      const source = sources.find(
+        (item) => workTaskNavigationKey(item.scope) === workTaskNavigationKey(targetScope),
+      );
+      if (!source?.service || !source.resource) return false;
+      const version = source.resource.getEventVersion();
+      setMutation({ owner, error: null, busy: true });
+      try {
+        await action(source.service);
+        source.resource.refreshAfterMutation(version);
+        if (ownerRef.current === owner) setMutation({ owner, error: null, busy: false });
+        return ownerRef.current === owner;
+      } catch (error) {
+        // update 成功而 start 失败仍投影已保存内容；列表失败不能覆盖命令错误。
+        source.resource.refreshAfterMutation(version);
+        if (ownerRef.current === owner)
+          setMutation({ owner, error: workTaskErrorMessage(error), busy: false });
+        return false;
+      }
+    },
+    [owner, sources],
+  );
+  const forScope = (target: WorkTaskScope): WorkTaskPanel => ({
+    ...commands(scopeOnly(target), run),
+    board: read.data,
+    loading: read.loading,
+    settled: read.settled,
+    error: mutation.owner === owner && mutation.error ? mutation.error : read.error,
+    busy: mutation.owner === owner && mutation.busy,
+    executable: sources.some(
+      (item) =>
+        workTaskNavigationKey(item.scope) === workTaskNavigationKey(target) && item.executable,
+    ),
+    refresh: resource.refresh,
+  });
+  const panel = forScope(scope);
+  return {
+    ...panel,
+    forScope,
+    executable: sources.some((source) => source.executable),
+    startAll: async () => {
+      // 全部开始沿用各项目 admission；只提交可执行项目，不把全部伪装成 scope。
+      let success = true;
+      for (const source of sources) {
+        if (
+          !source.executable ||
+          !source.resource
+            ?.getSnapshot()
+            .data?.tasks.some((task) => !task.archived && task.status === "todo")
+        )
+          continue;
+        if (!(await run(source.scope, (target) => target.startAll(source.scope)))) {
+          success = false;
+          break;
+        }
+      }
+      return success;
+    },
   };
 }
