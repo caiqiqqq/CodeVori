@@ -55,12 +55,12 @@ export async function exerciseWorkTaskExecutionPreferences(page, artifacts) {
   await choice("model", "codex-model");
   await choice("reasoning", "low");
   await choice("fast", "false");
-  await editor.getByTestId("work-task-title").fill("Do not remember this title");
+
   await editor.getByTestId("work-task-prompt").fill("Do not remember this prompt");
   await close();
   await open();
   await assertCodex();
-  assert.equal(await editor.getByTestId("work-task-title").inputValue(), "");
+  assert.equal(await editor.getByTestId("work-task-title").count(), 0);
   assert.equal((await editor.getByTestId("work-task-prompt").innerText()).trim(), "");
   await close();
   await page.reload();

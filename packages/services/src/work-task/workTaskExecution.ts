@@ -1,5 +1,5 @@
 import { commitWorkTaskExecution as commit } from "./workTaskExecutionState.js";
-import { prepareWorkTaskWorktree } from "./workTaskWorktree.js";
+import { prepareWorkTaskWorkspace } from "./workTaskWorktree.js";
 import { assertWorkTaskNativeIdle } from "./workTaskConversationAdmission.js";
 import { uuidv7, type WorkTask } from "@zcode/shared";
 import {
@@ -342,7 +342,7 @@ export function createWorkTaskExecution(deps: Dependencies): WorkTaskExecutionPo
       if (task.workspaceIdentity || task.remoteSessionId)
         throw new Error("work-task.remote-unsupported");
       context.signal.throwIfAborted();
-      const worktree = await prepareWorkTaskWorktree(deps, task, context);
+      const worktree = await prepareWorkTaskWorkspace(deps, task, context);
       await executeWorkTaskConversation(deps, task, context, worktree.path);
     },
   };

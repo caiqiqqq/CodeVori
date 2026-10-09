@@ -490,3 +490,52 @@ test("the public task RPC contract carries drafts, commands and scoped change no
     await f.cleanup();
   }
 });
+
+test("direct tasks persist mode, serialize across owners and lock mode/source after binding", async () => {
+  const f = await fixture(async () => {});
+  try {
+    const a = f.makeService({ allowExecution: false });
+    await assert.rejects(a.create({ ...draft, useWorktree: false }), /source-branch-required/);
+    const first = await a.create({ ...draft, useWorktree: false, sourceBranch: "main" });
+    const second = await a.create({
+      ...draft,
+      workspacePath: "/other",
+      useWorktree: false,
+      sourceBranch: "feature",
+    });
+    const isolated = await a.create(draft);
+    const repo = new WorkTaskRepo(f.dbPath);
+    await repo.ready();
+    try {
+      for (const task of [first, second, isolated]) repo.enqueue(task, task.id);
+      const now = Date.now();
+      const claimed = repo.claimNext("one", now, 30_000)!;
+      assert.equal(claimed.id, first.id);
+      assert.equal(repo.claimNext("two", now, 30_000)?.id, isolated.id);
+      assert.equal(repo.claimNext("two", now, 30_000), null);
+      assert.ok(
+        repo.updateRun(claimed, "one", {
+          directBranch: "main",
+          session: { kind: "api", id: "bound" },
+        }),
+      );
+      repo.finish(claimed, "one", "retry");
+      assert.equal(repo.claimNext("two", Date.now(), 30_000)?.id, second.id);
+      assert.throws(
+        () => repo.update({ ...draft, id: first.id, sourceBranch: "main", useWorktree: true }),
+        /execution-workspace-locked/,
+      );
+      assert.throws(
+        () => repo.update({ ...draft, id: first.id, sourceBranch: "other", useWorktree: false }),
+        /source-branch-locked/,
+      );
+      assert.equal(repo.get(first, first.id).useWorktree, false);
+      assert.equal(repo.get(isolated, isolated.id).useWorktree, undefined);
+      assert.ok(repo.conversationTasks().some((task) => task.id === first.id));
+    } finally {
+      repo.close();
+    }
+  } finally {
+    await f.cleanup();
+  }
+});

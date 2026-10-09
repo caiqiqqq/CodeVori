@@ -190,6 +190,9 @@ export const workTaskSchema = workTaskScopeSchema
     prompt: z.string().trim().min(1).max(100_000),
     execution: workTaskExecutionSchema,
     sourceBranch: z.string().trim().min(1).max(1024).optional(),
+    /** Missing on legacy tasks means isolated worktree execution. */
+    useWorktree: z.boolean().optional(),
+    directBranch: z.string().trim().min(1).max(1024).optional(),
     status: workTaskStatusSchema,
     archived: z.boolean(),
     runSeq: z.number().int().nonnegative(),
@@ -218,9 +221,15 @@ export const workTaskCreateSchema = workTaskScopeSchema
     prompt: workTaskSchema.shape.prompt,
     execution: workTaskExecutionSchema,
     sourceBranch: workTaskSchema.shape.sourceBranch,
+    useWorktree: workTaskSchema.shape.useWorktree,
   })
   .strict();
 export type WorkTaskCreate = z.infer<typeof workTaskCreateSchema>;
+
+/** Only persisted execution bindings may select a conversation/tool directory. */
+export function workTaskExecutionPath(task: WorkTask): string | undefined {
+  return task.useWorktree === false && task.directBranch ? task.workspacePath : task.worktree?.path;
+}
 export const workTaskTargetSchema = workTaskScopeSchema.extend({ id: z.string().min(1) }).strict();
 export type WorkTaskTarget = z.infer<typeof workTaskTargetSchema>;
 export const workTaskUpdateSchema = workTaskCreateSchema.extend({ id: z.string().min(1) }).strict();

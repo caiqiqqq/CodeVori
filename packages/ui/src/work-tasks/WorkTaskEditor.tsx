@@ -24,7 +24,7 @@ import { acpAgentFromModelValue, acpModelValue } from "@/v4/composer/acpModelSel
 import { buildAcpModelSelectGroup } from "@/v4/composer/acpModelSelection.js";
 import { AcpComposerConfigControls } from "@/v4/composer/AcpComposerConfigControls.js";
 import { Button } from "@/components/ui/button.js";
-import { Input } from "@/components/ui/input.js";
+import { Switch } from "@/components/ui/switch.js";
 import {
   Dialog,
   DialogContent,
@@ -57,12 +57,13 @@ export function WorkTaskEditor({
 }: Props) {
   const t = useWorkTaskMessages();
   const models = useWorkTaskModels(scope);
-  const branches = useWorkTaskBranches(scope, !task?.worktree);
+  const lockedWorkspace = !!(task?.worktree || task?.directBranch);
+  const branches = useWorkTaskBranches(scope, !lockedWorkspace);
   const [sourceDraft, setSourceDraft] = useState<{ value?: string } | null>(
     task ? { value: task.sourceBranch } : null,
   );
   const sourceBranch = sourceDraft ? sourceDraft.value : branches.currentBranch;
-  const [title, setTitle] = useState(task?.title ?? "");
+  const [useWorktree, setUseWorktree] = useState(task?.useWorktree !== false);
   const [prompt, setPrompt] = useState(task?.prompt ?? "");
   const submission = useWorkTaskEditorSave(externalBusy);
   const { busy } = submission;
@@ -176,9 +177,11 @@ export function WorkTaskEditor({
       // 修复原因：历史快照只提供目录，保存全部历史当前值会继承别的会话的高权限。
       // 未显式选择的项留给实际 Agent 默认值，已保存的未知选项也不能悄悄丢弃。
       if (!inputApiRef.current) return;
+      const title =
+        task?.title ?? inputApiRef.current.getMarkdown().trim().replace(/\s+/g, " ").slice(0, 200);
       const draft = await assets.prepareDraft(title, execution, inputApiRef.current, signal);
       if (
-        (await onSave({ ...draft, ...(sourceBranch ? { sourceBranch } : {}) })) &&
+        (await onSave({ ...draft, useWorktree, ...(sourceBranch ? { sourceBranch } : {}) })) &&
         !signal.aborted
       )
         onClose();
@@ -206,17 +209,6 @@ export function WorkTaskEditor({
           className="flex min-w-0 flex-col gap-4"
         >
           <label className="flex min-w-0 flex-col gap-1.5 text-ui-sm text-foreground-subtle">
-            {t("taskTitle")}
-            <Input
-              data-testid="work-task-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={200}
-              required
-              disabled={busy}
-            />
-          </label>
-          <label className="flex min-w-0 flex-col gap-1.5 text-ui-sm text-foreground-subtle">
             {t("project")}
             <span className="break-all font-mono">{scope.workspacePath}</span>
           </label>
@@ -226,9 +218,9 @@ export function WorkTaskEditor({
               label={t("sourceBranch")}
               value={sourceBranch}
               branches={branches.branches}
-              allowHead
+              allowHead={useWorktree}
               testId="work-task-source-branch"
-              disabled={busy || !!task?.worktree || branches.loading}
+              disabled={busy || lockedWorkspace || branches.loading}
               onChange={(value) => setSourceDraft({ value })}
               onOpen={() => {
                 void branches.refresh();
@@ -248,6 +240,27 @@ export function WorkTaskEditor({
                 {t("branchRetry")}
               </Button>
             ) : null}
+          </div>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label
+              className="flex items-center justify-between gap-3 text-ui-sm"
+              htmlFor="work-task-use-worktree"
+            >
+              {t("useWorktree")}
+              <Switch
+                id="work-task-use-worktree"
+                data-testid="work-task-use-worktree"
+                checked={useWorktree}
+                disabled={busy || lockedWorkspace}
+                onCheckedChange={(checked) => {
+                  setUseWorktree(checked);
+                  if (!checked && !sourceBranch) setSourceDraft({ value: branches.currentBranch });
+                }}
+              />
+            </label>
+            <p className="text-ui-sm text-foreground-subtle">
+              {t(useWorktree ? "worktreeHint" : "directBranchHint")}
+            </p>
           </div>
           <div className="flex min-w-0 flex-col gap-1.5">
             <span className="text-ui-sm text-foreground-subtle">{t("executor")}</span>
@@ -374,10 +387,10 @@ export function WorkTaskEditor({
               type="submit"
               disabled={
                 busy ||
-                !title.trim() ||
                 !prompt.trim() ||
+                (!useWorktree && !sourceBranch) ||
                 !execution ||
-                (!task?.worktree && (branches.loading || !!branches.error)) ||
+                (!lockedWorkspace && (branches.loading || !!branches.error)) ||
                 (!!thought?.options?.length && !thought.currentValue)
               }
               data-testid="work-task-save"

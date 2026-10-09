@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Emitter, type Event, type IDisposable } from "@zcode/rpc";
 import {
   resolveWorkspaceKey,
+  workTaskExecutionPath,
   workTaskMergeRequestSchema,
   isWorkTaskMerging,
   workTaskArchiveSchema,
@@ -85,9 +86,7 @@ export class WorkTaskService implements IWorkTaskService {
       if (this.options.allowExecution !== false) this.options.repo.recoverExpired(Date.now());
       if (!this.closed && this.options.allowExecution !== false) {
         this.syncObservations();
-        this.timer = setInterval(() => {
-          this.wake();
-        }, this.options.pollIntervalMs ?? 2000);
+        this.timer = setInterval(() => this.wake(), this.options.pollIntervalMs ?? 2000);
         this.timer.unref();
         this.wake();
       }
@@ -121,7 +120,7 @@ export class WorkTaskService implements IWorkTaskService {
       }
     }
     for (const task of tasks) {
-      const key = JSON.stringify([task.worktree?.path, task.session]);
+      const key = JSON.stringify([workTaskExecutionPath(task), task.session]);
       const previous = this.observations.get(task.id);
       if (previous?.key === key) continue;
       previous?.subscription.dispose();

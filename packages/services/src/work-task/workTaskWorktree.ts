@@ -33,7 +33,7 @@ async function canonicalPath(path: string): Promise<string> {
   }
 }
 
-export async function prepareWorkTaskWorktree(
+export async function prepareWorkTaskWorkspace(
   deps: WorkTaskWorktreeDependencies,
   task: WorkTask,
   context: WorkTaskExecutionContext,
@@ -50,6 +50,45 @@ export async function prepareWorkTaskWorktree(
   // Git 会继承父级用户目录的仓库；旧分配也必须提前拒绝，避免重试绕过校验后扫描整个用户目录。
   if (workspacePath === homePath || allocatedProjectPath === homePath)
     throw new Error("work-task.home-repository");
+  if (task.useWorktree === false) {
+    if (task.worktree) throw new Error("work-task.worktree-mismatch");
+    if (!task.sourceBranch) throw new Error("work-task.source-branch-required");
+    const target = { workspacePath: task.workspacePath };
+    const info = await deps.git.getWorkspaceRepositoryInfo(target);
+    if (!info.repoRoot || info.kind === "not-repository")
+      throw new Error("work-task.not-repository");
+    if ((await canonicalPath(info.mainWorktreePath ?? info.repoRoot)) === homePath)
+      throw new Error("work-task.home-repository");
+    await deps.git.resolveLocalBranch({ ...target, branchName: task.sourceBranch });
+    context.signal.throwIfAborted();
+    if (task.directBranch) {
+      // 已绑定会话只能在固定分支重试，不能因外部 checkout 静默修改另一个分支。
+      const branches = await deps.git.getLocalBranches(target);
+      if (
+        task.directBranch !== task.sourceBranch ||
+        branches.currentBranchName !== task.directBranch
+      )
+        throw new Error("work-task.direct-branch-changed");
+    } else {
+      const result = await deps.git.switchBranch({
+        ...target,
+        targetBranchName: task.sourceBranch,
+      });
+      if (!result.ok)
+        throw new Error(
+          result.issues.map((issue) => issue.message).join("\n") ||
+            "work-task.branch-switch-failed",
+        );
+      context.signal.throwIfAborted();
+      const current = await deps.git.getWorkspaceRepositoryInfo(target);
+      const branches = await deps.git.getLocalBranches(target);
+      if (branches.currentBranchName !== task.sourceBranch || current.repoRoot !== info.repoRoot)
+        throw new Error("work-task.direct-branch-changed");
+      await commit(context, { directBranch: task.sourceBranch });
+    }
+    context.signal.throwIfAborted();
+    return { path: task.workspacePath };
+  }
   let worktree = task.worktree;
   if (!worktree) {
     const info = await deps.git.getWorkspaceRepositoryInfo({ workspacePath: task.workspacePath });
@@ -137,4 +176,16 @@ export async function prepareWorkTaskWorktree(
     throw new Error("work-task.worktree-mismatch");
   context.signal.throwIfAborted();
   return worktree;
+}
+
+/** Merge/delegation callers require an isolated allocation, never a direct project path. */
+export async function prepareWorkTaskWorktree(
+  deps: WorkTaskWorktreeDependencies,
+  task: WorkTask,
+  context: WorkTaskExecutionContext,
+): Promise<NonNullable<WorkTask["worktree"]>> {
+  if (task.useWorktree === false) throw new Error("work-task.worktree-required");
+  const workspace = await prepareWorkTaskWorkspace(deps, task, context);
+  if (!("projectPath" in workspace)) throw new Error("work-task.worktree-required");
+  return workspace;
 }

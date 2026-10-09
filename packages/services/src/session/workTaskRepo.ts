@@ -7,7 +7,11 @@ import {
   appendWorkTaskQueue,
   type WorkTaskDatabase as Database,
 } from "./workTaskDatabase.js";
-import { continueWorkTaskConversation, workTaskRunPrompt } from "./workTaskConversationState.js";
+import {
+  continueWorkTaskConversation,
+  workTaskRunPrompt,
+  assertWorkTaskWorkspaceEditable,
+} from "./workTaskConversationState.js";
 import { finishWorkTaskRun, interruptWorkTaskRun } from "./workTaskRunState.js";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -121,6 +125,7 @@ export class WorkTaskRepo {
   }
   create(input: WorkTaskCreate): WorkTask {
     return this.transaction(() => {
+      assertWorkTaskWorkspaceEditable(null, input);
       const now = Date.now();
       const task: WorkTask = {
         ...input,
@@ -153,21 +158,13 @@ export class WorkTaskRepo {
       const task = this.get(input, input.id);
       if (task.stopPending || !["todo", "failed"].includes(task.status))
         throw new Error("work-task.not-editable");
-      if (task.worktree && input.sourceBranch !== task.sourceBranch)
-        throw new Error("work-task.source-branch-locked");
-      if (
-        task.runSeq > 0 &&
-        (input.execution.kind !== task.execution.kind ||
-          (input.execution.kind === "acp" &&
-            task.execution.kind === "acp" &&
-            input.execution.agent !== task.execution.agent))
-      )
-        throw new Error("work-task.executor-locked");
+      assertWorkTaskWorkspaceEditable(task, input);
       return this.write(
         {
           ...task,
           ...input,
           sourceBranch: input.sourceBranch,
+          useWorktree: input.useWorktree,
           promptEditorState: input.promptEditorState,
           runText: input.prompt,
           runUsesPromptAssets: true,

@@ -129,7 +129,7 @@ export async function exerciseWorkTaskBranchesAndMerge(page, artifacts) {
     await page.setViewportSize({ width: 1280, height: 850 });
   };
   await panel.getByTestId("work-task-new").click();
-  await editor.getByTestId("work-task-title").fill("Selected branch task");
+
   await editor.getByTestId("work-task-prompt").fill("Task with a selected source branch");
   await page
     .waitForFunction(() =>
@@ -370,7 +370,9 @@ export async function exerciseWorkTaskBranchesAndMerge(page, artifacts) {
     }
     await review.getByRole("button", { name: "关闭审查面板", exact: true }).click();
     await review.waitFor({ state: "detached" });
-    await card("task-0").getByRole("button", { name: "Selected branch task", exact: true }).click();
+    await card("task-0")
+      .getByRole("button", { name: "Task with a selected source branch", exact: true })
+      .click();
     assert.equal(await page.getByTestId("work-task-merge-controls").count(), 0);
   }
 }

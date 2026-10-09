@@ -33,18 +33,21 @@ import {
   exerciseWorkTaskAgentConfigSelection,
   exerciseWorkTaskAgentConfigPersistence,
 } from "./workTaskAgentConfigAssertions.mjs";
-import { exerciseWorkTaskExecutionPreferences } from "./workTaskExecutionPreferenceAssertions.mjs";
-import { exerciseWorkTaskEditRestart } from "./workTaskEditRestartAssertions.mjs";
-import { exerciseWorkTaskConversationStatus } from "./workTaskConversationStatusAssertions.mjs";
 import { exerciseWorkTaskWorkspaceTools } from "./workTaskWorkspaceToolsAssertions.mjs";
 import { workTaskPanelFixture } from "./workTaskPanelFixture.mjs";
 import { workTaskPromptAssetsFixture } from "./workTaskPromptAssetsFixture.mjs";
-import { exerciseWorkTaskPromptAttachments } from "./workTaskPromptAttachmentsAssertions.mjs";
-import { exerciseWorkTaskImageResources } from "./workTaskImageResourcesAssertions.mjs";
-import { exerciseWorkTaskBranchesAndMerge } from "./workTaskMergeAssertions.mjs";
 import { routeWorkTaskConversationFixture } from "./workTaskConversationFixture.mjs";
-import { exerciseWorkTaskCompletion } from "./workTaskCompletionAssertions.mjs";
-import { exerciseWorkTaskConcurrentExecution } from "./workTaskConcurrentExecutionAssertions.mjs";
+
+import {
+  workTaskScenarios,
+  exerciseWorkTaskPromptAttachments,
+  exerciseWorkTaskImageResources,
+  exerciseWorkTaskEditRestart,
+  exerciseWorkTaskExecutionPreferences,
+  exerciseWorkTaskConversationStatus,
+  exerciseWorkTaskConcurrentExecution,
+  exerciseWorkTaskCompletion,
+} from "./workTaskScenarios.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__work-tasks-e2e-${process.pid}`;
@@ -77,14 +80,14 @@ try {
     window.__tasks=state;
     const clone=(v:any)=>structuredClone(v);
     const listeners=new Set<()=>void>();
-    const changed=()=>{for(const notify of listeners)notify()};
+    const changed=()=>{for(const notify of listeners)notify()};state.changed=changed;
     const rows=(scope:any)=>state.tasks.filter((task:any)=>task.workspacePath===scope.workspacePath&&(scope.includeArchived||!task.archived));
     const modelView:any={revision:1,preferredSelection:{providerId:'api',modelId:'TestModel',options:{reasoningLevel:'high'}},providers:[{providerId:'api',providerName:'Test API',config:{api:{type:'openai-chat-completions'}},models:[{modelId:'TestModel',config:{optionSpecs:{reasoningLevel:{values:['low','high']}}}}]}]};
     state.catalog=[{agent:'codex',source:'host',modeState:null,configOptions:[{id:'model',name:'Model',category:'model',type:'select',currentValue:'codex-model',options:[{value:'codex-model',name:'CodexModel'}]},{id:'reasoning',name:'Reasoning',category:'thought_level',type:'select',currentValue:'high',options:[{value:'low',name:'Low'},{value:'high',name:'High'}]},{id:'fast',name:'Fast',type:'boolean',currentValue:false}]},{agent:'claude',source:'host',configOptions:[],modeState:{currentModeId:'default',availableModes:[{id:'default',name:'Manual'},{id:'plan',name:'Plan'}]}}];
     state.agentListeners=new Set();state.pendingConfigs=[];state.publishConfig=()=>{for(const notify of state.agentListeners)notify()};state.finishConfig=()=>state.pendingConfigs.shift()?.();
     const get=(r:any)=>{const task=state.tasks.find((t:any)=>t.id===r.id&&t.workspacePath===r.workspacePath);if(!task)throw new Error('work-task.not-found');return task};
     const bind=(task:any)=>{task.status='running';task.session??={kind:task.execution.kind,id:'session-'+task.id}};
-    const start=(task:any,feedback?:string)=>{task.status='preparing';task.failureReason=undefined;task.runSeq++;task.runText=feedback||task.prompt;task.updatedAt=Date.now();task.worktree??={rootPath:'/synthetic/trees',path:'/synthetic/trees/'+task.id+'/project',projectPath:task.workspacePath,branchName:'worktree/'+task.id,baseCommit:'abcdef'};if(!state.deferPreparation)bind(task);changed()};
+    const start=(task:any,feedback?:string)=>{task.status='preparing';task.failureReason=undefined;task.runSeq++;task.runText=feedback||task.prompt;task.updatedAt=Date.now();if(task.useWorktree===false){task.directBranch=task.sourceBranch;state.currentBranch=task.sourceBranch}else task.worktree??={rootPath:'/synthetic/trees',path:'/synthetic/trees/'+task.id+'/project',projectPath:task.workspacePath,branchName:'worktree/'+task.id,baseCommit:'abcdef'};if(!state.deferPreparation)bind(task);changed()};
     const service:any={
       async list(r:any){state.calls.push({op:'list',...r});const result=clone({tasks:rows(r),concurrency:state.concurrency});if(state.delayList){state.delayList=false;return new Promise(resolve=>state.pending.push(()=>resolve(result)))}return result},
       async create(r:any){state.calls.push({op:'create',...r});if(state.failSave){state.failSave=false;throw new Error('Synthetic save failed')}const now=Date.now();const task={...r,id:'task-'+state.tasks.length,status:'todo',archived:false,stopPending:false,runSeq:0,runText:r.prompt,commandId:'command',sessionRequestId:'request',createdAt:now,updatedAt:now};state.tasks.push(task);changed();return clone(task)},
@@ -130,16 +133,7 @@ try {
   await routeWorkTaskConversationFixture(page);
   await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`);
   await page.waitForLoadState("networkidle");
-  const scenario = {
-    "prompt-attachments": exerciseWorkTaskPromptAttachments,
-    "image-resources": exerciseWorkTaskImageResources,
-    "branches-merge": exerciseWorkTaskBranchesAndMerge,
-    "edit-restart": exerciseWorkTaskEditRestart,
-    "execution-preferences": exerciseWorkTaskExecutionPreferences,
-    "conversation-status": exerciseWorkTaskConversationStatus,
-    "concurrent-execution": exerciseWorkTaskConcurrentExecution,
-    completion: exerciseWorkTaskCompletion,
-  }[process.env.ZCODE_E2E_SCENARIO];
+  const scenario = workTaskScenarios[process.env.ZCODE_E2E_SCENARIO];
   if (scenario) {
     await scenario(page, artifacts);
     assert.deepEqual(errors, []);
@@ -163,7 +157,6 @@ try {
     };
     const assertBoardOnly = () => assertWorkTaskBoardOnly(panel);
     await assertBoardOnly();
-    assert.ok(await panel.getByTestId("work-task-new").isEnabled());
     assert.ok(await panel.getByTestId("work-task-start-all").isDisabled());
     assert.equal(
       await panel.getByRole("alert").count(),
@@ -173,7 +166,7 @@ try {
     await exerciseWorkTaskWorkbenchLayout(page, panel);
     await exerciseWorkTaskBoardResize(page, panel);
     await panel.getByTestId("work-task-new").click();
-    await editor.getByTestId("work-task-title").fill("API task");
+
     await editor.getByTestId("work-task-prompt").fill("Implement an API task");
     assert.equal(
       await page.evaluate(() => window.__tasks.calls.filter((c) => c.op === "create").length),
@@ -188,7 +181,9 @@ try {
       0,
       "creating a task must remain save-only",
     );
-    await card("task-0").getByRole("button", { name: "API task", exact: true }).click();
+    await card("task-0")
+      .getByRole("button", { name: "Implement an API task", exact: true })
+      .click();
     await panel.getByTestId("work-task-unstarted").waitFor();
     await assertWorkTaskPendingChat(panel, {
       text: "Implement an API task",
@@ -259,7 +254,9 @@ try {
       "archived tasks must not start",
     );
     assert.equal(await page.evaluate(() => window.__tasks.tasks[3].status), "canceled");
-    await card("task-0").getByRole("button", { name: "API task", exact: true }).click();
+    await card("task-0")
+      .getByRole("button", { name: "Implement an API task", exact: true })
+      .click();
     await assertWorkTaskSessionTarget(
       panel,
       "api",
@@ -267,7 +264,7 @@ try {
       "/synthetic/trees/task-0/project",
     );
     assert.equal(await card("task-0").getAttribute("data-selected"), "true");
-    await openDetails("task-0", "API task");
+    await openDetails("task-0", "Implement an API task");
     await detail.getByTestId("work-task-open-conversation").click();
     await detail.waitFor({ state: "detached" });
     await assertWorkTaskSessionTarget(
@@ -278,7 +275,7 @@ try {
     );
     await page.evaluate(() => window.__tasks.status("task-1", "awaiting_input"));
     await card("task-1").locator('[data-work-task-status="awaiting_input"]').waitFor();
-    await openDetails("task-1", "ACP task");
+    await openDetails("task-1", "Implement an ACP task");
     await detail.getByRole("button", { name: "处理会话中的请求", exact: true }).click();
     await detail.waitFor({ state: "detached" });
     await assertWorkTaskSessionTarget(
@@ -296,7 +293,9 @@ try {
     await page.evaluate(() => {
       window.__lateTaskArchive = window.__tasks.closed.at(-1);
     });
-    await card("task-0").getByRole("button", { name: "API task", exact: true }).click();
+    await card("task-0")
+      .getByRole("button", { name: "Implement an API task", exact: true })
+      .click();
     await assertWorkTaskSessionTarget(
       panel,
       "api",
@@ -318,7 +317,7 @@ try {
     await cardAction("task-0", "重新开始");
     await card("task-0").locator('[data-work-task-status="running"]').waitFor();
     await page.evaluate(() => window.__tasks.status("task-1", "review"));
-    await openDetails("task-1", "ACP task");
+    await openDetails("task-1", "Implement an ACP task");
     await detail.getByTestId("work-task-feedback").fill("Add the missing test");
     await detail.getByTestId("work-task-follow-up").click();
     await detail.locator('[data-work-task-status="running"]').waitFor();
@@ -345,7 +344,7 @@ try {
     await panel.getByTestId("work-task-content").getByTestId("work-task-complete").click();
     await confirm.getByRole("button", { name: "确认完成", exact: true }).click();
     await confirm.waitFor({ state: "detached" });
-    await openDetails("task-1", "ACP task");
+    await openDetails("task-1", "Implement an ACP task");
     await detail.locator('[data-work-task-status="done"]').waitFor();
     await detail.getByRole("button", { name: "归档", exact: true }).click();
     await detail.waitFor({ state: "detached" });
@@ -355,7 +354,9 @@ try {
     await page.evaluate(() => window.__tasks.archive("task-1", false));
     await card("task-1").waitFor();
     await panel.getByTestId("work-task-no-selection").waitFor();
-    await card("task-1").getByRole("button", { name: "ACP task", exact: true }).click();
+    await card("task-1")
+      .getByRole("button", { name: "Implement an ACP task", exact: true })
+      .click();
     await assertWorkTaskSessionTarget(
       panel,
       "acp",

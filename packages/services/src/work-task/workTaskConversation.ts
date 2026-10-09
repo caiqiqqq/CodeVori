@@ -1,5 +1,5 @@
 import type { WorkTask } from "@zcode/shared";
-import { uuidv7 } from "@zcode/shared";
+import { uuidv7, workTaskExecutionPath } from "@zcode/shared";
 import type { ConversationTelemetryFact } from "@zcode/shared/zcode-protocol-v4";
 import type { WorkTaskConversationEvent, WorkTaskConversationPort } from "../session/contract.js";
 import type { IAcpService } from "../acp/acpService.js";
@@ -18,7 +18,7 @@ interface Dependencies {
 export function createWorkTaskConversation(deps: Dependencies): WorkTaskConversationPort {
   return {
     watch(task, listener) {
-      const workspacePath = task.worktree?.path;
+      const workspacePath = workTaskExecutionPath(task);
       const session = task.session;
       if (!workspacePath || !session || task.workspaceIdentity || task.remoteSessionId)
         return { dispose() {} };
@@ -119,7 +119,7 @@ export function createWorkTaskConversation(deps: Dependencies): WorkTaskConversa
       };
     },
     async stop(task, event) {
-      const workspacePath = task.worktree?.path;
+      const workspacePath = workTaskExecutionPath(task);
       const session = task.session;
       if (!workspacePath || !session) throw new Error("work-task.binding-invalid");
       if (session.kind === "acp") {
