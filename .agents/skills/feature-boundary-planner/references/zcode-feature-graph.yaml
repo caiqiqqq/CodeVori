@@ -464,8 +464,13 @@ nodes:
         symbol: WorkTasksPanel
       - file: packages/ui/src/hooks/useWorkTasks.ts
         symbol: useWorkTasks
+      - file: packages/ui/src/hooks/workTaskReadModel.ts
+        symbol: getWorkTaskReadModel
       - file: packages/ui/src/app-shell/WorkspaceShellLayout.tsx
         symbol: handleOpenWorkTaskConversation
+    invariants:
+      - Project options wait for Git worktree relationships; same-name independent identities stay distinct.
+      - Board and sidebar share one read projection and event subscription per Service and scope; Host owns task facts.
   - id: surface.work-task-editor
     kind: ui-surface
     label: Work task shared composer draft, attachments and saved API or ACP configuration

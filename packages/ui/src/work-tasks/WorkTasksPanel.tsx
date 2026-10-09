@@ -2,9 +2,9 @@ import { useCallback, useLayoutEffect, useMemo, useState, type ReactNode } from 
 import { ListTodo, Play, Plus } from "lucide-react";
 import { isWorkTaskMerging, type WorkTask, type WorkTaskScope } from "@zcode/shared";
 import { useWorkTasks } from "@/hooks/useWorkTasks.js";
-import { useWorktreeProjectGroups } from "@/hooks/useWorktreeProjectGroups.js";
+import { useWorktreeProjectGroupsResolution } from "@/hooks/useWorktreeProjectGroups.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
-import { getPathLeaf } from "@/lib/path.js";
+import { workTaskProjectOptions } from "@/lib/workTaskProjectOptions.js";
 import {
   canCompleteWorkTask,
   filterWorkTasks,
@@ -61,10 +61,17 @@ export function WorkTasksPanel(props: Props) {
         })),
     [props.workspaceTabs],
   );
-  const groups = useWorktreeProjectGroups(workspaceTabs);
-  const projects = groups
-    .filter((group) => group.tab.workspacePurpose !== "conversation" && !group.isLinkedWorktree)
-    .map((group) => group.tab);
+  const {
+    resolvedGroups: groups,
+    loading: projectsLoading,
+    hasResolvedRelations,
+  } = useWorktreeProjectGroupsResolution(workspaceTabs);
+  const options = workTaskProjectOptions(
+    groups
+      .filter((group) => group.tab.workspacePurpose !== "conversation" && !group.isLinkedWorktree)
+      .map((group) => group.tab),
+  );
+  const projects = options.map((option) => option.tab);
   const current = groups.find((group) =>
     group.workspaceTabs.some(
       (tab) =>
@@ -94,20 +101,32 @@ export function WorkTasksPanel(props: Props) {
     <header className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-3">
       <ListTodo className="size-4 shrink-0 text-foreground-subtle" />
       <h2 className="min-w-0 flex-1 text-ui-base font-medium">{t("title")}</h2>
-      <Select value={selected ? key : ""} onValueChange={setSelection} disabled={!projects.length}>
+      <Select
+        value={selected ? key : ""}
+        onValueChange={setSelection}
+        disabled={projectsLoading || !projects.length}
+      >
         <SelectTrigger
           aria-label={t("project")}
           className="max-w-56"
           data-testid="work-task-project"
         >
-          <SelectValue placeholder={t("noProject")} />
+          <SelectValue placeholder={t(projectsLoading ? "loading" : "noProject")} />
         </SelectTrigger>
         <SelectContent>
-          {projects.map((tab) => (
-            <SelectItem key={tab.id} value={tab.workspaceIdentity?.trim() || tab.workspacePath}>
-              {tab.label || getPathLeaf(tab.workspacePath)}
-            </SelectItem>
-          ))}
+          {!projectsLoading &&
+            options.map(({ tab, label, description }) => (
+              <SelectItem key={tab.id} value={tab.workspaceIdentity?.trim() || tab.workspacePath}>
+                <span className="flex min-w-0 flex-col" title={description}>
+                  <span>{label}</span>
+                  {description ? (
+                    <span className="break-all text-ui-xs text-foreground-subtle">
+                      {description}
+                    </span>
+                  ) : null}
+                </span>
+              </SelectItem>
+            ))}
         </SelectContent>
       </Select>
     </header>
@@ -117,18 +136,27 @@ export function WorkTasksPanel(props: Props) {
       className="flex h-full min-h-0 min-w-0 flex-col bg-background text-foreground"
       data-testid="work-tasks-panel"
     >
-      <WorkTasksBoard
-        key={key}
-        scope={scope}
-        hasProject={Boolean(selected)}
-        header={header}
-        onOpenConversation={props.onOpenConversation}
-        onOpenNativeSession={props.onOpenNativeSession}
-        conversationOptions={props.conversationOptions}
-        workspaceTools={props.workspaceTools}
-        onWorkspaceToolTargetChange={props.onWorkspaceToolTargetChange}
-        reviewContainer={props.reviewContainer}
-      />
+      {!hasResolvedRelations ? (
+        <>
+          {header}
+          <p role="status" className="px-4 py-3 text-ui-sm text-foreground-subtle">
+            {t("loading")}
+          </p>
+        </>
+      ) : (
+        <WorkTasksBoard
+          key={key}
+          scope={scope}
+          hasProject={Boolean(selected)}
+          header={header}
+          onOpenConversation={props.onOpenConversation}
+          onOpenNativeSession={props.onOpenNativeSession}
+          conversationOptions={props.conversationOptions}
+          workspaceTools={props.workspaceTools}
+          onWorkspaceToolTargetChange={props.onWorkspaceToolTargetChange}
+          reviewContainer={props.reviewContainer}
+        />
+      )}
     </div>
   );
 }
