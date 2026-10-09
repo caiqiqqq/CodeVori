@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -8,6 +9,7 @@ import {
   Pencil,
   Play,
   Square,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import { WORK_TASK_ACTIVE_STATUSES, type WorkTask } from "@zcode/shared";
@@ -15,6 +17,7 @@ import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
 import { canCompleteWorkTask } from "@/lib/workTaskBoard.js";
 import { WorkTaskIconButton, useWorkTaskMessages } from "./WorkTaskParts.js";
 import { Button } from "@/components/ui/button.js";
+import { WorkTaskArchiveWorktreeDialog } from "./WorkTaskArchiveWorktreeDialog.js";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,6 +45,7 @@ export function WorkTaskActions({
   menu?: boolean;
 }) {
   const t = useWorkTaskMessages();
+  const [confirmCleanup, setConfirmCleanup] = useState(false);
   const active = WORK_TASK_ACTIVE_STATUSES.includes(task.status) || task.status === "queued";
   const startable = ["todo", "failed", "canceled"].includes(task.status) && !task.archived;
   const disabled = panel.busy || task.stopPending;
@@ -85,37 +89,59 @@ export function WorkTaskActions({
           },
         },
   );
-  if (menu)
-    return (
-      // 菜单内会打开独立弹窗，双重模态锁可能在关闭后残留 body pointer-events:none。
-      <DropdownMenu modal={false}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("taskActions")}
-            title={t("taskActions")}
-          >
-            <MoreHorizontal className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {actions.map(({ label, Icon, disabled, run }) => (
-            <DropdownMenuItem key={label} disabled={disabled} onSelect={run}>
-              <Icon className="size-4" />
-              {label}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
+  if (
+    menu &&
+    task.status === "done" &&
+    !task.archived &&
+    task.worktree &&
+    task.useWorktree !== false
+  )
+    actions.push({
+      label: t("archiveAndRemoveWorktree"),
+      Icon: Trash2,
+      disabled: disabled || !panel.executable,
+      run: () => setConfirmCleanup(true),
+    });
   return (
-    <div className="flex shrink-0 items-center gap-0.5">
-      {actions.map(({ label, Icon, disabled, run }) => (
-        <WorkTaskIconButton key={label} label={label} disabled={disabled} onClick={run}>
-          <Icon className="size-4" />
-        </WorkTaskIconButton>
-      ))}
-    </div>
+    <>
+      {menu ? (
+        // 菜单内会打开独立弹窗，双重模态锁可能在关闭后残留 body pointer-events:none。
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("taskActions")}
+              title={t("taskActions")}
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {actions.map(({ label, Icon, disabled, run }) => (
+              <DropdownMenuItem key={label} disabled={disabled} onSelect={run}>
+                <Icon className="size-4" />
+                {label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <div className="flex shrink-0 items-center gap-0.5">
+          {actions.map(({ label, Icon, disabled, run }) => (
+            <WorkTaskIconButton key={label} label={label} disabled={disabled} onClick={run}>
+              <Icon className="size-4" />
+            </WorkTaskIconButton>
+          ))}
+        </div>
+      )}
+      {confirmCleanup ? (
+        <WorkTaskArchiveWorktreeDialog
+          task={task}
+          panel={panel}
+          onClose={() => setConfirmCleanup(false)}
+        />
+      ) : null}
+    </>
   );
 }

@@ -1604,10 +1604,15 @@ export function createGitCliRepo(options?: {
         let root: string;
         let target: string;
         let project: string;
+        let missing = false;
         try {
           [root, target, project] = await Promise.all([
             realpath(params.worktreeRootPath),
-            realpath(params.worktreePath),
+            realpath(params.worktreePath).catch((error: NodeJS.ErrnoException) => {
+              if (!params.allowMissing || error.code !== "ENOENT") throw error;
+              missing = true;
+              return resolve(params.worktreePath);
+            }),
             realpath(params.projectPath),
           ]);
         } catch {
@@ -1621,13 +1626,32 @@ export function createGitCliRepo(options?: {
           isAbsolute(inside) ||
           resolve(params.worktreePath) !== target ||
           target === project ||
-          (await lstat(target)).isSymbolicLink()
+          (!missing && (await lstat(target)).isSymbolicLink())
         )
           return invalid;
+        if (missing) {
+          // Git 已删除但归档尚未落库时允许重试；仅目录消失而仍注册不能算成功。
+          const info = await this.getWorkspaceRepositoryInfo(project);
+          if (info.kind !== "main-tree" || info.repoRoot !== project) return invalid;
+          const registered = await commandProvider.run({
+            cwd: project,
+            args: ["worktree", "list", "--porcelain", "-z"],
+            timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+          });
+          if (registered.exitCode !== 0 || registered.timedOut || registered.outputTruncated)
+            return invalid;
+          return registered.stdout
+            .split("\0\0")
+            .some((record) => record.split("\0").includes(`worktree ${target}`))
+            ? invalid
+            : { ok: true };
+        }
         const validateRegistration = async () => {
           this.invalidate(target);
           const info = await this.getWorkspaceRepositoryInfo(target);
           if (info.kind !== "linked-worktree" || info.repoRoot !== target || !info.mainWorktreePath)
+            return false;
+          if (params.expectedBranchName && info.branchName !== params.expectedBranchName)
             return false;
           const currentProject = await realpath(info.mainWorktreePath);
           if (currentProject !== project) return false;
@@ -1638,9 +1662,14 @@ export function createGitCliRepo(options?: {
           });
           if (registered.exitCode !== 0 || registered.timedOut || registered.outputTruncated)
             return false;
-          return registered.stdout
-            .split("\0\0")
-            .some((record) => record.split("\0").includes(`worktree ${target}`));
+          return registered.stdout.split("\0\0").some((record) => {
+            const lines = record.split("\0");
+            return (
+              lines.includes(`worktree ${target}`) &&
+              (!params.expectedBranchName ||
+                lines.includes(`branch refs/heads/${params.expectedBranchName}`))
+            );
+          });
         };
         try {
           if (!(await validateRegistration())) return invalid;

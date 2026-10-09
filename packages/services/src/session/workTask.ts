@@ -15,6 +15,7 @@ import {
   type WorkTaskAttachmentBegin,
   type WorkTaskAttachmentChunk,
   type WorkTaskAttachmentTarget,
+  type WorkTaskArchive,
 } from "@zcode/shared";
 import type {
   V4AttachmentBeginResult,
@@ -38,7 +39,7 @@ export interface IWorkTaskService {
   cancel(input: WorkTaskTarget): Promise<WorkTask>;
   complete(input: WorkTaskTarget): Promise<WorkTask>;
   merge(input: WorkTaskMergeRequest): Promise<WorkTask>;
-  archive(input: WorkTaskTarget & { archived: boolean }): Promise<WorkTask>;
+  archive(input: WorkTaskArchive): Promise<WorkTask>;
   /** @deprecated Compatibility setting only; does not limit task execution. */
   setConcurrency(input: WorkTaskScope & { concurrency: number }): Promise<void>;
   getEvents(input: WorkTaskTarget): Promise<WorkTaskEvent[]>;
