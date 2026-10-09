@@ -379,6 +379,8 @@ export function useGitRepository(options: {
   remoteSessionId?: string | null;
   remoteTarget?: unknown;
   workspaceIdentity?: string | null;
+  enabled?: boolean;
+  scopeIsExplicit?: boolean;
 }): GitPaneRepositoryState {
   const {
     workspacePath,
@@ -387,24 +389,30 @@ export function useGitRepository(options: {
     remoteSessionId: preferredRemoteSessionId = null,
     remoteTarget,
     workspaceIdentity = null,
+    enabled = true,
+    scopeIsExplicit = false,
   } = options;
   const { gitService } = useWorkspaceServices(
     workspacePath,
     preferredRemoteSessionId,
     workspaceIdentity,
     remoteTarget,
+    scopeIsExplicit,
   );
   const remoteSessionId = useResolvedRemoteWorkspaceSessionId(
     workspacePath,
     preferredRemoteSessionId,
     workspaceIdentity,
     remoteTarget,
+    scopeIsExplicit,
   );
-  const workspaceRpcEnabled = shouldEnableWorkspaceRpc({
-    workspaceIdentity,
-    remoteSessionId,
-    remoteTarget,
-  });
+  const workspaceRpcEnabled =
+    enabled &&
+    shouldEnableWorkspaceRpc({
+      workspaceIdentity,
+      remoteSessionId,
+      remoteTarget,
+    });
   const workspaceKey = workspaceIdentity?.trim() || workspacePath;
   // store 收尾：per-turn 变更摘要 map（setPerTurnSummaries/setPerTurnFileChanges）
   // 的写入链路随旧 ChatView 流订阅删除，store 不再保存该派生态（删除前也恒为空）。

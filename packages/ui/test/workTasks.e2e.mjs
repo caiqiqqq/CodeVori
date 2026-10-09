@@ -67,6 +67,7 @@ try {
     import React, {useState} from 'react';
     import {createRoot} from 'react-dom/client';
     import {WorkTasksPanel} from '../../../ui/src/work-tasks/WorkTasksPanel.tsx';
+    import {WorkTasksSidebarButton} from '../../../ui/src/work-tasks/WorkTasksSidebarButton.tsx';
     import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
     import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
     import {StoreProvider} from '../../../ui/src/store/StoreProvider.tsx';
@@ -89,7 +90,7 @@ try {
     const bind=(task:any)=>{task.status='running';task.session??={kind:task.execution.kind,id:'session-'+task.id}};
     const start=(task:any,feedback?:string)=>{task.status='preparing';task.failureReason=undefined;task.runSeq++;task.runText=feedback||task.prompt;task.updatedAt=Date.now();if(task.useWorktree===false){task.directBranch=task.sourceBranch;state.currentBranch=task.sourceBranch}else task.worktree??={rootPath:'/synthetic/trees',path:'/synthetic/trees/'+task.id+'/project',projectPath:task.workspacePath,branchName:'worktree/'+task.id,baseCommit:'abcdef'};if(!state.deferPreparation)bind(task);changed()};
     const service:any={
-      async list(r:any){state.calls.push({op:'list',...r});const result=clone({tasks:rows(r),concurrency:state.concurrency});if(state.delayList){state.delayList=false;return new Promise(resolve=>state.pending.push(()=>resolve(result)))}return result},
+      async list(r:any){state.calls.push({op:'list',...r});if(state.failList){state.failList=false;throw new Error('Synthetic list failed')}const result=clone({tasks:rows(r),concurrency:state.concurrency});if(state.delayList){state.delayList=false;return new Promise(resolve=>state.pending.push(()=>resolve(result)))}return result},
       async create(r:any){state.calls.push({op:'create',...r});if(state.failSave){state.failSave=false;throw new Error('Synthetic save failed')}const now=Date.now();const task={...r,id:'task-'+state.tasks.length,status:'todo',archived:false,stopPending:false,runSeq:0,runText:r.prompt,commandId:'command',sessionRequestId:'request',createdAt:now,updatedAt:now};state.tasks.push(task);changed();return clone(task)},
       async update(r:any){state.calls.push({op:'update',...r});if(state.delaySave){state.delaySave=false;await new Promise<void>(resolve=>state.pendingSaves.push(resolve))}if(state.failSave){state.failSave=false;throw new Error('Synthetic save failed')}const task=get(r);Object.assign(task,r,{runText:r.prompt,updatedAt:Date.now()});changed();return clone(task)},
       async start(r:any){state.calls.push({op:'start',...r});if(state.delayStart){state.delayStart=false;await new Promise<void>(resolve=>state.pendingStarts.push(resolve))}if(state.failStart){state.failStart=false;throw new Error('Synthetic start failed')}const task=get(r);start(task,r.feedback);return clone(task)},

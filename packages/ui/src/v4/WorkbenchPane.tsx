@@ -20,6 +20,7 @@ import type {
 } from "@zcode/shared";
 import { cn } from "@/components/lib/utils.js";
 import { useServices } from "@/hooks/useServices.js";
+import { usePaneGitStatus, type OpenScopedGitReview } from "@/hooks/usePaneGitStatus.js";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import type { AssistantPreviewCardsAutoOpenRequest } from "@/lib/assistantPreviewCards.js";
 import type { OpenAutomationsMain } from "@/lib/taskNavigationHistory.js";
@@ -312,6 +313,7 @@ export interface WorkbenchShellBinding {
   onSummaryPanelVariantOverrideChange?: (variant: ChatViewSummaryPanelVariant | null) => void;
   onRefreshGit?: () => void;
   onOpenGitReview?: (sourceId?: GitChangeSourceId) => void;
+  onOpenScopedGitReview?: OpenScopedGitReview;
   onOpenWorkspacePath?: (path: string) => void | Promise<void>;
   allowWorktreeCreation?: boolean;
   onOpenBrowserUrl?: (url: string) => void;
@@ -418,6 +420,8 @@ export function WorkbenchLeafPane({
   ]);
 
   const style = useMemo(() => rectStyle(rect), [rect]);
+  const isShellWorkspace = paneWorkspaceKey(scope) === shellWorkspaceKey;
+  const paneGit = usePaneGitStatus(scope, !isShellWorkspace, shell.onOpenScopedGitReview);
 
   const handleSplitRight = useCallback(() => {
     onSplit?.(paneId, "row", scope);
@@ -559,7 +563,6 @@ export function WorkbenchLeafPane({
     return null;
   }
 
-  const isShellWorkspace = paneWorkspaceKey(scope) === shellWorkspaceKey;
   const sessionId = isPrimary
     ? (primaryBinding?.sessionId ?? shell.sessionId)
     : (binding?.sessionId ?? null);
@@ -665,23 +668,38 @@ export function WorkbenchLeafPane({
           onAcpSessionChange={
             isPrimary && isShellWorkspace ? shell.onPrimaryAcpSessionChange : undefined
           }
-          gitSummary={shouldUseShellStatusPanel ? shell.gitSummary : undefined}
-          gitDirtyFileCount={shouldUseShellStatusPanel ? shell.gitDirtyFileCount : undefined}
+          gitSummary={shouldUseShellStatusPanel ? shell.gitSummary : paneGit.gitSummary}
+          gitDirtyFileCount={
+            shouldUseShellStatusPanel ? shell.gitDirtyFileCount : paneGit.gitDirtyFileCount
+          }
           gitWorktreeReviewSourceId={
-            shouldUseShellStatusPanel ? shell.gitWorktreeReviewSourceId : undefined
+            shouldUseShellStatusPanel
+              ? shell.gitWorktreeReviewSourceId
+              : paneGit.gitWorktreeReviewSourceId
           }
           gitWorktreeChangeSummary={
-            shouldUseShellStatusPanel ? shell.gitWorktreeChangeSummary : undefined
+            shouldUseShellStatusPanel
+              ? shell.gitWorktreeChangeSummary
+              : paneGit.gitWorktreeChangeSummary
           }
-          activeTaskChangeSummary={isPrimary ? shell.activeTaskChangeSummary : undefined}
+          // 跨项目启用 Git 面板后，也不能把 Shell 当前任务的文件范围带进另一个项目。
+          activeTaskChangeSummary={
+            isPrimary && isShellWorkspace ? shell.activeTaskChangeSummary : undefined
+          }
           summaryPanelVariantOverride={
             shouldUseShellStatusPanel ? shell.summaryPanelVariantOverride : undefined
           }
           onSummaryPanelVariantOverrideChange={
             shouldUseShellStatusPanel ? shell.onSummaryPanelVariantOverrideChange : undefined
           }
-          onRefreshGit={shouldUseShellStatusPanel ? shell.onRefreshGit : undefined}
-          onOpenGitReview={shouldUseShellStatusPanel ? shell.onOpenGitReview : undefined}
+          onRefreshGit={shouldUseShellStatusPanel ? shell.onRefreshGit : paneGit.onRefreshGit}
+          onOpenGitReview={
+            readOnly
+              ? undefined
+              : shouldUseShellStatusPanel
+                ? shell.onOpenGitReview
+                : paneGit.onOpenGitReview
+          }
           onOpenWorkspacePath={shouldUseShellStatusPanel ? shell.onOpenWorkspacePath : undefined}
           allowWorktreeCreation={
             shouldUseShellStatusPanel ? shell.allowWorktreeCreation : undefined

@@ -1,11 +1,25 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdtemp,
+  mkdir,
+  rename,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { readCodexUsageHistories } from "../src/acp/acpNativeUsage.js";
+import {
+  createCodexUsageHistoryReader,
+  readCodexUsageHistories,
+} from "../src/acp/acpNativeUsage.js";
 import { summarizeAcpUsage } from "../src/acp/acpUsageStats.js";
 import { acpSessionSchema } from "@zcode/shared";
+import { codexUsageKey } from "../src/acp/acpNativeUsage.js";
 const id = "019c7714-3b77-74d1-9866-e1f484aae2ab";
 const now = Date.parse("2026-10-08T12:00:00Z");
 const old = "2026-09-01T12:00:00Z";
@@ -62,6 +76,174 @@ async function fixture(run: (root: string, cwd: string, file: string) => Promise
 }
 const jsonl = (cwd: string, ...rows: unknown[]) =>
   [row("session_meta", { id, cwd }), ...rows].map((v) => JSON.stringify(v)).join("\n") + "\n";
+
+test("Host reader reuses unchanged history across ranges and reparses appended complete lines", async () =>
+  fixture(async (root, cwd, file) => {
+    const reader = createCodexUsageHistoryReader();
+    const value = session(cwd);
+    const key = codexUsageKey(value);
+    await writeFile(file, jsonl(cwd, ...start(old, "gpt-old"), token(100, 20, old), done(old)));
+    const first = (await reader.read([value], root)).get(key)!;
+    const second = await reader.read([value], root);
+    assert.strictEqual(second.get(key), first, "unchanged logs must skip parsing");
+    assert.equal(
+      summarizeAcpUsage([value], { range: "all", timeZone: "UTC" }, now, second)[0]?.totalTokens,
+      120,
+    );
+    assert.equal(
+      summarizeAcpUsage([value], { range: "7d", timeZone: "UTC" }, now, second).length,
+      1,
+    );
+    assert.equal(
+      summarizeAcpUsage([value], { range: "7d", timeZone: "UTC" }, now, second)[0]?.totalTokens,
+      0,
+    );
+    const next = JSON.stringify(token(140, 30, recent));
+    await appendFile(file, next.slice(0, -1));
+    assert.equal((await reader.read([value], root)).get(key)?.usage.totalTokens, 120);
+    await appendFile(file, "}\n");
+    const updated = (await reader.read([value], root)).get(key)!;
+    assert.notStrictEqual(updated, first);
+    assert.equal(updated.usage.totalTokens, 170);
+    assert.equal(
+      updated.records.reduce((sum, item) => sum + item.usage.totalTokens, 0),
+      170,
+    );
+    reader.dispose();
+    assert.equal((await reader.read([value], root)).size, 0);
+  }));
+
+test("Host reader rejects stale cache after replacement, corruption, duplicate IDs and deletion", async () =>
+  fixture(async (root, cwd, file) => {
+    const reader = createCodexUsageHistoryReader();
+    const value = session(cwd);
+    const key = codexUsageKey(value);
+    const original = jsonl(cwd, token(100, 20, recent));
+    await writeFile(file, original);
+    await reader.read([value], root);
+    const before = await stat(file);
+    await writeFile(file, jsonl(cwd, token(200, 40, recent)));
+    await utimes(file, before.atime, before.mtime);
+    assert.equal((await reader.read([value], root)).get(key)?.usage.totalTokens, 240);
+    const replacement = join(root, "replacement.jsonl");
+    await writeFile(replacement, original);
+    await utimes(replacement, before.atime, before.mtime);
+    await rename(replacement, file);
+    assert.equal((await reader.read([value], root)).get(key)?.usage.totalTokens, 120);
+    await writeFile(file, "invalid\n");
+    assert.equal((await reader.read([value], root)).size, 0);
+    await writeFile(file, original);
+    assert.equal((await reader.read([value], root)).size, 1);
+    const duplicate = join(root, "sessions", `duplicate-${id}.jsonl`);
+    await writeFile(duplicate, original);
+    assert.equal((await reader.read([value], root)).size, 0);
+    await rm(duplicate);
+    assert.equal((await reader.read([value], root)).size, 1);
+    await rm(file);
+    assert.equal((await reader.read([value], root)).size, 0);
+  }));
+
+test("Host caches isolate roots, readers, registered sessions and canonical workspace changes", async () =>
+  fixture(async (root, cwd, file) => {
+    await writeFile(file, jsonl(cwd, token(100, 20, recent)));
+    const value = session(cwd);
+    const key = codexUsageKey(value);
+    const reader = createCodexUsageHistoryReader();
+    const first = (await reader.read([value], root)).get(key);
+    assert.notStrictEqual(
+      (await createCodexUsageHistoryReader().read([value], root)).get(key),
+      first,
+    );
+    await reader.read([], root);
+    assert.notStrictEqual((await reader.read([value], root)).get(key), first);
+    const other = join(root, "other-home");
+    await mkdir(join(other, "sessions"), { recursive: true });
+    await writeFile(
+      join(other, "sessions", `rollout-${id}.jsonl`),
+      jsonl(cwd, token(200, 40, recent)),
+    );
+    assert.equal((await reader.read([value], other)).get(key)?.usage.totalTokens, 240);
+    assert.equal((await reader.read([value], root)).get(key)?.usage.totalTokens, 120);
+    const alias = join(root, "alias");
+    await symlink(cwd, alias, "dir");
+    const linked = { ...value, workspacePath: alias };
+    assert.equal((await reader.read([linked], root)).size, 1);
+    await rm(alias);
+    await symlink(other, alias, "dir");
+    assert.equal((await reader.read([linked], root)).size, 0);
+  }));
+
+test("bounded Host cache evicts history without omitting registered usage", async () =>
+  fixture(async (root, cwd) => {
+    const values = Array.from({ length: 129 }, () => ({
+      ...session(cwd),
+      acpSessionId: crypto.randomUUID(),
+    }));
+    await Promise.all(
+      values.map((value) =>
+        writeFile(
+          join(root, "sessions", `rollout-${value.acpSessionId}.jsonl`),
+          [row("session_meta", { id: value.acpSessionId, cwd }), token(100, 20, recent)]
+            .map((v) => JSON.stringify(v))
+            .join("\n") + "\n",
+        ),
+      ),
+    );
+    const reader = createCodexUsageHistoryReader();
+    const first = await reader.read(values, root);
+    assert.equal(first.size, 129);
+    const again = await reader.read([values[0]!], root);
+    assert.notStrictEqual(
+      again.get(codexUsageKey(values[0]!)),
+      first.get(codexUsageKey(values[0]!)),
+    );
+    assert.equal(again.get(codexUsageKey(values[0]!))?.usage.totalTokens, 120);
+  }));
+
+test("numeric cache budget bounds retained requests without truncating query results", async () =>
+  fixture(async (root, cwd) => {
+    const values = Array.from({ length: 3 }, () => ({
+      ...session(cwd),
+      acpSessionId: crypto.randomUUID(),
+    }));
+    const requests =
+      Array.from({ length: 35_000 }, (_, index) =>
+        JSON.stringify(token((index + 1) * 2, 0, recent)),
+      ).join("\n") + "\n";
+    await Promise.all(
+      values.map((value) =>
+        writeFile(
+          join(root, "sessions", `rollout-${value.acpSessionId}.jsonl`),
+          JSON.stringify(row("session_meta", { id: value.acpSessionId, cwd })) + "\n" + requests,
+        ),
+      ),
+    );
+    const reader = createCodexUsageHistoryReader();
+    const first = await reader.read(values, root);
+    assert.equal(first.size, 3);
+    assert.equal(
+      [...first.values()].reduce((sum, value) => sum + value.records.length, 0),
+      105_000,
+    );
+    const again = await reader.read([values[0]!], root);
+    assert.notStrictEqual(
+      again.get(codexUsageKey(values[0]!)),
+      first.get(codexUsageKey(values[0]!)),
+    );
+    assert.equal(again.get(codexUsageKey(values[0]!))?.usage.totalTokens, 70_000);
+  }));
+
+test("disposing a Host reader during IO prevents late results and cache reuse", async () =>
+  fixture(async (root, cwd, file) => {
+    await writeFile(file, jsonl(cwd, token(100, 20, recent)));
+    const reader = createCodexUsageHistoryReader();
+    const value = session(cwd);
+    const pending = reader.read([value], root);
+    reader.dispose();
+    assert.equal((await pending).size, 0);
+    assert.equal((await reader.read([value], root)).size, 0);
+    assert.equal((await createCodexUsageHistoryReader().read([value], root)).size, 1);
+  }));
 
 test("native history restores dated actual models and deduplicates requests and repeated Host references", async () =>
   fixture(async (root, cwd, file) => {

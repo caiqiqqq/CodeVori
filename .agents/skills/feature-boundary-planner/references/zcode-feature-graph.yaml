@@ -438,6 +438,7 @@ nodes:
     invariants:
       - Cross-workspace split placement captures the visible ACP identity before native shell navigation; group/layout stores retain pane bindings and drafts.
       - Selecting a grouped ACP session focuses its existing pane; temporary secondary selection clears native navigation without starting a new draft or resetting layout.
+      - Cross-workspace panes read Git status through scoped hooks; review requests activate the matching workspace before opening the existing Git pane without replacing session bindings.
   - id: capability.work-tasks
     kind: capability
     label: Project work tasks

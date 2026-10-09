@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import { assertYellowWaitingIndicator } from "./waitingResponseIndicatorAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__native-conversation-icons-${process.pid}`;
@@ -204,6 +205,9 @@ try {
               expected,
             );
           assert.equal(await row.locator("[data-idle-indicator]").count(), 0);
+          if (expected === "loading") {
+            await assertYellowWaitingIndicator(row.locator("[data-task-running-indicator]"), theme);
+          }
           const title = row.locator('[data-task-title-copy="original"], p[title]').first();
           const before = await title.evaluate((el) => el.getBoundingClientRect().left);
           const actualRow =
