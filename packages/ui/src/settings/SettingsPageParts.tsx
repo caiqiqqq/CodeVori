@@ -21,6 +21,12 @@ import { cn } from "@/components/lib/utils.js";
 export const SETTINGS_FRAME_CONTENT_CLASSNAME =
   "mx-auto w-full max-w-4xl px-4 pb-8 pt-0 lg:px-8 lg:pb-10";
 
+// 快捷消息的列表和正文需要更多编辑空间；保留普通设置页的边距，只放宽内容列。
+export const SETTINGS_WIDE_FRAME_CONTENT_CLASSNAME = cn(
+  SETTINGS_FRAME_CONTENT_CLASSNAME,
+  "max-w-7xl",
+);
+
 export function ThemeSelect({
   value,
   onValueChange,
