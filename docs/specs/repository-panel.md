@@ -179,6 +179,29 @@
   with the item's title, URL and description. API and ACP use the same composer;
   no automatic prompt, branch switch, worktree creation or remote writeback is
   introduced. External issue text is identified as untrusted source content.
+- Each outer list row has a separate "Handle" button. It reads the full item
+  through the selected Host's IGitService, then saves a task through that same
+  Host's IWorkTaskService.create with the exact workspacePath, workspaceIdentity
+  and remoteSessionId. The task title comes from the item title (within the
+  existing 200-character limit); the prompt reuses the existing untrusted-source
+  wrapper with repository, kind, number, URL and description. The existing
+  20,000-character description boundary and source-link notice still apply.
+- Save only: WorkTaskService owns persistence and the initial todo status.
+  Do not start, queue, create a conversation/worktree, close the forge item,
+  merge or write back to the forge. The detail's conversation-draft action
+  keeps its existing behavior. The list remains visible after saving and the
+  button shows "Added to To-do". It stays disabled for that item for the current
+  repository content lifetime; this is transient feedback, not a durable
+  forge-to-task mapping. Returning after remount may intentionally save again.
+- Reuse the task editor's project execution preference resolution: keep exact
+  API provider/model/options/mode or an enabled, ready ACP identity/config;
+  otherwise use the selected Host's preferred API selection. With no usable
+  execution selection show an actionable error and create nothing.
+- Admit one handle operation at a time synchronously. Disable handle buttons
+  while reading/saving, never retry writes automatically, and allow explicit
+  retry after failure. Workspace/Host/remote/account changes discard old UI
+  replies and prevent a late detail/model read from initiating a task save.
+  An already dispatched save remains owned by its original Host/project.
 
 ## Ownership And Boundaries
 
@@ -310,6 +333,12 @@ cancel / Host or parent disposal -> close native window -> settle authorization
 old detail/image owner reply -> ignored; temporary object URL -> revoked
 confirmed write -> target/head validation -> one API write -> refresh snapshot
 handle item -> existing create-task action -> shared API/ACP composer draft
+list Handle -> bound Host full-item read + execution preference resolution
+            -> current-owner check -> same Host IWorkTaskService.create
+            -> persisted todo -> existing task events/read model
+            -> matching row's transient success feedback
+scope change before save -> discard old read (no create)
+scope change after save admission -> original Host persists; ignore old UI reply
 settings account save -> encrypted Host account owner -> settings response
 return to repository -> shell visibility -> new discovery generation
                                         -> same Host account match -> snapshot
@@ -325,6 +354,14 @@ covered/previous generation reply -> ignored (no credential or queue replay)
   forge is authoritative, with no extra durable task queue or credential store.
 
 ## Validation
+
+- E2E: outer list Handle saves a todo task with full detail content and exact
+  project scope, leaving the list visible and producing no agent/forge writes.
+  Cover double-click admission, save/read failures and explicit retry, preferred
+  API and remembered ACP configurations, missing model, same-path remote
+  identity, stale detail replies after project/remote changes, and a save already
+  dispatched before switching projects. Check keyboard access, narrow layout,
+  light/dark themes and success feedback.
 
 - Unit: SSH/HTTPS remotes, nested GitLab groups, self-hosted base paths,
   protocol/host/port matching, explicit providers, generic/missing accounts,

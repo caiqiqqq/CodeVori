@@ -75,6 +75,7 @@ import { MemorySettingsSection } from "@/settings/MemorySettingsSection.js";
 import { BrowserSettingsSection } from "@/settings/BrowserSettingsSection.js";
 import { ComputerUseSection } from "@/settings/ComputerUseSection.js";
 import { ShortcutSettingsSection } from "@/settings/ShortcutSettingsSection.js";
+import { QuickMessagesSection } from "@/settings/QuickMessagesSection.js";
 import { WorktreesSection } from "@/settings/WorktreesSection.js";
 import { VersionControlSection } from "@/settings/VersionControlSection.js";
 import { MigrationSection } from "@/settings/MigrationSection.js";
@@ -1763,6 +1764,8 @@ export function SettingsPage({
                               })
                             }
                           />
+                        ) : activeSection === "quickMessages" ? (
+                          <QuickMessagesSection />
                         ) : activeSection === "shortcuts" ? (
                           <ShortcutSettingsSection isDesktop={Boolean(isDesktop)} />
                         ) : activeSection === "versionControl" ? (

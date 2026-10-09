@@ -22,6 +22,7 @@ export type SettingsSectionId =
   | "computerUse"
   | "automations"
   | "shortcuts"
+  | "quickMessages"
   | "worktrees"
   | "versionControl";
 
@@ -85,6 +86,7 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
     value === "computerUse" ||
     value === "automations" ||
     value === "shortcuts" ||
+    value === "quickMessages" ||
     value === "worktrees" ||
     value === "versionControl"
   );

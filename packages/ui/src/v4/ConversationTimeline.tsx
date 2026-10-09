@@ -519,10 +519,12 @@ function ConversationTimelineImpl({
     totalSize: number;
   }>({ firstRowId: null, totalSize: 0 });
   const pendingPrependVirtualAnchorRef = useRef<PrependVirtualAnchor | null>(null);
-  const heightCacheRef = useRef<TimelineRowHeightCache | null>(null);
-  if (heightCacheRef.current === null) {
-    heightCacheRef.current = new TimelineRowHeightCache();
-  }
+  // 切换后的 ref commit 已测到新正文高度；在 layout effect 清缓存会再次退回
+  // 72px 估计值，长轮次便在首帧重叠。按会话/日志代际提前创建缓存，保留本次 commit 的测量。
+  const heightCache = useMemo(
+    () => new TimelineRowHeightCache(),
+    [sessionKey, rowContext.logEpoch],
+  );
   const [backToBottomVisible, setBackToBottomVisible] = useState(false);
   const [turnNavigatorViewport, setTurnNavigatorViewport] = useState({
     scrollOffsetPx: 0,
@@ -720,31 +722,42 @@ function ConversationTimelineImpl({
   );
 
   const getScrollElement = useCallback(() => scrollRef.current, []);
+  // virtualizer 以 getItemKey 的引用判断顺序是否变化。只从 ref 读 key 会让同数量
+  // 的新窗口沿用旧位置；以 key 序列失效，正文流式更新但顺序不变时保持稳定。
+  const virtualizedUnitKeys = JSON.stringify(virtualizedUnits.map((unit) => unit.key));
   const getItemKey = useCallback(
-    (index: number) => virtualizedUnitsRef.current[index]?.key ?? index,
-    [],
+    (index: number) =>
+      JSON.stringify([
+        sessionKey,
+        rowContext.logEpoch ?? "",
+        virtualizedUnitsRef.current[index]?.key ?? index,
+      ]),
+    [sessionKey, rowContext.logEpoch, virtualizedUnitKeys],
   );
   // 测高缓存兜底：行卸载重挂（甚至 virtualizer 重建）时用上次真实测量代替固定估计。
   const estimateSize = useCallback(
     (index: number) =>
-      heightCacheRef.current?.estimate(
+      heightCache.estimate(
         getUnitHeightCacheKey(virtualizedUnitsRef.current[index]),
         DEFAULT_ROW_HEIGHT_ESTIMATE_PX,
-      ) ?? DEFAULT_ROW_HEIGHT_ESTIMATE_PX,
-    [],
+      ),
+    [heightCache],
   );
   // 动态测高：virtualizer 对窗口内元素挂 ResizeObserver，流式行长高即回调此处；
   // 同时把真实高度写入稳定的 turnId 缓存。
-  const measureElement = useCallback((element: Element, entry: ResizeObserverEntry | undefined) => {
-    const height = measureRowHeight(element, entry);
-    const indexAttr = element.getAttribute("data-index");
-    const unit = indexAttr === null ? undefined : virtualizedUnitsRef.current[Number(indexAttr)];
-    const cacheKey = getUnitHeightCacheKey(unit);
-    if (cacheKey !== undefined) {
-      heightCacheRef.current?.set(cacheKey, height);
-    }
-    return height;
-  }, []);
+  const measureElement = useCallback(
+    (element: Element, entry: ResizeObserverEntry | undefined) => {
+      const height = measureRowHeight(element, entry);
+      const indexAttr = element.getAttribute("data-index");
+      const unit = indexAttr === null ? undefined : virtualizedUnitsRef.current[Number(indexAttr)];
+      const cacheKey = getUnitHeightCacheKey(unit);
+      if (cacheKey !== undefined) {
+        heightCache.set(cacheKey, height);
+      }
+      return height;
+    },
+    [heightCache],
+  );
 
   const virtualizer = useVirtualizer({
     count: virtualizedUnits.length,
@@ -769,6 +782,21 @@ function ConversationTimelineImpl({
   };
   const virtualRows = virtualizer.getVirtualItems();
   const totalSize = virtualizer.getTotalSize();
+  useLayoutEffect(() => {
+    // 切换时旧视口可能仍被 virtualizer 标记为 isScrolling，ref 测高会因此跳过。
+    // 只在会话/行序列变化时于绘制前测量当前挂载窗口，避免等待下一轮 RO 才消除重叠；
+    // 流式正文和普通用户滚动仍沿用原有 ResizeObserver 路径。
+    const elements = virtualHistoryRef.current?.children;
+    if (!elements) return;
+    const previousSuppression = suppressVirtualizerAdjustmentDuringRestoreRef.current;
+    suppressVirtualizerAdjustmentDuringRestoreRef.current = true;
+    for (const element of elements) {
+      const indexAttr = element.getAttribute("data-index");
+      if (indexAttr === null) continue;
+      virtualizer.resizeItem(Number(indexAttr), measureElement(element, undefined));
+    }
+    suppressVirtualizerAdjustmentDuringRestoreRef.current = previousSuppression;
+  }, [getItemKey, measureElement, virtualizer]);
   const turnNavigatorVirtualItems: ConversationTurnNavigatorVirtualItem[] = useMemo(() => {
     const historyItems = virtualRows.map((row) => ({
       index: row.index,
@@ -1127,7 +1155,7 @@ function ConversationTimelineImpl({
 
     const cacheHeight = (entry?: ResizeObserverEntry) => {
       const height = measureRowHeight(element, entry);
-      heightCacheRef.current?.set(cacheKey, height);
+      heightCache.set(cacheKey, height);
       return height;
     };
     let observedHeight = cacheHeight();
@@ -1165,6 +1193,7 @@ function ConversationTimelineImpl({
   }, [
     commitFollowing,
     getActiveUserScrollIntent,
+    heightCache,
     isContentWidthChanging,
     liveUnit?.key,
     markLayoutScrollGuard,
@@ -1267,9 +1296,11 @@ function ConversationTimelineImpl({
         ? virtualizedUnitsRef.current[anchorMeasurement.index]
         : undefined;
       pendingPrependVirtualAnchorRef.current =
-        anchorMeasurement && anchorUnit?.key === anchorMeasurement.key
+        anchorMeasurement &&
+        anchorUnit &&
+        getItemKey(anchorMeasurement.index) === anchorMeasurement.key
           ? {
-              key: anchorUnit.key,
+              key: anchorMeasurement.key,
               offsetTop: anchorMeasurement.start - element.scrollTop,
               start: anchorMeasurement.start,
             }
@@ -1283,6 +1314,7 @@ function ConversationTimelineImpl({
   }, [
     commitFollowing,
     getActiveUserScrollIntent,
+    getItemKey,
     saveCurrentScrollMemory,
     syncTurnNavigatorViewport,
     virtualizer,
@@ -1466,7 +1498,6 @@ function ConversationTimelineImpl({
   // 恢复；首个 layout 立即写入防闪动，下一帧再校正异步测高，但必须把滚动权让给用户。
   useLayoutEffect(() => {
     clearUserScrollIntent();
-    heightCacheRef.current?.clear();
     // prepend 锚定基线一并重置：rowId 跨会话可重复，禁止拿旧会话首行比较。
     prependAnchorRef.current = { firstRowId: null, totalSize: 0 };
     pendingPrependVirtualAnchorRef.current = null;
