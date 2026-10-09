@@ -1,5 +1,6 @@
 import type { WorkTask, WorkTaskArchive } from "@zcode/shared";
 import type { WorkTaskRepo } from "./workTaskRepo.js";
+import { createWorktreeRemovalTiming } from "#src/logger/worktreeRemovalTiming.js";
 
 export async function archiveWorkTask(
   repo: WorkTaskRepo,
@@ -18,15 +19,23 @@ export async function archiveWorkTask(
       throw new Error("work-task.not-cleanable");
   };
   assertCleanable(current);
-  if (!cleanup.remove) throw new Error("work-task.cleanup-unsupported");
+  const remove = cleanup.remove;
+  if (!remove) throw new Error("work-task.cleanup-unsupported");
   cleanup.active.add(current.id);
+  const timing = createWorktreeRemovalTiming("archive", current.worktree!.path);
+  let outcome = "failed";
   try {
     // 同一 Host 先删除再归档；目录删除后落库中断由原 Git 幂等检查支持显式重试。
-    await cleanup.remove(current);
-    if (cleanup.isClosed()) throw new Error("work-task.host-closed");
-    assertCleanable(repo.get(input, input.id));
-    return repo.archive(input, input.id, true);
+    await timing.run("worktree-cleanup", () => remove(current));
+    timing.measure("task-revalidation", () => {
+      if (cleanup.isClosed()) throw new Error("work-task.host-closed");
+      assertCleanable(repo.get(input, input.id));
+    });
+    const result = timing.measure("archive-transaction", () => repo.archive(input, input.id, true));
+    outcome = "success";
+    return result;
   } finally {
     cleanup.active.delete(current.id);
+    timing.finish(outcome);
   }
 }

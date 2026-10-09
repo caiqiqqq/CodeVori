@@ -3,7 +3,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { isWorkTaskMerging, type WorkTask } from "@zcode/shared";
 import { useWorkTaskBranches } from "@/hooks/useWorkTaskBranches.js";
-import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
+import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import { Button } from "@/components/ui/button.js";
 import { WorkTaskBranchSelect } from "./WorkTaskBranchSelect.js";
 import { WorkTaskError, useWorkTaskMessages } from "./WorkTaskParts.js";
@@ -14,7 +14,7 @@ export function WorkTaskMergeControls({
   container,
 }: {
   task: WorkTask;
-  panel: ReturnType<typeof useWorkTasks>;
+  panel: WorkTaskPanel;
   container: HTMLElement | null;
 }) {
   const t = useWorkTaskMessages();

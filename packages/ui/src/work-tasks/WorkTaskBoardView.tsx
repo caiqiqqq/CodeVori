@@ -1,8 +1,10 @@
 import { Fragment } from "react";
 import { GripHorizontal } from "lucide-react";
 import type { WorkTask } from "@zcode/shared";
-import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
+import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import { WORK_TASK_COLUMNS, type WorkTaskColumn } from "@/lib/workTaskBoard.js";
+import { workTaskSelectionKey } from "@/store/workTaskNavigationStore.js";
+import { workTaskProjectOptions } from "@/lib/workTaskProjectOptions.js";
 import { cn } from "@/components/lib/utils.js";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable.js";
 import { WorkTaskActions } from "./WorkTaskActions.js";
@@ -18,7 +20,10 @@ const COLUMN_MARKERS: Record<WorkTaskColumn, string> = {
 
 interface Props {
   columns: Record<WorkTaskColumn, WorkTask[]>;
-  panel: ReturnType<typeof useWorkTasks>;
+  panel: WorkTaskPanel;
+  panelForTask?(task: WorkTask): WorkTaskPanel;
+  taskKey?(task: WorkTask): string;
+  projectOptions?: ReturnType<typeof workTaskProjectOptions>;
   onSelect(id: string): void;
   onEdit(task: WorkTask): void;
   onOpenConversation(task: WorkTask): void;
@@ -30,6 +35,9 @@ interface Props {
 export function WorkTaskBoardView({
   columns,
   panel,
+  panelForTask,
+  taskKey = (task: WorkTask) => task.id,
+  projectOptions,
   onSelect,
   onEdit,
   onOpenConversation,
@@ -70,24 +78,27 @@ export function WorkTaskBoardView({
                   <div className="flex min-w-0 flex-col gap-1 pb-3">
                     {columns[key].map((task) => (
                       <article
-                        key={task.id}
+                        key={workTaskSelectionKey(task)}
                         data-testid="work-task-card"
                         data-task-id={task.id}
+                        data-workspace-key={workTaskSelectionKey(task)}
                         className={cn(
                           "flex h-9 min-w-0 items-center gap-1 rounded-md border border-card-border px-1 hover:bg-hover",
-                          task.id === selectedId
+                          taskKey(task) === selectedId
                             ? "bg-card-selected border-border-hover"
                             : "bg-card",
                         )}
-                        data-selected={task.id === selectedId}
+                        data-selected={taskKey(task) === selectedId}
                       >
                         {/* 多行卡片占用过多空间；固定单行且菜单独立，长正文和错误留在右侧及详情。 */}
                         <button
                           type="button"
-                          onClick={() => onSelect(task.id)}
+                          onClick={() => onSelect(taskKey(task))}
                           aria-label={task.title}
-                          aria-pressed={task.id === selectedId}
-                          title={task.title}
+                          aria-pressed={taskKey(task) === selectedId}
+                          title={
+                            projectOptions ? `${task.title} · ${task.workspacePath}` : task.title
+                          }
                           className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm px-1 text-left whitespace-nowrap focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <WorkTaskAgent task={task} iconOnly />
@@ -97,6 +108,19 @@ export function WorkTaskBoardView({
                           >
                             {task.title}
                           </span>
+                          {projectOptions ? (
+                            <span
+                              data-testid="work-task-card-project"
+                              className="max-w-20 truncate text-ui-xs text-foreground-subtle"
+                              title={task.workspacePath}
+                            >
+                              {projectOptions.find(
+                                ({ tab }) =>
+                                  workTaskSelectionKey({ ...tab, id: task.id }) ===
+                                  workTaskSelectionKey(task),
+                              )?.label ?? task.workspacePath}
+                            </span>
+                          ) : null}
                           <WorkTaskStatus task={task} />
                           {task.archived ? (
                             <span className="shrink-0 text-ui-xs text-foreground-subtlest">
@@ -107,7 +131,7 @@ export function WorkTaskBoardView({
                         <div className="shrink-0">
                           <WorkTaskActions
                             task={task}
-                            panel={panel}
+                            panel={panelForTask?.(task) ?? panel}
                             menu
                             onOpenConversation={onOpenConversation}
                             onEdit={onEdit}

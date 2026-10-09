@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import { RefreshCw, Save } from "lucide-react";
+import { useRef, useState } from "react";
+import { Save } from "lucide-react";
 import {
   type WorkTask,
   type WorkTaskCreate,
@@ -16,15 +16,19 @@ import {
   resolveWorkTaskExecutionPreference,
   workTaskExecutionPreferenceStore,
 } from "@/store/workTaskExecutionPreferenceStore.js";
-import { ModelConfigSelect } from "@/ModelConfigSelect.js";
-import { resolveModelDisplayName } from "@/lib/modelSelectionGroups.js";
 import { resolveModelThoughtOption } from "@/lib/modelThoughtOption.js";
-import { decodeCustomModelValue, encodeCustomModelValue } from "@/lib/zcodeCustomModelValue.js";
-import { acpAgentFromModelValue, acpModelValue } from "@/v4/composer/acpModelSelection.js";
-import { buildAcpModelSelectGroup } from "@/v4/composer/acpModelSelection.js";
-import { AcpComposerConfigControls } from "@/v4/composer/AcpComposerConfigControls.js";
 import { Button } from "@/components/ui/button.js";
 import { Switch } from "@/components/ui/switch.js";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select.js";
+import type { WorkspaceTabState } from "@/store/tabStore.js";
+import { workTaskNavigationKey } from "@/store/workTaskNavigationStore.js";
+import { workTaskProjectOptions } from "@/lib/workTaskProjectOptions.js";
 import {
   Dialog,
   DialogContent,
@@ -32,12 +36,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog.js";
-import { WorkTaskError, WorkTaskIconButton, useWorkTaskMessages } from "./WorkTaskParts.js";
+import { WorkTaskError, useWorkTaskMessages } from "./WorkTaskParts.js";
 import { WorkTaskPromptField } from "./WorkTaskPromptField.js";
-import { WorkTaskApiConfigControls } from "./WorkTaskApiConfigControls.js";
+import { WorkTaskExecutionControls } from "./WorkTaskExecutionControls.js";
 
 interface Props {
   scope: WorkTaskScope;
+  projectOptions?: readonly WorkspaceTabState[];
+  onProjectChange?(key: string): void;
   task: WorkTask | null;
   busy: boolean;
   error: string | null;
@@ -48,6 +54,8 @@ interface Props {
 
 export function WorkTaskEditor({
   scope,
+  projectOptions,
+  onProjectChange,
   task,
   busy: externalBusy,
   error,
@@ -79,47 +87,6 @@ export function WorkTaskEditor({
   const execution: WorkTaskExecution | null =
     draftExecution ??
     resolveWorkTaskExecutionPreference(rememberedExecution, models.view, models.agents);
-  const acpLabel = t("agents");
-  const groups = useMemo(
-    () => [...models.apiGroups, buildAcpModelSelectGroup(acpLabel, models.agents)],
-    [models.apiGroups, models.agents, acpLabel],
-  );
-  const value =
-    execution?.kind === "acp"
-      ? acpModelValue(execution.agent)
-      : execution
-        ? encodeCustomModelValue(
-            execution.modelSelection.providerId,
-            execution.modelSelection.modelId,
-          )
-        : "";
-  const agent = execution?.kind === "acp" ? execution.agent : null;
-  const known = agent ? models.configs.find((snapshot) => snapshot.agent === agent) : null;
-  const options =
-    execution?.kind === "acp"
-      ? (known?.configOptions ?? []).map((option) => {
-          const saved = execution.config.find((item) => item.configId === option.id);
-          return option.type === "boolean"
-            ? {
-                ...option,
-                currentValue: typeof saved?.value === "boolean" ? saved.value : option.currentValue,
-              }
-            : {
-                ...option,
-                currentValue: typeof saved?.value === "string" ? saved.value : option.currentValue,
-              };
-        })
-      : [];
-  const modes =
-    execution?.kind === "acp" && known?.modeState
-      ? {
-          ...known.modeState,
-          currentModeId: String(
-            execution.config.find((item) => item.configId === "mode")?.value ??
-              known.modeState.currentModeId,
-          ),
-        }
-      : null;
   const thought =
     execution?.kind === "api" && models.view
       ? resolveModelThoughtOption({
@@ -129,46 +96,10 @@ export function WorkTaskEditor({
           currentValue: execution.modelSelection.options?.reasoningLevel,
         })
       : null;
-  const lockedExecutor = !!task && task.runSeq > 0;
   const changeExecution = (next: WorkTaskExecution) => {
     setDraftExecution(next);
     // 偏好只由主动选择写入，目录刷新和编辑旧任务不能改变下次新建配置。
     if (!task) workTaskExecutionPreferenceStore.getState().remember(scope, next);
-  };
-  const selectModel = (candidate: string) => {
-    if (candidate === value && execution) {
-      changeExecution(execution);
-      return;
-    }
-    const nextAgent = acpAgentFromModelValue(candidate);
-    if (nextAgent) {
-      changeExecution({ kind: "acp", agent: nextAgent, config: [] });
-    } else {
-      const model = decodeCustomModelValue(candidate);
-      if (!model?.modelName) return;
-      changeExecution({
-        kind: "api",
-        mode: execution?.kind === "api" ? execution.mode : "build",
-        modelSelection: { providerId: model.providerId, modelId: model.modelName },
-      });
-    }
-  };
-  const updateAcpOption = async (configId: string, value: string | boolean) => {
-    if (execution?.kind !== "acp") return;
-    changeExecution({
-      ...execution,
-      config: [
-        ...execution.config.filter((item) => item.configId !== configId),
-        { configId, value },
-      ],
-    });
-  };
-  const useAgentDefault = async (configId: string) => {
-    if (execution?.kind !== "acp") return;
-    changeExecution({
-      ...execution,
-      config: execution.config.filter((item) => item.configId !== configId),
-    });
   };
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -208,10 +139,35 @@ export function WorkTaskEditor({
           }}
           className="flex min-w-0 flex-col gap-4"
         >
-          <label className="flex min-w-0 flex-col gap-1.5 text-ui-sm text-foreground-subtle">
+          <div className="flex min-w-0 flex-col gap-1.5 text-ui-sm text-foreground-subtle">
             {t("project")}
+            {!task && projectOptions ? (
+              <Select
+                value={workTaskNavigationKey(scope)}
+                onValueChange={onProjectChange}
+                disabled={busy}
+              >
+                <SelectTrigger
+                  aria-label={t("project")}
+                  data-testid="work-task-editor-project"
+                  className="w-full min-w-0"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {workTaskProjectOptions(projectOptions).map(({ tab, label, description }) => (
+                    <SelectItem key={workTaskNavigationKey(tab)} value={workTaskNavigationKey(tab)}>
+                      <span title={description ?? tab.workspacePath}>
+                        {label}
+                        {description ? ` · ${description}` : ""}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
             <span className="break-all font-mono">{scope.workspacePath}</span>
-          </label>
+          </div>
           <div className="flex min-w-0 flex-col gap-1.5">
             <span className="text-ui-sm text-foreground-subtle">{t("sourceBranch")}</span>
             <WorkTaskBranchSelect
@@ -262,6 +218,7 @@ export function WorkTaskEditor({
               {t(useWorktree ? "worktreeHint" : "directBranchHint")}
             </p>
           </div>
+
           <WorkTaskPromptField
             scope={scope}
             task={task}
@@ -269,114 +226,17 @@ export function WorkTaskEditor({
             assets={assets}
             inputApiRef={inputApiRef}
             leadingActions={
-              <>
-                <ModelConfigSelect
-                  modelGroups={groups}
-                  normalizedValue={value}
-                  triggerLabel={resolveModelDisplayName(groups, value) ?? t("selectModel")}
-                  showManageModelsAction={false}
-                  lockReasonMessage={t("executorLocked")}
-                  isItemLocked={(candidate) =>
-                    lockedExecutor &&
-                    (task?.execution.kind === "acp"
-                      ? candidate !== acpModelValue(task.execution.agent)
-                      : !!acpAgentFromModelValue(candidate))
-                  }
-                  onValueChange={selectModel}
-                  onOpenChange={(open) => {
-                    if (open) {
-                      models.refreshAgents();
-                      void models.refreshConfigs();
-                    }
-                  }}
-                  disabled={busy}
-                  focusSelectorOnClose={null}
-                  triggerTestId="work-task-model"
-                  contentSide="bottom"
-                  labelVisibilityClassName="inline-flex min-w-0 truncate"
-                  triggerClassName="max-w-full"
-                />
-                {execution?.kind === "api" ? (
-                  <WorkTaskApiConfigControls
-                    execution={execution}
-                    thought={thought}
-                    disabled={busy}
-                    onChange={changeExecution}
-                  />
-                ) : agent ? (
-                  <div className="min-w-0 max-w-full [&>div]:flex-wrap">
-                    <AcpComposerConfigControls
-                      agent={agent}
-                      options={options}
-                      modes={modes}
-                      disabled={busy}
-                      loading={models.configStatus === "loading" && !options.length && !modes}
-                      onChange={updateAcpOption}
-                      defaultOption={{
-                        label: t("agentDefault"),
-                        selectedIds: (options.length
-                          ? options.map((option) => option.id)
-                          : modes
-                            ? ["mode"]
-                            : []
-                        ).filter(
-                          (id) =>
-                            execution?.kind === "acp" &&
-                            !execution.config.some((item) => item.configId === id),
-                        ),
-                        onSelect: useAgentDefault,
-                      }}
-                      focusSelectorOnClose={null}
-                    />
-                    {models.configStatus !== "loading" &&
-                    !options.length &&
-                    !modes &&
-                    execution?.kind === "acp" &&
-                    !execution.config.length ? (
-                      <span
-                        data-testid="work-task-agent-default"
-                        className="text-ui-sm text-foreground-subtle"
-                      >
-                        {t("agentDefault")}
-                      </span>
-                    ) : null}
-                    {execution?.kind === "acp"
-                      ? execution.config
-                          .filter(
-                            (item) =>
-                              !options.some((option) => option.id === item.configId) &&
-                              !(item.configId === "mode" && modes),
-                          )
-                          .map((item) => (
-                            <span
-                              key={item.configId}
-                              className="break-all font-mono text-ui-sm text-foreground-subtle"
-                            >
-                              {item.configId}: {String(item.value)}
-                            </span>
-                          ))
-                      : null}
-                  </div>
-                ) : null}
-              </>
+              <WorkTaskExecutionControls
+                task={task}
+                models={models}
+                execution={execution}
+                busy={busy}
+                thought={thought}
+                changeExecution={changeExecution}
+              />
             }
             onChange={setPrompt}
           />
-          {agent && models.configError ? (
-            <div className="flex min-w-0 items-start gap-1">
-              <WorkTaskError error={t("configReadFailed", { message: models.configError })} />
-              <WorkTaskIconButton
-                label={t("configRetry")}
-                data-testid="work-task-config-retry"
-                disabled={busy}
-                onClick={() => {
-                  void models.refreshConfigs();
-                }}
-              >
-                <RefreshCw className="size-4" />
-              </WorkTaskIconButton>
-            </div>
-          ) : null}
           <WorkTaskError error={submission.error ?? assets.attachmentError ?? error} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>

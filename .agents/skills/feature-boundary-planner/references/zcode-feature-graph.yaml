@@ -482,6 +482,8 @@ nodes:
     codeSeeds:
       - file: packages/ui/src/work-tasks/WorkTaskEditor.tsx
         symbol: WorkTaskEditor
+      - file: packages/ui/src/work-tasks/WorkTaskExecutionControls.tsx
+        symbol: WorkTaskExecutionControls
       - file: packages/ui/src/hooks/useWorkTaskModels.ts
         symbol: useWorkTaskModels
       - file: packages/ui/src/work-tasks/WorkTaskPromptField.tsx
