@@ -7,29 +7,21 @@ import {
   type DragEndEvent,
   type Modifier,
 } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { memo, useCallback, useMemo, useState, type CSSProperties } from "react";
-import {
-  TID_V4_QUEUE,
-  TID_V4_QUEUE_ITEM,
-  TID_V4_QUEUE_ITEM_DELETE,
-  TID_V4_QUEUE_ITEM_EDIT,
-  TID_V4_QUEUE_ITEM_SEND_NOW,
-  TID_V4_QUEUE_PAUSED_BANNER,
-  TID_V4_QUEUE_RESUME,
-  testId,
-} from "@zcode/shared";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { TID_V4_QUEUE, TID_V4_QUEUE_PAUSED_BANNER, TID_V4_QUEUE_RESUME } from "@zcode/shared";
 import type { QueueState } from "@zcode/shared/zcode-protocol-v4";
-import { ArrowUpFromLine, GripVertical, PencilIcon, Trash2Icon } from "lucide-react";
-import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { Button } from "@/components/ui/button.js";
+import { Spinner } from "@/components/ui/spinner.js";
+import { ConversationQueueRow } from "@/v4/ConversationQueueRow.js";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { runUserAction, runUserActionAsync } from "@/lib/userActionTelemetry.js";
+import { runUserActionAsync } from "@/lib/userActionTelemetry.js";
 
 interface ConversationQueuePanelProps {
   queue: QueueState;
+  /** 临时发送反馈，不计入 accepted queue，也不提供队列命令。 */
+  pendingSubmission?: { commandId: string; text: string } | null;
   /** 删除队列项（deleteQueueItem command）。 */
   onDeleteItem?: (queueItemId: string) => void;
   /** 撤回队列项到发起端 composer；权威删除成功后才恢复草稿。 */
@@ -109,171 +101,13 @@ const restrictQueueDragToPanel: Modifier = ({
   };
 };
 
-interface QueueRowProps {
-  item: QueueItem;
-  index: number;
-  intl: ReturnType<typeof useZCodeIntl>["intl"];
-  sortable: boolean;
-  onDeleteItem?: (queueItemId: string) => void;
-  onEditItem?: (queueItemId: string) => Promise<void> | void;
-  editPending: boolean;
-  onSendNow?: (queueItemId: string) => void;
-}
-
-const QueueRow = memo(function QueueRow({
-  item,
-  index,
-  intl,
-  sortable,
-  onDeleteItem,
-  onEditItem,
-  onSendNow,
-  editPending,
-}: QueueRowProps) {
-  const dispatchLocked = item.dispatch.state !== "queued";
-  const rowLocked = dispatchLocked || editPending;
-  const isCompact = item.kind === "compact";
-  const {
-    attributes,
-    isDragging,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({
-    disabled: !sortable || rowLocked,
-    id: item.queueItemId,
-  });
-
-  const style = useMemo<CSSProperties>(
-    () => ({
-      transform: CSS.Transform.toString(
-        transform
-          ? {
-              ...transform,
-              // dnd-kit 排序时会按 over 节点尺寸附带 scale；
-              // 队列行是固定触控目标，缩放会让拖拽中的按钮和文本短暂变形。
-              scaleX: 1,
-              scaleY: 1,
-            }
-          : null,
-      ),
-      transition,
-      zIndex: isDragging ? 10 : undefined,
-    }),
-    [isDragging, transition, transform],
-  );
-  return (
-    <li
-      ref={setNodeRef}
-      data-testid={testId(TID_V4_QUEUE_ITEM, item.queueItemId)}
-      data-queue-item-id={item.queueItemId}
-      data-index={index}
-      data-kind={item.kind}
-      data-dispatch-state={item.dispatch.state}
-      data-edit-pending={editPending ? "true" : "false"}
-      className={cn(
-        "relative flex items-center gap-2 rounded-xl px-1.5 py-1 pr-1 transition-colors hover:bg-hover/30",
-        isDragging ? "bg-hover/40 shadow-sm" : null,
-        editPending ? "opacity-60" : null,
-      )}
-      style={style}
-    >
-      <ControlHintTooltip title={intl.formatMessage({ id: "chat.queue.drag" })}>
-        <Button
-          ref={setActivatorNodeRef}
-          type="button"
-          variant="ghost"
-          size="icon-md"
-          data-v4-queue-drag-handle="true"
-          data-queue-item-id={item.queueItemId}
-          aria-label={intl.formatMessage({ id: "chat.queue.drag" })}
-          className="shrink-0 cursor-grab touch-none text-foreground-subtlest active:cursor-grabbing"
-          disabled={rowLocked}
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="size-4" />
-        </Button>
-      </ControlHintTooltip>
-      <span
-        className={cn(
-          "flex min-w-0 flex-1 items-center gap-2 truncate text-ui-base text-foreground",
-          isCompact ? "font-mono" : null,
-        )}
-        title={item.text}
-      >
-        <span className="truncate">{isCompact ? "/compact" : item.text}</span>
-      </span>
-      {onSendNow ? (
-        <Button
-          type="button"
-          variant="secondary"
-          size="default"
-          data-icon="inline-start"
-          data-testid={testId(TID_V4_QUEUE_ITEM_SEND_NOW, item.queueItemId)}
-          data-queue-item-id={item.queueItemId}
-          disabled={rowLocked}
-          onClick={() =>
-            runUserAction({
-              input: {
-                featureId: "conversation.queue.item",
-                action: "send_now",
-                trigger: "button",
-              },
-              operation: () => onSendNow(item.queueItemId),
-              completed: { resultSource: "optimistic_projection" },
-              failureStage: "queue_send_now",
-            })
-          }
-        >
-          <ArrowUpFromLine className="size-3.5" />
-          {intl.formatMessage({ id: isCompact ? "chat.queue.runNow" : "chat.queue.sendNow" })}
-        </Button>
-      ) : null}
-      {onEditItem && !isCompact ? (
-        <ControlHintTooltip title={intl.formatMessage({ id: "chat.queue.edit" })}>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-md"
-            data-testid={testId(TID_V4_QUEUE_ITEM_EDIT, item.queueItemId)}
-            data-queue-item-id={item.queueItemId}
-            aria-label={intl.formatMessage({ id: "chat.queue.edit" })}
-            disabled={rowLocked}
-            onClick={() => void onEditItem(item.queueItemId)}
-          >
-            <PencilIcon className="size-4" />
-          </Button>
-        </ControlHintTooltip>
-      ) : null}
-      {onDeleteItem ? (
-        <ControlHintTooltip title={intl.formatMessage({ id: "chat.queue.remove" })}>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-md"
-            data-testid={testId(TID_V4_QUEUE_ITEM_DELETE, item.queueItemId)}
-            data-queue-item-id={item.queueItemId}
-            aria-label={intl.formatMessage({ id: "chat.queue.remove" })}
-            disabled={rowLocked}
-            onClick={() => onDeleteItem(item.queueItemId)}
-          >
-            <Trash2Icon className="size-4" />
-          </Button>
-        </ControlHintTooltip>
-      ) : null}
-    </li>
-  );
-});
-
 /**
  * 竖切 queue 面板：渲染 projection.queue.items + 单项删除入口。
  * API/ACP queue 均读取所属 Host 的权威投影，Renderer 不保留第二份已接受队列。
  */
 function ConversationQueuePanelImpl({
   queue,
+  pendingSubmission,
   onDeleteItem,
   onEditItem,
   pendingEditQueueItemId = null,
@@ -283,6 +117,13 @@ function ConversationQueuePanelImpl({
 }: ConversationQueuePanelProps) {
   const { intl } = useZCodeIntl();
   const [resumePending, setResumePending] = useState(false);
+  const listRef = useRef<HTMLUListElement>(null);
+  const pendingCommandId = pendingSubmission?.commandId;
+  useLayoutEffect(() => {
+    // 修复原因：长列表的队尾在内部滚动区外；只滚动本列表，让提交反馈在首帧可见。
+    if (pendingCommandId && listRef.current)
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+  }, [pendingCommandId]);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
@@ -318,7 +159,7 @@ function ConversationQueuePanelImpl({
     }
   }, [onResume, resumePending]);
 
-  if (queue.items.length === 0) return null;
+  if (queue.items.length === 0 && !pendingSubmission) return null;
   // 补回 v4 视觉迁移时漏掉的旧队列面板 blur 层，让列表保持贴合 composer 的磨砂背景。
   return (
     <div
@@ -330,7 +171,7 @@ function ConversationQueuePanelImpl({
         "-mb-7 pb-7",
       )}
     >
-      {!queue.autoDrain ? (
+      {!queue.autoDrain && queue.items.length > 0 ? (
         <div
           data-testid={TID_V4_QUEUE_PAUSED_BANNER}
           className="mb-1 flex min-h-10 items-center gap-3 rounded-xl border border-border/70 bg-surface-raised px-3 py-2 text-ui-base text-foreground"
@@ -371,11 +212,12 @@ function ConversationQueuePanelImpl({
           {/* 队列曾无限撑高 sticky dock，分屏时会把 composer 挤出 pane；
               cqh 读取 SessionPane 的 size container，让短窗格也按自身高度限制列表。 */}
           <ul
+            ref={listRef}
             data-v4-queue-list="true"
             className="max-h-[min(12rem,30cqh)] space-y-0.5 overflow-x-hidden overflow-y-auto overscroll-contain"
           >
             {queue.items.map((item, index) => (
-              <QueueRow
+              <ConversationQueueRow
                 key={item.queueItemId}
                 item={item}
                 index={index}
@@ -387,6 +229,23 @@ function ConversationQueuePanelImpl({
                 editPending={pendingEditQueueItemId === item.queueItemId}
               />
             ))}
+            {pendingSubmission ? (
+              <li
+                data-testid="v4-queue-submission"
+                data-command-id={pendingSubmission.commandId}
+                role="status"
+                aria-live="polite"
+                className="flex min-h-9 items-center gap-2 rounded-xl px-3 py-1 text-ui-base text-foreground-subtle"
+              >
+                <Spinner aria-hidden="true" className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate" title={pendingSubmission.text}>
+                  {pendingSubmission.text}
+                </span>
+                <span className="shrink-0 text-ui-sm">
+                  {intl.formatMessage({ id: "chat.queue.adding" })}
+                </span>
+              </li>
+            ) : null}
           </ul>
         </SortableContext>
       </DndContext>

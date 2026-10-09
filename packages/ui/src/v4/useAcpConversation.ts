@@ -5,6 +5,7 @@ import type { IAcpService } from "@zcode/services";
 import type { AcpAgent, AcpPromptInput, AcpSession, AcpWorkspace } from "@zcode/shared";
 import { selectAcpSession } from "@/v4/composer/acpModelSelection.js";
 import { ACP_HOST_UPGRADE_REQUIRED, waitForAcpPromptAdmission } from "@/v4/acpPromptAdmission.js";
+import { visibleAcpQueueSubmission, type AcpQueueSubmission } from "@/v4/acpQueueProjection.js";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -34,7 +35,9 @@ export function useAcpConversation(
   );
   const error =
     errorState && (!errorState.agent || errorState.agent === agent) ? errorState.message : null;
-  const [sendingIds, setSendingIds] = useState<Set<string>>(() => new Set());
+  const [sendingInputs, setSendingInputs] = useState<
+    Map<string, AcpQueueSubmission & { queueing: boolean }>
+  >(() => new Map());
   const [reloadKey, setReloadKey] = useState(0);
   const submitting = useRef(new Set<string>());
   const retries = useRef(
@@ -525,7 +528,6 @@ export function useAcpConversation(
       const key = `${targetKey}:${agent}:${selected.id}`;
       if (submitting.current.has(key)) throw new Error("ACP session is not ready");
       submitting.current.add(key);
-      setSendingIds((previous) => new Set(previous).add(key));
       setErrorState(null);
       // 修复原因：预连接时只保留 Host 内存草稿，首次发送沿用该原生会话并提交显示记录。
       // RPC ACK 丢失后，同一草稿重试继续复用 prompt 的幂等键。
@@ -537,6 +539,20 @@ export function useAcpConversation(
         JSON.stringify(retry.input.workspaceFiles) === JSON.stringify(input.workspaceFiles);
       const commandId = same ? retry.commandId : crypto.randomUUID();
       retries.current.set(key, { input, commandId });
+      // 修复原因：只等持久 ACK 才显示队列会造成几秒无正文反馈；发送锁同时持有临时摘要，
+      // 不写入 Host queue、不提前清草稿，live 接受或 ACK 后让位于权威投影。
+      setSendingInputs((previous) =>
+        new Map(previous).set(key, {
+          commandId,
+          text:
+            input.text.trim() ||
+            [
+              ...(input.attachments ?? []).map((item) => item.fileName),
+              ...(input.workspaceFiles ?? []),
+            ].join(", "),
+          queueing: selected.status === "running" || selected.queue.items.length > 0,
+        }),
+      );
       try {
         // 修复原因：打开时已完成 refresh；重复恢复 RPC 只延长发送等待。
         // 连接失效仍由 Host submitPrompt 的唯一 admission/attach 路径核验。
@@ -574,8 +590,8 @@ export function useAcpConversation(
         throw cause;
       } finally {
         submitting.current.delete(key);
-        setSendingIds((previous) => {
-          const next = new Set(previous);
+        setSendingInputs((previous) => {
+          const next = new Map(previous);
           next.delete(key);
           return next;
         });
@@ -763,6 +779,8 @@ export function useAcpConversation(
     }
   }, [agent, connectNew, loaded, refreshSession, selected, selectedIds]);
 
+  const sendingInput =
+    agent && selected ? sendingInputs.get(`${targetKey}:${agent}:${selected.id}`) : null;
   return {
     selected,
     loaded,
@@ -771,7 +789,9 @@ export function useAcpConversation(
     ),
     error,
     busy,
-    sending: Boolean(agent && selected && sendingIds.has(`${targetKey}:${agent}:${selected.id}`)),
+    sending: Boolean(sendingInput),
+    queueSubmission:
+      selected && sendingInput?.queueing ? visibleAcpQueueSubmission(selected, sendingInput) : null,
     create,
     send,
     queueActions,

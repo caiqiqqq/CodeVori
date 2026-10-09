@@ -5008,6 +5008,7 @@ const enUS: Record<string, string> = {
   "chat.promptEnhance.error": "Prompt enhancement failed. Please try again.",
   "chat.promptEnhance.errorWithDetail": "Prompt enhancement failed: {error}",
   "chat.queue.enqueue": "Queue message",
+  "chat.queue.adding": "Adding to queue",
   "chat.queue.title": "Queued messages ({count})",
   "chat.queue.drag": "Drag to reorder",
   "chat.queue.sendNow": "Steer",

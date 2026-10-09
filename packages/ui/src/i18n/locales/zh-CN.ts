@@ -4666,6 +4666,7 @@ const zhCN: Record<string, string> = {
   "chat.promptEnhance.error": "提示词增强失败，请稍后重试。",
   "chat.promptEnhance.errorWithDetail": "提示词增强失败：{error}",
   "chat.queue.enqueue": "加入队列",
+  "chat.queue.adding": "正在添加",
   "chat.queue.title": "待发送消息（{count}）",
   "chat.queue.drag": "拖拽排序",
   "chat.queue.sendNow": "立即",
