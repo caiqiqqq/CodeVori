@@ -103,6 +103,7 @@ export class WorkTaskRepo {
       return next ? this.write(next, "conversation-continued", owner, now + leaseMs) : null;
     });
   }
+  /** Legacy project setting; preserved for clients, not used by task admission. */
   concurrency(scope: WorkTaskScope): number {
     const row = this.database()
       .prepare("SELECT concurrency FROM work_task_projects WHERE workspace_key=?")
@@ -244,7 +245,7 @@ export class WorkTaskRepo {
     });
   }
   claimNext(owner: string, now: number, leaseMs: number): WorkTask | null {
-    // 同一事务内计算项目并发并认领，避免两个窗口各自看到空闲后重复执行。
+    // 同一事务内认领任务并检查合并目标锁，避免跨窗口重复执行或并发发布同一目标。
     return this.transaction(() => claimNextWorkTask(this.database(), owner, now, leaseMs));
   }
   updateRun(task: WorkTask, owner: string, patch: WorkTaskExecutionUpdate): boolean {
@@ -345,6 +346,7 @@ export class WorkTaskRepo {
       );
     });
   }
+  /** Preserve legacy settings without imposing a project execution limit. */
   setConcurrency(scope: WorkTaskScope, concurrency: number) {
     this.database()
       .prepare(

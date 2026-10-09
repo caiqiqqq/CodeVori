@@ -39,6 +39,7 @@ export interface IWorkTaskService {
   complete(input: WorkTaskTarget): Promise<WorkTask>;
   merge(input: WorkTaskMergeRequest): Promise<WorkTask>;
   archive(input: WorkTaskTarget & { archived: boolean }): Promise<WorkTask>;
+  /** @deprecated Compatibility setting only; does not limit task execution. */
   setConcurrency(input: WorkTaskScope & { concurrency: number }): Promise<void>;
   getEvents(input: WorkTaskTarget): Promise<WorkTaskEvent[]>;
   onDynamicChanged(input: WorkTaskScope): Event<void>;

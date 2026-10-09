@@ -159,7 +159,7 @@ for (const kind of ["api", "acp"] as const) {
     }
   });
 
-  test(`${kind} shared observation claims once, occupies concurrency and cancels only its command`, async () => {
+  test(`${kind} shared observation claims once, permits other tasks and cancels only its command`, async () => {
     const f = await fixture(kind);
     try {
       const secondHost = f.makeService();
@@ -175,11 +175,13 @@ for (const kind of ["api", "acp"] as const) {
         execution: (await f.read()).execution,
       });
       await f.service.start({ ...f.scope, id: waiting.id });
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      assert.equal(
-        (await f.service.list(f.scope)).tasks.find((row) => row.id === waiting.id)?.status,
-        "queued",
+      await until(
+        async () =>
+          (await f.service.list(f.scope)).tasks.find((row) => row.id === waiting.id)?.status ===
+          "failed",
       );
+      assert.equal(f.executions, 2, "another task executes before the observed continuation ends");
+      assert.equal((await f.read()).status, "running");
       await f.service.cancel({ ...f.scope, id: f.task.id });
       await until(async () => !(await f.read()).stopPending);
       assert.equal((await f.read()).status, "canceled");

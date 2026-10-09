@@ -134,10 +134,11 @@ for (const kind of ["api", "acp"] as const) {
   });
 }
 
-test("two Hosts claim each task once and share project concurrency", async () => {
+test("two Hosts claim each task once without waiting for another project task", async () => {
   const started: string[] = [];
   const releases: (() => void)[] = [];
-  const f = await fixture(async (task) => {
+  const f = await fixture(async (task, context) => {
+    await context.update({ status: "running" });
     started.push(task.id);
     await new Promise<void>((resolve) => {
       releases.push(resolve);
@@ -151,17 +152,83 @@ test("two Hosts claim each task once and share project concurrency", async () =>
     await Promise.all([
       a.start({ ...workspace, id: one.id }),
       b.start({ ...workspace, id: one.id }),
+      a.start({ ...workspace, id: two.id }),
+      b.start({ ...workspace, id: two.id }),
     ]);
-    await b.start({ ...workspace, id: two.id });
-    await eventually(async () => started.length === 1);
-    assert.equal((await a.list(workspace)).tasks.find((t) => t.id === two.id)?.status, "queued");
-    releases.shift()?.();
     await eventually(async () => started.length === 2);
-    releases.shift()?.();
+    assert.equal(new Set(started).size, 2);
+    assert.ok((await a.list(workspace)).tasks.every((task) => task.status === "running"));
+    releases.splice(0).forEach((release) => release());
     await eventually(async () =>
       (await a.list(workspace)).tasks.every((t) => t.status === "review"),
     );
     assert.equal(new Set(started).size, 2);
+  } finally {
+    releases.forEach((release) => release());
+    await f.cleanup();
+  }
+});
+
+for (const concurrency of [undefined, 1, 8]) {
+  test(`batch starts more than eight API/ACP tasks with legacy concurrency ${concurrency ?? "unset"}`, async () => {
+    const started: string[] = [];
+    const releases: (() => void)[] = [];
+    const f = await fixture(async (task, context) => {
+      await context.update({ status: "running" });
+      started.push(task.id);
+      await new Promise<void>((resolve) => releases.push(resolve));
+    });
+    try {
+      const service = f.makeService();
+      if (concurrency !== undefined) await service.setConcurrency({ ...workspace, concurrency });
+      for (let index = 0; index < 10; index++) {
+        await service.create({
+          ...draft,
+          title: `Concurrent task ${index}`,
+          execution:
+            index % 2 === 0 ? draft.execution : { kind: "acp", agent: "codex", config: [] },
+        });
+      }
+      await service.startAll(workspace);
+      await eventually(async () => started.length === 10);
+      const board = await service.list(workspace);
+      assert.equal(new Set(started).size, 10);
+      assert.ok(board.tasks.every((task) => task.status === "running"));
+      assert.equal(board.concurrency, concurrency ?? 1, "legacy settings retain their read value");
+      releases.splice(0).forEach((release) => release());
+      await eventually(async () =>
+        (await service.list(workspace)).tasks.every((task) => task.status === "review"),
+      );
+    } finally {
+      releases.forEach((release) => release());
+      await f.cleanup();
+    }
+  });
+}
+
+test("a task awaiting permission does not block another task in the project", async () => {
+  const started: string[] = [];
+  const releases: (() => void)[] = [];
+  const f = await fixture(async (task, context) => {
+    await context.update({ status: task.title === draft.title ? "awaiting_input" : "running" });
+    started.push(task.id);
+    await new Promise<void>((resolve) => releases.push(resolve));
+  });
+  try {
+    const service = f.makeService();
+    const one = await service.create(draft);
+    const two = await service.create({ ...draft, title: "Independent task" });
+    await service.start({ ...workspace, id: one.id });
+    await eventually(async () => started.length === 1);
+    await service.start({ ...workspace, id: two.id });
+    await eventually(async () => started.length === 2);
+    const board = await service.list(workspace);
+    assert.equal(board.tasks.find((task) => task.id === one.id)?.status, "awaiting_input");
+    assert.equal(board.tasks.find((task) => task.id === two.id)?.status, "running");
+    releases.splice(0).forEach((release) => release());
+    await eventually(async () =>
+      (await service.list(workspace)).tasks.every((task) => task.status === "review"),
+    );
   } finally {
     releases.forEach((release) => release());
     await f.cleanup();

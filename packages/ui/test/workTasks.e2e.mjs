@@ -44,6 +44,7 @@ import { exerciseWorkTaskImageResources } from "./workTaskImageResourcesAssertio
 import { exerciseWorkTaskBranchesAndMerge } from "./workTaskMergeAssertions.mjs";
 import { routeWorkTaskConversationFixture } from "./workTaskConversationFixture.mjs";
 import { exerciseWorkTaskCompletion } from "./workTaskCompletionAssertions.mjs";
+import { exerciseWorkTaskConcurrentExecution } from "./workTaskConcurrentExecutionAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__work-tasks-e2e-${process.pid}`;
@@ -136,6 +137,7 @@ try {
     "edit-restart": exerciseWorkTaskEditRestart,
     "execution-preferences": exerciseWorkTaskExecutionPreferences,
     "conversation-status": exerciseWorkTaskConversationStatus,
+    "concurrent-execution": exerciseWorkTaskConcurrentExecution,
     completion: exerciseWorkTaskCompletion,
   }[process.env.ZCODE_E2E_SCENARIO];
   if (scenario) {
@@ -388,6 +390,7 @@ try {
     await exerciseWorkTaskPromptAttachments(page, artifacts);
     await exerciseWorkTaskImageResources(page, artifacts);
     await exerciseWorkTaskCompletion(page, artifacts);
+    await exerciseWorkTaskConcurrentExecution(page, artifacts);
     assert.deepEqual(errors, []);
     process.stdout.write(
       `PASS: compact single-line API/ACP tasks, long titles and 24-task scrolling in both responsive themes, agent tooltips and icon selection, compact toolbar with new task/start all only, API + ACP create/edit and scoped batch start, disabled controls without a project or pending tasks, removed filters/static hints, preserved header/four board sections, API/ACP conversation headers without a main-view jump and preserved inline detail actions, default archive/cancel hiding and saved concurrency, shared chat/composer and zero preview commands, full-row/keyboard selection and menu isolation, preparing/binding/failure events, project boundary, draft retention and mutation error feedback, pointer/keyboard resize and layout restore, start/cancel/retry, permission jump, feedback, explicit completion, archive, event refresh/project read race and responsive themes, scoped API/ACP execution preferences after cancel/reopen/reload and history-edit isolation, API/ACP edit-save restart with retained bindings and new instructions, continuous busy and duplicate-submit rejection, save/start failure retention, cancel and non-executable save-only boundaries, API/ACP continued-conversation status updates in board/header without closing/remounting or resending. Screenshots: ${artifacts}\n`,
