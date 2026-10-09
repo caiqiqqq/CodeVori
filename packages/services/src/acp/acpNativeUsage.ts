@@ -16,6 +16,8 @@ const rawUsage = z.object({
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
 const MAX_LINE_BYTES = 8 * 1024 * 1024;
 const MAX_ENTRIES = 30_000;
+const MAX_CACHED_FILES = 128;
+const MAX_CACHED_FACTS = 100_000;
 
 export type CodexUsageHistory = {
   nativeSessionId: string;
@@ -31,6 +33,86 @@ export type CodexUsageHistory = {
 const validId = (id: string) => /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id);
 export const codexUsageKey = (session: Pick<AcpSession, "acpSessionId" | "workspacePath">) =>
   JSON.stringify([session.acpSessionId, session.workspacePath]);
+
+interface HistoryCacheEntry {
+  root: string;
+  file: string;
+  workspace: string;
+  version: string;
+  history: CodexUsageHistory;
+}
+
+interface HistoryReaderState {
+  entries: Map<string, HistoryCacheEntry>;
+  disposed: boolean;
+}
+
+/** 缓存由 owning ACP Host 持有；只复用数值解析，不持久化另一份用量事实。 */
+export function createCodexUsageHistoryReader() {
+  const state: HistoryReaderState = { entries: new Map(), disposed: false };
+  return {
+    read: (sessions: readonly AcpSession[], root: string) =>
+      readUsageHistories(sessions, root, state),
+    dispose() {
+      state.disposed = true;
+      state.entries.clear();
+    },
+  };
+}
+
+async function fileVersion(file: string): Promise<string | null> {
+  const value = await stat(file, { bigint: true });
+  if (!value.isFile() || value.size > BigInt(MAX_FILE_BYTES)) return null;
+  // 修复原因：mtime/size 相同的覆盖或原子替换也会改变身份或 ctime，不能复用旧计量。
+  return [value.dev, value.ino, value.size, value.mtimeNs, value.ctimeNs].join(":");
+}
+
+function retainHistory(state: HistoryReaderState, key: string, entry: HistoryCacheEntry): void {
+  if (state.disposed) return;
+  const facts = (value: HistoryCacheEntry) =>
+    value.history.records.length + value.history.turns.length;
+  if (facts(entry) > MAX_CACHED_FACTS) return;
+  state.entries.set(key, entry);
+  let total = [...state.entries.values()].reduce((sum, value) => sum + facts(value), 0);
+  for (const [oldest, value] of state.entries) {
+    if (state.entries.size <= MAX_CACHED_FILES && total <= MAX_CACHED_FACTS) break;
+    state.entries.delete(oldest);
+    total -= facts(value);
+  }
+}
+
+async function readCachedRollout(
+  state: HistoryReaderState,
+  key: string,
+  root: string,
+  file: string,
+  session: AcpSession,
+): Promise<CodexUsageHistory | null> {
+  try {
+    const workspace = await canonicalPath(session.workspacePath);
+    const version = await fileVersion(file);
+    const cached = state.entries.get(key);
+    state.entries.delete(key);
+    if (version === null) return null;
+    if (
+      cached?.root === root &&
+      cached.file === file &&
+      cached.workspace === workspace &&
+      cached.version === version
+    ) {
+      retainHistory(state, key, cached);
+      return cached.history;
+    }
+    const history = await parseRollout(file, session.acpSessionId, session.workspacePath);
+    // 修复原因：活动日志可能边读边追加；读取期间版本变化的投影不能成为下次查询的缓存。
+    if (history && (await fileVersion(file)) === version)
+      retainHistory(state, key, { root, file, workspace, version, history });
+    return history;
+  } catch {
+    state.entries.delete(key);
+    return null;
+  }
+}
 
 async function indexRollouts(root: string): Promise<Map<string, string[]>> {
   const files = new Map<string, string[]>();
@@ -54,32 +136,48 @@ export async function readCodexUsageHistories(
   sessions: readonly AcpSession[],
   root: string,
 ): Promise<Map<string, CodexUsageHistory>> {
+  return createCodexUsageHistoryReader().read(sessions, root);
+}
+
+async function readUsageHistories(
+  sessions: readonly AcpSession[],
+  root: string,
+  state: HistoryReaderState,
+): Promise<Map<string, CodexUsageHistory>> {
   const result = new Map<string, CodexUsageHistory>();
+  if (state.disposed) return result;
   try {
-    if (
-      !isAbsolute(root) ||
-      !sessions.some((session) => session.agent === "codex" && validId(session.acpSessionId))
-    )
+    const registered = sessions.filter(
+      (session) => session.agent === "codex" && validId(session.acpSessionId),
+    );
+    if (!isAbsolute(root) || !registered.length) {
+      state.entries.clear();
       return result;
-    const files = await indexRollouts(root);
+    }
+    const canonicalRoot = await canonicalPath(root);
+    const keys = new Set(registered.map(codexUsageKey));
+    for (const [key, value] of state.entries)
+      if (!keys.has(key) || value.root !== canonicalRoot) state.entries.delete(key);
+    const files = await indexRollouts(canonicalRoot);
     const seen = new Set<string>();
-    for (const session of sessions) {
+    for (const session of registered) {
+      if (state.disposed) return new Map();
       const key = codexUsageKey(session);
-      if (session.agent !== "codex" || !validId(session.acpSessionId) || seen.has(key)) continue;
+      if (seen.has(key)) continue;
       seen.add(key);
       const candidates = files.get(session.acpSessionId);
-      if (candidates?.length !== 1) continue;
-      const history = await parseRollout(
-        candidates[0]!,
-        session.acpSessionId,
-        session.workspacePath,
-      );
+      if (candidates?.length !== 1) {
+        state.entries.delete(key);
+        continue;
+      }
+      const history = await readCachedRollout(state, key, canonicalRoot, candidates[0]!, session);
       if (history) result.set(key, history);
     }
   } catch {
+    state.entries.clear();
     /* 不可读取的原生目录不能阻断设置页的其它来源。 */
   }
-  return result;
+  return state.disposed ? new Map() : result;
 }
 
 /** Adapter-only read: the owning Host receives numeric facts, never native messages. */

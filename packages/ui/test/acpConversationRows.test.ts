@@ -8,6 +8,32 @@ import { buildConversationTurnRenderUnits } from "../src/v4/conversationTurnRend
 const session = (entries: AcpSession["entries"], status: AcpSession["status"] = "idle") =>
   ({ entries, status }) as AcpSession;
 
+test("warnings project only on the current running turn; saved diagnostics remain unchanged", () => {
+  const warning = {
+    id: "reconnect",
+    revision: 1,
+    category: "connection",
+    severity: "warning" as const,
+    title: "Reconnecting... 1/5",
+    actions: [],
+  };
+  const entries: AcpSession["entries"] = [
+    { id: "user:cmd", kind: "user", text: "question", failures: [warning] },
+  ];
+  const before = structuredClone(entries);
+  const running = buildAcpConversationRows(session(entries, "running"));
+  assert.equal(running[0]?.kind === "turnHeader" && running[0].notices?.length, 1);
+  for (const status of ["idle", "interrupted"] as const) {
+    const rows = buildAcpConversationRows(session(entries, status));
+    assert.equal(rows[0]?.kind === "turnHeader" && rows[0].notices, undefined);
+  }
+  const next = buildAcpConversationRows(
+    session([...entries, { id: "user:next", kind: "user", text: "next" }], "running"),
+  );
+  assert.equal(next[0]?.kind === "turnHeader" && next[0].notices, undefined);
+  assert.deepEqual(entries, before);
+});
+
 test("ACP failure notices stay with the failed turn after later success and legacy trace errors remain visible", () => {
   const entries: AcpSession["entries"] = [
     {

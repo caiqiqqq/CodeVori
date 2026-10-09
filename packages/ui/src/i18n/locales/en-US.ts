@@ -6105,8 +6105,6 @@ const enUS: Record<string, string> = {
   "chat.error.copyFailed": "Failed to copy error details: {error}",
   "chat.error.expandDetails": "Show details",
   "chat.error.collapseDetails": "Hide details",
-  "chat.error.feedback": "Report issue",
-  "chat.error.feedbackOpened": "Feedback opened with the error context attached",
   "chat.error.noAvailableModel": "No model available. Upgrade or set a custom model.",
   "acp.hostUpgradeRequired":
     "Upgrade the target Host before sending. Your draft has been preserved.",
@@ -6572,7 +6570,6 @@ const enUS: Record<string, string> = {
   "feedback.submit.template.section.errorHeading":
     "I encountered an error during use. Please help investigate.",
   "feedback.submit.template.section.errorSummary": "Error Summary",
-  "feedback.submit.template.section.errorSummaryLine": "Error Summary: {message}",
   "feedback.submit.template.section.errorDetail": "Error Details",
   "feedback.submit.template.section.errorTraceId": "TraceID: {traceId}",
   "feedback.submit.template.section.copyErrorHeading": `${PRODUCT_NAME} Error Info`,
@@ -6589,7 +6586,6 @@ const enUS: Record<string, string> = {
   "feedback.submit.template.section.taskSessionPath": "Task session: {path}",
   "feedback.submit.template.section.taskLogPath": "Task log: {path}",
   "feedback.submit.template.section.problem": "Issue",
-  "feedback.submit.template.section.whatDoing": "What I Was Doing",
   "feedback.submit.template.section.expectedResult": "Expected result",
   "feedback.submit.template.section.supplement": "Please describe:",
   "feedback.submit.template.section.remoteHeading":

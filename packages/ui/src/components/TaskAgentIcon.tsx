@@ -87,7 +87,7 @@ function TaskAgentIconContent({
           {indicator === "loading" ? (
             <LoaderIcon
               data-task-running-indicator="true"
-              className="size-2.5 animate-spin text-foreground-subtle"
+              className="size-2.5 animate-spin text-task-running-indicator"
             />
           ) : (
             <span

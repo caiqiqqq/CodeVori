@@ -16,6 +16,7 @@ export function createSharedServiceRead<T>(
   let subscription: { dispose(): void } | undefined;
   let generation = 0;
   let revision = 0;
+  let eventVersion = 0;
   let pending: Promise<void> | null = null;
   const publish = (next: SharedReadSnapshot<T>) => {
     snapshot = next;
@@ -45,11 +46,17 @@ export function createSharedServiceRead<T>(
   };
   return {
     getSnapshot: () => snapshot,
+    getEventVersion: () => eventVersion,
+    refreshAfterMutation: (version: number) => {
+      // 保存成功不等待列表；期间已收到通知时复用事件读取，避免同一次保存再查整表。
+      if (version === eventVersion) void refresh(true);
+    },
     refresh,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       if (listeners.size === 1) {
         subscription = observe?.(() => {
+          eventVersion++;
           void refresh(true);
         });
         void refresh();

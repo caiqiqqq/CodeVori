@@ -139,10 +139,7 @@ export async function exerciseWorkTaskExecutionPreferences(page, artifacts) {
     .innerText();
   await close();
   await page.reload();
-  await open();
-  await editor.getByTestId("work-task-model").getByText("Claude ACP", { exact: true }).waitFor();
-  await close();
-  await project("Other");
+  assert.equal(await panel.getByTestId("work-task-project").innerText(), "Other");
   await open();
   await editor.getByTestId("work-task-model").getByText("TestModel", { exact: true }).waitFor();
   assert.equal(
@@ -153,6 +150,10 @@ export async function exerciseWorkTaskExecutionPreferences(page, artifacts) {
     await editor.getByRole("combobox", { name: "思考强度", exact: true }).innerText(),
     rememberedReasoning,
   );
+  await close();
+  await project("Project");
+  await open();
+  await editor.getByTestId("work-task-model").getByText("Claude ACP", { exact: true }).waitFor();
   await close();
   assert.equal(
     await page.evaluate(() =>
