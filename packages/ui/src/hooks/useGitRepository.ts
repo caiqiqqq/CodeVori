@@ -414,8 +414,18 @@ export function useGitRepository(options: {
   );
   const requestVersionRef = useRef(0);
   const lastLiveRefreshInputRef = useRef<GitLiveDataRefreshInput | null>(null);
+  const lastLiveGitServiceRef = useRef<typeof gitService | null>(null);
   const lastFileChangeEntry = null;
   const lastSummaryEntry = null;
+
+  useEffect(
+    () => () => {
+      requestVersionRef.current += 1;
+      lastLiveRefreshInputRef.current = null;
+      lastLiveGitServiceRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     const nextRefreshInput: GitLiveDataRefreshInput = {
@@ -442,16 +452,17 @@ export function useGitRepository(options: {
       return;
     }
 
-    const shouldRefresh = shouldRefreshLiveGitData(
-      lastLiveRefreshInputRef.current,
-      nextRefreshInput,
-    );
+    const shouldRefresh =
+      lastLiveGitServiceRef.current !== gitService ||
+      shouldRefreshLiveGitData(lastLiveRefreshInputRef.current, nextRefreshInput);
     lastLiveRefreshInputRef.current = nextRefreshInput;
+    lastLiveGitServiceRef.current = gitService;
     if (!shouldRefresh) {
       return;
     }
 
-    let disposed = false;
+    // 修复原因：切任务后扩展数据从开到关不需要重读，但 effect cleanup 曾撤销新目录的在途结果，
+    // 使 Git 永久停在 loading。读取只由更新请求、断连或卸载的版本变化失效。
     const requestVersion = requestVersionRef.current + 1;
     requestVersionRef.current = requestVersion;
 
@@ -478,7 +489,7 @@ export function useGitRepository(options: {
     // branch comparison 与 identity 只在真正展开 Git pane 后再拉取，避免首屏预取整套 Git pane 数据。
     void refreshPromise
       .then(({ summary, identity, unstagedChanges, stagedChanges, branchComparison }) => {
-        if (disposed || requestVersionRef.current !== requestVersion) {
+        if (requestVersionRef.current !== requestVersion) {
           return;
         }
 
@@ -507,7 +518,7 @@ export function useGitRepository(options: {
         });
       })
       .catch((error: unknown) => {
-        if (disposed || requestVersionRef.current !== requestVersion) {
+        if (requestVersionRef.current !== requestVersion) {
           return;
         }
 
@@ -525,10 +536,6 @@ export function useGitRepository(options: {
           }),
         }));
       });
-
-    return () => {
-      disposed = true;
-    };
   }, [
     gitService,
     includeExtendedData,

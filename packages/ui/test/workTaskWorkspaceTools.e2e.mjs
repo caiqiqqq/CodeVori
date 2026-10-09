@@ -42,24 +42,28 @@ try {
     state.review=(id:string)=>{Object.assign(tasks.find(t=>t.id===id),{status:'review',sourceBranch:'release'});for(const listener of changed)listener()};
     const services:any={
       workTaskService:{async list(scope:any){return {tasks:structuredClone(tasks.filter(task=>task.workspacePath===scope.workspacePath&&!task.archived)),concurrency:1}},onDynamicChanged:()=>listener=>{changed.add(listener);return {dispose:()=>changed.delete(listener)}}},
-      gitService:{async getLocalBranches(r:any){state.calls.push({op:'branches',...r});return {headRefType:'branch',currentBranchName:'main',branches:['main','release'].map(name=>({name,isCurrent:name==='main',upstreamName:null,commitHash:'abcdef',commitTimestampMs:1}))}},async getWorkspaceRepositoryInfo(r:any){return {...r,isGitAvailable:true,kind:'main-tree',repoRoot:r.workspacePath}},async refresh(r:any){state.calls.push({op:'git',...r});return {summary:{...r,repoRoot:r.workspacePath,workspaceInRepoPath:'.',autoRefreshWatchPaths:[],branchName:'main',trackingBranchName:null,headRefType:'branch',ahead:0,behind:0,isDirty:false,isGitAvailable:true},unstagedChanges:[],stagedChanges:[]}}},
+      gitService:{async getLocalBranches(r:any){state.calls.push({op:'branches',...r});return {headRefType:'branch',currentBranchName:'main',branches:['main','release'].map(name=>({name,isCurrent:name==='main',upstreamName:null,commitHash:'abcdef',commitTimestampMs:1}))}},async getWorkspaceRepositoryInfo(r:any){return {...r,isGitAvailable:true,kind:'main-tree',repoRoot:r.workspacePath}},async refresh(r:any){state.calls.push({op:'git',...r});return {summary:{...r,repoRoot:r.workspacePath,workspaceInRepoPath:'.',autoRefreshWatchPaths:[],branchName:'main',trackingBranchName:null,headRefType:'branch',ahead:0,behind:0,isDirty:true,isGitAvailable:true,isRepository:true},unstagedChanges:[],stagedChanges:[]}}},
       zcodeAgentService:{},zcodeSessionService:{},
     };
     const platform:any={isWeb:true,async getInstalledEditors(){return [{id:'finder',name:'Finder',iconDataUrl:icon}]},async openInEditor(editor:string,path:string,options:any){state.calls.push({op:'editor',editor,path,options});return {success:true}},async openExternal(url:string){state.calls.push({op:'external',url})}};
     const tabs:any=[{workspacePath:'/synthetic/main',label:'Main',workspacePurpose:'project'},{workspacePath:'/synthetic/other',label:'Other',workspacePurpose:'project'}];
     function Fixture(){
+      const [statusKey,setStatusKey]=useState<string|null>(null);state.statusKey=setStatusKey;
+      const [variant,setVariant]=useState<any>(null);
       const [mainView,setMainView]=useState<any>('work-tasks');const [workspacePath,setWorkspacePath]=useState('/synthetic/main');
       const tools=useWorkTaskWorkspaceTools({workspacePath},mainView==='work-tasks');state.target=tools.target;state.oldClear=state.oldClear||tools.onTargetChange;state.root=setWorkspacePath;state.view=setMainView;
       const path=tools.target?.workspacePath??workspacePath;
       const panels=useAppPanels({workspaceAbsPath:path,activeTaskId:tools.target?.nativeSessionId??null,sidePaneOwnerId:tools.target?.sidePaneOwnerId??'main-draft',isDesktop:false,supportsEmbeddedBrowser:false,defaultWhiteboardNamePrefix:'Board',platform});
       const gitState=useGitRepository({workspacePath:path,activeTaskId:tools.target?.nativeSessionId??null,includeExtendedData:panels.sidePaneState?.tabs.some(tab=>tab.type==='git')});
+      state.git={workspaceKey:gitState.workspaceKey,summary:gitState.summary,loading:gitState.loading};
       const sidebarContainerRef=useRef(null);
       return <div className='h-dvh'><WorkspaceShellLayout {...panels} services={services} platform={platform} workspaceAbsPath={workspacePath} workspaceMainView={mainView} onWorkspaceMainViewChange={setMainView}
         workTaskTools={{...tools,services}} workspaceTabs={tabs} workspaceShellZCodeState={{draftFocusVersion:0,selectedProvider:'glm',activeTaskId:null}} theme='zai-light'
         activeTaskId={null} sidePaneOwnerId='main-draft' projectName='Main' isWorkspaceVisible isDesktop={true} isMacDesktop={false} isWindowsDesktop={false} isMacFullscreen={false}
-        isSidebarVisible={false} isSidePaneOpen={!panels.isSidePaneCollapsed} isBrowserOpen={false} supportsEmbeddedBrowser={false} gitState={gitState} activeGitSourceId='unstaged'
-        handleToggleSidePane={panels.handleToggleSidePaneCollapse} handleRefreshGit={noop} setGitSelectedSourceId={noop} handleBrowserUrlChange={noop} activeTaskTitle=''
-        handleOpenGitReview={()=>panels.handleOpenGit()}
+        isSidebarVisible={false} isSidePaneOpen={!panels.isSidePaneCollapsed} isBrowserOpen={false} supportsEmbeddedBrowser={false} gitState={{...gitState,workspaceKey:statusKey??gitState.workspaceKey}} activeGitSourceId='unstaged'
+        gitWorktreeChangeSummary={{added:7,removed:2}} gitWorktreeReviewSourceId='unstaged' summaryPanelVariantOverride={variant} onSummaryPanelVariantOverrideChange={setVariant}
+        handleToggleSidePane={panels.handleToggleSidePaneCollapse} handleRefreshGit={()=>state.calls.push({op:'refresh',workspacePath:path})} setGitSelectedSourceId={noop} handleBrowserUrlChange={noop} activeTaskTitle=''
+        handleOpenGitReview={sourceId=>{state.calls.push({op:'review',workspacePath:path,sourceId});panels.handleOpenGit()}}
         commandCenterCommands={[]} commandCenterWorkspaceTabs={[]} commandCenterOpen={false} onCommandCenterOpenChange={noop} onCommandCenterSearchResultHighlightRequest={noop} onCommandCenterOpenCodeViewer={noop}
         remoteWorkspaceSessions={[]} reconnectingRemoteWorkspaceKeys={[]} remoteWorkspaceErrorByWorkspaceKey={{}} browserRestoreUrls={{}} onOpenWorkspace={noop} onCreateTask={noop}
         onConnectRemote={noop} onSelectRemoteProject={noop} onCancelRemoteProject={noop} onReconnectRemoteWorkspace={noop} handleSelectTask={noop} handleStartDraftInWorkspace={noop}
@@ -74,7 +78,7 @@ try {
   );
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  page.setDefaultTimeout(15000);
+  page.setDefaultTimeout(Number(process.env.ZCODE_E2E_TIMEOUT_MS ?? 15000));
   page.on("pageerror", (error) => errors.push(error.message));
   const stub = async (path, body) =>
     page.route(`**/packages/ui/src/${path}*`, (route) =>
@@ -85,7 +89,6 @@ try {
     ["DesktopTopOverlay.tsx", "DesktopTopOverlay"],
     ["command-center/CommandCenterDialog.tsx", "CommandCenterDialog"],
     ["quickpick/TaskFindDialog.tsx", "TaskFindDialog"],
-    ["GitBranchSwitcher.tsx", "GitBranchSwitcher"],
   ])
     await stub(path, `export function ${symbol}(){return null}`);
   await stub("v4/V4WorkspaceChatArea.tsx", "export function V4WorkspaceChatArea(){return null}");
@@ -95,7 +98,7 @@ try {
   );
   await stub(
     "v4/SessionPane.tsx",
-    `export function SessionPane(props){const R=window.__React;return R.createElement('div',{'data-testid':'tool-session','data-session':props.acpBoundSessionId??props.sessionId,'data-workspace':props.workspacePath,className:'flex h-full flex-col'},R.createElement('textarea',{'aria-label':'Synthetic draft',className:'mt-auto border border-border m-4'}))}`,
+    `import {ConversationStatusPanel} from '/@fs${new URL("../src/v4/ConversationStatusPanel.tsx", import.meta.url).pathname}';export function SessionPane(props){const R=window.__React;return R.createElement('div',{'data-testid':'tool-session','data-session':props.acpBoundSessionId??props.sessionId,'data-workspace':props.workspacePath,className:'relative flex h-full flex-col'},R.createElement(ConversationStatusPanel,{...props,onVariantChange:props.onSummaryPanelVariantOverrideChange}),R.createElement('textarea',{'aria-label':'Synthetic draft',className:'mt-auto border border-border m-4'}))}`,
   );
   await stub(
     "v4/V4ConversationContext.tsx",
@@ -150,6 +153,45 @@ try {
     await page
       .getByRole("textbox", { name: "Synthetic draft", exact: true })
       .fill("保留原对话草稿");
+    const status = panel.getByTestId("chat-summary-panel");
+    await status.waitFor().catch(async (error) => {
+      process.stderr.write(
+        JSON.stringify(
+          await page.evaluate(() => ({
+            target: window.__tools.target,
+            git: window.__tools.git,
+            calls: window.__tools.calls,
+          })),
+        ) + "\n",
+      );
+      throw error;
+    });
+    const expand = status.getByRole("button", { name: "展开状态", exact: true });
+    if (await expand.isVisible()) await expand.click();
+    await status.getByRole("button").filter({ hasText: "main" }).waitFor();
+    await status.getByRole("button", { name: "收起为胶囊", exact: true }).click();
+    await status.getByRole("button", { name: "展开状态", exact: true }).click();
+    // 旧工作树和同路径的远端 identity 均不得投影到本地待办会话。
+    for (const key of ["/synthetic/main", "remote-identity:" + path]) {
+      await page.evaluate((key) => window.__tools.statusKey(key), key);
+      await status.waitFor({ state: "detached" });
+    }
+    await page.evaluate(() => window.__tools.statusKey(null));
+    await status.waitFor();
+    for (const width of [1440, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const theme of ["zai-light", "zai-dark"]) {
+        await page.evaluate((theme) => {
+          document.documentElement.classList.remove("theme-zai-light", "theme-zai-dark", "dark");
+          document.documentElement.classList.add("theme-" + theme);
+          if (theme === "zai-dark") document.documentElement.classList.add("dark");
+        }, theme);
+        const rect = await status.boundingBox();
+        assert.ok(rect && rect.x >= 0 && rect.x + rect.width <= width);
+        await page.screenshot({ path: join(artifacts, `${id}-status-${width}-${theme}.png`) });
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
     await selectedHeader().getByTestId("terminal-toggle").click();
     await page.waitForFunction(
       () =>
@@ -174,6 +216,13 @@ try {
     await page
       .locator(`[data-testid="tool-git"][data-workspace="${path}"][data-git-key="${path}"]`)
       .waitFor();
+    await status.getByRole("button").filter({ hasText: "更改" }).click();
+    assert.deepEqual(
+      (await page.evaluate(() => window.__tools.calls.filter((call) => call.op === "review"))).at(
+        -1,
+      ),
+      { op: "review", workspacePath: path, sourceId: "unstaged" },
+    );
     await page.screenshot({ path: join(artifacts, `${id}-review-open.png`) });
     await closeSide();
     assert.equal(

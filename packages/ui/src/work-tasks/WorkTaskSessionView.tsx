@@ -23,7 +23,20 @@ export type WorkTaskConversationOptions = Pick<
   | "onOpenWorkflowRunDirectory"
   | "onOpenWorkflowActorSession"
   | "onOpenWorkflowWorkspace"
->;
+> & {
+  statusPanel?: Pick<
+    SessionPaneProps,
+    | "gitSummary"
+    | "gitDirtyFileCount"
+    | "gitWorktreeReviewSourceId"
+    | "gitWorktreeChangeSummary"
+    | "summaryPanelVariantOverride"
+    | "onSummaryPanelVariantOverrideChange"
+    | "onRefreshGit"
+    | "onOpenGitReview"
+    | "onOpenWorkspacePath"
+  > & { workspaceKey: string };
+};
 export type OpenWorkTaskNativeSession = (target: {
   workspacePath: string;
   sessionId: string;
@@ -45,10 +58,17 @@ export function WorkTaskSessionView({
   readOnly?: boolean;
 }) {
   const scope = { workspacePath: binding.workspacePath };
+  const { statusPanel, ...paneOptions } = options ?? {};
+  // 修复原因：待办会话漏传宿主 Git 投影；目标切换先于宿主刷新时也不能串入旧工作树数据或操作。
+  const scopedStatusPanel =
+    statusPanel?.workspaceKey === (task.workspaceIdentity?.trim() || binding.workspacePath)
+      ? statusPanel
+      : undefined;
   return (
     <V4PaneConversationProvider scope={scope}>
       <SessionPane
-        {...options}
+        {...paneOptions}
+        {...scopedStatusPanel}
         readOnly={readOnly}
         paneId="work-task-conversation"
         workspacePath={binding.workspacePath}
