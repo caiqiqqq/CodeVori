@@ -50,7 +50,7 @@ try {
         };
         const conversation={selected:home?null:snapshot,error:operation,busy:false,retryConnection:()=>setRetries(n=>n+1),dismissError:()=>setOperation(null),decide:()=>setSnapshot(s=>({...s,pendingPermission:null}))};
         const rows=buildAcpConversationRows(snapshot as never);
-        return <div className="relative h-screen flex flex-col bg-background text-foreground" data-fixture-ready="true" data-fixture-epoch={epoch} data-retries={retries}>
+        return <div data-session-id="error-fixture" style={{height:'80vh',width:innerWidth>600?'55vw':'100vw',marginTop:'10vh',marginLeft:innerWidth>600?'5vw':0}} className="relative flex flex-col bg-background text-foreground" data-fixture-ready="true" data-fixture-epoch={epoch} data-retries={retries}>
           {home?<AcpHomeStatus agent="codex" conversation={conversation as never}/>:<ConversationTimeline key={epoch} sessionKey={'error-fixture-'+epoch} rows={rows} totalCount={rows.length}
             hideTurnNavigator workDurationAvailable={false} rowContext={{workspacePath:'/synthetic/project',theme:'zai-light',codePreviewSettings:DEFAULT_CODE_PREVIEW_SETTINGS,logEpoch:'fixture-'+epoch}}
             footerSlot={<AcpConversationStatus agent="codex" conversation={conversation as never}/>}/>}
@@ -93,9 +93,91 @@ try {
         1,
         "footer must not duplicate saved error",
       );
+      await page.evaluate(() => {
+        window.__originalClipboardWrite = navigator.clipboard.writeText.bind(navigator.clipboard);
+        navigator.clipboard.writeText = (text) =>
+          new Promise((resolve, reject) => {
+            window.__finishCopy = () => window.__originalClipboardWrite(text).then(resolve, reject);
+          });
+      });
       await banner.getByRole("button", { name: "复制", exact: true }).click();
+      // 剪贴板仍在等待时，把焦点移到另一会话，反馈仍属于来源窗格。
+      await page.evaluate(async () => {
+        const otherPane = document.createElement("div");
+        otherPane.dataset.sessionId = "other-fixture";
+        otherPane.style.cssText =
+          "position:fixed;right:0;top:0;width:25vw;height:100vh;pointer-events:none";
+        const focusTarget = document.createElement("button");
+        otherPane.append(focusTarget);
+        document.body.append(otherPane);
+        focusTarget.focus();
+        await window.__finishCopy();
+        navigator.clipboard.writeText = window.__originalClipboardWrite;
+      });
       await page.waitForFunction(async () =>
         (await navigator.clipboard.readText()).includes("Provider stream ended early"),
+      );
+      const copyToast = page.getByText("已复制完整报错信息", { exact: true });
+      await copyToast.waitFor();
+      const assertCentered = async (toast) => {
+        const paneBox = await page.locator('[data-session-id="error-fixture"]').boundingBox();
+        const toastBox = await toast.boundingBox();
+        assert.ok(paneBox && toastBox);
+        assert.ok(Math.abs(toastBox.x + toastBox.width / 2 - paneBox.x - paneBox.width / 2) < 2);
+        assert.ok(Math.abs(toastBox.y + toastBox.height / 2 - paneBox.y - paneBox.height / 2) < 2);
+        assert.ok(
+          toastBox.x >= paneBox.x && toastBox.x + toastBox.width <= paneBox.x + paneBox.width,
+        );
+      };
+      // 等待进入动画完成，检查真正的几何位置而非 CSS 类名。
+      await page.waitForFunction(
+        () =>
+          document.querySelector('[data-toast-position="center"]')?.firstElementChild &&
+          getComputedStyle(
+            document.querySelector('[data-toast-position="center"]').firstElementChild,
+          ).opacity === "1",
+      );
+      await assertCentered(copyToast);
+      await page.locator('[data-session-id="error-fixture"]').evaluate((pane) => {
+        pane.style.height = "70vh";
+      });
+      await page.waitForFunction(() => {
+        const pane = document
+          .querySelector('[data-session-id="error-fixture"]')
+          .getBoundingClientRect();
+        const toast = document
+          .querySelector('[data-toast-position="center"]')
+          .getBoundingClientRect();
+        return Math.abs(toast.y + toast.height / 2 - pane.y - pane.height / 2) < 2;
+      });
+      await assertCentered(copyToast);
+      await page.screenshot({
+        path: join(artifacts, `copy-${width}-${theme}.png`),
+        animations: "disabled",
+      });
+      await copyToast.waitFor({ state: "detached" });
+      await page.evaluate(() => {
+        window.__originalClipboardWrite = navigator.clipboard.writeText.bind(navigator.clipboard);
+        navigator.clipboard.writeText = async () => {
+          throw new Error("Clipboard denied");
+        };
+      });
+      await banner.getByRole("button", { name: "复制", exact: true }).click();
+      const failureToast = page.getByText("复制报错信息失败：Clipboard denied", { exact: true });
+      await failureToast.waitFor();
+      await page.waitForFunction(
+        () =>
+          getComputedStyle(
+            document.querySelector('[data-toast-position="center"]').firstElementChild,
+          ).opacity === "1",
+      );
+      await assertCentered(failureToast);
+      await page.evaluate(() => {
+        navigator.clipboard.writeText = window.__originalClipboardWrite;
+      });
+      await failureToast.waitFor({ state: "detached" });
+      await page.evaluate(() =>
+        document.querySelector('[data-session-id="other-fixture"]').remove(),
       );
       await banner.getByRole("button", { name: "展开详情", exact: true }).click();
       const dialog = page.getByRole("dialog");

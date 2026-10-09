@@ -79,7 +79,7 @@ import { useZCodeStore } from "@/store/StoreProvider.js";
 import { useTabStore } from "@/store/TabStoreProvider.js";
 import { isWorkspaceReadOnly, isWorkspaceTab, type WorkspaceTabState } from "@/store/tabStore.js";
 import { useWorkspaceTaskLists } from "@/hooks/useWorkspaceTaskLists.js";
-import { useWorktreeProjectGroups } from "@/hooks/useWorktreeProjectGroups.js";
+import { useWorktreeProjectGroupsResolution } from "@/hooks/useWorktreeProjectGroups.js";
 import {
   persistSidebarTaskPreferences,
   readSidebarTaskPreferences,
@@ -386,14 +386,19 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     () => partitionWorkspaceTabsByPurpose(workspaceTabs),
     [workspaceTabs],
   );
-  const projectGroups = useWorktreeProjectGroups(projectWorkspaceTabs);
+  const {
+    groups: projectGroups,
+    resolvedGroups: resolvedProjectGroups,
+    loading: projectGroupsLoading,
+  } = useWorktreeProjectGroupsResolution(projectWorkspaceTabs);
   const topLevelProjectTabs = useMemo(
     () => projectGroups.map((group) => group.tab),
     [projectGroups],
   );
   const workTaskProjects = useMemo(
-    () => projectGroups.filter((group) => !group.isLinkedWorktree).map((group) => group.tab),
-    [projectGroups],
+    () =>
+      resolvedProjectGroups.filter((group) => !group.isLinkedWorktree).map((group) => group.tab),
+    [resolvedProjectGroups],
   );
   const worktreeWorkspaceKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -1401,6 +1406,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
             </Button>
             <WorkTasksSidebarButton
               projects={workTaskProjects}
+              projectsLoading={projectGroupsLoading}
               active={workTasksActive}
               onClick={onOpenWorkTasks}
             />

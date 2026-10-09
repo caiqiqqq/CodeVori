@@ -4,6 +4,7 @@
  * 显示 ZCode Agent 链路中的错误，带 traceId 方便排查。
  */
 import { useState } from "react";
+import type { MouseEvent } from "react";
 import {
   MEDIA_BUDGET_CURRENT_ATTACHMENT_TOO_LARGE_ERROR_CODE,
   MEDIA_BUDGET_CURRENT_IMAGE_TOO_LARGE_ERROR_CODE,
@@ -149,10 +150,16 @@ export function ChatErrorBanner({
     toast(intl.formatMessage({ id: "chat.error.feedbackOpened" }));
   };
 
-  const handleCopyError = async () => {
+  const handleCopyError = async (event: MouseEvent<HTMLButtonElement>) => {
+    // 默认 Toast 固定在窗口顶部，会挡住会话标题；在 await 前捕获来源，避免切换焦点后错位。
+    const copyToastOptions = {
+      position: "center" as const,
+      anchorElement: event.currentTarget.closest<HTMLElement>("[data-session-id]") ?? undefined,
+    };
     if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
       toast(
         intl.formatMessage({ id: "chat.error.copyFailed" }, { error: "clipboard-unavailable" }),
+        copyToastOptions,
       );
       return;
     }
@@ -169,7 +176,7 @@ export function ChatErrorBanner({
             intl.formatMessage({ id }, values),
         }),
       );
-      toast(intl.formatMessage({ id: "chat.error.copyFull.copied" }));
+      toast(intl.formatMessage({ id: "chat.error.copyFull.copied" }), copyToastOptions);
     } catch (copyError) {
       toast(
         intl.formatMessage(
@@ -178,6 +185,7 @@ export function ChatErrorBanner({
             error: copyError instanceof Error ? copyError.message : String(copyError),
           },
         ),
+        copyToastOptions,
       );
     }
   };
@@ -257,8 +265,8 @@ export function ChatErrorBanner({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => {
-              void handleCopyError();
+            onClick={(event) => {
+              void handleCopyError(event);
             }}
             className={cn(actionButtonClassName, "gap-1.5")}
             aria-label={intl.formatMessage({ id: "chat.error.copyFull" })}
