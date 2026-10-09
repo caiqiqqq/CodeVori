@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- ACP wire schemas stay together so session snapshots remain compatible across Host and UI. */
 import { z } from "zod";
+import { acpElicitationSchema } from "../acp-elicitation.js";
 import { acpPlanStepSchema } from "../acp-plan.js";
 import { acpTokenUsageSchema, acpUsageTurnSchema } from "../acp-usage.js";
 import { workflowRunsStateSchema } from "../zcode-protocol-v4/workflow-runs.js";
@@ -607,6 +608,7 @@ export const acpSessionSchema = acpWorkspaceSchema.extend({
       options: z.array(acpPermissionOptionSchema),
     })
     .nullable(),
+  pendingElicitation: acpElicitationSchema.nullable().default(null),
   error: z.string().nullable(),
   /** Scope of the current error; internal prompts cannot fail an unrelated user turn. */
   errorCommandId: z.string().optional(),
@@ -629,6 +631,8 @@ export const acpDiagnosticEventSchema = z.object({
     "tool-update",
     "permission-requested",
     "permission-resolved",
+    "elicitation-requested",
+    "elicitation-resolved",
     "turn-completed",
     "turn-interrupted",
     "turn-stopped",

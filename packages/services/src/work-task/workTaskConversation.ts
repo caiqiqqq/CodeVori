@@ -47,7 +47,7 @@ export function createWorkTaskConversation(deps: Dependencies): WorkTaskConversa
             startedAt: user.createdAt,
             status:
               snapshot.status === "running"
-                ? snapshot.pendingPermission
+                ? snapshot.pendingPermission || snapshot.pendingElicitation
                   ? "awaiting_input"
                   : "running"
                 : snapshot.status === "interrupted" || snapshot.error
