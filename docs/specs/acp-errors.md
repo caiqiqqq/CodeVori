@@ -64,6 +64,15 @@ the local operation overlay, never erases saved failures. No auto retry.
 Legacy `traceError` projects to a neutral error notice. Failed turns and partial
 assistant rows retain failed state after subsequent prompts and replay.
 
+Footer deduplication reads the same projected timeline rows, including the
+last-turn fallback for interrupted snapshots without `traceError` (such as Host
+restart recovery). If the scoped session error is already a confirmed turn
+notice, show only that notice and suppress an identical local operation overlay.
+Different operation errors remain visible; an internal operation scoped to a
+different command must not be hidden by a historical notice with identical text.
+Keep Host snapshots unchanged and preserve permission controls. Desktop continuous
+updates and mobile replayable snapshots use this same presentation rule.
+
 Warnings are temporary presentation, not terminal errors. Only the current running
 turn projects warning banners; each warning is visible for five seconds and does
 not reappear on unrelated renders. A changed warning title/severity is a new
@@ -164,3 +173,8 @@ sequenceDiagram
    IDs (even with identical text), turns and changed warning content display again.
    Workspace identities and sessions isolate presentation state. Replayed saved
    errors remain visible.
+9. Recover an interrupted session with only `session.error` and no `traceError` or
+   structured failures: exactly one disconnect banner appears, including after
+   replay and when an identical local operation error exists. A different operation
+   error still appears and can be dismissed; permission decisions remain available.
+   Empty sessions and errors scoped to internal operations retain their footer.
