@@ -7,6 +7,8 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
   const editor = page.getByTestId("work-task-editor");
   const prompt = editor.getByTestId("work-task-prompt");
   await panel.getByTestId("work-task-board").waitFor();
+  await panel.getByTestId("work-task-project").click();
+  await page.getByRole("option", { name: "全部", exact: true }).click();
   await page.evaluate(() => {
     const codex = window.__tasks.catalog.find((entry) => entry.agent === "codex");
     codex.configOptions.push(
@@ -35,6 +37,17 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
             `chat-model-select-item-${kind === "api" ? "custom:api:TestModel" : "acp:codex"}`,
           )
           .click();
+        if (width === 1280 && kind === "api") {
+          await prompt.fill("Draft scoped to the original project");
+          await editor.getByTestId("work-task-editor-project").click();
+          await page.getByRole("option", { name: "Other", exact: true }).click();
+          await editor.getByText("/synthetic/other", { exact: true }).waitFor();
+          assert.equal((await prompt.innerText()).trim(), "");
+          await editor
+            .getByTestId("work-task-model")
+            .getByText("TestModel", { exact: true })
+            .waitFor();
+        }
         await prompt.fill("Independent task draft");
         await prompt.press("End");
         await prompt.press("Enter");

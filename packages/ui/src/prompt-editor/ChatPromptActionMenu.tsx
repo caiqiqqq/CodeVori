@@ -1,3 +1,5 @@
+import { quickMessageMenuSection } from "@/prompt-editor/quickMessageMenuSection.js";
+import { ChatPromptActionMenuFooter } from "@/prompt-editor/ChatPromptActionMenuFooter.js";
 import { ContextMentionOptionContent } from "@/mentions/components/ContextMentionOptionContent.js";
 import { useFileMentionProvider } from "@/mentions/providers/fileMentionProvider.js";
 import { useSessionsMentionProvider } from "@/mentions/providers/sessionsMentionProvider.js";
@@ -8,8 +10,10 @@ import {
 import { getSessionMentionWorkspaceScope } from "@/mentions/mentionPanelRouting.js";
 import { useChatViewActiveTaskProvider } from "@/v4/activeTaskProvider.js";
 import { useMemo, useRef, useState, type MutableRefObject } from "react";
+import type { QuickMessage } from "@zcode/shared";
+import { useQuickMessages } from "@/hooks/useQuickMessages.js";
 import type { EditorState } from "lexical";
-import { GoalIcon, Info, PaperclipIcon, PlusIcon, Users, Workflow } from "lucide-react";
+import { GoalIcon, PaperclipIcon, PlusIcon, Users, Workflow } from "lucide-react";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { Button } from "@/components/ui/button.js";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover.js";
@@ -77,6 +81,8 @@ export function ChatPromptActionMenu({
   excludedSlashCommandNames?: readonly string[];
 }) {
   const { intl } = useZCodeIntl();
+  const { messages } = useQuickMessages();
+  const [quickMessages, setQuickMessages] = useState<QuickMessage[]>([]);
   const [open, setOpen] = useState(false);
   const [quickCommands, setQuickCommands] = useState<QuickCommand[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -142,6 +148,7 @@ export function ChatPromptActionMenu({
   const options = [
     ...(attachmentAction ? [{ disabled: false }] : []),
     ...quickCommands.map((command) => ({ disabled: command === "delegation" && !onDelegateTask })),
+    ...quickMessages.map(() => ({ disabled: false })),
     ...mentionItems,
   ];
   const sections: MentionPanelSection[] = [
@@ -188,6 +195,7 @@ export function ChatPromptActionMenu({
         }),
       ],
     },
+    quickMessageMenuSection(quickMessages, intl),
     {
       id: "plugins",
       title: plugins.title,
@@ -216,7 +224,7 @@ export function ChatPromptActionMenu({
   ].filter(
     (section) =>
       (section.id !== "add" || section.options.length > 0) &&
-      (!filesOnly || section.id !== "plugins"),
+      (!filesOnly || (section.id !== "plugins" && section.id !== "quickMessages")),
   );
 
   const selectOption = (index: number) => {
@@ -224,6 +232,12 @@ export function ChatPromptActionMenu({
     setOpen(false);
     if (attachmentAction && index === 0) {
       attachmentAction.onSelect();
+      return;
+    }
+    const message = quickMessages[index - attachmentCount - quickCommands.length];
+    if (message) {
+      restoreEditorFocusRef.current = true;
+      inputApiRef.current?.appendText(message.content);
       return;
     }
     const command = quickCommands[index - attachmentCount];
@@ -245,7 +259,7 @@ export function ChatPromptActionMenu({
           label: `/${command}`,
           description: "",
         })
-      : mentionItems[index - attachmentCount - quickCommands.length];
+      : mentionItems[index - attachmentCount - quickCommands.length - quickMessages.length];
     if (!item) return;
     restoreEditorFocusRef.current = true;
     inputApiRef.current?.insertMention(item, selectionStateRef.current);
@@ -261,6 +275,7 @@ export function ChatPromptActionMenu({
           // /workflow 同样只在消息开头展开，但不绑定会话状态：任意会话空草稿都提供；
           // 命令目录以 CLI catalog 为权威，catalog 缺 workflow（插件被禁用）时不提供，
           // 否则会把 CLI 不会展开的裸文本发给模型。
+          setQuickMessages(filesOnly ? [] : [...messages]);
           const emptyDraft = inputApiRef.current?.getText() === "";
           const offered = (command: QuickCommand, available: boolean) =>
             emptyDraft && available && !excludedSlashCommandNames?.includes(command);
@@ -374,30 +389,7 @@ export function ChatPromptActionMenu({
             title={actionMenuTitle}
             description=""
             listMaxHeight="min(24rem, max(8rem, calc(var(--radix-popover-content-available-height, 32rem) - 6rem)))"
-            footer={
-              acpMode || filesOnly ? undefined : (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-ui-sm text-foreground-subtle">
-                  {(
-                    [
-                      ["@", "chat.composer.contextShortcut"],
-                      ["/", "chat.composer.capabilityShortcut"],
-                      ["$", "chat.composer.skillShortcut"],
-                    ] as const
-                  ).map(([trigger, id]) => (
-                    <div key={trigger} className="flex shrink-0 items-center gap-1.5">
-                      <code className="flex size-5 shrink-0 items-center justify-center rounded bg-tooltip-tag font-mono text-foreground">
-                        {trigger}
-                      </code>
-                      <span>{intl.formatMessage({ id })}</span>
-                    </div>
-                  ))}
-                  <div className="flex items-center gap-1.5">
-                    <Info className="size-4 shrink-0" />
-                    <span>{intl.formatMessage({ id: "chat.composer.contextSearchHint" })}</span>
-                  </div>
-                </div>
-              )
-            }
+            footer={acpMode || filesOnly ? undefined : <ChatPromptActionMenuFooter />}
             trigger="+"
             sections={sections}
             emptyText=""
