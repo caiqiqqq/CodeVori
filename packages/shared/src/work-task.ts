@@ -246,8 +246,10 @@ export const workTaskListSchema = workTaskScopeSchema
   .extend({ includeArchived: z.boolean().optional() })
   .strict();
 export const workTaskArchiveSchema = workTaskTargetSchema
-  .extend({ archived: z.boolean() })
-  .strict();
+  .extend({ archived: z.boolean(), removeWorktree: z.boolean().optional() })
+  .strict()
+  .refine((input) => !input.removeWorktree || input.archived);
+export type WorkTaskArchive = z.infer<typeof workTaskArchiveSchema>;
 /** Legacy settings validation; retained for compatibility, not an execution limit. */
 export const workTaskConcurrencySchema = workTaskScopeSchema
   .extend({ concurrency: z.number().int().min(1).max(8) })
