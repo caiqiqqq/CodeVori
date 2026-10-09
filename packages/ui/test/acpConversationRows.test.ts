@@ -2,11 +2,70 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { acpEntrySchema, type AcpSession } from "@zcode/shared";
 import { conversationRowSchema } from "@zcode/shared/zcode-protocol-v4";
-import { ACP_DISPLAY_TOOL_NAME, buildAcpConversationRows } from "../src/v4/acpConversationRows.ts";
+import {
+  ACP_DISPLAY_TOOL_NAME,
+  acpConversationOperationError,
+  buildAcpConversationRows,
+} from "../src/v4/acpConversationRows.ts";
 import { buildConversationTurnRenderUnits } from "../src/v4/conversationTurnRenderUnits.ts";
 
 const session = (entries: AcpSession["entries"], status: AcpSession["status"] = "idle") =>
   ({ entries, status }) as AcpSession;
+
+test("recovered disconnect errors appear once; different operation errors remain visible", () => {
+  const error = "ACP Agent 已断开，请重试发送新的消息。";
+  for (const errorCommandId of [undefined, "cmd"]) {
+    const recovered = {
+      entries: [
+        { id: "user:cmd", kind: "user" as const, text: "question" },
+        { id: "assistant:cmd", kind: "assistant" as const, text: "partial answer" },
+      ],
+      status: "interrupted" as const,
+      error,
+      errorCommandId,
+    };
+    const before = structuredClone(recovered);
+    for (const snapshot of [recovered, structuredClone(recovered)]) {
+      const rows = buildAcpConversationRows(snapshot);
+      assert.equal(rows[0]?.kind === "turnHeader" && rows[0].notices?.length, 1);
+      assert.equal(acpConversationOperationError(snapshot, null, rows), null);
+      assert.equal(acpConversationOperationError(snapshot, error, rows), null);
+      assert.equal(
+        acpConversationOperationError(snapshot, "new operation failed", rows),
+        "new operation failed",
+      );
+    }
+    assert.deepEqual(recovered, before, "deduplication must not change Host facts");
+  }
+});
+
+test("unrepresented session errors retain their footer and command scope", () => {
+  const error = "disconnected";
+  const entries = [{ id: "user:cmd", kind: "user" as const, text: "question", traceError: error }];
+  const internal = {
+    entries,
+    status: "interrupted" as const,
+    error,
+    errorCommandId: "workflow-result:other",
+  };
+  assert.equal(
+    acpConversationOperationError(internal, null, buildAcpConversationRows(internal)),
+    error,
+  );
+  const empty = { entries: [], status: "interrupted" as const, error };
+  assert.equal(acpConversationOperationError(empty, null, buildAcpConversationRows(empty)), error);
+  const running = {
+    entries: [{ id: "user:cmd", kind: "user" as const, text: "question" }],
+    status: "running" as const,
+    error,
+  };
+  assert.equal(
+    acpConversationOperationError(running, null, buildAcpConversationRows(running)),
+    error,
+  );
+  assert.equal(acpConversationOperationError(null, error, []), error);
+  assert.equal(acpConversationOperationError(null, null, []), null);
+});
 
 test("warnings project only on the current running turn; saved diagnostics remain unchanged", () => {
   const warning = {

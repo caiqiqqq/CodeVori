@@ -10,7 +10,7 @@ import { WorkTaskService } from "../src/session/workTaskService.js";
 import { createWorkTaskConversation } from "../src/work-task/workTaskConversation.js";
 import type { IZCodeAgentService } from "../src/zcode-agent/zcodeAgent.js";
 
-test("real ACP Host admission directly resumes the failed task once and honors guarded stop", async () => {
+async function assertAcpContinuation(initialStatus: "failed" | "done") {
   const directory = await mkdtemp(join(tmpdir(), "zcode-task-acp-continuation-"));
   const texts: string[] = [];
   let release: (() => void) | undefined;
@@ -27,7 +27,10 @@ test("real ACP Host admission directly resumes the failed task once and honors g
       close() {},
       async prompt(text) {
         texts.push(text);
-        if (texts.length === 1) throw new Error("Synthetic initial failure");
+        if (texts.length === 1) {
+          if (initialStatus === "failed") throw new Error("Synthetic initial failure");
+          return;
+        }
         await new Promise<void>((resolve, fail) => {
           release = resolve;
           reject = fail;
@@ -80,13 +83,15 @@ test("real ACP Host admission directly resumes the failed task once and honors g
       execution: { kind: "acp", agent: "codex", config: [] },
     });
     await service.start({ ...taskScope, id: task.id });
-    await until("failed");
+    await until(initialStatus === "failed" ? "failed" : "review");
+    if (initialStatus === "done") await service.complete({ ...taskScope, id: task.id });
     const binding = (await read()).session!;
     const commandId = uuidv7();
     const send = () => acp.prompt({ workspacePath, id: binding.id, commandId, text: "Continue" });
     const running = send();
     await until("running", () => texts.length === 2);
     assert.equal((await read()).failureReason, undefined);
+    assert.equal((await read()).completion, undefined);
     assert.equal((await read()).runSeq, 2);
     await send();
     assert.deepEqual(texts, ["Build", "Continue"], "duplicate ACK retry must not re-prompt");
@@ -125,4 +130,9 @@ test("real ACP Host admission directly resumes the failed task once and honors g
     await acp.disposeAllAndWait();
     await rm(directory, { recursive: true, force: true });
   }
-});
+}
+
+for (const initialStatus of ["failed", "done"] as const) {
+  test(`real ACP Host admission directly resumes the ${initialStatus} task once and honors guarded stop`, () =>
+    assertAcpContinuation(initialStatus));
+}

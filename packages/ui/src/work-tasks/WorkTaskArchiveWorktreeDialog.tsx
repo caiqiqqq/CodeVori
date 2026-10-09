@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import type { WorkTask } from "@zcode/shared";
-import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
+import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +19,7 @@ export function WorkTaskArchiveWorktreeDialog({
   onClose,
 }: {
   task: WorkTask;
-  panel: ReturnType<typeof useWorkTasks>;
+  panel: WorkTaskPanel;
   onClose(): void;
 }) {
   const t = useWorkTaskMessages();

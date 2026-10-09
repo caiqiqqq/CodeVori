@@ -453,7 +453,10 @@ function assertPackagedNodePtyPrebuild(context) {
 
 /** @type {import("electron-builder").Configuration} */
 export default {
-  appId: desktopProductIdentity.appId,
+  // macOS 授权后的系统重启按 bundle ID 解析；沿用 ZCode ID 会打开并排安装的旧应用。
+  // 必须按产物目标选择独立身份，避免 macOS 宿主的交叉构建改变 Windows/Linux 安装身份。
+  appId:
+    targetPlatform.os === "darwin" ? desktopProductIdentity.macAppId : desktopProductIdentity.appId,
   // Linux deb 打包（fpm）会校验 package metadata 中的 homepage、author.email、maintainer。
   // CI 环境下若这些字段缺失会在产物阶段直接失败。这里统一在构建配置补齐，避免依赖外部注入。
   extraMetadata: {

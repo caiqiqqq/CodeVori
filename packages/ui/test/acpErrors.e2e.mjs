@@ -52,6 +52,7 @@ try {
           finish:()=>setSnapshot(s=>({...s,status:'idle'})),
           render:()=>setSnapshot(s=>structuredClone(s)),
           fail:()=>setSnapshot(s=>({...s,status:'interrupted',error:title,entries:s.entries.map(e=>e.kind==='user'?{...e,traceError:title,failures:[failure]}:e)})),
+          recover:(overlay=false)=>{const error='ACP Agent 已断开，请重试发送新的消息。';setSnapshot(s=>({...s,status:'interrupted',error,entries:s.entries.map(e=>{if(e.kind!=='user')return e;const {traceError,failures,...entry}=e;return entry})}));setOperation(overlay?error:null)},
           next:()=>setSnapshot(s=>({...s,status:'idle',error:null,entries:[...s.entries,{id:'user:next',kind:'user',text:'Next fixture question'},{id:'assistant:next',kind:'assistant',text:'Successful later answer'}]})),
           replay:()=>{setSnapshot(s=>structuredClone(s));setEpoch(e=>e+1)},
           home:()=>{setHome(true);setOperation('Connection fixture error')},
@@ -63,7 +64,7 @@ try {
         return <div data-session-id="error-fixture" style={{height:'80vh',width:innerWidth>600?'55vw':'100vw',marginTop:'10vh',marginLeft:innerWidth>600?'5vw':0}} className="relative flex flex-col bg-background text-foreground" data-fixture-ready="true" data-fixture-epoch={epoch} data-retries={retries}>
           {away?null:subscription?<SessionSubscriptionErrorPanel error="Subscription fixture error" onReconnect={()=>{setRetries(n=>n+1);setSubscription(false)}}/>:home?<AcpHomeStatus agent="codex" conversation={conversation as never}/>:<ConversationTimeline key={epoch} sessionKey="error-fixture" rows={rows} totalCount={rows.length}
             hideTurnNavigator workDurationAvailable={false} rowContext={{workspacePath:'/synthetic/project',theme:'zai-light',codePreviewSettings:DEFAULT_CODE_PREVIEW_SETTINGS,logEpoch:'fixture-'+epoch}}
-            footerSlot={<AcpConversationStatus agent="codex" conversation={conversation as never}/>}/>}
+            footerSlot={<AcpConversationStatus agent="codex" conversation={conversation as never} rows={rows}/>}/>}
         </div>;
       }
       const platform={isMacOS:false,isWindows:false,isLinux:false,isWeb:true};
@@ -173,6 +174,24 @@ try {
       await page.evaluate(() => window.__errors.finish());
       await warning.waitFor({ state: "detached" });
       await page.clock.resume();
+      // 重启恢复只有 session.error；桌面与手机回放都只能保留轮尾的一条提示。
+      for (const overlay of [false, true]) {
+        await page.evaluate((overlay) => window.__errors.recover(overlay), overlay);
+        const disconnect = page.getByText("ACP Agent 已断开，请重试发送新的消息。", {
+          exact: true,
+        });
+        await disconnect.waitFor();
+        assert.equal(await disconnect.count(), 1);
+        assert.equal(await page.locator('[data-error-code="ACP_OPERATION_FAILED"]').count(), 0);
+        await page.evaluate(() => window.__errors.render());
+        assert.equal(await disconnect.count(), 1, "snapshot replay must not duplicate disconnect");
+      }
+      await page.evaluate(() => window.__errors.operation());
+      const recoveredOperation = page.locator('[data-error-code="ACP_OPERATION_FAILED"]');
+      await recoveredOperation.waitFor();
+      await recoveredOperation.getByRole("button", { name: "关闭错误提示", exact: true }).click();
+      await recoveredOperation.waitFor({ state: "detached" });
+      await page.getByText("ACP Agent 已断开，请重试发送新的消息。", { exact: true }).waitFor();
       await page.evaluate(() => window.__errors.fail());
       const notice = page.locator('[data-conversation-notice="incident"]');
       await notice.waitFor();
