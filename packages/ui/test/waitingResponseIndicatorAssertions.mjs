@@ -25,13 +25,13 @@ export async function assertYellowWaitingIndicator(indicator, theme) {
     return result;
   }, theme);
   assert.equal(presentation.color, presentation.yellow, "Waiting response spinner must be yellow");
-  assert.deepEqual(presentation.size, ["14px", "14px"], "Waiting circle must be easy to see");
+  assert.deepEqual(presentation.size, ["10px", "10px"], "Waiting circle must stay compact");
   assert.equal(presentation.strokeWidth, "3", "Waiting circle needs a stronger stroke");
   assert.equal(presentation.animation, "spin", "Waiting circle must keep rotating");
-  assert.deepEqual(presentation.backplateSize, ["14px", "14px"]);
+  assert.deepEqual(presentation.backplateSize, ["10px", "10px"]);
   assert.notEqual(presentation.shadow, "none", "Backplate must separate the circle from the brand");
   assert.ok(
     presentation.right <= presentation.titleLeft,
-    "Enlarged waiting circle and its backplate must not cover the title",
+    "Waiting circle and its backplate must not cover the title",
   );
 }

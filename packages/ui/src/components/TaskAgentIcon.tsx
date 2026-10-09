@@ -82,11 +82,11 @@ function TaskAgentIconContent({
       {indicator !== "none" ? (
         <span
           data-task-status-indicator={indicator}
-          // 修复依据：10px 放射状转圈不易辨认；仅放大等待圆环并隔离品牌底色，保持原有状态优先级。
+          // 调整依据：等待圆环与底板缩小到 10px，保留原有定位、描边、底色隔离和状态优先级。
           className={cn(
             "absolute flex items-center justify-center rounded-full bg-card",
             indicator === "loading"
-              ? "-bottom-1 -right-1 size-3.5 ring-2 ring-card"
+              ? "-bottom-1 -right-1 size-2.5 ring-2 ring-card"
               : "-bottom-0.5 -right-0.5 size-2.5",
           )}
         >
@@ -94,7 +94,7 @@ function TaskAgentIconContent({
             <LoaderCircle
               data-task-running-indicator="true"
               strokeWidth={3}
-              className="size-3.5 animate-spin text-task-running-indicator"
+              className="size-2.5 animate-spin text-task-running-indicator"
             />
           ) : (
             <span

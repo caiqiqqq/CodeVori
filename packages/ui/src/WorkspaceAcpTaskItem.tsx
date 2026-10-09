@@ -242,12 +242,12 @@ export function WorkspaceAcpTaskItem({
                     />
                   </span>
                 ) : leadingIndicator === "loading" ? (
-                  // 修复依据：与 API 行统一放大黄色等待圆环，用底色隔离品牌图标以提高密集侧栏中的辨识度。
-                  <span className="absolute -bottom-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-card ring-2 ring-card">
+                  // 调整依据：与 API 行统一缩小到 10px，保留原有圆环样式及品牌底色隔离。
+                  <span className="absolute -bottom-1 -right-1 flex size-2.5 items-center justify-center rounded-full bg-card ring-2 ring-card">
                     <LoaderCircle
                       data-acp-running-indicator="true"
                       strokeWidth={3}
-                      className="size-3.5 animate-spin text-task-running-indicator"
+                      className="size-2.5 animate-spin text-task-running-indicator"
                     />
                   </span>
                 ) : null}

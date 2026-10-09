@@ -117,7 +117,7 @@ Default light and dark CSS variables still exist as fallback foundations, but ne
   from the green scheduled-task treatment.
 - **Task running indicator**: `--color-task-running-indicator`
   Yellow spinning corner indicator for API and ACP conversation rows waiting for a response;
-  yellow-600 in light themes and yellow-300 in dark themes. Use a 14px circular loader with
+  yellow-600 in light themes and yellow-300 in dark themes. Use a 10px circular loader with
   stroke width 3 and a 2px card-colored backplate ring to distinguish it from the 16px brand icon.
   Keep confirmation badges separate.
 - **Diff Added**: `--color-diff-added` with `--color-diff-added-foreground`
