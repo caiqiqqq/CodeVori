@@ -64,6 +64,9 @@ const errorKeys = new Set([
   "CONFLICT",
   "INVALID_MEDIA",
   "MEDIA_UNAVAILABLE",
+  "NO_EXECUTION",
+  "TASK_SAVE",
+  "TASK_UNSUPPORTED",
 ]);
 export function RepositoryError({ error, retry }: { error: string; retry?: () => void }) {
   const t = useRepositoryMessages();

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   createWorkTaskNavigationStore,
   workTaskNavigationKey,
+  WORK_TASK_ALL_PROJECTS,
 } from "../src/store/workTaskNavigationStore.js";
 
 function memoryStorage() {
@@ -17,6 +18,16 @@ function memoryStorage() {
 }
 const project = { workspacePath: "/project" };
 const other = { workspacePath: "/other" };
+
+test("all-project navigation persists without replacing individual task selections", () => {
+  const storage = memoryStorage();
+  const store = createWorkTaskNavigationStore(storage);
+  store.getState().selectTask(project, "task");
+  store.getState().selectAllProjects();
+  const restored = createWorkTaskNavigationStore(storage).getState();
+  assert.equal(restored.project, WORK_TASK_ALL_PROJECTS);
+  assert.equal(restored.tasks[workTaskNavigationKey(project)], "task");
+});
 
 test("restores last project and independent task selections after recreation", () => {
   const storage = memoryStorage();

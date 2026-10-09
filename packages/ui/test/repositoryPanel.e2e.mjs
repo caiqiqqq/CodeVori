@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { assertRepositoryListLabelColors } from "./repositoryListLabelAssertions.mjs";
+import * as repositoryTask from "./repositoryTaskCreationAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__repository-panel-e2e-${process.pid}`;
@@ -31,6 +32,7 @@ try {
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
     import {consumeInitialSettingsSection} from '../../../ui/src/lib/settingsNavigation.ts';
+    ${repositoryTask.importsFixture}
     import '../../../ui/src/styles.css';
     const state:any={calls:[],pending:[],status:'ready',delayList:false,delayWrite:false,delayDiscovery:false,failWrite:false,remote:false,accountDiscovery:false};
     window.__forge=state;
@@ -52,7 +54,7 @@ try {
       async getForgeRepository(r:any){state.calls.push({host,op:'discover',...r});const remoteName=r.remoteName||'origin';const matched=snapshots[host].accounts.find((a:any)=>a.provider==='gitlab'&&a.serverUrl==='https://forge.example.invalid');const status=state.accountDiscovery?(matched?'ready':snapshots[host].accounts.length?'account-mismatch':'unsupported'):state.status;const provider=state.accountDiscovery?(matched?.provider??null):(state.provider||'github');const result={status,remoteNames:['origin','private'],remoteName,host:'forge.example.invalid',provider,repository:status==='ready'?{key:host+remoteName,name:'team/'+host.toLowerCase(),url:'https://forge.example.invalid/team/'+host,provider,accountId:matched?.id??host,accountUsername:'tester'}:null};if(state.delayDiscovery){state.delayDiscovery=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return result},
       async listForgeItems(r:any){state.calls.push({host,op:'list',...r});const result={items:[{...baseItem(host,r),state:states[host]}],page:r.page,pageSize:20,hasMore:r.page===1,total:21,reachableTotal:21,incomplete:false};if(state.delayList){state.delayList=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return clone(result)},
       async listForgeLabels(){return [label]},
-      async getForgeItem(r:any){state.calls.push({host,op:'detail',...r});return {...baseItem(host,r),state:states[host],change:r.kind==='pull-request'?{headSha:'a'.repeat(40),headBranch:'feature',baseBranch:'main',mergeable:true,mergeMethods:['merge','squash'],mergeOptionsError:null,checks:[{id:'check',name:'tests',state:'success',url:null}],checksError:null}:null}},
+      async getForgeItem(r:any){state.calls.push({host,op:'detail',...r});if(state.failDetail){state.failDetail=false;throw new Error('FORGE_NETWORK')}const result={...baseItem(host,r),body:'## Synthetic description\\n\\nA reproducible issue.\\nFull detail only.',state:states[host],change:r.kind==='pull-request'?{headSha:'a'.repeat(40),headBranch:'feature',baseBranch:'main',mergeable:true,mergeMethods:['merge','squash'],mergeOptionsError:null,checks:[{id:'check',name:'tests',state:'success',url:null}],checksError:null}:null};if(state.delayDetail){state.delayDetail=false;return new Promise(resolve=>state.pending.push(()=>resolve(result)))}return result},
       async getForgeItemExtras(){return {}},
       async listForgeComments(r:any){return {items:clone(commentRows[host]),page:r.page,pageSize:30,hasMore:false,total:commentRows[host].length}},
       async listForgeFiles(r:any){return {items:[{path:'src/very-long-project-directory/a-very-long-filename-with-many-words.ts',previousPath:null,status:'modified',additions:1,deletions:1,patch:'@@ -1 +1 @@\\n-old\\n+new',truncated:false}],page:r.page,pageSize:30,hasMore:false,total:1}},
@@ -61,17 +63,17 @@ try {
       async setForgeItemState(r:any){state.calls.push({host,op:'state',...r});states[host]=r.state},
       async mergeForgePullRequest(r:any){state.calls.push({host,op:'merge',...r});states[host]='merged'},
     }};}
+    ${repositoryTask.repositoryTaskServicesFixture}
     const broadcast:any={send(){},onMessage(){return {dispose(){}}}};
     const platform:any={openExternal:(url:string)=>state.calls.push({op:'external',url})};
     function Fixture(){const [host,setHost]=useState('A');const [version,setVersion]=useState(0);const settingsVisible=useTabStore(s=>s.activeTabId==='__settings__');const openSettings=useTabStore(s=>s.openSettingsTab);const closeTab=useTabStore(s=>s.closeTab);state.switchHost=setHost;state.remount=()=>setVersion(v=>v+1);state.settings=consumeInitialSettingsSection;state.openSettings=openSettings;
-      return <ServiceProvider services={hosts[host]}><div className='h-dvh bg-background text-foreground'><div hidden={settingsVisible} className='h-full'><RepositoryPanel key={version} active={!settingsVisible} workspacePath={'/synthetic/'+host} workspaceIdentity={state.remote?'synthetic-disconnected-workspace':undefined} theme='zai-light' onCreateTask={(request:any)=>state.calls.push({host,op:'agent',...request})}/></div>{settingsVisible?<div className='h-full overflow-auto p-4'><button onClick={()=>closeTab('__settings__')}>返回仓库</button><VersionControlSection/></div>:null}</div></ServiceProvider>}
+      return <ServiceProvider services={hosts[host]}><div className='h-dvh bg-background text-foreground'><div hidden={settingsVisible} className='h-full'><RepositoryPanel key={version} active={!settingsVisible} workspacePath={state.taskRemote?'/synthetic/A':'/synthetic/'+host} workspaceIdentity={state.remote?'synthetic-disconnected-workspace':state.taskRemote?'synthetic-task-identity':undefined} remoteSessionId={state.taskRemote?'task-remote':undefined} theme='zai-light' onCreateTask={(request:any)=>state.calls.push({host,op:'agent',...request})}/></div>{settingsVisible?<div className='h-full overflow-auto p-4'><button onClick={()=>closeTab('__settings__')}>返回仓库</button><VersionControlSection/></div>:null}</div></ServiceProvider>}
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><StoreProvider broadcastService={broadcast}><TabStoreProvider><Fixture/></TabStoreProvider></StoreProvider></TooltipProvider></ZCodeIntlProvider></PlatformProvider>);
   `,
   );
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1120, height: 850 } });
-  const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
+  const errors = repositoryTask.observeRepositoryErrors(page);
   await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`);
   const panel = page.getByTestId("repository-panel");
   const row = () => panel.getByTestId("repository-item-row").first();
@@ -82,6 +84,7 @@ try {
     );
   const assertListLabelColors = () => assertRepositoryListLabelColors(row);
   await row().waitFor();
+  await repositoryTask.exerciseRepositoryTaskCreation(page, panel, artifacts);
   await assertListLabelColors();
   assert.match(await row().innerText(), /A origin issue 1/);
   await panel.getByRole("button", { name: "下一页", exact: true }).click();
@@ -396,7 +399,7 @@ try {
   assert.equal(await page.evaluate(() => window.__forge.calls.length), localCalls);
   assert.deepEqual(errors, []);
   process.stdout.write(
-    `PASS: repository tabs, filters, pages, details, comments, confirmations, creation, agent draft, account mismatch and settings recovery, Host/discovery races, disconnected remote isolation and responsive themes. Screenshots: ${artifacts}\n`,
+    `PASS: scoped todo task creation, duplicate admission, read/save failures, API/ACP preferences, remote scope, stale read/save isolation; repository tabs, filters, pages, details, comments, confirmations, creation, agent draft, account mismatch and settings recovery, Host/discovery races, disconnected remote isolation and responsive themes. Screenshots: ${artifacts}\n`,
   );
 } finally {
   await browser?.close();
