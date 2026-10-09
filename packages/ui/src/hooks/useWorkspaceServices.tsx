@@ -158,6 +158,7 @@ export function useWorkspaceServicesResolution(
   preferredRemoteSessionId?: string | null,
   workspaceIdentity?: string | null,
   remoteTarget?: unknown,
+  scopeIsExplicit = false,
 ): WorkspaceServicesResolution {
   const currentContextServices = useServices();
   const resolvedRemoteSessionId = useResolvedRemoteWorkspaceSessionId(
@@ -165,22 +166,26 @@ export function useWorkspaceServicesResolution(
     preferredRemoteSessionId,
     workspaceIdentity,
     remoteTarget,
+    scopeIsExplicit,
   );
   const isRemoteTarget = useTabStore((state) =>
-    resolveWorkspaceServiceIsRemoteTarget({
-      workspacePath,
-      workspaceIdentity,
-      preferredRemoteSessionId,
-      activeWorkspacePath: state.activeWorkspacePath,
-      activeWorkspaceIdentity: state.activeWorkspaceIdentity,
-      activeTab: (() => {
-        const activeTab = state.activeTabId
-          ? state.tabs.find((tab) => tab.id === state.activeTabId)
-          : null;
-        return activeTab && isWorkspaceTab(activeTab) ? activeTab : null;
-      })(),
-      workspaceTabs: state.tabs.filter(isWorkspaceTab),
-    }),
+    // 明确 scope 的本地窗格不能被 Shell 的远端 tab/path 推断改写；旧调用方保留推断。
+    scopeIsExplicit
+      ? Boolean(workspaceIdentity?.trim() || preferredRemoteSessionId?.trim() || remoteTarget)
+      : resolveWorkspaceServiceIsRemoteTarget({
+          workspacePath,
+          workspaceIdentity,
+          preferredRemoteSessionId,
+          activeWorkspacePath: state.activeWorkspacePath,
+          activeWorkspaceIdentity: state.activeWorkspaceIdentity,
+          activeTab: (() => {
+            const activeTab = state.activeTabId
+              ? state.tabs.find((tab) => tab.id === state.activeTabId)
+              : null;
+            return activeTab && isWorkspaceTab(activeTab) ? activeTab : null;
+          })(),
+          workspaceTabs: state.tabs.filter(isWorkspaceTab),
+        }),
   );
   const resolvedServices = useRemoteWorkspaceSessionStore((state) =>
     resolveWorkspaceServicesForTarget({
@@ -219,11 +224,13 @@ export function useWorkspaceServices(
   preferredRemoteSessionId?: string | null,
   workspaceIdentity?: string | null,
   remoteTarget?: unknown,
+  scopeIsExplicit = false,
 ): IServiceAccessor {
   return useWorkspaceServicesResolution(
     workspacePath,
     preferredRemoteSessionId,
     workspaceIdentity,
     remoteTarget,
+    scopeIsExplicit,
   ).services;
 }

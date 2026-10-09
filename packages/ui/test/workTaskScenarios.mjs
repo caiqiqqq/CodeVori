@@ -7,6 +7,7 @@ import { exerciseWorkTaskExecutionPreferences } from "./workTaskExecutionPrefere
 import { exerciseWorkTaskConversationStatus } from "./workTaskConversationStatusAssertions.mjs";
 import { exerciseWorkTaskConcurrentExecution } from "./workTaskConcurrentExecutionAssertions.mjs";
 import { exerciseWorkTaskCompletion } from "./workTaskCompletionAssertions.mjs";
+import { exerciseWorkTaskSaveRefresh } from "./workTaskSaveRefreshAssertions.mjs";
 
 export {
   exerciseWorkTaskPromptAttachments,
@@ -19,6 +20,7 @@ export {
   exerciseWorkTaskCompletion,
 };
 export const workTaskScenarios = {
+  "save-refresh": exerciseWorkTaskSaveRefresh,
   "workspace-mode": exerciseWorkTaskWorkspaceMode,
   "prompt-attachments": exerciseWorkTaskPromptAttachments,
   "image-resources": exerciseWorkTaskImageResources,
