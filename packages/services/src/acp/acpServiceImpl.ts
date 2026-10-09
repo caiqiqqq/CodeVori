@@ -22,6 +22,7 @@ import {
   acpAgentAvailabilityListSchema,
   acpAgentDefinition,
   acpCreateInputSchema,
+  acpSetConfigOptionInputSchema,
   acpDiagnosticEventSchema,
   acpExecutionTraceChangedSchema,
   acpPromptInputSchema,
@@ -70,6 +71,12 @@ import { projectAcpPluginMcpServers } from "./acpMcpServers.js";
 import { createAcpWorkflowMcp } from "./acpWorkflowMcp.js";
 import { AcpWorkflowHost } from "./acpWorkflowHost.js";
 import { acpConfigValues } from "./acpConfigOptions.js";
+import {
+  AcpPermissionPreferences,
+  isAcpPermissionOption,
+  restoreAcpPermission,
+  sessionPermissionSelection,
+} from "./acpPermissionPreferences.js";
 import { acpAgentConfigFingerprint, readAcpAgentConfigs } from "./acpAgentConfigs.js";
 import { projectAcpContextUsage } from "./acpContextUsage.js";
 import type { AcpToolDetails } from "./acpToolDetails.js";
@@ -182,6 +189,9 @@ export function createAcpService(
   } = {},
 ): IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } {
   const directory = options.directory ?? join(getZCodeDataRootDir(), "acp-sessions");
+  const permissionPreferences = new AcpPermissionPreferences(
+    join(directory, "permission-preferences"),
+  );
   const attachmentStore = new AcpAttachmentStore(join(directory, "attachments"));
   const attachmentWrites = new Map<string, Set<Promise<void>>>();
   const connect = options.connect ?? connectAcpAgent;
@@ -746,6 +756,10 @@ export function createAcpService(
     if (current) return current;
     const inFlight = connecting.get(session.id);
     if (inFlight) return inFlight;
+    // 修复原因：session/load 可能重置权限；先冻结本会话选择，不能被握手通知或新会话偏好覆盖。
+    const permissionSelection =
+      session.permissionSelection ??
+      (session.acpSessionId ? sessionPermissionSelection(session) : undefined);
     const generation = {};
     generations.set(session.id, generation);
     let receivedConfig = false;
@@ -753,7 +767,7 @@ export function createAcpService(
     let updatedModeId: string | undefined;
     // 修复原因：若仅在设置页检查启用/安装状态，create 与 session/load 仍会从旧静态命令
     // 启动禁用的 Agent。每次新连接都向同一个 Host 设置所有者重新解析，复用连接不重启。
-    const task = (async () => {
+    const connectionTask = (async () => {
       const [mcpSettings, launch, plugins] = await Promise.all([
         options.mcpSyncService?.loadMcpFromUserDirectory({ workspacePath: session.workspacePath }),
         options.connect && !options.agentManager
@@ -951,45 +965,66 @@ export function createAcpService(
         },
       });
     })();
-    connecting.set(session.id, task);
-    try {
-      const port = await task;
-      if (disposed || removed.has(session.id) || generations.get(session.id) !== generation) {
-        port.close();
-        throw new Error("ACP session closed while connecting");
-      }
-      connections.set(session.id, port);
-      // 修复原因：握手后立刻推送的配置比 session/new、session/load 响应更新。
-      // 先记录通知，再补齐响应中的目录，不用旧响应反向覆盖 Agent 的新状态。
-      if (session.acpSessionId) {
-        await mutate(session, () => {
-          // 修复原因：新进程重新连接已有 ACP 会话后，适配器可能重置累计计数；
-          // 首份报告必须先重建基线，不能与上一个进程的快照直接求差。
-          session.usageBaselineKnown = false;
+    const task = (async () => {
+      const port = await connectionTask;
+      try {
+        if (disposed || removed.has(session.id) || generations.get(session.id) !== generation) {
+          throw new Error("ACP session closed while connecting");
+        }
+        // 修复原因：权限恢复完成前连接不能被 prompt/config 复用，所有 attach 等待同一 ready Promise。
+        const initialModes = port.modeState
+          ? { ...port.modeState, currentModeId: updatedModeId ?? port.modeState.currentModeId }
+          : null;
+        const restored = await restoreAcpPermission(
+          {
+            configOptions: receivedConfig ? session.configOptions : (port.configOptions ?? []),
+            modeState: initialModes,
+          },
+          permissionSelection,
+          port,
+        );
+        if (disposed || generations.get(session.id) !== generation || removed.has(session.id))
+          throw new Error("ACP session changed while restoring permission");
+        // 修复原因：握手后立刻推送的配置比 session/new、session/load 响应更新。
+        // 先记录通知，再补齐响应中的目录，不用旧响应反向覆盖 Agent 的新状态。
+        if (session.acpSessionId) {
+          await mutate(session, () => {
+            // 修复原因：新进程重新连接已有 ACP 会话后，适配器可能重置累计计数；
+            // 首份报告必须先重建基线，不能与上一个进程的快照直接求差。
+            session.usageBaselineKnown = false;
+            recordNativeUsage(session, port);
+            session.configOptions = restored.configOptions;
+            if (permissionSelection) session.permissionSelection = permissionSelection;
+            // 修复原因：握手期间的容量此前随历史消息被丢弃；只在连接成功后合入快照。
+            // 实时通知可能早于握手结果被 Host 接收，不能用初始值反向覆盖较新的通知。
+            if (!receivedContextUsage && port.contextUsage !== undefined)
+              session.contextUsage = projectAcpContextUsage(port.contextUsage);
+            session.modeState = restored.modeState;
+          });
+        } else {
           recordNativeUsage(session, port);
-          if (!receivedConfig) session.configOptions = port.configOptions ?? [];
-          // 修复原因：握手期间的容量此前随历史消息被丢弃；只在连接成功后合入快照。
-          // 实时通知可能早于握手结果被 Host 接收，不能用初始值反向覆盖较新的通知。
+          session.configOptions = restored.configOptions;
+          if (permissionSelection) session.permissionSelection = permissionSelection;
           if (!receivedContextUsage && port.contextUsage !== undefined)
             session.contextUsage = projectAcpContextUsage(port.contextUsage);
-          session.modeState = port.modeState ?? null;
-          if (session.modeState && updatedModeId) session.modeState.currentModeId = updatedModeId;
-        });
-      } else {
-        recordNativeUsage(session, port);
-        if (!receivedConfig) session.configOptions = port.configOptions ?? [];
-        if (!receivedContextUsage && port.contextUsage !== undefined)
-          session.contextUsage = projectAcpContextUsage(port.contextUsage);
-        session.modeState = port.modeState ?? null;
-        if (session.modeState && updatedModeId) session.modeState.currentModeId = updatedModeId;
-      }
-      if (generations.get(session.id) !== generation || removed.has(session.id)) {
+          session.modeState = restored.modeState;
+        }
+        if (disposed || generations.get(session.id) !== generation || removed.has(session.id)) {
+          throw new Error("ACP session closed while connecting");
+        }
+        connections.set(session.id, port);
+        return port;
+      } catch (error) {
+        if (generations.get(session.id) === generation) detach(session.id);
         port.close();
-        throw new Error("ACP session closed while connecting");
+        throw error;
       }
-      return port;
+    })();
+    connecting.set(session.id, task);
+    try {
+      return await task;
     } finally {
-      connecting.delete(session.id);
+      if (connecting.get(session.id) === task) connecting.delete(session.id);
     }
   };
 
@@ -1004,8 +1039,21 @@ export function createAcpService(
         agent: session.agent,
       });
       let current = replacement;
+      // 新会话恢复只使用被接替会话的权限，不读取后来修改的默认偏好。
+      const permissionSelection =
+        session.permissionSelection ?? sessionPermissionSelection(session);
+      if (permissionSelection) {
+        current = await service.setConfigOption({
+          workspacePath: session.workspacePath,
+          ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
+          ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
+          id: replacement.id,
+          ...permissionSelection,
+        });
+      }
       let incomplete = false;
       for (const previous of session.configOptions) {
+        if (previous.id === permissionSelection?.configId) continue;
         const available = current.configOptions.find((option) => option.id === previous.id);
         if (!available || available.type !== previous.type) {
           incomplete = true;
@@ -1950,7 +1998,8 @@ export function createAcpService(
     },
     async create(input) {
       if (disposed) throw new Error("ACP service closed");
-      const { agent, requestId, deferPersistence, ...target } = acpCreateInputSchema.parse(input);
+      const { agent, requestId, deferPersistence, usePermissionPreference, ...target } =
+        acpCreateInputSchema.parse(input);
       const key = requestId
         ? JSON.stringify([workspaceKey(target), target.workspacePath, agent, requestId])
         : null;
@@ -2010,6 +2059,9 @@ export function createAcpService(
           error: null,
         };
         try {
+          // 空草稿不落会话历史，但显式权限偏好由 Host 独立持久化；内部 create 不继承它。
+          if (usePermissionPreference)
+            session.permissionSelection = await permissionPreferences.read(target, agent);
           const port = await attach(session);
           if (!session.provisional && session.acpSessionId) {
             // 修复原因：新连接中途失去的累计报告无法恢复，首份需重建基线。
@@ -2193,6 +2245,7 @@ export function createAcpService(
       return structuredClone(session);
     },
     async setConfigOption(input) {
+      input = acpSetConfigOptionInputSchema.parse(input);
       const session = await scoped(input);
       if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
       if (active.has(session.id) || stopping.has(session.id) || configuring.has(session.id))
@@ -2211,13 +2264,14 @@ export function createAcpService(
           ) {
             throw new Error("ACP config value is not available");
           }
-          if (option.currentValue === input.value) return structuredClone(session);
-          const next = await port.setConfigOption(option.id, input.value);
-          if (connections.get(session.id) !== port || removed.has(session.id))
-            throw new Error("ACP session changed while configuring");
-          await mutate(session, () => {
-            session.configOptions = next;
-          });
+          if (option.currentValue !== input.value) {
+            const next = await port.setConfigOption(option.id, input.value);
+            if (disposed || connections.get(session.id) !== port || removed.has(session.id))
+              throw new Error("ACP session changed while configuring");
+            await mutate(session, () => {
+              session.configOptions = next;
+            });
+          }
         } else if (
           input.configId === "mode" &&
           session.configOptions.length === 0 &&
@@ -2228,14 +2282,36 @@ export function createAcpService(
             !session.modeState.availableModes.some((mode) => mode.id === input.value)
           )
             throw new Error("ACP config value is not available");
-          if (session.modeState.currentModeId === input.value) return structuredClone(session);
-          await port.setMode(input.value);
-          if (connections.get(session.id) !== port || removed.has(session.id))
-            throw new Error("ACP session changed while configuring");
-          await mutate(session, () => {
-            session.modeState!.currentModeId = input.value as string;
-          });
+          if (session.modeState.currentModeId !== input.value) {
+            await port.setMode(input.value);
+            if (disposed || connections.get(session.id) !== port || removed.has(session.id))
+              throw new Error("ACP session changed while configuring");
+            await mutate(session, () => {
+              session.modeState!.currentModeId = input.value as string;
+            });
+          }
         } else throw new Error("ACP config option is not available");
+        const isPermission = option ? isAcpPermissionOption(option) : input.configId === "mode";
+        if (isPermission && typeof input.value === "string") {
+          const selection = sessionPermissionSelection(session, input.configId);
+          if (
+            !selection ||
+            selection.configId !== input.configId ||
+            selection.value !== input.value
+          )
+            throw new Error("ACP Agent did not apply the selected permission mode");
+          if (disposed || connections.get(session.id) !== port || removed.has(session.id))
+            throw new Error("ACP session changed while configuring");
+          if (
+            session.permissionSelection?.configId !== selection.configId ||
+            session.permissionSelection.value !== selection.value
+          )
+            await mutate(session, () => {
+              session.permissionSelection = selection;
+            });
+          if (input.rememberPermission)
+            await permissionPreferences.remember(session, session.agent, selection);
+        }
         return structuredClone(session);
       } finally {
         configuring.delete(session.id);
@@ -2428,6 +2504,7 @@ export function createAcpService(
       // 流式待写任务执行后才创建完整快照 IO；先等任务，不能提前读取 writes 后漏等尾段。
       await Promise.allSettled(streamingWrites.values());
       await Promise.allSettled([...writes.values()]);
+      await permissionPreferences.settle();
       await Promise.allSettled(diagnosticWrites.values());
       await Promise.allSettled([...attachmentWrites.values()].flatMap((tasks) => [...tasks]));
     },
