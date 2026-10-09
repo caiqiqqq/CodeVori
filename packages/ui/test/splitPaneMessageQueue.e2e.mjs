@@ -195,9 +195,16 @@ return <main className='h-screen w-screen flex bg-background text-foreground' da
     await page.waitForFunction(() =>
       window.__splitQ.events.some((e) => e.op === "prompt" && e.id === "A"),
     );
+    await lane(0).locator('[data-testid="v4-queue-submission"]').waitFor({ timeout: 1000 });
+    assert.match(
+      await lane(0).locator('[data-testid="v4-queue-submission"]').textContent(),
+      /A draft/,
+    );
+    assert.equal(await lane(1).locator('[data-testid="v4-queue-submission"]').count(), 0);
     await input(0).fill("A typed after submission");
     await page.evaluate(() => window.__splitQ.switch(0, "C"));
     await lane(0).locator('[data-testid="v4-queue-item-q-C"]').waitFor();
+    assert.equal(await lane(0).locator('[data-testid="v4-queue-submission"]').count(), 0);
     await input(0).fill("C after navigation");
     assert.equal(
       await lane(0).locator('[data-testid="v4-composer-send"]').isDisabled(),
@@ -254,6 +261,21 @@ return <main className='h-screen w-screen flex bg-background text-foreground' da
     await page.waitForFunction(
       () => !window.__splitQ.snapshots.A.queue.items.some((item) => item.commandId === "bulk-23"),
     );
+    // Pending feedback must reveal itself inside a long queue without scrolling the pane.
+    await list.evaluate((e) => (e.scrollTop = 0));
+    await input(0).fill("long queue admission");
+    await page.evaluate(() => window.__splitQ.holdA());
+    await lane(0).locator('[data-testid="v4-composer-send"]').click();
+    await lane(0).locator('[data-testid="v4-queue-submission"]').waitFor({ timeout: 1000 });
+    assert.ok(
+      await lane(0)
+        .locator('[data-testid="v4-queue-submission"]')
+        .evaluate((e) => {
+          const row = e.getBoundingClientRect(),
+            list = e.parentElement.getBoundingClientRect();
+          return row.top >= list.top && row.bottom <= list.bottom + 1;
+        }),
+    );
     for (const theme of ["light", "dark"]) {
       await page.evaluate((theme) => {
         document.documentElement.className =
@@ -265,6 +287,8 @@ return <main className='h-screen w-screen flex bg-background text-foreground' da
       );
       await page.screenshot({ path: join(artifacts, `split-${width}-${theme}.png`) });
     }
+    await page.evaluate(() => window.__splitQ.releaseA());
+    await lane(0).locator('[data-testid="v4-queue-submission"]').waitFor({ state: "detached" });
     if (width === 1280) {
       await page.evaluate(() => window.__splitQ.newDraft());
       await lane(0).getByTestId("chat-model-select-trigger").click();

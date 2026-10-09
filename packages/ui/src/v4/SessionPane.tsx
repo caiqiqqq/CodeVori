@@ -4994,6 +4994,7 @@ export function SessionPane({
         <AcpConversationQueuePanel
           key={acpConversation.selected.id}
           queue={acpConversation.selected.queue}
+          pendingSubmission={acpConversation.queueSubmission}
           actions={acpConversation.queueActions}
         />
       ) : null}
