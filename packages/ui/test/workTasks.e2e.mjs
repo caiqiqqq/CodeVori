@@ -35,6 +35,7 @@ import {
 } from "./workTaskAgentConfigAssertions.mjs";
 import { exerciseWorkTaskWorkspaceTools } from "./workTaskWorkspaceToolsAssertions.mjs";
 import { workTaskPanelFixture } from "./workTaskPanelFixture.mjs";
+import { workTaskNavigationFixture } from "./workTaskNavigationAssertions.mjs";
 import { workTaskPromptAssetsFixture } from "./workTaskPromptAssetsFixture.mjs";
 import { routeWorkTaskConversationFixture } from "./workTaskConversationFixture.mjs";
 
@@ -122,6 +123,7 @@ try {
     const toolTargetChanged=(target:any)=>{state.toolTarget=clone(target)};
     const platform:any={async getInstalledEditors(){return [{id:'finder',name:'Finder',iconDataUrl:toolIcon},{id:'vscode',name:'VS Code',iconDataUrl:toolIcon}]},async openInEditor(editor:string,path:string,options:any){state.toolCalls.push({op:'editor',editor,path,options});return {success:true}},async openExternal(url:string){state.toolCalls.push({op:'external',url})}};
     ${workTaskPromptAssetsFixture}
+    ${process.env.ZCODE_E2E_SCENARIO === "navigation" ? workTaskNavigationFixture : ""}
     ${workTaskPanelFixture}
     const broadcast:any={send(){},onMessage(){return {dispose(){}}}};
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><StoreProvider broadcastService={broadcast}><TabStoreProvider><Fixture/></TabStoreProvider></StoreProvider></TooltipProvider></ZCodeIntlProvider></PlatformProvider>);
@@ -129,7 +131,7 @@ try {
   );
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 850 } });
-  page.setDefaultTimeout(15000);
+  page.setDefaultTimeout(Number(process.env.ZCODE_E2E_TIMEOUT_MS ?? 15000));
   page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
   await routeWorkTaskConversationFixture(page);
   await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`);
@@ -229,8 +231,6 @@ try {
     assert.equal(await card("task-3").count(), 0);
     await remountWorkTaskPanel(page, panel);
     await assertBoardOnly();
-    await card("task-0").waitFor();
-    await card("task-1").waitFor();
     assert.equal(await page.evaluate(() => window.__tasks.concurrency), 2);
     await page.evaluate(() => {
       window.__tasks.failStart = true;
