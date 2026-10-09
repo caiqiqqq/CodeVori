@@ -64,6 +64,28 @@ the local operation overlay, never erases saved failures. No auto retry.
 Legacy `traceError` projects to a neutral error notice. Failed turns and partial
 assistant rows retain failed state after subsequent prompts and replay.
 
+Copying full error details shows success or clipboard failure feedback at the
+horizontal and vertical center of the originating session pane, for both API and
+ACP banners. Capture the pane before the asynchronous clipboard write; changing
+focus must not move feedback into another pane. The existing Toast container owns
+the transient result and its three-second dismissal. Follow pane resizing and
+scrolling, constrain long feedback to its width, and allow clicks outside the
+message. Standalone banners without a session pane use viewport center. A removed
+pane hides its feedback instead of moving it over another conversation. Other
+Toast positions and error-copy payloads retain their existing behavior.
+
+```mermaid
+sequenceDiagram
+  participant B as Originating error banner
+  participant C as Clipboard
+  participant T as Existing Toast owner
+  B->>B: capture containing session pane
+  B->>C: write full error details
+  C-->>B: success or failure
+  B->>T: transient result + originating pane
+  T->>T: center within pane; dismiss after three seconds
+```
+
 ## Acceptance
 
 1. Fake stdio verifies capability negotiation, scoped live notifications and
@@ -76,3 +98,6 @@ assistant rows retain failed state after subsequent prompts and replay.
    position, details/copy, replay without duplicates, desktop/mobile and themes;
    connection errors use the same banner and permission UI remains functional.
 4. Run focused regressions, typecheck, lint, architecture and formatting checks.
+5. Error-copy feedback is centered in its originating pane on desktop split views
+   and mobile, in both themes; resizing follows the pane, focus changes do not
+   retarget it, clipboard failure uses the same position, and it auto-dismisses.

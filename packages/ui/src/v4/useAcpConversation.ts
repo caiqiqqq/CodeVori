@@ -339,6 +339,7 @@ export function useAcpConversation(
             agent: nextAgent,
             requestId,
             deferPersistence: true,
+            usePermissionPreference: true,
           });
           if (
             targetKeyRef.current !== targetKey ||
@@ -649,7 +650,13 @@ export function useAcpConversation(
       changeBusy(selected.agent, 1);
       setErrorState(null);
       try {
-        await service.setConfigOption({ ...target, id: selected.id, configId, value });
+        await service.setConfigOption({
+          ...target,
+          id: selected.id,
+          configId,
+          value,
+          rememberPermission: true,
+        });
       } catch (cause) {
         // 修复原因：切换同 Agent 的历史会话后，旧请求迟到的错误不能显示在新会话上。
         if (targetKeyRef.current === targetKey && selectedRef.current?.id === selected.id)
