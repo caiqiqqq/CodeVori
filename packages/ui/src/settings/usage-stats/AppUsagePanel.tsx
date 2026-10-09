@@ -1,6 +1,6 @@
 import { projectAppUsageCharts } from "./appUsageSources.js";
 import { RefreshCcw } from "lucide-react";
-import { Fragment, lazy, useMemo, useState } from "react";
+import { lazy, useMemo, useState } from "react";
 import { APP_USAGE_RANGES, acpAgentDefinition } from "@zcode/shared";
 import type { AppUsageRange, AppUsageSnapshot } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useAppUsageStats } from "@/hooks/useUsageStats.js";
 import { AcpUsageSourceDetails } from "@/settings/usage-stats/AcpUsageSourceDetails.js";
+import { projectAppUsageHeatmap } from "@/settings/usage-stats/appUsageHeatmap.js";
 import { UsageChartLoadBoundary } from "@/settings/usage-stats/UsageChartLoadBoundary.js";
 import { UsageHeatmap } from "@/settings/usage-stats/UsageHeatmap.js";
 import { UsageStatsErrorNotice } from "@/settings/usage-stats/UsageStatsErrorNotice.js";
@@ -15,6 +16,7 @@ import {
   USAGE_STATS_TABS_LIST_CLASS,
   USAGE_STATS_TABS_TRIGGER_CLASS,
   UsageEmptyState,
+  UsageSummaryMetrics,
   formatCompactNumber,
   formatSummaryCompactTokenUsage,
 } from "@/settings/usage-stats/usageStatsUiParts.js";
@@ -68,6 +70,10 @@ export function AppUsagePanel() {
           )
         : null,
     [snapshot, source, intl],
+  );
+  const activity = useMemo(
+    () => (lifetimeSnapshot ? projectAppUsageHeatmap(lifetimeSnapshot, source) : null),
+    [lifetimeSnapshot, source],
   );
 
   if (loading && !snapshot) {
@@ -144,25 +150,32 @@ export function AppUsagePanel() {
           ))}
         </TabsList>
       </Tabs>
-      {selectedAgent ? <AcpUsageSourceDetails agent={selectedAgent} /> : null}
       {chartSnapshot ? (
         <section
           className="space-y-5"
           data-testid={selectedAgent ? "app-usage-acp-charts" : "app-usage-native-charts"}
         >
           <h3 className="text-ui-base font-medium text-foreground">
-            {intl.formatMessage({
-              id:
-                source === "native"
-                  ? "settings.usage.nativeModelCharts"
-                  : "settings.usage.allModelCharts",
-            })}
+            {selectedAgent
+              ? acpAgentDefinition(selectedAgent.agent).name
+              : intl.formatMessage({
+                  id:
+                    source === "native"
+                      ? "settings.usage.nativeModelCharts"
+                      : "settings.usage.allModelCharts",
+                })}
           </h3>
+          {selectedAgent ? <AcpUsageSourceDetails agent={selectedAgent} /> : null}
           {source === "native" ? (
             <AppUsageLifetimeSummaryStrip snapshot={lifetimeSnapshot} nativeOnly />
           ) : null}
-          {source === "native" && lifetimeSnapshot?.heatmap.weeks.length ? (
-            <UsageHeatmap locale={locale} intl={intl} weeks={lifetimeSnapshot.heatmap.weeks} />
+          {activity ? (
+            <UsageHeatmap
+              locale={locale}
+              intl={intl}
+              weeks={activity.weeks}
+              countMetric={source === "native" ? "turns" : "tokens"}
+            />
           ) : null}
           <UsageChartLoadBoundary
             scope="settings.usage.app-daily-model-chart"
@@ -269,22 +282,10 @@ function AppUsageLifetimeSummaryStrip({
       ];
 
   return (
-    <section
-      className="flex flex-col overflow-hidden rounded-xl bg-surface sm:flex-row sm:items-center"
-      data-testid={nativeOnly ? "app-usage-native-summary" : "app-usage-lifetime-summary"}
-    >
-      {items.map((item, index) => (
-        <Fragment key={item.label}>
-          {index > 0 ? (
-            <div aria-hidden="true" className="hidden h-7 w-px bg-border sm:block" />
-          ) : null}
-          <div className="min-w-0 flex-1 px-4 py-3 text-center">
-            <div className="truncate text-ui-lg font-medium text-foreground">{item.value}</div>
-            <div className="mt-1 truncate text-ui-base text-foreground-subtle">{item.label}</div>
-          </div>
-        </Fragment>
-      ))}
-    </section>
+    <UsageSummaryMetrics
+      items={items}
+      testId={nativeOnly ? "app-usage-native-summary" : "app-usage-lifetime-summary"}
+    />
   );
 }
 

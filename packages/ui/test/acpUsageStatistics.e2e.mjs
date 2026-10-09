@@ -1,10 +1,11 @@
 // Isolated renderer fixture: verifies the real usage panel without reading or changing user sessions.
-// Run while the desktop Vite server (5174) is available.
+// Run while a desktop Vite server is available; override ZCODE_USAGE_E2E_ORIGIN for an isolated worktree.
 import assert from "node:assert/strict";
 import { writeFile, rm, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import { assertUsageChartPresentation } from "./usageStatisticsAssertions.mjs";
 
 const rendererRoot = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__acp-usage-e2e-${process.pid}`;
@@ -14,7 +15,7 @@ const moduleFile = join(rendererRoot, `${name}.tsx`);
 function snapshot(range, nativeTokens, agents) {
   return {
     range,
-    generatedAt: Date.now(),
+    generatedAt: Date.UTC(2026, 9, 9, 8),
     timeZone: "Asia/Shanghai",
     source: "agent-db",
     summary: {
@@ -39,8 +40,30 @@ function snapshot(range, nativeTokens, agents) {
       peakDayTokens: nativeTokens,
       favoriteModel: null,
     },
-    heatmap: { startDate: null, endDate: null, maxTokens: 0, weeks: [] },
-    dailyModelUsage: [],
+    heatmap: {
+      startDate: "2026-10-08",
+      endDate: "2026-10-09",
+      maxTokens: nativeTokens,
+      weeks: [
+        {
+          weekIndex: 0,
+          days: [
+            {
+              date: "2026-10-08",
+              level: 4,
+              totalTokens: nativeTokens,
+              turnCount: 2,
+              toolCallCount: 0,
+            },
+            { date: "2026-10-09", level: 0, totalTokens: 0, turnCount: 0, toolCallCount: 0 },
+          ],
+        },
+      ],
+    },
+    dailyModelUsage: [
+      { date: "2026-10-08", models: [{ modelId: "glm", totalTokens: nativeTokens }] },
+      { date: "2026-10-09", models: [{ modelId: "glm", totalTokens: 0 }] },
+    ],
     models: [
       {
         modelId: "glm",
@@ -67,7 +90,10 @@ function agent(id, turns, measured, tokens, model) {
     inputTokens: tokens,
     outputTokens: 0,
     dailyUsage: model
-      ? [{ date: "2026-10-08", models: [{ modelId: model, totalTokens: tokens }] }]
+      ? [
+          { date: "2026-10-08", models: [{ modelId: model, totalTokens: tokens }] },
+          { date: "2026-10-09", models: [{ modelId: model, totalTokens: 0 }] },
+        ]
       : [],
     models: model
       ? [{ modelId: model, totalTokens: tokens, inputTokens: tokens, outputTokens: 0 }]
@@ -114,6 +140,7 @@ try {
       import { AppUsagePanel } from "../../../ui/src/settings/usage-stats/AppUsagePanel.tsx";
       import { ServiceProvider } from "../../../ui/src/hooks/useServices.tsx";
       import { ZCodeIntlProvider } from "../../../ui/src/i18n/IntlProvider.tsx";
+      import { TooltipProvider } from "../../../ui/src/components/ui/tooltip.tsx";
       import "../../../ui/src/styles.css";
       const snapshots = ${JSON.stringify(snapshots)};
       window.__usageRequests = [];
@@ -125,7 +152,7 @@ try {
       } };
       createRoot(document.getElementById("root")!).render(
         <ServiceProvider services={services as never}>
-          <ZCodeIntlProvider initialLocale="zh-CN"><main className="min-h-screen bg-background text-foreground p-4"><AppUsagePanel /></main></ZCodeIntlProvider>
+          <ZCodeIntlProvider initialLocale="zh-CN"><TooltipProvider><main className="mx-auto min-h-screen max-w-4xl bg-background text-foreground p-4"><AppUsagePanel /></main></TooltipProvider></ZCodeIntlProvider>
         </ServiceProvider>,
       );
     `,
@@ -133,7 +160,7 @@ try {
   ]);
   browser = await chromium.launch({ headless: true });
   page = await browser.newPage();
-  await page.goto(`http://localhost:5174/${name}.html`);
+  await page.goto(`${process.env.ZCODE_USAGE_E2E_ORIGIN ?? "http://localhost:5174"}/${name}.html`);
   const sources = page.locator('[data-testid="app-usage-sources"]');
   await sources.getByRole("tab", { name: "Claude" }).waitFor();
   await sources.getByRole("tab", { name: "Codex" }).waitFor();
@@ -172,6 +199,7 @@ try {
   await page
     .locator('[data-testid="app-usage-native-charts"]')
     .getByText("glm", { exact: true })
+    .first()
     .waitFor();
   await sources.getByRole("tab", { name: "全部来源" }).click();
   assert.equal(await page.locator('[data-testid="app-usage-source-overview"]').count(), 0);
@@ -222,6 +250,39 @@ try {
         theme,
       );
       await page.getByRole("tab", { name: "全部时间" }).click();
+      const activity = page.getByTestId("usage-token-activity");
+      const allSourceTabs = sources.getByRole("tab");
+      for (let index = 0; index < (await allSourceTabs.count()); index += 1) {
+        await allSourceTabs.nth(index).click();
+        await activity.getByRole("heading", { name: "Token 活动" }).waitFor();
+        assert.equal(await activity.locator("[data-usage-heatmap-cell]").count(), 364);
+        for (const mode of ["每周", "累计", "每日"]) {
+          await activity.getByRole("tab", { name: mode, exact: true }).click();
+          assert.equal(
+            await activity.getByRole("tab", { name: mode, exact: true }).getAttribute("data-state"),
+            "active",
+          );
+        }
+      }
+      for (const [name, tokens, messages] of [
+        ["全部来源", 342, false],
+        [/\/ API$/, 100, true],
+        ["Codex", 200, false],
+        ["Claude", 42, false],
+        ["Google Antigravity", 0, false],
+      ]) {
+        await sources.getByRole("tab", { name }).click();
+        await activity.locator('[data-usage-heatmap-cell="daily-2026-10-08"]').hover();
+        const tooltip = page
+          .locator('[data-slot="tooltip-content"]')
+          .filter({ hasText: "2026年10月8日" });
+        await tooltip.getByText(`${tokens} tokens`, { exact: false }).first().waitFor();
+        assert.equal((await tooltip.innerText()).includes("轮消息"), messages);
+        await page.keyboard.press("Escape");
+        await page.mouse.move(0, 0);
+        await tooltip.waitFor({ state: "hidden" });
+      }
+      await sources.getByRole("tab", { name: "全部来源" }).click();
       const charts = page.getByTestId("app-usage-native-charts");
       await charts.getByText("Codex ACP · gpt-codex", { exact: true }).first().waitFor();
       await charts.getByText("glm", { exact: true }).first().waitFor();
@@ -235,11 +296,19 @@ try {
       await charts.getByText("glm", { exact: true }).first().waitFor();
       assert.equal(await charts.getByText("Codex ACP · gpt-codex", { exact: true }).count(), 0);
       assert.equal(await page.getByTestId("app-usage-native-summary").count(), 1);
+      const nativeLabelStyle = await page
+        .getByTestId("app-usage-native-summary")
+        .getByText("累计 Token 数", { exact: true })
+        .evaluate((element) => ({
+          size: getComputedStyle(element).fontSize,
+          align: getComputedStyle(element).textAlign,
+        }));
       await sources.getByRole("tab", { name: "Codex" }).click();
       const acpCharts = page.getByTestId("app-usage-acp-charts");
       await acpCharts.getByText("Codex ACP · gpt-codex", { exact: true }).first().waitFor();
       assert.equal(await acpCharts.getByText("glm", { exact: true }).count(), 0);
       await acpCharts.locator(".recharts-pie-sector").first().waitFor();
+      await assertUsageChartPresentation({ page, acpCharts, activity, width, nativeLabelStyle });
       await page.screenshot({
         path: join(artifacts, `codex-${width}-${theme}.png`),
         fullPage: true,
@@ -254,6 +323,13 @@ try {
         .first()
         .waitFor();
       assert.equal(await acpCharts.getByText("Codex ACP · gpt-codex", { exact: true }).count(), 0);
+      await activity.locator('[data-usage-heatmap-cell="daily-2026-10-08"]').hover();
+      await page
+        .locator('[data-slot="tooltip-content"]')
+        .getByText("200 tokens", { exact: false })
+        .first()
+        .waitFor();
+      await page.mouse.move(0, 0);
     }
   }
   process.stdout.write(

@@ -34,65 +34,38 @@ interface HeatmapMonthLabel {
   span: number;
 }
 
-type HeatmapCountMetric = "turns" | "tools";
+type HeatmapCountMetric = "turns" | "tools" | "tokens";
+
+const HEATMAP_TOOLTIP_IDS = {
+  turns: {
+    daily: "settings.usage.heatmapCell",
+    weekly: "settings.usage.heatmapWeeklyCell",
+    cumulative: "settings.usage.heatmapCumulativeCell",
+  },
+  tools: {
+    daily: "settings.usage.heatmapToolCell",
+    weekly: "settings.usage.heatmapWeeklyToolCell",
+    cumulative: "settings.usage.heatmapCumulativeToolCell",
+  },
+  tokens: {
+    daily: "settings.usage.heatmapTokenCell",
+    weekly: "settings.usage.heatmapWeeklyTokenCell",
+    cumulative: "settings.usage.heatmapCumulativeTokenCell",
+  },
+} as const;
 
 function renderHeatmapTooltipTitle(
   locale: string,
   intl: ReturnType<typeof useZCodeIntl>["intl"],
-  cell: AppUsageHeatmapCell,
-  countMetric: HeatmapCountMetric,
-): string {
-  return intl.formatMessage(
-    {
-      id: countMetric === "tools" ? "settings.usage.heatmapToolCell" : "settings.usage.heatmapCell",
-    },
-    {
-      date: formatFullDay(locale, cell.date),
-      tokens: formatCompactTokenUsage(locale, cell.totalTokens),
-      turns: formatCompactNumber(locale, cell.turnCount),
-      tools: formatCompactNumber(locale, cell.toolCallCount),
-    },
-  );
-}
-
-function renderWeeklyHeatmapTooltipTitle(
-  locale: string,
-  intl: ReturnType<typeof useZCodeIntl>["intl"],
   date: string,
   totalTokens: number,
   count: number,
   countMetric: HeatmapCountMetric,
+  mode: TokenActivityMode,
 ): string {
   return intl.formatMessage(
     {
-      id:
-        countMetric === "tools"
-          ? "settings.usage.heatmapWeeklyToolCell"
-          : "settings.usage.heatmapWeeklyCell",
-    },
-    {
-      date: formatFullDay(locale, date),
-      tokens: formatCompactTokenUsage(locale, totalTokens),
-      turns: formatCompactNumber(locale, count),
-      tools: formatCompactNumber(locale, count),
-    },
-  );
-}
-
-function renderCumulativeHeatmapTooltipTitle(
-  locale: string,
-  intl: ReturnType<typeof useZCodeIntl>["intl"],
-  date: string,
-  totalTokens: number,
-  count: number,
-  countMetric: HeatmapCountMetric,
-): string {
-  return intl.formatMessage(
-    {
-      id:
-        countMetric === "tools"
-          ? "settings.usage.heatmapCumulativeToolCell"
-          : "settings.usage.heatmapCumulativeCell",
+      id: HEATMAP_TOOLTIP_IDS[countMetric][mode],
     },
     {
       date: formatFullDay(locale, date),
@@ -203,7 +176,15 @@ function buildDailyHeatmapColumns(
         level: displayCell.level,
         hasUsage: displayCell.totalTokens > 0,
         columnHover: false,
-        tooltipTitle: renderHeatmapTooltipTitle(locale, intl, displayCell, countMetric),
+        tooltipTitle: renderHeatmapTooltipTitle(
+          locale,
+          intl,
+          displayCell.date,
+          displayCell.totalTokens,
+          countMetric === "tools" ? displayCell.toolCallCount : displayCell.turnCount,
+          countMetric,
+          "daily",
+        ),
       };
     }),
   }));
@@ -251,10 +232,15 @@ function buildWeeklyLikeHeatmapColumns(
       week.days[HEATMAP_DAYS_PER_WEEK - 1]?.date ??
       week.days.findLast((cell) => cell !== null)?.date ??
       "";
-    const tooltipTitle =
-      mode === "weekly"
-        ? renderWeeklyHeatmapTooltipTitle(locale, intl, weekEndDate, value, count, countMetric)
-        : renderCumulativeHeatmapTooltipTitle(locale, intl, weekEndDate, value, count, countMetric);
+    const tooltipTitle = renderHeatmapTooltipTitle(
+      locale,
+      intl,
+      weekEndDate,
+      value,
+      count,
+      countMetric,
+      mode,
+    );
 
     return {
       key: `${mode}-${week.weekIndex}`,
@@ -328,7 +314,7 @@ export function UsageHeatmap({
   locale: string;
   intl: ReturnType<typeof useZCodeIntl>["intl"];
   weeks: AppUsageHeatmapWeek[];
-  /** Coding Plan 远端只提供 mcpCalls；App Usage 才提供真实消息轮数。 */
+  /** Coding Plan 提供工具次数；API 提供消息轮数；ACP/全部来源仅有完整每日 Token。 */
   countMetric?: HeatmapCountMetric;
 }) {
   const [mode, setMode] = useState<TokenActivityMode>("daily");
@@ -338,7 +324,7 @@ export function UsageHeatmap({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl bg-surface px-3 py-3">
+      <section className="rounded-xl bg-surface p-4" data-testid="usage-token-activity">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="min-w-0 truncate text-ui-base font-medium text-foreground">
             {intl.formatMessage({ id: "settings.usage.heatmapTitle" })}
@@ -384,7 +370,12 @@ export function UsageHeatmap({
             ))}
           </div>
         </div>
-      </div>
+        {countMetric === "tokens" ? (
+          <p className="mt-3 text-ui-sm text-foreground-subtle">
+            {intl.formatMessage({ id: "settings.usage.heatmapDatedUsageNote" })}
+          </p>
+        ) : null}
+      </section>
     </div>
   );
 }
