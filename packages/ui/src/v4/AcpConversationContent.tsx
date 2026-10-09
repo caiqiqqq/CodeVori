@@ -1,16 +1,20 @@
 import type { AcpAgent } from "@zcode/shared";
+import type { ConversationRow } from "@zcode/shared/zcode-protocol-v4";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { acpErrorMessageId } from "@/v4/acpErrorMessage.js";
 import type { useAcpConversation } from "@/v4/useAcpConversation.js";
 import { ChatErrorBanner } from "@/ChatErrorBanner.js";
+import { acpConversationOperationError } from "@/v4/acpConversationRows.js";
 
 /** 权限和错误保留 Host 回执语义，落在原时间线消息尾部。 */
 export function AcpConversationStatus({
   agent,
   conversation,
+  rows,
 }: {
   agent: AcpAgent;
   conversation: ReturnType<typeof useAcpConversation>;
+  rows: readonly ConversationRow[];
 }) {
   const { intl } = useZCodeIntl();
   const t = (key: string) => intl.formatMessage({ id: `acp.${key}` });
@@ -19,19 +23,7 @@ export function AcpConversationStatus({
     return id ? intl.formatMessage({ id }) : message;
   };
   const { selected, error, busy } = conversation;
-  // 错误已绑定原提问时，由轮尾横幅展示；footer 只保留尚未接纳的操作错误和权限。
-  const savedError =
-    selected?.error &&
-    selected.entries.some(
-      (entry) =>
-        entry.kind === "user" &&
-        entry.traceError &&
-        entry.traceError === selected.error &&
-        (selected.errorCommandId === undefined || entry.id === `user:${selected.errorCommandId}`),
-    );
-  const operationError =
-    (error && !(savedError && error === selected?.error) ? error : null) ||
-    (savedError ? null : selected?.error);
+  const operationError = acpConversationOperationError(selected, error, rows);
   if (!operationError && !selected?.pendingPermission) return null;
   return (
     <section

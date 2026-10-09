@@ -45,7 +45,7 @@ export function continueWorkTaskConversation(
   owner: string | null,
   now: number,
 ): WorkTask | null {
-  // 普通输入框已执行新轮；只认领观察，不重新入队或重发，旧命令不能复活终态。
+  // 已完成会话仍可继续；只认领真实新轮，不重新入队或重发，旧命令不能撤销完成。
   if (
     owner ||
     isWorkTaskMerging(current) ||
@@ -53,7 +53,7 @@ export function continueWorkTaskConversation(
     current.stopPending ||
     !current.session ||
     !workTaskExecutionPath(current) ||
-    !["failed", "review"].includes(current.status) ||
+    !["failed", "review", "done"].includes(current.status) ||
     (event.status !== "running" && event.status !== "awaiting_input") ||
     event.commandId === current.commandId ||
     event.startedAt < current.updatedAt ||
@@ -68,6 +68,7 @@ export function continueWorkTaskConversation(
     commandId: event.commandId,
     runSeq: current.runSeq + 1,
     failureReason: undefined,
+    completion: undefined,
     merge: undefined,
     updatedAt: now,
   };

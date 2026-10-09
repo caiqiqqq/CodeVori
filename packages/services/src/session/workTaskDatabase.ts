@@ -82,9 +82,10 @@ export function claimNextWorkTask(
 }
 
 export function listWorkTaskConversations(db: WorkTaskDatabase): WorkTask[] {
+  // done 只表示上轮已确认完成，保留监听才能投影原会话后续实际开始的新轮。
   const rows = db
     .prepare(
-      "SELECT data FROM work_tasks WHERE status IN ('failed','review','preparing','running','awaiting_input')",
+      "SELECT data FROM work_tasks WHERE status IN ('failed','review','done','preparing','running','awaiting_input')",
     )
     .all() as { data: string }[];
   return rows

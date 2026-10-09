@@ -55,8 +55,8 @@ web-remote-replayable: 快照/补播 ---+
 ## 权限和构建
 
 - 保留现有 `ICuaPermissionService` RPC 契约，macOS 本地 Host 通过开源 native 的只读预检读取 Accessibility / Screen Recording。缺失/不支持/构建失败明确返回不可用，不伪造 granted。
-- 实际 OS 授权主体是启动 native 的桌面应用；权限引导及拖拽指向当前运行的 ZCode app bundle，不借用旧版官方 Helper 身份或降低其签名校验。
-- macOS 开发启动必须经 LaunchServices 启动已准备的 ZCode Dev bundle，不能直接从编辑器/终端子进程执行 Electron。直接 spawn 会继承调用应用的 TCC responsibility，出现「已授权 ZCode Dev，却检查 Codeg/终端权限」的主体错配。启动沿用当前环境和正常用户数据；不向 LaunchServices 传入依赖开发父进程描述符的 `/dev/stdout` 或 `/dev/stderr` 重定向，避免管道启动时出现 `-10810`，应用日志保留在既有日志目录。退出清理使用精确可执行路径和本次新建的 LaunchServices ASN 身份，排除启动前已有实例，只终止本次应用及其子进程，不依赖会被 process.title 覆盖的 argv 或旧 PID。Windows/Linux 仍使用原有直接启动路径。
+- 实际 OS 授权主体是启动 native 的桌面应用；权限引导及拖拽指向当前运行的 CodeVori app bundle，不借用旧版官方 Helper 身份或降低其签名校验。CodeVori 使用独立 macOS bundle ID，系统录屏授权后的“退出并重新打开”不能解析到并排安装的旧 ZCode；身份映射及重新授权边界见 [product-branding.md](product-branding.md)。
+- macOS 开发启动必须经 LaunchServices 启动已准备的 CodeVori Dev bundle，不能直接从编辑器/终端子进程执行 Electron。直接 spawn 会继承调用应用的 TCC responsibility，出现「已授权 CodeVori Dev，却检查 Codeg/终端权限」的主体错配。启动沿用当前环境和正常用户数据；不向 LaunchServices 传入依赖开发父进程描述符的 `/dev/stdout` 或 `/dev/stderr` 重定向，避免管道启动时出现 `-10810`，应用日志保留在既有日志目录。退出清理使用精确可执行路径和本次新建的 LaunchServices ASN 身份，排除启动前已有实例，只终止本次应用及其子进程，不依赖会被 process.title 覆盖的 argv 或旧 PID。Windows/Linux 仍使用原有直接启动路径。
 - 授权引导和拖拽的文件指纹必须基于物理 bundle 文件，不能使用 Electron ASAR 虚拟目录的合成 inode。`.asar` 作为整个归档文件复核真实 inode/ctime/size；普通资源、Info.plist、可执行文件和签名清单仍需复核。保留「前快照 -> 主体校验 -> 后快照 -> 身份复核 -> 终检」顺序，真实改动仍拒绝授权引导，不通过跳过校验或重试消除误报。
 - 仅显式功能验证请求执行截图探针。常规权限查询不截图、不弹系统授权。授权返回通过刷新标记使后续 native 调用使用新进程，不重建 Agent、不重发模型请求。
 - 权限适配服务沿用现有 UI 的 `includeFunctionalProbes` 查询契约；同时接受明确的 `probeScreenCapture: true`，显式 `false` 可关闭探针。授权返回的功能验证不能因参数名不匹配而静默退化为只读查询。
@@ -82,12 +82,12 @@ web-remote-replayable: 快照/补播 ---+
 6. 实际执行上游测试、适配测试、可用 E2E、`pnpm typecheck`、`pnpm lint`、CLI 检查及架构检查。权限不足时明确报告不能验证真实点击/截图，不修改 OS 授权或用 mock 冒充实机通过。
 7. 插件关闭且输入框入口隐藏时，桌面设置菜单仍可见并能打开原有开关；上次分区记忆和输入框直达不会被全局隐藏名单回退。Web 不显示菜单，直接目标经平台校验回退；其他既有隐藏分区不受影响。E2E 从菜单进入设置而非直接挂载内容，验证进入前不调用权限服务，且导航不会启用插件或修改输入框显隐偏好。
 8. 在真实 Electron 文件系统下，包含 `.asar` 的稳定 app 可完成引导校验及拖拽预热；普通资源、归档、可执行文件、Info.plist 的真实改动和身份变化仍阻止打开设置或发放恢复权。测试注入模拟系统设置开关，不访问真实 TCC、截图或用户输入。
-9. 启动测试覆盖 macOS LaunchServices 参数和环境、其他平台原路径、只清理精确启动实例；实机只读预检的系统日志应归因到 ZCode Dev，而非编辑器或终端。不将 UI 显示名或旧 TCC 行当作授权成功证据。
+9. 启动测试覆盖 macOS LaunchServices 参数和环境、其他平台原路径、只清理精确启动实例；实机只读预检的系统日志应归因到 CodeVori Dev，而非编辑器或终端。不将 UI 显示名或旧 TCC 行当作授权成功证据。
 10. 浮窗单测覆盖关闭/隐藏与 ready-to-show 的竞态及幂等清理；Electron E2E 覆盖关闭、无授权取消、设置打开失败、再次打开和错误 sender，不修改真实授权或执行截图。共享会话取消后所有参与者均结束，且没有 Helper 重启或授权完成结果。
 11. 真实窗口工厂单测校验非激活窗口属性和跨桌面调用不会转换进程类型；macOS Electron E2E 在中文/英文引导打开、关闭、共享取消及设置打开失败前后检查 `app.dock.isVisible()` 保持为真。浮窗仍不可聚焦，测试不得以主动恢复 Dock 的调用掩盖回归。
 
 ```text
-macOS dev launcher -> LaunchServices -> ZCode Dev responsibility -> Host -> native preflight
+macOS dev launcher -> LaunchServices -> CodeVori Dev responsibility -> Host -> native preflight
                                                                           |
                                                                原有权限服务/共享展示缓存
 

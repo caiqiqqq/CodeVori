@@ -5324,7 +5324,11 @@ export function SessionPane({
               footerSlot={
                 <>
                   {acpAgent && acpHasConversationContent ? (
-                    <AcpConversationStatus agent={acpAgent} conversation={acpConversation} />
+                    <AcpConversationStatus
+                      agent={acpAgent}
+                      conversation={acpConversation}
+                      rows={acpRows}
+                    />
                   ) : null}
                   {!readOnly && delegationParent.sessionId ? (
                     <AgentDelegationPanel

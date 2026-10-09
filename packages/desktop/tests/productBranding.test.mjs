@@ -44,7 +44,7 @@ test("public brand entrypoint is typed for Agent consumers without allowJs", asy
   }
 });
 
-test("renaming changes display names while preserving installation identities", () => {
+test("renaming preserves Windows/Linux identities and isolates macOS from ZCode", () => {
   for (const [flavor, productName, appId, linuxExecutableName] of [
     ["production", "CodeVori", "dev.zcode.app", "zcode"],
     ["preview", "CodeVori Preview", "dev.zcode.app.preview", "zcode-preview"],
@@ -52,8 +52,46 @@ test("renaming changes display names while preserving installation identities", 
     const product = identity.desktopProductIdentities[flavor];
     assert.equal(product.productName, productName);
     assert.equal(product.appId, appId);
+    assert.equal(product.macAppId, appId.replace("zcode", "codevori"));
+    assert.notEqual(product.macAppId, appId);
     assert.equal(product.linuxExecutableName, linuxExecutableName);
     assert.equal(identity.resolveWindowsAppUserModelIdForFlavor(flavor), appId);
+  }
+});
+
+test("packaging selects the target platform identity for both product flavors", async () => {
+  const run = promisify(execFile);
+  const configUrl = new URL("../electron-builder.config.js", import.meta.url).href;
+  for (const [flavor, ZCODE_ENV] of [
+    ["production", "production"],
+    ["preview", "test"],
+  ]) {
+    for (const platform of ["darwin", "win32", "linux"]) {
+      const { stdout } = await run(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          `import config from ${JSON.stringify(configUrl)}; process.stdout.write(JSON.stringify({appId:config.appId,productName:config.productName}));`,
+        ],
+        {
+          env: {
+            ...process.env,
+            ZCODE_ENV,
+            ZCODE_PREVIEW_IDENTITY: "0",
+            ZCODE_TARGET_OS: platform,
+            ZCODE_TARGET_ARCH: "arm64",
+            ZCODE_ENABLE_MAC_SIGN: "0",
+          },
+          timeout: 30_000,
+        },
+      );
+      const product = identity.desktopProductIdentities[flavor];
+      assert.deepEqual(JSON.parse(stdout), {
+        appId: platform === "darwin" ? product.macAppId : product.appId,
+        productName: product.productName,
+      });
+    }
   }
 });
 
@@ -106,7 +144,7 @@ test("explicit runtime names still isolate test profiles and ignore blank overri
   );
 });
 
-test("macOS Dev bundle displays CodeVori and retains its bundleId and deep links", () => {
+test("macOS Dev bundle displays CodeVori with an isolated bundleId and existing deep links", () => {
   const plist = `<plist><dict>
     <key>CFBundleDisplayName</key><string>Electron</string>
     <key>CFBundleIdentifier</key><string>com.github.Electron</string>
@@ -114,7 +152,15 @@ test("macOS Dev bundle displays CodeVori and retains its bundleId and deep links
   </dict></plist>`;
   const patched = patchDevElectronInfoPlist(plist);
   assert.equal(DEV_ELECTRON_APP_NAME, "CodeVori Dev");
-  assert.equal(DEV_ELECTRON_APP_BUNDLE_ID, "dev.zcode.app.development");
+  assert.equal(DEV_ELECTRON_APP_BUNDLE_ID, "dev.codevori.app.development");
+  assert.match(patched, /CFBundleIdentifier<\/key>\s*<string>dev.codevori.app.development/);
+  assert.equal(
+    new Set([
+      DEV_ELECTRON_APP_BUNDLE_ID,
+      ...Object.values(identity.desktopProductIdentities).map((product) => product.macAppId),
+    ]).size,
+    3,
+  );
   assert.match(patched, /CFBundleDisplayName<\/key>\s*<string>CodeVori Dev/);
   assert.match(patched, /CFBundleName<\/key>\s*<string>CodeVori Dev/);
   assert.match(patched, /<string>zcode<\/string>/);
