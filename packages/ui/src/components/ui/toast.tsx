@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { Info, TriangleAlert, X } from "lucide-react";
 import { cn } from "@/components/lib/utils.js";
 
-export type ToastPosition = "top-center" | "top-right" | "bottom-left" | "bottom-center";
+export type ToastPosition = "top-center" | "top-right" | "bottom-left" | "bottom-center" | "center";
 type ToastVariant = "default" | "update" | "info" | "warning";
 
 export interface ToastOptions {
@@ -21,6 +21,8 @@ export interface ToastOptions {
   dismissible?: boolean;
   dismissLabel?: string;
   anchorId?: string;
+  /** 居中提示的来源窗格；异步操作前捕获，不随焦点切换。 */
+  anchorElement?: HTMLElement;
   /** 同一业务目标与动作的稳定键；新结果替换旧结果并移到栈底。 */
   dedupeKey?: string;
 }
@@ -36,6 +38,7 @@ export interface ToastItem {
   dismissible?: boolean;
   dismissLabel?: string;
   anchorId?: string;
+  anchorElement?: HTMLElement;
   dedupeKey?: string;
 }
 
@@ -47,6 +50,8 @@ export function upsertToastItem(items: readonly ToastItem[], item: ToastItem): T
 export function resolveToastStackClassName(position: ToastPosition): string {
   const bottomInset = "bottom-[calc(1rem+env(safe-area-inset-bottom))]";
   switch (position) {
+    case "center":
+      return "pointer-events-none fixed top-1/2 left-1/2 z-[9999] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2";
     case "top-center":
       return "fixed top-16 left-1/2 z-[9999] flex -translate-x-1/2 flex-col items-center gap-2";
     case "top-right":
@@ -69,6 +74,18 @@ const pendingToastUpdates = new Map<number, ToastUpdate>();
 const dismissedBeforeMountToastIds = new Set<number>();
 const DEFAULT_TOAST_DURATION_MS = 3000;
 const TOAST_TRANSITION_DURATION_MS = 200;
+const centerAnchorKeys = new WeakMap<HTMLElement, number>();
+let nextCenterAnchorKey = 0;
+
+function resolveCenterAnchorKey(anchor: HTMLElement | undefined): string {
+  if (!anchor) return "center-viewport";
+  let key = centerAnchorKeys.get(anchor);
+  if (key === undefined) {
+    key = nextCenterAnchorKey++;
+    centerAnchorKeys.set(anchor, key);
+  }
+  return `center-pane-${key}`;
+}
 
 function ensureHost() {
   if (addToast) {
@@ -122,7 +139,14 @@ function ToastContainer() {
   const bottomLeftItems = items.filter((item) => item.position === "bottom-left");
   const bottomCenterItems = items.filter((item) => item.position === "bottom-center");
   const anchoredTopCenterItems = new Map<string, ToastItem[]>();
+  const centeredItems = new Map<HTMLElement | undefined, ToastItem[]>();
   for (const item of items) {
+    if (item.position === "center") {
+      const anchorItems = centeredItems.get(item.anchorElement) ?? [];
+      anchorItems.push(item);
+      centeredItems.set(item.anchorElement, anchorItems);
+      continue;
+    }
     if (item.position !== "top-center" || !item.anchorId) continue;
     const anchorItems = anchoredTopCenterItems.get(item.anchorId) ?? [];
     anchorItems.push(item);
@@ -163,6 +187,16 @@ function ToastContainer() {
           onDone={handleRemove}
         />
       ))}
+      {[...centeredItems].map(([anchorElement, anchorItems]) => (
+        <AnchoredToastStack
+          // 保持窗格栈的身份稳定，首条消失时不能重挂载其余提示并重启计时。
+          key={resolveCenterAnchorKey(anchorElement)}
+          position="center"
+          anchorElement={anchorElement}
+          items={anchorItems}
+          onDone={handleRemove}
+        />
+      ))}
     </>
   );
 }
@@ -173,14 +207,18 @@ export function resolveToastAnchorLeft(rect: Pick<DOMRect, "left" | "width">): n
 
 export function AnchoredToastStack({
   anchorId,
+  anchorElement,
+  position = "top-center",
   items,
   onDone,
 }: {
-  anchorId: string;
+  anchorId?: string;
+  anchorElement?: HTMLElement;
+  position?: "top-center" | "center";
   items: ToastItem[];
   onDone: (id: number) => void;
 }) {
-  const [left, setLeft] = useState<number | null>(null);
+  const [bounds, setBounds] = useState<{ left: number; top: number; width: number } | null>(null);
 
   useEffect(() => {
     let observedAnchor: HTMLElement | null = null;
@@ -188,14 +226,21 @@ export function AnchoredToastStack({
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => syncPosition());
 
     const syncPosition = () => {
-      const anchor = document.getElementById(anchorId);
+      const anchor = anchorElement ?? (anchorId ? document.getElementById(anchorId) : null);
       if (anchor !== observedAnchor) {
         if (observedAnchor) resizeObserver?.unobserve(observedAnchor);
         observedAnchor = anchor;
         if (observedAnchor) resizeObserver?.observe(observedAnchor);
       }
-      setLeft(
-        observedAnchor ? resolveToastAnchorLeft(observedAnchor.getBoundingClientRect()) : null,
+      const rect = observedAnchor?.isConnected ? observedAnchor.getBoundingClientRect() : null;
+      const next = rect
+        ? { left: resolveToastAnchorLeft(rect), top: rect.top + rect.height / 2, width: rect.width }
+        : null;
+      // DOM 观察会收到 Toast 自身的更新；坐标不变时保持引用，避免自触发重渲染。
+      setBounds((current) =>
+        current?.left === next?.left && current?.top === next?.top && current?.width === next?.width
+          ? current
+          : next,
       );
     };
     syncPosition();
@@ -215,12 +260,20 @@ export function AnchoredToastStack({
       window.removeEventListener("resize", syncPosition);
       document.removeEventListener("scroll", syncPosition, true);
     };
-  }, [anchorId]);
+  }, [anchorId, anchorElement]);
 
   return (
     <div
-      className={cn(resolveToastStackClassName("top-center"))}
-      style={left === null ? undefined : { left }}
+      data-toast-position={position}
+      className={resolveToastStackClassName(position)}
+      style={{
+        ...(bounds ? { left: bounds.left } : {}),
+        ...(position === "center" && bounds
+          ? { top: bounds.top, maxWidth: Math.max(0, bounds.width - 32) }
+          : {}),
+        // 来源窗格被关闭时不回退到其他会话；子项仍按原计时自动清理。
+        visibility: anchorElement && !bounds ? "hidden" : undefined,
+      }}
     >
       {items.map((item) => (
         <ToastMessage key={item.id} item={item} onDone={onDone} />
@@ -312,6 +365,7 @@ export function ToastMessageView({
     <div
       className={cn(
         "rounded-2xl border bg-toast/60 text-ui-base shadow-lg backdrop-blur-xl transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.77,0,0.175,1)] motion-reduce:transform-none motion-reduce:transition-opacity",
+        item.position === "center" && "pointer-events-auto max-w-full break-words",
         isUpdate
           ? "origin-bottom-left w-[min(300px,calc(100vw-1rem))] max-w-[min(300px,calc(100vw-1rem))] border-popover-border text-foreground shadow-lg"
           : isNotice
@@ -416,6 +470,7 @@ export function toast(message: string, options?: ToastOptions): number {
   const dismissible = options?.dismissible;
   const dismissLabel = options?.dismissLabel;
   const anchorId = options?.anchorId;
+  const anchorElement = options?.anchorElement;
   const dedupeKey = options?.dedupeKey;
   const tryAdd = () => {
     if (addToast) {
@@ -430,6 +485,7 @@ export function toast(message: string, options?: ToastOptions): number {
         dismissible,
         dismissLabel,
         anchorId,
+        anchorElement,
         dedupeKey,
       };
       const pendingUpdate = pendingToastUpdates.get(id);
