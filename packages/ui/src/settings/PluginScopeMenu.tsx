@@ -11,27 +11,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { getWorkspaceKey } from "@/lib/workspaceKey.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
-
-export function getPluginWorkspaceKey(tab: WorkspaceTabState): string {
-  return getWorkspaceKey(tab.workspacePath, tab.workspaceIdentity);
-}
-
-export function isPluginScopeWorkspaceConnected(tab: WorkspaceTabState): boolean {
-  // 持久化 tab 会保留已经断开的远端项目和已失效的本地目录；Scope 若继续展示，
-  // 用户会选中一个没有可用 service target 的项目。远端必须有当前 session，本地必须仍可用。
-  if (tab.availability === "unavailable-local-directory") {
-    return false;
-  }
-  const isRemote = Boolean(
-    tab.workspaceIdentity?.trim() || tab.remoteTarget || tab.remoteSessionId,
-  );
-  if (!isRemote) {
-    return true;
-  }
-  return Boolean(tab.remoteSessionId);
-}
+import {
+  getPluginScopeWorkspaceOptions,
+  resolvePluginScopeWorkspaceOptions,
+  type PluginScopeWorkspaceOption,
+} from "@/settings/pluginScopeWorkspaces.js";
+export {
+  getPluginWorkspaceKey,
+  isPluginScopeWorkspaceConnected,
+} from "@/settings/pluginScopeWorkspaces.js";
 
 export function PluginScopeMenu({
   align = "start",
@@ -54,18 +43,14 @@ export function PluginScopeMenu({
   triggerTestId?: string;
   userOptionTestId?: string;
   workspaceOptionTestIdPrefix?: string;
-  workspaceOptions?: Array<{ key: string; label: string; remote?: boolean }>;
+  workspaceOptions?: PluginScopeWorkspaceOption[];
   workspaceTabs?: WorkspaceTabState[];
   onScopeKeyChange: (scopeKey: string) => void;
 }) {
   const { intl } = useZCodeIntl();
-  const scopeWorkspaces =
-    workspaceOptions ??
-    workspaceTabs.filter(isPluginScopeWorkspaceConnected).map((tab) => ({
-      key: getPluginWorkspaceKey(tab),
-      label: tab.label,
-      remote: Boolean(tab.remoteTarget || tab.remoteSessionId),
-    }));
+  const scopeWorkspaces = resolvePluginScopeWorkspaceOptions(
+    workspaceOptions ?? getPluginScopeWorkspaceOptions(workspaceTabs),
+  );
   const selectedWorkspace = scopeWorkspaces.find((workspace) => workspace.key === selectedScopeKey);
   const SelectedWorkspaceIcon = selectedWorkspace?.remote ? Cloud : Folder;
   // 用户作用域是本机配置范围，不能使用登录账号或设备用户名代替其语义。
@@ -81,6 +66,7 @@ export function PluginScopeMenu({
           data-testid={triggerTestId}
           data-plugin-scope-trigger="true"
           data-plugin-scope-key={selectedScopeKey}
+          title={selectedWorkspace?.description}
           className="rounded-full"
         >
           {selectedWorkspace || !includeUser ? (
@@ -124,12 +110,18 @@ export function PluginScopeMenu({
                         : undefined
                     }
                     className="items-start py-2"
+                    title={workspace.description}
                   >
                     <WorkspaceIcon className="mt-0.5 size-4" aria-hidden="true" />
-                    <span className="min-w-0">
+                    <span className="min-w-0 flex-1">
                       <span className="block truncate text-ui-base font-medium text-foreground">
                         {workspace.label}
                       </span>
+                      {workspace.description ? (
+                        <span className="block truncate text-ui-sm text-foreground-subtle">
+                          {workspace.description}
+                        </span>
+                      ) : null}
                     </span>
                   </DropdownMenuRadioItem>
                 );
