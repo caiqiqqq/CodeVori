@@ -9,6 +9,8 @@ import { useAppPanels } from "@/hooks/useAppPanels.js";
 import { useWorkTaskWorkspaceTools } from "@/hooks/useWorkTaskWorkspaceTools.js";
 import { useGitAutoRefresh } from "@/hooks/useGitAutoRefresh.js";
 import { useGitRepository } from "@/hooks/useGitRepository.js";
+import { useScopedGitReview } from "@/hooks/useScopedGitReview.js";
+import { getGitWorktreeStatus } from "@/lib/gitWorktreeStatus.js";
 import { useAppKeyboard } from "@/hooks/useAppKeyboard.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useWorkspaceActiveTaskState } from "@/hooks/useWorkspaceActiveTaskState.js";
@@ -203,7 +205,11 @@ export function App({
     ? workTaskTools.target.remoteSessionId
     : workspaceRpcTarget.remoteSessionId;
   const panelRemoteTarget = workTaskTools.target ? undefined : workspaceRpcTarget.remoteTarget;
-  const { services: panelServices } = useWorkspaceServicesResolution(
+  const {
+    services: panelServices,
+    rpcReady: panelRpcReady,
+    remoteSessionId: panelResolvedRemoteSessionId,
+  } = useWorkspaceServicesResolution(
     panelWorkspacePath,
     panelRemoteSessionId,
     panelWorkspaceIdentity,
@@ -473,57 +479,8 @@ export function App({
     gitState.sourceOptions.find((option) => option.id === gitSelectedSourceId)?.id ??
     gitState.sourceOptions[0]?.id ??
     "unstaged";
-  const gitChangeSummaryBySourceId = useMemo(() => {
-    // 关键业务逻辑：workspace header 和 Git pane 都依赖同一套来源统计，
-    // 这里先把各来源的 +/- 汇总成稳定映射，避免不同位置各自重复计算后出现展示不一致。
-    return Object.fromEntries(
-      gitState.sourceOptions.map((option) => {
-        const dataset = gitState.datasets[option.id] ?? gitState.datasets.unstaged;
-        const summary = dataset.sections
-          .flatMap((section) => section.changes)
-          .reduce(
-            (result, change) => {
-              result.added += change.added;
-              result.removed += change.removed;
-              return result;
-            },
-            { added: 0, removed: 0 },
-          );
-        return [option.id, summary];
-      }),
-    ) as Record<GitChangeSourceId, { added: number; removed: number }>;
-  }, [gitState.datasets, gitState.sourceOptions]);
-  const gitWorktreeChangeSummary = useMemo(() => {
-    const unstaged = gitChangeSummaryBySourceId.unstaged ?? {
-      added: 0,
-      removed: 0,
-    };
-    const staged = gitChangeSummaryBySourceId.staged ?? {
-      added: 0,
-      removed: 0,
-    };
-    return {
-      added: unstaged.added + staged.added,
-      removed: unstaged.removed + staged.removed,
-    };
-  }, [gitChangeSummaryBySourceId]);
-  const gitWorktreeReviewSourceId = useMemo<GitChangeSourceId | null>(() => {
-    const unstaged = gitChangeSummaryBySourceId.unstaged ?? {
-      added: 0,
-      removed: 0,
-    };
-    const staged = gitChangeSummaryBySourceId.staged ?? {
-      added: 0,
-      removed: 0,
-    };
-    if (unstaged.added + unstaged.removed > 0) {
-      return "unstaged";
-    }
-    if (staged.added + staged.removed > 0) {
-      return "staged";
-    }
-    return null;
-  }, [gitChangeSummaryBySourceId]);
+  const { changeSummary: gitWorktreeChangeSummary, reviewSourceId: gitWorktreeReviewSourceId } =
+    useMemo(() => getGitWorktreeStatus(gitState.datasets), [gitState.datasets]);
   const handleOpenGitReview = useCallback(
     (sourceId?: GitChangeSourceId) => {
       if (workspaceReadOnlyReason) {
@@ -536,6 +493,16 @@ export function App({
     },
     [handleOpenGit, workspaceReadOnlyReason],
   );
+  const handleOpenScopedGitReview = useScopedGitReview({
+    scope: {
+      workspacePath: panelWorkspacePath,
+      workspaceIdentity: panelWorkspaceIdentity,
+      remoteSessionId: panelResolvedRemoteSessionId ?? undefined,
+    },
+    rpcReady: panelRpcReady,
+    readOnly: panelReadOnly,
+    onOpenGitReview: handleOpenGitReview,
+  });
   const isSidePaneOpen = !isSidePaneCollapsed;
   useEffect(() => {
     const handleCloseActiveContextRequest = (event: Event) => {
@@ -1280,6 +1247,7 @@ export function App({
         handleOpenCommandCenter={handleOpenQuickPick}
         handleRefreshGit={handleRefreshGit}
         handleOpenGitReview={handleOpenGitReview}
+        handleOpenScopedGitReview={handleOpenScopedGitReview}
         handleBrowserUrlChange={handleBrowserUrlChange}
         handleBrowserPageMetadataChange={handleBrowserPageMetadataChange}
         handleToggleSidebar={handleToggleSidebar}
