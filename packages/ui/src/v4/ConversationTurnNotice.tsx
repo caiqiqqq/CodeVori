@@ -1,30 +1,54 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { TurnHeaderRow } from "@zcode/shared/zcode-protocol-v4";
 import { ChatErrorBanner } from "@/ChatErrorBanner.js";
+import { useConversationWarningPresentationStore } from "@/store/conversationWarningPresentationStore.js";
 
 type Notice = NonNullable<TurnHeaderRow["notices"]>[number];
 
-/** 只拥有提示的本地显隐，不修改 Host 保存的诊断或恢复状态。 */
+/** 从 UI store 读取提示显隐，不修改 Host 保存的诊断或恢复状态。 */
 export function ConversationTurnNotice({
+  presentationKey,
   notice,
   activity,
   running,
 }: {
+  presentationKey: string;
   notice: Notice;
   activity: string;
   running: boolean;
 }) {
   const warning = notice.severity === "warning";
-  const [initialActivity] = useState(activity);
-  const [expired, setExpired] = useState(false);
+  const presentation = useConversationWarningPresentationStore((state) =>
+    warning ? state.presentations[presentationKey] : undefined,
+  );
   useEffect(() => {
     if (!warning) return;
-    // 普通提示只短暂展示；这个计时器不参与连接恢复判断，恢复由已接纳内容变化立即清除。
-    const timer = setTimeout(() => setExpired(true), 5000);
+    const { begin, dismiss } = useConversationWarningPresentationStore.getState();
+    if (!presentation) {
+      begin(presentationKey, activity, running);
+      return;
+    }
+    if (presentation.dismissed) return;
+    const remaining = presentation.expiresAt - Date.now();
+    if (!running || activity !== presentation.initialActivity || remaining <= 0) {
+      dismiss(presentationKey);
+      return;
+    }
+    // 重挂载只能使用原截止时间的剩余时长，不能重新给同一提示五秒。
+    const timer = setTimeout(() => dismiss(presentationKey), remaining);
     return () => clearTimeout(timer);
-  }, [warning]);
+  }, [warning, presentationKey, presentation, activity, running]);
 
-  if (warning && (!running || expired || activity !== initialActivity)) return null;
+  // 修复原因：effect 在绘制后执行；首帧就读取消失记录，避免重进会话时旧提示闪现。
+  if (
+    warning &&
+    (!running ||
+      !presentation ||
+      presentation.dismissed ||
+      Date.now() >= presentation.expiresAt ||
+      activity !== presentation.initialActivity)
+  )
+    return null;
   return (
     <div
       role={warning ? "status" : "alert"}
