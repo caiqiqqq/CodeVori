@@ -5,6 +5,8 @@ import { acpTokenUsageSchema, acpUsageTurnSchema } from "../acp-usage.js";
 import { workflowRunsStateSchema } from "../zcode-protocol-v4/workflow-runs.js";
 import { attachmentRefSchema } from "../zcode-protocol-v4/attachment-ref.js";
 import { acpWorkflowToolSchema } from "./acpWorkflow.js";
+import { acpTerminalSchema } from "../acp-terminal.js";
+export * from "../acp-terminal.js";
 
 /** ACP Agent identity is independent of the ZCode model Provider registry. */
 export const acpAgentSchema = z.enum([
@@ -244,6 +246,11 @@ export const acpStopInputSchema = acpWorkspaceSchema
   })
   .strict();
 export type AcpStopInput = z.infer<typeof acpStopInputSchema>;
+
+export const acpTerminalControlSchema = acpWorkspaceSchema
+  .extend({ id: z.string().min(1), terminalId: z.string().min(1).max(256) })
+  .strict();
+export type AcpTerminalControl = z.infer<typeof acpTerminalControlSchema>;
 
 /** One UI submission keeps this ID across an ambiguous create RPC retry. */
 export const acpCreateInputSchema = acpWorkspaceSchema.extend({
@@ -534,6 +541,7 @@ export const acpEntrySchema = z.discriminatedUnion("kind", [
     content: z.string().optional(),
     toolKind: acpToolKindSchema.optional(),
     toolName: z.string().max(256).optional(),
+    terminalIds: z.array(z.string().min(1).max(256)).max(64).optional(),
     input: z.string().max(ACP_TOOL_DETAIL_MAX_CHARS).optional(),
     output: z.string().max(ACP_TOOL_DETAIL_MAX_CHARS).optional(),
     inputTruncated: z.boolean().optional(),
@@ -574,6 +582,7 @@ export const acpSessionSchema = acpWorkspaceSchema.extend({
     .nullable()
     .default(null),
   entries: z.array(acpEntrySchema),
+  terminals: z.array(acpTerminalSchema).max(128).default([]),
   queue: acpQueueStateSchema.default({ items: [], autoDrain: true }),
   /** 与 API 共用有界投影；旧快照缺席，Host 按 journal 恢复。 */
   workflowRuns: workflowRunsStateSchema.optional(),

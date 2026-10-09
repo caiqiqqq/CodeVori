@@ -220,6 +220,7 @@ test("stdio preserves ACP raw tool details, diff and explicit empty partial upda
         output: '{\n  "ok": true\n}',
         outputTruncated: false,
         content: "fixture.ts\nbefore\n→\nafter",
+        terminalIds: [],
         contentTruncated: false,
       },
       {
@@ -228,6 +229,7 @@ test("stdio preserves ACP raw tool details, diff and explicit empty partial upda
         output: "",
         outputTruncated: false,
         content: "",
+        terminalIds: [],
         contentTruncated: false,
       },
     ]);

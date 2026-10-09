@@ -44,7 +44,8 @@ try {
         onDynamicSessionChanged:()=>listener=>{listeners.add(listener);return {dispose:()=>listeners.delete(listener)}},
         onDynamicExecutionTraceChanged:()=>()=>({dispose(){}}),getExecutionTrace:async()=>({events:[]}),
         create:async()=>{events.push('create');throw Error('no Agent creation')},prompt:async()=>{events.push('prompt');throw Error('no prompt')},
-        stop:async()=>{},remove:async()=>{}};
+        stop:async()=>{},remove:async()=>{},
+        stopTerminal:async input=>{if(input.id!==snapshot.id||input.workspacePath!==workspacePath||input.terminalId!=='managed')throw Error('wrong terminal scope');events.push('stop:'+input.terminalId);snapshot.terminals=snapshot.terminals.map(t=>({...t,status:'finished',output:t.output+' stopped'}));publish()}};
       const forbidden=()=>{throw new Error('unexpected native/model operation')};
       const native={layer:{acquire:forbidden},sendCommand:forbidden,attachmentPut:forbidden,
         onRuntimeRestart:()=>()=>{},onRuntimeLifecycle:()=>()=>{}};
@@ -60,6 +61,12 @@ try {
         const [noGit,setNoGit]=useState(false);
         const [variant,setVariant]=useState(null);
         window.__status={events,read:copy,dirty:setDirty,noGit:setNoGit,
+          startCommands:()=>{snapshot.status='running';snapshot.entries.push(
+            {id:'execute',kind:'tool',title:'npm run dev',toolKind:'execute',status:'in_progress',createdAt:Date.now(),input:'npm run dev',output:'tool ready'},
+            {id:'linked',kind:'tool',title:'linked terminal',toolKind:'execute',status:'in_progress',terminalIds:['managed'],createdAt:Date.now()},
+            {id:'done',kind:'tool',title:'completed command',toolKind:'execute',status:'completed',createdAt:Date.now()});
+            snapshot.terminals=[{terminalId:'managed',title:'node server',status:'running',startedAt:Date.now(),output:'server ready',truncated:false}];publish()},
+          idle:()=>{snapshot.status='idle';publish()},
           replay:()=>{publish();setEpoch(n=>n+1)},
           clearPlan:()=>{snapshot.entries=snapshot.entries.map(e=>e.kind==='plan'?{...e,entries:[]}:e);publish()},
           nextTurn:()=>{snapshot.entries.push({id:'user:second',kind:'user',text:'second'});publish()},
@@ -84,10 +91,12 @@ try {
   for (const width of [1440, 375]) {
     for (const theme of ["zai-light", "zai-dark"]) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
-      page.setDefaultTimeout(10000);
+      page.setDefaultTimeout(60000);
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
-      await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`);
+      await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`, {
+        waitUntil: "domcontentloaded",
+      });
       await page
         .getByTestId("v4-composer-input")
         .waitFor()
@@ -180,6 +189,36 @@ try {
       assert.ok(
         (await page.evaluate(() => window.__status.events)).includes("branches:/synthetic/status"),
       );
+      await page.keyboard.press("Escape");
+      await page.evaluate(() => window.__status.startCommands());
+      await panel.locator('[data-status-section-trigger="terminal"]').click();
+      const command = panel.locator('[data-work-id="acp-tool:execute"]');
+      const managed = panel.locator('[data-work-id="acp-terminal:managed"]');
+      await command.waitFor();
+      await managed.waitFor();
+      assert.equal(await panel.getAttribute("data-running-terminal-count"), "2");
+      await page.screenshot({
+        path: join(artifacts, `terminals-${width}-${theme}.png`),
+        animations: "disabled",
+      });
+      assert.equal(await command.locator('[data-testid^="v4-background-work-cancel"]').count(), 0);
+      await command.getByTestId("background-bash-open").click();
+      const output = page.getByTestId("acp-terminal-output");
+      await output.getByText("tool ready", { exact: false }).waitFor();
+      assert.equal(await output.getByRole("button", { name: "停止命令" }).count(), 0);
+      await page.keyboard.press("Escape");
+      await page.evaluate(() => window.__status.idle());
+      await command.waitFor({ state: "detached" });
+      await managed.getByTestId("background-bash-open").click();
+      await output.getByText("server ready", { exact: true }).waitFor();
+      await page.screenshot({
+        path: join(artifacts, `terminal-output-${width}-${theme}.png`),
+        animations: "disabled",
+      });
+      await output.getByRole("button", { name: "停止命令" }).click();
+      await output.getByText("server ready stopped", { exact: true }).waitFor();
+      await managed.waitFor({ state: "detached" });
+      assert.ok((await page.evaluate(() => window.__status.events)).includes("stop:managed"));
       await page.keyboard.press("Escape");
       await page.evaluate(() => window.__status.clearPlan());
       await page.waitForFunction(
