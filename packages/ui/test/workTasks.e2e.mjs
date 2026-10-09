@@ -43,7 +43,6 @@ import {
   workTaskScenarios,
   exerciseWorkTaskPromptAttachments,
   exerciseWorkTaskImageResources,
-  exerciseWorkTaskPendingImages,
   exerciseWorkTaskEditRestart,
   exerciseWorkTaskExecutionPreferences,
   exerciseWorkTaskConversationStatus,
@@ -391,7 +390,7 @@ try {
     await exerciseWorkTaskConversationStatus(page, artifacts);
     await exerciseWorkTaskPromptAttachments(page, artifacts);
     await exerciseWorkTaskImageResources(page, artifacts);
-    await exerciseWorkTaskPendingImages(page, artifacts);
+    await workTaskScenarios["pending-images"](page, artifacts);
     await exerciseWorkTaskCompletion(page, artifacts);
     await exerciseWorkTaskConcurrentExecution(page, artifacts);
     assert.deepEqual(errors, []);
