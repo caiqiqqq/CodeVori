@@ -1,4 +1,5 @@
 import type { ForgeCheck, ForgeItemDetail, ForgeMergeMethod } from "@zcode/shared";
+import { readForgeIssueOptions, forgeIssueAttributes } from "./forgeIssueOptions.js";
 import type { ForgeProviderAdapter } from "./forgeProvider.js";
 import {
   author,
@@ -178,6 +179,9 @@ export function createGithubForgeProvider(
     async listLabels() {
       return labels((await api(`${repo}/labels`, { per_page: 100 })).data);
     },
+    getIssueOptions() {
+      return readForgeIssueOptions(api, repo, "github");
+    },
     async createIssue(request) {
       return item(
         record(
@@ -185,7 +189,14 @@ export function createGithubForgeProvider(
             await api(
               `${repo}/issues`,
               {},
-              { method: "POST", body: { title: request.title, body: request.body } },
+              {
+                method: "POST",
+                body: {
+                  title: request.title,
+                  body: request.body,
+                  ...forgeIssueAttributes(request, "github"),
+                },
+              },
             )
           ).data,
         ),
