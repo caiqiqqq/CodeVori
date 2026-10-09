@@ -350,12 +350,16 @@ function RepositoryPanelContent({
       {repo && panel.target && newIssueTarget === panel.target ? (
         <NewIssueDialog
           open={active}
-          repositoryName={repo.name}
+          repository={repo}
+          target={panel.target}
+          gitService={panel.gitService}
+          theme={theme}
+          onOpen={openExternal}
           busy={panel.mutation.busy}
           error={panel.mutation.error}
           onClose={() => setNewIssueTarget(null)}
-          onSubmit={async (title, body) => {
-            const item = await panel.createIssue(title, body);
+          onSubmit={async (draft) => {
+            const item = await panel.createIssue(draft);
             if (item) {
               setNewIssueTarget(null);
               selectItem(item);

@@ -2555,7 +2555,9 @@ export function SessionPane({
       codePreviewSettings,
       messageStreamShowReasoning,
       messageStreamShowTodos,
-      chatLoadingBlockedByInteraction: Boolean(acpConversation.selected?.pendingPermission),
+      chatLoadingBlockedByInteraction: Boolean(
+        acpConversation.selected?.pendingPermission || acpConversation.selected?.pendingElicitation,
+      ),
       onOpenBrowserUrl,
       onOpenCodeViewer,
       onOpenFileLink,
@@ -2619,6 +2621,7 @@ export function SessionPane({
       remoteSessionId,
       acpConversation.selected?.id,
       acpConversation.selected?.pendingPermission,
+      acpConversation.selected?.pendingElicitation,
       acpConversation.selected?.workflowRuns,
       acpService,
       acpAttachmentReader,

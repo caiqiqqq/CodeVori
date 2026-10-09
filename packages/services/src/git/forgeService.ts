@@ -46,6 +46,7 @@ export type ForgeService = Pick<
   | "listForgeComments"
   | "listForgeFiles"
   | "listForgeLabels"
+  | "getForgeIssueOptions"
   | "createForgeIssue"
   | "createForgeComment"
   | "setForgeItemState"
@@ -252,6 +253,10 @@ export function createForgeService(options?: {
     async listForgeLabels(input) {
       const request = forgeTargetRequestSchema.parse(input);
       return (await target(request)).listLabels();
+    },
+    async getForgeIssueOptions(input) {
+      const request = forgeTargetRequestSchema.parse(input);
+      return (await target(request)).getIssueOptions();
     },
     async createForgeIssue(input) {
       const request = forgeNewIssueRequestSchema.parse(input);

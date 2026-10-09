@@ -1,4 +1,4 @@
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, ReactNode } from "react";
 import type { WorkTask, WorkTaskScope } from "@zcode/shared";
 import type { LexicalChatInputHandle } from "@/LexicalChatInput.js";
 import type { useWorkTaskPromptAssets } from "@/hooks/useWorkTaskPromptAssets.js";
@@ -14,6 +14,7 @@ export function WorkTaskPromptField({
   busy,
   assets,
   inputApiRef,
+  leadingActions,
   onChange,
 }: {
   scope: WorkTaskScope;
@@ -21,6 +22,7 @@ export function WorkTaskPromptField({
   busy: boolean;
   assets: ReturnType<typeof useWorkTaskPromptAssets>;
   inputApiRef: MutableRefObject<LexicalChatInputHandle | null>;
+  leadingActions?: ReactNode;
   onChange(value: string): void;
 }) {
   const t = useWorkTaskMessages();
@@ -45,6 +47,8 @@ export function WorkTaskPromptField({
             submitDisabled
             submitLabel={t("save")}
             submitControl={<span />}
+            leadingActions={leadingActions}
+            toolbarLayout={leadingActions ? "wrap" : "compact"}
             enterSubmits={false}
             filesOnlyMentions
             enableSlashCommands={false}

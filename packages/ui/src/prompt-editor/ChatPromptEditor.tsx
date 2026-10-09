@@ -65,6 +65,7 @@ export function ChatPromptEditor({
   dragAttachmentHint,
   topContent,
   leadingActions,
+  toolbarLayout = "compact",
   attachmentAction,
   acpMode,
   acpAgent,
@@ -127,6 +128,8 @@ export function ChatPromptEditor({
   dragAttachmentHint?: string;
   topContent?: ReactNode;
   leadingActions?: ReactNode;
+  /** 表单内的配置工具栏允许换行；普通对话仍按优先级紧凑收起。 */
+  toolbarLayout?: "compact" | "wrap";
   attachmentAction?: {
     label: string;
     onSelect: () => void;
@@ -172,7 +175,7 @@ export function ChatPromptEditor({
   enableSlashCommands?: boolean;
 }) {
   const { intl } = useZCodeIntl();
-  const toolbarRef = useComposerToolbarFit();
+  const toolbarRef = useComposerToolbarFit(toolbarLayout === "compact");
   const internalInputApiRef = useRef<LexicalChatInputHandle | null>(null);
   const resolvedInputApiRef = inputApiRef ?? internalInputApiRef;
   const [internalTriggerPanelContainer, setInternalTriggerPanelContainer] =
@@ -422,7 +425,13 @@ export function ChatPromptEditor({
         />
         <div ref={toolbarRef} className="group/toolbar flex items-end gap-3">
           <div className="flex min-w-0 flex-1 items-center" data-composer-leading-actions>
-            <div className="flex shrink-0 items-center gap-1" data-composer-leading-content>
+            <div
+              className={cn(
+                "flex items-center gap-1",
+                toolbarLayout === "wrap" ? "min-w-0 flex-1 flex-wrap" : "shrink-0",
+              )}
+              data-composer-leading-content
+            >
               {hasActionMenu ? (
                 <ChatPromptActionMenu
                   key={acpMode ? `acp:${acpAgent}:${acpSessionId ?? "pending"}` : "native"}
