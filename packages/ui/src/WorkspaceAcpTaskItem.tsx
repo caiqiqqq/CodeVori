@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { LoaderIcon } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { acpAgentDefinition, type AcpSessionRowUpdate } from "@zcode/shared";
 import type { IServiceAccessor } from "@zcode/services";
 import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
@@ -242,10 +242,12 @@ export function WorkspaceAcpTaskItem({
                     />
                   </span>
                 ) : leadingIndicator === "loading" ? (
-                  <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-card">
-                    <LoaderIcon
+                  // 修复依据：与 API 行统一放大黄色等待圆环，用底色隔离品牌图标以提高密集侧栏中的辨识度。
+                  <span className="absolute -bottom-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-card ring-2 ring-card">
+                    <LoaderCircle
                       data-acp-running-indicator="true"
-                      className="size-2.5 animate-spin text-task-running-indicator"
+                      strokeWidth={3}
+                      className="size-3.5 animate-spin text-task-running-indicator"
                     />
                   </span>
                 ) : null}

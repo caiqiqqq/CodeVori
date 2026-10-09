@@ -30,9 +30,9 @@ Provider Settings hook 在切换 Service 的 effect 中先同步更新同一 own
 
 ## 等待响应指示器颜色
 
-API/ZCode 与 ACP 会话图标右下角的旋转圆点统一使用黄色，浅色主题使用 yellow-600，深色主题使用 yellow-300；默认与 Zai 主题均遵循此规则。共享语义 token 为 `--color-task-running-indicator`，不复用 Zai 中呈橙色的 warning token。保留既有 10px 尺寸、旋转动画、角标底色与显示优先级。这里的等待指运行/预热中的响应等待，不改变权限或问答的“等待确认”胶囊。
+API/ZCode 与 ACP 会话图标右下角的旋转圆环统一使用黄色，浅色主题使用 yellow-600，深色主题使用 yellow-300；默认与 Zai 主题均遵循此规则。共享语义 token 为 `--color-task-running-indicator`，不复用 Zai 中呈橙色的 warning token。为解决 10px 放射状角标在密集侧栏中难以辨认的问题，等待角标改用 14px 圆环、3px SVG 描边，并以 2px card 底色隔离品牌素材；保持右下角定位、16px 品牌图标、旋转动画与显示优先级。未读和错误角标维持原尺寸，状态切换不移动标题或增加行高，放大的角标不得覆盖标题。这里的等待指运行/预热中的响应等待，不改变权限或问答的“等待确认”胶囊。
 
-状态仍由原生 sessions-index activity 或 ACP Host 持有，组件只投影颜色，不增加状态、写入路径或协议。错误与未读优先级、历史 running 无实时 activity 不显示动画的规则不变。复用现有图标 E2E，在桌面/窄屏和 Zai 浅色/深色主题下断言真实计算颜色为对应黄色，并保留原有状态、身份和布局验收。
+状态仍由原生 sessions-index activity 或 ACP Host 持有，组件只投影颜色和尺寸，不增加状态、写入路径或协议，无数据迁移。错误与未读优先级、历史 running 无实时 activity 不显示动画的规则不变。复用现有图标 E2E，在桌面/窄屏和 Zai 浅色/深色主题下断言真实计算颜色为对应黄色、圆环尺寸为 14px、描边为 3，并检查旋转和底色隔离；检查角标不覆盖标题、状态切换及 hover/focus 不影响身份和布局。
 
 ## 置顶与归档布局
 
