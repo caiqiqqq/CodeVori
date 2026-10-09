@@ -4,6 +4,7 @@ export type DesktopIdentityEnv = Record<string, string | undefined>;
 export interface DesktopProductIdentity {
   readonly flavor: DesktopProductFlavor;
   readonly appId: string;
+  readonly macAppId: string;
   readonly productName: string;
   readonly userDataDirectoryName: string;
   readonly linuxExecutableName: string;
