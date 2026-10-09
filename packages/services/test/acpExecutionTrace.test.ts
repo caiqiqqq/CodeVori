@@ -402,6 +402,15 @@ test("permission decisions, stop and adapter exit preserve exact turn facts acro
         .map((event) => event.kind);
       assert.ok(sequence.indexOf("permission-requested") < sequence.indexOf("permission-resolved"));
       assert.ok(sequence.indexOf("permission-resolved") < sequence.indexOf(expected));
+      const snapshot = await service.read({ ...workspace, id: session.id });
+      const user = snapshot.entries[ordinal * 2]!;
+      assert.ok(user.kind === "user");
+      assert.equal(
+        user.endedAt,
+        events.find((event) => event.kind === expected && event.turnIndex === ordinal * 2)
+          ?.timestamp,
+      );
+      assert.ok(user.endedAt! >= user.createdAt!);
     }
     const snapshot = await service.read({ ...workspace, id: session.id });
     assert.equal(
@@ -419,6 +428,15 @@ test("permission decisions, stop and adapter exit preserve exact turn facts acro
     await callbacks[0]!.onUpdate({ kind: "tool", id: "reused", title: "LATE", status: "failed" });
     assert.equal(events.length, before, "Old generation must not append terminal mutations");
     assert.deepEqual(await service.read({ ...workspace, id: session.id }), snapshot);
+    const restored = createAcpService({ directory });
+    try {
+      assert.deepEqual(
+        (await restored.read({ ...workspace, id: session.id })).entries,
+        snapshot.entries,
+      );
+    } finally {
+      await restored.disposeAllAndWait();
+    }
     await assert.rejects(
       service.getExecutionTrace({ ...workspace, workspaceIdentity: "other-host", id: session.id }),
       /does not belong/,

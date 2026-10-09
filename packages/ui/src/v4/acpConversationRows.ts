@@ -120,6 +120,9 @@ export function buildAcpConversationRows(
                 ? "completedInterrupted"
                 : "completedSuccess",
         startedAt: createdAt,
+        ...(entry.kind === "user" && entry.createdAt !== undefined && entry.endedAt !== undefined
+          ? { endedAt: entry.endedAt }
+          : {}),
         ...(notices.length ? { notices } : {}),
       });
     }

@@ -319,7 +319,7 @@ interface ConversationTimelineProps {
   searchResultHighlightRequest?: ChatSearchResultHighlightRequest | null;
   onSearchResultHighlightDone?: (requestId: number) => void;
   sessionPhase?: SessionPhase;
-  /** 外部智能体没有 CLI 权威工时，不通过渲染时钟推算。 */
+  /** 仅在调用方明确没有时间事实时关闭；ACP 的时间来自原 Host 快照。 */
   workDurationAvailable?: boolean;
   /** 消息后的宿主权限或错误操作，与消息共用同一个滚动视口。 */
   footerSlot?: ReactNode;
@@ -1870,6 +1870,7 @@ function ConversationTimelineImpl({
                     >
                       <ConversationTurnGroup
                         unit={unit}
+                        sessionKey={sessionKey}
                         apiRetry={null}
                         context={rowContext}
                         onFork={onFork}
@@ -1900,6 +1901,7 @@ function ConversationTimelineImpl({
                 >
                   <ConversationTurnGroup
                     unit={liveUnit}
+                    sessionKey={sessionKey}
                     apiRetry={apiRetry}
                     context={rowContext}
                     onFork={onFork}

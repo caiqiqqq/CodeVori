@@ -59,6 +59,27 @@ const enUS: Record<string, string> = {
   "workTasks.openConversation": "Open conversation",
   "workTasks.handleInput": "Handle conversation request",
   "workTasks.archive": "Archive",
+  "workTasks.archiveAndRemoveWorktree": "Archive and delete worktree",
+  "workTasks.archiveAndRemoveWorktreeBody":
+    "Delete this task’s worktree directory and archive the task. The branch and conversation history will be kept. Uncommitted changes or active conversations prevent deletion.",
+  "workTasks.error.work-task.not-cleanable":
+    "Only completed tasks with an isolated worktree can be cleaned up.",
+  "workTasks.error.work-task.cleanup-in-progress":
+    "This task’s worktree is being cleaned up. Wait for it to finish.",
+  "workTasks.error.work-task.cleanup-unsupported":
+    "This Host does not support archiving and deleting worktrees.",
+  "workTasks.error.work-task.worktree-remove-invalid-target":
+    "The worktree directory, project or branch does not match the task allocation. Nothing was deleted.",
+  "workTasks.error.work-task.worktree-remove-dirty-worktree":
+    "The worktree has uncommitted changes. Resolve them before retrying.",
+  "workTasks.error.work-task.worktree-remove-locked-worktree":
+    "The worktree is locked. Unlock it before retrying.",
+  "workTasks.error.work-task.worktree-remove-workspace-busy":
+    "A conversation in the worktree is still active. Wait for it to finish.",
+  "workTasks.error.work-task.worktree-remove-operation-in-progress":
+    "The worktree is already being deleted. Wait for it to finish.",
+  "workTasks.error.work-task.worktree-remove-command-failed":
+    "Worktree deletion failed. The task has not been archived. Check it before retrying.",
   "workTasks.unarchive": "Unarchive",
   "workTasks.archived": "Archived",
   "workTasks.showArchived": "Show archived",

@@ -99,7 +99,7 @@ try {
       async cancel(r:any){state.calls.push({op:'cancel',...r});const task=get(r);if(task.merge&&!['merged','failed','canceled'].includes(task.merge.phase)){if(task.merge.phase==='applying')throw new Error('work-task.merge-applying');task.merge.phase='canceled';task.status='review'}else task.status='canceled';changed();return clone(task)},
       async complete(r:any){state.calls.push({op:'complete',...r});if(state.delayComplete){state.delayComplete=false;await new Promise<void>(resolve=>state.pendingCompletions.push(resolve))}if(state.failComplete){state.failComplete=false;throw new Error('Synthetic completion failed')}const task=get(r);if(task.status!=='review'||task.stopPending||(task.merge&&!['merged','failed','canceled'].includes(task.merge.phase)))throw new Error('work-task.not-reviewable');task.status='done';task.completion='accepted_without_merge';changed();return clone(task)},
       async merge(r:any){state.calls.push({op:'merge',...r});if(state.failMerge){state.failMerge=false;throw new Error('work-task.merge-target-dirty')}const task=get(r);task.status='queued';task.runSeq++;task.failureReason=undefined;task.merge={id:crypto.randomUUID(),projectPath:task.worktree.projectPath,targetBranch:r.targetBranch,phase:'queued'};changed();return clone(task)},
-      async archive(r:any){state.calls.push({op:'archive',...r});const task=get(r);task.archived=r.archived;changed();return clone(task)},
+      async archive(r:any){state.calls.push({op:'archive',...r});const task=get(r);if(r.removeWorktree){if(state.delayCleanup){state.delayCleanup=false;await new Promise<void>(resolve=>state.pendingCleanups.push(resolve))}if(state.failCleanup){state.failCleanup=false;throw new Error('work-task.worktree-remove-dirty-worktree')}}task.archived=r.archived;changed();return clone(task)},
       async setConcurrency(r:any){state.calls.push({op:'concurrency',...r});state.concurrency=r.concurrency;changed()},
       async getEvents(){return [{sequence:1,taskId:'task',runSeq:1,at:0,type:'created'}]},
       onDynamicChanged:()=> (listener:()=>void)=>{listeners.add(listener);return {dispose:()=>listeners.delete(listener)}},
@@ -107,7 +107,7 @@ try {
     state.seed=(draft:any)=>{const now=Date.now();const task={workspacePath:'/synthetic/project',execution:{kind:'api',modelSelection:clone(modelView.preferredSelection),mode:'build'},id:'task-'+state.tasks.length,status:'todo',archived:false,stopPending:false,runSeq:0,runText:draft.prompt,commandId:'command',sessionRequestId:'request',createdAt:now,updatedAt:now,...draft};state.tasks.push(task);changed();return clone(task)};
     state.notify=changed;
     state.pendingSaves=[];state.pendingStarts=[];state.finishSave=()=>state.pendingSaves.shift()?.();state.finishStart=()=>state.pendingStarts.shift()?.();
-    state.pendingCompletions=[];state.finishComplete=()=>state.pendingCompletions.shift()?.();
+    state.pendingCleanups=[];state.finishCleanup=()=>state.pendingCleanups.shift()?.();state.pendingCompletions=[];state.finishComplete=()=>state.pendingCompletions.shift()?.();
     state.archive=(id:string,archived:boolean)=>service.archive({id,workspacePath:'/synthetic/project',archived});
     state.status=(id:string,status:string)=>{const task=get({id,workspacePath:'/synthetic/project'});task.status=status;task.updatedAt=Date.now();changed()};
     state.completePreparation=(id:string)=>{bind(get({id,workspacePath:'/synthetic/project'}));changed()};

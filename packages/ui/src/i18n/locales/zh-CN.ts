@@ -54,6 +54,23 @@ const zhCN: Record<string, string> = {
   "workTasks.openConversation": "打开会话",
   "workTasks.handleInput": "处理会话中的请求",
   "workTasks.archive": "归档",
+  "workTasks.archiveAndRemoveWorktree": "归档并删除工作树",
+  "workTasks.archiveAndRemoveWorktreeBody":
+    "将删除此任务的工作树目录并归档任务。分支和会话历史会保留；未提交改动或仍在执行的会话会阻止删除。",
+  "workTasks.error.work-task.not-cleanable": "只有已完成且使用独立工作树的任务可以清理。",
+  "workTasks.error.work-task.cleanup-in-progress": "此任务正在清理工作树，请等待操作完成。",
+  "workTasks.error.work-task.cleanup-unsupported": "当前运行环境不支持归档并删除工作树。",
+  "workTasks.error.work-task.worktree-remove-invalid-target":
+    "工作树目录、项目或分支与任务分配不符，未删除。",
+  "workTasks.error.work-task.worktree-remove-dirty-worktree":
+    "工作树有未提交改动，请先处理改动后重试。",
+  "workTasks.error.work-task.worktree-remove-locked-worktree": "工作树已锁定，请先解除锁定后重试。",
+  "workTasks.error.work-task.worktree-remove-workspace-busy":
+    "工作树内仍有会话在执行，请等待结束后重试。",
+  "workTasks.error.work-task.worktree-remove-operation-in-progress":
+    "工作树正在删除，请等待操作完成。",
+  "workTasks.error.work-task.worktree-remove-command-failed":
+    "删除工作树失败，任务尚未归档，请检查后重试。",
   "workTasks.unarchive": "取消归档",
   "workTasks.archived": "已归档",
   "workTasks.showArchived": "显示归档",

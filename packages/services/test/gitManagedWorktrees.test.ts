@@ -9,6 +9,63 @@ import { createGitService } from "../src/git/gitService.js";
 
 const exec = promisify(execFile);
 
+test("task cleanup rechecks the allocated branch after runtime preparation", async () => {
+  const f = await fixture();
+  const service = createGitService({
+    prepareWorktreeRemoval: async () => {
+      await exec("git", ["-C", f.target, "switch", "-qc", "replacement"]);
+      return null;
+    },
+  });
+  try {
+    const result = await service.removeManagedWorktree({
+      worktreeRootPath: f.root,
+      worktreePath: f.target,
+      projectPath: f.project,
+      expectedBranchName: "worktree/abcd",
+    });
+    assert.equal(result.issue, "invalid-target");
+    await stat(join(f.target, "file.txt"));
+  } finally {
+    await rm(f.directory, { recursive: true, force: true });
+  }
+});
+
+test("task cleanup verifies the allocated branch and permits retry only after unregistering", async () => {
+  const f = await fixture();
+  const service = createGitService();
+  const input = {
+    worktreeRootPath: f.root,
+    worktreePath: f.target,
+    projectPath: f.project,
+    expectedBranchName: "worktree/abcd",
+    allowMissing: true,
+  };
+  try {
+    assert.equal(
+      (await service.removeManagedWorktree({ ...input, expectedBranchName: "other" })).issue,
+      "invalid-target",
+    );
+    await writeFile(join(f.target, "keep.txt"), "keep");
+    assert.equal((await service.removeManagedWorktree(input)).issue, "dirty-worktree");
+    await rm(join(f.target, "keep.txt"));
+    assert.deepEqual(await service.removeManagedWorktree(input), { ok: true });
+    assert.deepEqual(await service.removeManagedWorktree(input), { ok: true });
+    await exec("git", ["-C", f.project, "show-ref", "--verify", "refs/heads/worktree/abcd"]);
+    await stat(join(f.outside, "file.txt"));
+    await stat(join(f.project, "file.txt"));
+    await exec("git", ["-C", f.project, "worktree", "add", "-q", f.target, "worktree/abcd"]);
+    await rm(f.target, { recursive: true });
+    assert.equal(
+      (await service.removeManagedWorktree(input)).issue,
+      "invalid-target",
+      "missing but registered directory is not a successful removal",
+    );
+  } finally {
+    await rm(f.directory, { recursive: true, force: true });
+  }
+});
+
 async function fixture() {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "zcode-managed-worktrees-")));
   const project = join(directory, "project with spaces");

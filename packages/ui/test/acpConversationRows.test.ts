@@ -317,9 +317,63 @@ test("Host status ends stale tools and represents the running turn before its fi
   assert.equal(units[0]?.isRunning, false);
   assert.equal(units[0]?.workStatus?.durationMs, undefined);
   const live = buildConversationTurnRenderUnits(rows, {
-    workDurationAvailable: false,
     nowMs: 100000,
   });
   assert.equal(live[0]?.isRunning, true);
   assert.equal(live[0]?.workSegments?.[0]?.workStatus?.durationMs, undefined);
+});
+
+test("ACP work time advances before the first reply, freezes at completion and survives snapshot replay", () => {
+  const entries: AcpSession["entries"] = [
+    { id: "user:first", kind: "user", text: "first", createdAt: 1000 },
+  ];
+  const project = (status: AcpSession["status"], nowMs: number) =>
+    buildConversationTurnRenderUnits(buildAcpConversationRows(session(entries, status)), { nowMs });
+  assert.equal(project("running", 4000)[0]?.workSegments?.[0]?.workStatus?.durationMs, 3000);
+  assert.equal(project("running", 5000)[0]?.workSegments?.[0]?.workStatus?.durationMs, 4000);
+  const user = entries[0]!;
+  assert.ok(user.kind === "user");
+  user.endedAt = 6000;
+  entries.push({ id: "assistant:first", kind: "assistant", text: "done", createdAt: 5500 });
+  for (const nowMs of [8000, 800000]) {
+    assert.equal(project("idle", nowMs)[0]?.workSegments?.[0]?.workStatus?.durationMs, 5000);
+  }
+  const restored = entries.map((entry) => acpEntrySchema.parse(structuredClone(entry)));
+  restored.push({ id: "user:next", kind: "user", text: "next", createdAt: 9000 });
+  const rows = buildAcpConversationRows(session(restored, "running"));
+  rows.forEach((row) => conversationRowSchema.parse(row));
+  const units = buildConversationTurnRenderUnits(rows, { nowMs: 12000 });
+  assert.deepEqual(
+    units.map((unit) => unit.workSegments?.[0]?.workStatus?.durationMs),
+    [5000, 3000],
+  );
+  assert.equal(user.endedAt, 6000);
+});
+
+test("unknown legacy or recovered ACP completion never uses the live UI clock", () => {
+  for (const entries of [
+    [{ id: "user:old", kind: "user", text: "old" }],
+    [{ id: "user:recovered", kind: "user", text: "recovered", createdAt: 1000 }],
+  ] as AcpSession["entries"][]) {
+    for (const status of ["idle", "interrupted"] as const) {
+      const units = buildConversationTurnRenderUnits(
+        buildAcpConversationRows(session(entries, status)),
+        {
+          nowMs: 100000,
+        },
+      );
+      assert.equal(units[0]?.workSegments?.[0]?.workStatus?.durationMs, undefined);
+    }
+  }
+});
+
+test("API authoritative active time still takes priority over wall time", () => {
+  const rows = buildAcpConversationRows(
+    session([{ id: "user:api-fixture", kind: "user", text: "api", createdAt: 1000 }], "running"),
+  );
+  const header = rows[0]!;
+  assert.ok(header.kind === "turnHeader");
+  header.activeMs = 2500;
+  const units = buildConversationTurnRenderUnits(rows, { nowMs: 10000 });
+  assert.equal(units[0]?.workSegments?.[0]?.workStatus?.durationMs, 2500);
 });

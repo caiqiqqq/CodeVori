@@ -5,6 +5,18 @@ export type AcpConversationUpdate =
   | { kind: "thought"; text: string; messageId?: string }
   | { kind: "plan"; entries: AcpPlanStep[] };
 
+export function finishAcpTurn(
+  session: Pick<AcpSession, "entries">,
+  commandId: string | undefined,
+  receivedAt: number,
+): void {
+  if (!commandId) return;
+  const entry = session.entries.find((candidate) => candidate.id === `user:${commandId}`);
+  // 修复原因：会话终态没有轮次时间，ACP 曾永久隐藏耗时；只写精确接纳行的首次结束，
+  // 不把无用户行的后台通知、未接纳输入或停止后的迟到结果算进上一轮。
+  if (entry?.kind === "user" && entry.endedAt === undefined) entry.endedAt = receivedAt;
+}
+
 export function finishAcpThoughts(
   session: Pick<AcpSession, "entries">,
   state: "complete" | "interrupted",

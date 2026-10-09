@@ -277,10 +277,15 @@ export function useWorkspaceTaskNavigation({
       workspaceIdentity,
     ],
   );
-  const handleOpenWorkTasks = useCallback(() => {
-    taskNavPushWorkTasks(workspaceAbsPath, workspaceIdentity);
-    onNavigateToWorkTasks?.({ workspacePath: workspaceAbsPath, workspaceIdentity });
-  }, [onNavigateToWorkTasks, taskNavPushWorkTasks, workspaceAbsPath, workspaceIdentity]);
+  const handleOpenWorkTasks = useCallback(
+    (target?: { workspacePath: string; workspaceIdentity?: string }) => {
+      // 设置页可打开另一项目的待办，导航历史必须使用明确的主项目 scope。
+      const scope = target ?? { workspacePath: workspaceAbsPath, workspaceIdentity };
+      taskNavPushWorkTasks(scope.workspacePath, scope.workspaceIdentity);
+      onNavigateToWorkTasks?.(scope);
+    },
+    [onNavigateToWorkTasks, taskNavPushWorkTasks, workspaceAbsPath, workspaceIdentity],
+  );
 
   const handleTaskNavBack = useCallback(() => {
     const currentWorkspaceState = useZCodeSessionStore

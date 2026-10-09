@@ -520,6 +520,8 @@ export const acpEntrySchema = z.discriminatedUnion("kind", [
     kind: z.literal("user"),
     text: z.string(),
     createdAt: z.number().optional(),
+    /** Host 首次观察到本轮结束的时刻；旧快照缺失时不推测耗时。 */
+    endedAt: z.number().finite().nonnegative().optional(),
     attachmentNames: z.array(z.string()).optional(),
     attachments: z.array(acpAttachmentRefSchema).max(8).optional(),
     /** 接纳时的选项与该轮错误属于原会话；后续配置/成功不能覆盖旧轨迹。 */

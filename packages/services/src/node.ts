@@ -2646,6 +2646,18 @@ export function createLocalServices(options: {
     execute: (task, context) => workTaskExecution.execute(task, context),
     merge: createWorkTaskMerge(workTaskExecutionDependencies),
     conversation: createWorkTaskConversation({ acp: acpService, agent: zcodeAgentService }),
+    removeWorktree: async (task) => {
+      const allocation = task.worktree;
+      if (!allocation) throw new Error("work-task.not-cleanable");
+      const result = await gitService.removeManagedWorktree({
+        worktreeRootPath: allocation.rootPath,
+        worktreePath: allocation.path,
+        projectPath: allocation.projectPath,
+        expectedBranchName: allocation.branchName,
+        allowMissing: true,
+      });
+      if (!result.ok) throw new Error(`work-task.worktree-remove-${result.issue}`);
+    },
     allowExecution: !isDesktopAttachedRemote,
   });
   workTaskService.startScheduler();
