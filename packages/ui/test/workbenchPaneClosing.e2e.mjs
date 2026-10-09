@@ -122,6 +122,13 @@ try {
             body: "export function useWorkspaceServicesResolution(){return {isRemoteTarget:false,rpcReady:true,services:{}}}",
           }),
         );
+        // 关闭/恢复场景只验证布局所有者；Git 读取由 paneGitStatus E2E 单独覆盖。
+        await page.route("**/packages/ui/src/hooks/usePaneGitStatus.ts*", (route) =>
+          route.fulfill({
+            contentType: "application/javascript",
+            body: "export function usePaneGitStatus(){return {}}",
+          }),
+        );
         const pane = (id) => page.locator(`[data-pane-id="${id}"]`);
         const close = async (id) => {
           await pane(id).getByTestId("v4-split-close").click();

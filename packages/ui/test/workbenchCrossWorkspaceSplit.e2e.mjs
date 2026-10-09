@@ -36,6 +36,7 @@ try {
     import {useZCodeSessionStore} from '../../../ui/src/store/zcodeSessionStore.ts';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
+    import {useScopedGitReview} from '../../../ui/src/hooks/useScopedGitReview.ts';
     import '../../../ui/src/styles.css';
     window.__React=React;window.__createPortal=createPortal;window.__TabContent=WorkbenchConversationTabContent;
     window.__SplitEntryHook=useV4SplitPaneEntry;
@@ -48,10 +49,13 @@ try {
       groups.getState().confirmRestoredPaneSession(group.id,'workspace-main');
       for(const id of Object.keys(group.panes))groups.getState().confirmRestoredPaneSession(group.id,id);
     }
-    const events={mounts:{},unmounts:{},nativeSelections:[],draftStarts:0};
+    const events={mounts:{},unmounts:{},nativeSelections:[],draftStarts:0,gitReads:[],gitReviews:[]};
     window.__split={project,tasks,conversations,panes,groups,events};
     const noop=()=>{};
-    const services:any={zcodeAgentService:{},zcodeSessionService:{}};
+    const services:any={zcodeAgentService:{},zcodeSessionService:{},gitService:{refresh:async ({workspacePath})=>{
+      events.gitReads.push(workspacePath);
+      return {summary:{workspacePath,repoRoot:workspacePath,autoRefreshWatchPaths:[],branchName:'scoped-pane:'+workspacePath,isGitAvailable:true,isRepository:true,isDirty:true,headRefType:'branch',ahead:0,behind:0},unstagedChanges:[{path:'fixture.ts',kind:'modified',section:'unstaged',added:24,removed:5}],stagedChanges:[]};
+    }},systemService:{info:async()=>({platform:'darwin'})},fileWatcherService:{watch:async()=>({id:'fixture'}),unwatch:async()=>{},onDynamicChange:()=>()=>({dispose:()=>{}})}};
     const platform:any={isWeb:true};
     const tabs=[{...project,label:'Project',workspacePurpose:'project'},{...tasks,label:'Tasks',workspacePurpose:'conversation'}];
     const gitStateFor=workspacePath=>({summary:{workspacePath,repoRoot:workspacePath,branchName:'scoped-shell:'+workspacePath,isGitAvailable:true,isRepository:true,isDirty:true,headRefType:'branch',ahead:0,behind:0},datasets:{staged:{sections:[]},unstaged:{sections:[]}}});
@@ -62,6 +66,8 @@ try {
       const [mainView,setMainView]=useState('chat');
       const sidebarContainerRef=useRef(null);
       const tabStore=useTabStoreApi();
+      const openGitReview=sourceId=>events.gitReviews.push({workspacePath:selection.workspacePath,sourceId});
+      const openScopedGitReview=useScopedGitReview({scope:{workspacePath},rpcReady:true,readOnly:false,onOpenGitReview:openGitReview});
       useEffect(()=>{
         for(const tab of tabs)tabStore.getState().ensureWorkspaceTab(tab.workspacePath,{workspacePurpose:tab.workspacePurpose});
         return tabStore.subscribe(state=>{const tab=state.tabs.find(tab=>tab.id===state.activeTabId);if(tab?.workspacePath)setWorkspacePath(tab.workspacePath)});
@@ -73,8 +79,8 @@ try {
         workspaceTabs={tabs} workspaceShellZCodeState={{draftFocusVersion:1,selectedProvider:'glm',activeTaskId:selection.id}} theme='zai-light'
         activeTaskId={selection.id} sidePaneOwnerId='fixture' projectName='Project' isWorkspaceVisible isDesktop isMacDesktop={false} isWindowsDesktop={false} isMacFullscreen={false}
         isSidebarVisible isTerminalOpen={false} isSidePaneOpen={false} isBrowserOpen={false} supportsEmbeddedBrowser={false} gitState={gitStateFor(selection.workspacePath)} activeGitSourceId='unstaged' sidePaneState={{tabs:[],activeTabId:null}}
-        handleToggleSidebar={noop} handleToggleSidePane={noop} handleRefreshGit={noop} handleOpenGitReview={noop} gitWorktreeReviewSourceId='unstaged' gitWorktreeChangeSummary={{added:12,removed:3}} setGitSelectedSourceId={noop} handleBrowserUrlChange={noop} activeTaskTitle={selection.id??''}
-        commandCenterCommands={[]} commandCenterWorkspaceTabs={[]} commandCenterOpen={false} onCommandCenterOpenChange={noop} onCommandCenterSearchResultHighlightRequest={noop} onCommandCenterOpenCodeViewer={noop}
+        handleToggleSidebar={noop} handleToggleSidePane={noop} handleRefreshGit={noop} handleOpenGitReview={openGitReview} handleOpenScopedGitReview={openScopedGitReview} gitWorktreeReviewSourceId='unstaged' gitWorktreeChangeSummary={{added:12,removed:3}} setGitSelectedSourceId={noop} handleBrowserUrlChange={noop} activeTaskTitle={selection.id??''}
+        activeTaskChangeSummary={{added:77,removed:0,files:[]}} commandCenterCommands={[]} commandCenterWorkspaceTabs={[]} commandCenterOpen={false} onCommandCenterOpenChange={noop} onCommandCenterSearchResultHighlightRequest={noop} onCommandCenterOpenCodeViewer={noop}
         remoteWorkspaceSessions={[]} reconnectingRemoteWorkspaceKeys={[]} remoteWorkspaceErrorByWorkspaceKey={{}} browserRestoreUrls={{}} onOpenWorkspace={noop} onCreateTask={()=>startDraft(selection.workspacePath)}
         onConnectRemote={noop} onSelectRemoteProject={noop} onCancelRemoteProject={noop} onReconnectRemoteWorkspace={noop}
         handleSelectTask={(path,id)=>{events.nativeSelections.push({path,id});useZCodeSessionStore.getState().setActiveTaskId(path,id);setWorkspacePath(path)}} handleStartDraftInWorkspace={startDraft}
@@ -137,12 +143,14 @@ try {
         const session=acpId??props.sessionId,agent=acpId?request?.agent:null;
         R.useEffect(()=>{const e=window.__split.events;e.mounts[props.paneId]=(e.mounts[props.paneId]??0)+1;return ()=>{e.unmounts[props.paneId]=(e.unmounts[props.paneId]??0)+1}},[]);
         R.useEffect(()=>{props.onAcpSessionChange?.(acpId?{id:acpId,agent,title:acpId}:null)},[acpId,agent,props.onAcpSessionChange]);
-        return R.createElement('section',{'data-testid':'conversation-'+props.paneId,'data-session':session??'','data-kind':acpId?'acp':'native','data-workspace':props.workspacePath,'data-native-id':props.sessionId??'','data-git-branch':props.gitSummary?.branchName??'','data-git-added':props.gitWorktreeChangeSummary?.added??'','data-git-refresh':Boolean(props.onRefreshGit),'data-git-review':Boolean(props.onOpenGitReview),className:'relative flex h-full min-h-0 min-w-0 flex-col'},
+        return R.createElement('section',{'data-testid':'conversation-'+props.paneId,'data-session':session??'','data-kind':acpId?'acp':'native','data-workspace':props.workspacePath,'data-native-id':props.sessionId??'','data-git-branch':props.gitSummary?.branchName??'','data-git-added':props.gitWorktreeChangeSummary?.added??'','data-task-added':props.activeTaskChangeSummary?.added??'','data-git-refresh':Boolean(props.onRefreshGit),'data-git-review':Boolean(props.onOpenGitReview),className:'relative flex h-full min-h-0 min-w-0 flex-col'},
           props.conversationTabContainer?window.__createPortal(R.createElement(window.__TabContent,{title:session??'新建任务',agent,model:'bigmodel-api/GLM-5.3',workspacePath:props.workspacePath}),props.conversationTabContainer):null,
           R.createElement(ConversationHeader,{title:session??'新建任务',onClosePane:props.onClosePane}),
           R.createElement('h2',{className:'truncate p-3 pt-12'},session??'新建任务'),
           R.createElement('p',{className:'truncate p-3'},session?'Synthetic conversation '+session:'Synthetic draft'),
           R.createElement('div',{className:'mt-auto flex min-w-0 gap-1'},
+            R.createElement('button',{'data-testid':'git-refresh-'+props.paneId,onClick:props.onRefreshGit},'Refresh Git'),
+            R.createElement('button',{'data-testid':'git-review-'+props.paneId,onClick:()=>props.onOpenGitReview?.('unstaged')},'Review Git'),
             R.createElement('button',{'data-testid':'split-draft-'+props.paneId,onClick:props.onSplitRight},'Split draft'),
             R.createElement('button',{'data-testid':'accepted-'+props.paneId,onClick:()=>props.onSessionCreated?.('created-'+props.paneId)},'Accepted')),
           R.createElement('textarea',{'data-testid':'draft-'+props.paneId,value:draft,onChange:event=>setDraft(event.target.value),className:'m-2 h-20 min-w-0 border border-border bg-input p-2'}));
@@ -224,28 +232,46 @@ try {
           element = await conversation("workspace-main").elementHandle();
         await page.getByTestId("split-" + target).click();
         await assertSession("pane-1", targetId, targetWorkspace, targetKind);
-        // 修复依据：共享面板只消费同一 workspace 的 shell Git 事实和操作，不能串到跨项目窗格。
+        // 修复依据：跨项目窗格读取自己的 Git 投影，不能因 Shell scope 不匹配而丢失入口。
         const shellWorkspace = (await snapshot()).selection.workspacePath;
         for (const [id, workspace] of [
           ["workspace-main", "/fixture/project"],
           ["pane-1", targetWorkspace],
         ]) {
           const sameWorkspace = workspace === shellWorkspace;
-          assert.equal(
-            await conversation(id).getAttribute("data-git-branch"),
-            sameWorkspace ? "scoped-shell:" + shellWorkspace : "",
+          await page.waitForFunction(
+            ({ id, branch }) =>
+              document.querySelector('[data-testid="conversation-' + id + '"]')?.dataset
+                .gitBranch === branch,
+            { id, branch: (sameWorkspace ? "scoped-shell:" : "scoped-pane:") + workspace },
           );
           assert.equal(
             await conversation(id).getAttribute("data-git-added"),
-            sameWorkspace ? "12" : "",
+            sameWorkspace ? "12" : "24",
           );
-          assert.equal(
-            await conversation(id).getAttribute("data-git-refresh"),
-            String(sameWorkspace),
-          );
-          assert.equal(
-            await conversation(id).getAttribute("data-git-review"),
-            String(sameWorkspace),
+          if (!sameWorkspace) {
+            assert.equal(await conversation(id).getAttribute("data-task-added"), "");
+            const beforeReads = await page.evaluate(() => window.__split.events.gitReads.length);
+            await page.getByTestId("git-refresh-" + id).dispatchEvent("click");
+            await page.waitForFunction(
+              (before) => window.__split.events.gitReads.length > before,
+              beforeReads,
+            );
+            assert.equal(
+              await page.evaluate(() => window.__split.events.gitReads.at(-1)),
+              workspace,
+            );
+          }
+        }
+        const foreignPane = targetWorkspace === shellWorkspace ? "workspace-main" : "pane-1";
+        const foreignWorkspace =
+          foreignPane === "workspace-main" ? "/fixture/project" : targetWorkspace;
+        if (targetWorkspace !== "/fixture/project") {
+          // 不触发鼠标焦点同步，独立验证 ACP 与 native 的 scoped 审查路径。
+          await page.getByTestId("git-review-" + foreignPane).dispatchEvent("click");
+          await page.waitForFunction(
+            (path) => window.__split.events.gitReviews.at(-1)?.workspacePath === path,
+            foreignWorkspace,
           );
         }
         await page.getByTestId("draft-pane-1").fill("保留任务会话草稿");

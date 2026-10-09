@@ -350,6 +350,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   handleOpenTerminalTab,
   handleToggleGit,
   handleOpenGitReview,
+  handleOpenScopedGitReview,
   handleToggleSidePane,
   handleOpenBrowserUrl,
   handleOpenCodeViewer,
@@ -2398,6 +2399,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                 }
                                 onRefreshGit={handleRefreshGit}
                                 onOpenGitReview={handleOpenGitReview}
+                                onOpenScopedGitReview={handleOpenScopedGitReview}
                                 onOpenWorkspacePath={onOpenWorkspacePath}
                                 allowWorktreeCreation={false}
                                 onPaneActiveSessionChange={handlePaneActiveSessionChange}
