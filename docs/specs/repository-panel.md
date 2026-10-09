@@ -182,6 +182,50 @@
 
 ## Ownership And Boundaries
 
+### Native issue creation
+
+- The new-issue dialog provides a Markdown Write/Preview editor, labels,
+  assignees and an open milestone, matching the supported forge create API.
+  GitLab also provides confidentiality and a calendar due date. Unsupported
+  fields are omitted. This increment does not implement issue templates,
+  file uploads, project boards or custom issue types.
+- The dialog owns the unsent title, body and selected attributes. Catalogs are
+  fresh, target-bound Host reads through getForgeIssueOptions. Read all bounded
+  pages (100 pages, 100 rows per page), in parallel per section. Section errors
+  are visible and retryable; unavailable fields are disabled, while title/body
+  creation remains usable. Never silently truncate an attribute catalog.
+- GitHub uses label names, assignee logins and milestone numbers; GitLab uses
+  label names, member IDs and milestone IDs; Gitea uses label IDs, assignee
+  logins and milestone IDs. Shared schemas validate bounded, unique selections
+  and real calendar dates. Provider adapters reject unsupported attribute writes
+  before HTTP. Selected attributes are included in the single create request;
+  no follow-up edits or automatic write retries. Label selection only offers
+  the existing catalog; this dialog has no new-label command.
+- Opening or previewing a draft never writes remotely. Preview uses the existing
+  safe web Markdown renderer and repository-relative links, without local file
+  navigation or authenticated draft-image reads. Empty bodies have a localized
+  placeholder. Keep keyboard, mobile-safe inputs, theme and locale support.
+- The description editor has a visible input border and surface at rest, with
+  a focus treatment inside the same boundary. Attribute multi-select triggers
+  show a chevron and a localized selection prompt. Labels show native color
+  dots in both the menu and the selected projection below the trigger; clicking
+  an already checked label removes it. Reuse RepositoryLabels for that projection.
+- Catalog reads follow dialog visibility, workspace identity, Host, remote and
+  account. Old replies never populate another target. Settings coverage preserves
+  drafts, pauses reads and reloads catalogs on return. Write admission remains
+  useForgeMutation; failure retains the complete draft and selections.
+
+```text
+dialog draft -> workspace hook -> target revalidation -> one provider POST
+dialog visible -> bound Host -> parallel paged catalogs -> guarded UI projection
+covered/old target reply -> ignored; explicit retry -> fresh read, never create
+```
+
+- Validation: provider endpoints/pagination and exact write payloads, unsupported
+  fields and invalid dates rejected before IO, section permission errors,
+  stale target rejection; E2E Write/Preview, attribute selection, failed-create
+  draft retention, settings/Host switches and narrow-screen containment.
+
 - The Git Host owns remote discovery, accepted account selection and API calls.
   Public typed operations are exposed through IGitService; shared Zod schemas
   validate requests at the service boundary. Credentials never cross RPC.
