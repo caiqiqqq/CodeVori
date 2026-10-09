@@ -2289,6 +2289,18 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                     handleSelectTaskInChat(workspacePath, sessionId)
                                   }
                                   conversationOptions={{
+                                    statusPanel: {
+                                      workspaceKey: gitState.workspaceKey,
+                                      gitSummary: gitState.summary,
+                                      gitDirtyFileCount,
+                                      gitWorktreeReviewSourceId,
+                                      gitWorktreeChangeSummary,
+                                      summaryPanelVariantOverride,
+                                      onSummaryPanelVariantOverrideChange,
+                                      onRefreshGit: handleRefreshGit,
+                                      onOpenGitReview: handleOpenGitReview,
+                                      onOpenWorkspacePath,
+                                    },
                                     isDesktop: isDesktop === true,
                                     focused: isWorkspaceVisible,
                                     telemetryVisible: isWorkspaceVisible,

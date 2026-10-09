@@ -466,4 +466,17 @@ desktop: 不连接连续会话流；mobile: 不连接 replay 流，不新建 Age
 
 合成 Host E2E 覆盖 API/ACP 未绑定对话的多图片、点击放大、关闭重开/重载、缺失及损坏后点击重试、Host 切换、延迟读取时切任务、文字反馈附件排除，以及深浅主题/桌面/320px；核对零 Agent 调用与任务写入。
 
+31. 已绑定的 API/ACP 待办会话复用普通聊天右上角状态小窗及展开/收起偏好。Git 摘要、行数、刷新和审查入口由宿主现有 `useGitRepository` 唯一管理，读取所选任务（或合并会话）的工作树；会话不另建 Git 读取。传入的 workspace key 必须与绑定目录匹配，切换任务/项目、迟到数据或远端 identity 不匹配时不显示旧 Git 事实，也不提供旧 Git 操作。未绑定任务保留原有准备态，干净仓库、不可用 Git 和 Office 模式遵循现有可见性规则。目标/计划等仍只来自当前 API/ACP 会话。点击更改打开同一工作树的审查面板，刷新复用宿主路径；小窗交互不重挂载会话、不丢草稿、不开始任务或发送 Agent 消息。桌面/窄屏及深浅主题无横向溢出。
+
+```text
+所选任务/合并会话 → 已保存绑定目录 → 宿主工具目标 → useGitRepository（唯一 Git owner）
+                                                        ↓ scoped facts/actions
+当前 API/ACP Host → 会话目标/计划 ─────────────→ workspace key 校验 → 共用状态小窗
+                                                                └→ 原审查/刷新入口
+```
+
+Git 面板扩展数据由开到关时不发新读取，也不能撤销当前工作区仍在途的读取；新工作区、服务端口更换、显式刷新、断连或卸载通过请求版本使旧结果失效。验收包含已打开审查标签后从 API 切到 ACP 的任务场景，不能停留在永久 loading 或丢失小窗。
+
+接通 UI 投影并修复宿主 Git 读取失效边界，不改变 Host owner/lease、事件顺序及 desktop-continuous / web-remote-replayable 链路；无数据时保持原有空态。
+
 服务测试使用临时 SQLite 和可控执行端；执行适配器测试核对真实命令参数。UI E2E 使用 synthetic Host，不调用付费模型或用户仓库。必须执行 typecheck、lint 和 architecture:check，并区分模拟验收与真实 Agent 运行证据。
