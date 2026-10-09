@@ -478,9 +478,12 @@ nodes:
     aliases:
       - 任务描述
       - 任务附件
+      - 任务输入框
     codeSeeds:
       - file: packages/ui/src/work-tasks/WorkTaskEditor.tsx
         symbol: WorkTaskEditor
+      - file: packages/ui/src/work-tasks/WorkTaskExecutionControls.tsx
+        symbol: WorkTaskExecutionControls
       - file: packages/ui/src/hooks/useWorkTaskModels.ts
         symbol: useWorkTaskModels
       - file: packages/ui/src/work-tasks/WorkTaskPromptField.tsx
@@ -491,6 +494,7 @@ nodes:
       - Selecting an Agent or creating a task only saves configuration; it does not create or prompt an Agent session.
       - Existing task session bindings cannot switch execution kind or ACP Agent on retry.
       - File collection and mentions never create, prewarm or authenticate an Agent; failed saves preserve the independent draft.
+      - Model and execution controls render inside the shared editor toolbar; wrapping is task-only and never changes conversation state or submission semantics.
   - id: shared-ui.chat-prompt-editor
     kind: shared-ui
     label: Existing shared chat prompt editor and attachment collection
@@ -689,7 +693,7 @@ edges:
     to: shared-ui.chat-prompt-editor
     type: shares-component
     rank: must-inspect
-    condition: Embedded task descriptions reuse the existing editor and collect attachments without an Agent session.
+    condition: Embedded task descriptions, attachments and wrapping execution controls reuse the existing input shell without an Agent session.
   - from: surface.work-task-editor
     to: service.composer-host-file-search
     type: options-from
