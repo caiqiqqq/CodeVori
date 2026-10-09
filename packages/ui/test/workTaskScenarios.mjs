@@ -11,6 +11,7 @@ import { exerciseWorkTaskCompletion } from "./workTaskCompletionAssertions.mjs";
 import { exerciseWorkTaskNavigation } from "./workTaskNavigationAssertions.mjs";
 import { exerciseWorkTaskSaveRefresh } from "./workTaskSaveRefreshAssertions.mjs";
 import { exerciseWorkTaskArchiveWorktree } from "./workTaskArchiveWorktreeAssertions.mjs";
+import { exerciseWorkTaskComposer } from "./workTaskComposerAssertions.mjs";
 
 export {
   exerciseWorkTaskPromptAttachments,
@@ -24,6 +25,7 @@ export {
   exerciseWorkTaskCompletion,
 };
 export const workTaskScenarios = {
+  composer: exerciseWorkTaskComposer,
   "archive-worktree": exerciseWorkTaskArchiveWorktree,
   navigation: exerciseWorkTaskNavigation,
   "save-refresh": exerciseWorkTaskSaveRefresh,

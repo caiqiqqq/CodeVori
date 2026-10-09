@@ -44,11 +44,11 @@ function fitComposerToolbar(root: HTMLElement) {
   root.dataset.composerModelIcon = "true";
 }
 
-export function useComposerToolbarFit() {
+export function useComposerToolbarFit(enabled = true) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const root = ref.current;
-    if (!root) return;
+    if (!root || !enabled) return;
     const update = () => {
       if (!root.parentElement || root.getBoundingClientRect().width <= 0) return;
       // 在不可见副本上尝试展开，避免真实按钮测量时来回移动、丢失 hover 或关闭 Tooltip。
@@ -99,6 +99,6 @@ export function useComposerToolbarFit() {
       resize?.disconnect();
       mutations.disconnect();
     };
-  }, []);
+  }, [enabled]);
   return ref;
 }
