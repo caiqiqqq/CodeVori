@@ -1,60 +1,53 @@
 import type { IAcpService } from "@zcode/services";
-import type { AcpPromptInput, AcpSession, AcpWorkspace } from "@zcode/shared";
+import {
+  acpSessionSchema,
+  type AcpPromptInput,
+  type AcpSession,
+  type AcpWorkspace,
+} from "@zcode/shared";
 
-function wasAdmitted(session: AcpSession, commandId: string): boolean {
-  // 修复依据：排队快照与已发送 user row 都是同一 Host 的持久接受事实。
-  return (
-    session.entries.some((entry) => entry.id === `user:${commandId}`) ||
-    Boolean(
-      session.queue?.items.some((item) => item.commandId === commandId) ||
-      session.queue?.discardedCommandIds?.includes(commandId),
-    )
-  );
-}
+export const ACP_HOST_UPGRADE_REQUIRED = "ACP_HOST_UPGRADE_REQUIRED";
 
-/** Wait for Host admission, not the Agent's potentially long session/prompt turn. */
-export function waitForAcpPromptAdmission(
-  service: Pick<IAcpService, "onDynamicSessionChanged" | "prompt" | "read">,
+function acceptedSnapshot(
+  value: unknown,
   workspace: AcpWorkspace,
   input: AcpWorkspace & { id: string } & AcpPromptInput,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (error?: unknown) => {
-      if (settled) return;
-      settled = true;
-      subscription.dispose();
-      if (error !== undefined) reject(error);
-      else resolve();
-    };
-    // 修复原因：Host prompt RPC 要等 Agent 整轮结束；先订阅持久化用户行的 revision，
-    // 以 Host admission 为清空输入的边界，避免把运行中失败当作未发送的草稿。
-    const subscription = service.onDynamicSessionChanged(workspace)((change) => {
-      if (
-        change.kind === "updated" &&
-        change.session.id === input.id &&
-        wasAdmitted(change.session, input.commandId)
-      ) {
-        finish();
-      }
-    });
+): AcpSession {
+  const session = acpSessionSchema.parse(value);
+  const matchesTarget =
+    session.id === input.id &&
+    session.workspacePath === workspace.workspacePath &&
+    (session.workspaceIdentity?.trim() || session.workspacePath) ===
+      (workspace.workspaceIdentity?.trim() || workspace.workspacePath) &&
+    session.remoteSessionId === workspace.remoteSessionId;
+  // 修复依据：只有同一 Host 持久化的 user row、排队项或删除凭证可以确认这次 command。
+  const commandId = input.commandId.trim();
+  const admitted =
+    session.entries.some((entry) => entry.id === `user:${commandId}`) ||
+    session.queue.items.some((item) => item.commandId === commandId) ||
+    session.queue.discardedCommandIds?.includes(commandId);
+  if (!matchesTarget || !admitted) throw new Error("ACP prompt was not admitted");
+  return session;
+}
+
+/** Direct durable Host ACK; session notifications are projections, never the send completion boundary. */
+export async function waitForAcpPromptAdmission(
+  service: Pick<IAcpService, "submitPrompt" | "read">,
+  workspace: AcpWorkspace,
+  input: AcpWorkspace & { id: string } & AcpPromptInput,
+): Promise<AcpSession> {
+  try {
+    return acceptedSnapshot(await service.submitPrompt(input), workspace, input);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    // 旧远端缺少接口时不能回退整轮 prompt，更不能生成另一个 command 自动重发。
+    if (/Method not found: submitPrompt|submitPrompt is not a function/.test(detail))
+      throw new Error(ACP_HOST_UPGRADE_REQUIRED);
+    // ACK 丢失不能证明未接受；读权威快照对账，仍未知时保留原 commandId 和草稿。
     try {
-      void service.prompt(input).then(
-        (session) => {
-          if (wasAdmitted(session, input.commandId)) finish();
-          else finish(new Error("ACP prompt was not admitted"));
-        },
-        (error: unknown) => {
-          // 修复原因：Agent 已接纳后报错时，RPC reject 可能比 renderer 的 revision 通知先到。
-          // 先读 Host 权威快照，避免把已发送正文错误地留在草稿中。
-          void service.read({ ...workspace, id: input.id }).then(
-            (session) => finish(wasAdmitted(session, input.commandId) ? undefined : error),
-            () => finish(error),
-          );
-        },
-      );
-    } catch (error) {
-      finish(error);
+      return acceptedSnapshot(await service.read({ ...workspace, id: input.id }), workspace, input);
+    } catch {
+      throw error;
     }
-  });
+  }
 }

@@ -10,8 +10,12 @@
 
 ## 所有者、接口与持久化
 
+- `IAcpService.submitPrompt` 与 `prompt` 共用同一 Host admission 路径、commandId 幂等键与执行任务。`submitPrompt` 在 user row 或队列项成功持久化后返回严格校验的 `AcpSession`，不等待 Agent 整轮结束；`prompt` 保留整轮完成语义供工作任务、委派及内部通知使用。
+- Composer 以 `submitPrompt` 返回的匹配会话/commandId 快照为接受凭证，实时事件只更新投影。通知丢失时也立即结束发送等待、清理本次冻结的草稿和附件；之后输入的内容、其它分屏及其它 workspace 不被清理。准备中重复提交复用同一接受 Promise；停止、移除、进程退出和 Host 关闭结束尚未接受的等待。
+- 接受前校验或落盘失败保留草稿；接受后 Agent 的错误属于当前轮。接受 ACK 丢失时读取同一 Host 权威快照对账，结果未知保留草稿与原 commandId，不自动重放。旧 Host 缺少 `submitPrompt` 时提示升级并保留草稿，不回退到等待整轮的旧接口。
+
 - `createAcpService` 是 accepted queue、dispatch reservation、revision 和取消栅栏的唯一 Host owner。每 session 串行短 admission/队列操作；长 Agent prompt 不持锁。Renderer 仅持编辑表单/未提交草稿，读取 `AcpSession.queue`。
-- shared 新增有默认空队列的 ACP schema；旧 JSON 和旧远端快照可以读取。`IAcpService.prompt` 是唯一用户提交入口，commandId 同时用于排队和 user entry 幂等。
+- shared 新增有默认空队列的 ACP schema；旧 JSON 和旧远端快照可以读取。`IAcpService.submitPrompt` 是 Composer 提交入口，与内部 `prompt` 共用唯一 admission；commandId 同时用于排队和 user entry 幂等。
 - 同一 Host RPC 新增 delete/edit/reorder/sendQueuedNow/setQueueAutoDrain 接口，严格解析参数，并核验 workspace identity/path/session。删除和编辑失败不得伪造成功。reserved 项保持可见直到已发送 user row 与出队在同一次快照提交中落盘。
 - 删除保留 commandId 接受凭证，避免原 prompt 的迟到重试重新创建已删除项；重复删除可安全重试。
 - 在重启恢复时，剩余项重置 queued、autoDrain=false；已落盘 user row 不自动重发，即使进程在发送边界崩溃。断开的旧 generation、迟到 stop/回复不得覆盖新轮或重新消费输入。
@@ -23,9 +27,9 @@ sequenceDiagram
   participant Host as ACP Host唯一所有者
   participant Store as 会话快照及附件副本
   participant Agent as ACP Agent
-  UI->>Host: prompt(commandId, input)
+  UI->>Host: submitPrompt(commandId, input)
   Host->>Store: 校验副本 + queued快照持久化
-  Host-->>UI: revision / admission（清空本次草稿）
+  Host-->>UI: 持久接受快照（清空本次草稿、结束发送等待）
   Agent-->>Host: 当前轮完成
   Host->>Store: 预留队首
   Host->>Store: user row与出队原子提交
@@ -37,7 +41,8 @@ sequenceDiagram
 
 - fake ACP Host 测试 running 入队、FIFO、并发提交、commandId 重试、预留期间不能编辑、附件不可变及磁盘失败回滚。
 - stop/cancel、error/exit、移除、旧结果、Host 重启、busy 恢复、立即发送、排序、删除和编辑均不重复执行、不丢掉剩余项；跨 workspace/session 的请求拒绝。
-- admission 测试同时识别排队快照和 user row；事件/ACK 丢失通过 read 对账，不用 timer 推测接受。
+- admission 测试同时识别排队快照和 user row；丢失全部实时通知且 Agent 未完成时接受确认仍返回，旧 prompt 仍等待整轮；ACK 丢失通过 read 对账，不用 timer 推测接受。覆盖准备期间并发相同 commandId、落盘失败、取消/移除/退出/关闭与迟到错误。
+- 真实 RPC + composer 验证接受通知丢失仍释放发送按钮；同 Agent 双分屏、Desktop continuous 与 Mobile reconnect read 均不重复执行，不串清草稿。
 - E2E 使用真实 composer/queue panel 与 fake Host，在 1280/375px 提交 running 输入、编辑/删除/立即发送/恢复及重连快照，不调用真实 Agent。
 - 执行相关 Node 测试、E2E、根 typecheck/lint、changed architecture 与改动文件格式检查；报告实际结果。
 
@@ -48,3 +53,11 @@ sequenceDiagram
 - 根 typecheck 通过；Lint 0 errors、72 个存量 warnings；改动文件格式检查及 `git diff --check` 通过。架构 current/baseline/new 均为 0。
 - 修改沿用 shared/services/ui 模块，源码净增 699 行。Host 仍是唯一队列/admission owner，附件 IO 属于既有 store，桌面连续事件和手机重连 read 使用同一持久 revision，无 Renderer 接受队列或新 runtime。
 - 验证的是本地源码与隔离 fixture，未重新打包/替换已安装应用。
+
+## 发送接受确认验证（2026-10-09）
+
+- Node 24.14.0、pnpm 10.33.2。相关 Host/UI/附件/工作任务/委派/工作流/用量回归共 97 项通过，包括真实 RPC 无通知接受、整轮完成兼容、准备中重复 commandId、落盘失败、诊断失败、接受后模型错误及停止/移除/退出/关闭生命周期。
+- 两组真实 composer E2E 通过：队列操作与重连、双分屏真实 RPC 无接受通知、迟到 ACK 保留新输入、continuous/replayable attachment 场景及 1280/375px 亮暗主题。Synthetic Host 不调用真实 Agent。
+- 根 typecheck 通过；Lint 0 errors、72 个存量 warnings；changed architecture current/baseline/new 均为 0；改动格式及 `git diff --check` 通过。功能图 YAML 解析、54 个唯一节点、89 条关系端点及 ACP seed 路径验证通过。
+- 隔离生产 Host/Renderer 构建通过，产物包含 `submitPrompt` 与升级提示；存在构建 chunk size/plugin timing 提示。未打包、替换已安装应用、提交或推送。
+- GitHub 连接失败导致 freshness fetch 未完成；cached-ref freshness 相对 origin/main ahead 17 / behind 0，不声称实时远端同步。

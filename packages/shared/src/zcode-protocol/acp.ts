@@ -275,6 +275,12 @@ export const acpPromptInputSchema = z.object({
 });
 export type AcpPromptInput = z.input<typeof acpPromptInputSchema>;
 
+/** The same strict target/input contract is used by acceptance and whole-turn RPCs. */
+export const acpPromptSubmissionSchema = acpWorkspaceSchema
+  .extend({ id: z.string().min(1), ...acpPromptInputSchema.shape })
+  .strict();
+export type AcpPromptSubmission = z.input<typeof acpPromptSubmissionSchema>;
+
 export const ACP_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 export const ACP_ATTACHMENT_READ_CHUNK_BYTES = 128 * 1024;
 /** Host-owned content refs, never paths or inline content in session snapshots. */

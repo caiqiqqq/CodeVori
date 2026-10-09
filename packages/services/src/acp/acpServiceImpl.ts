@@ -25,6 +25,7 @@ import {
   acpDiagnosticEventSchema,
   acpExecutionTraceChangedSchema,
   acpPromptInputSchema,
+  acpPromptSubmissionSchema,
   acpQueueItemInputSchema,
   acpQueueEditInputSchema,
   acpQueueReorderInputSchema,
@@ -46,6 +47,7 @@ import {
   type AcpExecutionTraceChanged,
   type AcpStopReason,
   type AcpSession,
+  type AcpPromptInput,
   type AcpSessionChanged,
   type AcpWorkspace,
   type AcpUsageReport,
@@ -204,6 +206,34 @@ export function createAcpService(
   const queueGate = new AcpQueueGate();
   const queueTasks = new Map<string, Promise<void>>();
   const promptTasks = new Map<string, Promise<AcpSession>>();
+  // 修复原因：Renderer 不能依赖实时通知或整轮 RPC 判断接受；与同一执行任务共享持久接受凭证。
+  const promptAdmissions = new Map<
+    string,
+    {
+      sessionId: string;
+      commandId: string;
+      promise: Promise<AcpSession>;
+      resolve(snapshot: AcpSession): void;
+      reject(error: unknown): void;
+    }
+  >();
+  const beginAdmission = (session: AcpSession, commandId: string) => {
+    let resolve!: (snapshot: AcpSession) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<AcpSession>((accepted, failed) => {
+      resolve = accepted;
+      reject = failed;
+    });
+    // 内部 prompt 不消费接受 Promise，准备失败仍不能产生未处理 rejection。
+    void promise.catch(() => {});
+    const admission = { sessionId: session.id, commandId, promise, resolve, reject };
+    promptAdmissions.set(`${session.id}:${commandId}`, admission);
+    return admission;
+  };
+  const rejectAdmissions = (sessionId: string, error: Error) => {
+    for (const admission of promptAdmissions.values())
+      if (admission.sessionId === sessionId) admission.reject(error);
+  };
   const internalResults = new Set<string>();
   const delegationRegistrations = new Map<string, { revoke(): void; canDelegate?: boolean }>();
   const stopping = new Set<string>();
@@ -858,6 +888,7 @@ export function createAcpService(
           const commandId = active.get(session.id);
           active.delete(session.id);
           activeTokens.delete(session.id);
+          rejectAdmissions(session.id, new Error(reason));
           queueTasks.delete(session.id);
           scheduleWorkflowNotifications(session);
           void mutate(session, () => {
@@ -1405,6 +1436,10 @@ export function createAcpService(
             });
           });
           admitted = true;
+          // 接受凭证来自成功落盘的同一快照；后续诊断、模型重连和整轮执行都不阻塞输入框。
+          promptAdmissions
+            .get(`${session.id}:${commandId}`)
+            ?.resolve(acpSessionSchema.parse(structuredClone(session)));
           finishAttachmentIO();
           await appendDiagnostic(
             session,
@@ -1412,8 +1447,8 @@ export function createAcpService(
             admittedAt,
           );
         } catch (error) {
-          // 首次落盘失败时恢复内存草稿，保持原文可重试且历史不会出现半条消息。
-          Object.assign(session, beforeAdmission);
+          // 修复原因：user row 落盘后已返回接受凭证；诊断写入失败属于该轮，不能回滚已接受正文。
+          if (!admitted) Object.assign(session, beforeAdmission);
           throw error;
         }
       });
@@ -1459,6 +1494,7 @@ export function createAcpService(
         }
       });
     } catch (error) {
+      if (!admitted) promptAdmissions.get(`${session.id}:${commandId}`)?.reject(error);
       const interruptedAt = Date.now();
       await queueGate.run(session.id, async () => {
         if (ownsRun()) {
@@ -1503,6 +1539,10 @@ export function createAcpService(
       });
       // 用户已停止本轮或旧进程已退出：结果由 Host 快照决定，不重复报告取消为发送失败。
     } finally {
+      if (!admitted)
+        promptAdmissions
+          .get(`${session.id}:${commandId}`)
+          ?.reject(new Error("ACP prompt was not admitted"));
       // stop 后新轮可先完成，不能覆盖旧轮 IO；删除/关闭必须等到所有未接受副本清理完。
       try {
         if (!admitted) await attachmentStore.discard(session.id, attachmentGroup);
@@ -1537,6 +1577,7 @@ export function createAcpService(
         session.queue.pauseReason = "stopped";
         for (const item of session.queue.items) item.state = "queued";
       });
+      rejectAdmissions(session.id, new Error("ACP prompt stopped before admission"));
       if (!hadActive) return;
       settlePermission(session.id, stoppedAt);
       await mutate(session, () => {
@@ -1560,6 +1601,80 @@ export function createAcpService(
       if (hadActive) detach(session.id);
       stopping.delete(session.id);
     }
+  };
+
+  // 两个公开接口只选择等待边界，共用唯一的校验、幂等、串行 admission 和 Agent 执行路径。
+  const dispatchPrompt = async (
+    input: AcpWorkspace & { id: string } & AcpPromptInput,
+    observeAdmission?: (admission: Promise<AcpSession>) => void,
+  ) => {
+    const submission = acpPromptSubmissionSchema.parse(input);
+    const session = await scoped(submission);
+    if (stopping.has(session.id) || configuring.has(session.id))
+      throw new Error("ACP session is running");
+    const prompt = acpPromptInputSchema.parse(submission);
+    prompt.commandId = prompt.commandId.trim();
+    if (
+      !prompt.commandId ||
+      (!prompt.text.trim() && !prompt.attachments.length && !prompt.workspaceFiles.length)
+    )
+      throw new Error("ACP prompt is empty");
+    const receipt = await queueGate.run(session.id, async () => {
+      ensureOpen(session);
+      if (
+        session.entries.some((entry) => entry.id === `user:${prompt.commandId}`) ||
+        session.queue.items.some((item) => item.commandId === prompt.commandId) ||
+        session.queue.discardedCommandIds?.includes(prompt.commandId)
+      )
+        return { snapshot: structuredClone(session) };
+      const existing = promptTasks.get(`${session.id}:${prompt.commandId}`);
+      if (existing) {
+        const admission = promptAdmissions.get(`${session.id}:${prompt.commandId}`)!.promise;
+        observeAdmission?.(admission);
+        return { turn: existing, admission };
+      }
+      if (stopping.has(session.id) || configuring.has(session.id))
+        throw new Error("ACP session is running");
+      if (
+        internalResults.has(prompt.commandId) &&
+        (active.has(session.id) || session.queue.items.length)
+      )
+        throw new Error("ACP session is running");
+      if (active.has(session.id) || session.status === "running" || session.queue.items.length) {
+        const key = `${session.id}:${prompt.commandId}`;
+        const admission = beginAdmission(session, prompt.commandId);
+        observeAdmission?.(admission.promise);
+        try {
+          await enqueuePrompt(session, prompt);
+          const snapshot = acpSessionSchema.parse(structuredClone(session));
+          admission.resolve(snapshot);
+          return { snapshot };
+        } catch (error) {
+          admission.reject(error);
+          throw error;
+        } finally {
+          promptAdmissions.delete(key);
+        }
+      }
+      active.set(session.id, prompt.commandId);
+      activeTokens.set(session.id, {});
+      const key = `${session.id}:${prompt.commandId}`;
+      const admission = beginAdmission(session, prompt.commandId).promise;
+      observeAdmission?.(admission);
+      const turn = executePrompt(session, prompt);
+      promptTasks.set(key, turn);
+      void turn
+        .finally(() => {
+          if (promptTasks.get(key) === turn) {
+            promptTasks.delete(key);
+            promptAdmissions.delete(key);
+          }
+        })
+        .catch(() => {});
+      return { turn, admission };
+    });
+    scheduleQueueDrain(session);
+    return receipt;
   };
 
   const service: IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } = {
@@ -1688,7 +1803,21 @@ export function createAcpService(
       return searchAcpSessions(await listScopedSessions(query), query);
     },
     async read(input) {
-      return structuredClone(await scoped(input));
+      const session = await scoped(input);
+      const snapshot = structuredClone(session);
+      // 修复原因：只等待快照里尚在提交的接受事实，不占 queue gate 等待 stop/cancel。
+      // 否则取消 RPC 等 Agent 时，重连 read 也会被锁住；未落盘的 user row 又不能当 ACK。
+      await Promise.all(
+        [...promptAdmissions.values()]
+          .filter(
+            (admission) =>
+              admission.sessionId === session.id &&
+              (snapshot.entries.some((entry) => entry.id === `user:${admission.commandId}`) ||
+                snapshot.queue.items.some((item) => item.commandId === admission.commandId)),
+          )
+          .map((admission) => admission.promise),
+      );
+      return snapshot;
     },
     async readAttachment(input) {
       const params = acpAttachmentReadInputSchema.parse(input);
@@ -1921,51 +2050,18 @@ export function createAcpService(
         listener.dispose();
       }
     },
-    async prompt(input) {
-      const session = await scoped(input);
-      if (stopping.has(session.id) || configuring.has(session.id))
-        throw new Error("ACP session is running");
-      const prompt = acpPromptInputSchema.parse(input);
-      prompt.commandId = prompt.commandId.trim();
-      if (
-        !prompt.commandId ||
-        (!prompt.text.trim() && !prompt.attachments.length && !prompt.workspaceFiles.length)
-      )
-        throw new Error("ACP prompt is empty");
-      const receipt = await queueGate.run(session.id, async () => {
-        ensureOpen(session);
-        if (
-          session.entries.some((entry) => entry.id === `user:${prompt.commandId}`) ||
-          session.queue.items.some((item) => item.commandId === prompt.commandId) ||
-          session.queue.discardedCommandIds?.includes(prompt.commandId)
-        )
-          return { snapshot: structuredClone(session) };
-        const existing = promptTasks.get(`${session.id}:${prompt.commandId}`);
-        if (existing) return { turn: existing };
-        if (stopping.has(session.id) || configuring.has(session.id))
-          throw new Error("ACP session is running");
-        if (
-          internalResults.has(prompt.commandId) &&
-          (active.has(session.id) || session.queue.items.length)
-        )
-          throw new Error("ACP session is running");
-        if (active.has(session.id) || session.status === "running" || session.queue.items.length) {
-          await enqueuePrompt(session, prompt);
-          return { snapshot: structuredClone(session) };
-        }
-        active.set(session.id, prompt.commandId);
-        activeTokens.set(session.id, {});
-        const turn = executePrompt(session, prompt);
-        const key = `${session.id}:${prompt.commandId}`;
-        promptTasks.set(key, turn);
-        void turn
-          .finally(() => {
-            if (promptTasks.get(key) === turn) promptTasks.delete(key);
-          })
-          .catch(() => {});
-        return { turn };
+    submitPrompt(input) {
+      // 关闭可先终结接受等待，附件复制仍由原 gate 收尾；不等待未接受 IO 才释放输入框。
+      return new Promise<AcpSession>((resolve, reject) => {
+        void dispatchPrompt(input, (admission) => {
+          void admission.then(resolve, reject);
+        }).then((receipt) => {
+          if (receipt.snapshot) resolve(receipt.snapshot);
+        }, reject);
       });
-      scheduleQueueDrain(session);
+    },
+    async prompt(input) {
+      const receipt = await dispatchPrompt(input);
       return receipt.turn ? receipt.turn : receipt.snapshot!;
     },
     async deleteQueueItem(input) {
@@ -2211,6 +2307,7 @@ export function createAcpService(
         if (input.provisionalOnly && (!session.provisional || active.has(session.id))) return false;
         workflowHost.stopSession(session.id);
         removed.add(session.id);
+        rejectAdmissions(session.id, new Error("ACP session removed before admission"));
         active.delete(session.id);
         activeTokens.delete(session.id);
         detach(session.id);
@@ -2268,6 +2365,8 @@ export function createAcpService(
     },
     disposeAll() {
       disposed = true;
+      for (const admission of promptAdmissions.values())
+        admission.reject(new Error("ACP service closed before admission"));
       // Host 换代即撤销全部旧轮消费权；迟到 rejection 不能再写入新 Host 已恢复的快照。
       active.clear();
       activeTokens.clear();

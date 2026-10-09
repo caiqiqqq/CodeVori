@@ -1,126 +1,134 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { acpSessionSchema, type AcpSession } from "@zcode/shared";
 import { waitForAcpPromptAdmission } from "../src/v4/acpPromptAdmission.ts";
-import type { IAcpService } from "@zcode/services";
-import type { AcpSessionChanged } from "@zcode/shared";
 
-const workspace = { workspacePath: "/tmp/acp-admission" };
-const input = {
-  id: "session-one",
-  commandId: "command-one",
-  text: "first turn",
-  attachments: [],
-  workspaceFiles: [],
-};
+const workspace = { workspacePath: "/tmp/acp-admission", workspaceIdentity: "remote:admission" };
+const input = { ...workspace, id: "session-one", commandId: "command-one", text: "first turn" };
+const snapshot = (patch: Partial<AcpSession> = {}) =>
+  acpSessionSchema.parse({
+    ...workspace,
+    id: input.id,
+    agent: "codex",
+    acpSessionId: "native-one",
+    status: "running",
+    revision: 1,
+    title: "test",
+    entries: [{ id: `user:${input.commandId}`, kind: "user", text: input.text }],
+    pendingPermission: null,
+    error: null,
+    ...patch,
+  });
 
-function harness() {
-  let listener: ((change: AcpSessionChanged) => void) | undefined;
-  let resolveTurn!: (value: unknown) => void;
-  let rejectTurn!: (error: Error) => void;
-  let disposed = false;
-  let admittedOnRead = false;
-  let queuedOnRead = false;
+test("Host acceptance settles with all notifications lost and the Agent still running", async () => {
+  let calls = 0;
+  const receipt = snapshot();
   const service = {
-    onDynamicSessionChanged: () => (callback: typeof listener) => {
-      listener = callback;
-      return {
-        dispose: () => {
-          disposed = true;
-          listener = undefined;
-        },
-      };
+    async submitPrompt() {
+      calls++;
+      return receipt;
     },
-    prompt: () =>
-      new Promise((resolve, reject) => {
-        resolveTurn = resolve;
-        rejectTurn = reject;
-      }),
-    read: async () => ({
-      entries: admittedOnRead ? [{ id: `user:${input.commandId}` }] : [],
-      queue: { items: queuedOnRead ? [{ commandId: input.commandId }] : [] },
-    }),
-  } as unknown as Pick<IAcpService, "onDynamicSessionChanged" | "prompt" | "read">;
-  const emit = (sessionId: string, commandId: string) =>
-    listener?.({
-      kind: "updated",
-      session: {
-        id: sessionId,
-        entries: [{ id: `user:${commandId}`, kind: "user", text: input.text }],
-      },
-    } as AcpSessionChanged);
-  return {
-    service,
-    emit,
-    resolveTurn: () => resolveTurn({ entries: [] }),
-    rejectTurn: (error: Error) => rejectTurn(error),
-    markAccepted: () => {
-      admittedOnRead = true;
+    async read() {
+      throw new Error("no recovery needed");
     },
-    emitQueued: () =>
-      listener?.({
-        kind: "updated",
-        session: { id: input.id, entries: [], queue: { items: [{ commandId: input.commandId }] } },
-      } as AcpSessionChanged),
-    markQueued: () => {
-      queuedOnRead = true;
+    prompt() {
+      throw new Error("must not wait for the Agent turn");
     },
-    get disposed() {
-      return disposed;
+    onDynamicSessionChanged() {
+      throw new Error("all notifications unavailable");
     },
   };
-}
-
-test("ACP input settles on Host admission while the Agent turn is still running", async () => {
-  const host = harness();
-  const admitted = waitForAcpPromptAdmission(host.service, workspace, input);
-  host.emit("another-session", input.commandId);
-  host.emit(input.id, "another-command");
-  assert.equal(host.disposed, false);
-  host.emit(input.id, input.commandId);
-  await admitted;
-  assert.equal(host.disposed, true);
-  // A later model failure belongs to the accepted turn, not to the composer draft.
-  host.rejectTurn(new Error("Agent interrupted"));
+  assert.deepEqual(await waitForAcpPromptAdmission(service, workspace, input), receipt);
+  assert.equal(calls, 1);
 });
 
-test("ACP queued input settles before any user row or Agent completion", async () => {
-  const host = harness();
-  const admitted = waitForAcpPromptAdmission(host.service, workspace, input);
-  host.emitQueued();
-  await admitted;
-  assert.equal(host.disposed, true);
-  host.rejectTurn(new Error("later RPC failure"));
+test("queued and discarded commands are durable acceptance receipts", async () => {
+  for (const queue of [
+    {
+      items: [
+        {
+          commandId: input.commandId,
+          text: input.text,
+          attachments: [],
+          workspaceFiles: [],
+          state: "queued",
+          createdAt: 1,
+        },
+      ],
+      autoDrain: true,
+    },
+    { items: [], autoDrain: false, discardedCommandIds: [input.commandId] },
+  ]) {
+    const receipt = snapshot({ entries: [], queue: queue as AcpSession["queue"] });
+    const service = { submitPrompt: async () => receipt, read: async () => receipt };
+    assert.deepEqual(await waitForAcpPromptAdmission(service, workspace, input), receipt);
+  }
 });
 
-test("ACP queued admission survives a lost event and ambiguous RPC reply", async () => {
-  const host = harness();
-  const admitted = waitForAcpPromptAdmission(host.service, workspace, input);
-  host.markQueued();
-  host.rejectTurn(new Error("lost queue ACK"));
-  await admitted;
-  assert.equal(host.disposed, true);
+test("lost ACK recovers accepted input from the same Host without resubmitting", async () => {
+  let calls = 0;
+  const receipt = snapshot();
+  const service = {
+    async submitPrompt() {
+      calls++;
+      throw new Error("connection closed");
+    },
+    read: async () => receipt,
+  };
+  assert.deepEqual(await waitForAcpPromptAdmission(service, workspace, input), receipt);
+  assert.equal(calls, 1);
 });
 
-test("ACP validation rejection preserves the unadmitted draft", async () => {
-  const host = harness();
-  const admitted = waitForAcpPromptAdmission(host.service, workspace, input);
-  host.rejectTurn(new Error("unsupported attachment"));
-  await assert.rejects(admitted, /unsupported attachment/);
-  assert.equal(host.disposed, true);
+test("validation failure and unknown ACK retain the unaccepted draft", async () => {
+  for (const error of [new Error("unsupported attachment"), new Error("connection closed")]) {
+    const service = {
+      submitPrompt: async () => {
+        throw error;
+      },
+      read: async () => snapshot({ entries: [] }),
+    };
+    await assert.rejects(waitForAcpPromptAdmission(service, workspace, input), error);
+  }
 });
 
-test("an RPC error after Host admission still clears the accepted input", async () => {
-  const host = harness();
-  const admitted = waitForAcpPromptAdmission(host.service, workspace, input);
-  host.markAccepted();
-  host.rejectTurn(new Error("Agent interrupted before notification"));
-  await admitted;
-  assert.equal(host.disposed, true);
+test("a different session, command, identity, path or attachment route cannot acknowledge input", async () => {
+  for (const patch of [
+    { id: "another-session" },
+    { workspaceIdentity: "remote:other" },
+    { workspacePath: "/tmp/other" },
+    { remoteSessionId: "another-attachment" },
+    { entries: [] },
+  ]) {
+    const receipt = snapshot(patch);
+    const service = { submitPrompt: async () => receipt, read: async () => receipt };
+    await assert.rejects(waitForAcpPromptAdmission(service, workspace, input), /not admitted/);
+  }
 });
 
-test("idempotent completed reply counts only if the Host contains the matching user entry", async () => {
-  const host = harness();
-  const admitted = waitForAcpPromptAdmission(host.service, workspace, input);
-  host.resolveTurn();
-  await assert.rejects(admitted, /not admitted/);
+test("malformed acceptance replies fail runtime schema validation", async () => {
+  const service = {
+    submitPrompt: async () => ({ entries: [] }) as unknown as AcpSession,
+    read: async () => {
+      throw Error("offline");
+    },
+  };
+  await assert.rejects(waitForAcpPromptAdmission(service, workspace, input));
+});
+
+test("old Hosts explicitly require upgrade and never fall back to the long prompt RPC", async () => {
+  const service = {
+    async submitPrompt() {
+      throw new Error("Method not found: submitPrompt");
+    },
+    async read() {
+      throw new Error("must not recover unsupported method");
+    },
+    prompt() {
+      throw new Error("must not submit to old endpoint");
+    },
+  };
+  await assert.rejects(
+    waitForAcpPromptAdmission(service, workspace, input),
+    /ACP_HOST_UPGRADE_REQUIRED/,
+  );
 });

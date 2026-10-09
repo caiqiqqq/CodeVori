@@ -7,6 +7,8 @@ import type { ContentBlock } from "@agentclientprotocol/sdk";
 import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
 import { isAcpHistorySession, type AcpStopReason } from "@zcode/shared";
 import { AcpAttachmentStore } from "../src/acp/acpAttachmentStore.js";
+import { ChannelClient, ChannelServer, ProxyChannel, createQueuePair } from "@zcode/rpc";
+import type { IAcpService } from "../src/acp/acpService.js";
 
 const workspace = { workspacePath: "/tmp/queue-workspace", workspaceIdentity: "remote:queue" };
 async function waitFor(check: () => unknown | Promise<unknown>) {
@@ -97,6 +99,216 @@ async function fixture(options: NonNullable<Parameters<typeof createAcpService>[
     },
   };
 }
+
+test("RPC acceptance needs no session notifications and does not finish the Agent turn", async () => {
+  const f = await fixture();
+  const [clientProtocol, serverProtocol] = createQueuePair();
+  const server = new ChannelServer(serverProtocol, "test");
+  server.registerChannel("acp", ProxyChannel.fromService(f.service));
+  const client = new ChannelClient(clientProtocol);
+  const remote = ProxyChannel.toService<IAcpService>(client.getChannel("acp"));
+  try {
+    const accepted = await remote.submitPrompt({ ...f.target, commandId: "first", text: "first" });
+    const disk = JSON.parse(await readFile(join(f.directory, `${f.target.id}.json`), "utf8"));
+    assert.equal(disk.entries[0].id, "user:first");
+    assert.equal(accepted.status, "running");
+    await waitFor(() => f.calls.length === 1);
+    f.turns[0]!.resolve();
+    await waitFor(async () => (await f.read()).status === "idle");
+    let completed = false;
+    const next = remote.prompt({ ...f.target, commandId: "next", text: "next" }).then(() => {
+      completed = true;
+    });
+    await waitFor(() => f.calls.length === 2);
+    assert.equal(completed, false);
+    f.turns[1]!.resolve();
+    await next;
+    assert.equal(completed, true);
+  } finally {
+    client.dispose();
+    server.dispose();
+    await f.dispose();
+  }
+});
+
+test("preparing retries share acceptance and execute the same command once", async () => {
+  let release!: () => void;
+  let started = false;
+  const f = await fixture({
+    skillsService: {
+      async buildPromptContext({ prompt }) {
+        started = true;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return { prompt };
+      },
+    },
+  });
+  try {
+    let settled = false;
+    const input = { ...f.target, commandId: "same", text: "hello" };
+    const first = f.service.submitPrompt(input).then((value) => {
+      settled = true;
+      return value;
+    });
+    await waitFor(() => started);
+    const duplicate = f.service.submitPrompt(input);
+    assert.equal(settled, false);
+    release();
+    const receipts = await Promise.all([first, duplicate]);
+    assert.equal(receipts[0].entries.filter((e) => e.id === "user:same").length, 1);
+    assert.deepEqual(receipts[0], receipts[1]);
+    await waitFor(() => f.calls.length === 1);
+    f.turns[0]!.resolve();
+  } finally {
+    await f.dispose();
+  }
+});
+
+test(
+  "stop, removal, exit and Host close settle acceptance before blocked preparation returns",
+  { timeout: 5000 },
+  async () => {
+    for (const action of ["stop", "remove", "exit", "close"] as const) {
+      let release!: () => void;
+      const f = await fixture({
+        skillsService: {
+          async buildPromptContext(input) {
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+            return { prompt: input.prompt };
+          },
+        },
+      });
+      try {
+        const accepted = f.service.submitPrompt({
+          ...f.target,
+          commandId: action,
+          text: "blocked",
+        });
+        const rejected = assert.rejects(accepted, /stopped|removed|exited|closed/);
+        await waitFor(() => Boolean(release));
+        if (action === "stop") await f.service.stop(f.target);
+        if (action === "remove") await f.service.remove(f.target);
+        if (action === "exit") f.exit();
+        if (action === "close") f.service.disposeAll();
+        await rejected;
+        assert.equal(f.calls.length, 0);
+        release();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(f.calls.length, 0, "stale preparation must not start an Agent turn");
+      } finally {
+        release?.();
+        await f.dispose();
+      }
+    }
+  },
+);
+
+test("immediate acceptance never succeeds on persistence failure and can safely retry", async () => {
+  const f = await fixture();
+  const file = join(f.directory, `${f.target.id}.json`);
+  try {
+    const input = { ...f.target, commandId: "disk-failure", text: "hello" };
+    await rm(file, { force: true });
+    await mkdir(file);
+    await assert.rejects(f.service.submitPrompt(input));
+    assert.equal((await f.read()).entries.length, 0);
+    assert.equal(f.calls.length, 0);
+    await rm(file, { recursive: true });
+    const accepted = await f.service.submitPrompt(input);
+    assert.equal(accepted.entries[0]?.id, "user:disk-failure");
+    await waitFor(() => f.calls.length === 1);
+    f.turns[0]!.resolve();
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("diagnostic failure after durable acceptance cannot roll back the accepted user row", async () => {
+  const f = await fixture();
+  try {
+    const diagnostic = join(f.directory, "diagnostics", `${f.target.id}.jsonl`);
+    await mkdir(diagnostic, { recursive: true });
+    const accepted = await f.service.submitPrompt({
+      ...f.target,
+      commandId: "diagnostic-failure",
+      text: "hello",
+    });
+    assert.equal(accepted.entries[0]?.id, "user:diagnostic-failure");
+    await waitFor(() => f.calls.length === 1);
+    f.turns[0]!.resolve();
+    await waitFor(async () => (await f.read()).status === "idle");
+    assert.equal((await f.read()).entries[0]?.id, "user:diagnostic-failure");
+    const disk = JSON.parse(await readFile(join(f.directory, `${f.target.id}.json`), "utf8"));
+    assert.equal(disk.entries[0].id, "user:diagnostic-failure");
+    assert.equal(f.calls.length, 1);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("an Agent failure after acceptance is a turn error and cannot reject the accepted input", async () => {
+  const f = await fixture();
+  try {
+    const input = { ...f.target, commandId: "accepted-error", text: "hello" };
+    const accepted = await f.service.submitPrompt(input);
+    await waitFor(() => f.calls.length === 1);
+    f.turns[0]!.reject(new Error("model disconnected"));
+    await waitFor(async () => (await f.read()).status === "interrupted");
+    assert.equal(accepted.entries[0]?.id, "user:accepted-error");
+    const duplicate = await f.service.submitPrompt(input);
+    assert.equal(duplicate.entries.filter((entry) => entry.id === "user:accepted-error").length, 1);
+    assert.equal(f.calls.length, 1);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test(
+  "Host close rejects queued acceptance before a blocked attachment copy completes",
+  { timeout: 5000 },
+  async () => {
+    const f = await fixture();
+    const original = AcpAttachmentStore.prototype.save;
+    let release!: () => void;
+    AcpAttachmentStore.prototype.save = async function (...args) {
+      if (args[1].length)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      return original.apply(this, args);
+    };
+    try {
+      await f.service.submitPrompt({ ...f.target, commandId: "first", text: "first" });
+      const queued = f.service.submitPrompt({
+        ...f.target,
+        commandId: "queued",
+        text: "image",
+        attachments: [
+          {
+            dataBase64: Buffer.from("image").toString("base64"),
+            fileName: "image.png",
+            mimeType: "image/png",
+          },
+        ],
+      });
+      const rejected = assert.rejects(queued, /closed/);
+      await waitFor(() => Boolean(release));
+      f.service.disposeAll();
+      await rejected;
+      release();
+      await f.service.disposeAllAndWait();
+      assert.equal((await f.read()).queue.items.length, 0);
+    } finally {
+      release?.();
+      AcpAttachmentStore.prototype.save = original;
+      await f.dispose();
+    }
+  },
+);
 
 test("ACP busy prompts are durable, idempotent and drain exactly once in FIFO order", async () => {
   const f = await fixture();

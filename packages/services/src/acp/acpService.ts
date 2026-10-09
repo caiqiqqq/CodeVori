@@ -15,7 +15,7 @@ import {
   type AcpGeminiProviders,
   type AcpGeminiProvidersUpdate,
   type AcpCreateInput,
-  type AcpPromptInput,
+  type AcpPromptSubmission,
   type AcpQueueItemInput,
   type AcpQueueEditInput,
   type AcpQueueReorderInput,
@@ -81,7 +81,14 @@ export interface IAcpService {
   refresh(input: AcpWorkspace & { id: string }): Promise<AcpSession>;
   /** Optional preconnection returns an in-memory draft; the first accepted prompt persists it. */
   create(input: AcpCreateInput): Promise<AcpSession>;
-  prompt(input: AcpWorkspace & { id: string } & AcpPromptInput): Promise<AcpSession>;
+  /**
+   * Persisted Host acceptance only; never waits for the Agent turn or live-event delivery.
+   * @example await service.submitPrompt({ workspacePath, id, commandId, text });
+   * The returned running/queued snapshot acknowledges input; task completion still uses prompt.
+   */
+  submitPrompt(input: AcpPromptSubmission): Promise<AcpSession>;
+  /** Legacy/internal callers retain whole-turn completion for immediate execution. */
+  prompt(input: AcpPromptSubmission): Promise<AcpSession>;
   /** Host queue operations share prompt admission and the same persisted session revision. */
   deleteQueueItem(input: AcpQueueItemInput): Promise<AcpSession>;
   editQueueItem(input: AcpQueueEditInput): Promise<AcpSession>;

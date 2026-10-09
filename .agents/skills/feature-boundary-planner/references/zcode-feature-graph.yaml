@@ -393,6 +393,7 @@ nodes:
         symbol: createSkillsService
     invariants:
       - The target Host owns ACP mapping and transcript; the ACP Agent owns model context.
+      - Composer submitPrompt waits for durable Host acceptance independently of live notifications; prompt retains whole-turn semantics for internal callers.
       - ZCode and API Provider sessions use the existing V4 command path.
       - Codex native credentials and model choices are owned by the target Host's Codex files and apply to new ACP connections.
       - ACP new and load use enabled MCP settings on the target Host; unsupported authentication and transports fail before session admission.

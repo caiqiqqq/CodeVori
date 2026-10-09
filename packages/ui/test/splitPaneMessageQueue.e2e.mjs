@@ -18,6 +18,7 @@ try {
   await writeFile(
     moduleFile,
     `      import React, {useState} from 'react';
+      import {ChannelClient, ChannelServer, ProxyChannel, createQueuePair} from '@zcode/rpc';
       import {createRoot} from 'react-dom/client';
       import {SessionPane} from '../../../ui/src/v4/SessionPane.tsx';
       import {V4ConversationContext} from '../../../ui/src/v4/V4ConversationContext.tsx';
@@ -27,43 +28,52 @@ try {
       import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
       import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
       import '../../../ui/src/styles.css';
-const workspacePath='/synthetic/queue-split';
-const listeners=new Set();const events=[];let heldPrompt=null;let holdA=false;let finishCreate;
+const workspacePath='/synthetic/queue-split';const remoteSessionId=new URLSearchParams(location.search).get('delivery')==='replayable'?'fixture-attachment':undefined;
+const listeners=new Set();const events=[];let heldPrompt=null;let holdA=false;let finishCreate;let dropNextAcceptance=false;
 const item=(id,text)=>({commandId:id,text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});
-const make=(id)=>({id,agent:'codex',workspacePath,acpSessionId:'native-'+id,title:'Conversation '+id,revision:1,status:'running',entries:[{id:'user:first-'+id,kind:'user',text:'First '+id}],configOptions:[],modeState:null,contextUsage:null,usageTurns:[],goal:null,pendingPermission:null,error:null,queue:{items:[item('q-'+id,'queued only in '+id)],autoDrain:true}});
+const make=(id)=>({id,agent:'codex',workspacePath,remoteSessionId,acpSessionId:'native-'+id,title:'Conversation '+id,revision:1,status:'running',entries:[{id:'user:first-'+id,kind:'user',text:'First '+id}],configOptions:[],modeState:null,contextUsage:null,usageTurns:[],goal:null,pendingPermission:null,error:null,queue:{items:[item('q-'+id,'queued only in '+id)],autoDrain:true}});
 const snapshots=Object.fromEntries(['A','B','C'].map(id=>[id,make(id)]));
 const copy=id=>structuredClone(snapshots[id]);
 const publish=id=>{snapshots[id].revision++;for(const listener of listeners)listener({kind:'updated',session:copy(id)});return copy(id)};
 const requireItem=(id,q)=>{const row=snapshots[id].queue.items.find(row=>row.commandId===q);if(!row||row.state!=='queued')throw Error('missing');return row};
-const acpService={create:async()=>{const session=make('new');session.provisional=true;session.status='idle';session.entries=[];session.queue.items=[];snapshots.new=session;await new Promise(resolve=>finishCreate=resolve);return copy('new')},
+const hostService={create:async()=>{const session=make('new');session.provisional=true;session.status='idle';session.entries=[];session.queue.items=[];snapshots.new=session;await new Promise(resolve=>finishCreate=resolve);return copy('new')},
 list:async()=>Object.keys(snapshots).map(copy),read:async({id})=>copy(id),refresh:async({id})=>copy(id),
 listAvailableAgents:async()=>[{agent:'codex',available:true,enabled:true,ready:true}],listAgentConfigs:async()=>[],listPlugins:async()=>[],
 onDynamicAgentConfigsChanged:()=>()=>({dispose(){}}),onDynamicSessionChanged:()=>listener=>{listeners.add(listener);return {dispose:()=>listeners.delete(listener)}},
-prompt:async input=>{events.push({op:'prompt',id:input.id,text:input.text});if(holdA&&input.id==='A'){holdA=false;await new Promise(resolve=>heldPrompt=resolve);}snapshots[input.id].queue.items.push(item(input.commandId,input.text));return publish(input.id)},
+prompt:async()=>{throw Error('composer must not wait for whole-turn prompt')},
+submitPrompt:async input=>{events.push({op:'prompt',id:input.id,text:input.text});if(holdA&&input.id==='A'){holdA=false;await new Promise(resolve=>heldPrompt=resolve);}snapshots[input.id].queue.items.push(item(input.commandId,input.text));if(dropNextAcceptance){dropNextAcceptance=false;snapshots[input.id].revision++;return copy(input.id)}return publish(input.id)},
 editQueueItem:async({id,queueItemId,text})=>{requireItem(id,queueItemId).text=text;return publish(id)},
 deleteQueueItem:async({id,queueItemId})=>{requireItem(id,queueItemId);snapshots[id].queue.items=snapshots[id].queue.items.filter(row=>row.commandId!==queueItemId);events.push({op:'delete',id,queueItemId});return publish(id)},
 reorderQueueItem:async({id,queueItemId,beforeQueueItemId})=>{const row=requireItem(id,queueItemId);const rows=snapshots[id].queue.items.filter(r=>r!==row);rows.splice(beforeQueueItemId?rows.findIndex(r=>r.commandId===beforeQueueItemId):rows.length,0,row);snapshots[id].queue.items=rows;return publish(id)},
 sendQueuedNow:async({id,queueItemId})=>{const row=requireItem(id,queueItemId);snapshots[id].queue.items=snapshots[id].queue.items.filter(r=>r!==row);return publish(id)},
 setQueueAutoDrain:async({id,autoDrain})=>{snapshots[id].queue.autoDrain=autoDrain;return publish(id)},stop:async({id})=>{snapshots[id].status='idle';snapshots[id].queue.autoDrain=false;return publish(id)},remove:async()=>{},
 };
+const [clientProtocol,serverProtocol]=createQueuePair();
+const server=new ChannelServer(serverProtocol,'fixture');server.registerChannel('acp',ProxyChannel.fromService(hostService));
+const client=new ChannelClient(clientProtocol);const acpService=ProxyChannel.toService(client.getChannel('acp'));
 const forbidden=()=>{throw new Error('unexpected native/model operation')};
 const native={layer:{acquire:forbidden},sendCommand:forbidden,attachmentPut:forbidden,onRuntimeRestart:()=>()=>{},onRuntimeLifecycle:()=>()=>{}};
 const services={settingService:{get:async()=>({})},clientConfigService:{getSnapshot:async()=>({pluginStoreOrder:null})},clientScenesService:{list:async()=>({code:0,data:[]})},modelSelectionService:{getView:async()=>({revision:1,providers:[]}),onDidChange:()=>({dispose(){}})},acpService};
 const platform={isMacOS:false,isWindows:false,isLinux:false,isWeb:true};
 function Fixture(){
 const [ids,setIds]=useState(['A','B']);const [epochs,setEpochs]=useState([0,0]);const [focus,setFocus]=useState(0);const [identities,setIdentities]=useState([undefined,undefined]);
-window.__splitQ={snapshots,events,newDraft:()=>{setIds(prev=>prev.map((id,i)=>i===0?null:id));setEpochs(prev=>prev.map((n,i)=>i===0?n+1:n))},connect:()=>finishCreate?.(),identity:(index,value)=>{snapshots[ids[index]].workspaceIdentity=value;setIdentities(prev=>prev.map((old,i)=>i===index?value:old))},holdA:()=>holdA=true,releaseA:()=>{heldPrompt?.();heldPrompt=null},switch:(index,id)=>setIds(prev=>prev.map((old,i)=>i===index?id:old)),remount:index=>setEpochs(prev=>prev.map((n,i)=>i===index?n+1:n)),publish};
-return <main className='h-screen w-screen flex bg-background text-foreground' data-fixture-ready='true'>{ids.map((id,index)=><section key={index} data-lane={index} className='h-full min-w-0 w-1/2' onPointerDownCapture={()=>setFocus(index)}><SessionPane key={epochs[index]} paneId={'lane-'+index} workspacePath={workspacePath} workspaceIdentity={identities[index]} sessionId={null} focused={focus===index} acpBoundSessionId={id} acpOpenRequest={id?{requestId:epochs[index]+1,session:copy(id)}:null}/></section>)}</main>;
+window.__splitQ={snapshots,events,dropAcceptance:()=>dropNextAcceptance=true,newDraft:()=>{setIds(prev=>prev.map((id,i)=>i===0?null:id));setEpochs(prev=>prev.map((n,i)=>i===0?n+1:n))},connect:()=>finishCreate?.(),identity:(index,value)=>{snapshots[ids[index]].workspaceIdentity=value;setIdentities(prev=>prev.map((old,i)=>i===index?value:old))},holdA:()=>holdA=true,releaseA:()=>{heldPrompt?.();heldPrompt=null},switch:(index,id)=>setIds(prev=>prev.map((old,i)=>i===index?id:old)),remount:index=>setEpochs(prev=>prev.map((n,i)=>i===index?n+1:n)),publish};
+return <main className='h-screen w-screen flex bg-background text-foreground' data-fixture-ready='true'>{ids.map((id,index)=><section key={index} data-lane={index} className='h-full min-w-0 w-1/2' onPointerDownCapture={()=>setFocus(index)}><SessionPane key={epochs[index]} paneId={'lane-'+index} workspacePath={workspacePath} workspaceIdentity={identities[index]} remoteSessionId={remoteSessionId} sessionId={null} focused={focus===index} acpBoundSessionId={id} acpOpenRequest={id?{requestId:epochs[index]+1,session:copy(id)}:null}/></section>)}</main>;
 }
       createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform as never}><TabStoreProvider><ServiceProvider services={services as never}><ZCodeIntlProvider initialLocale="zh-CN"><TooltipProvider><V4ConversationContext.Provider value={native as never}><Fixture/></V4ConversationContext.Provider></TooltipProvider></ZCodeIntlProvider></ServiceProvider></TabStoreProvider></PlatformProvider>);
 `,
   );
   browser = await chromium.launch({ headless: true });
-  for (const width of [1280, 375]) {
+  for (const [delivery, width] of [
+    ["continuous", 1280],
+    ["replayable", 375],
+  ]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.stack));
-    await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`);
+    await page.goto(
+      `${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html?delivery=${delivery}`,
+    );
     const lane = (i) => page.locator('[data-lane="' + i + '"]');
     const input = (i) => lane(i).locator('[data-testid="v4-composer-input"]');
     await lane(0)
@@ -142,9 +152,16 @@ return <main className='h-screen w-screen flex bg-background text-foreground' da
         "A draft",
     );
 
+    // Real RPC receipt clears B even when every acceptance notification is suppressed.
+    await page.evaluate(() => window.__splitQ.dropAcceptance());
     await lane(1).locator('[data-testid="v4-composer-send"]').click();
     await page.waitForFunction(() =>
       window.__splitQ.snapshots.B.queue.items.some((row) => row.text === "B draft"),
+    );
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-lane="1"] [data-testid="v4-composer-input"]')?.textContent ===
+        "",
     );
     assert.equal(await input(0).textContent(), "A draft", "B ACK must not clear A");
     assert.equal(await lane(0).locator('[data-testid^="v4-attachment-"]').count(), 1);
@@ -178,6 +195,7 @@ return <main className='h-screen w-screen flex bg-background text-foreground' da
     await page.waitForFunction(() =>
       window.__splitQ.events.some((e) => e.op === "prompt" && e.id === "A"),
     );
+    await input(0).fill("A typed after submission");
     await page.evaluate(() => window.__splitQ.switch(0, "C"));
     await lane(0).locator('[data-testid="v4-queue-item-q-C"]').waitFor();
     await input(0).fill("C after navigation");
@@ -197,6 +215,11 @@ return <main className='h-screen w-screen flex bg-background text-foreground' da
     );
     await page.evaluate(() => window.__splitQ.switch(0, "A"));
     await lane(0).locator('[data-testid="v4-queue-item-q-A"]').waitFor();
+    assert.equal(
+      await input(0).textContent(),
+      "A typed after submission",
+      "late ACK must preserve newer input in its own scope",
+    );
     // 25 items in a half-height pane must scroll inside the queue, keeping input visible.
     await page.evaluate(() => {
       document.querySelector("main").classList.add("flex-col");
@@ -277,7 +300,7 @@ return <main className='h-screen w-screen flex bg-background text-foreground' da
     await page.close();
   }
   console.log(
-    `PASS split queue: draft/attachment isolation, switch/remount, admission cleanup, long queue scrolling at 1280/375px. ${artifacts}`,
+    `PASS split queue: draft/attachment isolation, switch/remount, RPC ACK without notifications, newer-draft preservation, continuous/replayable remount, long queue scrolling at 1280/375px. ${artifacts}`,
   );
 } finally {
   await browser?.close();

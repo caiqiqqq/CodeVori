@@ -28,6 +28,7 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "@/components/lib/utils.js";
+import { ACP_HOST_UPGRADE_REQUIRED } from "@/v4/acpPromptAdmission.js";
 import {
   TID_CHAT_ATTACHMENT_BUTTON,
   TID_CHAT_ATTACHMENT_MENU_ITEM,
@@ -1434,7 +1435,14 @@ function ConversationComposerImpl({
           attachmentsApi.clearAttachments(submittedAttachmentIds);
         } catch (error) {
           if (acpSubmissionRef.current === submission)
-            toast(error instanceof Error ? error.message : String(error), { variant: "warning" });
+            toast(
+              error instanceof Error && error.message === ACP_HOST_UPGRADE_REQUIRED
+                ? intl.formatMessage({ id: "acp.hostUpgradeRequired" })
+                : error instanceof Error
+                  ? error.message
+                  : String(error),
+              { variant: "warning" },
+            );
           logger.warn(`[v4-composer] ACP 发送失败: ${String(error)}`);
         } finally {
           if (acpSubmissionRef.current === submission) {

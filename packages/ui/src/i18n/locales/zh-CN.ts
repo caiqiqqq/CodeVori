@@ -5812,6 +5812,7 @@ const zhCN: Record<string, string> = {
   "chat.error.feedback": "反馈问题",
   "chat.error.feedbackOpened": "已打开反馈，并自动带上报错现场",
   "chat.error.noAvailableModel": "当前没有可用模型。请开通编程套餐或配置自定义模型。",
+  "acp.hostUpgradeRequired": "目标 Host 版本过旧，请升级后再发送。当前草稿已保留。",
   "chat.error.sendFailed": "发送失败，请稍后重试。",
   "chat.error.modelSettings": "模型设置",
   "chat.error.setModels": "配置",

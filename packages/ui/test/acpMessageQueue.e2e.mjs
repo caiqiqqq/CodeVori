@@ -45,7 +45,7 @@ try {
         listAvailableAgents:async()=>[{agent:'codex',available:true}],listAgentConfigs:async()=>[],
         listPlugins:async()=>[], onDynamicAgentConfigsChanged:()=>()=>({dispose(){}}),
         onDynamicSessionChanged:()=>listener=>{listeners.add(listener);return {dispose:()=>listeners.delete(listener)}} ,
-        prompt:async input=>{events.push('prompt:'+input.text);snapshot.queue.items.push({commandId:input.commandId,text:input.text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});return publish()},
+        submitPrompt:async input=>{events.push('prompt:'+input.text);snapshot.queue.items.push({commandId:input.commandId,text:input.text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});return publish()},
         editQueueItem:async ({queueItemId,text})=>{requireItem(queueItemId).text=text;events.push('edit');return publish()},
         deleteQueueItem:async ({queueItemId})=>{requireItem(queueItemId);snapshot.queue.items=snapshot.queue.items.filter(item=>item.commandId!==queueItemId);events.push('delete');return publish()},
         reorderQueueItem:async ({queueItemId,beforeQueueItemId})=>{const item=requireItem(queueItemId);snapshot.queue.items=snapshot.queue.items.filter(candidate=>candidate!==item);const index=beforeQueueItemId?snapshot.queue.items.findIndex(item=>item.commandId===beforeQueueItemId):snapshot.queue.items.length;snapshot.queue.items.splice(index,0,item);events.push('move');return publish()},

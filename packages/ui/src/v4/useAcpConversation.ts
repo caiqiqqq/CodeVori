@@ -1,9 +1,10 @@
 /* oxlint-disable eslint(max-lines) -- ACP 面板的连接、草稿和已提交会话投影共用同一个生命周期。 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { IAcpService } from "@zcode/services";
 import type { AcpAgent, AcpPromptInput, AcpSession, AcpWorkspace } from "@zcode/shared";
 import { selectAcpSession } from "@/v4/composer/acpModelSelection.js";
-import { waitForAcpPromptAdmission } from "@/v4/acpPromptAdmission.js";
+import { ACP_HOST_UPGRADE_REQUIRED, waitForAcpPromptAdmission } from "@/v4/acpPromptAdmission.js";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -16,6 +17,7 @@ export function useAcpConversation(
   agent: AcpAgent | null,
   onArchived?: (sessionId: string) => void,
 ) {
+  const { intl } = useZCodeIntl();
   const { workspacePath, workspaceIdentity, remoteSessionId } = workspace;
   const target = useMemo(
     () => ({ workspacePath, workspaceIdentity, remoteSessionId }),
@@ -544,17 +546,30 @@ export function useAcpConversation(
           ];
         });
         setSelectedIds((previous) => ({ ...previous, [agent]: session.id }));
-        await waitForAcpPromptAdmission(service, target, {
+        const accepted = await waitForAcpPromptAdmission(service, target, {
           ...target,
           id: session.id,
           ...input,
           commandId,
         });
+        // 修复原因：接受通知可能丢失；直接 ACK 也须更新同一目标的权威投影，避免 UI 留在 idle。
+        if (targetKeyRef.current === targetKey && selectedRef.current?.id === session.id)
+          setSessions((previous) =>
+            previous.map((item) =>
+              item.id === accepted.id && item.revision <= accepted.revision ? accepted : item,
+            ),
+          );
         if (retries.current.get(key)?.commandId === commandId) retries.current.delete(key);
         return session.id;
       } catch (cause) {
         if (targetKeyRef.current === targetKey && selectedRef.current?.id === selected.id)
-          setErrorState({ agent, message: messageOf(cause) });
+          setErrorState({
+            agent,
+            message:
+              cause instanceof Error && cause.message === ACP_HOST_UPGRADE_REQUIRED
+                ? intl.formatMessage({ id: "acp.hostUpgradeRequired" })
+                : messageOf(cause),
+          });
         throw cause;
       } finally {
         submitting.current.delete(key);
@@ -565,7 +580,7 @@ export function useAcpConversation(
         });
       }
     },
-    [agent, busy, loaded, selected, service, target, targetKey],
+    [agent, busy, loaded, selected, service, target, targetKey, intl],
   );
 
   const stop = useCallback(() => {
