@@ -245,7 +245,7 @@ export function WorkspaceAcpTaskItem({
                   <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-card">
                     <LoaderIcon
                       data-acp-running-indicator="true"
-                      className="size-2.5 animate-spin text-foreground-subtle"
+                      className="size-2.5 animate-spin text-task-running-indicator"
                     />
                   </span>
                 ) : null}

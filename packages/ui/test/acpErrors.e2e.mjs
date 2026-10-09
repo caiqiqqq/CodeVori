@@ -25,6 +25,7 @@ try {
       import {ConversationTimeline} from '../../../ui/src/v4/ConversationTimeline.tsx';
       import {buildAcpConversationRows} from '../../../ui/src/v4/acpConversationRows.ts';
       import {AcpConversationStatus,AcpHomeStatus} from '../../../ui/src/v4/AcpConversationContent.tsx';
+      import {SessionSubscriptionErrorPanel} from '../../../ui/src/v4/SessionSubscriptionErrorPanel.tsx';
       import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
       import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
       import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
@@ -40,7 +41,13 @@ try {
         const [home,setHome]=useState(false);
         const [operation,setOperation]=useState(null);
         const [retries,setRetries]=useState(0);
+        const [subscription,setSubscription]=useState(false);
         window.__errors={
+          subscription:()=>setSubscription(true),
+          warn:(title='Heads up: Long threads and multiple compactions')=>setSnapshot(s=>({...s,status:'running',entries:s.entries.map(e=>e.kind==='user'?{...e,failures:[{...failure,severity:'warning',title}]}:e)})),
+          progress:()=>setSnapshot(s=>({...s,entries:s.entries.map(e=>e.kind==='assistant'?{...e,text:e.text+' resumed'}:e)})),
+          finish:()=>setSnapshot(s=>({...s,status:'idle'})),
+          render:()=>setSnapshot(s=>structuredClone(s)),
           fail:()=>setSnapshot(s=>({...s,status:'interrupted',error:title,entries:s.entries.map(e=>e.kind==='user'?{...e,traceError:title,failures:[failure]}:e)})),
           next:()=>setSnapshot(s=>({...s,status:'idle',error:null,entries:[...s.entries,{id:'user:next',kind:'user',text:'Next fixture question'},{id:'assistant:next',kind:'assistant',text:'Successful later answer'}]})),
           replay:()=>{setSnapshot(s=>structuredClone(s));setEpoch(e=>e+1)},
@@ -51,7 +58,7 @@ try {
         const conversation={selected:home?null:snapshot,error:operation,busy:false,retryConnection:()=>setRetries(n=>n+1),dismissError:()=>setOperation(null),decide:()=>setSnapshot(s=>({...s,pendingPermission:null}))};
         const rows=buildAcpConversationRows(snapshot as never);
         return <div data-session-id="error-fixture" style={{height:'80vh',width:innerWidth>600?'55vw':'100vw',marginTop:'10vh',marginLeft:innerWidth>600?'5vw':0}} className="relative flex flex-col bg-background text-foreground" data-fixture-ready="true" data-fixture-epoch={epoch} data-retries={retries}>
-          {home?<AcpHomeStatus agent="codex" conversation={conversation as never}/>:<ConversationTimeline key={epoch} sessionKey={'error-fixture-'+epoch} rows={rows} totalCount={rows.length}
+          {subscription?<SessionSubscriptionErrorPanel error="Subscription fixture error" onReconnect={()=>{setRetries(n=>n+1);setSubscription(false)}}/>:home?<AcpHomeStatus agent="codex" conversation={conversation as never}/>:<ConversationTimeline key={epoch} sessionKey={'error-fixture-'+epoch} rows={rows} totalCount={rows.length}
             hideTurnNavigator workDurationAvailable={false} rowContext={{workspacePath:'/synthetic/project',theme:'zai-light',codePreviewSettings:DEFAULT_CODE_PREVIEW_SETTINGS,logEpoch:'fixture-'+epoch}}
             footerSlot={<AcpConversationStatus agent="codex" conversation={conversation as never}/>}/>}
         </div>;
@@ -83,11 +90,33 @@ try {
         theme,
       );
       assert.equal(await page.locator("[data-conversation-notice]").count(), 0);
+      await page.clock.install();
+      await page.evaluate(() => window.__errors.warn());
+      const warning = page.locator('[data-notice-severity="warning"]');
+      await warning.waitFor();
+      assert.equal(await warning.getByRole("button", { name: "反馈问题", exact: true }).count(), 0);
+      await page.clock.fastForward(3000);
+      await page.evaluate(() => window.__errors.render());
+      await warning.waitFor();
+      await page.clock.fastForward(2100);
+      await warning.waitFor({ state: "detached" });
+      await page.evaluate(() => window.__errors.render());
+      assert.equal(await warning.count(), 0, "unrelated render must not resurrect warning");
+      await page.evaluate(() => window.__errors.warn("Reconnecting... 1/5"));
+      await warning.waitFor();
+      await page.evaluate(() => window.__errors.progress());
+      await warning.waitFor({ state: "detached" });
+      await page.evaluate(() => window.__errors.warn("Reconnecting... 2/5"));
+      await warning.waitFor();
+      await page.evaluate(() => window.__errors.finish());
+      await warning.waitFor({ state: "detached" });
+      await page.clock.resume();
       await page.evaluate(() => window.__errors.fail());
       const notice = page.locator('[data-conversation-notice="incident"]');
       await notice.waitFor();
       const banner = notice.locator('[data-error-code="ACP_SESSION_FAILED"]');
       assert.match(await banner.innerText(), /idle timeout waiting for SSE/);
+      assert.equal(await banner.getByRole("button", { name: "反馈问题", exact: true }).count(), 0);
       assert.equal(
         await page.locator('[data-error-code="ACP_SESSION_FAILED"]').count(),
         1,
@@ -226,7 +255,16 @@ try {
       await page.locator('[data-retries="1"]').waitFor();
       await home.getByRole("button", { name: "关闭错误提示", exact: true }).click();
       await home.waitFor({ state: "detached" });
+      await page.evaluate(() => window.__errors.subscription());
+      await page.getByText("Subscription fixture error", { exact: true }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "反馈问题", exact: true }).count(), 0);
+      await page.getByTestId("v4-retry-subscribe").click();
+      await page
+        .getByText("Subscription fixture error", { exact: true })
+        .waitFor({ state: "detached" });
+      await page.locator('[data-retries="2"]').waitFor();
       assert.deepEqual(errors, []);
+      console.log(`ACP errors E2E passed: ${width}/${theme}`);
       await context.close();
     }
   }

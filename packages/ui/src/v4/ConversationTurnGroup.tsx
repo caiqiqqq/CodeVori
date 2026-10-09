@@ -19,7 +19,7 @@ import type {
   WorkflowNotificationMeta,
 } from "@zcode/shared/zcode-protocol-v4";
 import { ChatLoading } from "@/components/ai-elements/chat-loading.js";
-import { ChatErrorBanner } from "@/ChatErrorBanner.js";
+import { ConversationTurnNotice } from "@/v4/ConversationTurnNotice.js";
 import { ChatApiRetryStatus } from "@/chat-input-toolbar/display.js";
 import { cn } from "@/components/lib/utils.js";
 import { Checkbox } from "@/components/ui/checkbox.js";
@@ -1112,6 +1112,17 @@ function ConversationTurnGroupImpl({
   const isOfficeMode = useIsOfficeMode();
   const { intl } = useZCodeIntl();
   const visibleUserRows = useMemo(() => unit.visibleUserInputs, [unit.visibleUserInputs]);
+  const hasWarning = unit.header?.notices?.some((notice) => notice.severity === "warning");
+  // 修复原因：通知 revision 和无关重渲染不是恢复；仅比较 Host 已接纳内容，并为同轮全部警告共用一次计算。
+  const noticeActivity = useMemo(
+    () =>
+      hasWarning && unit.isRunning
+        ? JSON.stringify(
+            unit.renderRows.filter((row) => row.kind !== "turnHeader" && row.kind !== "userInput"),
+          )
+        : "",
+    [hasWarning, unit.isRunning, unit.renderRows],
+  );
   const firstReasoningRowId = useMemo(
     () => unit.assistantWorkRows.find((row) => row.kind === "reasoning")?.rowId,
     [unit.assistantWorkRows],
@@ -1461,21 +1472,18 @@ function ConversationTurnGroupImpl({
       )}
       {/* Host 错误属于原轮次，不能随新轮移动到 footer，也不能被工作历史折叠隐藏。 */}
       {unit.header?.notices?.map((notice) => (
-        <div
-          key={notice.id}
-          role={notice.severity === "error" ? "alert" : "status"}
-          className="mt-4"
-          data-conversation-notice={notice.id}
-          data-notice-severity={notice.severity}
-        >
-          <ChatErrorBanner
-            error={{
-              code: notice.code,
-              message: notice.message,
-              ...(notice.detail ? { detail: notice.detail } : {}),
-            }}
-          />
-        </div>
+        <ConversationTurnNotice
+          key={JSON.stringify([
+            unit.turnId,
+            notice.id,
+            notice.severity,
+            notice.message,
+            notice.detail,
+          ])}
+          notice={notice}
+          activity={noticeActivity}
+          running={unit.isRunning}
+        />
       ))}
     </section>
   );

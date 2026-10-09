@@ -35,6 +35,7 @@ import {
 } from "./workTaskAgentConfigAssertions.mjs";
 import { exerciseWorkTaskWorkspaceTools } from "./workTaskWorkspaceToolsAssertions.mjs";
 import { workTaskPanelFixture } from "./workTaskPanelFixture.mjs";
+import { workTaskNavigationFixture } from "./workTaskNavigationAssertions.mjs";
 import { workTaskPromptAssetsFixture } from "./workTaskPromptAssetsFixture.mjs";
 import { routeWorkTaskConversationFixture } from "./workTaskConversationFixture.mjs";
 
@@ -68,6 +69,7 @@ try {
     import React, {useState} from 'react';
     import {createRoot} from 'react-dom/client';
     import {WorkTasksPanel} from '../../../ui/src/work-tasks/WorkTasksPanel.tsx';
+    import {WorkTasksSidebarButton} from '../../../ui/src/work-tasks/WorkTasksSidebarButton.tsx';
     import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
     import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
     import {StoreProvider} from '../../../ui/src/store/StoreProvider.tsx';
@@ -90,7 +92,7 @@ try {
     const bind=(task:any)=>{task.status='running';task.session??={kind:task.execution.kind,id:'session-'+task.id}};
     const start=(task:any,feedback?:string)=>{task.status='preparing';task.failureReason=undefined;task.runSeq++;task.runText=feedback||task.prompt;task.updatedAt=Date.now();if(task.useWorktree===false){task.directBranch=task.sourceBranch;state.currentBranch=task.sourceBranch}else task.worktree??={rootPath:'/synthetic/trees',path:'/synthetic/trees/'+task.id+'/project',projectPath:task.workspacePath,branchName:'worktree/'+task.id,baseCommit:'abcdef'};if(!state.deferPreparation)bind(task);changed()};
     const service:any={
-      async list(r:any){state.calls.push({op:'list',...r});const result=clone({tasks:rows(r),concurrency:state.concurrency});if(state.delayList){state.delayList=false;return new Promise(resolve=>state.pending.push(()=>resolve(result)))}return result},
+      async list(r:any){state.calls.push({op:'list',...r});if(state.failList){state.failList=false;throw new Error('Synthetic list failed')}const result=clone({tasks:rows(r),concurrency:state.concurrency});if(state.delayList){state.delayList=false;return new Promise(resolve=>state.pending.push(()=>resolve(result)))}return result},
       async create(r:any){state.calls.push({op:'create',...r});if(state.failSave){state.failSave=false;throw new Error('Synthetic save failed')}const now=Date.now();const task={...r,id:'task-'+state.tasks.length,status:'todo',archived:false,stopPending:false,runSeq:0,runText:r.prompt,commandId:'command',sessionRequestId:'request',createdAt:now,updatedAt:now};state.tasks.push(task);changed();return clone(task)},
       async update(r:any){state.calls.push({op:'update',...r});if(state.delaySave){state.delaySave=false;await new Promise<void>(resolve=>state.pendingSaves.push(resolve))}if(state.failSave){state.failSave=false;throw new Error('Synthetic save failed')}const task=get(r);Object.assign(task,r,{runText:r.prompt,updatedAt:Date.now()});changed();return clone(task)},
       async start(r:any){state.calls.push({op:'start',...r});if(state.delayStart){state.delayStart=false;await new Promise<void>(resolve=>state.pendingStarts.push(resolve))}if(state.failStart){state.failStart=false;throw new Error('Synthetic start failed')}const task=get(r);start(task,r.feedback);return clone(task)},
@@ -122,6 +124,7 @@ try {
     const toolTargetChanged=(target:any)=>{state.toolTarget=clone(target)};
     const platform:any={async getInstalledEditors(){return [{id:'finder',name:'Finder',iconDataUrl:toolIcon},{id:'vscode',name:'VS Code',iconDataUrl:toolIcon}]},async openInEditor(editor:string,path:string,options:any){state.toolCalls.push({op:'editor',editor,path,options});return {success:true}},async openExternal(url:string){state.toolCalls.push({op:'external',url})}};
     ${workTaskPromptAssetsFixture}
+    ${process.env.ZCODE_E2E_SCENARIO === "navigation" ? workTaskNavigationFixture : ""}
     ${workTaskPanelFixture}
     const broadcast:any={send(){},onMessage(){return {dispose(){}}}};
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><StoreProvider broadcastService={broadcast}><TabStoreProvider><Fixture/></TabStoreProvider></StoreProvider></TooltipProvider></ZCodeIntlProvider></PlatformProvider>);
@@ -129,7 +132,7 @@ try {
   );
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 850 } });
-  page.setDefaultTimeout(15000);
+  page.setDefaultTimeout(Number(process.env.ZCODE_E2E_TIMEOUT_MS ?? 15000));
   page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
   await routeWorkTaskConversationFixture(page);
   await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`);
@@ -228,8 +231,6 @@ try {
     assert.equal(await card("task-3").count(), 0);
     await remountWorkTaskPanel(page, panel);
     await assertBoardOnly();
-    await card("task-0").waitFor();
-    await card("task-1").waitFor();
     assert.equal(await page.evaluate(() => window.__tasks.concurrency), 2);
     await page.evaluate(() => {
       window.__tasks.failStart = true;

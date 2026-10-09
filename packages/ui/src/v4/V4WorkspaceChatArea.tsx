@@ -25,6 +25,7 @@ import type {
   SyncSubagentSessionTabsRequest,
 } from "@/lib/workspaceSidePane.js";
 import { logger } from "@/logger.js";
+import type { OpenScopedGitReview } from "@/hooks/usePaneGitStatus.js";
 import {
   closePane,
   effectiveFocusedPaneId,
@@ -117,6 +118,7 @@ interface V4WorkspaceChatAreaProps {
   onSummaryPanelVariantOverrideChange?: (variant: ChatViewSummaryPanelVariant | null) => void;
   onRefreshGit?: () => void;
   onOpenGitReview?: (sourceId?: GitChangeSourceId) => void;
+  onOpenScopedGitReview?: OpenScopedGitReview;
   onOpenWorkspacePath?: (path: string) => void | Promise<void>;
   allowWorktreeCreation?: boolean;
   onPaneActiveSessionChange?: (scope: PaneWorkspaceScope, sessionId: string) => void;
@@ -185,6 +187,7 @@ export function V4WorkspaceChatArea({
   onSummaryPanelVariantOverrideChange,
   onRefreshGit,
   onOpenGitReview,
+  onOpenScopedGitReview,
   onOpenWorkspacePath,
   allowWorktreeCreation,
   onPaneActiveSessionChange,
@@ -338,6 +341,7 @@ export function V4WorkspaceChatArea({
       onSummaryPanelVariantOverrideChange,
       onRefreshGit,
       onOpenGitReview,
+      onOpenScopedGitReview,
       onOpenWorkspacePath,
       allowWorktreeCreation,
       onOpenBrowserUrl,
@@ -388,6 +392,7 @@ export function V4WorkspaceChatArea({
       onSummaryPanelVariantOverrideChange,
       onRefreshGit,
       onOpenGitReview,
+      onOpenScopedGitReview,
       onOpenWorkspacePath,
       allowWorktreeCreation,
       onOpenBrowserUrl,

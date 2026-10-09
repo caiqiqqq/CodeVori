@@ -59,20 +59,23 @@ export function useWorkTasks(
   }, [resource]);
   const run = useCallback(
     async (action: (target: IWorkTaskService) => Promise<unknown>): Promise<boolean> => {
-      if (!service || !rpcReady) return false;
+      if (!service || !resource || !rpcReady) return false;
+      const version = resource.getEventVersion();
       setMutation({ owner, error: null, busy: true });
       try {
         await action(service);
-        await refresh();
+        resource.refreshAfterMutation(version);
         if (ownerRef.current === owner) setMutation({ owner, error: null, busy: false });
-        return true;
+        return ownerRef.current === owner;
       } catch (error) {
+        // update 成功而 start 失败仍投影已保存内容；列表失败不能覆盖命令错误。
+        resource.refreshAfterMutation(version);
         if (ownerRef.current === owner)
           setMutation({ owner, error: workTaskErrorMessage(error), busy: false });
         return false;
       }
     },
-    [owner, service, rpcReady, refresh],
+    [owner, service, resource, rpcReady],
   );
   const current = resource
     ? { board: read.data, loading: read.loading, error: read.error }

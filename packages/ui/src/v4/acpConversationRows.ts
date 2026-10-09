@@ -79,13 +79,18 @@ export function buildAcpConversationRows(
               : null)
           : null;
       const reportedNotices =
-        failures?.map((failure) => ({
-          id: failure.id,
-          severity: failure.severity,
-          code: failure.severity === "error" ? "ACP_SESSION_FAILED" : "ACP_SESSION_WARNING",
-          message: failure.title,
-          ...(failure.details ? { detail: failure.details } : {}),
-        })) ?? [];
+        failures
+          ?.filter((failure) => {
+            // 修复原因：已保存的警告不是持续错误；结束或历史回放不能把重连中等临时提示再次挂到轮尾。
+            return failure.severity === "error" || (isLastTurn && status === "running");
+          })
+          .map((failure) => ({
+            id: failure.id,
+            severity: failure.severity,
+            code: failure.severity === "error" ? "ACP_SESSION_FAILED" : "ACP_SESSION_WARNING",
+            message: failure.title,
+            ...(failure.details ? { detail: failure.details } : {}),
+          })) ?? [];
       const notices =
         legacyError && !reportedNotices.some((notice) => notice.severity === "error")
           ? [
