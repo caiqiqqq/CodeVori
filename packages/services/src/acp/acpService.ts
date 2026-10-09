@@ -15,6 +15,7 @@ import {
   type AcpGeminiProviders,
   type AcpGeminiProvidersUpdate,
   type AcpCreateInput,
+  type AcpSetConfigOptionInput,
   type AcpPromptSubmission,
   type AcpQueueItemInput,
   type AcpQueueEditInput,
@@ -79,7 +80,7 @@ export interface IAcpService {
   updateRow(input: AcpSessionRowUpdate): Promise<AcpSession>;
   /** Reconnects an existing display snapshot so its Agent-owned options are current. */
   refresh(input: AcpWorkspace & { id: string }): Promise<AcpSession>;
-  /** Optional preconnection returns an in-memory draft; the first accepted prompt persists it. */
+  /** Optional preconnection returns an in-memory draft; composer can opt into permission memory. */
   create(input: AcpCreateInput): Promise<AcpSession>;
   /**
    * Persisted Host acceptance only; never waits for the Agent turn or live-event delivery.
@@ -100,9 +101,8 @@ export interface IAcpService {
     input: AcpWorkspace & { id: string; commandId: string; text: string },
   ): Promise<boolean>;
   setGoal(input: AcpWorkspace & { id: string; goal: string | null }): Promise<AcpSession>;
-  setConfigOption(
-    input: AcpWorkspace & { id: string; configId: string; value: string | boolean },
-  ): Promise<AcpSession>;
+  /** Remember only explicit composer permission choices on the target Host. */
+  setConfigOption(input: AcpSetConfigOptionInput): Promise<AcpSession>;
   stop(input: AcpStopInput): Promise<void>;
   cancelWorkflow(input: AcpWorkflowControl): Promise<void>;
   resumeWorkflow(input: AcpWorkflowControl): Promise<void>;
