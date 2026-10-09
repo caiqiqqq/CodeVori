@@ -56,7 +56,8 @@ export function resolveConversationTurnWorkDurationMs(
   if (header.endedAt !== undefined) return Math.max(header.endedAt - header.startedAt, 0);
   // UI 每秒传入 nowMs 只用于运行中“工作中 N 秒”；完成态缺少
   // activeMs/endedAt 时不能继续吃当前时钟，否则历史“已工作”会随时间增长。
-  if (isRunning && options.nowMs !== undefined) {
+  // 修复原因：旧 ACP 用户行没有时间，投影以 0 表示未知；启用共用计时后不能从 epoch 开始累计。
+  if (isRunning && header.startedAt > 0 && options.nowMs !== undefined) {
     return Math.max(options.nowMs - header.startedAt, 0);
   }
   return undefined;

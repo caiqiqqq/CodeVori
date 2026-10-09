@@ -13,6 +13,7 @@
 - 附件 IO 跟踪覆盖保存至未接受副本清理的完整生命周期。停止后开始的新轮不能覆盖旧轮的 IO 跟踪；删除会话与 Host 关闭等待全部在途附件操作，已删除会话不能发布迟到快照。
 - 新增 `IAcpService.readAttachment`，先校验 workspace identity 与 path、会话、已接受 user entry 内的 ref，再读取会话专属副本。分块最大 128 KiB，返回 base64、MIME、总字节数和下一偏移；禁止通过任意路径、其他会话的 ref 或 symlink 读取。此查询不连接/认证 Agent。
 - UI 从当前 Host 的 `acpService` 读取，使用当前 pane 的会话、workspace identity 和 attachment；接入现有 `ConversationRowRenderContext.readAttachment/readAttachmentRange`。取消、行卸载和会话切换停止后续读取，迟到结果由现有组件生命周期丢弃。不得把 ACP id 发给原生 CLI 附件接口。没有新增 Renderer 附件内容 store。
+- 克隆快照中的同一附件不触发重新预取，生命周期按内容目标而非数组引用比较；切换等待及发送行为遵循 [ACP 交互等待](acp-interaction-latency.md)。
 
 ```text
 冻结草稿 → 现有 Host ACP admission owner → 能力/文件校验 → 会话附件副本

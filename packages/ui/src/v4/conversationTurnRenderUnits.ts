@@ -72,7 +72,7 @@ export interface ConversationTurnRenderUnit {
 interface BuildConversationTurnRenderUnitsOptions {
   nowMs?: number;
   sessionPhase?: SessionPhase;
-  /** 外部智能体只提供消息和状态，未提供权威工时。 */
+  /** 仅在调用方明确没有时间事实时关闭；ACP 的时间来自原 Host 快照。 */
   workDurationAvailable?: boolean;
 }
 

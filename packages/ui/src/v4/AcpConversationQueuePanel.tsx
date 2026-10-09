@@ -12,10 +12,11 @@ import {
 import { Textarea } from "@/components/ui/textarea.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { ConversationQueuePanel } from "@/v4/ConversationQueuePanel.js";
-import { projectAcpQueue } from "@/v4/acpQueueProjection.js";
+import { projectAcpQueue, type AcpQueueSubmission } from "@/v4/acpQueueProjection.js";
 
 interface Props {
   queue: AcpSession["queue"];
+  pendingSubmission?: AcpQueueSubmission | null;
   actions: {
     deleteItem(id: string): Promise<void>;
     editItem(id: string, text: string): Promise<void>;
@@ -25,7 +26,7 @@ interface Props {
   };
 }
 
-export function AcpConversationQueuePanel({ queue, actions }: Props) {
+export function AcpConversationQueuePanel({ queue, pendingSubmission, actions }: Props) {
   const { intl } = useZCodeIntl();
   const projected = useMemo(() => projectAcpQueue(queue), [queue]);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
@@ -53,6 +54,7 @@ export function AcpConversationQueuePanel({ queue, actions }: Props) {
     <>
       <ConversationQueuePanel
         queue={projected}
+        pendingSubmission={pendingSubmission}
         onDeleteItem={(id) => handle(actions.deleteItem(id))}
         onEditItem={(id) => {
           const current = queue.items.find((candidate) => candidate.commandId === id);

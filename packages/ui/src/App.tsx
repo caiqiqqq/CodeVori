@@ -856,8 +856,10 @@ export function App({
     setWorkspaceMainView("repository");
   }, []);
   const handleNavigateToWorkTasksMain = useCallback(() => {
+    // 设置页显式打开待办时，即使进入设置前也是待办页，也不能被退出逻辑重置为聊天。
+    preserveNextSettingsExit();
     setWorkspaceMainView("work-tasks");
-  }, []);
+  }, [preserveNextSettingsExit]);
   const handleOpenAutomationConsumed = useCallback(() => {
     setOpenAutomationId(null);
     setOpenAutomationTab(null);

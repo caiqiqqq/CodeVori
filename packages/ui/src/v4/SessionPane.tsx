@@ -4994,6 +4994,7 @@ export function SessionPane({
         <AcpConversationQueuePanel
           key={acpConversation.selected.id}
           queue={acpConversation.selected.queue}
+          pendingSubmission={acpConversation.queueSubmission}
           actions={acpConversation.queueActions}
         />
       ) : null}
@@ -5276,7 +5277,6 @@ export function SessionPane({
               }
               scrollMemoryKey={acpAgent ? null : timelineScrollMemoryKey}
               rowContext={acpAgent ? acpRowContext : rowContext}
-              workDurationAvailable={!acpAgent}
               onFork={!acpAgent && forkActionsEnabled ? handleFork : undefined}
               onRetry={!acpAgent && retryActionsEnabled ? handleRetry : undefined}
               onFeedbackChange={
