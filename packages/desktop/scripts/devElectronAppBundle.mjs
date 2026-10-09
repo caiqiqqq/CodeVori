@@ -4,7 +4,8 @@ import { PRODUCT_NAME } from "@zcode/shared/product-brand";
 
 export const DEV_ELECTRON_PROTOCOL_SCHEME = "zcode";
 export const DEV_ELECTRON_APP_NAME = `${PRODUCT_NAME} Dev`;
-export const DEV_ELECTRON_APP_BUNDLE_ID = "dev.zcode.app.development";
+// 系统权限重启会按 bundle ID 重新解析应用，开发副本也不能与旧 ZCode Dev 共用身份。
+export const DEV_ELECTRON_APP_BUNDLE_ID = "dev.codevori.app.development";
 // 副本布局版本，见 prepareDevElectronAppBundle 中的指纹说明。
 export const DEV_ELECTRON_BUNDLE_FORMAT = 2;
 

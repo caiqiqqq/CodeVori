@@ -20,7 +20,7 @@ async function until(check: () => Promise<boolean>) {
   assert.fail("conversation task state did not settle");
 }
 
-async function fixture(kind: "api" | "acp") {
+async function fixture(kind: "api" | "acp", failInitial = true) {
   const directory = await mkdtemp(join(tmpdir(), "zcode-task-conversation-"));
   const services: WorkTaskService[] = [];
   const changes = new Emitter<WorkTaskConversationEvent>();
@@ -62,7 +62,15 @@ async function fixture(kind: "api" | "acp") {
             baseCommit: "abcdef",
           },
         });
-        throw new Error("Synthetic first failure");
+        if (failInitial) throw new Error("Synthetic first failure");
+      },
+      merge: {
+        validate: async () => ({ projectPath: "/project" }),
+        execute: async (task, context) => {
+          await context.update({
+            merge: { ...task.merge!, phase: "merged", resultCommit: "result" },
+          });
+        },
       },
     });
     services.push(service);
@@ -82,7 +90,7 @@ async function fixture(kind: "api" | "acp") {
   await service.start({ ...scope, id: task.id });
   const read = async () =>
     (await services.at(-1)!.list(scope)).tasks.find((row) => row.id === task.id)!;
-  await until(async () => (await read()).status === "failed");
+  await until(async () => (await read()).status === (failInitial ? "failed" : "review"));
   const event = (
     commandId = uuidv7(),
     status: WorkTaskConversationEvent["status"] = "running",
@@ -119,6 +127,67 @@ async function fixture(kind: "api" | "acp") {
 }
 
 for (const kind of ["api", "acp"] as const) {
+  for (const completion of ["accepted_without_merge", "merged"] as const) {
+    test(`${kind} ${completion} task resumes after Host restart and claims once without replay`, async () => {
+      const f = await fixture(kind, false);
+      try {
+        if (completion === "merged") {
+          await f.service.merge({ ...f.scope, id: f.task.id, targetBranch: "main" });
+          await until(async () => (await f.read()).status === "done");
+        } else await f.service.complete({ ...f.scope, id: f.task.id });
+        const completed = await f.read();
+        assert.equal(completed.completion, completion);
+        assert.equal(f.watchers, 1, "completed task must retain its passive observation");
+        await f.service.disposeAllAndWait();
+        const restarted = f.makeService();
+        await restarted.list(f.scope);
+        const secondHost = f.makeService();
+        await secondHost.list(f.scope);
+        assert.equal(f.watchers, 2);
+        f.changes.fire(f.event(completed.commandId));
+        f.changes.fire({ ...f.event(), startedAt: completed.updatedAt - 1 });
+        f.changes.fire(f.event(undefined, "review"));
+        assert.equal(
+          (await f.read()).status,
+          "done",
+          "old or terminal-only facts preserve completion",
+        );
+        await assert.rejects(restarted.start({ ...f.scope, id: f.task.id }), /not-startable/);
+        const next = f.event();
+        f.changes.fire(next);
+        f.changes.fire(next);
+        const running = await f.read();
+        assert.equal(running.status, "running");
+        assert.equal(running.runSeq, completed.runSeq + 1);
+        assert.equal(running.commandId, next.commandId);
+        assert.equal(running.completion, undefined);
+        assert.equal(running.merge, undefined);
+        assert.deepEqual(running.session, completed.session);
+        assert.deepEqual(running.worktree, completed.worktree);
+        assert.equal(f.executions, 1, "observing a new input never executes the task again");
+        f.changes.fire({ ...next, commandId: completed.commandId, status: "review" });
+        assert.equal(
+          (await f.read()).status,
+          "running",
+          "old completion cannot settle the new run",
+        );
+        f.changes.fire({ ...next, status: "awaiting_input" });
+        assert.equal((await f.read()).status, "awaiting_input");
+        f.changes.fire({ ...next, status: "review" });
+        assert.equal((await f.read()).status, "review");
+        assert.equal((await f.read()).completion, undefined);
+        await restarted.complete({ ...f.scope, id: f.task.id });
+        await restarted.archive({ ...f.scope, id: f.task.id, archived: true });
+        f.changes.fire(f.event());
+        const archived = (await secondHost.list({ ...f.scope, includeArchived: true })).tasks[0]!;
+        assert.equal(archived.status, "done");
+        assert.equal(archived.archived, true);
+      } finally {
+        await f.cleanup();
+      }
+    });
+  }
+
   test(`${kind} direct continuation is observed without replaying the message`, async () => {
     const f = await fixture(kind);
     try {
@@ -196,7 +265,7 @@ for (const kind of ["api", "acp"] as const) {
   });
 }
 
-test("observation ignores old starts, terminal-only events, archived/done tasks and read-only Hosts", async () => {
+test("observation ignores old starts, terminal-only events, archived tasks and read-only Hosts", async () => {
   const f = await fixture("api");
   try {
     const failed = await f.read();
@@ -213,8 +282,12 @@ test("observation ignores old starts, terminal-only events, archived/done tasks 
     f.changes.fire({ ...next, status: "review" });
     await until(async () => (await f.read()).status === "review");
     await f.service.complete({ ...f.scope, id: f.task.id });
+    await f.service.archive({ ...f.scope, id: f.task.id, archived: true });
     f.changes.fire(f.event());
-    assert.equal((await f.read()).status, "done");
+    assert.equal(
+      (await f.service.list({ ...f.scope, includeArchived: true })).tasks[0]?.status,
+      "done",
+    );
     await f.service.disposeAllAndWait();
     const readOnly = f.makeService(false);
     await readOnly.list(f.scope);

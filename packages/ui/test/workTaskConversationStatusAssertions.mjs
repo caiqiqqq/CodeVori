@@ -7,20 +7,26 @@ export async function exerciseWorkTaskConversationStatus(page, artifacts) {
   await page.setViewportSize({ width: 1280, height: 850 });
   const panel = page.getByTestId("work-tasks-panel");
   await panel.getByTestId("work-task-board").waitFor();
-  for (const kind of ["api", "acp"]) {
+  for (const [kind, initialStatus] of [
+    ["api", "failed"],
+    ["acp", "failed"],
+    ["api", "done"],
+    ["acp", "done"],
+  ]) {
     const task = await page.evaluate(
-      (kind) =>
+      ({ kind, initialStatus }) =>
         window.__tasks.seed({
-          title: `Continued ${kind} task`,
+          title: `Continued ${initialStatus} ${kind} task`,
           prompt: "Original task",
-          status: "failed",
+          status: initialStatus,
           runSeq: 1,
-          failureReason: "Previous failure",
+          failureReason: initialStatus === "failed" ? "Previous failure" : undefined,
+          completion: initialStatus === "done" ? "accepted_without_merge" : undefined,
           execution:
             kind === "api"
               ? { kind, modelSelection: { providerId: "api", modelId: "TestModel" }, mode: "build" }
               : { kind, agent: "codex", config: [] },
-          session: { kind, id: `continued-${kind}` },
+          session: { kind, id: `continued-${initialStatus}-${kind}` },
           worktree: {
             rootPath: "/synthetic/trees",
             path: `/synthetic/trees/continued-${kind}/project`,
@@ -29,7 +35,7 @@ export async function exerciseWorkTaskConversationStatus(page, artifacts) {
             baseCommit: "abcdef",
           },
         }),
-      kind,
+      { kind, initialStatus },
     );
     const card = () => panel.locator(`[data-testid="work-task-card"][data-task-id="${task.id}"]`);
     await card().getByRole("button", { name: task.title, exact: true }).click();
@@ -41,7 +47,11 @@ export async function exerciseWorkTaskConversationStatus(page, artifacts) {
       exact: true,
     });
     await draft.fill("Continue");
-    assert.equal(await card().locator('[data-work-task-status="failed"]').count(), 1);
+    assert.equal(await card().locator(`[data-work-task-status="${initialStatus}"]`).count(), 1);
+    await panel
+      .locator(`[data-work-task-column="${initialStatus === "done" ? "done" : "attention"}"]`)
+      .locator(`[data-task-id="${task.id}"]`)
+      .waitFor();
     const header = panel.getByTestId("work-task-content").locator("header");
     for (const [status, column] of [
       ["running", "inProgress"],
@@ -56,6 +66,7 @@ export async function exerciseWorkTaskConversationStatus(page, artifacts) {
         ({ id, status }) => {
           const task = window.__tasks.tasks.find((task) => task.id === id);
           task.failureReason = status === "failed" ? "New failure" : undefined;
+          task.completion = undefined;
           window.__tasks.status(id, status);
         },
         { id: task.id, status },
@@ -74,7 +85,9 @@ export async function exerciseWorkTaskConversationStatus(page, artifacts) {
       assert.equal(await draft.inputValue(), "Continue");
       assert.equal(await card().getAttribute("data-selected"), "true");
       if (status === "running")
-        await page.screenshot({ path: join(artifacts, `conversation-continued-${kind}.png`) });
+        await page.screenshot({
+          path: join(artifacts, `conversation-continued-${initialStatus}-${kind}.png`),
+        });
     }
     await previous.dispose();
   }

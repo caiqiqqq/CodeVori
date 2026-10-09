@@ -39,6 +39,28 @@ function displayText(entry: Extract<AcpEntry, { kind: "user" }>): string {
   return entry.text ? `${entry.text}\n\n${names}` : names;
 }
 
+/** footer 只展示时间线尚未表达的操作错误，不修改 Host 保存的诊断。 */
+export function acpConversationOperationError(
+  session: Pick<AcpSession, "error" | "errorCommandId"> | null,
+  error: string | null,
+  rows: readonly ConversationRow[],
+): string | null {
+  if (error && error !== session?.error) return error;
+  if (!session?.error) return error;
+  // 修复原因：重启恢复只有 session.error，轮尾通过兼容投影显示它；只检查
+  // traceError 会重复提示。复用实际投影，同时保留内部操作的 command scope。
+  const represented = rows.some(
+    (row) =>
+      row.kind === "turnHeader" &&
+      (session.errorCommandId === undefined || row.turnId === `acp:${session.errorCommandId}`) &&
+      row.notices?.some(
+        (notice) =>
+          notice.severity === "error" && notice.message === session.error?.slice(0, 32_000),
+      ),
+  );
+  return represented ? null : error || session.error;
+}
+
 /** ACP Host 快照的只读展示投影；行 id / turn id 仅供当前时间线，不进入 CLI 协议或持久化。 */
 export function buildAcpConversationRows(
   session:
