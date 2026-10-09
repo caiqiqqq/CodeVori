@@ -29,7 +29,7 @@ export function WorkTaskApiConfigControls({
         onValueChange={(mode) => onChange({ ...execution, mode: mode as ApiExecution["mode"] })}
         disabled={disabled}
       >
-        <SelectTrigger className="max-w-40" aria-label={t("mode")}>
+        <SelectTrigger variant="ghost" className="max-w-40" aria-label={t("mode")}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -51,7 +51,7 @@ export function WorkTaskApiConfigControls({
           }
           disabled={disabled}
         >
-          <SelectTrigger className="max-w-40" aria-label={t("reasoning")}>
+          <SelectTrigger variant="ghost" className="max-w-40" aria-label={t("reasoning")}>
             <SelectValue placeholder={t("reasoning")} />
           </SelectTrigger>
           <SelectContent>

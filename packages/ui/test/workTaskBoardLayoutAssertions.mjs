@@ -40,6 +40,8 @@ export async function assertWorkTaskCompactRows(panel) {
     }),
   );
   for (const row of rows) {
+    assert.ok(Math.abs(row.x - rows[0].x) < 1, "task rows must share the same left edge");
+    assert.ok(Math.abs(row.width - rows[0].width) < 1, "task rows must stay equal width");
     assert.ok(row.height >= 35 && row.height <= 37, `task must fit one compact row: ${row.id}`);
     assert.equal(row.paragraphs, 0, "descriptions and errors must not expand task rows");
     assert.ok(row.scrollWidth <= row.clientWidth + 1, `task row must not overflow: ${row.id}`);

@@ -6,6 +6,7 @@ import type {
   ForgeRepositoryInfo,
   ForgeSort,
   ForgeTargetRequest,
+  ForgeIssueDraft,
 } from "@zcode/shared";
 import { useWorkspaceServicesResolution } from "./useWorkspaceServices.js";
 import { forgeErrorId } from "@/lib/forgePanel.js";
@@ -186,11 +187,9 @@ export function useRepositoryPanel(
   }, [gitService, target, revision]);
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   const mutation = useForgeMutation(target);
-  const createIssue = async (title: string, body: string) => {
+  const createIssue = async (draft: ForgeIssueDraft) => {
     if (!target) return null;
-    const result = await mutation.run(() =>
-      gitService.createForgeIssue({ ...target, title, body }),
-    );
+    const result = await mutation.run(() => gitService.createForgeIssue({ ...draft, ...target }));
     if (!result) return null;
     refresh();
     return result.value;

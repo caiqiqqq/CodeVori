@@ -1,5 +1,7 @@
 # Built-in ACP agent sessions alongside ZCode
 
+- ACP 表单交互与回答回传遵循 [ACP 结构化用户输入](acp-user-input.md)。
+
 ## Product rules
 
 - ACP 高频分片的写入合并与持久化屏障遵循 [ACP 流式快照写入](acp-streaming-snapshots.md)。

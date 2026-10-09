@@ -3,7 +3,6 @@ import { spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import { PRODUCT_NAME, acpAgentDefinition } from "@zcode/shared";
 import {
-  ClientSideConnection,
   ndJsonStream,
   PROTOCOL_VERSION,
   type Client,
@@ -24,6 +23,7 @@ import { projectAcpToolDetails } from "./acpToolDetails.js";
 import { projectLegacyCompaction, projectTypedCompaction } from "./acpCompaction.js";
 import { projectAcpSessionFailure } from "./acpSessionFailures.js";
 import { AcpTerminals } from "./acpTerminals.js";
+import { connectAcpClientTransport } from "./acpClientTransport.js";
 
 const START_TIMEOUT_MS = 20_000;
 const MAX_INITIAL_USAGE_SESSIONS = 16;
@@ -225,13 +225,16 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       return { outcome: optionId ? { outcome: "selected", optionId } : { outcome: "cancelled" } };
     },
   };
-  const connection = new ClientSideConnection(
-    () => client,
-    ndJsonStream(
+  const transport = connectAcpClientTransport({
+    client,
+    isActiveSession: (id) => !closed && receivingLiveUpdates && id === sessionId,
+    onElicitation: input.onElicitation,
+    stream: ndJsonStream(
       Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
       Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
     ),
-  );
+  });
+  const connection = transport.agent;
   let startTimer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     startTimer = setTimeout(() => reject(new Error("ACP Agent 启动超时")), START_TIMEOUT_MS);
@@ -242,10 +245,11 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       exited,
       timeout,
       (async () => {
-        const initialized = await connection.initialize({
+        const initialized = await connection.request("initialize", {
           protocolVersion: PROTOCOL_VERSION,
           clientCapabilities: {
             terminal: true,
+            ...(input.onElicitation ? { elicitation: { form: {} } } : {}),
             session: { compaction: {}, configOptions: { boolean: {} } },
             _meta: { jetbrains: { air: { version: 1, capabilities: ["sessionFailure"] } } },
           },
@@ -298,7 +302,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
           }
           let loaded;
           try {
-            loaded = await connection.loadSession({
+            loaded = await connection.request("session/load", {
               sessionId,
               cwd: input.workspacePath,
               mcpServers,
@@ -311,7 +315,10 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
           configOptions = projectAcpConfigOptions(loaded.configOptions);
           modeState = projectAcpModeState(loaded.modes);
         } else {
-          const created = await connection.newSession({ cwd: input.workspacePath, mcpServers });
+          const created = await connection.request("session/new", {
+            cwd: input.workspacePath,
+            mcpServers,
+          });
           sessionId = created.sessionId;
           configOptions = projectAcpConfigOptions(created.configOptions);
           modeState = projectAcpModeState(created.modes);
@@ -351,7 +358,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       },
       ...(initialUsage ? { contextUsage: initialUsage.usage } : {}),
       async setConfigOption(configId, value) {
-        const result = await connection.setSessionConfigOption({
+        const result = await connection.request("session/set_config_option", {
           sessionId: activeSessionId,
           configId,
           ...(typeof value === "boolean" ? { type: "boolean" as const, value } : { value }),
@@ -359,12 +366,12 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         return projectAcpConfigOptions(result.configOptions);
       },
       async setMode(modeId) {
-        await connection.setSessionMode({ sessionId: activeSessionId, modeId });
+        await connection.request("session/set_mode", { sessionId: activeSessionId, modeId });
       },
       async prompt(text, blocks) {
         // 仅保留本轮 legacy 工具的路由身份；生命周期与终态仍由 Host 唯一持有。
         compactionIds.clear();
-        const response = await connection.prompt({
+        const response = await connection.request("session/prompt", {
           sessionId: activeSessionId,
           prompt: blocks ?? [{ type: "text", text }],
         });
@@ -375,7 +382,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         return projectAcpPromptUsage(input.agent, agentInfo, response);
       },
       async cancel() {
-        await connection.cancel({ sessionId: activeSessionId });
+        await connection.notify("session/cancel", { sessionId: activeSessionId });
       },
       close,
     };

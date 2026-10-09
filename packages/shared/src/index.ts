@@ -1,4 +1,5 @@
 export * from "./acp-plan.js";
+export * from "./acp-elicitation.js";
 export type {
   FileBinaryPreview,
   FileEntry,
@@ -9,6 +10,7 @@ export type {
   WorkspaceFileEntry,
   SystemInfo,
   AppSettings,
+  QuickMessage,
   ElectronReleaseChannel,
   IntegratedTerminalShellDialect,
   IntegratedTerminalShellOption,
