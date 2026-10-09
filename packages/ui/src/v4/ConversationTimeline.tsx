@@ -1870,6 +1870,7 @@ function ConversationTimelineImpl({
                     >
                       <ConversationTurnGroup
                         unit={unit}
+                        sessionKey={sessionKey}
                         apiRetry={null}
                         context={rowContext}
                         onFork={onFork}
@@ -1900,6 +1901,7 @@ function ConversationTimelineImpl({
                 >
                   <ConversationTurnGroup
                     unit={liveUnit}
+                    sessionKey={sessionKey}
                     apiRetry={apiRetry}
                     context={rowContext}
                     onFork={onFork}
