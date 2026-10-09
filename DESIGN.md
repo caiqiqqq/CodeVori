@@ -115,6 +115,9 @@ Default light and dark CSS variables still exist as fallback foundations, but ne
 - **Idle-time task**: `--color-idle-task` with `--color-idle-task-surface`
   Use only for idle-time queue and paused tags so they remain visually distinct
   from the green scheduled-task treatment.
+- **Task running indicator**: `--color-task-running-indicator`
+  Yellow spinning corner indicator for API and ACP conversation rows waiting for a response;
+  yellow-600 in light themes and yellow-300 in dark themes. Keep confirmation badges separate.
 - **Diff Added**: `--color-diff-added` with `--color-diff-added-foreground`
 - **Diff Removed**: `--color-diff-removed` with `--color-diff-removed-foreground`
 

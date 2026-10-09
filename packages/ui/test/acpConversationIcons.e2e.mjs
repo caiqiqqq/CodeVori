@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import { assertYellowWaitingIndicator } from "./waitingResponseIndicatorAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__acp-conversation-icons-${process.pid}`;
@@ -201,6 +202,7 @@ try {
         window.__conversationIcons.patch("session-1", { status: "running" });
       });
       await row.locator("[data-acp-running-indicator]").waitFor();
+      await assertYellowWaitingIndicator(row.locator("[data-acp-running-indicator]"), theme);
       assert.equal(await icon.isVisible(), true, "Running badge must keep Agent identity visible");
       const before = await titleLeft(row);
       await page.evaluate(() => window.__conversationIcons.patch("session-1", { unreadAt: 123 }));
