@@ -1,3 +1,10 @@
+export function formatContextTokenNumber(value: number, locale = "en-US"): string {
+  // 修复依据：Codeg 的聊天面板统一使用十进制 K/M，容量和累计统计不能混用万与完整整数。
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  return new Intl.NumberFormat(locale).format(value);
+}
+
 export function formatCompactTokenNumber(
   locale: string,
   value: number,

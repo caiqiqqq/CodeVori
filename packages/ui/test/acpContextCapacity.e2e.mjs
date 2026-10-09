@@ -141,7 +141,16 @@ try {
     await assertCapacityLabel(/9,000.*200,000/);
     if (width === 375) await trigger.tap();
     else await trigger.hover();
-    await page.getByText("上下文容量").waitFor();
+    await page
+      .getByText("上下文容量")
+      .waitFor()
+      .catch(async (error) => {
+        await page.screenshot({ path: join(artifacts, `capacity-failure-${width}.png`) });
+        throw new Error(
+          `${error.message}; width=${width}; errors=${errors.join("; ")}; artifacts=${artifacts}; body=${(await page.locator("body").innerText()).slice(-1200)}`,
+        );
+      });
+    await page.getByText("9K/200K (4.5%)", { exact: true }).waitFor();
     assert.equal(await page.getByText("平均缓存命中率").count(), 0);
 
     await page.evaluate(() =>
@@ -233,6 +242,67 @@ try {
       await page.getByTestId("context-token-hitRate").locator("dd").textContent(),
       "50%",
     );
+    // 截图中的百万级统计采用 Codeg K/M；原始计数和命中率不受显示舍入影响。
+    await page.evaluate(() =>
+      window.__setContextView((view) => ({
+        ...view,
+        context: { used: 181000, size: 260000 },
+        tokens: {
+          source: "native",
+          usage: {
+            inputTokens: 70997350,
+            outputTokens: 326330,
+            cacheReadTokens: 67434971,
+            totalTokens: 71323680,
+          },
+        },
+      })),
+    );
+    await assertCapacityLabel(/181,000.*260,000/);
+    // 快照更新会移动 hover 浮层；先按真实触摸/键盘入口重新打开，再读取统计。
+    if (width === 375) await trigger.tap();
+    else await trigger.focus();
+    await page.getByText("181K/260K (69.6%)", { exact: true }).waitFor();
+    for (const [key, text, exact] of [
+      ["input", "71M", "70,997,350"],
+      ["output", "326.3K", "326,330"],
+      ["cacheRead", "67.4M", "67,434,971"],
+      ["total", "71.3M", "71,323,680"],
+    ]) {
+      const count = page.getByTestId(`context-token-${key}`).locator("dd");
+      assert.equal(await count.textContent(), text);
+      assert.equal(await count.getAttribute("title"), exact);
+    }
+    assert.equal(
+      await page.getByTestId("context-token-hitRate").locator("dd").textContent(),
+      "95%",
+    );
+    assert.equal(
+      await page.getByTestId("context-token-cacheWrite").locator("dd").textContent(),
+      "—",
+    );
+    for (const theme of ["zai-light", "zai-dark"]) {
+      await page.evaluate((theme) => {
+        document.documentElement.classList.remove("theme-zai-light", "theme-zai-dark", "dark");
+        document.documentElement.classList.add(
+          `theme-${theme}`,
+          ...(theme === "zai-dark" ? ["dark"] : []),
+        );
+      }, theme);
+      if (width === 375) await trigger.tap();
+      else {
+        await page.mouse.move(0, 0);
+        await trigger.hover();
+      }
+      await page.getByTestId("context-token-usage").waitFor();
+      await page.getByTestId("context-token-usage").evaluate(async (element) => {
+        const panel = element.closest('[data-slot="hover-card-content"]');
+        await Promise.all(
+          panel.getAnimations().map((animation) => animation.finished.catch(() => {})),
+        );
+      });
+      await page.screenshot({ path: join(artifacts, `token-units-${width}-${theme}.png`) });
+    }
     await page.mouse.move(0, 0);
     if (width === 375) await page.touchscreen.tap(4, 4);
     else await input.click();

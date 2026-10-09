@@ -1,5 +1,6 @@
 import type { AcpTokenUsage } from "@zcode/shared";
 import type { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { formatContextTokenNumber } from "@/lib/tokenNumberFormat.js";
 
 export type ContextTokenUsageData = {
   source: "native" | "turns";
@@ -51,8 +52,11 @@ export function ContextTokenUsage({
             <dt className="text-foreground-subtle">
               {intl.formatMessage({ id: `chat.contextTokens.${key}` })}
             </dt>
-            <dd className="font-mono tabular-nums text-foreground">
-              {value === undefined ? "—" : number.format(value)}
+            <dd
+              className="font-mono tabular-nums text-foreground"
+              title={value === undefined ? undefined : number.format(value)}
+            >
+              {value === undefined ? "—" : formatContextTokenNumber(value, locale)}
             </dd>
           </div>
         ))}
