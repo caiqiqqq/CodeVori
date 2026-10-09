@@ -299,7 +299,7 @@ function RepositoryPanelContent({
                       ) : null}
                     </div>
                     {data.items.length ? (
-                      <ul className="divide-y divide-border">
+                      <ul className="flex flex-col gap-1">
                         {data.items.map((item) => (
                           <RepositoryItemRow
                             key={`${item.kind}:${item.number}`}
