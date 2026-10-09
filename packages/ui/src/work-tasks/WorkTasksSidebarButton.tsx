@@ -38,10 +38,12 @@ function ProjectCounts({
 export function WorkTasksSidebarButton({
   projects,
   active = false,
+  projectsLoading = false,
   onClick,
 }: {
   projects: Parameters<typeof workTaskSidebarScopes>[0];
   active?: boolean;
+  projectsLoading?: boolean;
   onClick?: () => void;
 }) {
   const { intl } = useZCodeIntl();
@@ -67,8 +69,8 @@ export function WorkTasksSidebarButton({
   }, []);
   let running = 0;
   let waiting = 0;
-  let available = true;
-  let loading = false;
+  let available = !projectsLoading;
+  let loading = projectsLoading;
   for (const { key } of scopes) {
     const projection = projections[key];
     loading ||= !projection || projection.loading;

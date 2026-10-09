@@ -251,8 +251,26 @@ export const acpCreateInputSchema = acpWorkspaceSchema.extend({
   requestId: z.string().uuid().optional(),
   /** Connect ACP on selection; keep the display session in Host memory until the first turn. */
   deferPersistence: z.boolean().optional(),
+  /** Only composer drafts inherit the target Host's explicit permission preference. */
+  usePermissionPreference: z.boolean().optional(),
 });
 export type AcpCreateInput = z.input<typeof acpCreateInputSchema>;
+
+export const acpPermissionSelectionSchema = z
+  .object({ configId: z.string().trim().min(1).max(256), value: z.string().min(1).max(512) })
+  .strict();
+export type AcpPermissionSelection = z.infer<typeof acpPermissionSelectionSchema>;
+
+export const acpSetConfigOptionInputSchema = acpWorkspaceSchema
+  .extend({
+    id: z.string().min(1),
+    configId: z.string().min(1),
+    value: z.union([z.string(), z.boolean()]),
+    /** Explicit composer selection; internal callers omit this flag. */
+    rememberPermission: z.boolean().optional(),
+  })
+  .strict();
+export type AcpSetConfigOptionInput = z.infer<typeof acpSetConfigOptionInputSchema>;
 
 /** Renderer 的附件草稿；内容只在本次 RPC 中流过，不进入会话快照。 */
 export const acpPromptAttachmentSchema = z
@@ -548,6 +566,8 @@ export const acpSessionSchema = acpWorkspaceSchema.extend({
   goal: z.string().nullable().default(null),
   configOptions: z.array(acpConfigOptionSchema).default([]),
   modeState: acpModeStateSchema.nullable().default(null),
+  /** This session's selection, independent of the latest new-session preference. */
+  permissionSelection: acpPermissionSelectionSchema.optional(),
   /** Agent-reported current context occupancy; missing legacy snapshots have no known value. */
   contextUsage: z
     .object({ used: z.number().finite().positive(), size: z.number().finite().positive() })

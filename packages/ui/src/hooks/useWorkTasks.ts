@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { IWorkTaskService } from "@zcode/services";
-import type { WorkTaskBoard, WorkTaskCreate, WorkTaskScope, WorkTaskUpdate } from "@zcode/shared";
+import type { WorkTaskCreate, WorkTaskScope, WorkTaskUpdate } from "@zcode/shared";
 import { useBaseWorkspaceServices } from "./useWorkspaceServices.js";
 import { useRemoteWorkspaceSessionStore } from "@/store/remoteWorkspaceSessionStore.js";
 import { resolveWorkspaceServices } from "@/lib/workspaceServiceResolver.js";
 import { workTaskErrorMessage } from "@/lib/workTaskBoard.js";
+import { getWorkTaskReadModel } from "./workTaskReadModel.js";
+
+const subscribeToNothing = () => () => {};
+const unavailableSnapshot = { data: null, error: null, loading: false };
+const getUnavailableSnapshot = () => unavailableSnapshot;
 
 export function useWorkTasks(
   input: WorkTaskScope,
@@ -28,15 +33,21 @@ export function useWorkTasks(
   );
   const service = resolution?.services.workTaskService;
   const rpcReady = !!resolution;
-  const owner = useMemo(() => ({}), [service, scope, includeArchived, rpcReady]);
-  const generation = useRef(0);
-  const [read, setRead] = useState<{
-    owner: object;
-    board: WorkTaskBoard | null;
+  const resource = useMemo(
+    () => (service && rpcReady ? getWorkTaskReadModel(service, scope, includeArchived) : null),
+    [service, rpcReady, scope, includeArchived],
+  );
+  const read = useSyncExternalStore(
+    resource?.subscribe ?? subscribeToNothing,
+    resource?.getSnapshot ?? getUnavailableSnapshot,
+    resource?.getSnapshot ?? getUnavailableSnapshot,
+  );
+  const owner = useMemo(() => ({}), [resource, scope]);
+  const [mutation, setMutation] = useState<{
+    owner: typeof owner;
     error: string | null;
-    loading: boolean;
-  }>({ owner, board: null, error: null, loading: true });
-  const [mutation, setMutation] = useState<{ owner: object; error: string | null; busy: boolean }>({
+    busy: boolean;
+  }>({
     owner,
     error: null,
     busy: false,
@@ -44,42 +55,8 @@ export function useWorkTasks(
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
   const refresh = useCallback(async () => {
-    const seq = ++generation.current;
-    if (!service || !rpcReady) {
-      setRead({
-        owner,
-        board: null,
-        loading: false,
-        error: !rpcReady ? "work-task.disconnected" : "work-task.unsupported-host",
-      });
-      return;
-    }
-    try {
-      const board = await service.list({ ...scope, includeArchived });
-      if (ownerRef.current === owner && generation.current === seq)
-        setRead({ owner, board, loading: false, error: null });
-    } catch (error) {
-      if (ownerRef.current === owner && generation.current === seq)
-        setRead((previous) => ({
-          owner,
-          board: previous.owner === owner ? previous.board : null,
-          loading: false,
-          error: workTaskErrorMessage(error),
-        }));
-    }
-  }, [owner, service, rpcReady, scope, includeArchived]);
-  useEffect(() => {
-    setRead({ owner, board: null, loading: true, error: null });
-    void refresh();
-    if (!service || !rpcReady) return;
-    const listener = service.onDynamicChanged(scope)(() => {
-      void refresh();
-    });
-    return () => {
-      generation.current++;
-      listener.dispose();
-    };
-  }, [owner, refresh, service, scope, rpcReady]);
+    await resource?.refresh(true);
+  }, [resource]);
   const run = useCallback(
     async (action: (target: IWorkTaskService) => Promise<unknown>): Promise<boolean> => {
       if (!service || !rpcReady) return false;
@@ -97,7 +74,13 @@ export function useWorkTasks(
     },
     [owner, service, rpcReady, refresh],
   );
-  const current = read.owner === owner ? read : { board: null, loading: true, error: null };
+  const current = resource
+    ? { board: read.data, loading: read.loading, error: read.error }
+    : {
+        board: null,
+        loading: false,
+        error: !rpcReady ? "work-task.disconnected" : "work-task.unsupported-host",
+      };
   return {
     ...current,
     scope,
