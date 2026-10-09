@@ -172,7 +172,7 @@ try {
   });
   await expectCounts(1, 2);
 
-  // A late snapshot cannot replace the newer event-driven result.
+  // A read in flight is shared; new events invalidate it and schedule one follow-up.
   await page.evaluate(() => {
     window.__counts.defer = "/synthetic/one";
     window.__counts.notify("local", "/synthetic/one");
@@ -181,7 +181,7 @@ try {
   await page.evaluate(() =>
     window.__counts.replace("local", "/synthetic/one", ["running", "done", "review"]),
   );
-  await expectCounts(2, 2);
+  await expectCounts(1, 2);
   await page.evaluate(() => window.__counts.finish());
   await expectCounts(2, 2);
   await page.evaluate(() => {
