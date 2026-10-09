@@ -5,6 +5,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import { exerciseAcpAttachmentLatency } from "./acpAttachmentLatencyAssertions.mjs";
+import { createAcpAttachmentLayoutAssertions } from "./acpAttachmentLayoutAssertions.mjs";
 import { createTurnNavigatorAssertions } from "./conversationTurnNavigatorAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
@@ -41,6 +43,7 @@ try {
       const sessions = new Map();
       const files = new Map();
       const reads = [];
+      let delayReads=false; const pendingReads=[];
       function png(color) {
         const canvas=document.createElement('canvas'); canvas.width=canvas.height=32;
         const context=canvas.getContext('2d'); context.fillStyle=color; context.fillRect(0,0,32,32);
@@ -76,6 +79,7 @@ try {
           refresh: async ({id}) => sessions.get(id),
           readAttachment: async ({id,ref,offset=0,limit=131072,workspacePath:path}) => {
             reads.push({id,ref});
+            if(delayReads) await new Promise(resolve=>pendingReads.push(resolve));
             const file=files.get(ref);
             if(path!==workspacePath || !file || file.id!==id || file.failed) throw new Error('Fixture attachment unavailable');
             const end=Math.min(file.bytes.length,offset+limit);
@@ -102,7 +106,9 @@ try {
         sessions.set(id,session); return session;
       }
       const firstSession = makeSession('codex',24);
-      const controls = {unexpected,reads};
+      const controls = {unexpected,reads,pendingReads,
+        delayReads:()=>{delayReads=true},
+        releaseReads:()=>{delayReads=false;for(const resolve of pendingReads.splice(0))resolve()}};
       window.__turnNavigator = controls;
       const apiRows = Array.from({length:8}, (_,index) => [
         {kind:'turnHeader',rowId:index*3+1,turnId:'api:'+index,createdAt:1,createdAtSeq:index,
@@ -135,6 +141,14 @@ try {
           const previous=sessions.get(request.session.id);
           const session={...previous,revision:previous.revision+1,status:'running',entries:[...previous.entries,
             {id:'user:live:'+previous.entries.length,kind:'user',text:previous.agent+' live question'}]};
+          sessions.set(session.id,session);
+          for(const listener of listeners) listener({kind:'updated',session});
+        };
+        controls.snapshot = (status, replace=false) => {
+          const session=structuredClone(sessions.get(request.session.id));
+          session.revision++; session.status=status;
+          session.entries.at(-1).text += ".";
+          if(replace) session.entries[0].attachments[0]=saveFixtureAttachment(session.id,blue,'image/png','same.png',0);
           sessions.set(session.id,session);
           for(const listener of listeners) listener({kind:'updated',session});
         };
@@ -172,7 +186,7 @@ try {
   page.setDefaultTimeout(10000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
-  await page.goto(`${origin}/${name}.html`);
+  await page.goto(`${origin}/${name}.html`, { timeout: 60000 });
   const rail = page.getByTestId("v4-turn-navigator");
   const timeline = page.getByTestId("v4-timeline");
   const tooltip = page.locator('[data-testid^="v4-turn-navigator-tooltip-"]');
@@ -192,48 +206,7 @@ try {
       return [...context.getImageData(0, 0, 1, 1).data];
     });
   };
-  const attachmentLayout = async (text) => {
-    const row = timeline.locator('[data-row-id="2"]');
-    await page.waitForFunction(
-      (text) =>
-        document.querySelector('[data-row-id="2"] [data-v4-user-input-bubble]')?.textContent ===
-        text,
-      text,
-    );
-    const media = row.locator("[data-v4-user-input-media-attachment]");
-    assert.equal(await media.count(), 2);
-    assert.equal(
-      await row.locator("[data-v4-user-input-attachment-pill]").innerText(),
-      "notes.txt",
-    );
-    assert.equal(
-      await row.locator("[data-v4-user-input-bubble] [data-v4-user-input-attachments]").count(),
-      0,
-    );
-    assert.deepEqual(await pixel(media.nth(0).locator("img")), [255, 0, 0, 255]);
-    assert.deepEqual(await pixel(media.nth(1).locator("img")), [0, 0, 255, 255]);
-    const layout = await row.evaluate((element) => {
-      const media = element.querySelector("[data-v4-user-input-media-attachments]");
-      const thumbnail = media.firstElementChild;
-      const mediaRect = media.getBoundingClientRect();
-      const bubbleRect = element
-        .querySelector("[data-v4-user-input-bubble]")
-        .getBoundingClientRect();
-      const thumbnailRect = thumbnail.getBoundingClientRect();
-      return {
-        width: thumbnailRect.width,
-        height: thumbnailRect.height,
-        above: mediaRect.bottom <= bubbleRect.top,
-        aligned: Math.abs(mediaRect.right - bubbleRect.right) < 2,
-        radius: getComputedStyle(thumbnail).borderRadius,
-      };
-    });
-    assert.equal(layout.width, 80);
-    assert.equal(layout.height, 80);
-    assert.equal(layout.above, true);
-    assert.equal(layout.aligned, true);
-    return layout;
-  };
+  const attachmentLayout = createAcpAttachmentLayoutAssertions(page, timeline, pixel);
   await page.waitForFunction(
     () =>
       document.querySelector('[data-testid="v4-timeline"]')?.getAttribute("data-row-count") ===
@@ -348,6 +321,7 @@ try {
   await rail.waitFor({ state: "visible" });
   await page.evaluate(() => window.__turnNavigator.open("codex", 1));
   await rail.waitFor({ state: "detached" });
+  await exerciseAcpAttachmentLatency(page, timeline, pixel, attachmentLayout);
   await page.evaluate(() => window.__turnNavigator.failed());
   const unavailable = timeline.locator(
     '[data-row-id="2"] [data-v4-user-input-media-attachment][title="这张图片已无法预览。"]',

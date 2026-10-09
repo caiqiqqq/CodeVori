@@ -20,6 +20,7 @@ import type {
 } from "@zcode/shared/zcode-protocol-v4";
 import { ChatLoading } from "@/components/ai-elements/chat-loading.js";
 import { ConversationTurnNotice } from "@/v4/ConversationTurnNotice.js";
+import { conversationNoticePresentationKey } from "@/store/conversationWarningPresentationStore.js";
 import { ChatApiRetryStatus } from "@/chat-input-toolbar/display.js";
 import { cn } from "@/components/lib/utils.js";
 import { Checkbox } from "@/components/ui/checkbox.js";
@@ -91,6 +92,7 @@ import { toolCallRowToLegacyNode } from "@/v4/toolCallRowAdapter.js";
 
 interface ConversationTurnGroupProps {
   unit: ConversationTurnRenderUnit;
+  sessionKey: string;
   /** 仅由 Timeline 注入给当前 live turn；历史 turn 永远不携带运行时 retry。 */
   apiRetry?: ApiRetryState | null;
   context: ConversationRowRenderContext;
@@ -1101,6 +1103,7 @@ function ConversationBackgroundResultWork({
 
 function ConversationTurnGroupImpl({
   unit,
+  sessionKey,
   apiRetry = null,
   context,
   onFork,
@@ -1471,20 +1474,24 @@ function ConversationTurnGroupImpl({
         />
       )}
       {/* Host 错误属于原轮次，不能随新轮移动到 footer，也不能被工作历史折叠隐藏。 */}
-      {unit.header?.notices?.map((notice) => (
-        <ConversationTurnNotice
-          key={JSON.stringify([
-            unit.turnId,
-            notice.id,
-            notice.severity,
-            notice.message,
-            notice.detail,
-          ])}
-          notice={notice}
-          activity={noticeActivity}
-          running={unit.isRunning}
-        />
-      ))}
+      {unit.header?.notices?.map((notice) => {
+        const presentationKey = conversationNoticePresentationKey({
+          workspaceIdentity: context.workspaceIdentity,
+          workspacePath: context.workspacePath,
+          sessionKey,
+          turnId: unit.turnId,
+          notice,
+        });
+        return (
+          <ConversationTurnNotice
+            key={presentationKey}
+            presentationKey={presentationKey}
+            notice={notice}
+            activity={noticeActivity}
+            running={unit.isRunning}
+          />
+        );
+      })}
     </section>
   );
 }

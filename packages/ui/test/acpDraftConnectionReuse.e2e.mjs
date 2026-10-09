@@ -20,6 +20,7 @@ try {
       `
       import React, { useState } from "react";
       import { createRoot } from "react-dom/client";
+      import { ZCodeIntlProvider } from "../../../ui/src/i18n/IntlProvider.tsx";
       import { useAcpConversation } from "../../../ui/src/v4/useAcpConversation.ts";
       const store = new Map();
       const listeners = new Set();
@@ -93,7 +94,7 @@ try {
           data-id={conversation.selected?.id ?? ''} data-ready={conversation.loaded && conversation.ready && !conversation.busy}
           data-error={conversation.error ?? ''} data-options={conversation.selected?.configOptions.length ?? 0} />;
       }
-      createRoot(document.getElementById('root')!).render(<Fixture />);
+      createRoot(document.getElementById('root')!).render(<ZCodeIntlProvider initialLocale="zh-CN"><Fixture /></ZCodeIntlProvider>);
     `,
     ),
   ]);
