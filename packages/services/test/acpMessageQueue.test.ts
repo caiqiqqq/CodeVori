@@ -310,6 +310,37 @@ test(
   },
 );
 
+test("queued ACP inputs read current memory only on actual execution through the scoped Host", async () => {
+  let reads = 0;
+  let index = "initial memory";
+  const f = await fixture({
+    memoryContext: {
+      async buildPromptContext(target) {
+        assert.equal(target.workspaceIdentity, workspace.workspaceIdentity);
+        assert.equal(target.workspacePath, workspace.workspacePath);
+        reads++;
+        return index;
+      },
+    },
+  });
+  try {
+    const first = f.prompt("memory-first");
+    await waitFor(() => f.calls.length === 1);
+    await f.prompt("memory-queued");
+    assert.equal(reads, 1, "enqueue cannot preload stale memory");
+    index = "memory updated by preceding turn";
+    f.turns[0]!.resolve();
+    await first;
+    await waitFor(() => f.calls.length === 2);
+    assert.equal(reads, 2);
+    assert.ok(f.calls[1]!.blocks?.some((b) => b.type === "text" && b.text === index));
+    f.turns[1]!.resolve();
+    await waitFor(async () => (await f.read()).status === "idle");
+  } finally {
+    await f.dispose();
+  }
+});
+
 test("ACP busy prompts are durable, idempotent and drain exactly once in FIFO order", async () => {
   const f = await fixture();
   try {
