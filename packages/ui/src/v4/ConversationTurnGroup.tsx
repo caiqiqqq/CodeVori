@@ -19,6 +19,7 @@ import type {
   WorkflowNotificationMeta,
 } from "@zcode/shared/zcode-protocol-v4";
 import { ChatLoading } from "@/components/ai-elements/chat-loading.js";
+import { ChatErrorBanner } from "@/ChatErrorBanner.js";
 import { ChatApiRetryStatus } from "@/chat-input-toolbar/display.js";
 import { cn } from "@/components/lib/utils.js";
 import { Checkbox } from "@/components/ui/checkbox.js";
@@ -1458,6 +1459,24 @@ function ConversationTurnGroupImpl({
           assistantCodeCommentProjectionEnabled={assistantCodeCommentProjectionEnabled}
         />
       )}
+      {/* Host 错误属于原轮次，不能随新轮移动到 footer，也不能被工作历史折叠隐藏。 */}
+      {unit.header?.notices?.map((notice) => (
+        <div
+          key={notice.id}
+          role={notice.severity === "error" ? "alert" : "status"}
+          className="mt-4"
+          data-conversation-notice={notice.id}
+          data-notice-severity={notice.severity}
+        >
+          <ChatErrorBanner
+            error={{
+              code: notice.code,
+              message: notice.message,
+              ...(notice.detail ? { detail: notice.detail } : {}),
+            }}
+          />
+        </div>
+      ))}
     </section>
   );
 }

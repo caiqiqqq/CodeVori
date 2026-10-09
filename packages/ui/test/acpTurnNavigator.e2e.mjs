@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import { createTurnNavigatorAssertions } from "./conversationTurnNavigatorAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__acp-turn-navigator-${process.pid}`;
@@ -85,7 +86,7 @@ try {
         },
       };
       let revision = 0;
-      function makeSession(agent, count, dated=true,withAttachments=true) {
+      function makeSession(agent, count, dated=true,withAttachments=true,compact=false) {
         ++revision;
         const id = crypto.randomUUID();
         const attachments=withAttachments?attachmentFixtures(id):undefined;
@@ -94,10 +95,10 @@ try {
             ...(index===0?(attachments?{attachments,attachmentNames:['same.png','same.png','notes.txt']}:{attachmentNames:['legacy.png']}):{}),
             ...(index===1&&attachments?{attachments:[attachments[1]],attachmentNames:['same.png']}:{}),
             ...(dated?{createdAt:1700000000000+index}: {})},
-          {id:'assistant:'+agent+'-'+index,kind:'assistant',text:agent+' answer '+index+'\\n\\n'+('Long conversation content. '.repeat(30)),...(dated?{createdAt:1700000000000+index}: {})},
+          {id:'assistant:'+agent+'-'+index,kind:'assistant',text:agent+' answer '+index+'\\n\\n'+('Long conversation content. '.repeat(compact?3:30)),...(dated?{createdAt:1700000000000+index}: {})},
         ]).flat();
         const session = {id,agent,workspacePath,title:agent+' conversation',revision:1,
-          status:'idle',entries,provisional:false,configOptions:[],modeState:null,createdAt:1,updatedAt:1};
+          status:'idle',entries,acpSessionId:null,usageTurns:[],nativeUsage:null,provisional:false,configOptions:[],modeState:null,createdAt:1,updatedAt:1};
         sessions.set(id,session); return session;
       }
       const firstSession = makeSession('codex',24);
@@ -109,14 +110,14 @@ try {
         {kind:'userInput',rowId:index*3+2,turnId:'api:'+index,createdAt:1,createdAtSeq:index,
           origin:'realUser',text:'API question '+index,...(index===0?{attachments:attachmentFixtures('api-fixture',false)}:{})},
         {kind:'assistantText',rowId:index*3+3,turnId:'api:'+index,createdAt:1,createdAtSeq:index,
-          state:'complete',text:'API answer '+index+'\\n\\n'+('Native conversation content. '.repeat(30))},
+          state:'complete',text:'API answer '+index+'\\n\\n'+('Native conversation content. '.repeat(5))},
       ]).flat();
       function Fixture() {
         const [request,setRequest] = useState({requestId:1,session:firstSession});
         const [view,setView] = useState({api:false,share:false});
-        controls.open = (agent,count,dated=true,withAttachments=true) => {
+        controls.open = (agent,count,dated=true,withAttachments=true,compact=false) => {
           setView({api:false,share:false});
-          const session=makeSession(agent,count,dated,withAttachments);
+          const session=makeSession(agent,count,dated,withAttachments,compact);
           for(const listener of listeners) listener({kind:'updated',session});
           setRequest({requestId:revision,session});
         };
@@ -133,12 +134,12 @@ try {
         controls.append = () => {
           const previous=sessions.get(request.session.id);
           const session={...previous,revision:previous.revision+1,status:'running',entries:[...previous.entries,
-            {id:'user:live',kind:'user',text:previous.agent+' live question'}]};
+            {id:'user:live:'+previous.entries.length,kind:'user',text:previous.agent+' live question'}]};
           sessions.set(session.id,session);
           for(const listener of listeners) listener({kind:'updated',session});
         };
         controls.view = setView;
-        return <main className="bg-background text-foreground" style={{width:'calc(100vw - 32px)',height:640,margin:16}}>
+        return <main className="bg-background text-foreground" style={{width:'calc(100vw - 32px)',height:'calc(100vh - 160px)',margin:16}}>
           {view.api ? <div className="@container/conversation flex h-full min-h-0">
             <ConversationTimeline rows={apiRows as never} totalCount={apiRows.length} sessionKey="api-fixture"
               hideTurnNavigator={view.share} rowContext={{workspacePath,theme:'zai-light',
@@ -170,26 +171,16 @@ try {
   });
   page.setDefaultTimeout(10000);
   const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
   await page.goto(`${origin}/${name}.html`);
   const rail = page.getByTestId("v4-turn-navigator");
   const timeline = page.getByTestId("v4-timeline");
   const tooltip = page.locator('[data-testid^="v4-turn-navigator-tooltip-"]');
   const query = (index) => rail.locator(`[data-item-index="${index}"]`);
-  const directory = async (count) => {
-    await page
-      .waitForFunction(
-        (count) =>
-          document
-            .querySelector('[data-testid="v4-turn-navigator"]')
-            ?.getAttribute("data-item-count") === String(count),
-        count,
-      )
-      .catch((error) => {
-        throw new Error(`${error.message}; page errors=${errors.join("; ")}`);
-      });
-    assert.equal(await rail.isVisible(), true);
-  };
+  const { activeQuery, toBottom, visibleQueries, directory } = createTurnNavigatorAssertions(
+    page,
+    errors,
+  );
   const pixel = async (image) => {
     await image.waitFor();
     await image.evaluate((element) => element.decode());
@@ -249,6 +240,7 @@ try {
       "72",
   );
   await directory(24);
+  await activeQuery(23);
   // Earlier turns start outside the timeline's virtualized window.
   assert.equal(await timeline.locator('[data-row-id="2"]').count(), 0);
   await query(0).hover();
@@ -277,6 +269,7 @@ try {
 
   await page.evaluate(() => window.__turnNavigator.append());
   await directory(25);
+  await activeQuery(0);
   assert.equal(await query(24).getAttribute("data-running"), "true");
   await page.evaluate(() => window.__turnNavigator.open("claude", 3, false, false));
   await directory(3);
@@ -296,8 +289,40 @@ try {
   );
   await page.evaluate(() => window.__turnNavigator.reopen());
   await directory(25);
+  await activeQuery(24);
   await query(0).click();
   assert.deepEqual(await attachmentLayout("codex question 0"), acpLayout);
+
+  // 截图对应的多轮同屏情形：贴底选最后一条，上滚恢复阅读位置，回来再次选最后一条。
+  await page.evaluate(() => window.__turnNavigator.open("codex", 8, true, false, true));
+  await directory(8);
+  await activeQuery(7);
+  assert.ok((await visibleQueries()) >= 2);
+  await query(0).click();
+  await activeQuery(0);
+  await toBottom();
+  await activeQuery(7);
+  await page.evaluate(() => window.__turnNavigator.append());
+  await directory(9);
+  await activeQuery(8);
+  await page.setViewportSize({ width: 1280, height: 1200 });
+  await page.evaluate(() => window.__turnNavigator.open("codex", 2, true, false, true));
+  await directory(2);
+  await activeQuery(1);
+  await page.waitForFunction(() => {
+    const element = document.querySelector('[data-testid="v4-timeline"]');
+    return element.scrollHeight <= element.clientHeight;
+  });
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  // 长目录本身也需要滚到最后；最新 query 不应停留在 rail 的上方窗口。
+  await page.evaluate(() => window.__turnNavigator.open("codex", 96, true, false, true));
+  await directory(96);
+  await activeQuery(95);
+  assert.equal(await rail.evaluate((element) => element.firstElementChild.scrollTop > 0), true);
+  await page.screenshot({ path: join(artifacts, "navigator-bottom-long-directory.png") });
+  await page.evaluate(() => window.__turnNavigator.reopen());
+  await directory(25);
 
   await page.setViewportSize({ width: 850, height: 800 });
   await rail.waitFor({ state: "hidden" });
@@ -356,11 +381,16 @@ try {
 
   await page.evaluate(() => window.__turnNavigator.view({ api: true, share: false }));
   await directory(8);
+  await activeQuery(7);
+  assert.ok((await visibleQueries()) >= 2);
   await query(0).hover();
   await tooltip.waitFor();
   assert.match(await tooltip.innerText(), /API question 0/);
   await query(0).click();
   assert.deepEqual(await attachmentLayout("API question 0"), acpLayout);
+  await activeQuery(0);
+  await toBottom();
+  await activeQuery(7);
   await page.screenshot({ path: join(artifacts, "api-attachments.png") });
   await page.evaluate(() => window.__turnNavigator.view({ api: true, share: true }));
   await rail.waitFor({ state: "detached" });

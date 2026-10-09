@@ -41,7 +41,10 @@ function displayText(entry: Extract<AcpEntry, { kind: "user" }>): string {
 
 /** ACP Host 快照的只读展示投影；行 id / turn id 仅供当前时间线，不进入 CLI 协议或持久化。 */
 export function buildAcpConversationRows(
-  session: Pick<AcpSession, "entries" | "status"> | null,
+  session:
+    | (Pick<AcpSession, "entries" | "status"> &
+        Partial<Pick<AcpSession, "error" | "errorCommandId">>)
+    | null,
 ): ConversationRow[] {
   if (!session) return [];
   const { entries, status } = session;
@@ -49,12 +52,52 @@ export function buildAcpConversationRows(
   const lastAssistantIndex = entries.findLastIndex((entry) => entry.kind === "assistant");
   const rows: ConversationRow[] = [];
   let turnId = "acp:orphan";
+  let turnFailed = false;
   for (const [index, entry] of entries.entries()) {
-    if (entry.kind === "user")
+    if (entry.kind === "user") {
       turnId = `acp:${entry.id.startsWith("user:") ? entry.id.slice(5) : entry.id}`;
+      turnFailed = Boolean(
+        entry.traceError ||
+        entry.failures?.some((failure) => failure.severity === "error") ||
+        (index === lastUserIndex &&
+          status === "interrupted" &&
+          session.error &&
+          (session.errorCommandId === undefined || entry.id === `user:${session.errorCommandId}`)),
+      );
+    }
     const createdAt = entry.createdAt ?? 0;
     const isLastTurn = lastUserIndex < 0 || index >= lastUserIndex;
     if (entry.kind === "user" || index === 0) {
+      const failures = entry.kind === "user" ? entry.failures : undefined;
+      const legacyError =
+        entry.kind === "user"
+          ? entry.traceError ||
+            (isLastTurn &&
+            status === "interrupted" &&
+            (session.errorCommandId === undefined || entry.id === `user:${session.errorCommandId}`)
+              ? session.error
+              : null)
+          : null;
+      const reportedNotices =
+        failures?.map((failure) => ({
+          id: failure.id,
+          severity: failure.severity,
+          code: failure.severity === "error" ? "ACP_SESSION_FAILED" : "ACP_SESSION_WARNING",
+          message: failure.title,
+          ...(failure.details ? { detail: failure.details } : {}),
+        })) ?? [];
+      const notices =
+        legacyError && !reportedNotices.some((notice) => notice.severity === "error")
+          ? [
+              ...reportedNotices.slice(-63),
+              {
+                id: entry.id.slice(0, 512),
+                severity: "error" as const,
+                code: "ACP_SESSION_FAILED",
+                message: legacyError.slice(0, 32_000),
+              },
+            ]
+          : reportedNotices;
       rows.push({
         kind: "turnHeader",
         rowId: index * 2 + 1,
@@ -66,10 +109,13 @@ export function buildAcpConversationRows(
         state:
           isLastTurn && status === "running"
             ? "running"
-            : isLastTurn && status === "interrupted"
-              ? "completedInterrupted"
-              : "completedSuccess",
+            : turnFailed
+              ? "failed"
+              : isLastTurn && status === "interrupted"
+                ? "completedInterrupted"
+                : "completedSuccess",
         startedAt: createdAt,
+        ...(notices.length ? { notices } : {}),
       });
     }
     const base = {
@@ -92,15 +138,17 @@ export function buildAcpConversationRows(
         kind: "assistantText",
         text: entry.text,
         state:
-          isLastTurn && index === lastAssistantIndex
-            ? status === "running"
-              ? index === entries.length - 1
-                ? "streaming"
-                : "complete"
-              : status === "interrupted"
-                ? "interrupted"
-                : "complete"
-            : "complete",
+          turnFailed && (!isLastTurn || status !== "running")
+            ? "failed"
+            : isLastTurn && index === lastAssistantIndex
+              ? status === "running"
+                ? index === entries.length - 1
+                  ? "streaming"
+                  : "complete"
+                : status === "interrupted"
+                  ? "interrupted"
+                  : "complete"
+              : "complete",
       });
     } else if (entry.kind === "thought") {
       rows.push({
@@ -115,6 +163,23 @@ export function buildAcpConversationRows(
       });
     } else if (entry.kind === "plan") {
       rows.push({ ...base, kind: "plan", planId: entry.id, entries: entry.entries });
+    } else if (entry.kind === "compaction") {
+      rows.push({
+        ...base,
+        kind: "timelineMarker",
+        lane: "assistantWork",
+        marker: {
+          type: "compact",
+          // 只有 Agent 明确报告 auto 才显示自动压缩；未知来源复用中性的完成文案。
+          origin: entry.origin ?? "manual",
+          status:
+            entry.status === "running" && (!isLastTurn || status !== "running")
+              ? "cancelled"
+              : entry.status,
+          ...(entry.tokensBefore !== undefined ? { tokensBefore: entry.tokensBefore } : {}),
+          ...(entry.tokensAfter !== undefined ? { tokensAfter: entry.tokensAfter } : {}),
+        },
+      });
     } else {
       const mappedStatus = toolStatus(entry.status, isLastTurn ? status : "idle");
       const unconfirmed =

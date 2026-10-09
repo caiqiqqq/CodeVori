@@ -8,6 +8,7 @@ import {
   PROTOCOL_VERSION,
   type Client,
   type Implementation,
+  type ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
 import {
   shouldSpawnInDetachedProcessGroup,
@@ -20,6 +21,8 @@ import { projectAcpPromptUsage } from "./acpUsageResponse.js";
 import { projectAcpContextUsage } from "./acpContextUsage.js";
 import { projectAcpMcpServers, projectAcpPluginMcpServers } from "./acpMcpServers.js";
 import { projectAcpToolDetails } from "./acpToolDetails.js";
+import { projectLegacyCompaction, projectTypedCompaction } from "./acpCompaction.js";
+import { projectAcpSessionFailure } from "./acpSessionFailures.js";
 
 const START_TIMEOUT_MS = 20_000;
 const MAX_INITIAL_USAGE_SESSIONS = 16;
@@ -81,8 +84,22 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
   let configOptions: AcpConnectionPort["configOptions"] = [];
   let modeState: AcpConnectionPort["modeState"] = null;
   let receivingLiveUpdates = false;
+  const compactionIds = new Set<string>();
   let receivingInitialUsage = false;
   const initialUsageBySession = new Map<string, AcpUpdate & { kind: "context_usage" }>();
+  const projectToolUpdate = (update: ToolCallUpdate): AcpUpdate => {
+    const compaction = projectLegacyCompaction(update, compactionIds.has(update.toolCallId));
+    if (compaction) compactionIds.add(update.toolCallId);
+    return (
+      compaction ?? {
+        kind: "tool",
+        id: update.toolCallId,
+        ...(update.title ? { title: update.title } : {}),
+        ...(update.status ? { status: update.status } : {}),
+        ...projectAcpToolDetails(update),
+      }
+    );
+  };
   const client: Client = {
     async sessionUpdate(notification) {
       const update = notification.update;
@@ -109,7 +126,10 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       // session/load may replay history. The Host already owns the displayed transcript.
       if (notification.sessionId !== sessionId) return;
       let mapped: AcpUpdate | undefined;
-      if (update.sessionUpdate === "config_option_update") {
+      if (update.sessionUpdate === "session_info_update") {
+        const failure = projectAcpSessionFailure(update._meta);
+        if (failure) mapped = { kind: "failure", failure };
+      } else if (update.sessionUpdate === "config_option_update") {
         mapped = { kind: "config", configOptions: projectAcpConfigOptions(update.configOptions) };
       } else if (update.sessionUpdate === "current_mode_update") {
         mapped = { kind: "mode", modeId: update.currentModeId };
@@ -120,6 +140,16 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
           kind: "context_usage",
           usage: projectAcpContextUsage(update),
         };
+      } else if (update.sessionUpdate === "compaction_update") {
+        compactionIds.add(update.compactionId);
+        mapped = projectTypedCompaction(update);
+      } else if (update.sessionUpdate === "compaction_summary_chunk") {
+        if (update.content.type === "text")
+          mapped = {
+            kind: "compaction_summary",
+            id: update.compactionId,
+            text: update.content.text.slice(0, 32_000),
+          };
       } else if (update.sessionUpdate === "plan") {
         mapped = {
           kind: "plan",
@@ -143,13 +173,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         update.sessionUpdate === "tool_call" ||
         update.sessionUpdate === "tool_call_update"
       ) {
-        mapped = {
-          kind: "tool",
-          id: update.toolCallId,
-          ...(update.title ? { title: update.title } : {}),
-          ...(update.status ? { status: update.status } : {}),
-          ...projectAcpToolDetails(update),
-        };
+        mapped = projectToolUpdate(update);
       }
       if (mapped) await input.onUpdate(mapped);
     },
@@ -158,13 +182,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         return { outcome: { outcome: "cancelled" } };
       }
       // 部分适配器只在授权请求中给出工具信息；先交给同一 Host owner，避免丢失参数和关联行。
-      await input.onUpdate({
-        kind: "tool",
-        id: request.toolCall.toolCallId,
-        ...(request.toolCall.title ? { title: request.toolCall.title } : {}),
-        ...(request.toolCall.status ? { status: request.toolCall.status } : {}),
-        ...projectAcpToolDetails(request.toolCall),
-      });
+      await input.onUpdate(projectToolUpdate(request.toolCall));
       const optionId = await input.onPermission({
         requestId: randomUUID(),
         toolCallId: request.toolCall.toolCallId,
@@ -193,7 +211,10 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       (async () => {
         const initialized = await connection.initialize({
           protocolVersion: PROTOCOL_VERSION,
-          clientCapabilities: { session: { configOptions: { boolean: {} } } },
+          clientCapabilities: {
+            session: { compaction: {}, configOptions: { boolean: {} } },
+            _meta: { jetbrains: { air: { version: 1, capabilities: ["sessionFailure"] } } },
+          },
           clientInfo: { name: PRODUCT_NAME, version: "3.14.0" },
         });
         if (initialized.protocolVersion !== PROTOCOL_VERSION) {
@@ -304,11 +325,15 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         await connection.setSessionMode({ sessionId: activeSessionId, modeId });
       },
       async prompt(text, blocks) {
+        // 仅保留本轮 legacy 工具的路由身份；生命周期与终态仍由 Host 唯一持有。
+        compactionIds.clear();
         const response = await connection.prompt({
           sessionId: activeSessionId,
           prompt: blocks ?? [{ type: "text", text }],
         });
         lastStopReason = response.stopReason;
+        const failure = projectAcpSessionFailure(response._meta);
+        if (failure) await input.onUpdate({ kind: "failure", failure });
         nativeUsage = await readNativeUsage();
         return projectAcpPromptUsage(input.agent, agentInfo, response);
       },

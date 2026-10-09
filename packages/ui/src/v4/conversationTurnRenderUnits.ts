@@ -389,6 +389,7 @@ function shouldKeepRenderUnit(unit: ConversationTurnRenderUnit): boolean {
     unit.leadingBoundaryRows.length > 0 ||
     // 直接启动轮：用户行不可见、无助手内容，轮由 run 卡呈现——它当然要留下。
     unit.workflowLaunch !== undefined ||
+    Boolean(unit.header?.notices?.length) ||
     unit.isRunning
   );
 }

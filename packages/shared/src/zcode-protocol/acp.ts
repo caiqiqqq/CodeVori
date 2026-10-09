@@ -447,7 +447,29 @@ export const acpTraceSelectionSchema = z.object({
   value: z.union([z.string(), z.boolean()]),
 });
 
+export const acpSessionFailureSchema = z.object({
+  id: z.string().min(1).max(512),
+  revision: z.number().int().positive(),
+  category: z.string().min(1).max(64),
+  severity: z.enum(["warning", "error"]),
+  title: z.string().min(1).max(32_000),
+  details: z.string().max(32_000).optional(),
+  actions: z.array(z.string().min(1).max(64)).max(16),
+});
+export type AcpSessionFailure = z.infer<typeof acpSessionFailureSchema>;
+
 export const acpEntrySchema = z.discriminatedUnion("kind", [
+  z.object({
+    id: z.string(),
+    kind: z.literal("compaction"),
+    status: z.enum(["running", "success", "failed", "cancelled"]),
+    origin: z.enum(["manual", "auto"]).optional(),
+    tokensBefore: z.number().finite().nonnegative().optional(),
+    tokensAfter: z.number().finite().nonnegative().optional(),
+    summary: z.string().max(32_000).optional(),
+    error: z.string().max(32_000).optional(),
+    createdAt: z.number().optional(),
+  }),
   z.object({
     id: z.string(),
     kind: z.literal("thought"),
@@ -472,6 +494,7 @@ export const acpEntrySchema = z.discriminatedUnion("kind", [
     /** 接纳时的选项与该轮错误属于原会话；后续配置/成功不能覆盖旧轨迹。 */
     traceSelections: z.array(acpTraceSelectionSchema).optional(),
     traceError: z.string().optional(),
+    failures: z.array(acpSessionFailureSchema).max(64).optional(),
   }),
   z.object({
     id: z.string(),
@@ -548,6 +571,8 @@ export const acpSessionSchema = acpWorkspaceSchema.extend({
     })
     .nullable(),
   error: z.string().nullable(),
+  /** Scope of the current error; internal prompts cannot fail an unrelated user turn. */
+  errorCommandId: z.string().optional(),
 });
 export type AcpSession = z.infer<typeof acpSessionSchema>;
 

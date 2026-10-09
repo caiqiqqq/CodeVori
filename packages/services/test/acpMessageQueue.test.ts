@@ -21,12 +21,14 @@ async function fixture(options: NonNullable<Parameters<typeof createAcpService>[
   const calls: Array<{ text: string; blocks?: ContentBlock[] }> = [];
   const turns: Array<{ resolve(): void; reject(error: Error): void }> = [];
   let exit: ((reason: string) => void) | undefined;
+  let update!: Parameters<AcpConnectionFactory>[0]["onUpdate"];
   let cancelRelease: (() => void) | undefined;
   let delayCancel = false;
   let closed = 0;
   let stopReason: AcpStopReason | undefined;
   const connect: AcpConnectionFactory = async (input) => {
     exit = input.onExit;
+    update = input.onUpdate;
     return {
       sessionId: input.sessionId ?? "native-queue",
       promptCapabilities: { image: true, embeddedContext: true },
@@ -66,6 +68,7 @@ async function fixture(options: NonNullable<Parameters<typeof createAcpService>[
     turns,
     target,
     prompt,
+    emit: (value: Parameters<typeof update>[0]) => update(value),
     get service() {
       return service;
     },
@@ -450,6 +453,43 @@ test("ACP failures hold queued messages and new submissions cannot bypass them",
     f.turns[1]!.resolve();
     await waitFor(() => f.calls.length === 3);
     f.turns[2]!.resolve();
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("structured failure with end_turn pauses accepted queued input without automatic retry", async () => {
+  const f = await fixture();
+  try {
+    const first = f.prompt("first");
+    await waitFor(() => f.calls.length === 1);
+    await f.prompt("second");
+    await f.emit({
+      kind: "failure",
+      failure: {
+        id: "timeout",
+        revision: 1,
+        severity: "error",
+        category: "connection",
+        title: "SSE timeout",
+        actions: ["retry"],
+      },
+    });
+    f.setStopReason("end_turn");
+    f.turns[0]!.resolve();
+    await first;
+    const snapshot = await f.read();
+    assert.equal(snapshot.status, "interrupted");
+    assert.equal(snapshot.queue.pauseReason, "error");
+    assert.equal(snapshot.queue.autoDrain, false);
+    assert.equal(f.calls.length, 1);
+    assert.deepEqual(
+      snapshot.queue.items.map((item) => item.commandId),
+      ["second"],
+    );
+    await f.service.setQueueAutoDrain({ ...f.target, autoDrain: true });
+    await waitFor(() => f.calls.length === 2);
+    f.turns[1]!.resolve();
   } finally {
     await f.dispose();
   }

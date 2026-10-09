@@ -25,6 +25,88 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
 });
 `;
 
+test("stdio advertises compaction and normalizes typed/legacy events without load replay or session mismatch", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "acp-compaction-wire-"));
+  const path = join(directory, "agent.cjs");
+  let port: Awaited<ReturnType<typeof connectAcpAgent>> | undefined;
+  try {
+    await writeFile(
+      path,
+      `
+      const send=value=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',...value})+'\\n');
+      const notify=(update,sessionId='compact-native')=>send({method:'session/update',params:{sessionId,update}});
+      const typed={sessionUpdate:'compaction_update',compactionId:'typed',status:'in_progress'};
+      const legacy={sessionUpdate:'tool_call',toolCallId:'legacy',title:'Compact conversation',kind:'think',status:'in_progress',_meta:{contextCompaction:{version:1}}};
+      require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
+        const message=JSON.parse(line);
+        if(message.method==='initialize') {
+          if(!message.params.clientCapabilities?.session?.compaction) throw new Error('compaction capability missing');
+          send({id:message.id,result:{protocolVersion:1,agentCapabilities:{loadSession:true}}});
+        } else if(message.method==='session/load' || message.method==='session/new') {
+          notify(typed); notify({...legacy,toolCallId:'replayed'});
+          notify({sessionUpdate:'compaction_summary_chunk',compactionId:'typed',content:{type:'text',text:'replayed'}});
+          send({id:message.id,result:message.method==='session/new'?{sessionId:'compact-native'}:{}});
+        } else if(message.method==='session/prompt') {
+          notify(typed,'other-native'); notify(legacy,'other-native');
+          notify(typed);
+          notify({sessionUpdate:'compaction_summary_chunk',compactionId:'typed',content:{type:'text',text:'chunk'}});
+          notify({sessionUpdate:'compaction_update',compactionId:'typed',status:'completed',summary:[{type:'text',text:'summary'}]});
+          notify({sessionUpdate:'compaction_update',compactionId:'typed',status:'completed',summary:null,_meta:null});
+          notify(legacy);
+          notify({sessionUpdate:'tool_call_update',toolCallId:'legacy',status:'completed'});
+          notify({sessionUpdate:'tool_call',toolCallId:'boolean',title:'Legacy',status:'completed',_meta:{contextCompaction:true,tokensBefore:100,tokensAfter:0}});
+          notify({sessionUpdate:'tool_call',toolCallId:'ordinary',title:'Compact conversation',status:'completed',_meta:{contextCompaction:{version:0}}});
+          notify({sessionUpdate:'tool_call_update',toolCallId:'replayed',status:'completed'});
+          send({id:message.id,result:{stopReason:'end_turn'}});
+        }
+      });
+    `,
+    );
+    for (const nativeId of [undefined, "compact-native"]) {
+      const updates: AcpUpdate[] = [];
+      port = await connectAcpAgent({
+        agent: "codex",
+        sessionId: nativeId,
+        workspacePath: directory,
+        launch: { command: process.execPath, args: [path], env: process.env },
+        onUpdate: async (update) => {
+          updates.push(update);
+        },
+        onPermission: async () => null,
+        onExit: () => {},
+      });
+      assert.deepEqual(updates, []);
+      await port.prompt("fixture");
+      assert.deepEqual(updates, [
+        { kind: "compaction", id: "typed", status: "running" },
+        { kind: "compaction_summary", id: "typed", text: "chunk" },
+        { kind: "compaction", id: "typed", status: "success", summary: "summary" },
+        {
+          kind: "compaction",
+          id: "typed",
+          status: "success",
+          summary: null,
+          origin: null,
+          tokensBefore: null,
+          tokensAfter: null,
+        },
+        { kind: "compaction", id: "legacy", status: "running" },
+        { kind: "compaction", id: "legacy", status: "success" },
+        { kind: "compaction", id: "boolean", status: "success", tokensBefore: 100, tokensAfter: 0 },
+        { kind: "tool", id: "ordinary", title: "Compact conversation", status: "completed" },
+        { kind: "tool", id: "replayed", status: "completed" },
+      ]);
+      port.close();
+      await port.closed;
+      port = undefined;
+    }
+  } finally {
+    port?.close();
+    await port?.closed;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("stdio forwards live thoughts and full plans, excluding native-session mismatch and load replay", async () => {
   const directory = await mkdtemp(join(tmpdir(), "acp-thought-wire-"));
   const path = join(directory, "agent.cjs");

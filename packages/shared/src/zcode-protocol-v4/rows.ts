@@ -76,6 +76,19 @@ export const turnHeaderRowSchema = z.object({
   sourceCommandId: z.string().optional(),
   historyRoundCount: z.number().int().nonnegative().optional(),
   state: z.enum(["running", "completedSuccess", "completedInterrupted", "failed"]),
+  /** Host-reported notices belong to this turn, outside folded work history. */
+  notices: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(512),
+        severity: z.enum(["warning", "error"]),
+        code: z.string().max(256),
+        message: z.string().min(1).max(32_000),
+        detail: z.string().max(32_000).optional(),
+      }),
+    )
+    .max(64)
+    .optional(),
   startedAt: timestampSchema,
   endedAt: timestampSchema.optional(),
   // 权威工时：排除权限等待/用户输入等待/verifier 等待。

@@ -455,17 +455,16 @@ function ConversationTimelineImpl({
     [renderUnits],
   );
   const hasRunningUnit = useMemo(() => renderUnits.some((unit) => unit.isRunning), [renderUnits]);
-  const turnNavigatorQueryRowIds = useMemo(
-    () =>
-      new Set(
-        renderUnits.flatMap((unit) =>
-          unit.visibleUserInputs.filter((row) => row.origin === "realUser").map((row) => row.rowId),
-        ),
-      ),
-    [renderUnits],
-  );
-  const turnNavigatorQueryRowIdsRef = useRef(turnNavigatorQueryRowIds);
-  turnNavigatorQueryRowIdsRef.current = turnNavigatorQueryRowIds;
+  const turnNavigatorQueries = useMemo(() => {
+    const rowIds = renderUnits.flatMap((unit) =>
+      unit.timelineOnly
+        ? []
+        : unit.visibleUserInputs.filter((row) => row.origin === "realUser").map((row) => row.rowId),
+    );
+    return { rowIds: new Set(rowIds), latestRowId: rowIds.at(-1) };
+  }, [renderUnits]);
+  const turnNavigatorQueriesRef = useRef(turnNavigatorQueries);
+  turnNavigatorQueriesRef.current = turnNavigatorQueries;
   const centeredEmptyLayout = centerEmptyStateWithDock && renderUnits.length === 0;
   const responsiveCenteredEmptyLayout = centeredEmptyLayout && !compactEmptyStateWithDock;
   // 高频值经 ref 供稳定回调读取（不进依赖数组）。
@@ -946,7 +945,7 @@ function ConversationTimelineImpl({
       const queryPositions: ConversationTurnNavigatorQueryPosition[] = [];
       for (const rowElement of element.querySelectorAll<HTMLElement>("[data-row-id]")) {
         const rowId = Number(rowElement.dataset.rowId);
-        if (!Number.isSafeInteger(rowId) || !turnNavigatorQueryRowIdsRef.current.has(rowId)) {
+        if (!Number.isSafeInteger(rowId) || !turnNavigatorQueriesRef.current.rowIds.has(rowId)) {
           continue;
         }
         const rowRect = rowElement.getBoundingClientRect();
@@ -962,6 +961,8 @@ function ConversationTimelineImpl({
           positions: queryPositions,
           scrollOffsetPx: element.scrollTop,
           viewportHeightPx: element.clientHeight,
+          contentHeightPx: element.scrollHeight,
+          latestQueryRowId: turnNavigatorQueriesRef.current.latestRowId,
         }),
       };
       setTurnNavigatorViewport((current) =>
@@ -1781,7 +1782,7 @@ function ConversationTimelineImpl({
           backgroundScrollLocked && "!overflow-y-hidden",
           // Conversation turn map 覆盖 timeline 左侧 48px；表格增强滚动如果仍按
           // 普通 16px 边距借位，会有 32px 落到 turn map 下方，必须把完整占用计入左边界。
-          turnNavigatorQueryRowIds.size >= 2 &&
+          turnNavigatorQueries.rowIds.size >= 2 &&
             "@min-[864px]/conversation:[--markdown-table-layout-left-inset:48px]",
         )}
       >

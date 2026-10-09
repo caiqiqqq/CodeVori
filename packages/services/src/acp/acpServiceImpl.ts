@@ -85,7 +85,17 @@ import {
   type AcpAgentManager,
 } from "./acpAgentManager.js";
 
+import {
+  applyAcpCompaction,
+  interruptAcpCompactions,
+  type AcpCompactionUpdate,
+} from "./acpCompaction.js";
+import { failureFromAcpError, recordAcpSessionFailure } from "./acpSessionFailures.js";
+import type { AcpSessionFailure } from "@zcode/shared";
+
 export type AcpUpdate =
+  | AcpCompactionUpdate
+  | { kind: "failure"; failure: AcpSessionFailure }
   | AcpConversationUpdate
   | ({ kind: "tool"; id: string; title?: string; status?: string } & AcpToolDetails)
   | { kind: "config"; configOptions: AcpConfigOption[] }
@@ -368,12 +378,15 @@ export function createAcpService(
   };
   const mutate = async (session: AcpSession, change: () => void): Promise<void> => {
     change();
-    if (session.status !== "running")
+    if (!session.error) delete session.errorCommandId;
+    if (session.status !== "running") {
       finishAcpThoughts(
         session,
         session.status === "interrupted" ? "interrupted" : "complete",
         Date.now(),
       );
+      interruptAcpCompactions(session);
+    }
     session.revision += 1;
     await save(session);
   };
@@ -403,6 +416,7 @@ export function createAcpService(
         // 进程已重启，旧执行结果未知；不能把磁盘上的 running 当作仍可取消的活轮。
         session.status = "interrupted";
         finishAcpThoughts(session, "interrupted", Date.now());
+        interruptAcpCompactions(session);
         session.usageBaselineKnown = false;
         session.pendingPermission = null;
         session.error = "ACP Agent 已断开，请重试发送新的消息。";
@@ -543,6 +557,7 @@ export function createAcpService(
       active.has(session.id) ||
       stopping.has(session.id) ||
       configuring.has(session.id) ||
+      (session.status === "interrupted" && Boolean(session.error)) ||
       session.queue.items.length > 0 ||
       workflowNotifying.has(session.id)
     )
@@ -558,9 +573,12 @@ export function createAcpService(
     try {
       await mutate(session, () => {
         session.status = "running";
+        session.error = null;
       });
       const text = `ZCode 工作流运行结果：${JSON.stringify(notifications)}。请根据结果继续回答用户原来的问题。`;
       const usage = await port.prompt(text, [{ type: "text", text }]);
+      // 无用户行的工作流结果通知仍可失败；保留通知待下次明确输入，不自动重发。
+      if (session.error) throw new Error(session.error);
       const completedAt = Date.now();
       if (
         active.get(session.id) === commandId &&
@@ -582,7 +600,8 @@ export function createAcpService(
       }
     } catch (error) {
       logger.warn(undefined, "ACP workflow result delivery failed", {
-        error: failureMessage(error),
+        // 适配器错误详情只保留在 Host 快照，不写入生产日志。
+        code: "ACP_WORKFLOW_RESULT_FAILED",
       });
       workflowNotifications.set(session.id, [
         ...notifications,
@@ -592,6 +611,7 @@ export function createAcpService(
         await mutate(session, () => {
           session.status = "interrupted";
           session.error = failureMessage(error);
+          session.errorCommandId = commandId;
         });
     } finally {
       if (active.get(session.id) === commandId) active.delete(session.id);
@@ -745,12 +765,25 @@ export function createAcpService(
           const commandId = active.get(session.id);
           // 完成快照已接纳但日志仍在写入时 active 尚未释放；迟到正文不能重写本轮终态。
           if (!commandId || session.status !== "running") return;
+          if (update.kind === "failure") {
+            await mutate(session, () => {
+              if (session.entries.some((entry) => entry.id === `user:${commandId}`))
+                recordAcpSessionFailure(session, commandId, update.failure);
+              else if (update.failure.severity === "error") {
+                session.error = update.failure.title;
+                session.errorCommandId = commandId;
+              }
+            });
+            return;
+          }
           let toolIndex: number | undefined;
           let statusChanged = false;
           let toolStatus: string | undefined;
           const snapshotWrite = mutate(session, () => {
             if (update.kind === "text" || update.kind === "thought" || update.kind === "plan") {
               appendAcpConversationEntry(session, commandId, update, receivedAt);
+            } else if (update.kind === "compaction" || update.kind === "compaction_summary") {
+              applyAcpCompaction(session, commandId, update, receivedAt);
             } else {
               const id = `tool:${commandId}:${update.id}`;
               const index = session.entries.findIndex((entry) => entry.id === id);
@@ -832,12 +865,15 @@ export function createAcpService(
             session.status = "interrupted";
             session.usageBaselineKnown = false;
             session.error = reason;
+            if (commandId) session.errorCommandId = commandId;
             session.queue.autoDrain = false;
             session.queue.pauseReason = "error";
             for (const item of session.queue.items) item.state = "queued";
             const turnIndex = turnIndexForCommand(session, commandId);
             const entry = turnIndex === undefined ? undefined : session.entries[turnIndex];
             if (entry?.kind === "user") entry.traceError = reason;
+            if (commandId)
+              recordAcpSessionFailure(session, commandId, failureFromAcpError(reason, commandId));
           })
             .then(() =>
               appendDiagnostic(
@@ -1391,17 +1427,18 @@ export function createAcpService(
           await mutate(session, () => {
             recordAcpPromptUsage(session, commandId, usage);
             recordNativeUsage(session, port);
-            session.status = "idle";
+            // 修复原因：Codex 的结构化失败也返回 end_turn；不能以 RPC 成功判断本轮成功。
+            session.status = session.error ? "interrupted" : "idle";
             finishAcpThoughts(
               session,
-              port.lastStopReason && port.lastStopReason !== "end_turn"
+              session.error || (port.lastStopReason && port.lastStopReason !== "end_turn")
                 ? "interrupted"
                 : "complete",
               completedAt,
             );
             session.pendingPermission = null;
             // 修复依据：只有正常 end_turn 可自动继续，Agent 自行取消/拒绝/限额需暂停。
-            if (port.lastStopReason && port.lastStopReason !== "end_turn") {
+            if (session.error || (port.lastStopReason && port.lastStopReason !== "end_turn")) {
               session.queue.autoDrain = false;
               session.queue.pauseReason = port.lastStopReason === "cancelled" ? "stopped" : "error";
             }
@@ -1409,7 +1446,7 @@ export function createAcpService(
           await appendDiagnostic(
             session,
             {
-              kind: "turn-completed",
+              kind: session.error ? "turn-interrupted" : "turn-completed",
               turnIndex: turnIndexForCommand(session, commandId),
               stopReason: port.lastStopReason,
             },
@@ -1444,10 +1481,12 @@ export function createAcpService(
             session.queue.pauseReason = "error";
             session.usageBaselineKnown = false;
             session.pendingPermission = null;
-            session.error = failureMessage(error);
+            const failure = failureFromAcpError(error, commandId);
+            session.error = failure.title;
+            recordAcpSessionFailure(session, commandId, failure);
             const turnIndex = turnIndexForCommand(session, commandId);
             const entry = turnIndex === undefined ? undefined : session.entries[turnIndex];
-            if (entry?.kind === "user") entry.traceError = failureMessage(error);
+            if (entry?.kind === "user") entry.traceError = failure.title;
           }).catch((persistenceError) => {
             logger.warn(undefined, "ACP turn interruption persistence failed", {
               error: failureMessage(persistenceError),

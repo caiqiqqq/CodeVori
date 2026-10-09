@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -64,8 +64,19 @@ async function fixture() {
     notifications,
     emit: (update: AcpUpdate) => emit(update),
     finish: () => finish(),
-    fail: () => fail(new Error("fixture failure")),
-    exit: () => exit("fixture exit"),
+    fail: (error = new Error("fixture failure")) => fail(error),
+    async exit() {
+      // 退出通知的落盘是异步任务；等待持久化广播再检查磁盘，不靠延时掩盖竞态。
+      const persisted = new Promise<void>((resolve) => {
+        const subscription = service.onDynamicSessionChanged(workspace)((event) => {
+          if (event.kind !== "updated" || event.session.error !== "fixture exit") return;
+          subscription.dispose();
+          resolve();
+        });
+      });
+      exit("fixture exit");
+      await persisted;
+    },
     stale: () => emit,
     setStopReason: (value: AcpStopReason) => {
       stopReason = value;
@@ -76,8 +87,10 @@ async function fixture() {
       acpSessionSchema.parse(
         JSON.parse(await readFile(join(directory, `${session.id}.json`), "utf8")),
       ),
-    async restart() {
+    async restart(crashedSnapshot?: AcpSession) {
       await service.disposeAllAndWait();
+      if (crashedSnapshot)
+        await writeFile(join(directory, `${session.id}.json`), JSON.stringify(crashedSnapshot));
       service = createAcpService({ directory, connect });
     },
     async dispose() {
@@ -170,22 +183,103 @@ test("changing thought message ids splits segments; empty plan updates clear the
   }
 });
 
-for (const ending of ["stop", "failure", "exit", "restart", "max_tokens", "cancelled"] as const) {
-  test(`unfinished thoughts are interrupted on ${ending} and stale notifications are rejected`, async () => {
+test("Host compaction lifecycle persists and replays without reopening terminal entries", async () => {
+  const f = await fixture();
+  try {
+    const turn = await f.start();
+    await f.emit({ kind: "thought", text: "before compaction" });
+    await f.emit({ kind: "compaction", id: "x", status: "running" });
+    await f.emit({ kind: "text", text: "after compaction" });
+    await f.emit({ kind: "compaction", id: "x", status: "success", tokensAfter: 10 });
+    await f.emit({ kind: "compaction", id: "x", status: "running" });
+    f.finish();
+    await turn.result;
+    const snapshot = await f.read();
+    assert.deepEqual(
+      snapshot.entries.map((e) => e.kind),
+      ["user", "thought", "compaction", "assistant"],
+    );
+    assert.equal(snapshot.entries[1]?.kind === "thought" && snapshot.entries[1].state, "complete");
+    assert.equal(
+      snapshot.entries[2]?.kind === "compaction" && snapshot.entries[2].status,
+      "success",
+    );
+    assert.deepEqual((await f.disk()).entries, snapshot.entries);
+    assert.deepEqual(f.notifications.at(-1)?.entries, snapshot.entries);
+    await f.restart();
+    assert.deepEqual((await f.read()).entries, snapshot.entries);
+  } finally {
+    await f.dispose();
+  }
+});
+
+for (const severity of ["warning", "error"] as const) {
+  test(`Agent ${severity} plus end_turn retains the correct outcome and per-turn notice`, async () => {
+    const f = await fixture();
+    try {
+      const turn = await f.start();
+      const failure = {
+        id: "incident",
+        revision: 1,
+        severity,
+        category: "connection",
+        title: "SSE timeout",
+        actions: [],
+      };
+      await f.emit({ kind: "failure", failure });
+      await f.emit({ kind: "failure", failure });
+      await f.emit({ kind: "text", text: "partial answer" });
+      f.finish();
+      await turn.result;
+      const snapshot = await f.read();
+      assert.equal(snapshot.status, severity === "error" ? "interrupted" : "idle");
+      assert.equal(snapshot.queue.autoDrain, severity !== "error");
+      const user = snapshot.entries.find((e) => e.kind === "user")!;
+      assert.equal(user.failures?.length, 1);
+      assert.equal(user.traceError, severity === "error" ? "SSE timeout" : undefined);
+      assert.deepEqual((await f.disk()).entries, snapshot.entries);
+      await f.emit({ kind: "failure", failure: { ...failure, revision: 2, title: "late" } });
+      assert.deepEqual((await f.read()).entries, snapshot.entries);
+      await f.restart();
+      assert.deepEqual((await f.read()).entries, snapshot.entries);
+      const next = await f.start("next");
+      f.finish();
+      await next.result;
+      assert.deepEqual((await f.read()).entries[0], user);
+      assert.equal((await f.read()).error, null);
+    } finally {
+      await f.dispose();
+    }
+  });
+}
+
+for (const ending of [
+  "stop",
+  "failure",
+  "exit",
+  "restart",
+  "max_tokens",
+  "cancelled",
+  "end_turn",
+] as const) {
+  test(`unfinished compaction is cancelled on ${ending} and stale notifications are rejected`, async () => {
     const f = await fixture();
     try {
       const turn = await f.start();
       // Attach rejection handling before causing a failed prompt.
       const settled = turn.result.catch(() => undefined);
       await f.emit({ kind: "thought", text: "partial" });
+      await f.emit({ kind: "compaction", id: "x", status: "running" });
+      // 压缩活动开始会结束上一思考段；保留另一段验证 prompt 终止语义。
+      await f.emit({ kind: "thought", text: "unfinished", messageId: "unfinished" });
       const stale = f.stale();
       if (ending === "stop") await f.stop();
       else if (ending === "failure") f.fail();
       else if (ending === "exit") {
-        f.exit();
+        await f.exit();
         f.finish();
       } else if (ending === "restart") {
-        await f.restart();
+        await f.restart(await f.read());
         f.finish();
       } else {
         f.setStopReason(ending);
@@ -193,16 +287,32 @@ for (const ending of ["stop", "failure", "exit", "restart", "max_tokens", "cance
       }
       await settled;
       const snapshot = await f.read();
-      const thought = snapshot.entries.find((e) => e.kind === "thought");
-      assert.equal(thought?.state, "interrupted");
-      assert.equal(thought?.text, "partial");
+      const thought = snapshot.entries.findLast((e) => e.kind === "thought");
+      assert.equal(thought?.state, ending === "end_turn" ? "complete" : "interrupted");
+      assert.equal(thought?.text, "unfinished");
+      assert.equal(snapshot.entries.find((e) => e.kind === "compaction")?.status, "cancelled");
+      assert.deepEqual((await f.disk()).entries, snapshot.entries);
       await stale({ kind: "thought", text: "late" });
       await stale({ kind: "plan", entries: [] });
+      await stale({ kind: "compaction", id: "x", status: "success" });
+      await stale({
+        kind: "failure",
+        failure: {
+          id: "late",
+          revision: 1,
+          severity: "error",
+          category: "unknown",
+          title: "late error",
+          actions: [],
+        },
+      });
       assert.deepEqual((await f.read()).entries, snapshot.entries);
       const next = await f.start("next");
       if (ending === "stop" || ending === "exit" || ending === "restart") {
         await stale({ kind: "thought", text: "old-generation" });
-        assert.equal((await f.read()).entries.filter((e) => e.kind === "thought").length, 1);
+        await stale({ kind: "compaction", id: "x", status: "success" });
+        assert.equal((await f.read()).entries.filter((e) => e.kind === "thought").length, 2);
+        assert.equal((await f.read()).entries.filter((e) => e.kind === "compaction").length, 1);
       }
       f.finish();
       await next.result;

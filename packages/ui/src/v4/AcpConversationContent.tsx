@@ -2,6 +2,7 @@ import type { AcpAgent } from "@zcode/shared";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { acpErrorMessageId } from "@/v4/acpErrorMessage.js";
 import type { useAcpConversation } from "@/v4/useAcpConversation.js";
+import { ChatErrorBanner } from "@/ChatErrorBanner.js";
 
 /** 权限和错误保留 Host 回执语义，落在原时间线消息尾部。 */
 export function AcpConversationStatus({
@@ -18,33 +19,31 @@ export function AcpConversationStatus({
     return id ? intl.formatMessage({ id }) : message;
   };
   const { selected, error, busy } = conversation;
-  if (!error && !selected?.error && !selected?.pendingPermission) return null;
+  // 错误已绑定原提问时，由轮尾横幅展示；footer 只保留尚未接纳的操作错误和权限。
+  const savedError =
+    selected?.error &&
+    selected.entries.some(
+      (entry) =>
+        entry.kind === "user" &&
+        entry.traceError &&
+        entry.traceError === selected.error &&
+        (selected.errorCommandId === undefined || entry.id === `user:${selected.errorCommandId}`),
+    );
+  const operationError =
+    (error && !(savedError && error === selected?.error) ? error : null) ||
+    (savedError ? null : selected?.error);
+  if (!operationError && !selected?.pendingPermission) return null;
   return (
     <section
       data-testid="acp-conversation-status"
       className="mx-auto w-full space-y-4 px-4 pb-4 text-ui-base"
     >
-      {error ? (
-        <div
-          role="alert"
-          className="rounded-lg border border-destructive/40 p-3 text-ui-base text-destructive"
-        >
-          {errorText(error)}{" "}
-          {!selected ? (
-            <button type="button" className="underline" onClick={conversation.retryConnection}>
-              {t("retry")}
-            </button>
-          ) : (
-            <button type="button" className="underline" onClick={conversation.dismissError}>
-              {t("dismiss")}
-            </button>
-          )}
-        </div>
-      ) : null}
-      {selected?.error && selected.error !== error ? (
-        <div role="alert" className="text-ui-base text-destructive">
-          {errorText(selected.error)}
-        </div>
+      {operationError ? (
+        <ChatErrorBanner
+          error={{ code: "ACP_OPERATION_FAILED", message: errorText(operationError) }}
+          onRetry={!selected ? conversation.retryConnection : undefined}
+          onDismiss={conversation.dismissError}
+        />
       ) : null}
       {selected?.pendingPermission ? (
         <div
@@ -89,23 +88,12 @@ export function AcpHomeStatus({
   if (!error) return null;
   const id = acpErrorMessageId(agent, error);
   return (
-    <div
-      role="alert"
-      className="pointer-events-auto absolute inset-x-4 top-4 z-20 mx-auto flex w-full max-w-2xl items-center gap-3 rounded-lg border border-destructive/40 bg-surface px-3 py-2 text-ui-base text-destructive shadow-md"
-    >
-      <span className="min-w-0 flex-1 break-words">{id ? intl.formatMessage({ id }) : error}</span>
-      <button
-        type="button"
-        className="shrink-0 underline"
-        onClick={() => {
-          conversation.retryConnection();
-        }}
-      >
-        {intl.formatMessage({ id: "acp.retry" })}
-      </button>
-      <button type="button" className="shrink-0 underline" onClick={conversation.dismissError}>
-        {intl.formatMessage({ id: "acp.dismiss" })}
-      </button>
+    <div className="pointer-events-auto absolute inset-x-4 top-4 z-20 mx-auto max-w-2xl">
+      <ChatErrorBanner
+        error={{ code: "ACP_CONNECTION_FAILED", message: id ? intl.formatMessage({ id }) : error }}
+        onRetry={conversation.retryConnection}
+        onDismiss={conversation.dismissError}
+      />
     </div>
   );
 }

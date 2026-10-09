@@ -60,6 +60,7 @@ async function fixture(
       server: NativeMcpServerRecord,
     ) => Promise<void>;
     parentAfterCreate?: () => Promise<void>;
+    parentResult?: (input: Parameters<AcpConnectionFactory>[0]) => Promise<void>;
     deferActorPermission?: boolean;
   } = {},
 ) {
@@ -152,7 +153,8 @@ async function fixture(
             await options.parentAfterCreate?.();
           } else {
             assert.match(text, /ZCode 工作流运行结果/);
-            await input.onUpdate({ kind: "text", text: "工作流已完成" });
+            if (options.parentResult) await options.parentResult(input);
+            else await input.onUpdate({ kind: "text", text: "工作流已完成" });
           }
         },
         async cancel() {},
@@ -309,6 +311,39 @@ test("workflow completion during the parent turn automatically reaches the same 
     assert.equal(f.received.length, 2);
   } finally {
     release();
+    await f.cleanup();
+  }
+});
+
+test("an internal workflow-result failure stays an operation error and does not fail the original user turn", async () => {
+  const f = await fixture({
+    script: `return await world.run("node", ["-e", "process.stdout.write('done')"]);`,
+    parentResult: async (input) => {
+      await input.onUpdate({
+        kind: "failure",
+        failure: {
+          id: "background",
+          revision: 1,
+          severity: "error",
+          category: "connection",
+          title: "background SSE error",
+          actions: ["retry"],
+        },
+      });
+    },
+  });
+  try {
+    await f.send();
+    const snapshot = await until(
+      () => f.service.read({ ...f.target, id: f.session.id }),
+      (session) => session.status === "interrupted" && session.error === "background SSE error",
+    );
+    assert.match(snapshot.errorCommandId ?? "", /^workflow-result:/);
+    const user = snapshot.entries.find((entry) => entry.kind === "user");
+    assert.equal(user?.traceError, undefined);
+    assert.equal(user?.failures, undefined);
+    assert.equal(f.received.length, 2);
+  } finally {
     await f.cleanup();
   }
 });

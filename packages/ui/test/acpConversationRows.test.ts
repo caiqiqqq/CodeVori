@@ -8,6 +8,100 @@ import { buildConversationTurnRenderUnits } from "../src/v4/conversationTurnRend
 const session = (entries: AcpSession["entries"], status: AcpSession["status"] = "idle") =>
   ({ entries, status }) as AcpSession;
 
+test("ACP failure notices stay with the failed turn after later success and legacy trace errors remain visible", () => {
+  const entries: AcpSession["entries"] = [
+    {
+      id: "user:first",
+      kind: "user",
+      text: "first",
+      traceError: "SSE timeout",
+      failures: [
+        {
+          id: "x",
+          revision: 1,
+          category: "connection",
+          severity: "error",
+          title: "SSE timeout",
+          details: "provider detail",
+          actions: ["retry"],
+        },
+      ],
+    },
+    { id: "assistant:first", kind: "assistant", text: "partial" },
+    { id: "user:next", kind: "user", text: "next" },
+    { id: "assistant:next", kind: "assistant", text: "success" },
+  ];
+  const rows = buildAcpConversationRows(session(entries));
+  const headers = rows.filter((r) => r.kind === "turnHeader");
+  assert.equal(headers[0]?.state, "failed");
+  assert.equal(headers[0]?.notices?.length, 1);
+  assert.equal(headers[0]?.notices?.[0]?.detail, "provider detail");
+  assert.equal(headers[1]?.state, "completedSuccess");
+  assert.equal(headers[1]?.notices, undefined);
+  assert.equal(rows[2]?.kind === "assistantText" && rows[2].state, "failed");
+  assert.deepEqual(
+    rows.map((r) => conversationRowSchema.parse(r)),
+    rows,
+  );
+  const legacy = buildAcpConversationRows(
+    session([{ id: "user:old", kind: "user", text: "old", traceError: "old error" }]),
+  );
+  assert.equal(legacy[0]?.kind === "turnHeader" && legacy[0].notices?.[0]?.message, "old error");
+  const operation = buildAcpConversationRows({
+    entries: [{ id: "user:ok", kind: "user", text: "successful original turn" }],
+    status: "interrupted",
+    error: "background error",
+    errorCommandId: "workflow-result:background",
+  });
+  assert.equal(operation[0]?.kind === "turnHeader" && operation[0].state, "completedInterrupted");
+  assert.equal(operation[0]?.kind === "turnHeader" && operation[0].notices, undefined);
+});
+
+test("ACP compaction uses API markers with stable identity and no tool grouping", () => {
+  for (const status of ["running", "success", "failed", "cancelled"] as const) {
+    const entries: AcpSession["entries"] = [
+      { id: "user:cmd", kind: "user", text: "inspect" },
+      { id: "compaction:cmd:x", kind: "compaction", status, tokensBefore: 100, tokensAfter: 10 },
+      { id: "assistant:cmd", kind: "assistant", text: "answer" },
+    ];
+    const before = structuredClone(entries);
+    const rows = buildAcpConversationRows(session(entries, "running"));
+    const marker = rows[2]!;
+    assert.deepEqual(
+      entries.map((e) => acpEntrySchema.parse(e)),
+      entries,
+    );
+    assert.deepEqual(conversationRowSchema.parse(marker), marker);
+    assert.equal(marker.kind, "timelineMarker");
+    if (marker.kind !== "timelineMarker" || marker.marker.type !== "compact")
+      throw new Error("missing marker");
+    assert.equal(marker.rowId, 4);
+    assert.equal(marker.lane, "assistantWork");
+    assert.equal(marker.marker.status, status);
+    assert.equal(marker.marker.origin, "manual", "unknown origin uses neutral label");
+    assert.equal(rows.filter((r) => r.kind === "toolCall").length, 0);
+    assert.deepEqual(entries, before);
+    const units = buildConversationTurnRenderUnits(rows, { workDurationAvailable: false });
+    assert.ok(units[0]?.assistantWorkRows.some((r) => r.kind === "timelineMarker"));
+    const recovered = buildAcpConversationRows(session(entries, "interrupted"));
+    assert.equal(
+      recovered[2]?.kind === "timelineMarker" &&
+        recovered[2].marker.type === "compact" &&
+        recovered[2].marker.status,
+      status === "running" ? "cancelled" : status,
+    );
+    const auto = buildAcpConversationRows(
+      session([entries[0]!, { ...entries[1]!, origin: "auto" } as never]),
+    );
+    assert.equal(
+      auto[2]?.kind === "timelineMarker" &&
+        auto[2].marker.type === "compact" &&
+        auto[2].marker.origin,
+      "auto",
+    );
+  }
+});
+
 test("ACP thoughts use reasoning rows and plans retain their own identity", () => {
   const entries: AcpSession["entries"] = [
     { id: "user:first", kind: "user", text: "inspect" },

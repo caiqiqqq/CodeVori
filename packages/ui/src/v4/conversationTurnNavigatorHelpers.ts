@@ -1,4 +1,5 @@
 import type { ConversationTurnRenderUnit } from "@/v4/conversationTurnRenderUnits.js";
+import { isAtBottom } from "@/v4/timelineScrollAnchor.js";
 
 export type ConversationTurnNavigatorAssistantPreviewKind = "empty" | "running" | "text";
 
@@ -44,6 +45,8 @@ interface ResolveConversationTurnNavigatorActiveQueryRowIdOptions {
   positions: readonly ConversationTurnNavigatorQueryPosition[];
   scrollOffsetPx: number;
   viewportHeightPx: number;
+  contentHeightPx?: number;
+  latestQueryRowId?: number;
 }
 
 type ConversationTurnNavigatorBarTone = "idle" | "mid" | "near" | "peak";
@@ -271,7 +274,23 @@ export function resolveConversationTurnNavigatorActiveQueryRowId({
   positions,
   scrollOffsetPx,
   viewportHeightPx,
+  contentHeightPx,
+  latestQueryRowId,
 }: ResolveConversationTurnNavigatorActiveQueryRowIdOptions): number | undefined {
+  // 修复依据：贴底时视口顶部仍可能有旧提问，不能继续按顶部距离选中它。
+  // 最新 query 来自完整目录，避免虚拟列表未挂载尾部锚点时又退回旧轮次。
+  if (
+    latestQueryRowId !== undefined &&
+    contentHeightPx !== undefined &&
+    viewportHeightPx > 0 &&
+    isAtBottom({
+      scrollTop: scrollOffsetPx,
+      viewportHeight: viewportHeightPx,
+      contentHeight: contentHeightPx,
+    })
+  ) {
+    return latestQueryRowId;
+  }
   if (positions.length === 0) return undefined;
 
   const viewportStart = resolveFiniteNonNegative(scrollOffsetPx);
