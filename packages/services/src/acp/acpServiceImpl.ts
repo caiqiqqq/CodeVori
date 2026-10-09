@@ -200,6 +200,8 @@ export function createAcpService(
   const generations = new Map<string, object>();
   const removed = new Set<string>();
   const writes = new Map<string, Promise<void>>();
+  const streamingWrites = new Map<string, Promise<void>>();
+  const scheduledSnapshotRevisions = new Map<string, number>();
   const diagnosticWrites = new Map<string, Promise<void>>();
   const active = new Map<string, string>();
   const activeTokens = new Map<string, object>();
@@ -404,9 +406,31 @@ export function createAcpService(
         }
       });
     writes.set(session.id, next);
+    scheduledSnapshotRevisions.set(session.id, snapshot.revision);
     await next;
   };
-  const mutate = async (session: AcpSession, change: () => void): Promise<void> => {
+  const saveStreaming = (session: AcpSession): Promise<void> => {
+    const scheduled = streamingWrites.get(session.id);
+    if (scheduled) return scheduled;
+    // 修复原因：长会话逐分片克隆、校验和排队写盘会积压完整快照，阻塞 Host 与界面。
+    // 仅合并等待现有 IO 的流式任务；执行时才取 owner 的最新事实，不用定时器延后输出。
+    const next = (writes.get(session.id) ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => {
+        streamingWrites.delete(session.id);
+        // 工具/权限/终态可能已保存更高 revision；复用其持久化屏障，不能重复广播或回填旧轮。
+        if ((scheduledSnapshotRevisions.get(session.id) ?? -1) >= session.revision)
+          return writes.get(session.id);
+        return save(session);
+      });
+    streamingWrites.set(session.id, next);
+    return next;
+  };
+  const mutate = async (
+    session: AcpSession,
+    change: () => void,
+    streaming = false,
+  ): Promise<void> => {
     change();
     if (!session.error) delete session.errorCommandId;
     if (session.status !== "running") {
@@ -418,7 +442,7 @@ export function createAcpService(
       interruptAcpCompactions(session);
     }
     session.revision += 1;
-    await save(session);
+    await (streaming ? saveStreaming(session) : save(session));
   };
   const load = async (id: string): Promise<AcpSession> => {
     const cached = sessions.get(id);
@@ -809,48 +833,54 @@ export function createAcpService(
           let toolIndex: number | undefined;
           let statusChanged = false;
           let toolStatus: string | undefined;
-          const snapshotWrite = mutate(session, () => {
-            if (update.kind === "text" || update.kind === "thought" || update.kind === "plan") {
-              appendAcpConversationEntry(session, commandId, update, receivedAt);
-            } else if (update.kind === "compaction" || update.kind === "compaction_summary") {
-              applyAcpCompaction(session, commandId, update, receivedAt);
-            } else {
-              const id = `tool:${commandId}:${update.id}`;
-              const index = session.entries.findIndex((entry) => entry.id === id);
-              if (index < 0) finishAcpThoughts(session, "complete", receivedAt);
-              const previous = session.entries[index];
-              statusChanged =
-                previous?.kind !== "tool" ||
-                (update.status !== undefined && update.status !== previous.status);
-              toolIndex = index < 0 ? session.entries.length : index;
-              const tool: AcpEntry = {
-                ...(previous?.kind === "tool" ? previous : {}),
-                id,
-                kind: "tool",
-                title: update.title ?? (previous?.kind === "tool" ? previous.title : update.id),
-                createdAt: previous?.createdAt ?? receivedAt,
-                status:
-                  // 首次只收到局部字段时没有真实起始状态，不能伪造执行中及开始时间。
-                  update.status ?? (previous?.kind === "tool" ? previous.status : "unknown"),
-              };
-              toolStatus = tool.status;
-              // ACP 局部通知只替换明确给出的字段；空串是真实空结果，不可复活旧输出。
-              for (const key of [
-                "content",
-                "toolKind",
-                "toolName",
-                "input",
-                "output",
-                "inputTruncated",
-                "outputTruncated",
-                "contentTruncated",
-              ] as const) {
-                if (update[key] !== undefined) Object.assign(tool, { [key]: update[key] });
+          const snapshotWrite = mutate(
+            session,
+            () => {
+              if (update.kind === "text" || update.kind === "thought" || update.kind === "plan") {
+                appendAcpConversationEntry(session, commandId, update, receivedAt);
+              } else if (update.kind === "compaction" || update.kind === "compaction_summary") {
+                applyAcpCompaction(session, commandId, update, receivedAt);
+              } else {
+                const id = `tool:${commandId}:${update.id}`;
+                const index = session.entries.findIndex((entry) => entry.id === id);
+                if (index < 0) finishAcpThoughts(session, "complete", receivedAt);
+                const previous = session.entries[index];
+                statusChanged =
+                  previous?.kind !== "tool" ||
+                  (update.status !== undefined && update.status !== previous.status);
+                toolIndex = index < 0 ? session.entries.length : index;
+                const tool: AcpEntry = {
+                  ...(previous?.kind === "tool" ? previous : {}),
+                  id,
+                  kind: "tool",
+                  title: update.title ?? (previous?.kind === "tool" ? previous.title : update.id),
+                  createdAt: previous?.createdAt ?? receivedAt,
+                  status:
+                    // 首次只收到局部字段时没有真实起始状态，不能伪造执行中及开始时间。
+                    update.status ?? (previous?.kind === "tool" ? previous.status : "unknown"),
+                };
+                toolStatus = tool.status;
+                // ACP 局部通知只替换明确给出的字段；空串是真实空结果，不可复活旧输出。
+                for (const key of [
+                  "content",
+                  "toolKind",
+                  "toolName",
+                  "input",
+                  "output",
+                  "inputTruncated",
+                  "outputTruncated",
+                  "contentTruncated",
+                ] as const) {
+                  if (update[key] !== undefined) Object.assign(tool, { [key]: update[key] });
+                }
+                if (index >= 0) session.entries[index] = tool;
+                else session.entries.push(tool);
               }
-              if (index >= 0) session.entries[index] = tool;
-              else session.entries.push(tool);
-            }
-          });
+            },
+            update.kind === "text" ||
+              update.kind === "thought" ||
+              update.kind === "compaction_summary",
+          );
           const diagnosticWrite =
             update.kind === "tool" && statusChanged
               ? appendDiagnostic(
@@ -2320,6 +2350,7 @@ export function createAcpService(
       active.delete(session.id);
       stopping.delete(session.id);
       detach(session.id);
+      await streamingWrites.get(session.id);
       await writes.get(session.id);
       await diagnosticWrites.get(session.id);
       await Promise.allSettled(attachmentWrites.get(session.id) ?? []);
@@ -2327,6 +2358,8 @@ export function createAcpService(
       await rm(file(session.id), { force: true });
       await rm(diagnosticFile(session.id), { force: true });
       sessions.delete(session.id);
+      streamingWrites.delete(session.id);
+      scheduledSnapshotRevisions.delete(session.id);
       emitter.fire({
         kind: "removed",
         id: session.id,
@@ -2392,6 +2425,8 @@ export function createAcpService(
       await queueGate.settle();
       await workflowHost.settleAll();
       await Promise.allSettled([...notificationTasks]);
+      // 流式待写任务执行后才创建完整快照 IO；先等任务，不能提前读取 writes 后漏等尾段。
+      await Promise.allSettled(streamingWrites.values());
       await Promise.allSettled([...writes.values()]);
       await Promise.allSettled(diagnosticWrites.values());
       await Promise.allSettled([...attachmentWrites.values()].flatMap((tasks) => [...tasks]));

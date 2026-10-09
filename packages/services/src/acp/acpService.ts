@@ -110,6 +110,7 @@ export interface IAcpService {
   decide(input: AcpWorkspace & { id: string; requestId: string; optionId: string }): Promise<void>;
   /** Automatic pane cleanup may discard a draft but must never delete an admitted turn. */
   remove(input: AcpWorkspace & { id: string; provisionalOnly?: boolean }): Promise<void>;
+  /** Durable Host snapshots; coalesced stream updates may skip intermediate revisions. */
   onDynamicSessionChanged(workspace: AcpWorkspace): Event<AcpSessionChanged>;
 }
 
