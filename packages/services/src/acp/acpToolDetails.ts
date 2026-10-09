@@ -7,6 +7,7 @@ export type AcpToolDetails = Partial<
     Tool,
     | "toolKind"
     | "toolName"
+    | "terminalIds"
     | "input"
     | "output"
     | "inputTruncated"
@@ -44,6 +45,9 @@ export function projectAcpToolDetails(update: ToolCall | ToolCallUpdate): AcpToo
     result[`${target}Truncated`] = value.truncated;
   }
   if (update.content !== undefined && update.content !== null) {
+    result.terminalIds = update.content
+      .flatMap((part) => (part.type === "terminal" ? [part.terminalId] : []))
+      .slice(0, 64);
     const text = update.content
       .flatMap((part) => {
         if (part.type === "content" && part.content.type === "text") return [part.content.text];

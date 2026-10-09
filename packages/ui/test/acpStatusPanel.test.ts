@@ -20,6 +20,62 @@ const session = (entries: unknown[] = []) =>
     error: null,
   });
 
+test("ACP terminal panel uses exact live terminal and current execute tool facts only", () => {
+  const snapshot = session([
+    { id: "old", kind: "tool", title: "old service", toolKind: "execute", status: "in_progress" },
+    { id: "user:new", kind: "user", text: "new" },
+    {
+      id: "command",
+      kind: "tool",
+      title: "npm run dev",
+      toolKind: "execute",
+      status: "in_progress",
+      createdAt: 10,
+    },
+    {
+      id: "linked",
+      kind: "tool",
+      title: "managed",
+      toolKind: "execute",
+      status: "in_progress",
+      terminalIds: ["managed"],
+      createdAt: 11,
+    },
+    { id: "pending", kind: "tool", title: "pending", toolKind: "execute", status: "pending" },
+    { id: "unknown", kind: "tool", title: "unknown", status: "in_progress" },
+  ]);
+  snapshot.status = "running";
+  snapshot.terminals = [
+    {
+      terminalId: "managed",
+      title: "node server",
+      status: "running",
+      startedAt: 5,
+      output: "ready",
+      truncated: false,
+    },
+  ];
+  const projected = projectAcpStatusPanel(snapshot);
+  const model = buildConversationStatusPanelModel(projected);
+  assert.deepEqual(
+    model.runningBashWorks.map((w) => [w.workId, w.cancellable]),
+    [
+      ["acp-terminal:managed", true],
+      ["acp-tool:command", false],
+    ],
+  );
+  assert.deepEqual(projectAcpStatusPanel(structuredClone(snapshot)), projected);
+  snapshot.status = "idle";
+  assert.equal(
+    projectAcpStatusPanel(snapshot).backgroundWorks.length,
+    1,
+    "real terminal outlives a prompt",
+  );
+  snapshot.terminals[0]!.status = "finished";
+  assert.deepEqual(projectAcpStatusPanel(snapshot).backgroundWorks, []);
+  assert.deepEqual(projectAcpStatusPanel(null).backgroundWorks, []);
+});
+
 test("ACP panel projects current turn plan and objective without native goal semantics", () => {
   const snapshot = session([
     { id: "user:first", kind: "user", text: "first" },

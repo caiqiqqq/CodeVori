@@ -36,6 +36,8 @@ import {
   acpAttachmentReadResultSchema,
   acpStopInputSchema,
   acpSessionSchema,
+  acpTerminalControlSchema,
+  type AcpTerminal,
   acpSessionRowUpdateSchema,
   acpSessionSearchInputSchema,
   acpWorkspaceSchema,
@@ -103,6 +105,7 @@ import { failureFromAcpError, recordAcpSessionFailure } from "./acpSessionFailur
 import type { AcpSessionFailure } from "@zcode/shared";
 
 export type AcpUpdate =
+  | { kind: "terminal"; terminal: AcpTerminal }
   | AcpCompactionUpdate
   | { kind: "failure"; failure: AcpSessionFailure }
   | AcpConversationUpdate
@@ -133,6 +136,7 @@ export interface AcpConnectionPort {
   setMode(modeId: string): Promise<void>;
   prompt(text: string, blocks?: ContentBlock[]): Promise<AcpUsageReport | null | void>;
   cancel(): Promise<void>;
+  stopTerminal?(terminalId: string): Promise<void>;
   close(): void;
 }
 export type AcpConnectionFactory = (input: {
@@ -477,6 +481,10 @@ export function createAcpService(
         }
       }
       const wasRunning = session.status === "running";
+      const hadRunningTerminals = session.terminals.some((t) => t.status === "running");
+      // Host 重启不能重新认领磁盘快照中的 PID；运行态必须降为未知终止。
+      for (const terminal of session.terminals)
+        if (terminal.status === "running") terminal.status = "interrupted";
       if (wasRunning) {
         // 进程已重启，旧执行结果未知；不能把磁盘上的 running 当作仍可取消的活轮。
         session.status = "interrupted";
@@ -495,7 +503,7 @@ export function createAcpService(
         session.queue.autoDrain = false;
         session.queue.pauseReason = "error";
       }
-      if (migratedLegacyTime || wasRunning || recoveredQueue) {
+      if (migratedLegacyTime || wasRunning || recoveredQueue || hadRunningTerminals) {
         session.revision += 1;
         await save(session);
       }
@@ -742,6 +750,14 @@ export function createAcpService(
     },
   });
   const detach = (id: string): void => {
+    const session = sessions.get(id);
+    if (session?.terminals.some((t) => t.status === "running")) {
+      // 主动断开也要发布失去进程所有权的事实；不能让旧连接的 running 悬挂在面板。
+      void mutate(session, () => {
+        for (const terminal of session.terminals)
+          if (terminal.status === "running") terminal.status = "interrupted";
+      });
+    }
     generations.delete(id);
     settlePermission(id);
     workflowRegistrations.get(id)?.revoke();
@@ -798,6 +814,27 @@ export function createAcpService(
         onUpdate: async (update) => {
           const receivedAt = Date.now();
           if (generations.get(session.id) !== generation || removed.has(session.id)) return;
+          if (update.kind === "terminal") {
+            // 真实进程可跨 prompt 存活，不能套用正文的 active/running 门禁。
+            await mutate(
+              session,
+              () => {
+                const index = session.terminals.findIndex(
+                  (t) => t.terminalId === update.terminal.terminalId,
+                );
+                if (index >= 0) session.terminals[index] = update.terminal;
+                else {
+                  if (session.terminals.length >= 128) {
+                    const finished = session.terminals.findIndex((t) => t.status !== "running");
+                    if (finished >= 0) session.terminals.splice(finished, 1);
+                  }
+                  session.terminals.push(update.terminal);
+                }
+              },
+              update.terminal.status === "running",
+            );
+            return;
+          }
           if (update.kind === "context_usage") {
             receivedContextUsage = true;
             // 修复原因：ACP usage_update 是当前上下文占用，不能依赖 active prompt
@@ -880,6 +917,7 @@ export function createAcpService(
                   "content",
                   "toolKind",
                   "toolName",
+                  "terminalIds",
                   "input",
                   "output",
                   "inputTruncated",
@@ -921,6 +959,9 @@ export function createAcpService(
           const receivedAt = Date.now();
           if (generations.get(session.id) !== generation) return;
           generations.delete(session.id);
+          // root 退出不代表所有子进程已退出；旧连接取消认领并同步清除运行态。
+          for (const terminal of session.terminals)
+            if (terminal.status === "running") terminal.status = "interrupted";
           workflowHost.stopSession(session.id);
           workflowRegistrations.get(session.id)?.revoke();
           workflowRegistrations.delete(session.id);
@@ -929,7 +970,10 @@ export function createAcpService(
           connections.delete(session.id);
           settlePermission(session.id, receivedAt);
           session.usageBaselineKnown = false;
-          if (!active.has(session.id) && !session.queue.items.length) return;
+          if (!active.has(session.id) && !session.queue.items.length) {
+            void mutate(session, () => {});
+            return;
+          }
           const commandId = active.get(session.id);
           active.delete(session.id);
           activeTokens.delete(session.id);
@@ -2052,6 +2096,7 @@ export function createAcpService(
           modeState: null,
           contextUsage: null,
           entries: [],
+          terminals: [],
           queue: { items: [], autoDrain: true },
           usageBaselineKnown: true,
           usageBaseline: null,
@@ -2326,6 +2371,17 @@ export function createAcpService(
         ensureOpen(session);
         return stopSession(session, parsed);
       });
+    },
+    async stopTerminal(input) {
+      const params = acpTerminalControlSchema.parse(input);
+      const session = await scoped(params);
+      ensureOpen(session);
+      const terminal = session.terminals.find((t) => t.terminalId === params.terminalId);
+      if (!terminal) throw new Error("Unknown ACP terminal");
+      if (terminal.status !== "running") return;
+      const port = connections.get(session.id);
+      if (!port?.stopTerminal) throw new Error("ACP terminal is no longer connected");
+      await port.stopTerminal(params.terminalId);
     },
     async cancelWorkflow(input) {
       const params = acpWorkflowControlSchema.parse(input);

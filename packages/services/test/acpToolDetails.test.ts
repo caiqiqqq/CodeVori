@@ -14,6 +14,7 @@ test("ACP tool details preserve explicit empty values and omit absent partial fi
       outputTruncated: false,
       content: "",
       contentTruncated: false,
+      terminalIds: [],
     },
   );
   const details = projectAcpToolDetails({
@@ -36,4 +37,11 @@ test("ACP tool details preserve explicit empty values and omit absent partial fi
   });
   assert.equal(longContent.content?.length, ACP_TOOL_DETAIL_MAX_CHARS);
   assert.equal(longContent.contentTruncated, true);
+  assert.deepEqual(
+    projectAcpToolDetails({
+      toolCallId: "linked",
+      content: [{ type: "terminal", terminalId: "exact-terminal" }],
+    }).terminalIds,
+    ["exact-terminal"],
+  );
 });

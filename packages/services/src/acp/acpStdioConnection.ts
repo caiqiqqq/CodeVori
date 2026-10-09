@@ -23,6 +23,7 @@ import { projectAcpMcpServers, projectAcpPluginMcpServers } from "./acpMcpServer
 import { projectAcpToolDetails } from "./acpToolDetails.js";
 import { projectLegacyCompaction, projectTypedCompaction } from "./acpCompaction.js";
 import { projectAcpSessionFailure } from "./acpSessionFailures.js";
+import { AcpTerminals } from "./acpTerminals.js";
 
 const START_TIMEOUT_MS = 20_000;
 const MAX_INITIAL_USAGE_SESSIONS = 16;
@@ -50,6 +51,10 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
     windowsHide: true,
   });
   let closed = false;
+  const terminals = new AcpTerminals(input.workspacePath, launch.env, (terminal) =>
+    input.onUpdate({ kind: "terminal", terminal }),
+  );
+  let terminalsClosed: Promise<void> = Promise.resolve();
   let exitReason = "ACP Agent 已退出";
   const closedPromise = new Promise<void>((resolve) => child.once("close", () => resolve()));
   const exited = new Promise<never>((_, reject) => {
@@ -71,6 +76,9 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
   const close = () => {
     if (closed) return;
     closed = true;
+    terminalsClosed = terminals.dispose();
+    // close 为非等待接口；closed Promise 保留清理结果，避免无人等待时 rejection。
+    void terminalsClosed.catch(() => {});
     terminateProcessTree(
       child,
       process.platform !== "win32" && child.pid ? { ownedProcessGroupId: child.pid } : {},
@@ -101,6 +109,31 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
     );
   };
   const client: Client = {
+    async createTerminal(request) {
+      if (closed || !receivingLiveUpdates || request.sessionId !== sessionId)
+        throw new Error("ACP terminal session is not active");
+      return terminals.create(request);
+    },
+    terminalOutput(request) {
+      if (closed || request.sessionId !== sessionId)
+        throw new Error("ACP terminal session mismatch");
+      return terminals.output(request.terminalId);
+    },
+    waitForTerminalExit(request) {
+      if (closed || request.sessionId !== sessionId)
+        throw new Error("ACP terminal session mismatch");
+      return terminals.wait(request.terminalId);
+    },
+    killTerminal(request) {
+      if (closed || request.sessionId !== sessionId)
+        throw new Error("ACP terminal session mismatch");
+      return terminals.kill(request.terminalId);
+    },
+    releaseTerminal(request) {
+      if (closed || request.sessionId !== sessionId)
+        throw new Error("ACP terminal session mismatch");
+      return terminals.release(request.terminalId);
+    },
     async sessionUpdate(notification) {
       const update = notification.update;
       if (!receivingLiveUpdates) {
@@ -212,6 +245,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         const initialized = await connection.initialize({
           protocolVersion: PROTOCOL_VERSION,
           clientCapabilities: {
+            terminal: true,
             session: { compaction: {}, configOptions: { boolean: {} } },
             _meta: { jetbrains: { air: { version: 1, capabilities: ["sessionFailure"] } } },
           },
@@ -301,7 +335,10 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
     let nativeUsage = await readNativeUsage();
     return {
       sessionId: activeSessionId,
-      closed: closedPromise,
+      closed: closedPromise.then(() => terminalsClosed),
+      async stopTerminal(terminalId) {
+        await terminals.kill(terminalId);
+      },
       promptCapabilities,
       provisionedMcpNames,
       configOptions,
