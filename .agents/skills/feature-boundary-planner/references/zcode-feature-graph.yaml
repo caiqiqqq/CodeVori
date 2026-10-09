@@ -549,13 +549,14 @@ nodes:
         symbol: IWorkTaskService
   - id: persistence.work-task-record
     kind: persistence
-    label: Shared local task SQLite records and project concurrency
+    label: Shared local task SQLite records, atomic claims and legacy settings
     codeSeeds:
       - file: packages/services/src/session/workTaskRepo.ts
         symbol: WorkTaskRepo
       - file: packages/services/src/session/workTaskDatabase.ts
         symbol: openWorkTaskDatabase
     invariants:
+      - Legacy project concurrency values remain readable and writable but never block independent admitted tasks.
       - Atomic claims and owner leases prevent duplicate execution across Hosts; runSeq fences late results.
       - Recovery interrupts expired owners, not other live Hosts, and never silently resends unknown prompts.
   - id: service.work-task-execution

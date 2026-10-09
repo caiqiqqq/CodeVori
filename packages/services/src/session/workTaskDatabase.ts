@@ -51,16 +51,7 @@ export function claimNextWorkTask(
       )
         continue;
     }
-    const key = resolveWorkspaceKey(task);
-    const active = db
-      .prepare(
-        "SELECT COUNT(*) AS count FROM work_tasks WHERE workspace_key=? AND owner IS NOT NULL",
-      )
-      .get(key) as { count: number };
-    const settings = db
-      .prepare("SELECT concurrency FROM work_task_projects WHERE workspace_key=?")
-      .get(key) as { concurrency: number } | undefined;
-    if (active.count >= (settings?.concurrency ?? 1)) continue;
+    // 旧项目并发值仅兼容读写；独立任务不等待其他任务收口，合并目标锁仍在上方保留。
     return writeWorkTask(
       db,
       {

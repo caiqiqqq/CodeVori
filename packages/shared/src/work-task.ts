@@ -239,12 +239,14 @@ export const workTaskListSchema = workTaskScopeSchema
 export const workTaskArchiveSchema = workTaskTargetSchema
   .extend({ archived: z.boolean() })
   .strict();
+/** Legacy settings validation; retained for compatibility, not an execution limit. */
 export const workTaskConcurrencySchema = workTaskScopeSchema
   .extend({ concurrency: z.number().int().min(1).max(8) })
   .strict();
 
 export interface WorkTaskBoard {
   tasks: WorkTask[];
+  /** @deprecated Saved compatibility value; tasks have no project concurrency limit. */
   concurrency: number;
 }
 export interface WorkTaskEvent {
