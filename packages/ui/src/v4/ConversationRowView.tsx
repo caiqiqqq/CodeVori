@@ -1208,16 +1208,20 @@ const UserInputRowView = memo(function UserInputRowView({
               data-v4-user-input-media-attachments="true"
               className="flex max-w-full flex-wrap justify-end gap-2"
             >
-              <UserInputAttachmentList
-                attachments={row.attachments}
-                entityId={row.entityId}
-                attachmentKind="media"
-                directItems
-                rowId={row.rowId}
-                sessionId={context.sessionId ?? undefined}
-                readAttachment={context.readAttachment}
-                readAttachmentRange={context.readAttachmentRange}
-              />
+              {context.renderUserInputAttachments ? (
+                context.renderUserInputAttachments(row.attachments ?? [], "media")
+              ) : (
+                <UserInputAttachmentList
+                  attachments={row.attachments}
+                  entityId={row.entityId}
+                  attachmentKind="media"
+                  directItems
+                  rowId={row.rowId}
+                  sessionId={context.sessionId ?? undefined}
+                  readAttachment={context.readAttachment}
+                  readAttachmentRange={context.readAttachmentRange}
+                />
+              )}
             </div>
           ) : null}
           {hasAttachmentPills ? (
@@ -1227,7 +1231,9 @@ const UserInputRowView = memo(function UserInputRowView({
               // 保持“文件→评论→网页→PPT→对话引用”的顺序和统一右对齐。
               className="flex max-w-full flex-wrap justify-end gap-2"
             >
-              {hasFileAttachments ? (
+              {hasFileAttachments && context.renderUserInputAttachments ? (
+                context.renderUserInputAttachments(row.attachments ?? [], "file")
+              ) : hasFileAttachments ? (
                 <UserInputAttachmentList
                   attachments={row.attachments}
                   entityId={row.entityId}

@@ -3,6 +3,8 @@ import { useStartPlanRecommendation } from "@/hooks/useStartPlanRecommendation.j
 import type { SessionCreateSource } from "@zcode/shared";
 import { projectAcpTokenUsage } from "@/v4/acpTokenUsage.js";
 import { projectAcpStatusPanel } from "@/v4/acpStatusPanel.js";
+import { useAcpTerminalPanel } from "@/hooks/useAcpTerminalPanel.js";
+import { AcpTerminalOutputDialog } from "@/v4/AcpTerminalOutputDialog.js";
 import { acpAgentDefinition, type AcpAgent } from "@zcode/shared";
 import { reportSessionCreate } from "@/lib/sessionCreateTelemetry.js";
 import { getLocalTtftObserver } from "@/v4/telemetry/localTtftObserver.js";
@@ -631,6 +633,10 @@ export function SessionPane({
     ready: acpConversation.ready,
     error: acpConversation.error,
   });
+  const acpTerminalPanel = useAcpTerminalPanel(
+    acpService,
+    acpAgent ? acpConversation.selected : null,
+  );
   const delegationParent = useMemo<DelegationParent>(
     () => ({
       workspacePath,
@@ -4277,7 +4283,7 @@ export function SessionPane({
             plan: acpStatusPanel.plan,
             workflowRuns: acpStatusPanel.workflowRuns,
             sessionPlans: undefined,
-            backgroundWorks: undefined,
+            backgroundWorks: acpStatusPanel.backgroundWorks,
             runningSubagents: undefined,
           }
         : {
@@ -4953,6 +4959,7 @@ export function SessionPane({
     )
   ) : (
     <>
+      {acpAgent ? <AcpTerminalOutputDialog panel={acpTerminalPanel} readOnly={readOnly} /> : null}
       {!acpAgent &&
       quotaBanner.state.visible &&
       !quotaBanner.dismissed &&
@@ -5191,20 +5198,24 @@ export function SessionPane({
             }
             onOpenPlanDetail={!acpAgent && onOpenPlanDetail ? handleOpenPlanDetail : undefined}
             onOpenBackgroundBash={
-              !acpAgent && onOpenBackgroundBash && sessionId
-                ? (work) =>
-                    onOpenBackgroundBash({
-                      workspacePath,
-                      workspaceIdentity: workspaceIdentity ?? undefined,
-                      remoteSessionId: remoteSessionId ?? undefined,
-                      rootSessionId: rootSessionId ?? sessionId,
-                      sessionId,
-                      workId: work.workId,
-                      title: work.title,
-                    })
-                : undefined
+              acpAgent
+                ? acpTerminalPanel.open
+                : onOpenBackgroundBash && sessionId
+                  ? (work) =>
+                      onOpenBackgroundBash({
+                        workspacePath,
+                        workspaceIdentity: workspaceIdentity ?? undefined,
+                        remoteSessionId: remoteSessionId ?? undefined,
+                        rootSessionId: rootSessionId ?? sessionId,
+                        sessionId,
+                        workId: work.workId,
+                        title: work.title,
+                      })
+                  : undefined
             }
-            onCancelBackgroundWork={acpAgent || readOnly ? undefined : handleCancelBackgroundWork}
+            onCancelBackgroundWork={
+              readOnly ? undefined : acpAgent ? acpTerminalPanel.stop : handleCancelBackgroundWork
+            }
             onOpenSubagentSession={
               !acpAgent && onOpenSubagentSession ? handleOpenSubagentSession : undefined
             }

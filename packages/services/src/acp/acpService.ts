@@ -22,6 +22,7 @@ import {
   type AcpQueueReorderInput,
   type AcpQueueAutoDrainInput,
   type AcpStopInput,
+  type AcpTerminalControl,
   type AcpSession,
   type AcpDiagnosticEvent,
   type AcpExecutionTraceChanged,
@@ -104,6 +105,8 @@ export interface IAcpService {
   /** Remember only explicit composer permission choices on the target Host. */
   setConfigOption(input: AcpSetConfigOptionInput): Promise<AcpSession>;
   stop(input: AcpStopInput): Promise<void>;
+  /** Exact live connection handle; never reconnects or cancels the whole turn. */
+  stopTerminal(input: AcpTerminalControl): Promise<void>;
   cancelWorkflow(input: AcpWorkflowControl): Promise<void>;
   resumeWorkflow(input: AcpWorkflowControl): Promise<void>;
   getWorkflowArtifact(input: AcpWorkflowArtifactQuery): Promise<{ path: string }>;
