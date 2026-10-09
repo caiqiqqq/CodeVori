@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   workTaskCreateSchema,
+  resolveWorkspaceKey,
   type WorkTask,
   type WorkTaskAttachment,
   type WorkTaskExecution,
@@ -15,6 +16,7 @@ import { uploadAttachmentBytes } from "@/v4/attachmentUploadTransaction.js";
 import type { ChatComposerAttachment } from "@/lib/chatAttachments.js";
 import { acpWorkspaceFilesFromEditor } from "@/v4/composer/acpPromptDraft.js";
 import type { LexicalChatInputHandle } from "@/LexicalChatInput.js";
+import { WorkTaskAttachmentResources } from "./workTaskAttachmentResources.js";
 
 function useTaskServices(scope: WorkTaskScope) {
   const base = useBaseWorkspaceServices();
@@ -125,68 +127,37 @@ export function useWorkTaskPromptAssets(
 }
 
 /** Preview uses file IO on the selected Host, never a conversation/Agent attachment. */
-export function useWorkTaskAttachmentPreview(scope: WorkTaskScope) {
+export function useWorkTaskAttachmentPreview(
+  scope: WorkTaskScope,
+  attachments: readonly ChatComposerAttachment[],
+) {
   const resolution = useTaskServices(scope);
-  const [preview, setPreview] = useState<{
+  const files =
+    resolution && !resolution.isRemoteWorkspace ? resolution.services.fileService : null;
+  const owner = JSON.stringify([
+    resolveWorkspaceKey(scope),
+    scope.workspacePath,
+    scope.remoteSessionId,
+  ]);
+  const resources = useMemo(() => new WorkTaskAttachmentResources(files), [files, owner]);
+  useSyncExternalStore(resources.subscribe, resources.getSnapshot, resources.getSnapshot);
+  const [opened, setOpened] = useState<{
+    owner: WorkTaskAttachmentResources;
     attachment: ChatComposerAttachment;
-    url?: string;
-    loading?: boolean;
-    error?: boolean;
   } | null>(null);
-  const sequence = useRef(0);
-  const ownedUrl = useRef<string | null>(null);
-  const clear = useCallback(() => {
-    sequence.current++;
-    if (ownedUrl.current) URL.revokeObjectURL(ownedUrl.current);
-    ownedUrl.current = null;
-  }, []);
-  useEffect(() => () => clear(), [clear, resolution]);
-  const open = useCallback(
-    async (attachment: ChatComposerAttachment) => {
-      clear();
-      const request = sequence.current;
-      setPreview({ attachment, url: attachment.objectUrl, loading: !attachment.objectUrl });
-      if (attachment.objectUrl) return;
-      try {
-        if (!resolution || resolution.isRemoteWorkspace || !attachment.localPath)
-          throw new Error("work-task.disconnected");
-        const files = resolution.services.fileService;
-        const stat = await files.stat({ path: attachment.localPath });
-        if (
-          stat.type !== "file" ||
-          typeof stat.size !== "number" ||
-          stat.size > PROTOCOL_V4_LIMITS.attachmentMaxBytes
-        )
-          throw new Error("work-task.attachment-too-large");
-        const bytes = new Uint8Array(stat.size);
-        for (let offset = 0; offset < bytes.length; ) {
-          if (request !== sequence.current) return;
-          const chunk = await files.readFileRange({
-            path: attachment.localPath,
-            offset,
-            length: Math.min(384 * 1024, bytes.length - offset),
-          });
-          if (!chunk.length || offset + chunk.length > bytes.length)
-            throw new Error("work-task.attachment-size-mismatch");
-          bytes.set(chunk, offset);
-          offset += chunk.length;
-        }
-        if (request !== sequence.current) return;
-        const url = URL.createObjectURL(new Blob([bytes], { type: attachment.mimeType }));
-        ownedUrl.current = url;
-        setPreview({ attachment, url });
-      } catch {
-        if (request === sequence.current) setPreview({ attachment, error: true });
-      }
-    },
-    [clear, resolution],
-  );
+  useEffect(() => () => resources.clear(), [resources]);
+  useEffect(() => resources.sync(attachments), [resources, attachments]);
+  const attachment =
+    opened?.owner === resources
+      ? attachments.find((item) => item.id === opened.attachment.id)
+      : undefined;
   return {
-    preview,
-    open,
-    close: () => {
-      clear();
-      setPreview(null);
+    preview: attachment ? { attachment, ...resources.get(attachment) } : null,
+    get: (item: ChatComposerAttachment) => resources.get(item),
+    open: (item: ChatComposerAttachment) => {
+      setOpened({ owner: resources, attachment: item });
+      void resources.load(item, true);
     },
+    close: () => setOpened(null),
   };
 }

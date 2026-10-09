@@ -225,12 +225,43 @@ export async function exerciseWorkTaskPromptAttachments(page, artifacts) {
     await panel.getByRole("button", { name: "任务详情", exact: true }).click();
     const detail = page.getByTestId("work-task-detail");
     assert.equal(await detail.getByTestId("work-task-attachment").count(), 2);
+    const savedImage = detail.locator('[data-testid="work-task-attachment"][title="pasted.png"]');
+    await page.waitForFunction(() => {
+      const image = document.querySelector(
+        '[data-testid="work-task-detail"] img[alt="pasted.png"]',
+      );
+      return image?.naturalWidth > 0;
+    });
+    const readsBeforePreview = await page.evaluate(
+      () => window.__tasks.calls.filter((call) => call.op === "file-read").length,
+    );
+    await savedImage.click();
+    const savedPreview = page.getByRole("dialog").filter({
+      has: page.getByRole("heading", { name: "pasted.png", exact: true }),
+    });
+    await savedPreview.locator('img[alt="pasted.png"]').waitFor();
+    assert.equal(
+      await page.evaluate(
+        () => window.__tasks.calls.filter((call) => call.op === "file-read").length,
+      ),
+      readsBeforePreview,
+      "thumbnail and enlarged preview share the saved Host resource",
+    );
     await page.keyboard.press("Escape");
+    await savedPreview.waitFor({ state: "detached" });
+    assert.ok(await savedImage.locator("img").evaluate((image) => image.naturalWidth > 0));
+    await detail.getByRole("button", { name: "Close", exact: true }).click();
     await detail.waitFor({ state: "detached" });
     await edit(task);
     assert.equal(await chips.count(), 2);
     await prompt.getByText("spec.md", { exact: true }).waitFor();
     await prompt.getByText("main.ts", { exact: true }).waitFor();
+    await page.waitForFunction(() => {
+      const image = document.querySelector(
+        '[data-testid="work-task-editor"] img[alt="pasted.png"]',
+      );
+      return image?.naturalWidth > 0;
+    });
     await preview();
     assert.ok(
       await page.evaluate(() => window.__tasks.calls.some((c) => c.op === "file-read")),

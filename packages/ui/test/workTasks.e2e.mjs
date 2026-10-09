@@ -40,6 +40,7 @@ import { exerciseWorkTaskWorkspaceTools } from "./workTaskWorkspaceToolsAssertio
 import { workTaskPanelFixture } from "./workTaskPanelFixture.mjs";
 import { workTaskPromptAssetsFixture } from "./workTaskPromptAssetsFixture.mjs";
 import { exerciseWorkTaskPromptAttachments } from "./workTaskPromptAttachmentsAssertions.mjs";
+import { exerciseWorkTaskImageResources } from "./workTaskImageResourcesAssertions.mjs";
 import { exerciseWorkTaskBranchesAndMerge } from "./workTaskMergeAssertions.mjs";
 import { routeWorkTaskConversationFixture } from "./workTaskConversationFixture.mjs";
 import { exerciseWorkTaskCompletion } from "./workTaskCompletionAssertions.mjs";
@@ -130,6 +131,7 @@ try {
   await page.waitForLoadState("networkidle");
   const scenario = {
     "prompt-attachments": exerciseWorkTaskPromptAttachments,
+    "image-resources": exerciseWorkTaskImageResources,
     "branches-merge": exerciseWorkTaskBranchesAndMerge,
     "edit-restart": exerciseWorkTaskEditRestart,
     "execution-preferences": exerciseWorkTaskExecutionPreferences,
@@ -384,6 +386,7 @@ try {
     await exerciseWorkTaskEditRestart(page, artifacts);
     await exerciseWorkTaskConversationStatus(page, artifacts);
     await exerciseWorkTaskPromptAttachments(page, artifacts);
+    await exerciseWorkTaskImageResources(page, artifacts);
     await exerciseWorkTaskCompletion(page, artifacts);
     assert.deepEqual(errors, []);
     process.stdout.write(
