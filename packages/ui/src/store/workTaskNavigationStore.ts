@@ -3,12 +3,14 @@ import type { WorkTaskScope } from "@zcode/shared";
 import { getSafeLocalStorage, type BrowserStorageLike } from "@/lib/browserEnvironment.js";
 
 const STORAGE_KEY = "zcode-work-task-navigation:v1";
+export const WORK_TASK_ALL_PROJECTS = "all-projects";
 interface NavigationPreference {
   project: string | null;
   tasks: Record<string, string>;
 }
 interface WorkTaskNavigation extends NavigationPreference {
   selectProject(scope: WorkTaskScope): void;
+  selectAllProjects(): void;
   selectTask(scope: WorkTaskScope, id: string): void;
   clearTask(scope: WorkTaskScope, expectedId: string): void;
 }
@@ -18,6 +20,10 @@ export function workTaskNavigationKey(scope: WorkTaskScope): string {
     scope.workspaceIdentity?.trim() || scope.workspacePath,
     scope.remoteSessionId?.trim() || "",
   ]);
+}
+
+export function workTaskSelectionKey(task: WorkTaskScope & { id: string }): string {
+  return JSON.stringify([workTaskNavigationKey(task), task.id]);
 }
 
 function readPreference(storage: BrowserStorageLike | null): NavigationPreference {
@@ -53,6 +59,9 @@ export function createWorkTaskNavigationStore(
     };
     return {
       ...readPreference(storage),
+      selectAllProjects() {
+        save({ project: WORK_TASK_ALL_PROJECTS, tasks: get().tasks });
+      },
       selectProject(scope) {
         const project = workTaskNavigationKey(scope);
         if (get().project !== project) save({ project, tasks: get().tasks });

@@ -1,3 +1,4 @@
+import { exerciseWorkTaskAllProjects } from "./workTaskAllProjectsAssertions.mjs";
 import { exerciseWorkTaskWorkspaceMode } from "./workTaskWorkspaceModeAssertions.mjs";
 import { exerciseWorkTaskPromptAttachments } from "./workTaskPromptAttachmentsAssertions.mjs";
 import { exerciseWorkTaskImageResources } from "./workTaskImageResourcesAssertions.mjs";
@@ -24,6 +25,7 @@ export {
   exerciseWorkTaskCompletion,
 };
 export const workTaskScenarios = {
+  "all-projects": exerciseWorkTaskAllProjects,
   "archive-worktree": exerciseWorkTaskArchiveWorktree,
   navigation: exerciseWorkTaskNavigation,
   "save-refresh": exerciseWorkTaskSaveRefresh,

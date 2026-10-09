@@ -22,6 +22,7 @@ import type {
   GitPushResult,
 } from "@zcode/shared";
 import { createServiceLogger } from "#src/logger/serviceLogger.js";
+import { createWorktreeRemovalTiming } from "#src/logger/worktreeRemovalTiming.js";
 import {
   DEFAULT_GIT_COMMAND_TIMEOUT_MS,
   DEFAULT_GIT_DIFF_BYTES,
@@ -1593,6 +1594,8 @@ export function createGitCliRepo(options?: {
     ): Promise<GitRemoveManagedWorktreeResult> {
       const busy = managedWorktreeRemovalRequests.get(params.worktreePath);
       if (busy) return { ok: false, issue: "operation-in-progress" };
+      const timing = createWorktreeRemovalTiming("git", params.worktreePath);
+      let outcome = "failed";
       const task = (async (): Promise<GitRemoveManagedWorktreeResult> => {
         const invalid: GitRemoveManagedWorktreeResult = { ok: false, issue: "invalid-target" };
         if (
@@ -1606,15 +1609,17 @@ export function createGitCliRepo(options?: {
         let project: string;
         let missing = false;
         try {
-          [root, target, project] = await Promise.all([
-            realpath(params.worktreeRootPath),
-            realpath(params.worktreePath).catch((error: NodeJS.ErrnoException) => {
-              if (!params.allowMissing || error.code !== "ENOENT") throw error;
-              missing = true;
-              return resolve(params.worktreePath);
-            }),
-            realpath(params.projectPath),
-          ]);
+          [root, target, project] = await timing.run("resolve-target", () =>
+            Promise.all([
+              realpath(params.worktreeRootPath),
+              realpath(params.worktreePath).catch((error: NodeJS.ErrnoException) => {
+                if (!params.allowMissing || error.code !== "ENOENT") throw error;
+                missing = true;
+                return resolve(params.worktreePath);
+              }),
+              realpath(params.projectPath),
+            ]),
+          );
         } catch {
           return invalid;
         }
@@ -1631,13 +1636,17 @@ export function createGitCliRepo(options?: {
           return invalid;
         if (missing) {
           // Git 已删除但归档尚未落库时允许重试；仅目录消失而仍注册不能算成功。
-          const info = await this.getWorkspaceRepositoryInfo(project);
+          const info = await timing.run("missing-project", () =>
+            this.getWorkspaceRepositoryInfo(project),
+          );
           if (info.kind !== "main-tree" || info.repoRoot !== project) return invalid;
-          const registered = await commandProvider.run({
-            cwd: project,
-            args: ["worktree", "list", "--porcelain", "-z"],
-            timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-          });
+          const registered = await timing.run("missing-registration", () =>
+            commandProvider.run({
+              cwd: project,
+              args: ["worktree", "list", "--porcelain", "-z"],
+              timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+            }),
+          );
           if (registered.exitCode !== 0 || registered.timedOut || registered.outputTruncated)
             return invalid;
           return registered.stdout
@@ -1672,12 +1681,14 @@ export function createGitCliRepo(options?: {
           });
         };
         try {
-          if (!(await validateRegistration())) return invalid;
-          const worktreeList = await commandProvider.run({
-            cwd: project,
-            args: ["worktree", "list", "--porcelain", "-z"],
-            timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-          });
+          if (!(await timing.run("registration", validateRegistration))) return invalid;
+          const worktreeList = await timing.run("lock-check", () =>
+            commandProvider.run({
+              cwd: project,
+              args: ["worktree", "list", "--porcelain", "-z"],
+              timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+            }),
+          );
           ensureGitCommandSucceeded("git worktree list", worktreeList);
           const record = worktreeList.stdout
             .split("\0\0")
@@ -1685,21 +1696,26 @@ export function createGitCliRepo(options?: {
           if (record?.split("\0").some((line) => line === "locked" || line.startsWith("locked "))) {
             return { ok: false, issue: "locked-worktree" };
           }
-          const status = await commandProvider.run({
-            cwd: target,
-            args: ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-            timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-          });
+          const status = await timing.run("dirty-check", () =>
+            commandProvider.run({
+              cwd: target,
+              args: ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+              timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+            }),
+          );
           ensureGitCommandSucceeded("git status", status);
           if (status.stdout.length > 0) return { ok: false, issue: "dirty-worktree" };
-          if (await prepare?.(target)) return { ok: false, issue: "workspace-busy" };
+          if (await timing.run("runtime", async () => prepare?.(target)))
+            return { ok: false, issue: "workspace-busy" };
           // 检查和预热进程回收之间可能有异步操作；真正移除前重新校验 Git 归属。
-          if (!(await validateRegistration())) return invalid;
-          const removal = await commandProvider.run({
-            cwd: project,
-            args: ["worktree", "remove", "--", target],
-            timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-          });
+          if (!(await timing.run("revalidation", validateRegistration))) return invalid;
+          const removal = await timing.run("remove", () =>
+            commandProvider.run({
+              cwd: project,
+              args: ["worktree", "remove", "--", target],
+              timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+            }),
+          );
           if (removal.exitCode !== 0 || removal.timedOut || removal.outputTruncated) {
             return { ok: false, issue: "command-failed" };
           }
@@ -1708,10 +1724,16 @@ export function createGitCliRepo(options?: {
           // 自动创建的随机标识目录为空时才清理，绝不删除相邻工作树。
           const parent = resolve(target, "..");
           if (parent !== root && resolve(parent, "..") === root) {
-            await rmdir(parent).catch((error: NodeJS.ErrnoException) => {
-              if (error.code !== "ENOTEMPTY" && error.code !== "ENOENT" && error.code !== "EEXIST")
-                log.warn(undefined, "Could not remove empty worktree parent", { parent, error });
-            });
+            await timing.run("parent-cleanup", () =>
+              rmdir(parent).catch((error: NodeJS.ErrnoException) => {
+                if (
+                  error.code !== "ENOTEMPTY" &&
+                  error.code !== "ENOENT" &&
+                  error.code !== "EEXIST"
+                )
+                  log.warn(undefined, "Could not remove empty worktree parent", { parent, error });
+              }),
+            );
           }
           return { ok: true };
         } catch (error) {
@@ -1721,8 +1743,11 @@ export function createGitCliRepo(options?: {
       })();
       managedWorktreeRemovalRequests.set(params.worktreePath, task);
       try {
-        return await task;
+        const result = await task;
+        outcome = result.ok ? "success" : (result.issue ?? "failed");
+        return result;
       } finally {
+        timing.finish(outcome);
         if (managedWorktreeRemovalRequests.get(params.worktreePath) === task) {
           managedWorktreeRemovalRequests.delete(params.worktreePath);
         }

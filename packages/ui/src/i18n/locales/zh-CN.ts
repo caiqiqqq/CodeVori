@@ -5,6 +5,7 @@ const zhCN: Record<string, string> = {
   "workTasks.sidebar.summary": "已打开项目：执行中 {running}，等待处理 {waiting}",
   "workTasks.sidebar.loading": "正在读取任务数量",
   "workTasks.sidebar.unavailable": "任务数量暂不可用",
+  "workTasks.allProjects": "全部",
   "workTasks.project": "项目",
   "workTasks.noProject": "未选择项目",
   "workTasks.create": "新建任务",
