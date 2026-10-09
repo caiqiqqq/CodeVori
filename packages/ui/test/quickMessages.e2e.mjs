@@ -22,6 +22,7 @@ try {
     moduleFile,
     `
     import React,{useRef,useState} from 'react';import {createRoot} from 'react-dom/client';
+    import {SETTINGS_FRAME_CONTENT_CLASSNAME,SETTINGS_WIDE_FRAME_CONTENT_CLASSNAME} from '../../../ui/src/settings/SettingsPageParts.tsx';
     import {QuickMessagesSection} from '../../../ui/src/settings/QuickMessagesSection.tsx';
     import {ChatPromptEditor} from '../../../ui/src/prompt-editor/ChatPromptEditor.tsx';
     import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
@@ -43,7 +44,7 @@ try {
     const remote:any={...services,settingService:{get:async()=>{state.remoteReads++;return {quickMessages:[{id:'remote',title:'WRONG HOST',content:'wrong'}]}},update:async()=>{state.remoteWrites++}}};
     state.setTheme=applyTheme;state.entries=createSettingsPageConfig({}).settingsSections.map(s=>s.id);
     function Fixture(){const [key,setKey]=useState(0),[acp,setAcp]=useState(false);const inputApiRef=useRef(null);state.remount=()=>setKey(k=>k+1);state.setAcp=setAcp;state.input=inputApiRef;
-      return <main className='bg-background text-foreground p-4 min-h-dvh'><QuickMessagesSection key={key}/><div className='mt-8 mx-auto max-w-2xl'><ServiceProvider services={remote}><ChatPromptEditor workspacePath='/synthetic' taskId={null} initialValue='保留草稿' inputApiRef={inputApiRef} inputTestId='quick-input' attachmentAction={{label:'添加附件',onSelect:()=>{},testId:'quick-plus'}} acpMode={acp} acpAgent={acp?'codex':undefined} enableMentionPanel={false} enableSlashCommands={false} onSubmit={()=>{state.sends++;return false}}/></ServiceProvider></div><ConfirmDialogHost/></main>}
+      return <main className='bg-background text-foreground p-4 min-h-dvh'><div data-testid='settings-frame' className={SETTINGS_WIDE_FRAME_CONTENT_CLASSNAME}><h2 className='text-ui-xl'>快捷消息</h2><QuickMessagesSection key={key}/></div><div data-testid='ordinary-frame' className={SETTINGS_FRAME_CONTENT_CLASSNAME}/><div className='mt-8 mx-auto max-w-2xl'><ServiceProvider services={remote}><ChatPromptEditor workspacePath='/synthetic' taskId={null} initialValue='保留草稿' inputApiRef={inputApiRef} inputTestId='quick-input' attachmentAction={{label:'添加附件',onSelect:()=>{},testId:'quick-plus'}} acpMode={acp} acpAgent={acp?'codex':undefined} enableMentionPanel={false} enableSlashCommands={false} onSubmit={()=>{state.sends++;return false}}/></ServiceProvider></div><ConfirmDialogHost/></main>}
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={{isWeb:true,onSettingsChanged:()=>()=>{}} as any}><TabStoreProvider><ServiceProvider services={services}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><Fixture/></TooltipProvider></ZCodeIntlProvider></ServiceProvider></TabStoreProvider></PlatformProvider>);
   `,
   );
@@ -56,11 +57,23 @@ try {
   });
   await server.listen();
   browser = await chromium.launch({ headless: true });
-  page = await browser.newPage({ viewport: { width: 1200, height: 1000 } });
+  page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/${name}.html`);
   const newButton = page.getByRole("button", { name: "新建", exact: true });
   await newButton.waitFor();
+  const frame = page.getByTestId("settings-frame");
+  const panel = page.getByTestId("quick-messages-panel");
+  const frameBox = await frame.boundingBox();
+  const ordinaryBox = await page.getByTestId("ordinary-frame").boundingBox();
+  assert.ok(frameBox.width > ordinaryBox.width + 300);
+  const tallPanel = await panel.boundingBox();
+  assert.ok(tallPanel.height >= 700);
+  await page.setViewportSize({ width: 1440, height: 800 });
+  const shortPanel = await panel.boundingBox();
+  assert.ok(shortPanel.height < tallPanel.height - 150);
+  assert.ok(shortPanel.height >= 512);
+  await page.setViewportSize({ width: 1440, height: 1000 });
   assert.ok(await page.evaluate(() => window.__quick.entries.includes("quickMessages")));
   await page.getByTestId("quick-plus").click();
   await page.getByText("暂无快捷消息，请在设置中创建。", { exact: true }).waitFor();
@@ -166,6 +179,16 @@ try {
   await page.getByRole("dialog").waitFor({ state: "detached" });
   await page.getByTestId("quick-message-list").getByText("提交变更", { exact: true }).click();
   await page.getByLabel("内容", { exact: true }).waitFor();
+  const contentInput = page.getByLabel("内容", { exact: true });
+  await contentInput.fill(Array.from({ length: 120 }, (_, i) => `长正文第 ${i + 1} 行`).join("\n"));
+  const scrolls = await contentInput.evaluate(
+    (element) => element.scrollHeight > element.clientHeight,
+  );
+  assert.equal(scrolls, true);
+  const saveBox = await page.getByRole("button", { name: "保存", exact: true }).boundingBox();
+  const panelBox = await panel.boundingBox();
+  assert.ok(saveBox.y + saveBox.height <= panelBox.y + panelBox.height);
+  await page.getByRole("button", { name: "取消", exact: true }).click();
   await page.evaluate(() => window.__quick.setTheme("zai-dark"));
   await page.screenshot({
     path: join(artifacts, "desktop-dark.png"),

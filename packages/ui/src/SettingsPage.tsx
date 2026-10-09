@@ -79,7 +79,10 @@ import { QuickMessagesSection } from "@/settings/QuickMessagesSection.js";
 import { WorktreesSection } from "@/settings/WorktreesSection.js";
 import { VersionControlSection } from "@/settings/VersionControlSection.js";
 import { MigrationSection } from "@/settings/MigrationSection.js";
-import { SETTINGS_FRAME_CONTENT_CLASSNAME } from "@/settings/SettingsPageParts.js";
+import {
+  SETTINGS_FRAME_CONTENT_CLASSNAME,
+  SETTINGS_WIDE_FRAME_CONTENT_CLASSNAME,
+} from "@/settings/SettingsPageParts.js";
 import {
   SettingsBreadcrumbProvider,
   SettingsHeaderBreadcrumb,
@@ -1588,7 +1591,9 @@ export function SettingsPage({
                   <main className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
                     <div
                       className={cn(
-                        SETTINGS_FRAME_CONTENT_CLASSNAME,
+                        activeSection === "quickMessages"
+                          ? SETTINGS_WIDE_FRAME_CONTENT_CLASSNAME
+                          : SETTINGS_FRAME_CONTENT_CLASSNAME,
                         "flex flex-col gap-8",
                         isMacDesktop && "pt-0",
                         // isWindowsDesktop && "pt-12",

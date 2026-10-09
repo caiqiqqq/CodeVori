@@ -110,9 +110,13 @@ export function QuickMessagesSection() {
           {t("saveError")} {actionError}
         </p>
       ) : null}
-      <div className="grid min-h-96 min-w-0 overflow-hidden rounded-xl border border-card-border bg-card md:grid-cols-[minmax(15rem,1fr)_minmax(0,2fr)]">
-        <div className="min-w-0 border-b border-card-border md:border-b-0 md:border-r">
-          <div className="flex items-center gap-2 border-b border-card-border p-3">
+      {/* 原来同时受普通设置列宽和固定最小高度约束，大窗口也只有一小块；桌面面板随视口伸展。 */}
+      <div
+        data-testid="quick-messages-panel"
+        className="grid min-h-96 min-w-0 overflow-hidden rounded-xl border border-card-border bg-card md:h-[max(32rem,calc(100dvh-16rem))] md:grid-cols-[minmax(15rem,1fr)_minmax(0,2fr)] md:grid-rows-[minmax(0,1fr)]"
+      >
+        <div className="flex min-h-0 min-w-0 flex-col border-b border-card-border md:border-b-0 md:border-r">
+          <div className="flex shrink-0 items-center gap-2 border-b border-card-border p-3">
             <SettingsSearchInput
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -132,7 +136,7 @@ export function QuickMessagesSection() {
               {t("new")}
             </Button>
           </div>
-          <div className="max-h-64 overflow-y-auto md:max-h-[60vh]">
+          <div className="min-h-0 max-h-64 overflow-y-auto md:max-h-none md:flex-1">
             <QuickMessageList
               messages={visible}
               selectedId={draft?.id}
@@ -150,7 +154,7 @@ export function QuickMessagesSection() {
         </div>
         {draft ? (
           <form
-            className="flex min-w-0 flex-col gap-4 p-4"
+            className="flex min-h-0 min-w-0 flex-col gap-4 p-4"
             onSubmit={(event) => {
               event.preventDefault();
               saveDraft();
@@ -168,11 +172,11 @@ export function QuickMessagesSection() {
                 onChange={(event) => setDraft({ ...draft, title: event.target.value })}
               />
             </div>
-            <div className="flex flex-1 flex-col gap-2 text-ui-base">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 text-ui-base">
               <label htmlFor="quick-message-content">{t("content")}</label>
               <Textarea
                 id="quick-message-content"
-                className="min-h-52 flex-1 resize-y border-input-border bg-input text-mobile-input-safe md:text-ui-base"
+                className="min-h-52 flex-1 resize-y border-input-border bg-input text-mobile-input-safe md:min-h-0 md:resize-none md:text-ui-base"
                 value={draft.content}
                 maxLength={20000}
                 disabled={blocked}
