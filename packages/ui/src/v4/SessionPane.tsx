@@ -145,6 +145,7 @@ import type {
 } from "@/lib/acpSidebarSessions.js";
 import { ConversationQueuePanel } from "@/v4/ConversationQueuePanel.js";
 import { projectPendingGuideQueue } from "@/v4/pendingGuideProjection.js";
+import { runQueueCommand } from "@/v4/queueCommandFeedback.js";
 import { ConversationQuotaBanner } from "@/v4/ConversationQuotaBanner.js";
 import { PendingCommandRecoveryBanner } from "@/v4/PendingCommandRecoveryBanner.js";
 import { WorkspaceHookPendingBanner } from "@/v4/WorkspaceHookPendingBanner.js";
@@ -715,7 +716,25 @@ export function SessionPane({
     },
     [worktreeAutoSend, worktreeDraftIntent],
   );
-  const lastAcpOpenRequestIdRef = useRef<{ requestId: number; sessionId: string } | null>(null);
+  const acpOpenScopeKey = JSON.stringify([
+    workspaceIdentity?.trim() || workspacePath,
+    workspacePath,
+  ]);
+  const lastAcpOpenRequestIdRef = useRef<{
+    requestId: number;
+    sessionId: string;
+    workspaceKey: string;
+  } | null>(null);
+  const pendingAcpTabOpenRequest =
+    sessionId === null &&
+    acpOpenRequest?.session.workspacePath === workspacePath &&
+    (acpOpenRequest.session.workspaceIdentity?.trim() || workspacePath) ===
+      (workspaceIdentity?.trim() || workspacePath) &&
+    (lastAcpOpenRequestIdRef.current?.requestId !== acpOpenRequest.requestId ||
+      lastAcpOpenRequestIdRef.current.sessionId !== acpOpenRequest.session.id ||
+      lastAcpOpenRequestIdRef.current.workspaceKey !== acpOpenScopeKey)
+      ? acpOpenRequest
+      : null;
   useEffect(() => {
     if (
       !acpOpenRequest ||
@@ -724,12 +743,15 @@ export function SessionPane({
       (acpOpenRequest.session.workspaceIdentity?.trim() || workspacePath) !==
         (workspaceIdentity?.trim() || workspacePath) ||
       (lastAcpOpenRequestIdRef.current?.requestId === acpOpenRequest.requestId &&
-        lastAcpOpenRequestIdRef.current.sessionId === acpOpenRequest.session.id)
+        lastAcpOpenRequestIdRef.current.sessionId === acpOpenRequest.session.id &&
+        lastAcpOpenRequestIdRef.current.workspaceKey === acpOpenScopeKey)
     )
       return;
     lastAcpOpenRequestIdRef.current = {
       requestId: acpOpenRequest.requestId,
       sessionId: acpOpenRequest.session.id,
+      // 不同 Host 的同名 session/request 不能被当作已经消费的打开意图。
+      workspaceKey: acpOpenScopeKey,
     };
     // 修复原因：侧栏 ACP 行选择的是 Host 会话，不能调用原生 task 绑定或发送命令。
     acpConversation.selectById(
@@ -738,7 +760,14 @@ export function SessionPane({
       Boolean(acpOpenRequest.session.archived),
     );
     setAcpAgent(acpOpenRequest.session.agent);
-  }, [acpConversation.selectById, acpOpenRequest, sessionId, workspaceIdentity, workspacePath]);
+  }, [
+    acpConversation.selectById,
+    acpOpenRequest,
+    acpOpenScopeKey,
+    sessionId,
+    workspaceIdentity,
+    workspacePath,
+  ]);
   const acpHasConversationContent = hasAcpConversationContent(acpConversation.selected);
   const acpRows = useMemo(
     () => buildAcpConversationRows(acpConversation.selected),
@@ -1396,8 +1425,8 @@ export function SessionPane({
     },
     [workspaceIdentity, workspacePath],
   );
-  const composerBindingRef = useRef({ sessionId, workspaceKey });
-  composerBindingRef.current = { sessionId, workspaceKey };
+  const composerBindingRef = useRef({ sessionId, workspaceKey, layer, lease });
+  composerBindingRef.current = { sessionId, workspaceKey, layer, lease };
   const configCommandBarrier = useMemo(() => createConfigCommandBarrier(), []);
   // 软审核不是阻塞交互，不能隐藏 Composer 或禁用选区引用。
   const blockingInteractionId =
@@ -1438,6 +1467,24 @@ export function SessionPane({
   });
 
   // Composer 保存下一次 Submission 的 renderer intent；prewarm session 仅承载草稿预热。
+  // ACP 的原生 taskId 恒为 null。先固定分屏绑定 id，避免切换 effect 尚未执行时
+  // 旧 selected 或 __draft__ 把另一会话的正文、附件恢复到当前 pane。
+  const composerScopeId = pendingAcpTabOpenRequest
+    ? `acp:${pendingAcpTabOpenRequest.session.id}`
+    : acpAgent
+      ? acpConversation.selected
+        ? `acp:${acpConversation.selected.id}`
+        : acpBoundSessionId && acpOpenRequest?.session.agent === acpAgent
+          ? `acp:${acpBoundSessionId}`
+          : `acp-draft:${paneId}:${acpAgent}`
+      : undefined;
+  const composerDraftSourceScopeId =
+    acpAgent &&
+    acpConversation.selected?.provisional &&
+    !acpBoundSessionId &&
+    !pendingAcpTabOpenRequest
+      ? `acp-draft:${paneId}:${acpAgent}`
+      : undefined;
   const {
     composerDraft,
     modelSelectionRead,
@@ -1456,6 +1503,8 @@ export function SessionPane({
     workspaceIdentity,
     provider,
     sessionId,
+    composerScopeId,
+    composerDraftSourceScopeId,
     sessionConfig: snapshot?.sessionId === sessionId ? snapshot.config : null,
     agentStartupAllowed: draftAgentStartupAllowed,
     modelSelectionService,
@@ -3442,16 +3491,45 @@ export function SessionPane({
     [dispatchCommand, sessionId],
   );
 
+  const dispatchQueueCommand = useCallback(
+    (
+      type: Extract<
+        CommandType,
+        "deleteQueueItem" | "sendQueuedNow" | "reorderQueueItem" | "setAutoDrain"
+      >,
+      payload: Record<string, unknown>,
+      baseRevision: number,
+    ) =>
+      runQueueCommand({
+        dispatch: () => dispatchCommand(type, payload, sessionId, baseRevision),
+        isCurrent: () =>
+          composerBindingRef.current.sessionId === sessionId &&
+          composerBindingRef.current.workspaceKey === workspaceKey &&
+          composerBindingRef.current.layer === layer &&
+          composerBindingRef.current.lease === lease,
+        recover: () => lease?.store.recoverFromStaleAuthority(),
+        onFailure: (kind) =>
+          toast(
+            intl.formatMessage({
+              id: kind === "stale" ? "chat.queue.operationStale" : "chat.queue.operationFailed",
+            }),
+            { variant: "warning" },
+          ),
+      }),
+    [dispatchCommand, intl, layer, lease, sessionId, workspaceKey],
+  );
+
   const handleDeleteQueueItem = useCallback(
     (queueItemId: string) => {
       const current = snapshotRef.current;
-      if (!sessionId || current === null) return;
+      if (!sessionId || current?.sessionId !== sessionId) return;
       const sourceCommandId = current.queue.items.find(
         (item) => item.queueItemId === queueItemId,
       )?.sourceCommandId;
-      void dispatchCommand("deleteQueueItem", { queueItemId }, sessionId, current.revision).then(
+      void dispatchQueueCommand("deleteQueueItem", { queueItemId }, current.revision).then(
         (ack) => {
-          if (ack.status !== "accepted" && ack.status !== "noop") {
+          if (!ack) return;
+          if (!["accepted", "duplicate", "noop"].includes(ack.status)) {
             logger.warn(`[v4-pane] deleteQueueItem 被拒绝: ${ack.status} ${ack.reasonCode ?? ""}`);
             return;
           }
@@ -3459,13 +3537,13 @@ export function SessionPane({
         },
       );
     },
-    [dispatchCommand, sessionId],
+    [dispatchQueueCommand, sessionId],
   );
 
   const handleEditQueueItem = useCallback(
     async (queueItemId: string): Promise<void> => {
       const current = snapshotRef.current;
-      if (!sessionId || current === null || queueEditOperationRef.current) return;
+      if (!sessionId || current?.sessionId !== sessionId || queueEditOperationRef.current) return;
       if (composerDraftStateRef.current.hasContent || composerDraftStateRef.current.busy) {
         toast(intl.formatMessage({ id: "chat.queue.editDraftConflict" }));
         return;
@@ -3479,15 +3557,17 @@ export function SessionPane({
       queueEditOperationRef.current = operation;
       setQueueEditOperation(operation);
       try {
-        const ack = await dispatchCommand(
+        const ack = await dispatchQueueCommand(
           "deleteQueueItem",
           { queueItemId },
-          sessionId,
           restoreTarget.baseRevision,
         );
+        if (!ack) {
+          clearQueueEditOperation();
+          return;
+        }
         if (!shouldRestoreQueuedComposerFromAck(ack.status)) {
           logger.warn(`[v4-pane] queue 撤回编辑被拒绝: ${ack.status} ${ack.reasonCode ?? ""}`);
-          toast(intl.formatMessage({ id: "chat.queue.editRestoreFailed" }));
           clearQueueEditOperation();
           return;
         }
@@ -3522,60 +3602,60 @@ export function SessionPane({
         clearQueueEditOperation();
       }
     },
-    [clearQueueEditOperation, dispatchCommand, intl, sessionId, workspaceKey],
+    [clearQueueEditOperation, dispatchQueueCommand, intl, sessionId, workspaceKey],
   );
 
   const handleSendQueuedNow = useCallback(
     (queueItemId: string) => {
       const current = snapshotRef.current;
-      if (!sessionId || current === null) return;
+      if (!sessionId || current?.sessionId !== sessionId) return;
       // 用户明确点击“立即发送”时，视觉意图等价于点击“滚动到底部”；command 的
       // reserve/stop/promote 生命周期仍由 CLI 裁决，不把滚动状态混入协议。
       focusTimelineToLatest();
-      void dispatchCommand("sendQueuedNow", { queueItemId }, sessionId, current.revision).then(
-        (ack) => {
-          if (ack.status !== "accepted" && ack.status !== "noop") {
-            logger.warn(`[v4-pane] sendQueuedNow 被拒绝: ${ack.status} ${ack.reasonCode ?? ""}`);
-          }
-        },
-      );
+      void dispatchQueueCommand("sendQueuedNow", { queueItemId }, current.revision).then((ack) => {
+        if (!ack) return;
+        if (!["accepted", "duplicate", "noop"].includes(ack.status)) {
+          logger.warn(`[v4-pane] sendQueuedNow 被拒绝: ${ack.status} ${ack.reasonCode ?? ""}`);
+        }
+      });
     },
-    [dispatchCommand, focusTimelineToLatest, sessionId],
+    [dispatchQueueCommand, focusTimelineToLatest, sessionId],
   );
 
   const handleReorderQueueItem = useCallback(
     (queueItemId: string, beforeQueueItemId: string | null) => {
       const current = snapshotRef.current;
-      if (!sessionId || current === null) return;
-      void dispatchCommand(
+      if (!sessionId || current?.sessionId !== sessionId) return;
+      void dispatchQueueCommand(
         "reorderQueueItem",
         { queueItemId, beforeQueueItemId },
-        sessionId,
         current.revision,
       ).then((ack) => {
-        if (ack.status !== "accepted" && ack.status !== "noop") {
+        if (!ack) return;
+        if (!["accepted", "duplicate", "noop"].includes(ack.status)) {
           logger.warn(`[v4-pane] reorderQueueItem 被拒绝: ${ack.status} ${ack.reasonCode ?? ""}`);
         }
       });
     },
-    [dispatchCommand, sessionId],
+    [dispatchQueueCommand, sessionId],
   );
 
   const handleResumeQueue = useCallback(async () => {
     const current = snapshotRef.current;
-    if (!sessionId || !current || current.queue.autoDrain || current.queue.items.length === 0) {
+    if (
+      !sessionId ||
+      current?.sessionId !== sessionId ||
+      current.queue.autoDrain ||
+      current.queue.items.length === 0
+    ) {
       return;
     }
-    const ack = await dispatchCommand(
-      "setAutoDrain",
-      { autoDrain: true },
-      sessionId,
-      current.revision,
-    );
-    if (ack.status !== "accepted" && ack.status !== "noop") {
+    const ack = await dispatchQueueCommand("setAutoDrain", { autoDrain: true }, current.revision);
+    if (!ack) return;
+    if (!["accepted", "duplicate", "noop"].includes(ack.status)) {
       logger.warn(`[v4-pane] 恢复暂停队列被拒绝: ${ack.status} ${ack.reasonCode ?? ""}`);
     }
-  }, [dispatchCommand, sessionId]);
+  }, [dispatchQueueCommand, sessionId]);
 
   // 配置面 CAS 命令的 stale 重试。模型→思考深度→模式连续操作时，前一条命令的
   // revision bump 可能尚未回流到本地投影，直接用本地 revision 会被 CAS 判 stale。
@@ -4717,6 +4797,8 @@ export function SessionPane({
       // Snapshot 仍服务用量、路由与运行态；工具栏的 mode/model 只读下方 Composer Draft。
       snapshot={snapshot}
       sessionId={sessionId}
+      composerScopeId={composerScopeId}
+      composerDraftSourceScopeId={composerDraftSourceScopeId}
       // 草稿 taskId 仍为 null，但 prewarm 已经拥有独立 AgentRuntime。
       // 只给 Skill catalog 下发 effective id，避免 UI 扫到 prewarm runtime 尚未加载的新 Skill。
       skillCatalogSessionId={effectiveSessionId}
@@ -4750,6 +4832,8 @@ export function SessionPane({
         acpConversation.selected?.agent === acpAgent ? acpConversation.selected.contextUsage : null
       }
       acpReady={
+        (!pendingAcpTabOpenRequest ||
+          pendingAcpTabOpenRequest.session.id === acpConversation.selected?.id) &&
         acpConversation.loaded &&
         acpConversation.ready &&
         !acpConversation.sending &&
@@ -4896,14 +4980,17 @@ export function SessionPane({
           admission={snapshot.workspaceHookAdmission}
         />
       ) : null}
-      {acpAgent && acpConversation.selected?.queue ? (
+      {acpAgent &&
+      acpConversation.selected?.queue &&
+      (!pendingAcpTabOpenRequest ||
+        pendingAcpTabOpenRequest.session.id === acpConversation.selected.id) ? (
         <AcpConversationQueuePanel
           key={acpConversation.selected.id}
           queue={acpConversation.selected.queue}
           actions={acpConversation.queueActions}
         />
       ) : null}
-      {!acpAgent && sessionId && snapshot ? (
+      {!acpAgent && sessionId && snapshot?.sessionId === sessionId ? (
         <ConversationQueuePanel
           key="conversation-queue"
           queue={pendingGuideProjection?.visibleQueue ?? snapshot.queue}
@@ -4961,15 +5048,6 @@ export function SessionPane({
   ) : null;
 
   // 打开请求只在消费前限制投影；消费后需跟随当前选择，否则切回 API 或其他 ACP 仍显示旧图标。
-  const pendingAcpTabOpenRequest =
-    sessionId === null &&
-    acpOpenRequest?.session.workspacePath === workspacePath &&
-    (acpOpenRequest.session.workspaceIdentity?.trim() || workspacePath) ===
-      (workspaceIdentity?.trim() || workspacePath) &&
-    (lastAcpOpenRequestIdRef.current?.requestId !== acpOpenRequest.requestId ||
-      lastAcpOpenRequestIdRef.current.sessionId !== acpOpenRequest.session.id)
-      ? acpOpenRequest
-      : null;
   const conversationTab = conversationTabContainer
     ? resolveWorkbenchConversationTabPresentation({
         sessionId,
@@ -5001,7 +5079,7 @@ export function SessionPane({
       onDragOver={acpAgent ? undefined : effectiveDropTargetController?.onDragOver}
       onDragLeave={acpAgent ? undefined : effectiveDropTargetController?.onDragLeave}
       onDrop={acpAgent ? undefined : effectiveDropTargetController?.onDrop}
-      className="relative flex h-full min-h-0 flex-col"
+      className="relative flex h-full min-h-0 flex-col [container-type:size]"
     >
       {conversationTabContainer && conversationTab
         ? createPortal(

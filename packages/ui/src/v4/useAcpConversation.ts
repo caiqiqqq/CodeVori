@@ -118,7 +118,7 @@ export function useAcpConversation(
       refreshRequests.current.delete(session.id);
       refreshed.current.delete(session.id);
       readyIds.current.delete(session.id);
-      retries.current.delete(`${targetKey}:${session.agent}`);
+      retries.current.delete(`${targetKey}:${session.agent}:${session.id}`);
       if (isVisible) {
         // 先同步废弃选择和请求守卫，再通知 pane 退出，迟到 refresh/create 不能恢复旧正文。
         selectedRef.current = null;
@@ -508,7 +508,8 @@ export function useAcpConversation(
       if (!agent || !selected || !loaded || busy || !readyIds.current.has(selected.id)) {
         throw new Error("ACP session is not ready");
       }
-      const key = `${targetKey}:${agent}`;
+      // 同一 Agent 可有多个分屏会话；A 的 admission/retry 不能占用 B 的发送锁或幂等键。
+      const key = `${targetKey}:${agent}:${selected.id}`;
       if (submitting.current.has(key)) throw new Error("ACP session is not ready");
       submitting.current.add(key);
       setSendingIds((previous) => new Set(previous).add(key));
@@ -552,7 +553,8 @@ export function useAcpConversation(
         if (retries.current.get(key)?.commandId === commandId) retries.current.delete(key);
         return session.id;
       } catch (cause) {
-        if (targetKeyRef.current === targetKey) setErrorState({ agent, message: messageOf(cause) });
+        if (targetKeyRef.current === targetKey && selectedRef.current?.id === selected.id)
+          setErrorState({ agent, message: messageOf(cause) });
         throw cause;
       } finally {
         submitting.current.delete(key);
@@ -737,7 +739,7 @@ export function useAcpConversation(
     ),
     error,
     busy,
-    sending: Boolean(agent && sendingIds.has(`${targetKey}:${agent}`)),
+    sending: Boolean(agent && selected && sendingIds.has(`${targetKey}:${agent}:${selected.id}`)),
     create,
     send,
     queueActions,

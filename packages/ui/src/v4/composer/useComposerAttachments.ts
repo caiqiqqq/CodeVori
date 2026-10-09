@@ -1,5 +1,5 @@
 /* oxlint-disable eslint(max-lines) -- 附件采集、分 scope 上传调度和生命周期必须在同一 hook 中原子收口。 */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast.js";
 import { nanoid } from "nanoid";
 import type { AttachmentRef } from "@zcode/shared/zcode-protocol-v4";
@@ -36,6 +36,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { logger } from "@/logger.js";
 import {
   exposeComposerAttachmentScopeKeyForE2E,
+  moveComposerAttachmentScope,
   readComposerAttachmentScope,
   updateComposerAttachmentScope,
   useComposerAttachmentUploadStore,
@@ -108,6 +109,7 @@ interface UseComposerAttachmentsOptions {
   workspaceIdentity?: string;
   remoteSessionId?: string;
   scopeId: string;
+  sourceScopeId?: string;
   attachmentSessionId?: string | null;
   acpMode?: boolean;
   /** Task editor collects drafts without a session, transfer or Agent upload. */
@@ -202,6 +204,7 @@ export function useComposerAttachments(
     workspaceIdentity,
     remoteSessionId,
     scopeId,
+    sourceScopeId,
     attachmentSessionId = null,
     acpMode = false,
     collectionOnly = false,
@@ -216,6 +219,13 @@ export function useComposerAttachments(
   const { intl } = useZCodeIntl();
   const scopeKey = buildScopeKey(workspacePath, workspaceIdentity, scopeId);
   exposeComposerAttachmentScopeKeyForE2E(scopeKey);
+  useLayoutEffect(() => {
+    if (sourceScopeId)
+      moveComposerAttachmentScope(
+        buildScopeKey(workspacePath, workspaceIdentity, sourceScopeId),
+        scopeKey,
+      );
+  }, [sourceScopeId, scopeKey, workspaceIdentity, workspacePath]);
 
   const targetsRef = useRef(new Map<string, UploadTarget>());
   const uploadQueueRef = useRef<UploadQueueEntry[]>([]);

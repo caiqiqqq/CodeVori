@@ -368,7 +368,12 @@ function ConversationQueuePanelImpl({
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-          <ul className="space-y-0.5">
+          {/* 队列曾无限撑高 sticky dock，分屏时会把 composer 挤出 pane；
+              cqh 读取 SessionPane 的 size container，让短窗格也按自身高度限制列表。 */}
+          <ul
+            data-v4-queue-list="true"
+            className="max-h-[min(12rem,30cqh)] space-y-0.5 overflow-x-hidden overflow-y-auto overscroll-contain"
+          >
             {queue.items.map((item, index) => (
               <QueueRow
                 key={item.queueItemId}

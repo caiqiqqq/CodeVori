@@ -69,6 +69,24 @@ export function readComposerAttachmentScope(scopeKey: string): ComposerAttachmen
   return useComposerAttachmentUploadStore.getState().scopes[scopeKey] ?? [];
 }
 
+/** 新 ACP 连接接管同 pane 的 waiting scope；单次更新转移引用，避免两边同时拥有附件。 */
+export function moveComposerAttachmentScope(sourceKey: string, targetKey: string): void {
+  if (sourceKey === targetKey) return;
+  useComposerAttachmentUploadStore.setState((state) => {
+    const source = state.scopes[sourceKey];
+    if (!source?.length) return state;
+    const target = state.scopes[targetKey] ?? [];
+    const ids = new Set(target.map((item) => item.id));
+    const { [sourceKey]: _source, ...remaining } = state.scopes;
+    return {
+      scopes: {
+        ...remaining,
+        [targetKey]: [...target, ...source.filter((item) => !ids.has(item.id))],
+      },
+    };
+  });
+}
+
 export function updateComposerAttachmentScope(
   scopeKey: string,
   update: (current: ComposerAttachmentUploadItem[]) => ComposerAttachmentUploadItem[],

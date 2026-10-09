@@ -105,6 +105,10 @@ export function useDraftConfigControl(params: {
   provider?: ZCodeProvider;
   /** 会话切换读取对应 scope；已有空选择也必须保留。 */
   sessionId: string | null;
+  /** 本地草稿身份与原生协议身份分开；ACP 使用带类型前缀的 Host 会话 scope。 */
+  composerScopeId?: string;
+  /** 仅新连接可接管同 pane/Agent 的临时草稿；历史打开不会传此来源。 */
+  composerDraftSourceScopeId?: string;
   /** 仅匹配当前 Session 的首份投影可用作初始化；null 表示还没恢复完成。 */
   sessionConfig?: Partial<SessionConfigState> | null;
   /** provider registry 已通过 renderer readiness 门禁后才允许拉起 Agent。 */
@@ -116,6 +120,8 @@ export function useDraftConfigControl(params: {
     workspaceIdentity,
     provider,
     sessionId,
+    composerScopeId,
+    composerDraftSourceScopeId,
     sessionConfig,
     agentStartupAllowed = true,
     modelSelectionService,
@@ -125,18 +131,19 @@ export function useDraftConfigControl(params: {
   const zcodeSessionService = useZCodeSessionService(workspacePath, null, workspaceIdentity);
   const { settings: sharedSettings } = useSettings();
   const appFollowupMode = resolveAppFollowupMode(sharedSettings);
-  const scopeId = sessionId ?? V4_DRAFT_SCOPE_ROOT;
+  const scopeId = composerScopeId ?? sessionId ?? V4_DRAFT_SCOPE_ROOT;
   const scopeKey = JSON.stringify([workspaceKey, scopeId]);
-  const loadedScope = useMemo(
-    () => ({
+  const loadedScope = useMemo(() => {
+    const existing = readV4ComposerDraft(workspacePath, workspaceIdentity, scopeId);
+    const source = composerDraftSourceScopeId
+      ? readV4ComposerDraft(workspacePath, workspaceIdentity, composerDraftSourceScopeId)
+      : null;
+    return {
       scopeKey,
-      draft: readV4ComposerDraft(workspacePath, workspaceIdentity, scopeId) ?? {
-        text: "",
-        updatedAt: 0,
-      },
-    }),
-    [scopeKey],
-  );
+      draft: existing ?? source ?? { text: "", updatedAt: 0 },
+      inheritedScopeId: !existing && source ? composerDraftSourceScopeId : null,
+    };
+  }, [scopeKey, composerDraftSourceScopeId]);
   const [storedState, setStoredState] = useState(loadedScope);
   let currentState = storedState.scopeKey === scopeKey ? storedState : loadedScope;
   let draft = currentState.draft;
@@ -200,7 +207,9 @@ export function useDraftConfigControl(params: {
       stateRef.current.draft === draft &&
       stateRef.current.scopeKey === scopeKey
     ) {
-      persistV4ComposerDraft(workspacePath, workspaceIdentity, scopeId, draft);
+      const saved = persistV4ComposerDraft(workspacePath, workspaceIdentity, scopeId, draft);
+      if (saved && loadedScope.inheritedScopeId)
+        clearV4ComposerDraft(workspacePath, workspaceIdentity, loadedScope.inheritedScopeId);
       lastPersistedDraftRef.current = draft;
     }
   }, [draft, scopeKey]);

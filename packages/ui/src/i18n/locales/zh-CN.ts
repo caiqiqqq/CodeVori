@@ -4648,6 +4648,8 @@ const zhCN: Record<string, string> = {
   "acp.queue.editDescription": "修改排队消息的正文，保留附件和文件引用。",
   "chat.queue.editDraftConflict": "请先发送或清空当前草稿，再编辑队列消息。",
   "chat.queue.editRestoreFailed": "未能把队列消息退回输入框，请重试。",
+  "chat.queue.operationStale": "队列状态已变化，正在刷新，请确认后重试。",
+  "chat.queue.operationFailed": "队列操作未完成，请重试。",
   "chat.queue.remove": "移除待发送消息",
   "chat.queue.turnSteer.steering": "正在引导对话",
   "chat.queue.paused.stopped": "由于你中断了当前响应，队列已暂停",

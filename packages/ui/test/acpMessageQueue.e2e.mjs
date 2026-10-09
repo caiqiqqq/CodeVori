@@ -35,7 +35,7 @@ try {
       const listeners=new Set(); const events=[];
       let snapshot={id:crypto.randomUUID(),agent:'codex',workspacePath,acpSessionId:'native-fixture',
         title:'queue fixture',revision:1,status:'running',entries:[{id:'user:first',kind:'user',text:'first task'}],
-        configOptions:[],modeState:null,contextUsage:null,goal:null,pendingPermission:null,error:null,
+        configOptions:[],modeState:null,contextUsage:null,usageTurns:[],goal:null,pendingPermission:null,error:null,
         queue:{items:[],autoDrain:true}};
       const copy=()=>structuredClone(snapshot);
       const publish=()=>{snapshot={...snapshot,revision:snapshot.revision+1};for(const listener of listeners) listener({kind:'updated',session:copy()});return copy()};

@@ -380,6 +380,9 @@ interface ConversationComposerProps {
   snapshot: ConversationSnapshot | null;
   /** 草稿 scope（sessionId；draft 态 null → "__draft__" scope）。 */
   sessionId?: string | null;
+  /** SessionPane 统一下发的本地草稿、附件与菜单 scope，不用于原生协议调用。 */
+  composerScopeId?: string;
+  composerDraftSourceScopeId?: string;
   /** Skill catalog authority；草稿预热完成后为 prewarmSessionId，不改变 task/draft 身份。 */
   skillCatalogSessionId?: string | null;
   /** draft 态无 snapshot，但仍可 createSession 首发。 */
@@ -523,6 +526,8 @@ function formatAttachmentLineCount(attachment: ChatComposerAttachment, locale: s
 function ConversationComposerImpl({
   snapshot,
   sessionId = null,
+  composerScopeId,
+  composerDraftSourceScopeId,
   skillCatalogSessionId = sessionId,
   draftMode = false,
   draftConfig,
@@ -598,7 +603,8 @@ function ConversationComposerImpl({
     ...(workspaceIdentity ? { workspaceIdentity } : {}),
     ...(remoteSessionId ? { remoteSessionId } : {}),
   });
-  const draftScopeId = sessionId ?? V4_DRAFT_SCOPE_ROOT;
+  // ACP 的协议 sessionId 为 null；正文、附件和菜单必须使用宿主下发的真实 scope。
+  const draftScopeId = composerScopeId ?? sessionId ?? V4_DRAFT_SCOPE_ROOT;
   const workspaceKey = workspaceIdentity?.trim() || workspacePath;
   const configPickerScopeKey = `${workspaceKey}\0${draftScopeId}`;
   const [restoredScopeKey, setRestoredScopeKey] = useState<string | null>(null);
@@ -649,6 +655,7 @@ function ConversationComposerImpl({
   const textRef = useRef("");
   const contentRevisionRef = useRef(0);
   const pendingRef = useRef(false);
+  const acpSubmissionRef = useRef<object | null>(null);
   const acpTargetRef = useRef({ agent: acpAgent, sessionId: acpSessionId });
   acpTargetRef.current = { agent: acpAgent, sessionId: acpSessionId };
   const snapshotRef = useRef(snapshot);
@@ -681,6 +688,7 @@ function ConversationComposerImpl({
     workspaceIdentity,
     remoteSessionId,
     scopeId: draftScopeId,
+    sourceScopeId: composerDraftSourceScopeId,
     attachmentSessionId: acpAgent ? acpSessionId : attachmentSessionId,
     acpMode: Boolean(acpAgent),
     attachmentPut,
@@ -1003,21 +1011,31 @@ function ConversationComposerImpl({
       }
       const previousDraft = snapshotDraftOfEditor();
       const shouldTransferDraft =
-        previousTarget.scopeId === V4_DRAFT_SCOPE_ROOT &&
-        draftScopeId === V4_DRAFT_SCOPE_ROOT &&
-        consumeV4ComposerDraftWorkspaceTransferRequest({
-          sourceWorkspacePath: previousTarget.workspacePath,
-          sourceWorkspaceIdentity: previousTarget.workspaceIdentity,
-          targetWorkspacePath: workspacePath,
-          targetWorkspaceIdentity: workspaceIdentity,
-        });
+        (previousTarget.scopeId === composerDraftSourceScopeId &&
+          previousTarget.workspacePath === workspacePath &&
+          previousTarget.workspaceIdentity === workspaceIdentity) ||
+        (previousTarget.scopeId === V4_DRAFT_SCOPE_ROOT &&
+          draftScopeId === V4_DRAFT_SCOPE_ROOT &&
+          consumeV4ComposerDraftWorkspaceTransferRequest({
+            sourceWorkspacePath: previousTarget.workspacePath,
+            sourceWorkspaceIdentity: previousTarget.workspaceIdentity,
+            targetWorkspacePath: workspacePath,
+            targetWorkspaceIdentity: workspaceIdentity,
+          }));
       if (shouldTransferDraft) {
-        // 项目解绑只改变草稿的 cwd；输入正文、mention editor state 和组件内附件继续保留。
+        // 项目解绑或同 pane 的 ACP 首次连接只转移明确来源，历史会话不能继承共享草稿。
         replaceComposerDraft({ ...ownerDraftRef.current.draft, ...previousDraft });
         transferredDraft = previousDraft;
       }
     }
     draftScopeRef.current = draftScopeId;
+    // ACP admission 仍在途时可切换另一个会话。只释放当前 UI 的提交锁，
+    // 旧请求继续清理它冻结的附件 scope；其 finally 不得解锁新提交。
+    if (targetChanged && acpSubmissionRef.current) {
+      acpSubmissionRef.current = null;
+      pendingRef.current = false;
+      setPending(false);
+    }
     draftTargetRef.current = {
       workspacePath,
       workspaceIdentity,
@@ -1068,6 +1086,7 @@ function ConversationComposerImpl({
     // 依赖收敛到 scope/workspace：draft 恢复只应发生在 scope 切换或 workspace 切换。
   }, [
     draftScopeId,
+    composerDraftSourceScopeId,
     persistDraftNow,
     requestComposerFocus,
     snapshotDraftOfEditor,
@@ -1380,6 +1399,8 @@ function ConversationComposerImpl({
         const submittedRevision = contentRevisionRef.current;
         const submittedAttachmentIds = attachmentsApi.attachments.map((item) => item.id);
         if (pendingRef.current) return;
+        const submission = {};
+        acpSubmissionRef.current = submission;
         pendingRef.current = true;
         setPending(true);
         try {
@@ -1412,11 +1433,15 @@ function ConversationComposerImpl({
           await attachmentsApi.adoptSentAttachments(submittedAttachmentIds);
           attachmentsApi.clearAttachments(submittedAttachmentIds);
         } catch (error) {
-          toast(error instanceof Error ? error.message : String(error), { variant: "warning" });
+          if (acpSubmissionRef.current === submission)
+            toast(error instanceof Error ? error.message : String(error), { variant: "warning" });
           logger.warn(`[v4-composer] ACP 发送失败: ${String(error)}`);
         } finally {
-          pendingRef.current = false;
-          setPending(false);
+          if (acpSubmissionRef.current === submission) {
+            acpSubmissionRef.current = null;
+            pendingRef.current = false;
+            setPending(false);
+          }
         }
         return;
       }
