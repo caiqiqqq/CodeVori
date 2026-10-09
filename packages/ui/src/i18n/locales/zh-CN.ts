@@ -318,6 +318,12 @@ const zhCN: Record<string, string> = {
   "repositoryPanel.previewImage": "预览图片",
   "repositoryPanel.refreshDetail": "刷新详情",
   "repositoryPanel.handle": "交给智能体处理",
+  "repositoryPanel.process": "处理",
+  "repositoryPanel.taskCreated": "已加入待办",
+  "repositoryPanel.error.TASK_SAVE": "待办任务创建失败，请点击处理重试。",
+  "repositoryPanel.error.TASK_UNSUPPORTED": "当前项目的 Host 不支持待办任务，请先更新 Host。",
+  "repositoryPanel.error.NO_EXECUTION":
+    "暂无可用的任务执行模型，请先在待办任务中配置模型或智能体，再重试。",
   "repositoryPanel.closeIssue": "关闭议题",
   "repositoryPanel.closeRequest": "关闭请求",
   "repositoryPanel.reopen": "重新打开",

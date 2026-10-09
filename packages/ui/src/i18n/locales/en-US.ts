@@ -355,6 +355,13 @@ const enUS: Record<string, string> = {
   "repositoryPanel.previewImage": "Preview image",
   "repositoryPanel.refreshDetail": "Refresh Details",
   "repositoryPanel.handle": "Handle with Agent",
+  "repositoryPanel.process": "Handle",
+  "repositoryPanel.taskCreated": "Added to To-do",
+  "repositoryPanel.error.TASK_SAVE": "Could not create the to-do task. Click Handle to retry.",
+  "repositoryPanel.error.TASK_UNSUPPORTED":
+    "This project's Host does not support to-do tasks. Update the Host first.",
+  "repositoryPanel.error.NO_EXECUTION":
+    "No task execution model is available. Configure a model or agent in To-do Tasks, then retry.",
   "repositoryPanel.closeIssue": "Close Issue",
   "repositoryPanel.closeRequest": "Close Request",
   "repositoryPanel.reopen": "Reopen",
