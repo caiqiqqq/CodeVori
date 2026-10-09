@@ -9,6 +9,7 @@ export type {
   WorkspaceFileEntry,
   SystemInfo,
   AppSettings,
+  QuickMessage,
   ElectronReleaseChannel,
   IntegratedTerminalShellDialect,
   IntegratedTerminalShellOption,
