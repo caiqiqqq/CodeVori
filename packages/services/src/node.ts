@@ -468,6 +468,7 @@ import {
 import { ensureAppCaCert } from "./runtime-tools/appCaCert.js";
 import { buildHelperOpenArgs, isCuaLocalDevelopmentRuntime } from "@zcode/zcode-cua/broker/server";
 import { createServiceLogger, type ServiceLogger } from "#src/logger/serviceLogger.js";
+import { createWorktreeRemovalTiming } from "#src/logger/worktreeRemovalTiming.js";
 import { IOffPeakTaskService } from "./session/offPeakTask.js";
 import { OffPeakTaskService } from "./session/offPeakTaskService.js";
 import { OffPeakTaskRepo } from "./session/offPeakTaskRepo.js";
@@ -2460,33 +2461,48 @@ export function createLocalServices(options: {
     commitMessageGenerator: gitCommitMessageGenerator,
     prepareWorktreeRemoval: async (worktreePath) => {
       const workspace = { workspacePath: worktreePath };
-      // 先检查 CLI 活跃状态，避免它仍忙碌时提前断开该目录下空闲的 ACP 连接。
+      const timing = createWorktreeRemovalTiming("runtime", worktreePath);
+      let outcome = "failed";
       try {
-        const sessions = await zcodeAgentService.listSessions({
-          ...workspace,
-          runtimePolicy: "existing-only",
-        });
+        // 先检查 CLI 活跃状态，避免它仍忙碌时提前断开该目录下空闲的 ACP 连接。
+        try {
+          const sessions = await timing.run("cli-activity", () =>
+            zcodeAgentService.listSessions({
+              ...workspace,
+              runtimePolicy: "existing-only",
+            }),
+          );
+          if (
+            sessions.some(
+              (session) =>
+                session.status === "running" ||
+                session.status === "waiting" ||
+                session.status === "paused",
+            )
+          ) {
+            outcome = "workspace-busy";
+            return "workspace-busy";
+          }
+        } catch (error) {
+          if ((error as { code?: unknown }).code !== "ZCODE_AGENT_RUNTIME_UNAVAILABLE") throw error;
+        }
+        // 删除工作树由本机 Host 串行准入：ACP/CLI 运行中的会话不能被回收 cwd。
         if (
-          sessions.some(
-            (session) =>
-              session.status === "running" ||
-              session.status === "waiting" ||
-              session.status === "paused",
-          )
+          !(await timing.run("acp-release", () => acpService.prepareWorktreeRemoval(workspace)))
         ) {
+          outcome = "workspace-busy";
           return "workspace-busy";
         }
-      } catch (error) {
-        if ((error as { code?: unknown }).code !== "ZCODE_AGENT_RUNTIME_UNAVAILABLE") throw error;
+        try {
+          await timing.run("cli-dispose", () => zcodeAgentService.disposeWorkspace(workspace));
+        } catch (error) {
+          if ((error as { code?: unknown }).code !== "ZCODE_AGENT_RUNTIME_UNAVAILABLE") throw error;
+        }
+        outcome = "success";
+        return null;
+      } finally {
+        timing.finish(outcome);
       }
-      // 删除工作树由本机 Host 串行准入：ACP/CLI 运行中的会话不能被回收 cwd。
-      if (!(await acpService.prepareWorktreeRemoval(workspace))) return "workspace-busy";
-      try {
-        await zcodeAgentService.disposeWorkspace(workspace);
-      } catch (error) {
-        if ((error as { code?: unknown }).code !== "ZCODE_AGENT_RUNTIME_UNAVAILABLE") throw error;
-      }
-      return null;
     },
   });
   // task wrapper 由 ZCode task service adapter 提供；核心 session 状态由 ZCode agent server 维护。
