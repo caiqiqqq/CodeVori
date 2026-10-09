@@ -348,36 +348,55 @@ const UserInputAttachmentList = memo(function UserInputAttachmentList({
     id: "chat.attachments.preview.unavailable",
   });
 
+  // 修复原因：RPC 快照会克隆 attachments/indices；依赖数组引用会在每个流式更新
+  // 撤销 Blob 并重新分块读取。按实际读取目标比较，状态变化保留同一预取生命周期。
+  const thumbnailTargetsKey = JSON.stringify(
+    attachmentKind === "file"
+      ? []
+      : (attachments ?? []).flatMap((attachment, index) =>
+          attachment.mime.startsWith("image/") || attachment.mime.startsWith("video/")
+            ? [
+                {
+                  ref: attachment.previewRef ?? attachment.ref,
+                  mime: attachment.mime,
+                  index: attachmentIndices?.[index] ?? index,
+                },
+              ]
+            : [],
+        ),
+  );
+
   useEffect(() => {
-    if (attachmentKind === "file" || !attachments || !sessionId || !readAttachment) {
+    setThumbnailUrls(new Map());
+    setFailedRefs(new Set());
+    if (!sessionId || !readAttachment) {
       return;
     }
     let cancelled = false;
     // 只丢弃读取结果不会停止底层分块传输，消息行卸载后仍可能拉取完整视频。
     // 预取生命周期必须通过 AbortSignal 贯穿 transport，及时释放文件 IO 与 IPC 资源。
     const controller = new AbortController();
-    const mediaAttachments = attachments.flatMap((attachment, index) =>
-      attachment.mime.startsWith("image/") || attachment.mime.startsWith("video/")
-        ? [{ attachment, index }]
-        : [],
-    );
+    const mediaAttachments = JSON.parse(thumbnailTargetsKey) as {
+      ref: string;
+      mime: string;
+      index: number;
+    }[];
 
     // V4 虚拟列表只挂载可见行，避免扫描整段历史。视频仍使用稳定 row target，
     // 保证同一路径多次发送时缩略图来自当前消息的 durable artifact。
     void Promise.all(
-      mediaAttachments.map(async ({ attachment, index }) => {
-        const ref = attachment.previewRef ?? attachment.ref;
-        const isVideo = attachment.mime.startsWith("video/");
+      mediaAttachments.map(async ({ ref, mime, index }) => {
+        const isVideo = mime.startsWith("video/");
         try {
           const result = await readAttachment({
             sessionId,
             ref,
             signal: controller.signal,
-            ...(isVideo ? { mediaType: attachment.mime } : {}),
+            ...(isVideo ? { mediaType: mime } : {}),
             ...(isVideo && entityId
               ? {
                   target: { rowId, entityId },
-                  attachmentIndex: attachmentIndices?.[index] ?? index,
+                  attachmentIndex: index,
                 }
               : {}),
           });
@@ -420,7 +439,7 @@ const UserInputAttachmentList = memo(function UserInputAttachmentList({
       thumbnailObjectUrlsRef.current.clear();
       thumbnailUrlsRef.current.clear();
     };
-  }, [attachmentIndices, attachmentKind, attachments, entityId, readAttachment, rowId, sessionId]);
+  }, [thumbnailTargetsKey, entityId, readAttachment, rowId, sessionId]);
 
   // ── sent video 预览读取：staging 语义原样保留 ──
   const releaseVideoPreviewUrl = useCallback(() => {
