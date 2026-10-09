@@ -74,9 +74,22 @@ unused translations from both banners and subscription error panels; the general
 feedback center remains a separate feature.
 
 The ACP Host remains the sole owner of accepted progress and saved diagnostics.
-The warning component owns only local visibility: capture the turn's accepted
+The UI warning presentation store owns only local visibility, for the lifetime of
+the renderer. Key each presentation by `workspaceIdentity?.trim() || workspacePath`,
+the timeline's session key, turn ID, notice ID, severity, message and detail. Do not
+include logEpoch or snapshot revisions: replay is not a new warning. A new incident,
+turn or changed warning content gets a new presentation; returning to previously
+dismissed content does not revive it. This does not add disk persistence or change
+saved Host diagnostics.
+
+Capture the turn's accepted
 assistant/tool/plan/compaction content when a warning appears, then hide it as soon
-as that content changes or the turn stops running. Header/notice revisions and
+as that content changes or the turn stops running. Keep the original five-second
+deadline and dismissed state across pane unmount/remount, session switches,
+virtualization and desktop/mobile snapshot replay. Read the stored visibility during
+render, so an expired or dismissed warning never flashes on re-entry; time spent
+away counts toward the deadline. Components schedule only the remaining display
+time and never restart it. Header/notice revisions and
 unrelated renders are not progress. Preserve all saved failure revisions so stale
 notifications cannot resurrect a resolved incident at the Host. No timers decide
 whether a connection has recovered; the UI timer only expires a warning's display.
@@ -89,12 +102,17 @@ sequenceDiagram
   participant A as ACP Agent
   participant H as Existing ACP Host owner
   participant U as Desktop/mobile timeline
+  participant P as UI warning presentation store
   A->>H: scoped connection warning
   H->>U: saved warning in running-turn snapshot
-  U->>U: show warning for up to five seconds
+  U->>P: idempotently start scoped presentation + deadline
+  P->>U: show warning for remaining time
   A->>H: accepted live progress for same command/generation
   H->>U: accepted progress in continuous update / replayable snapshot
-  U->>U: hide warning on changed turn content; retain confirmed failures
+  U->>P: dismiss on changed content / deadline / stopped turn
+  U->>U: hide immediately; retain confirmed failures
+  U->>P: re-enter / replay same scoped warning
+  P->>U: still dismissed; render no banner
   H->>U: turn ends; warning banners no longer projected
 ```
 
@@ -140,3 +158,9 @@ sequenceDiagram
    warnings visible. Confirmed errors survive recovery and later successful turns.
 7. Error and subscription panels have no report-issue button or feedback draft path;
    copy/details and supported reconnect/dismiss actions continue working.
+8. Dismissed warnings never attach to the DOM after timeline remount or logEpoch
+   replay. Recovery dismissal also survives re-entry. Leaving before the deadline
+   preserves remaining time; returning after it renders no warning. New incident
+   IDs (even with identical text), turns and changed warning content display again.
+   Workspace identities and sessions isolate presentation state. Replayed saved
+   errors remain visible.

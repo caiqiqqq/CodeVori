@@ -42,9 +42,12 @@ try {
         const [operation,setOperation]=useState(null);
         const [retries,setRetries]=useState(0);
         const [subscription,setSubscription]=useState(false);
+        const [away,setAway]=useState(false);
         window.__errors={
+          leave:()=>setAway(true),
+          enter:()=>setAway(false),
           subscription:()=>setSubscription(true),
-          warn:(title='Heads up: Long threads and multiple compactions')=>setSnapshot(s=>({...s,status:'running',entries:s.entries.map(e=>e.kind==='user'?{...e,failures:[{...failure,severity:'warning',title}]}:e)})),
+          warn:(title='Heads up: Long threads and multiple compactions',id='incident')=>setSnapshot(s=>({...s,status:'running',entries:s.entries.map(e=>e.kind==='user'?{...e,failures:[{...failure,id,severity:'warning',title}]}:e)})),
           progress:()=>setSnapshot(s=>({...s,entries:s.entries.map(e=>e.kind==='assistant'?{...e,text:e.text+' resumed'}:e)})),
           finish:()=>setSnapshot(s=>({...s,status:'idle'})),
           render:()=>setSnapshot(s=>structuredClone(s)),
@@ -58,7 +61,7 @@ try {
         const conversation={selected:home?null:snapshot,error:operation,busy:false,retryConnection:()=>setRetries(n=>n+1),dismissError:()=>setOperation(null),decide:()=>setSnapshot(s=>({...s,pendingPermission:null}))};
         const rows=buildAcpConversationRows(snapshot as never);
         return <div data-session-id="error-fixture" style={{height:'80vh',width:innerWidth>600?'55vw':'100vw',marginTop:'10vh',marginLeft:innerWidth>600?'5vw':0}} className="relative flex flex-col bg-background text-foreground" data-fixture-ready="true" data-fixture-epoch={epoch} data-retries={retries}>
-          {subscription?<SessionSubscriptionErrorPanel error="Subscription fixture error" onReconnect={()=>{setRetries(n=>n+1);setSubscription(false)}}/>:home?<AcpHomeStatus agent="codex" conversation={conversation as never}/>:<ConversationTimeline key={epoch} sessionKey={'error-fixture-'+epoch} rows={rows} totalCount={rows.length}
+          {away?null:subscription?<SessionSubscriptionErrorPanel error="Subscription fixture error" onReconnect={()=>{setRetries(n=>n+1);setSubscription(false)}}/>:home?<AcpHomeStatus agent="codex" conversation={conversation as never}/>:<ConversationTimeline key={epoch} sessionKey="error-fixture" rows={rows} totalCount={rows.length}
             hideTurnNavigator workDurationAvailable={false} rowContext={{workspacePath:'/synthetic/project',theme:'zai-light',codePreviewSettings:DEFAULT_CODE_PREVIEW_SETTINGS,logEpoch:'fixture-'+epoch}}
             footerSlot={<AcpConversationStatus agent="codex" conversation={conversation as never}/>}/>}
         </div>;
@@ -77,6 +80,8 @@ try {
         permissions: ["clipboard-read", "clipboard-write"],
       });
       const page = await context.newPage();
+      page.setDefaultNavigationTimeout(120_000);
+      page.setDefaultTimeout(90_000);
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
       await page.goto(`${baseUrl}/${name}.html`);
@@ -102,10 +107,67 @@ try {
       await warning.waitFor({ state: "detached" });
       await page.evaluate(() => window.__errors.render());
       assert.equal(await warning.count(), 0, "unrelated render must not resurrect warning");
+      // 观察 DOM 插入，防止先闪现再由 effect 隐藏，普通 count 检查会漏掉这种回归。
+      await page.evaluate(() => {
+        window.__warningInsertions = 0;
+        new MutationObserver((records) => {
+          for (const record of records) {
+            for (const node of record.addedNodes) {
+              if (
+                node instanceof Element &&
+                (node.matches('[data-notice-severity="warning"]') ||
+                  node.querySelector('[data-notice-severity="warning"]'))
+              ) {
+                window.__warningInsertions++;
+              }
+            }
+          }
+        }).observe(document.getElementById("root"), { subtree: true, childList: true });
+      });
+      const reenterWithoutWarning = async (replay = false) => {
+        await page.evaluate(() => {
+          window.__warningInsertions = 0;
+          window.__errors.leave();
+        });
+        await page.locator('[data-v4-timeline-scroll="true"]').waitFor({ state: "detached" });
+        await page.evaluate((replay) => {
+          if (replay) window.__errors.replay();
+          window.__errors.enter();
+        }, replay);
+        await page.getByText("Partial answer", { exact: true }).waitFor();
+        assert.equal(await warning.count(), 0, "re-entry must not resurrect warning");
+        assert.equal(
+          await page.evaluate(() => window.__warningInsertions),
+          0,
+          "no first-frame flash",
+        );
+      };
+      await reenterWithoutWarning();
+      await reenterWithoutWarning(true);
+      // 新事件即使文案相同仍展示；在离开期间到期不能重启五秒计时。
+      await page.evaluate(() => window.__errors.warn(undefined, "next-incident"));
+      await warning.waitFor();
+      await page.clock.fastForward(3000);
+      await page.evaluate(() => window.__errors.leave());
+      await warning.waitFor({ state: "detached" });
+      await page.clock.fastForward(1000);
+      await page.evaluate(() => window.__errors.enter());
+      await warning.waitFor();
+      await page.clock.fastForward(1100);
+      await warning.waitFor({ state: "detached" });
+      await page.evaluate(() => window.__errors.warn("Away deadline", "away-incident"));
+      await warning.waitFor();
+      await page.evaluate(() => window.__errors.leave());
+      await warning.waitFor({ state: "detached" });
+      await page.clock.fastForward(5100);
+      await reenterWithoutWarning();
       await page.evaluate(() => window.__errors.warn("Reconnecting... 1/5"));
       await warning.waitFor();
       await page.evaluate(() => window.__errors.progress());
       await warning.waitFor({ state: "detached" });
+      await page.evaluate(() => window.__errors.replay());
+      await page.getByText("Partial answer resumed", { exact: true }).waitFor();
+      assert.equal(await warning.count(), 0, "recovery dismissal survives replay");
       await page.evaluate(() => window.__errors.warn("Reconnecting... 2/5"));
       await warning.waitFor();
       await page.evaluate(() => window.__errors.finish());
@@ -227,7 +289,7 @@ try {
       assert.match(await historicalTurn.innerText(), /Inspect fixture/);
       assert.doesNotMatch(await historicalTurn.innerText(), /Next fixture question/);
       await page.evaluate(() => window.__errors.replay());
-      await page.locator('[data-fixture-epoch="1"]').waitFor();
+      await page.locator('[data-fixture-epoch="3"]').waitFor();
       await notice.waitFor();
       assert.equal(await page.locator("[data-conversation-notice]").count(), 1);
       assert.equal(

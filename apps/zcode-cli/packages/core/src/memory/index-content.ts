@@ -1,7 +1,9 @@
 import { Lexer } from "marked";
+import {
+  PROJECT_MEMORY_INDEX_LINE_LIMIT as MEMORY_INDEX_LINE_LIMIT,
+  PROJECT_MEMORY_INDEX_CHARACTER_LIMIT as MEMORY_INDEX_CHARACTER_LIMIT,
+} from "@zcode/shared/node";
 
-const MEMORY_INDEX_LINE_LIMIT = 200;
-const MEMORY_INDEX_CHARACTER_LIMIT = 25_000;
 const LEADING_FRONTMATTER_PATTERN = /^---\s*\n[\s\S]*?---\s*\n?/u;
 const HTML_COMMENT_PATTERN = /<!--[\s\S]*?-->/gu;
 

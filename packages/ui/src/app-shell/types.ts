@@ -154,7 +154,7 @@ export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackS
   handleOpenAutomations: OpenAutomationsMain;
   handleOpenPluginStore: () => void;
   handleOpenRepository: (target?: { workspacePath: string; workspaceIdentity?: string }) => void;
-  handleOpenWorkTasks: () => void;
+  handleOpenWorkTasks: (target?: { workspacePath: string; workspaceIdentity?: string }) => void;
   handleManageInstalledPlugins: () => void;
   workspaceShellZCodeState: WorkspaceShellZCodeState;
   theme: Theme;

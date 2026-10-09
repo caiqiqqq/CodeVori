@@ -444,6 +444,7 @@ import { createSubagentsService } from "./subagents/subagentsService.js";
 import { createCommandsService } from "./commands/commandsService.js";
 import { createHooksService } from "./hooks/hooksService.js";
 import { createMemoryService } from "./memory/memoryService.js";
+import { createProjectMemoryContext } from "./memory/projectMemoryContext.js";
 import { createSettingsSyncService } from "./settings-sync/settingsSyncService.js";
 import {
   createFeedbackService,
@@ -2397,6 +2398,10 @@ export function createLocalServices(options: {
     ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
   });
   const acpService = createAcpService({
+    memoryContext: createProjectMemoryContext({
+      cliStorageRoot: join(getZCodeDataRootDir(), "cli"),
+      isEnabled: async () => (await settingService.get()).memoryEnabled === true,
+    }),
     delegation: {
       register: (session) =>
         delegationMcp?.register(acpDelegationParent(session), session.createRequestId) ??
