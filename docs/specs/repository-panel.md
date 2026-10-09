@@ -186,6 +186,15 @@
   existing 200-character limit); the prompt reuses the existing untrusted-source
   wrapper with repository, kind, number, URL and description. The existing
   20,000-character description boundary and source-link notice still apply.
+- List rows share one subtle hover surface across the item and its action,
+  with inset padding and rounded corners. Handle is a quiet ghost action with
+  a task-add icon and readable text, always visible on touch and keyboard.
+  Reserve space for the localized success label so saving does not displace
+  the title or action. Success uses a check icon and success text at full opacity,
+  retaining the disabled command. Use existing design tokens and button sizes;
+  preserve wrapping and no horizontal overflow at 320px in both themes.
+  At narrow widths, place the action below the content at the trailing edge
+  so long titles and metadata retain the row's full reading width.
 - Save only: WorkTaskService owns persistence and the initial todo status.
   Do not start, queue, create a conversation/worktree, close the forge item,
   merge or write back to the forge. The detail's conversation-draft action
