@@ -1,6 +1,12 @@
 // Injected into the existing isolated Host fixture, never the real workspace.
 export const workTaskPromptAssetsFixture = String.raw`
     state.uploads = new Map(); state.assets = new Map(); state.localFiles = new Map();
+    state.createdPreviewUrls=[]; state.revokedPreviewUrls=[];
+    const createPreviewUrl=URL.createObjectURL.bind(URL), revokePreviewUrl=URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL=(blob:Blob)=>{const url=createPreviewUrl(blob);state.createdPreviewUrls.push(url);return url};
+    URL.revokeObjectURL=(url:string)=>{state.revokedPreviewUrls.push(url);revokePreviewUrl(url)};
+    state.delayReadPaths=new Set();state.pendingFileReads=[];
+    state.finishFileReads=(path:string)=>{const reads=state.pendingFileReads.filter((r:any)=>r.path===path);state.pendingFileReads=state.pendingFileReads.filter((r:any)=>r.path!==path);state.delayReadPaths.delete(path);for(const read of reads)read.finish()};
     state.fileEntries = [
       {type:'file',name:'main.ts',relativePath:'src/main.ts',path:'/synthetic/project/src/main.ts'},
       {type:'file',name:'spec.md',relativePath:'docs/spec.md',path:'/synthetic/project/docs/spec.md'}
@@ -50,8 +56,9 @@ export const workTaskPromptAssetsFixture = String.raw`
     services.fileService = {
       async searchWorkspaceFiles(r:any){state.calls.push({op:'file-search',...r});return state.fileEntries.filter((f:any)=>f.relativePath.toLowerCase().includes(r.query.toLowerCase()))},
       async stat(r:any){state.calls.push({op:'file-stat',...r});const bytes=state.assets.get(r.path)??state.localFiles.get(r.path);if(!bytes)throw new Error('File not found');return {type:'file',size:bytes.length}},
-      async readFileRange(r:any){state.calls.push({op:'file-read',...r});return state.assets.get(r.path).slice(r.offset,r.offset+r.length)}
+      async readFileRange(r:any){state.calls.push({op:'file-read',...r});const bytes=state.assets.get(r.path)??state.localFiles.get(r.path);if(!bytes)throw new Error('File not found');if(state.delayReadPaths.has(r.path))await new Promise<void>(finish=>state.pendingFileReads.push({path:r.path,finish}));return bytes.slice(r.offset,r.offset+r.length)}
     };
+    state.replaceFileHost=()=>{services.fileService={...services.fileService};changed()};
     services.promptAttachmentTransferService = new Proxy({}, {get:(_,method)=>async()=>{state.calls.push({op:'agent-transfer-'+String(method)});throw new Error('Task drafts must never use Agent transfer')}});
     services.clientConfigService={async getSnapshot(){state.calls.push({op:'forbidden-client-config'});throw new Error('Files-only task drafts must not load a plugin catalog')}};
     services.zcodeAgentService = new Proxy({}, {get:(_,method)=>async()=>{state.calls.push({op:'agent-'+String(method)});throw new Error('Task drafts must never connect to an Agent')}});

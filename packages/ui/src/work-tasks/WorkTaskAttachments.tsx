@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import { ImageOff, LoaderCircle } from "lucide-react";
 import { type WorkTaskAttachment, type WorkTaskScope } from "@zcode/shared";
 import {
   Attachments,
@@ -25,16 +27,19 @@ export function WorkTaskAttachments({
   disabled?: boolean;
 }) {
   const { intl } = useZCodeIntl();
-  const preview = useWorkTaskAttachmentPreview(scope);
-  const attachments: readonly ChatComposerAttachment[] =
-    items ??
-    (saved ?? []).map((item) => ({
-      id: item.ref,
-      filename: item.fileName,
-      mimeType: item.mime,
-      sizeBytes: item.bytes,
-      localPath: item.ref,
-    }));
+  const attachments: readonly ChatComposerAttachment[] = useMemo(
+    () =>
+      items ??
+      (saved ?? []).map((item) => ({
+        id: item.ref,
+        filename: item.fileName,
+        mimeType: item.mime,
+        sizeBytes: item.bytes,
+        localPath: item.ref,
+      })),
+    [items, saved],
+  );
+  const preview = useWorkTaskAttachmentPreview(scope, attachments);
   if (!attachments.length) return null;
   return (
     <>
@@ -46,6 +51,16 @@ export function WorkTaskAttachments({
         {attachments.map((attachment) => {
           const media = /^(image|video)\//.test(attachment.mimeType);
           const canPreview = media || attachment.mimeType === "application/pdf";
+          const image = attachment.mimeType.startsWith("image/");
+          const resource = preview.get(attachment);
+          const statusLabel =
+            image && (resource.loading || resource.error)
+              ? intl.formatMessage({
+                  id: resource.error
+                    ? "chat.attachments.preview.unavailable"
+                    : "chat.attachments.preview.loading",
+                })
+              : undefined;
           return (
             <Attachment
               key={attachment.id}
@@ -60,7 +75,7 @@ export function WorkTaskAttachments({
                 type: "file",
                 filename: attachment.filename,
                 mediaType: attachment.mimeType,
-                url: attachment.objectUrl ?? "",
+                url: resource.url ?? (image ? "" : (attachment.objectUrl ?? "")),
               }}
               title={attachment.filename}
               data-testid="work-task-attachment"
@@ -78,6 +93,21 @@ export function WorkTaskAttachments({
             >
               <AttachmentPreview
                 className={media ? "size-full bg-surface" : "size-9 rounded-md bg-background"}
+                title={statusLabel}
+                fallbackIcon={
+                  statusLabel ? (
+                    <>
+                      {resource.error ? (
+                        <ImageOff className="size-4 text-destructive" aria-hidden />
+                      ) : (
+                        <LoaderCircle className="size-4 animate-spin" aria-hidden />
+                      )}
+                      <span className="sr-only" role={resource.error ? "alert" : "status"}>
+                        {statusLabel}
+                      </span>
+                    </>
+                  ) : undefined
+                }
               />
               {!media ? (
                 <div className="min-w-0">
