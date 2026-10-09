@@ -11,17 +11,16 @@ export async function loadManagedWorktreeConversations(
   workspacePath: string,
 ): Promise<{ conversations: ManagedWorktreeConversation[]; failed: boolean }> {
   const target = { workspacePath };
-  // API 普通/置顶/归档列表彼此独立，ACP 历史属于另一个 Host；并行读取后按 id 去重。
-  const results = await Promise.allSettled([
+  // 工作树列表只展示未归档会话：API 普通/置顶分区已排除归档，ACP 历史需按 Host 的归档状态过滤。
+  const [ordinaryResult, pinnedResult, acpResult] = await Promise.allSettled([
     services.zcodeTaskService.listTasks(target),
     services.zcodeTaskService.listPinnedTasks(target),
-    services.zcodeTaskService.listArchivedTasks(target),
     services.acpService.list(target),
   ] as const);
   const tasks = new Map<string, ZCodeTaskMeta>();
-  for (const result of results.slice(0, 3)) {
+  for (const result of [ordinaryResult, pinnedResult]) {
     if (result.status !== "fulfilled") continue;
-    for (const task of result.value as ZCodeTaskMeta[]) tasks.set(task.taskId, task);
+    for (const task of result.value) tasks.set(task.taskId, task);
   }
   const native: ManagedWorktreeConversation[] = [...tasks.values()].map((task) => ({
     kind: "api",
@@ -31,17 +30,21 @@ export async function loadManagedWorktreeConversations(
     task,
   }));
   const acp: ManagedWorktreeConversation[] =
-    results[3].status === "fulfilled"
-      ? projectAcpSidebarSessions(results[3].value, target).map((session) => ({
-          kind: "acp",
-          id: session.id,
-          title: session.title,
-          updatedAt: session.updatedAt,
-          session,
-        }))
+    acpResult.status === "fulfilled"
+      ? projectAcpSidebarSessions(acpResult.value, target)
+          .filter((session) => !session.archived)
+          .map((session) => ({
+            kind: "acp",
+            id: session.id,
+            title: session.title,
+            updatedAt: session.updatedAt,
+            session,
+          }))
       : [];
   return {
     conversations: [...native, ...acp].sort((a, b) => b.updatedAt - a.updatedAt),
-    failed: results.some((result) => result.status === "rejected"),
+    failed: [ordinaryResult, pinnedResult, acpResult].some(
+      (result) => result.status === "rejected",
+    ),
   };
 }
