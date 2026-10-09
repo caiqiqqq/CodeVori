@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { Check } from "lucide-react";
 import type { WorkTask } from "@zcode/shared";
-import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
+import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import { canCompleteWorkTask } from "@/lib/workTaskBoard.js";
 import {
   AlertDialog,
@@ -21,7 +21,7 @@ export function WorkTaskCompletionDialog({
   onClose,
 }: {
   task: WorkTask;
-  panel: ReturnType<typeof useWorkTasks>;
+  panel: WorkTaskPanel;
   onClose(id: string): void;
 }) {
   const t = useWorkTaskMessages();

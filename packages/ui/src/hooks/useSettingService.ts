@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { APP_RUNTIME_PREFERENCES_CHANGED_BROADCAST_CHANNEL, type AppSettings } from "@zcode/shared";
-import type { ISettingService } from "@zcode/services";
+import type { ISettingService, IServiceAccessor } from "@zcode/services";
 import { useServices } from "./useServices.js";
 import { usePlatform } from "./usePlatform.js";
 
@@ -105,8 +105,10 @@ async function refreshSettingsStore(settingService: ISettingService | undefined)
 }
 
 /** 获取和更新应用设置 */
-export function useSettings() {
-  const { botsService, broadcastService, settingService, zcodeAgentService } = useServices();
+export function useSettings(servicesOverride?: IServiceAccessor) {
+  const contextServices = useServices();
+  const { botsService, broadcastService, settingService, zcodeAgentService } =
+    servicesOverride ?? contextServices;
   const platform = usePlatform();
   const settingsStore = getSettingsStore(settingService);
   const [snapshot, setSnapshot] = useState<SettingsSnapshot>(settingsStore.snapshot);

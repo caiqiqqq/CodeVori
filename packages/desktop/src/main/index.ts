@@ -966,12 +966,13 @@ function syncImmediateAppSettings(patch: Partial<AppSettings>) {
     );
   }
 
-  if (patch.shortcutBindings !== undefined) {
+  if (patch.shortcutBindings !== undefined || patch.quickMessages !== undefined) {
     // 快捷键改绑：
     // 落盘已完成（useSettings.update 先 await settingService.update 再走本通道），
     // 这里重建应用菜单 accelerator，并通知所有窗口刷新设置快照 —— 其他窗口的
     // useAppKeyboard 生效表与设置页跟随更新。先例：setAutoDownloadAndInstallUpdates 的全窗口广播。
-    rebuildMenu();
+    // 快捷消息同样是应用级偏好，其他窗口必须刷新已保存列表；仅快捷键需要重建原生菜单。
+    if (patch.shortcutBindings !== undefined) rebuildMenu();
     for (const win of getApplicationWindowsExcludingCuaIndicator()) {
       if (!win.isDestroyed()) {
         win.webContents.send(PlatformChannels.SettingsChanged);

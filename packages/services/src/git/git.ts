@@ -65,6 +65,7 @@ import type {
   ForgeMergeRequest,
   ForgeImageRequest,
   ForgeImagePreview,
+  ForgeIssueOptions,
 } from "@zcode/shared";
 import { ServiceChannels } from "@zcode/shared";
 import { createServiceDescriptor } from "../descriptors.js";
@@ -79,6 +80,7 @@ export interface IGitService {
   listForgeComments(params: ForgePageRequest): Promise<ForgePage<ForgeComment>>;
   listForgeFiles(params: ForgePageRequest): Promise<ForgePage<ForgeChangedFile>>;
   listForgeLabels(params: ForgeTargetRequest): Promise<ForgeLabel[]>;
+  getForgeIssueOptions(params: ForgeTargetRequest): Promise<ForgeIssueOptions>;
   createForgeIssue(params: ForgeNewIssueRequest): Promise<ForgeItem>;
   createForgeComment(params: ForgeCommentRequest): Promise<void>;
   setForgeItemState(params: ForgeStateRequest): Promise<void>;

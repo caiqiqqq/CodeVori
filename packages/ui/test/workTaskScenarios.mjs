@@ -1,3 +1,4 @@
+import { exerciseWorkTaskAllProjects } from "./workTaskAllProjectsAssertions.mjs";
 import { exerciseWorkTaskWorkspaceMode } from "./workTaskWorkspaceModeAssertions.mjs";
 import { exerciseWorkTaskPromptAttachments } from "./workTaskPromptAttachmentsAssertions.mjs";
 import { exerciseWorkTaskImageResources } from "./workTaskImageResourcesAssertions.mjs";
@@ -11,6 +12,7 @@ import { exerciseWorkTaskCompletion } from "./workTaskCompletionAssertions.mjs";
 import { exerciseWorkTaskNavigation } from "./workTaskNavigationAssertions.mjs";
 import { exerciseWorkTaskSaveRefresh } from "./workTaskSaveRefreshAssertions.mjs";
 import { exerciseWorkTaskArchiveWorktree } from "./workTaskArchiveWorktreeAssertions.mjs";
+import { exerciseWorkTaskComposer } from "./workTaskComposerAssertions.mjs";
 
 export {
   exerciseWorkTaskPromptAttachments,
@@ -24,6 +26,8 @@ export {
   exerciseWorkTaskCompletion,
 };
 export const workTaskScenarios = {
+  composer: exerciseWorkTaskComposer,
+  "all-projects": exerciseWorkTaskAllProjects,
   "archive-worktree": exerciseWorkTaskArchiveWorktree,
   navigation: exerciseWorkTaskNavigation,
   "save-refresh": exerciseWorkTaskSaveRefresh,

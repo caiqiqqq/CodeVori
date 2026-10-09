@@ -121,8 +121,42 @@ export type ForgeCommentRequest = z.infer<typeof forgeCommentRequestSchema>;
 export const forgeNewIssueRequestSchema = forgeTargetRequestSchema.extend({
   title: z.string().trim().min(1).max(256),
   body: z.string().max(65_000),
+  labels: z
+    .array(z.string().min(1).max(256))
+    .max(20)
+    .refine((keys) => new Set(keys).size === keys.length)
+    .optional(),
+  assignees: z
+    .array(z.string().min(1).max(256))
+    .max(20)
+    .refine((keys) => new Set(keys).size === keys.length)
+    .optional(),
+  milestone: z
+    .string()
+    .regex(/^[1-9]\d*$/)
+    .refine((key) => Number.isSafeInteger(Number(key)))
+    .optional(),
+  confidential: z.boolean().optional(),
+  dueDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine((value) => {
+      const date = new Date(`${value}T00:00:00Z`);
+      return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+    })
+    .optional(),
 });
 export type ForgeNewIssueRequest = z.infer<typeof forgeNewIssueRequestSchema>;
+export type ForgeIssueDraft = Omit<ForgeNewIssueRequest, keyof ForgeTargetRequest>;
+export interface ForgeIssueOptionSection<T> {
+  items: T[];
+  error: string | null;
+}
+export interface ForgeIssueOptions {
+  labels: ForgeIssueOptionSection<ForgeLabel>;
+  assignees: ForgeIssueOptionSection<ForgeAuthor & { key: string }>;
+  milestones: ForgeIssueOptionSection<{ key: string; title: string }>;
+}
 export const forgeStateRequestSchema = forgeItemRequestSchema.extend({
   state: z.enum(["open", "closed"]),
 });

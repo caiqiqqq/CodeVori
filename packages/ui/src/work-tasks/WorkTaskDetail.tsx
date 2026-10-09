@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { WORK_TASK_ACTIVE_STATUSES, type WorkTask } from "@zcode/shared";
 import { useWorkTaskEvents } from "@/hooks/useWorkTaskEvents.js";
-import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
+import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import { Button } from "@/components/ui/button.js";
 import { Textarea } from "@/components/ui/textarea.js";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
@@ -30,7 +30,7 @@ export function WorkTaskDetail({
   onOpenConversation,
 }: {
   task: WorkTask;
-  panel: ReturnType<typeof useWorkTasks>;
+  panel: WorkTaskPanel;
   onClose(): void;
   onEdit(): void;
   onOpenConversation(task: WorkTask): void;
