@@ -11,6 +11,7 @@
 - ACP 思考与计划遵循 [ACP thoughts and plans](acp-thoughts-and-plans.md)：由既有 Host 保存真实事件，思考复用 API reasoning 行，计划保持独立身份并复用待办步骤样式。
 
 - ACP 用户消息队列遵循 [ACP 用户消息队列](acp-message-queue.md)：运行中输入由同一 Host 接纳并持久排队，正常完成后顺序执行，停止/错误/重启暂停，复用共享队列面板。
+- ACP 任务完成/失败通知遵循 [ACP task completion notifications](acp-task-notifications.md)：复用通知与提示音开关，按所属 workspace 的实时运行到终态边沿展示，不重放历史或重连快照。
 
 - Existing ZCode conversations and API model Providers retain their current commands, storage, selection, and runtime. The conversation composer's **model dropdown** includes the currently enabled and runnable built-in ACP agents reported by the target Host, including Codex ACP and Claude ACP when available, alongside its existing API models. Settings continues to show all 15 catalog entries so missing or disabled adapters can be managed. ACP is a separate Agent target, never a Provider or a replacement for an existing session. The pane has no top-level ZCode/API/ACP switch or separate Agent choice buttons.
 - The combined model dropdown has a compact maximum height bounded by the viewport. Its options scroll inside the menu while footer actions stay visible. Every currently available ACP target and any API model groups remain reachable by wheel, touch and keyboard, including at short window heights; opening the menu must not place its first items behind the desktop title bar. The `ModelConfigSelect` UI owns only the menu's open state, scroll position and transient pointer gesture; selection still uses the existing callback and has no new persistence or protocol state.

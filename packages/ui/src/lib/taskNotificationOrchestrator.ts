@@ -1,4 +1,4 @@
-import type { TaskNotificationPayload } from "@zcode/shared";
+import type { AcpSession, TaskNotificationPayload } from "@zcode/shared";
 import type {
   ConversationSnapshot,
   PendingInteraction,
@@ -35,7 +35,7 @@ function taskTitleBody(
 }
 
 function terminalPayloadForSession(
-  session: SessionSummary,
+  session: Pick<SessionSummary, "sessionId" | "title">,
   status: Extract<TaskNotificationPayload["status"], "completed" | "failed">,
   formatMessage: FormatMessage,
 ): TaskNotificationPayload {
@@ -75,6 +75,59 @@ export function collectTerminalTaskNotificationPayloads(params: {
     payloads.push(terminalPayloadForSession(session, status, params.formatMessage));
   }
   return payloads;
+}
+
+export const ACP_TASK_NOTIFICATION_PREFIX = "acp:";
+
+export type AcpTaskNotificationState = Pick<
+  AcpSession,
+  "id" | "revision" | "status" | "title" | "error" | "provisional" | "archived" | "supersededBy"
+> & { pauseReason: AcpSession["queue"]["pauseReason"] };
+
+export function toAcpTaskNotificationState(session: AcpSession): AcpTaskNotificationState {
+  return {
+    id: session.id,
+    revision: session.revision,
+    status: session.status,
+    title: session.title,
+    error: session.error,
+    provisional: session.provisional,
+    archived: session.archived,
+    supersededBy: session.supersededBy,
+    pauseReason: session.queue.pauseReason,
+  };
+}
+
+export function getAcpTerminalTaskNotificationPayload(
+  previous: AcpTaskNotificationState | undefined,
+  next: AcpTaskNotificationState,
+  formatMessage: FormatMessage,
+): TaskNotificationPayload | null {
+  if (
+    !previous ||
+    previous.id !== next.id ||
+    previous.status !== "running" ||
+    next.revision <= previous.revision ||
+    next.status === "running" ||
+    next.provisional ||
+    next.archived ||
+    next.supersededBy
+  ) {
+    return null;
+  }
+  // 修复依据：ACP stop 也会写 idle，必须结合 Host 的队列停止事实，不能把停止当成功。
+  const status = next.error
+    ? "failed"
+    : next.status === "idle" && next.pauseReason !== "stopped" && next.pauseReason !== "error"
+      ? "completed"
+      : null;
+  return status
+    ? terminalPayloadForSession(
+        { sessionId: `${ACP_TASK_NOTIFICATION_PREFIX}${next.id}`, title: next.title },
+        status,
+        formatMessage,
+      )
+    : null;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
