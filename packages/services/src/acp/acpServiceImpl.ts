@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   appendAcpConversationEntry,
   finishAcpThoughts,
+  finishAcpTurn,
   type AcpConversationUpdate,
 } from "./acpConversationEntries.js";
 import {
@@ -983,6 +984,7 @@ export function createAcpService(
           queueTasks.delete(session.id);
           scheduleWorkflowNotifications(session);
           void mutate(session, () => {
+            finishAcpTurn(session, commandId, receivedAt);
             session.pendingPermission = null;
             session.status = "interrupted";
             session.usageBaselineKnown = false;
@@ -1592,6 +1594,7 @@ export function createAcpService(
       await queueGate.run(session.id, async () => {
         if (ownsRun() && connections.get(session.id) === port && !disposed) {
           await mutate(session, () => {
+            finishAcpTurn(session, commandId, completedAt);
             recordAcpPromptUsage(session, commandId, usage);
             recordNativeUsage(session, port);
             // 修复原因：Codex 的结构化失败也返回 end_turn；不能以 RPC 成功判断本轮成功。
@@ -1644,6 +1647,7 @@ export function createAcpService(
             throw error;
           }
           await mutate(session, () => {
+            finishAcpTurn(session, commandId, interruptedAt);
             session.status = "interrupted";
             session.queue.autoDrain = false;
             session.queue.pauseReason = "error";
@@ -1713,6 +1717,7 @@ export function createAcpService(
       if (!hadActive) return;
       settlePermission(session.id, stoppedAt);
       await mutate(session, () => {
+        finishAcpTurn(session, commandId, stoppedAt);
         finishAcpThoughts(session, "interrupted", stoppedAt);
         session.status = "idle";
         session.usageBaselineKnown = false;

@@ -167,6 +167,8 @@ Acceptance: select Codex full access in an empty draft, close it and restart the
 
 ### Shared conversation presentation
 
+ACP 工作耗时复用同一时间线，从原 Host 接纳时间到真实结束时间派生墙钟耗时；持久化、旧快照兼容及回放规则见 [ACP 对话工作耗时](acp-work-duration.md)。不把墙钟耗时当作 CLI 有效工时或适配器内部模型计量。
+
 The Host keeps assistant text segments in their actual event order: consecutive chunks for the same message append in place, while text that follows a tool starts a new segment, including adapters without a message id. Updating an earlier tool does not relocate it.
 ACP tool names are untrusted display labels and use the existing generic ZCode tool layout; they never dispatch to native Read, Shell, Task or workflow renderers based on a matching name.
 
