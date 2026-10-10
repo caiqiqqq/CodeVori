@@ -1,7 +1,14 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, Bot, CircleCheck, GitMerge, RotateCw, Send } from "lucide-react";
 import type { IGitService } from "@zcode/services";
-import type { ForgeItem, ForgeItemRequest, ForgeMergeMethod, ForgeRepository } from "@zcode/shared";
+import { isWorkTaskForgePending } from "@zcode/shared";
+import type {
+  ForgeItem,
+  ForgeItemRequest,
+  ForgeMergeMethod,
+  ForgeRepository,
+  WorkTask,
+} from "@zcode/shared";
 import { useRepositoryItem } from "@/hooks/useRepositoryItem.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { Button } from "@/components/ui/button.js";
@@ -15,6 +22,7 @@ import {
 } from "@/components/ui/select.js";
 import { Textarea } from "@/components/ui/textarea.js";
 import type { Theme } from "@/useTheme.js";
+import { RepositoryTaskStatus } from "./RepositoryTaskStatus.js";
 import { RepositoryItemSections } from "./RepositoryItemSections.js";
 import { RepositoryItemAttributes } from "./RepositoryItemAttributes.js";
 import type { RepositoryContentContext } from "./RepositoryMarkdown.js";
@@ -42,8 +50,10 @@ export function RepositoryItemDetail({
   onClose,
   onChanged,
   onHandle,
+  onHandleAgain,
   handleBusy = false,
-  isTaskCreated,
+  getLinkedTask,
+  writebackVersion = "",
   taskError = null,
   onOpen,
 }: {
@@ -55,14 +65,16 @@ export function RepositoryItemDetail({
   onClose: () => void;
   onChanged: () => void;
   onHandle: (item: ForgeItem) => void;
+  onHandleAgain?: (item: ForgeItem) => void;
   handleBusy?: boolean;
-  isTaskCreated?: (item: ForgeItem) => boolean;
+  writebackVersion?: string;
+  getLinkedTask?: (item: ForgeItem) => WorkTask | undefined;
   taskError?: string | null;
   onOpen: (url: string) => void;
 }) {
   const t = useRepositoryMessages();
   const withExtras = repository.provider === "gitlab" && request.kind === "issue";
-  const detail = useRepositoryItem(request, gitService, withExtras);
+  const detail = useRepositoryItem(request, gitService, withExtras, writebackVersion);
   const codePreviewSettings = useZCodeStore((state) => state.codePreviewSettings);
   const [comment, setComment] = useState("");
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -149,12 +161,26 @@ export function RepositoryItemDetail({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={handleBusy || isTaskCreated?.(item)}
+                disabled={handleBusy}
                 onClick={() => onHandle(item)}
               >
                 <Bot className="size-4" />
-                {t(isTaskCreated?.(item) ? "taskCreated" : "handle")}
+                {getLinkedTask?.(item) ? (
+                  <RepositoryTaskStatus task={getLinkedTask(item)!} />
+                ) : (
+                  t("handle")
+                )}
               </Button>
+              {getLinkedTask?.(item)?.status === "done" ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={handleBusy || isWorkTaskForgePending(getLinkedTask(item)!)}
+                  onClick={() => onHandleAgain?.(item)}
+                >
+                  {t("reprocess")}
+                </Button>
+              ) : null}
               {item.state !== "merged" ? (
                 <Button
                   size="sm"

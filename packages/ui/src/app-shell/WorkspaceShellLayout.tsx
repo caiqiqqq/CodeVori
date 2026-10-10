@@ -2349,6 +2349,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                   remoteSessionId={workspaceRemoteSessionId}
                                   workspaceTabs={workspaceTabs}
                                   onSelectProject={handleOpenRepository}
+                                  onOpenTasks={handleOpenWorkTasks}
                                   theme={theme}
                                 />
                               </Suspense>

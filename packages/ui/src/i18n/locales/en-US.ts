@@ -88,6 +88,52 @@ const enUS: Record<string, string> = {
   "workTasks.retry": "Restart",
   "workTasks.cancel": "Cancel execution",
   "workTasks.complete": "Accept result",
+  "workTasks.retryForge": "Retry issue sync",
+  "workTasks.linkedItem": "Linked issue / PR",
+  "workTasks.closeLinkedIssue": "Close the linked issue",
+  "workTasks.sendResultComment": "Post a result comment",
+  "workTasks.resultComment": "Result comment",
+  "workTasks.resultCommentHint":
+    "Describe the result. The task ID and accurate local completion outcome will be appended.",
+  "workTasks.resultDefault": "The task result has been accepted.",
+  "workTasks.commentReceipt": "Comment writeback",
+  "workTasks.closeReceipt": "Issue closure",
+  "workTasks.resendComment":
+    "I checked the issue. Allow resending if no existing comment is found.",
+  "workTasks.event.forge-writeback": "Issue sync receipts updated",
+  "workTasks.event.forge-writeback-started": "Issue sync started",
+  "workTasks.event.forge-writeback-failed": "Issue sync failed; retry available",
+  "workTasks.forgeStep.pending": "Pending",
+  "workTasks.forgeStep.sending": "Sending",
+  "workTasks.forgeStep.done": "Succeeded",
+  "workTasks.forgeStep.skipped": "Not selected",
+  "workTasks.forgeStep.failed": "Failed; retry available",
+  "workTasks.forgeStep.uncertain": "Needs verification",
+  "repositoryPanel.taskStatus.todo": "Added to To-do",
+  "repositoryPanel.taskStatus.processing": "Processing",
+  "repositoryPanel.taskStatus.awaiting_input": "Waiting for input",
+  "repositoryPanel.taskStatus.review": "Awaiting acceptance",
+  "repositoryPanel.taskStatus.done": "Processed",
+  "repositoryPanel.taskStatus.failed": "Failed",
+  "repositoryPanel.taskStatus.canceled": "Canceled",
+  "repositoryPanel.taskStatus.syncPending": "Processed; sync pending",
+  "workTasks.error.work-task.duplicate-source":
+    "This issue already has a pending task or sync. Refresh and open its linked task.",
+  "workTasks.error.work-task.forge-busy": "Issue sync is in progress. Wait for it to finish.",
+  "workTasks.error.work-task.forge-comment-uncertain":
+    "The comment may already have been posted. Retry to find it, or check the issue and allow resending if it is absent.",
+  "workTasks.error.work-task.forge-stale-request":
+    "The task has started another run. Its previous sync request cannot continue.",
+  "workTasks.error.work-task.forge-unsupported": "This Host does not support issue sync.",
+  "workTasks.error.work-task.forge-source-required": "The task has no linked issue to sync.",
+  "workTasks.error.work-task.forge-close-issue-only":
+    "Only issues can be closed with a task. Use the existing review flow for PRs.",
+  "workTasks.error.work-task.forge-not-closed":
+    "The repository has not confirmed the issue is closed. Retry syncing.",
+  "workTasks.error.work-task.forge-writeback-failed":
+    "Issue sync failed. Check the account and network, then retry.",
+  "workTasks.error.work-task.forge-reconcile-limit":
+    "There are too many comments to confirm whether the result was posted. Check the issue directly.",
   "workTasks.confirmComplete": "Accept this task's result?",
   "workTasks.confirmCompleteBody":
     "This marks the task as done and keeps its branch, worktree and conversation. It does not commit or merge code.",
@@ -403,6 +449,7 @@ const enUS: Record<string, string> = {
   "repositoryPanel.refreshDetail": "Refresh Details",
   "repositoryPanel.handle": "Handle with Agent",
   "repositoryPanel.process": "Handle",
+  "repositoryPanel.reprocess": "Process again",
   "repositoryPanel.taskCreated": "Added to To-do",
   "repositoryPanel.error.TASK_SAVE":
     "Could not create the to-do task. Retry saving your current draft.",

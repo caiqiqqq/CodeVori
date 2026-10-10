@@ -1,5 +1,58 @@
 # Repository Panel
 
+## Issue task lifecycle and writeback
+
+- Host WorkTaskService/SQLite owns the durable source association: validated repository
+  key, configured remote, pinned account, item kind/number and canonical URL/title.
+  Creation validates through the existing Forge port; generic task editing cannot
+  replace provenance. Legacy tasks remain unlinked; never infer links from prompts.
+- One active task per workspace identity/path and repository/item. Creation performs
+  the duplicate check inside the existing SQLite transaction. Done tasks may be
+  processed again after their previous writeback has settled; failed/canceled tasks
+  do not block reprocessing with a stale request from an earlier run. UI reads the existing shared task list (including archived tasks),
+  refreshed by task events, instead of keeping a page-local created Set.
+- Show task progress separately from the forge open/closed state: added, processing,
+  waiting for input, awaiting acceptance, processed, failed, canceled. Clicking the
+  linked status opens that task through existing task navigation. No start comment
+  or automatic remote state change on creation, agent settlement, cancel or archive.
+- Reuse completion dialog and merge controls for a linked item: optional result
+  comment (editable, no transcript) and close-associated-issue (default on for issues,
+  never for PRs). Local merge comments explicitly say merged locally, not pushed.
+  Agent finish only enters review. Completion intent and step receipts persist before
+  network IO; merge intent runs only after a successful merge reaches done.
+- Task completion remains done if remote writeback fails. A pending/failed/uncertain
+  writeback is visible on task and issue surfaces and can be retried explicitly,
+  including after restart. No scheduler auto-retries external writes. Resume of a
+  done conversation cannot execute an earlier run's writeback or reopen an issue.
+- Successful receipts refresh the open detail and comment thread without discarding
+  its composer draft. List rows for a confirmed close are reconciled with direct
+  forge reads on each list snapshot, so a lagging search index cannot reinsert a
+  closed issue. A subsequently reopened issue is shown from the new direct fact.
+- Comment then close then reread authoritative state. Completed steps are not repeated.
+  Persist a stable comment marker, reconcile uncertain sends against all comment pages
+  before retry. If a send was interrupted and no marker is found, require explicit
+  resend choice; never assume lack of ACK means lack of comment. A SQLite owner/lease
+  serializes writers across Host instances; updates compare request id, owner and run.
+  A closed issue is already satisfied; a reopened issue is not reclosed by a finished
+  request. Target/account mismatch fails through existing Forge validation.
+- Source and requests use task scope, never worktree scope; UI cannot redirect retries.
+  Desktop continuous and mobile replayable retain the existing scoped Host task
+  notification/list projection and owner/lease boundaries; no new Agent or Host.
+
+```text
+UI process draft -> Host validated create -> SQLite(source + task) -> task event -> shared list/chip
+UI acceptance/merge choices -> Host SQLite(intent) -> task done -> acquire writeback lease
+  -> reconcile/post marked comment -> persist receipt -> close/reread -> persist receipt -> event
+failure/interruption -> done + pending/error -> explicit retry (same request, completed steps skipped)
+```
+
+Acceptance: real temporary SQLite + fake Forge tests cover provenance validation,
+atomic duplicate admission, persistence/restart, workspace isolation, source immutability,
+review versus done, partial failure, comment reconciliation, lease contention, stale run,
+already closed issue, rejected target and no implicit writeback. Synthetic browser E2E
+covers creation/reentry/status click, API/ACP completion options, failed retry, cancel,
+merge choices, desktop/320px layouts and light/dark themes. No real forge/model writes.
+
 ## Product Rules
 
 - Add Repository Panel to the workspace sidebar, alongside Automations and

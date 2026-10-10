@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 import { ChevronLeft, ChevronRight, GitFork, Plus, RotateCw, Settings } from "lucide-react";
 import type { ForgeItem, ForgeItemRequest, ForgeTargetRequest } from "@zcode/shared";
 import { useRepositoryPanel } from "@/hooks/useRepositoryPanel.js";
+import { useRepositoryTaskItems } from "@/hooks/useRepositoryTaskItems.js";
 import { useRepositoryTask } from "@/hooks/useRepositoryTask.js";
 import { useWorktreeProjectGroupsResolution } from "@/hooks/useWorktreeProjectGroups.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
@@ -24,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select.js";
+import { workTaskNavigationStore } from "@/store/workTaskNavigationStore.js";
 import { WorkTaskEditor } from "@/work-tasks/WorkTaskEditor.js";
 import type { Theme } from "@/useTheme.js";
 import { RepositoryToolbar, type RepositoryFilters } from "./RepositoryToolbar.js";
@@ -46,6 +48,7 @@ interface RepositoryPanelProps {
   active?: boolean;
   theme: Theme;
   workspaceTabs?: readonly RepositoryWorkspaceTab[];
+  onOpenTasks?: (target: { workspacePath: string; workspaceIdentity?: string }) => void;
   onSelectProject?: (target: { workspacePath: string; workspaceIdentity?: string }) => void;
 }
 
@@ -83,6 +86,7 @@ function RepositoryPanelContent({
   theme,
   workspaceTabs,
   onSelectProject,
+  onOpenTasks,
   projectGroups,
   projectsLoading,
 }: RepositoryPanelContentProps) {
@@ -138,14 +142,27 @@ function RepositoryPanelContent({
   const selectItem = (item: ForgeItem) => {
     if (panel.target) setSelection({ target: panel.target, kind: item.kind, number: item.number });
   };
-  const handleItem = (item: ForgeItem) => {
+  const handleItem = (item: ForgeItem, again = false) => {
     if (!repo || !panel.target) return;
-    void task.prepare(repo, item);
+    const linked = task.linkedTask(item);
+    if (!again && linked && !["failed", "canceled"].includes(linked.status)) {
+      workTaskNavigationStore.getState().selectProject(linked);
+      workTaskNavigationStore.getState().selectTask(linked, linked.id);
+      onOpenTasks?.(linked);
+      return;
+    }
+    void task.prepare(repo, item, again);
   };
   const onFilterChange = (patch: Partial<RepositoryFilters>) =>
     setFilters((current) => ({ ...current, ...patch, page: patch.page ?? 1 }));
   const status = panel.repository?.status;
-  const data = panel.list.data;
+  const data = useRepositoryTaskItems(
+    panel.list.data,
+    panel.target,
+    panel.gitService,
+    task.closedItemsKey,
+    filters.state,
+  );
   return (
     <div
       data-testid="repository-panel"
@@ -232,7 +249,9 @@ function RepositoryPanelContent({
           onChanged={panel.refresh}
           onHandle={handleItem}
           handleBusy={task.busy}
-          isTaskCreated={task.isCreated}
+          onHandleAgain={(item) => handleItem(item, true)}
+          getLinkedTask={task.linkedTask}
+          writebackVersion={task.writebackVersion}
           taskError={task.error}
           onOpen={openExternal}
         />
@@ -312,6 +331,8 @@ function RepositoryPanelContent({
                             item={item}
                             busy={task.busy || !!task.draft}
                             created={task.isCreated(item)}
+                            linkedTask={task.linkedTask(item)}
+                            onHandleAgain={() => handleItem(item, true)}
                             onSelect={() => selectItem(item)}
                             onHandle={() => {
                               handleItem(item);

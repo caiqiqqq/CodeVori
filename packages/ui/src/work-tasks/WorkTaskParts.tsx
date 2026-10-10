@@ -6,6 +6,7 @@ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { forgeErrorId } from "@/lib/forgePanel.js";
 import { cn } from "@/components/lib/utils.js";
 
 export function useWorkTaskMessages() {
@@ -90,9 +91,14 @@ export function WorkTaskAgent({
 }
 export function WorkTaskError({ error }: { error: string | null }) {
   const t = useWorkTaskMessages();
+  const { intl } = useZCodeIntl();
   if (!error) return null;
   const code = error.match(/work-task\.[a-z-]+/)?.[0];
-  const localized = code ? t(`error.${code}`) : error;
+  const localized = code
+    ? t(`error.${code}`)
+    : /^FORGE_[A-Z_]+$/.test(error)
+      ? intl.formatMessage({ id: `repositoryPanel.error.${forgeErrorId(error)}` })
+      : error;
   return (
     <p role="alert" className="whitespace-pre-wrap break-all text-ui-sm text-destructive">
       {localized.startsWith("workTasks.error.") ? error : localized}

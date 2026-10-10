@@ -3,7 +3,7 @@ import { Check, ChevronLeft, GitMerge, Info, MessageSquare, X } from "lucide-rea
 import { isWorkTaskMerging, type WorkTask } from "@zcode/shared";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import { workTaskSelectionKey } from "@/store/workTaskNavigationStore.js";
-import { canCompleteWorkTask } from "@/lib/workTaskBoard.js";
+import { canReviewWorkTaskCompletion } from "@/lib/workTaskBoard.js";
 import { Button } from "@/components/ui/button.js";
 import { workTaskConversationBinding } from "@/lib/workTaskConversation.js";
 import { ScopedErrorBoundary } from "@/ErrorBoundary.js";
@@ -120,7 +120,7 @@ export function WorkTaskConversationPane({
                 <X className="size-4" />
               </WorkTaskIconButton>
             </div>
-            {canCompleteWorkTask(task) ? (
+            {canReviewWorkTaskCompletion(task) ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -130,7 +130,7 @@ export function WorkTaskConversationPane({
                 data-testid="work-task-complete"
               >
                 <Check className="size-4" />
-                {t("complete")}
+                {t(task.status === "done" ? "retryForge" : "complete")}
               </Button>
             ) : null}
             {workspaceTools && toolTarget ? (

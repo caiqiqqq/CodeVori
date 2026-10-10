@@ -48,3 +48,17 @@ export async function mergeReviewedWorkTask(
     targetBranch,
   });
 }
+
+export async function acceptLinkedIssue(
+  service: IWorkTaskService,
+  draft: WorkTaskCreate,
+  id: string,
+) {
+  return service.complete({
+    workspacePath: draft.workspacePath,
+    workspaceIdentity: draft.workspaceIdentity,
+    remoteSessionId: draft.remoteSessionId,
+    id,
+    forge: { closeIssue: true, comment: "Verified result." },
+  });
+}

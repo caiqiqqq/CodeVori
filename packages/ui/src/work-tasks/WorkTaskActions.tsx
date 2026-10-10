@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { WORK_TASK_ACTIVE_STATUSES, type WorkTask } from "@zcode/shared";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
-import { canCompleteWorkTask } from "@/lib/workTaskBoard.js";
+import { canReviewWorkTaskCompletion } from "@/lib/workTaskBoard.js";
 import { WorkTaskIconButton, useWorkTaskMessages } from "./WorkTaskParts.js";
 import { Button } from "@/components/ui/button.js";
 import { WorkTaskArchiveWorktreeDialog } from "./WorkTaskArchiveWorktreeDialog.js";
@@ -50,8 +50,13 @@ export function WorkTaskActions({
   const startable = ["todo", "failed", "canceled"].includes(task.status) && !task.archived;
   const disabled = panel.busy || task.stopPending;
   const actions: { label: string; Icon: LucideIcon; disabled?: boolean; run(): void }[] = [];
-  if (canCompleteWorkTask(task))
-    actions.push({ label: t("complete"), Icon: Check, disabled, run: () => onComplete(task) });
+  if (canReviewWorkTaskCompletion(task))
+    actions.push({
+      label: t(task.status === "done" ? "retryForge" : "complete"),
+      Icon: Check,
+      disabled,
+      run: () => onComplete(task),
+    });
   if (onDetails) actions.push({ label: t("details"), Icon: Info, run: () => onDetails(task) });
   if (showConversation && task.session)
     actions.push({

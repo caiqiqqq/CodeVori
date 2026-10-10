@@ -22,3 +22,5 @@ export const workTaskPanelFixture = `
       </div></ServiceProvider>;
     }
 `;
+
+export { workTaskForgeServiceFixture } from "./workTaskForgeFixture.mjs";
