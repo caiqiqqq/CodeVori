@@ -15,6 +15,7 @@ import { exerciseWorkTaskSaveRefresh } from "./workTaskSaveRefreshAssertions.mjs
 import { exerciseWorkTaskArchiveWorktree } from "./workTaskArchiveWorktreeAssertions.mjs";
 import { exerciseWorkTaskEqualWidths } from "./workTaskEqualWidthAssertions.mjs";
 import { exerciseWorkTaskComposer } from "./workTaskComposerAssertions.mjs";
+import { exerciseWorkTaskSelectionVisibility } from "./workTaskSelectionVisibilityAssertions.mjs";
 
 export function launchWorkTaskBrowser() {
   return chromium.launch({
@@ -37,6 +38,7 @@ export {
   exerciseWorkTaskCompletion,
 };
 export const workTaskScenarios = {
+  "selection-visibility": exerciseWorkTaskSelectionVisibility,
   "equal-widths": exerciseWorkTaskEqualWidths,
   composer: exerciseWorkTaskComposer,
   "all-projects": exerciseWorkTaskAllProjects,

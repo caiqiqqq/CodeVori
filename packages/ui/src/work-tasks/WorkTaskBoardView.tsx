@@ -84,13 +84,21 @@ export function WorkTaskBoardView({
                         data-task-id={task.id}
                         data-workspace-key={workTaskSelectionKey(task)}
                         className={cn(
-                          "flex h-9 min-w-0 items-center gap-1 rounded-md border border-card-border px-1 hover:bg-hover",
+                          "relative flex h-9 min-w-0 items-center gap-1 rounded-md border px-1",
                           taskKey(task) === selectedId
-                            ? "bg-card-selected border-border-hover"
-                            : "bg-card",
+                            ? "border-icon-blue bg-accent hover:bg-accent"
+                            : "border-card-border bg-card hover:bg-hover",
                         )}
                         data-selected={taskKey(task) === selectedId}
                       >
+                        {/* Zai 主题的选中底色与普通卡片相同；用强调底色、边框和不占位标记明确当前任务，悬停时保持选中。 */}
+                        {taskKey(task) === selectedId ? (
+                          <span
+                            aria-hidden="true"
+                            data-testid="work-task-selection-marker"
+                            className="pointer-events-none absolute inset-y-1.5 left-0 w-1 rounded-r-sm bg-icon-blue"
+                          />
+                        ) : null}
                         {/* 多行卡片占用过多空间；固定单行且菜单独立，长正文和错误留在右侧及详情。 */}
                         <button
                           type="button"
