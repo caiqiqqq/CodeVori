@@ -39,10 +39,11 @@ export function WorkTasksSplitLayout({
       >
         <ResizablePanel
           id={PANEL_IDS[0]}
-          defaultSize="320px"
+          // 原默认宽度让项目/状态挤压任务标题；增加阅读空间，仍由原布局 owner 恢复手动宽度。
+          defaultSize="360px"
           groupResizeBehavior="preserve-pixel-size"
           minSize={wide ? "260px" : "0px"}
-          maxSize={wide ? "480px" : "100%"}
+          maxSize={wide ? "560px" : "100%"}
           // Panel 的 class/style 作用于内层；hidden 配合父级选择器才能移除外层占位。
           hidden={!wide && hasSelection}
         >

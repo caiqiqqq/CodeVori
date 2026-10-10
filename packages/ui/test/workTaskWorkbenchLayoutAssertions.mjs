@@ -19,7 +19,7 @@ export async function exerciseWorkTaskWorkbenchLayout(page, panel) {
   const conversation = panel.getByTestId("work-task-conversation");
   const before = await sidebar.boundingBox();
   const right = await conversation.boundingBox();
-  assert.ok(Math.abs(before.width - 320) < 2, "task sidebar must start compact");
+  assert.ok(Math.abs(before.width - 360) < 2, "task sidebar must allow more title space");
   assert.ok(right.width > 800 && right.x >= before.x + before.width);
   const handle = shell.getByRole("separator", { name: "调整任务栏宽度", exact: true });
   const grip = await handle.boundingBox();
@@ -109,7 +109,7 @@ export async function exerciseWorkTaskConversationResize(page, panel) {
       await page.mouse.move(grip.x + 600, grip.y + grip.height / 2, { steps: 8 });
       await page.mouse.up();
       await page.waitForFunction(
-        () => document.getElementById("work-task-sidebar").clientWidth === 480,
+        () => document.getElementById("work-task-sidebar").clientWidth === 560,
       );
     }
     const sidebar = await panel.getByTestId("work-task-sidebar").boundingBox();
