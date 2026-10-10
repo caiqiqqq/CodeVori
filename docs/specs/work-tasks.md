@@ -43,6 +43,17 @@ desktop continuous / mobile replayable 均保持既有会话链路与 owner/leas
 
 点击先展示确认弹窗，列出任务名称及准确的任务工作树路径，说明目录将被删除、分支和会话历史保留，未提交改动会阻止删除。取消无写入；确认期间禁止重复提交和关窗，失败保留弹窗、任务及错误，可显式重试。窄屏、两主题、中英文复用现有菜单/AlertDialog。
 
+删除命令的失败反馈仅由当前 `WorkTaskArchiveWorktreeDialog` 持有，不写入看板共享命令错误，不在列表顶部或其他任务弹窗重复展示。关闭后丢弃，重新打开同一任务或另一任务从无错误状态开始；显式重试先清除旧反馈，新的失败仍留在当前弹窗。`useWorkTasks` 继续持有原提交忙碌态、scope/owner 防迟到结果和共享读取投影，命令仍走同一 Host archive 接口；列表读取错误及其他卡片命令错误的反馈保持可见。
+
+```text
+确认 -> 原 useWorkTasks 提交锁 -> 同一 Host archive 命令
+失败 -> owner 仍有效 -> 当前弹窗本地错误；关闭 -> 丢弃反馈
+重试 -> 清除反馈 -> 原命令；成功 -> 原通知/读取刷新 -> 归档及关闭
+desktop continuous / mobile replayable: 继续复用原 Host 事实与读取链路
+```
+
+回归验收（issue #52）：API/ACP 删除脏工作树时仅弹窗显示错误，看板顶部始终没有该错误；取消后任务和选择保留且看板无残留；同一任务重开、其他任务打开及新建弹窗均不继承；重试等待期间旧错误清除、控件禁用，失败可重试、成功清除选择；真正的列表读取失败仍在列表显示。覆盖中文/英文、深浅主题及桌面/320px。
+
 `WorkTaskService` / SQLite 是任务事实唯一所有者；扩展原 `archive` 合约的可选 `removeWorktree`，仅允许 `archived=true` 与本地 done 任务。Host 注入清理端口，使用持久化分配（不接受 UI 路径），核对注册工作树项目及分支后复用 Git `removeManagedWorktree` 的范围、脏目录、锁定、API/ACP 活动检查及非 force 删除。仅删除任务自身工作树，不清理合并处理工作树、不删分支、不删会话、不提交或推送。删除成功后才保存归档，原分配作为历史保留；已删除且已注销的目录重试视为成功，不重建工作树。Git 删除与 SQLite 不能成为同一事务，若进程在两者间中断，任务仍可见并由用户显式重试收口。
 
 同任务清理命令在 Host 内互斥，重复请求拒绝；完成态不可被原 start/edit/merge 重新准入，清理后归档前再次读取当前任务并检查状态。UI 仅持有确认/提交临时态，通过原 scoped hook 发命令及共享读取投影刷新，不保存删除事实。沿用 identity/path/remoteSessionId 隔离，远端禁止清理且不回落本机；desktop continuous 与 mobile replayable 仍由同一 Host 的原任务通知/重读恢复投影。

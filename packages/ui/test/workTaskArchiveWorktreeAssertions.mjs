@@ -95,7 +95,38 @@ export async function exerciseWorkTaskArchiveWorktree(page, artifacts) {
     await dialog.getByRole("button", { name: "归档并删除工作树", exact: true }).click();
     await dialog.getByRole("alert").waitFor();
     assert.match(await dialog.getByRole("alert").innerText(), /未提交改动/);
+    assert.equal(
+      await panel.getByTestId("work-task-board-scroll").getByRole("alert").count(),
+      0,
+      "cleanup error belongs to its dialog, not the task board",
+    );
     assert.equal(await card(task.id).getAttribute("data-selected"), "true");
+    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+    assert.equal(await panel.getByRole("alert").count(), 0, "cancel discards cleanup feedback");
+    const other = await page.evaluate(
+      (task) =>
+        window.__tasks.seed({
+          title: "Another cleanup task",
+          prompt: "Done",
+          status: "done",
+          execution: task.execution,
+          worktree: task.worktree,
+        }),
+      task,
+    );
+    await openCleanup(other.id);
+    assert.equal(await dialog.getByRole("alert").count(), 0, "another task has no old feedback");
+    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+    await panel.getByTestId("work-task-new").click();
+    const editor = page.getByTestId("work-task-editor");
+    await editor.waitFor();
+    assert.equal(await editor.getByRole("alert").count(), 0, "new task has no cleanup feedback");
+    await editor.getByRole("button", { name: "取消", exact: true }).click();
+    await editor.waitFor({ state: "detached" });
+    await openCleanup(task.id);
+    assert.equal(await dialog.getByRole("alert").count(), 0, "reopen starts without old feedback");
     await dialog.getByRole("button", { name: "取消", exact: true }).click();
     await dialog.waitFor({ state: "detached" });
     for (const locale of ["zh-CN", "en-US"]) {
@@ -121,6 +152,25 @@ export async function exerciseWorkTaskArchiveWorktree(page, artifacts) {
             if (await back.isVisible()) await back.click();
           }
           await openCleanup(task.id, locale);
+          assert.equal(await dialog.getByRole("alert").count(), 0);
+          await page.evaluate(() => {
+            window.__tasks.failCleanup = true;
+          });
+          await dialog
+            .getByRole("button", {
+              name: locale === "zh-CN" ? "归档并删除工作树" : "Archive and delete worktree",
+              exact: true,
+            })
+            .click();
+          await dialog.getByRole("alert").waitFor();
+          assert.match(
+            await dialog.getByRole("alert").innerText(),
+            locale === "zh-CN" ? /未提交改动/ : /uncommitted changes/,
+          );
+          assert.equal(
+            await panel.getByTestId("work-task-board-scroll").getByRole("alert").count(),
+            0,
+          );
           assert.ok(
             await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
           );
@@ -130,6 +180,7 @@ export async function exerciseWorkTaskArchiveWorktree(page, artifacts) {
           });
           await page.keyboard.press("Escape");
           await dialog.waitFor({ state: "detached" });
+          assert.equal(await panel.getByRole("alert").count(), 0);
         }
       }
     }
@@ -138,12 +189,18 @@ export async function exerciseWorkTaskArchiveWorktree(page, artifacts) {
     await card(task.id).getByRole("button", { name: task.title, exact: true }).click();
     await openCleanup(task.id);
     await page.evaluate(() => {
+      window.__tasks.failCleanup = true;
+    });
+    await dialog.getByRole("button", { name: "归档并删除工作树", exact: true }).click();
+    await dialog.getByRole("alert").waitFor();
+    await page.evaluate(() => {
       window.__tasks.delayCleanup = true;
     });
     const confirm = dialog.getByRole("button", { name: "归档并删除工作树", exact: true });
     const callsBefore = await count();
     await confirm.click();
     await page.waitForFunction(() => window.__tasks.pendingCleanups.length === 1);
+    assert.equal(await dialog.getByRole("alert").count(), 0, "retry clears old feedback");
     assert.equal(await confirm.isDisabled(), true);
     assert.equal(
       await dialog.getByRole("button", { name: "取消", exact: true }).isDisabled(),
@@ -166,8 +223,25 @@ export async function exerciseWorkTaskArchiveWorktree(page, artifacts) {
         removeWorktree: true,
       },
     );
+    await page.evaluate(() => {
+      window.__tasks.failList = true;
+      window.__tasks.notify();
+    });
+    const readError = panel.getByTestId("work-task-board-scroll").getByRole("alert");
+    await readError.waitFor();
+    assert.match(await readError.innerText(), /Synthetic list failed/);
+    await page.evaluate(() => window.__tasks.notify());
+    await readError.waitFor({ state: "detached" });
+    const startable = await page.evaluate(() => {
+      window.__tasks.failStart = true;
+      return window.__tasks.seed({ title: "Failing start", prompt: "Start" });
+    });
+    const startMenu = await openMenu(startable.id);
+    await startMenu.getByRole("menuitem", { name: "开始", exact: true }).click();
+    await readError.waitFor();
+    assert.match(await readError.innerText(), /Synthetic start failed/);
   }
   process.stdout.write(
-    "PASS: API/ACP cleanup menu, ordinary archive boundary, cancel, failure/retry, busy exclusion, selection clearing, scoped command, bilingual responsive themes.\n",
+    "PASS: API/ACP cleanup menu, ordinary archive boundary, dialog-only errors, cancel/reopen/task/editor isolation, retry clearing, busy exclusion, selection clearing, scoped command, preserved list/command errors, bilingual responsive themes.\n",
   );
 }

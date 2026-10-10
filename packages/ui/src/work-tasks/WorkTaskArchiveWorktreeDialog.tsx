@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { WorkTask } from "@zcode/shared";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import {
@@ -24,6 +24,7 @@ export function WorkTaskArchiveWorktreeDialog({
 }) {
   const t = useWorkTaskMessages();
   const submitted = useRef(false);
+  const [error, setError] = useState<string | null>(null);
   const disabled =
     panel.busy || !panel.executable || task.stopPending || task.status !== "done" || !task.worktree;
   return (
@@ -47,7 +48,7 @@ export function WorkTaskArchiveWorktreeDialog({
             {task.worktree?.path}
           </p>
         </AlertDialogHeader>
-        <WorkTaskError error={panel.error} />
+        <WorkTaskError error={error} />
         <AlertDialogFooter>
           <AlertDialogCancel disabled={panel.busy}>{t("close")}</AlertDialogCancel>
           <AlertDialogAction
@@ -58,8 +59,10 @@ export function WorkTaskArchiveWorktreeDialog({
               event.preventDefault();
               if (disabled || submitted.current) return;
               submitted.current = true;
+              // 本次确认拥有失败反馈；重试清除旧错误，关窗卸载后不再污染其他入口。
+              setError(null);
               void panel
-                .archiveAndRemoveWorktree(task.id)
+                .archiveAndRemoveWorktree(task.id, setError)
                 .then((ok) => {
                   if (ok) onClose();
                 })
