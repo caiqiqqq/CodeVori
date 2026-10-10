@@ -3,6 +3,7 @@ import {
   type MarkdownFileLinkResolveOptions,
 } from "@/lib/markdownFileLink.js";
 import { extractConversationPreviewFileReferences } from "@zcode/shared";
+import { projectConversationVisualizations } from "@/lib/conversationVisualizations.js";
 import { decodeFilePathUriEscapes, joinFilePath } from "@/lib/path.js";
 import { MEDIA_PREVIEW_FORMATS } from "@zcode/shared";
 import {
@@ -160,6 +161,10 @@ export function extractAssistantFileReferences(
 
   const references: AssistantFileReference[] = [];
   const protectedRanges: Array<[number, number]> = [];
+  // 修复原因：visualize 已由共用正文预览消费，内部 JSON path 不再生成第二张 HTML 文件卡片。
+  for (const block of projectConversationVisualizations(content, false)) {
+    if (block.kind === "visualization") protectedRanges.push([block.start, block.end]);
+  }
 
   for (const citation of extractZCodeFileCitationDirectives(content)) {
     // Citation 必须占用完整保护区间，否则内部 path 会再次被普通文件正则抽取，

@@ -1552,6 +1552,7 @@ const AssistantTextRowView = memo(function AssistantTextRowView({
       <div data-conversation-selectable="true" className="w-full text-ui-base">
         <MessageResponse
           renderZCodeFileCitations
+          renderVisualizations
           streaming={streaming}
           workspacePath={context.workspacePath}
           workspaceIdentity={context.workspaceIdentity}

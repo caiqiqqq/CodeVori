@@ -102,6 +102,8 @@ import { createZCodeFileCitationRemarkPlugin } from "@/lib/zcodeFileCitationRema
 import { windowsFileLinkEscapeRemarkPlugin } from "@/lib/windowsFileLinkEscapeRemarkPlugin.js";
 import { projectZCodeFileCitations } from "@/lib/zcodeFileCitation.js";
 import { rewriteMarkdownArtifactImageSources } from "@zcode/shared";
+import { ConversationVisualization } from "@/components/ConversationVisualization.js";
+import { projectConversationVisualizations } from "@/lib/conversationVisualizations.js";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -389,6 +391,8 @@ export type MessageResponseProps = {
   };
   /** 仅 Assistant 正文开启：把完整 zcode-file-citation 投影为现有文件链接。 */
   renderZCodeFileCitations?: boolean;
+  /** 仅 Assistant 正文开启；API 和 ACP 共用可视化投影，不执行外部文档中的引用。 */
+  renderVisualizations?: boolean;
 };
 
 export interface MessageFileLinkTarget {
@@ -1329,6 +1333,7 @@ export const messageResponsePropsAreEqual = (
   nextProps.sessionId === prevProps.sessionId &&
   nextProps.readAttachment === prevProps.readAttachment &&
   nextProps.renderZCodeFileCitations === prevProps.renderZCodeFileCitations &&
+  nextProps.renderVisualizations === prevProps.renderVisualizations &&
   nextProps.theme === prevProps.theme &&
   nextProps.codePreviewSettings === prevProps.codePreviewSettings &&
   nextProps.onOpenCodeViewer === prevProps.onOpenCodeViewer &&
@@ -1336,7 +1341,7 @@ export const messageResponsePropsAreEqual = (
   nextProps.onOpenExternalUrl === prevProps.onOpenExternalUrl &&
   nextProps.webContent === prevProps.webContent;
 
-export const MessageResponse = memo(
+const MessageMarkdownResponse = memo(
   ({
     className,
     streaming = false,
@@ -1712,6 +1717,46 @@ export const MessageResponse = memo(
   messageResponsePropsAreEqual,
 );
 
+MessageMarkdownResponse.displayName = "MessageMarkdownResponse";
+
+export const MessageResponse = memo(function MessageResponse(props: MessageResponseProps) {
+  const markdown = useMemo(() => extractCodeText(props.children), [props.children]);
+  const blocks = useMemo(
+    () =>
+      props.renderVisualizations && props.workspacePath && !props.webContent
+        ? projectConversationVisualizations(markdown, props.streaming === true)
+        : null,
+    [markdown, props.renderVisualizations, props.streaming, props.webContent, props.workspacePath],
+  );
+  if (
+    !blocks ||
+    (blocks.length === 1 && blocks[0]?.kind === "markdown" && blocks[0].text === markdown)
+  )
+    return <MessageMarkdownResponse {...props} />;
+  return (
+    <div className={cn("w-full min-w-0 space-y-3", props.className)}>
+      {blocks.map((block) =>
+        block.kind === "markdown" ? (
+          block.text.trim() ? (
+            <MessageMarkdownResponse key={`text:${block.start}`} {...props}>
+              {block.text}
+            </MessageMarkdownResponse>
+          ) : null
+        ) : (
+          <ConversationVisualization
+            key={`visualization:${block.start}`}
+            reference={block.reference}
+            workspacePath={props.workspacePath!}
+            workspaceIdentity={props.workspaceIdentity}
+            workspaceRemoteSessionId={props.workspaceRemoteSessionId}
+            sessionId={props.sessionId}
+            theme={props.theme}
+          />
+        ),
+      )}
+    </div>
+  );
+}, messageResponsePropsAreEqual);
 MessageResponse.displayName = "MessageResponse";
 
 export type MessageToolbarProps = ComponentProps<"div">;
