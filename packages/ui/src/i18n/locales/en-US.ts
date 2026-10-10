@@ -1,6 +1,10 @@
 /** English translations */
 import { PRODUCT_NAME } from "@zcode/shared";
 const enUS: Record<string, string> = {
+  "chat.visualization.title": "Interactive preview",
+  "chat.visualization.loading": "Loading preview…",
+  "chat.visualization.failed": "Preview unavailable. Check the workspace connection and HTML file.",
+  "chat.visualization.retry": "Retry",
   "settings.quickMessages.title": "Quick messages",
   "settings.quickMessages.description": "Manage reusable message snippets. Drag to reorder.",
   "settings.quickMessages.search": "Search by title or content",
