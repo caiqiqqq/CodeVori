@@ -104,7 +104,7 @@ merge choices, desktop/320px layouts and light/dark themes. No real forge/model 
 ```text
 picker / sidebar / history -> existing exact-tab admission -> TabStore activation
   -> repositoryNavigationStore project preference -> existing history/view
-remote selection -> repositoryNavigationStore keyed preference
+remote selection -> scoped UI hook -> repositoryNavigationStore keyed preference
   -> guarded Host discovery -> list / explicit new-issue target
   -> removed remote: compare-and-clear preference -> Host default rediscovery
 panel remount / page restart -> local preference -> same navigation/read paths

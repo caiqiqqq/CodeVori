@@ -88,7 +88,7 @@ try {
     clientConfigService:{async getSnapshot(){throw new Error('Files-only draft must not read plugins')}},
     modelSelectionService:{async getView(){return {revision:1,providers:[],preferredSelection:null}},onDidChange(){return {dispose(){}}}},
     acpService:{async listAvailableAgents(){state.calls.push({op:'agents',host});return [{agent:'codex',enabled:true,ready:true}]},async listAgentConfigs(){return []},onDynamicAgentConfigsChanged:()=>()=>({dispose(){}})},
-    workTaskService:{async create(){throw new Error('Navigation must not save a task')}},
+    workTaskService:{async list(){return {tasks:[],concurrency:1}},onDynamicChanged:()=>()=>({dispose(){}}),async create(){throw new Error('Navigation must not save a task')}},
     });
     const base:any=services('local');
     const registry=useRemoteWorkspaceSessionStore.getState();
