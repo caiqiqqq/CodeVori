@@ -1,5 +1,33 @@
 # Repository Panel
 
+## Linked task status colors (issue #62)
+
+- The highlighted statuses in issue #62 are linked work-task progress, separate
+  from the forge item's open/closed icon. Reuse the existing Host-owned task
+  snapshot and status projection; no new state, persistence or command path.
+- One repository task-status presentation owns the color mapping for list and
+  detail controls. Todo/canceled use `foreground-subtle`; processing (queued,
+  preparing, running or merge applying) uses `warning`; awaiting input uses
+  `interaction-confirmation-foreground`; review uses `icon-blue`; done uses
+  `success`; failed uses `destructive`. Done with unsettled forge writeback
+  retains “processed, sync pending” and uses `warning`, ahead of done green.
+- The status text and the list control's icon share the same color, including
+  hover and disabled busy states. Keep localized status text, keyboard access,
+  task navigation, retry/reprocess availability and forge state unchanged.
+- Colors are a pure render-time projection of the current task snapshot. They
+  must update immediately when the existing task event refreshes the shared
+  list, for desktop continuous and mobile replayable surfaces alike.
+
+```text
+Host task owner -> existing scoped task event/snapshot -> shared UI task list
+  -> repository status projection -> list icon/text + detail status text
+```
+
+Acceptance: synthetic browser E2E covers every task status, applying merge,
+pending/failed/settled forge writeback, live status changes and task navigation;
+list/detail computed colors match semantic tokens in Zai light/dark at desktop
+and 320px widths. No real forge/model writes.
+
 ## Issue task lifecycle and writeback
 
 - Host WorkTaskService/SQLite owns the durable source association: validated repository
