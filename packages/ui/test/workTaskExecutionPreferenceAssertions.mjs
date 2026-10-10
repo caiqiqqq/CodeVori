@@ -32,9 +32,12 @@ export async function exerciseWorkTaskExecutionPreferences(page, artifacts) {
   };
   const assertCodex = async () => {
     await editor.getByTestId("work-task-model").getByText("Codex ACP", { exact: true }).waitFor();
-    assert.match(await editor.getByTestId("acp-config-trigger-model").innerText(), /CodexModel/);
+    assert.match(
+      await editor.getByTestId("acp-config-trigger-model").getAttribute("aria-label"),
+      /CodexModel/,
+    );
     assert.doesNotMatch(
-      await editor.getByTestId("acp-config-trigger-reasoning").innerText(),
+      await editor.getByTestId("acp-config-trigger-reasoning").getAttribute("aria-label"),
       /智能体默认配置/,
     );
     for (const [id, value] of [
@@ -70,7 +73,10 @@ export async function exerciseWorkTaskExecutionPreferences(page, artifacts) {
   await page.getByTestId("acp-config-default-fast").click();
   await close();
   await open();
-  assert.match(await editor.getByTestId("acp-config-trigger-fast").innerText(), /智能体默认配置/);
+  assert.match(
+    await editor.getByTestId("acp-config-trigger-fast").getAttribute("aria-label"),
+    /智能体默认配置/,
+  );
   await editor.getByTestId("work-task-model").getByText("Codex ACP", { exact: true }).waitFor();
   await page.evaluate(async () => {
     await document.fonts.ready;
@@ -106,7 +112,7 @@ export async function exerciseWorkTaskExecutionPreferences(page, artifacts) {
     .locator('[role="menu"][data-state="open"]')
     .getByRole("menuitem", { name: "编辑任务", exact: true })
     .click();
-  await editor.getByRole("combobox", { name: "权限模式", exact: true }).click();
+  await editor.getByRole("combobox", { name: /^权限模式:/ }).click();
   await page.getByRole("option").nth(2).click();
   await editor.getByTestId("work-task-save").click();
   await editor.waitFor({ state: "detached" });
@@ -119,7 +125,7 @@ export async function exerciseWorkTaskExecutionPreferences(page, artifacts) {
   await open();
   await editor.getByTestId("work-task-model").getByText("Claude ACP", { exact: true }).waitFor();
   assert.doesNotMatch(
-    await editor.getByTestId("acp-config-trigger-mode").innerText(),
+    await editor.getByTestId("acp-config-trigger-mode").getAttribute("aria-label"),
     /智能体默认配置/,
   );
   await close();
@@ -127,27 +133,27 @@ export async function exerciseWorkTaskExecutionPreferences(page, artifacts) {
   await project("Other");
   await open();
   await editor.getByTestId("work-task-model").getByText("TestModel", { exact: true }).waitFor();
-  await editor.getByRole("combobox", { name: "权限模式", exact: true }).click();
+  await editor.getByRole("combobox", { name: /^权限模式:/ }).click();
   await page.getByRole("option").nth(3).click();
-  await editor.getByRole("combobox", { name: "思考强度", exact: true }).click();
+  await editor.getByRole("combobox", { name: /^思考强度:/ }).click();
   await page.getByRole("option").nth(0).click();
   const rememberedApi = await editor
-    .getByRole("combobox", { name: "权限模式", exact: true })
-    .innerText();
+    .getByRole("combobox", { name: /^权限模式:/ })
+    .getAttribute("aria-label");
   const rememberedReasoning = await editor
-    .getByRole("combobox", { name: "思考强度", exact: true })
-    .innerText();
+    .getByRole("combobox", { name: /^思考强度:/ })
+    .getAttribute("aria-label");
   await close();
   await page.reload();
   assert.equal(await panel.getByTestId("work-task-project").innerText(), "Other");
   await open();
   await editor.getByTestId("work-task-model").getByText("TestModel", { exact: true }).waitFor();
   assert.equal(
-    await editor.getByRole("combobox", { name: "权限模式", exact: true }).innerText(),
+    await editor.getByRole("combobox", { name: /^权限模式:/ }).getAttribute("aria-label"),
     rememberedApi,
   );
   assert.equal(
-    await editor.getByRole("combobox", { name: "思考强度", exact: true }).innerText(),
+    await editor.getByRole("combobox", { name: /^思考强度:/ }).getAttribute("aria-label"),
     rememberedReasoning,
   );
   await close();

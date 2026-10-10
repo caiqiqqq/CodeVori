@@ -75,7 +75,10 @@ export async function exerciseWorkTaskAgentConfigSelection(page, panel, artifact
   await select("acp:codex");
   await editor.getByTestId("acp-config-trigger-model").waitFor();
   await page.waitForFunction(() => window.__tasks.agentListeners.size === 1);
-  assert.match(await editor.getByTestId("acp-config-trigger-model").innerText(), /智能体默认配置/);
+  assert.match(
+    await editor.getByTestId("acp-config-trigger-model").getAttribute("aria-label"),
+    /智能体默认配置/,
+  );
   assert.equal(
     await page.evaluate(() => window.__tasks.calls.some((call) => call.op === "acp-list")),
     false,
@@ -86,11 +89,17 @@ export async function exerciseWorkTaskAgentConfigSelection(page, panel, artifact
   await choice("fast", "true");
   await editor.getByTestId("acp-config-trigger-fast").click();
   await page.getByTestId("acp-config-default-fast").click();
-  assert.match(await editor.getByTestId("acp-config-trigger-fast").innerText(), /智能体默认配置/);
+  assert.match(
+    await editor.getByTestId("acp-config-trigger-fast").getAttribute("aria-label"),
+    /智能体默认配置/,
+  );
   await page.evaluate(() => window.__tasks.publishConfig());
-  assert.match(await editor.getByTestId("acp-config-trigger-model").innerText(), /CodexModel/);
+  assert.match(
+    await editor.getByTestId("acp-config-trigger-model").getAttribute("aria-label"),
+    /CodexModel/,
+  );
   assert.doesNotMatch(
-    await editor.getByTestId("acp-config-trigger-reasoning").innerText(),
+    await editor.getByTestId("acp-config-trigger-reasoning").getAttribute("aria-label"),
     /智能体默认配置/,
   );
 
@@ -98,15 +107,18 @@ export async function exerciseWorkTaskAgentConfigSelection(page, panel, artifact
   assert.equal(await editor.getByTestId("acp-config-trigger-reasoning").count(), 0);
   await choice("mode", "plan");
   assert.doesNotMatch(
-    await editor.getByTestId("acp-config-trigger-mode").innerText(),
+    await editor.getByTestId("acp-config-trigger-mode").getAttribute("aria-label"),
     /智能体默认配置/,
   );
   await select("acp:codex");
-  assert.match(await editor.getByTestId("acp-config-trigger-model").innerText(), /智能体默认配置/);
+  assert.match(
+    await editor.getByTestId("acp-config-trigger-model").getAttribute("aria-label"),
+    /智能体默认配置/,
+  );
   assert.equal(await editor.getByTestId("acp-config-trigger-mode").count(), 0);
   await select("custom:api:TestModel");
   assert.equal(await editor.getByTestId("acp-composer-config-controls").count(), 0);
-  assert.ok(await editor.getByRole("combobox", { name: "权限模式", exact: true }).isVisible());
+  assert.ok(await editor.getByRole("combobox", { name: /^权限模式:/ }).isVisible());
   await select("acp:kimi-code");
   await editor.getByTestId("work-task-agent-default").waitFor();
   assert.ok(await editor.getByTestId("work-task-save").isEnabled());
@@ -217,12 +229,18 @@ export async function exerciseWorkTaskAgentConfigPersistence(page, panel) {
     await editor.waitFor();
   };
   await edit();
-  assert.match(await editor.getByTestId("acp-config-trigger-mode").innerText(), /智能体默认配置/);
+  assert.match(
+    await editor.getByTestId("acp-config-trigger-mode").getAttribute("aria-label"),
+    /智能体默认配置/,
+  );
   await select("codex");
   await choice("model", "codex-model");
   await choice("fast", "false");
   await select("codex");
-  assert.match(await editor.getByTestId("acp-config-trigger-model").innerText(), /CodexModel/);
+  assert.match(
+    await editor.getByTestId("acp-config-trigger-model").getAttribute("aria-label"),
+    /CodexModel/,
+  );
   await save();
   const saved = await page.evaluate(
     (id) => window.__tasks.tasks.find((task) => task.id === id).execution,
@@ -240,7 +258,10 @@ export async function exerciseWorkTaskAgentConfigPersistence(page, panel) {
       "fresh-model";
     window.__tasks.publishConfig();
   });
-  assert.match(await editor.getByTestId("acp-config-trigger-model").innerText(), /CodexModel/);
+  assert.match(
+    await editor.getByTestId("acp-config-trigger-model").getAttribute("aria-label"),
+    /CodexModel/,
+  );
   await editor.getByTestId("acp-config-trigger-fast").click();
   assert.equal(
     await page.getByTestId("acp-config-choice-fast-false").getAttribute("aria-checked"),
