@@ -14,7 +14,12 @@ import {
 import { workTaskWorkspaceToolTarget } from "@/lib/workTaskWorkspaceTools.js";
 import { WorkTaskActions } from "./WorkTaskActions.js";
 import { WorkTaskPendingConversation } from "./WorkTaskPendingConversation.js";
-import { WorkTaskIconButton, WorkTaskStatus, useWorkTaskMessages } from "./WorkTaskParts.js";
+import {
+  WorkTaskError,
+  WorkTaskIconButton,
+  WorkTaskStatus,
+  useWorkTaskMessages,
+} from "./WorkTaskParts.js";
 import type {
   OpenWorkTaskNativeSession,
   WorkTaskConversationOptions,
@@ -125,7 +130,7 @@ export function WorkTaskConversationPane({
                 variant="outline"
                 size="sm"
                 className="shrink-0"
-                disabled={panel.busy}
+                disabled={panel.busy || task.worktreeCleanup?.phase === "running"}
                 onClick={() => onComplete(task)}
                 data-testid="work-task-complete"
               >
@@ -148,6 +153,11 @@ export function WorkTaskConversationPane({
               </div>
             ) : null}
           </header>
+          {task.worktreeCleanup?.error ? (
+            <div className="px-3 py-2">
+              <WorkTaskError error={task.worktreeCleanup.error} />
+            </div>
+          ) : null}
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
             {binding ? (
               <ScopedErrorBoundary
@@ -173,9 +183,10 @@ export function WorkTaskConversationPane({
                     task={task}
                     binding={binding}
                     readOnly={
-                      isWorkTaskMerging(task)
+                      task.worktreeCleanup?.phase === "running" ||
+                      (isWorkTaskMerging(task)
                         ? !showMergeConversation || task.merge?.phase === "applying"
-                        : showMergeConversation
+                        : showMergeConversation)
                     }
                     options={options}
                     onClose={onClose}

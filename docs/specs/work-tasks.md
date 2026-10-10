@@ -62,18 +62,18 @@ desktop continuous / mobile replayable 均保持既有会话链路与 owner/leas
 
 已完成（`done`）、未归档且持有任务工作树的菜单，在原“归档”后增加“归档并删除工作树”。直接分支任务不提供此项；断连、远端、不支持清理的 Host、忙碌或停止待确认时不得执行。原归档继续只修改归档事实。
 
-点击先展示确认弹窗，列出任务名称及准确的任务工作树路径，说明目录将被删除、分支和会话历史保留，未提交改动会阻止删除。取消无写入；确认期间禁止重复提交和关窗，失败保留弹窗、任务及错误，可显式重试。窄屏、两主题、中英文复用现有菜单/AlertDialog。
+点击先展示确认弹窗，列出任务名称及准确的任务工作树路径，说明目录将被删除、分支和会话历史保留，未提交改动会阻止删除。取消无写入；仅提交受理期间禁止重复提交和关窗。Host 持久化清理准入后立即返回，弹窗关闭，任务保持可见并显示“清理中”。清理失败在任务行、详情与再次打开的确认弹窗显示原因，任务保留且可显式重试。窄屏、两主题、中英文复用现有菜单/AlertDialog。
 
-删除命令的失败反馈仅由当前 `WorkTaskArchiveWorktreeDialog` 持有，不写入看板共享命令错误，不在列表顶部或其他任务弹窗重复展示。关闭后丢弃，重新打开同一任务或另一任务从无错误状态开始；显式重试先清除旧反馈，新的失败仍留在当前弹窗。`useWorkTasks` 继续持有原提交忙碌态、scope/owner 防迟到结果和共享读取投影，命令仍走同一 Host archive 接口；列表读取错误及其他卡片命令错误的反馈保持可见。
+清理准入命令的失败反馈仅由当前 `WorkTaskArchiveWorktreeDialog` 持有，不写入看板共享命令错误；关闭后丢弃，重新打开从无准入错误状态开始。显式重试先清除本次准入反馈，`useWorkTasks` 保留 scope/owner 防迟到结果和原共享读取投影。受理后的后台清理错误属于任务持久事实：任务状态、详情与再次确认可展示该任务的错误，其他任务不继承，不在看板顶部重复展示。列表读取错误及其他卡片命令错误保持原反馈。
 
 ```text
-确认 -> 原 useWorkTasks 提交锁 -> 同一 Host archive 命令
-失败 -> owner 仍有效 -> 当前弹窗本地错误；关闭 -> 丢弃反馈
-重试 -> 清除反馈 -> 原命令；成功 -> 原通知/读取刷新 -> 归档及关闭
-desktop continuous / mobile replayable: 继续复用原 Host 事实与读取链路
+原 scoped hook → Host archive 准入
+  准入拒绝 → 当前弹窗本地错误；关闭 → 丢弃
+  已受理 → 关闭弹窗 → Host 后台清理 → 任务持久状态/失败原因
+scope/owner 失效 → 丢弃迟到准入反馈；重连 → 重读任务清理事实
 ```
 
-回归验收（issue #52）：API/ACP 删除脏工作树时仅弹窗显示错误，看板顶部始终没有该错误；取消后任务和选择保留且看板无残留；同一任务重开、其他任务打开及新建弹窗均不继承；重试等待期间旧错误清除、控件禁用，失败可重试、成功清除选择；真正的列表读取失败仍在列表显示。覆盖中文/英文、深浅主题及桌面/320px。
+回归验收（issue #52/#53）：API/ACP 准入失败仅弹窗显示错误，取消/重开不残留；后台清理失败保留在该任务，另一任务及新建弹窗不继承。重试受理后关闭弹窗，任务显示清理中，完成才归档。看板顶部不重复展示上述错误，真正的列表读取与其他命令失败仍可见。覆盖中英文、深浅主题及桌面/320px。
 
 `WorkTaskService` / SQLite 是任务事实唯一所有者；扩展原 `archive` 合约的可选 `removeWorktree`，仅允许 `archived=true` 与本地 done 任务。Host 注入清理端口，使用持久化分配（不接受 UI 路径），核对注册工作树项目及分支后复用 Git `removeManagedWorktree` 的范围、脏目录、锁定、API/ACP 活动检查及非 force 删除。仅删除任务自身工作树，不清理合并处理工作树、不删分支、不删会话、不提交或推送。删除成功后才保存归档，原分配作为历史保留；已删除且已注销的目录重试视为成功，不重建工作树。Git 删除与 SQLite 不能成为同一事务，若进程在两者间中断，任务仍可见并由用户显式重试收口。
 
@@ -93,7 +93,7 @@ desktop continuous / mobile replayable: 继续复用原 Host 事实与读取链�
 
 清理期间的 Agent 启动由现有进程管理器统一准入。Host 在 runtime 准备入口同步取得 workspace 启动屏障；在途启动失效，后续冷启动或自动重订阅收到原 runtime-unavailable 错误，不排队、不等待删除超时。CLI 活动查询仍走 existing-only；忙碌、ACP 拒绝或回收失败立即释放屏障。准备成功将屏障释放句柄交给 Git 删除 owner，覆盖最终登记复核、非 force 删除与空父目录清理，成功/拒绝/异常均在 finally 释放一次。屏障按 `workspaceIdentity?.trim() || workspacePath` 隔离，可嵌套持有，最后一个句柄释放后才允许新启动；不干预其他 workspace、普通 runtime 重启或历史目录的既有 cwd fallback。
 
-屏障属于 Host 本地装配端口，不新增 renderer/远程 RPC；桌面的 continuous 与手机的 replayable 订阅仍遵守原运行时不可用与恢复语义。Git 的任务互斥、注册/分支/锁/脏目录检查和删除前复核保持不变；不改成后台删除，也不提前归档或隐藏失败任务。
+屏障属于 Host 本地装配端口，不新增 renderer/远程 RPC；桌面的 continuous 与手机的 replayable 订阅仍遵守原运行时不可用与恢复语义。Git 的任务互斥、注册/分支/锁/脏目录检查和删除前复核保持不变；后台清理仍在成功后归档，不提前隐藏任务。
 
 ```text
 Host 清理准备 -> ProcessManager 持有启动屏障 -> existing-only 活动检查/ACP 释放
@@ -637,3 +637,29 @@ Git 面板扩展数据由开到关时不发新读取，也不能撤销当前工�
 接通 UI 投影并修复宿主 Git 读取失效边界，不改变 Host owner/lease、事件顺序及 desktop-continuous / web-remote-replayable 链路；无数据时保持原有空态。
 
 服务测试使用临时 SQLite 和可控执行端；执行适配器测试核对真实命令参数。UI E2E 使用 synthetic Host，不调用付费模型或用户仓库。必须执行 typecheck、lint 和 architecture:check，并区分模拟验收与真实 Agent 运行证据。
+
+### 后台工作树清理（issue #53）
+
+复用 `archive(removeWorktree=true)`：RPC 返回持久化的已受理任务（`worktreeCleanup.phase=running`），不等待磁盘删除；普通 archive 语义不变。任务 JSON 增加可选严格校验的 `worktreeCleanup: {id, phase: running|failed, error?}`，缺失表示无清理操作，不更改表结构。WorkTaskService / SQLite 是唯一事实 owner，清理使用现有 task owner/lease（30 秒、调度 tick 续租），id 是每次尝试的幂等及 stale-result 边界。事务内检查 done、本地分配、未归档、非 busy/forge 写回，写入 running 后仅该 Host 执行清理。重复请求及清理中的普通归档、启动、取消、完成/合并均拒绝；不建立第二个队列。
+
+Git 层的范围、登记、分支、脏目录、锁、runtime 活动及启动屏障不变。仅成功且 owner/id/lease 仍有效时原子保存 archived=true 并清除清理字段；失败保存 failed/error 并释放 lease，保持 done、分配、历史与任务可见。错误仅保存稳定业务码，不存命令输出。过期 lease 在原恢复流程转为 failed/host-interrupted，不自动再删除；原 Host 晚到结果不能覆盖新尝试。显式重试复用 Git 已删除且已注销的幂等校验。正常 Host 关闭等待已准入清理收口，停止期结果保留为可重试的中断，不关闭仍被使用的 SQLite。
+
+UI 通过原 hook、列表与 onDynamicChanged 投影显示状态。提交 busy 只持续到受理；清理期间禁止该任务写操作，允许导航与其它任务操作。失败提供“重试清理”，重新确认路径后提交一次原命令。desktop continuous 收到原事件，mobile replayable 重读原列表恢复相同持久状态；远端不准入本机删除，断连不回落本机，无新增 RPC 或 Agent 协议。
+
+```mermaid
+sequenceDiagram
+ participant U as UI 确认弹窗
+ participant H as Host WorkTaskService
+ participant D as SQLite 唯一事实 owner
+ participant G as Git/runtime 清理
+ U->>H: archive(removeWorktree=true)
+ H->>D: 事务校验并认领 running + attempt id + lease
+ H-->>U: 已受理任务（立即关闭弹窗）
+ H->>G: 后台清理（保持 workspace 启动屏障）
+ H->>D: 原 tick 续租
+ G-->>H: 成功 / 失败
+ H->>D: owner/id/lease 复核后归档 / 保存失败
+ H-->>U: 原通知与列表投影（重连重读恢复）
+```
+
+验收：慢清理不阻塞 RPC；准入通知先于终态；刷新/重连保留清理状态；API/ACP 两类任务成功后才移除及清空选择；失败可见并可重试，双击仅一次；不同任务可独立操作；跨 scope 与远端拒绝；过期 lease、旧 attempt 与 Host 关闭不提前归档；窄屏、两主题、中英文 E2E 覆盖提交关闭、清理状态、错误、重试与导航。

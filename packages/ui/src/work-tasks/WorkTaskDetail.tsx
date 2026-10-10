@@ -39,7 +39,7 @@ export function WorkTaskDetail({
   const events = useWorkTaskEvents(task);
   const [feedback, setFeedback] = useState("");
   const active = WORK_TASK_ACTIVE_STATUSES.includes(task.status) || task.status === "queued";
-  const disabled = panel.busy || task.stopPending;
+  const disabled = panel.busy || task.stopPending || task.worktreeCleanup?.phase === "running";
   const startable = ["todo", "failed", "canceled"].includes(task.status) && !task.archived;
   return (
     <Dialog
@@ -65,7 +65,7 @@ export function WorkTaskDetail({
         </div>
         <p className="whitespace-pre-wrap break-all text-ui-base">{task.prompt}</p>
         <WorkTaskAttachments scope={task} saved={task.attachments} />
-        <WorkTaskError error={task.failureReason ?? null} />
+        <WorkTaskError error={task.worktreeCleanup?.error ?? task.failureReason ?? null} />
         {task.worktree ? (
           <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 border-t border-border pt-3 text-ui-sm">
             {task.sourceBranch ? (

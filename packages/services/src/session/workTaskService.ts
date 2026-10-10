@@ -1,7 +1,7 @@
+import { WorkTaskEvents } from "./workTaskEvents.js";
 import { randomUUID } from "node:crypto";
-import { Emitter, type Event, type IDisposable } from "@zcode/rpc";
+import { type Event, type IDisposable } from "@zcode/rpc";
 import {
-  resolveWorkspaceKey,
   workTaskExecutionPath,
   workTaskMergeRequestSchema,
   isWorkTaskMerging,
@@ -37,7 +37,7 @@ import {
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import type { IWorkTaskService, WorkTaskConversationEvent } from "./workTask.js";
 import { WorkTaskForgeCoordinator } from "./workTaskForgeCoordinator.js";
-import { archiveWorkTask } from "./workTaskArchive.js";
+import { archiveWorkTask, type WorkTaskCleanupRun } from "./workTaskArchive.js";
 import type { WorkTaskServiceOptions } from "./workTaskServiceOptions.js";
 
 interface Run {
@@ -52,11 +52,10 @@ const logger = createServiceLogger("work-tasks");
 export class WorkTaskService implements IWorkTaskService {
   private readonly owner = randomUUID();
   private readonly runs = new Map<string, Run>();
-  private readonly events = new Map<string, Emitter<void>>();
+  private readonly events = new WorkTaskEvents();
   private readonly observations = new Map<string, { key: string; subscription: IDisposable }>();
   private readonly forge: WorkTaskForgeCoordinator;
-  private readonly cleaning = new Set<string>();
-  private revisions = new Map<string, number>();
+  private readonly cleaning = new Map<string, WorkTaskCleanupRun>();
   private initialized: Promise<void> | null = null;
   private ticking: Promise<void> | null = null;
   private wakeRequested = false;
@@ -91,18 +90,14 @@ export class WorkTaskService implements IWorkTaskService {
     if (this.options.allowExecution === false || scope.workspaceIdentity || scope.remoteSessionId)
       throw new Error("work-task.remote-unsupported");
   }
-  private publish() {
-    const next = this.options.repo.revisions();
-    let changed = false;
-    for (const [key, revision] of next) {
-      if (this.revisions.get(key) !== revision) {
-        changed = true;
-        this.events.get(key)?.fire();
-      }
-    }
-    this.revisions = next;
-    if (changed) this.syncObservations();
+  private assertNotCleaning(target: WorkTaskTarget) {
+    if (this.options.repo.get(target, target.id).worktreeCleanup?.phase === "running")
+      throw new Error("work-task.cleanup-in-progress");
   }
+  private publish() {
+    if (this.events.publish(this.options.repo.revisions())) this.syncObservations();
+  }
+
   private syncObservations() {
     if (this.closed || this.options.allowExecution === false || !this.options.conversation) return;
     const tasks = this.options.repo.conversationTasks();
@@ -203,6 +198,8 @@ export class WorkTaskService implements IWorkTaskService {
     for (const run of this.runs.values()) {
       if (!this.options.repo.renew(run.task, this.owner, now, LEASE_MS)) run.abort.abort();
     }
+    for (const run of this.cleaning.values())
+      this.options.repo.renew(run.task, this.owner, now, LEASE_MS);
     this.options.repo.recoverExpired(now);
     let task: WorkTask | null;
     while (!this.closed && (task = this.options.repo.claimNext(this.owner, now, LEASE_MS))) {
@@ -317,6 +314,7 @@ export class WorkTaskService implements IWorkTaskService {
   async cancel(input: WorkTaskTarget) {
     const parsed = workTaskTargetSchema.parse(input);
     await this.ready();
+    this.assertNotCleaning(parsed);
     const task = this.options.repo.cancel(parsed, parsed.id);
     this.runs.get(task.id)?.abort.abort();
     this.publish();
@@ -326,6 +324,7 @@ export class WorkTaskService implements IWorkTaskService {
   async complete(input: WorkTaskComplete) {
     const parsed = workTaskCompleteSchema.parse(input);
     await this.ready();
+    this.assertNotCleaning(parsed);
     return this.forge.complete(parsed);
   }
   async merge(input: WorkTaskMergeRequest) {
@@ -336,6 +335,7 @@ export class WorkTaskService implements IWorkTaskService {
     const current = this.options.repo.get(parsed, parsed.id);
     const { projectPath } = await this.options.merge.validate(current, parsed.targetBranch);
     if (this.closed) throw new Error("work-task.host-closed");
+    this.assertNotCleaning(parsed);
     const task = this.options.repo.enqueueMerge(parsed, projectPath);
     this.publish();
     this.wake();
@@ -345,12 +345,20 @@ export class WorkTaskService implements IWorkTaskService {
     const parsed = workTaskArchiveSchema.parse(input);
     if (parsed.removeWorktree) this.assertLocal(parsed);
     await this.ready();
-    const task = await archiveWorkTask(this.options.repo, parsed, {
+    const task = archiveWorkTask(this.options.repo, parsed, {
       active: this.cleaning,
+      owner: this.owner,
+      leaseMs: LEASE_MS,
+      publish: () => this.publish(),
       remove: this.options.removeWorktree,
       isClosed: () => this.closed,
     });
     this.publish();
+    this.cleaning
+      .get(task.id)
+      ?.promise.catch((error) =>
+        logger.error(undefined, "Worktree cleanup persistence failed", { error: String(error) }),
+      );
     return task;
   }
   async setConcurrency(input: WorkTaskScope & { concurrency: number }) {
@@ -367,14 +375,9 @@ export class WorkTaskService implements IWorkTaskService {
   }
   onDynamicChanged(input: WorkTaskScope): Event<void> {
     const scope = workTaskScopeSchema.strict().parse(input);
-    const key = resolveWorkspaceKey(scope);
-    let emitter = this.events.get(key);
-    if (!emitter) {
-      emitter = new Emitter<void>();
-      this.events.set(key, emitter);
-    }
-    return emitter.event;
+    return this.events.subscribe(scope);
   }
+
   disposeAll() {
     if (this.closed) return;
     this.closed = true;
@@ -388,14 +391,14 @@ export class WorkTaskService implements IWorkTaskService {
     await this.initialized?.catch(() => {});
     await this.ticking;
     if (this.initialized) {
+      await Promise.allSettled([...this.cleaning.values()].map((run) => run.promise));
       this.options.repo.interruptOwned(this.owner);
       for (const run of this.runs.values()) run.abort.abort();
       await Promise.all([...this.runs.values()].map((run) => run.promise));
       await this.forge.drain();
       this.options.repo.close();
     }
-    for (const event of this.events.values()) event.dispose();
-    this.events.clear();
+    this.events.dispose();
   }
   async disposeAllAndWait() {
     this.disposeAll();

@@ -141,9 +141,12 @@ const zhCN: Record<string, string> = {
   "workTasks.openConversation": "打开会话",
   "workTasks.handleInput": "处理会话中的请求",
   "workTasks.archive": "归档",
+  "workTasks.cleanup.running": "清理中",
+  "workTasks.cleanup.failed": "清理失败",
+  "workTasks.retryCleanup": "重试清理",
   "workTasks.archiveAndRemoveWorktree": "归档并删除工作树",
   "workTasks.archiveAndRemoveWorktreeBody":
-    "将删除此任务的工作树目录并归档任务。分支和会话历史会保留；未提交改动或仍在执行的会话会阻止删除。",
+    "确认后将在后台删除工作树，成功后归档任务。清理期间可继续使用其他任务。分支和会话历史会保留；未提交改动或仍在执行的会话会阻止删除。",
   "workTasks.error.work-task.not-cleanable": "只有已完成且使用独立工作树的任务可以清理。",
   "workTasks.error.work-task.cleanup-in-progress": "此任务正在清理工作树，请等待操作完成。",
   "workTasks.error.work-task.cleanup-unsupported": "当前运行环境不支持归档并删除工作树。",

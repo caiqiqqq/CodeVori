@@ -154,9 +154,12 @@ const enUS: Record<string, string> = {
   "workTasks.openConversation": "Open conversation",
   "workTasks.handleInput": "Handle conversation request",
   "workTasks.archive": "Archive",
+  "workTasks.cleanup.running": "Cleaning up",
+  "workTasks.cleanup.failed": "Cleanup failed",
+  "workTasks.retryCleanup": "Retry cleanup",
   "workTasks.archiveAndRemoveWorktree": "Archive and delete worktree",
   "workTasks.archiveAndRemoveWorktreeBody":
-    "Delete this task’s worktree directory and archive the task. The branch and conversation history will be kept. Uncommitted changes or active conversations prevent deletion.",
+    "Clean up the worktree in the background and archive the task on success. You can use other tasks while cleanup runs. The branch and conversation history will be kept. Uncommitted changes or active conversations prevent deletion.",
   "workTasks.error.work-task.not-cleanable":
     "Only completed tasks with an isolated worktree can be cleaned up.",
   "workTasks.error.work-task.cleanup-in-progress":

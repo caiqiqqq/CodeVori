@@ -26,7 +26,12 @@ export function WorkTaskArchiveWorktreeDialog({
   const submitted = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const disabled =
-    panel.busy || !panel.executable || task.stopPending || task.status !== "done" || !task.worktree;
+    panel.busy ||
+    !panel.executable ||
+    task.stopPending ||
+    task.status !== "done" ||
+    !task.worktree ||
+    task.worktreeCleanup?.phase === "running";
   return (
     <AlertDialog
       open
@@ -48,14 +53,14 @@ export function WorkTaskArchiveWorktreeDialog({
             {task.worktree?.path}
           </p>
         </AlertDialogHeader>
-        <WorkTaskError error={error} />
+        <WorkTaskError error={error ?? task.worktreeCleanup?.error ?? null} />
         <AlertDialogFooter>
           <AlertDialogCancel disabled={panel.busy}>{t("close")}</AlertDialogCancel>
           <AlertDialogAction
             disabled={disabled}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             onClick={(event) => {
-              // 保留删除失败反馈；在 busy 投影更新前也不能重复发送清理命令。
+              // 仅等待 Host 持久受理；后台结果从任务投影读取，提交期间防止重复命令。
               event.preventDefault();
               if (disabled || submitted.current) return;
               submitted.current = true;

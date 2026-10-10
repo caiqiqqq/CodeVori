@@ -48,6 +48,18 @@ export function finishWorkTaskRun(
 }
 
 export function interruptWorkTaskRun(task: WorkTask, now: number, stopPending: boolean): WorkTask {
+  // 清理中断不撤销已完成事实，也不自动再次删除目录；由用户确认重试。
+  if (task.worktreeCleanup?.phase === "running")
+    return {
+      ...task,
+      worktreeCleanup: {
+        ...task.worktreeCleanup,
+        phase: "failed",
+        error: "work-task.host-interrupted",
+      },
+      stopPending: false,
+      updatedAt: now,
+    };
   // 处理轮次可能已写入 merged/canceled，但 owner 尚未收口；恢复仍需保留合并审查语义。
   const merging = !!task.merge;
   return {
