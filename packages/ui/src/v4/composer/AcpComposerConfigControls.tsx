@@ -4,6 +4,7 @@ import {
   ChevronDownIcon,
   CpuIcon,
   LoaderCircleIcon,
+  Settings2Icon,
   ShieldCheckIcon,
   UsersIcon,
   ZapIcon,
@@ -37,6 +38,7 @@ interface Props {
   options: AcpConfigOption[];
   modes: AcpModeState | null;
   loading?: boolean;
+  iconOnly?: boolean;
   disabled: boolean;
   onChange?: (id: string, value: string | boolean) => Promise<void>;
   focusSelectorOnClose?: string | null;
@@ -71,6 +73,7 @@ function AcpComposerConfigControlsImpl({
   options,
   modes,
   loading = false,
+  iconOnly = false,
   disabled,
   onChange,
   defaultOption,
@@ -110,10 +113,10 @@ function AcpComposerConfigControlsImpl({
           data-testid="acp-config-loading"
           data-composer-collapse-priority="1"
           aria-label={intl.formatMessage({ id: "acp.loadingControls" })}
-          className="h-7 gap-1 rounded-lg px-2 text-ui-base"
+          className={iconOnly ? "h-7 w-7 rounded-lg p-0" : "h-7 gap-1 rounded-lg px-2 text-ui-base"}
         >
           <LoaderCircleIcon className="size-4 animate-spin" aria-hidden="true" />
-          <span className="hidden sm:inline">
+          <span className={iconOnly ? "hidden" : "hidden sm:inline"}>
             {intl.formatMessage({ id: "acp.loadingControls" })}
           </span>
         </Button>
@@ -143,7 +146,7 @@ function AcpComposerConfigControlsImpl({
               })();
         const label = acpConfigOptionLabel(locale, agent, option);
         const title = `${label}: ${selectedName}`;
-        const Icon = categoryIcon(option.category);
+        const Icon = categoryIcon(option.category) ?? (iconOnly ? Settings2Icon : null);
         return (
           <DropdownMenu key={`${agent}:${sessionId ?? "pending"}:${option.id}`}>
             <ControlHintTooltip title={title}>
@@ -156,14 +159,26 @@ function AcpComposerConfigControlsImpl({
                   data-testid={`acp-config-trigger-${option.id}`}
                   data-composer-collapse-priority="1"
                   aria-label={title}
-                  className="group/acp h-7 max-w-44 gap-1 rounded-lg px-2 text-ui-base data-[composer-compact=true]:w-8 data-[composer-compact=true]:px-0"
+                  className={
+                    iconOnly
+                      ? "h-7 w-7 shrink-0 rounded-lg p-0"
+                      : "group/acp h-7 max-w-44 gap-1 rounded-lg px-2 text-ui-base data-[composer-compact=true]:w-8 data-[composer-compact=true]:px-0"
+                  }
                 >
-                  <span className="truncate group-data-[composer-compact=true]/acp:hidden">
+                  <span
+                    className={
+                      iconOnly ? "hidden" : "truncate group-data-[composer-compact=true]/acp:hidden"
+                    }
+                  >
                     {title}
                   </span>
                   {Icon ? (
                     <Icon
-                      className="hidden size-4 group-data-[composer-compact=true]/acp:block"
+                      className={
+                        iconOnly
+                          ? "size-4"
+                          : "hidden size-4 group-data-[composer-compact=true]/acp:block"
+                      }
                       aria-hidden="true"
                     />
                   ) : (
@@ -174,7 +189,9 @@ function AcpComposerConfigControlsImpl({
                       {label.slice(0, 2)}
                     </span>
                   )}
-                  <ChevronDownIcon className="size-3.5 shrink-0 group-data-[composer-compact=true]/acp:hidden" />
+                  {!iconOnly ? (
+                    <ChevronDownIcon className="size-3.5 shrink-0 group-data-[composer-compact=true]/acp:hidden" />
+                  ) : null}
                 </Button>
               </DropdownMenuTrigger>
             </ControlHintTooltip>

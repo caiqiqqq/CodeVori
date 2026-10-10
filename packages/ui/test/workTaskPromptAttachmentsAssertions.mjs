@@ -60,7 +60,7 @@ export async function exerciseWorkTaskPromptAttachments(page, artifacts) {
     await prompt.fill("Use the supplied files");
     await select(kind === "api" ? "custom:api:TestModel" : "acp:codex");
     if (kind === "api") {
-      await editor.getByRole("combobox", { name: "思考强度", exact: true }).click();
+      await editor.getByRole("combobox", { name: /^思考强度:/ }).click();
       await page.getByRole("option", { name: "high", exact: true }).click();
     }
     assert.equal(await editor.locator("form").count(), 1, "composer must not nest a form");

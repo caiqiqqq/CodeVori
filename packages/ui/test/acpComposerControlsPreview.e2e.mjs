@@ -76,6 +76,8 @@ try {
     await trigger.waitFor();
     assert.equal(await trigger.isEnabled(), true);
     assert.match(await trigger.getAttribute("aria-label"), /自动审核/);
+    assert.match(await trigger.innerText(), /自动审核/, "ordinary chat keeps its text trigger");
+    assert.equal(await trigger.locator(".lucide-shield-check").isVisible(), false);
     await page.evaluate(() =>
       window.__setAcpView({ agent: "claude", ready: false, session: null }),
     );

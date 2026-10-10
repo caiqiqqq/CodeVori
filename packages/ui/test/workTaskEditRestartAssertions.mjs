@@ -74,6 +74,10 @@ export async function exerciseWorkTaskEditRestart(page, artifacts) {
         ["update"],
       );
       assert.ok(await editor.getByTestId("work-task-save").isDisabled());
+      assert.ok(await editor.getByTestId("work-task-model").isDisabled());
+      for (const label of [/^权限模式:/, /^思考强度:/]) {
+        assert.ok(await editor.getByRole("combobox", { name: label }).isDisabled());
+      }
       assert.ok(await editor.getByRole("button", { name: "取消", exact: true }).isDisabled());
       assert.equal(
         await editor.getByTestId("work-task-prompt").getAttribute("contenteditable"),
@@ -141,7 +145,16 @@ export async function exerciseWorkTaskEditRestart(page, artifacts) {
         (await writes(task)).map((call) => call.op),
         ["update"],
       );
+      await page.evaluate(() => {
+        window.__tasks.delaySave = true;
+      });
       await editor.getByTestId("work-task-save").click();
+      await page.waitForFunction(() => window.__tasks.pendingSaves.length === 1);
+      assert.ok(await editor.getByTestId("work-task-model").isDisabled());
+      for (const control of await editor.locator('[data-testid^="acp-config-trigger-"]').all()) {
+        assert.ok(await control.isDisabled());
+      }
+      await page.evaluate(() => window.__tasks.finishSave());
     }
     await editor.waitFor({ state: "detached" });
     await card(task).locator('[data-work-task-status="running"]').waitFor();

@@ -3,6 +3,7 @@ import { RefreshCw } from "lucide-react";
 import { type WorkTask, type WorkTaskExecution } from "@zcode/shared";
 import { useWorkTaskModels } from "@/hooks/useWorkTaskModels.js";
 import { ModelConfigSelect } from "@/ModelConfigSelect.js";
+import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { resolveModelDisplayName } from "@/lib/modelSelectionGroups.js";
 import { resolveModelThoughtOption } from "@/lib/modelThoughtOption.js";
 import { decodeCustomModelValue, encodeCustomModelValue } from "@/lib/zcodeCustomModelValue.js";
@@ -111,7 +112,13 @@ export function WorkTaskExecutionControls({
     <>
       <ModelConfigSelect
         modelGroups={groups}
+        renderItemIcon={(item) => {
+          const itemAgent = acpAgentFromModelValue(item.value);
+          return itemAgent ? <AcpAgentIcon agent={itemAgent} /> : null;
+        }}
         normalizedValue={value}
+        triggerIcon={agent ? <AcpAgentIcon agent={agent} /> : undefined}
+        triggerIconClassName={agent ? "inline-flex" : "hidden"}
         triggerLabel={resolveModelDisplayName(groups, value) ?? t("selectModel")}
         showManageModelsAction={false}
         lockReasonMessage={t("executorLocked")}
@@ -146,6 +153,7 @@ export function WorkTaskExecutionControls({
         <div className="min-w-0 max-w-full [&>div]:flex-wrap">
           <AcpComposerConfigControls
             agent={agent}
+            iconOnly
             options={options}
             modes={modes}
             disabled={busy}
