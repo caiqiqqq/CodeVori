@@ -1,3 +1,4 @@
+import { ensureTaskNavigationWorkspace } from "@/app-shell/taskNavigationWorkspace.js";
 import { useEffect } from "react";
 import type { WorkTaskScope } from "@zcode/shared";
 import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
@@ -13,7 +14,7 @@ export function useWorktreeSettingsConversation({
   selectAcp,
   openWorkTasks,
 }: {
-  selectApi: (workspacePath: string, id: string) => void;
+  selectApi: (workspacePath: string, id: string, workspaceIdentity?: string) => void;
   selectAcp: (session: AcpSidebarSession) => void;
   openWorkTasks: (scope: WorkTaskScope) => void;
 }) {
@@ -32,12 +33,24 @@ export function useWorktreeSettingsConversation({
             .ensureWorkspaceTab(target.scope.workspacePath, { workspacePurpose: "project" });
           openWorkTasks(target.scope);
           tabs.getState().addTab(target.scope.workspacePath);
-        } else if (target.kind === "acp") {
-          tabs.getState().addTab(target.session.workspacePath);
-          selectAcp(target.session);
         } else {
-          tabs.getState().addTab(target.workspacePath);
-          selectApi(target.workspacePath, target.taskId);
+          const workspacePath =
+            target.kind === "acp" ? target.session.workspacePath : target.workspacePath;
+          const workspaceIdentity =
+            target.kind === "acp" ? target.session.workspaceIdentity : target.workspaceIdentity;
+          // 修复原因：归档历史来自多工作区，按路径 addTab 会把远端 identity 错建为本地 tab。
+          // 复用聊天导航的精确激活边界；缺失远端 attachment 时拒绝导航。
+          const result = ensureTaskNavigationWorkspace({
+            workspacePath,
+            workspaceIdentity,
+            activateTabByPath: tabs.getState().activateTabByPath,
+            addLocalWorkspaceTab: (path) => {
+              tabs.getState().addTab(path);
+            },
+          });
+          if (!result.accepted) return;
+          if (target.kind === "acp") selectAcp(target.session);
+          else selectApi(workspacePath, target.taskId, workspaceIdentity);
         }
       }),
     [tabs, selectApi, selectAcp, openWorkTasks],

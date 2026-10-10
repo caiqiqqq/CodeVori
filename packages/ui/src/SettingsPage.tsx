@@ -78,6 +78,7 @@ import { ShortcutSettingsSection } from "@/settings/ShortcutSettingsSection.js";
 import { QuickMessagesSection } from "@/settings/QuickMessagesSection.js";
 import { WorktreesSection } from "@/settings/WorktreesSection.js";
 import { VersionControlSection } from "@/settings/VersionControlSection.js";
+import { ConversationArchiveSection } from "@/settings/ConversationArchiveSection.js";
 import { MigrationSection } from "@/settings/MigrationSection.js";
 import {
   SETTINGS_FRAME_CONTENT_CLASSNAME,
@@ -1879,6 +1880,8 @@ export function SettingsPage({
                             workspaceIdentity={activeWorkspaceIdentity}
                             isDesktop={isDesktop}
                           />
+                        ) : activeSection === "conversationArchive" ? (
+                          <ConversationArchiveSection />
                         ) : activeSection === "usage" ? (
                           <UsageStatsSection
                             activeTab={usageActiveTab}

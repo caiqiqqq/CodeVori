@@ -169,6 +169,8 @@ nodes:
     label: Archived conversations, restore and permanent removal
     aliases: [conversation archive, archived conversations, 已归档对话, 恢复对话, 彻底删除]
     codeSeeds:
+      - file: packages/ui/src/settings/ConversationArchiveSection.tsx
+        symbol: ConversationArchiveSection
       - file: packages/ui/src/WorkspaceArchivedTasksFlatSection.tsx
         symbol: WorkspaceArchivedTasksFlatSection
       - file: packages/services/src/session/taskIndexRepo.ts

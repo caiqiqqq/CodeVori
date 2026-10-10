@@ -1,4 +1,4 @@
-/* eslint-disable max-lines -- 归档视图开关沿用现有 sidebar 结构，先保持同文件收口。 */
+/* eslint-disable max-lines -- sidebar 聚合项目、分组、任务视图与拖拽交互。 */
 import {
   memo,
   useCallback,
@@ -12,7 +12,6 @@ import {
   type SetStateAction,
 } from "react";
 import {
-  Archive,
   Blocks,
   CalendarClock,
   Clock3,
@@ -28,7 +27,6 @@ import {
   Minimize2,
   Plus,
   Search,
-  X,
 } from "lucide-react";
 import {
   DndContext,
@@ -114,7 +112,6 @@ import type { Theme } from "@/useTheme.js";
 import type { RemoteConnectionLogEntry } from "@/hooks/useRemoteConnectionLogs.js";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import { WorkspaceFileTree } from "@/WorkspaceFileTree.js";
-import { WorkspaceArchivedTasksFlatSection } from "@/WorkspaceArchivedTasksFlatSection.js";
 import { WorkspaceSidebarFooter } from "@/WorkspaceSidebarFooter.js";
 import { WorkspacePinnedTasksSection } from "@/WorkspacePinnedTasksSection.js";
 import { WorkspaceTimelineTasksSection } from "@/WorkspaceTimelineTasksSection.js";
@@ -160,7 +157,7 @@ export { WorkspaceSidebarCollapsedRail } from "@/WorkspaceSidebar/WorkspaceSideb
 type TaskOrganizeBy = SidebarTaskOrganizeBy;
 type TaskSortBy = SidebarTaskSortBy;
 type PrimaryTaskMode = "workspace" | "grouped";
-type SidebarTaskViewMode = "grouped" | "workspace" | "timeline" | "archived";
+type SidebarTaskViewMode = "grouped" | "workspace" | "timeline";
 
 interface SidebarFileTreeTarget {
   workspacePath: string;
@@ -207,12 +204,8 @@ export interface SidebarFileTreeOpenRequest {
 }
 
 function resolveSidebarTaskViewMode(params: {
-  showArchivedTasks: boolean;
   taskOrganizeBy: TaskOrganizeBy;
 }): SidebarTaskViewMode {
-  if (params.showArchivedTasks) {
-    return "archived";
-  }
   if (params.taskOrganizeBy === "chronological") {
     return "timeline";
   }
@@ -445,10 +438,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
       workspacePaths.length > 0 && workspacePaths.every((path) => expandedWorkspacePaths.has(path)),
     [expandedWorkspacePaths, workspacePaths],
   );
-  const [showArchivedTasks, setShowArchivedTasks] = useState(false);
-  const [archivedActionsContainer, setArchivedActionsContainer] = useState<HTMLDivElement | null>(
-    null,
-  );
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(false);
   const [fileTreeTarget, setFileTreeTarget] = useState<SidebarFileTreeTarget | null>(null);
   const [groupedStickyHeader, setGroupedStickyHeader] = useState<ReactNode | null>(null);
@@ -625,7 +614,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     }
   }, [taskOrganizeBy]);
   const taskViewMode = resolveSidebarTaskViewMode({
-    showArchivedTasks,
     taskOrganizeBy,
   });
   const effectiveTaskViewMode = taskViewMode;
@@ -680,10 +668,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   const shouldShowPinnedTasks =
     // grouped 主体会主动过滤 pinned task；如果同页不渲染全局置顶区，
     // 从 Header 置顶当前任务后整条 row 会无处展示，看起来像 session 被删除。
-    taskViewMode === "workspace" ||
-    taskViewMode === "timeline" ||
-    taskViewMode === "archived" ||
-    taskViewMode === "grouped";
+    taskViewMode === "workspace" || taskViewMode === "timeline" || taskViewMode === "grouped";
   const workspaceScrollRef = useRef<HTMLDivElement | null>(null);
   const [showWorkspaceTopMask, setShowWorkspaceTopMask] = useState(false);
   const [showWorkspaceBottomMask, setShowWorkspaceBottomMask] = useState(false);
@@ -889,7 +874,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     };
   }, [expandedWorkspacePaths, workspaceTabs.length]);
 
-  const isGroupedTaskGroupView = !showArchivedTasks && taskOrganizeBy === "grouped";
+  const isGroupedTaskGroupView = taskOrganizeBy === "grouped";
   const toggleableGroupedTaskGroupIds =
     groupedTaskGroupIds.length > 0
       ? groupedTaskGroupIds
@@ -910,7 +895,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     collapsedGroupedTaskGroupIds,
   );
   const canToggleAllProjectTaskGroups =
-    !showArchivedTasks && taskOrganizeBy === "project" && topLevelProjectTabs.length > 0;
+    taskOrganizeBy === "project" && topLevelProjectTabs.length > 0;
   const showToggleAllTaskGroups = canToggleAllProjectTaskGroups || showToggleAllGroupedTaskGroups;
   const canToggleAllTaskGroups = canToggleAllProjectTaskGroups || canToggleAllGroupedTaskGroups;
   const areAllTaskGroupsExpanded =
@@ -930,9 +915,9 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   const activePrimaryTaskMode: PrimaryTaskMode =
     taskOrganizeBy === "grouped" ? "grouped" : "workspace";
   const workspaceTaskViewValue = taskOrganizeBy === "chronological" ? "chronological" : "project";
-  const showTaskViewFilter = activePrimaryTaskMode === "workspace" || showArchivedTasks;
-  const showWorkspaceViewOptions = activePrimaryTaskMode === "workspace" && !showArchivedTasks;
-  const showTaskSortOptions = activePrimaryTaskMode === "workspace" || showArchivedTasks;
+  const showTaskViewFilter = activePrimaryTaskMode === "workspace";
+  const showWorkspaceViewOptions = activePrimaryTaskMode === "workspace";
+  const showTaskSortOptions = activePrimaryTaskMode === "workspace";
   const handlePrimaryTaskModeChange = useCallback(
     (value: string) => {
       logger.debug("[WorkspaceSidebar] 切换任务一级视图", {
@@ -1066,11 +1051,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     };
   }, [activePrimaryTaskMode]);
 
-  const archivedTasksActionLabel = intl.formatMessage({
-    // 归档视图打开后按钮图标会切换为 X，之前 tooltip 仍固定显示“归档”，
-    // 图标语义与文案不一致。打开态统一改成 Close，同时同步 aria-label。
-    id: showArchivedTasks ? "common.close" : "workspaceSidebar.toggleArchivedTasks",
-  });
   // 性能修复：workspaceTaskToolbar 会随 chat streaming 被重复创建并传给远控任务索引。
   // 这里把 render prop 稳定在真正影响工具栏展示的状态上，避免消息流更新污染侧栏任务区。
   const workspaceTaskToolbar = useCallback(
@@ -1260,45 +1240,18 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}
-            {showArchivedTasks ? (
-              <div
-                ref={setArchivedActionsContainer}
-                data-testid="archived-tasks-toolbar-actions"
-                className="flex shrink-0 items-center"
-              />
-            ) : null}
-            <ControlHintTooltip title={archivedTasksActionLabel}>
-              <Button
-                type="button"
-                variant="ghost"
-                className="shrink-0 text-foreground-subtle hover:text-foreground data-[state=on]:bg-hover data-[state=on]:text-foreground"
-                data-state={showArchivedTasks ? "on" : "off"}
-                aria-pressed={showArchivedTasks}
-                aria-label={archivedTasksActionLabel}
-                onClick={() => {
-                  setShowArchivedTasks((current) => !current);
-                }}
-              >
-                {showArchivedTasks ? <X className="size-3.5" /> : <Archive className="size-3.5" />}
-                <span className="text-ui-sm">
-                  {intl.formatMessage({ id: "workspaceSidebar.archivedTasks" })}
-                </span>
-              </Button>
-            </ControlHintTooltip>
           </div>
         </div>
       </div>
     ),
     [
       activePrimaryTaskMode,
-      archivedTasksActionLabel,
       createGroupedTaskGroupAction,
       handlePrimaryTaskModeChange,
       handleToggleAllTaskGroups,
       handleWorkspaceTaskViewChange,
       intl,
       primaryTaskIndicatorStyle,
-      showArchivedTasks,
       showTaskSortOptions,
       showTaskViewFilter,
       showWorkspaceViewOptions,
@@ -1442,8 +1395,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
             >
               {workspaceTaskToolbar()}
               {shouldShowPinnedTasks ? (
-                // 归档切换主任务区时不应隐藏 pinned。
-                // pinned 是全局置顶区，归档态保持置顶区可见。
                 <WorkspacePinnedTasksSection
                   workspaceTabs={workspaceTabs}
                   activeWorkspacePath={workspacePath}
@@ -1461,19 +1412,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                 />
               ) : null}
               <div className="flex min-h-0 flex-col gap-3 px-2">
-                {taskViewMode === "archived" ? (
-                  <WorkspaceArchivedTasksFlatSection
-                    actionsContainer={archivedActionsContainer}
-                    workspaceTabs={workspaceTabs}
-                    activeWorkspacePath={workspacePath}
-                    activeWorkspaceIdentity={workspaceIdentity}
-                    activeTaskId={activeTaskId}
-                    activeAcpSessionId={activeAcpSessionId}
-                    sortBy={taskSortBy}
-                    onSelectTask={onSelectTask}
-                    onSelectAcpSession={onSelectAcpSession}
-                  />
-                ) : taskViewMode === "grouped" ? (
+                {taskViewMode === "grouped" ? (
                   <WorkspaceGroupedTasksSection
                     workspaceTabs={workspaceTabs}
                     activeWorkspacePath={workspacePath}

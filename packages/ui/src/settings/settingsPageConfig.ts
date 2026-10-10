@@ -9,6 +9,7 @@ import {
   Palette,
   Sun,
   BarChart3,
+  Archive,
   Terminal,
   AlarmClock,
   Anchor,
@@ -183,6 +184,12 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     icon: FileSearch,
     titleId: "settings.workspaceFileSearch.title",
     groupId: "basics",
+  },
+  {
+    id: "conversationArchive",
+    icon: Archive,
+    titleId: "workspaceSidebar.archivedTasks",
+    groupId: "dataAndStats",
   },
   {
     id: "usage",

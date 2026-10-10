@@ -145,3 +145,19 @@ test("settings navigation intent replays to a newly mounted shell once", () => {
   unsubscribeAgain();
   assert.deepEqual(observed, ["saved"]);
 });
+
+test("remote API archive target bypasses local work task ownership lookup", async () => {
+  const target = { ...apiTarget, workspaceIdentity: "remote-host" };
+  assert.equal(
+    await resolveWorktreeSettingsConversation(
+      {
+        list: async () => {
+          throw new Error("remote history must not query local ownership");
+        },
+      },
+      project,
+      target,
+    ),
+    target,
+  );
+});
