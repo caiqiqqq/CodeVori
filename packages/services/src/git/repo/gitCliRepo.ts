@@ -3,6 +3,7 @@ import { lstat, mkdtemp, readFile, readdir, realpath, rm, rmdir, stat } from "no
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import type { IDisposable } from "@zcode/rpc";
 import type {
   GitBranchMutationAction,
   GitBranchMutationIssue,
@@ -1590,11 +1591,12 @@ export function createGitCliRepo(options?: {
 
     async removeManagedWorktree(
       params: GitRemoveManagedWorktreeRequest,
-      prepare?: (worktreePath: string) => Promise<"workspace-busy" | null>,
+      prepare?: (worktreePath: string) => Promise<"workspace-busy" | IDisposable | null>,
     ): Promise<GitRemoveManagedWorktreeResult> {
       const busy = managedWorktreeRemovalRequests.get(params.worktreePath);
       if (busy) return { ok: false, issue: "operation-in-progress" };
       const timing = createWorktreeRemovalTiming("git", params.worktreePath);
+      let runtimeLease: IDisposable | undefined;
       let outcome = "failed";
       const task = (async (): Promise<GitRemoveManagedWorktreeResult> => {
         const invalid: GitRemoveManagedWorktreeResult = { ok: false, issue: "invalid-target" };
@@ -1705,8 +1707,9 @@ export function createGitCliRepo(options?: {
           );
           ensureGitCommandSucceeded("git status", status);
           if (status.stdout.length > 0) return { ok: false, issue: "dirty-worktree" };
-          if (await timing.run("runtime", async () => prepare?.(target)))
-            return { ok: false, issue: "workspace-busy" };
+          const preparation = await timing.run("runtime", async () => prepare?.(target));
+          if (preparation === "workspace-busy") return { ok: false, issue: "workspace-busy" };
+          runtimeLease = preparation ?? undefined;
           // 检查和预热进程回收之间可能有异步操作；真正移除前重新校验 Git 归属。
           if (!(await timing.run("revalidation", validateRegistration))) return invalid;
           const removal = await timing.run("remove", () =>
@@ -1747,6 +1750,8 @@ export function createGitCliRepo(options?: {
         outcome = result.ok ? "success" : (result.issue ?? "failed");
         return result;
       } finally {
+        // 修复依据：runtime 准备成功不等于目录已删，最终复核失败也必须释放启动屏障。
+        runtimeLease?.dispose();
         timing.finish(outcome);
         if (managedWorktreeRemovalRequests.get(params.worktreePath) === task) {
           managedWorktreeRemovalRequests.delete(params.worktreePath);

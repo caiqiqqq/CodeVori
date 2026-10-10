@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import type { IDisposable } from "@zcode/rpc";
 import type { GitBranchComparison, GitFileChange, GitChangeSectionId } from "@zcode/shared";
 import { isPathInWorkspaceScope, normalizeGitPath, toWorkspaceRelativeGitPath } from "./config.js";
 import { filterCommitMessageFilesByCurrentSession } from "./commitMessageFileScope.js";
@@ -179,7 +180,7 @@ export function createGitService(options?: {
   versionControl?: VersionControlService;
   forgeOptions?: Parameters<typeof createForgeService>[0];
   commitMessageGenerator?: GitCommitMessageGenerator;
-  prepareWorktreeRemoval?: (worktreePath: string) => Promise<"workspace-busy" | null>;
+  prepareWorktreeRemoval?: (worktreePath: string) => Promise<"workspace-busy" | IDisposable | null>;
 }): IGitService {
   const repo = options?.repo ?? createGitCliRepo();
 

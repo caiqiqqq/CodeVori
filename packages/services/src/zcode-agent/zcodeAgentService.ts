@@ -1075,6 +1075,21 @@ const hostAcpPluginReaders = new WeakMap<
   (params: ZCodeAgentWorkspaceTarget) => Promise<ZCodePluginsAcpCapabilitiesResult>
 >();
 
+const hostWorkspaceStartBlockers = new WeakMap<
+  IZCodeAgentService,
+  (params: ZCodeAgentWorkspaceTarget) => IDisposable
+>();
+
+/** 进程准入句柄只供 Host 本地装配使用，不能由动态 RPC 方法派发。 */
+export function blockHostWorkspaceAgentStarts(
+  service: IZCodeAgentService,
+  params: ZCodeAgentWorkspaceTarget,
+): IDisposable {
+  const block = hostWorkspaceStartBlockers.get(service);
+  if (!block) throw new Error("Workspace Agent 启动屏障只能在目标 Host 持有");
+  return block(params);
+}
+
 export function getHostAcpPluginCapabilities(
   service: IZCodeAgentService,
   params: ZCodeAgentWorkspaceTarget,
@@ -5736,6 +5751,7 @@ export function createZCodeAgentService(
       disposeLocalState();
     },
   };
+  hostWorkspaceStartBlockers.set(service, (params) => processManager.blockWorkspaceStarts(params));
   hostAcpPluginReaders.set(service, async (params) => {
     const client = await getReadOnlyClient(params);
     return client.request(
