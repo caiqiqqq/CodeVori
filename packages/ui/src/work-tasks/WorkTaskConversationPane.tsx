@@ -14,6 +14,7 @@ import {
 import { workTaskWorkspaceToolTarget } from "@/lib/workTaskWorkspaceTools.js";
 import { WorkTaskActions } from "./WorkTaskActions.js";
 import { WorkTaskPendingConversation } from "./WorkTaskPendingConversation.js";
+import { WorkTaskSourceLink } from "./WorkTaskSourceLink.js";
 import {
   WorkTaskError,
   WorkTaskIconButton,
@@ -150,6 +151,11 @@ export function WorkTaskConversationPane({
                   workspaceAbsPath={toolTarget.workspacePath}
                   workspaceIdentity={toolTarget.workspaceIdentity}
                 />
+              </div>
+            ) : null}
+            {task.source ? (
+              <div className="min-w-0 basis-full" data-testid="work-task-source-header">
+                <WorkTaskSourceLink task={task} />
               </div>
             ) : null}
           </header>

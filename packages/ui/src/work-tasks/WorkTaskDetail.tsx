@@ -21,6 +21,7 @@ import {
   useWorkTaskMessages,
 } from "./WorkTaskParts.js";
 import { WorkTaskAttachments } from "./WorkTaskAttachments.js";
+import { WorkTaskSourceLink } from "./WorkTaskSourceLink.js";
 
 export function WorkTaskDetail({
   task,
@@ -155,9 +156,7 @@ export function WorkTaskDetail({
             className="flex flex-col gap-2 border-t border-border pt-3 text-ui-sm"
             data-testid="work-task-source"
           >
-            <p className="break-all">
-              {t("linkedItem")}: #{task.source.number} · {task.source.title}
-            </p>
+            <WorkTaskSourceLink task={task} />
             {task.forgeWriteback ? (
               <>
                 <p>
