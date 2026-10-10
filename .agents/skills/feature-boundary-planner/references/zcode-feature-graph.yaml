@@ -482,6 +482,7 @@ nodes:
   - id: surface.work-tasks-board
     kind: ui-surface
     label: Work tasks board and list in the existing workspace shell
+    aliases: [来源议题, 关联议题入口]
     codeSeeds:
       - file: packages/ui/src/work-tasks/WorkTasksPanel.tsx
         symbol: WorkTasksPanel
@@ -489,11 +490,16 @@ nodes:
         symbol: useWorkTasks
       - file: packages/ui/src/hooks/workTaskReadModel.ts
         symbol: getWorkTaskReadModel
+      - file: packages/ui/src/work-tasks/WorkTaskSourceLink.tsx
+        symbol: WorkTaskSourceLink
+      - file: packages/ui/src/work-tasks/WorkTaskConversationPane.tsx
+        symbol: WorkTaskConversationPane
       - file: packages/ui/src/app-shell/WorkspaceShellLayout.tsx
         symbol: handleOpenWorkTaskConversation
     invariants:
       - Project options wait for Git worktree relationships; same-name independent identities stay distinct.
       - Board and sidebar share one read projection and event subscription per Service and scope; Host owns task facts.
+      - Source badges, conversation headers and details read only the selected task's persisted source; opening its validated external URL does not select or mutate a task.
   - id: surface.work-task-editor
     kind: ui-surface
     label: Work task shared composer draft, attachments and saved API or ACP configuration

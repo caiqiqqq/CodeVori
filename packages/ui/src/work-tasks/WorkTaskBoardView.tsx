@@ -9,6 +9,7 @@ import { cn } from "@/components/lib/utils.js";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable.js";
 import { WorkTaskActions } from "./WorkTaskActions.js";
 import { WorkTaskAgent, WorkTaskStatus, useWorkTaskMessages } from "./WorkTaskParts.js";
+import { WorkTaskSourceLink } from "./WorkTaskSourceLink.js";
 
 const PANEL_IDS = [...WORK_TASK_COLUMNS];
 const COLUMN_MARKERS: Record<WorkTaskColumn, string> = {
@@ -137,6 +138,7 @@ export function WorkTaskBoardView({
                             </span>
                           ) : null}
                         </button>
+                        <WorkTaskSourceLink task={task} compact />
                         <div className="shrink-0">
                           <WorkTaskActions
                             task={task}
