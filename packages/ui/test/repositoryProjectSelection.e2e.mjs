@@ -4,6 +4,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import {
+  assertDisconnectedRepositoryMemory,
+  assertRepositorySelectionMemory,
+  assertRepositorySelectionReload,
+} from "./repositorySelectionMemoryAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__repository-project-e2e-${process.pid}`;
@@ -19,7 +24,7 @@ try {
   await writeFile(
     moduleFile,
     `
-    import React, {useEffect} from 'react';
+    import React, {useEffect,useState} from 'react';
     import {createRoot} from 'react-dom/client';
     import {RepositoryPanel} from '../../../ui/src/repository-panel/RepositoryPanel.tsx';
     import {useWorkspaceTaskNavigation} from '../../../ui/src/app-shell/useWorkspaceTaskNavigation.ts';
@@ -29,6 +34,7 @@ try {
     import {TabStoreProvider,useTabStore,useTabStoreApi} from '../../../ui/src/store/TabStoreProvider.tsx';
     import {isWorkspaceTab} from '../../../ui/src/store/tabStore.ts';
     import {useZCodeSessionStore} from '../../../ui/src/store/zcodeSessionStore.ts';
+    import {repositoryNavigationStore} from '../../../ui/src/store/repositoryNavigationStore.ts';
     import {useRemoteWorkspaceSessionStore} from '../../../ui/src/store/remoteWorkspaceSessionStore.ts';
     import {buildRemoteWorkspaceIdentity,buildWorkspaceSessionKey} from '../../../ui/src/lib/remoteWorkspaceHistory.ts';
     import {persistV4ComposerDraft,readV4ComposerDraft} from '../../../ui/src/v4/composer/composerDraftStore.ts';
@@ -37,7 +43,7 @@ try {
     import {Button} from '../../../ui/src/components/ui/button.tsx';
     import {applyTheme} from '../../../ui/src/useTheme.ts';
     import '../../../ui/src/styles.css';
-    const state:any={calls:[],pending:[],pendingInfo:[],view:'repository',delayDiscovery:false,delayInfo:true};
+    const state:any={calls:[],pending:[],pendingInfo:[],view:'repository',delayDiscovery:false,delayInfo:true,dropPrivate:false};
     window.__projects=state;
     state.setTheme=applyTheme;
     const alpha='/synthetic/alpha/project';
@@ -68,8 +74,9 @@ try {
       async getForgeRepository(r:any){
         state.calls.push({op:'discover',host,...r});
         const remoteName=r.remoteName||'origin';
-        const status=r.workspacePath==='/synthetic/non-git'?'not-repository':'ready';
-        const result={status,remoteNames:status==='ready'?['origin','private']:[],remoteName,repository:status==='ready'?{key:host+':'+r.workspacePath+':'+remoteName,name:'team/project',url:'https://forge.example.invalid/team/project',provider:'github',accountId:host,accountUsername:'tester'}:null};
+        const remoteNames=state.dropPrivate?['origin']:['origin','private'];
+        const status=r.workspacePath==='/synthetic/non-git'?'not-repository':remoteNames.includes(remoteName)?'ready':'no-remote';
+        const result={status,remoteNames:status==='not-repository'?[]:remoteNames,remoteName,repository:status==='ready'?{key:host+':'+r.workspacePath+':'+remoteName,name:'team/project',url:'https://forge.example.invalid/team/project',provider:'github',accountId:host,accountUsername:'tester'}:null};
         if(state.delayDiscovery){state.delayDiscovery=false;return new Promise(resolve=>state.pending.push(()=>resolve(result)))}
         return result;
       },
@@ -81,7 +88,7 @@ try {
     clientConfigService:{async getSnapshot(){throw new Error('Files-only draft must not read plugins')}},
     modelSelectionService:{async getView(){return {revision:1,providers:[],preferredSelection:null}},onDidChange(){return {dispose(){}}}},
     acpService:{async listAvailableAgents(){state.calls.push({op:'agents',host});return [{agent:'codex',enabled:true,ready:true}]},async listAgentConfigs(){return []},onDynamicAgentConfigsChanged:()=>()=>({dispose(){}})},
-    workTaskService:{async create(){throw new Error('Navigation must not save a task')}},
+    workTaskService:{async list(){return {tasks:[],concurrency:1}},onDynamicChanged:()=>()=>({dispose(){}}),async create(){throw new Error('Navigation must not save a task')}},
     });
     const base:any=services('local');
     const registry=useRemoteWorkspaceSessionStore.getState();
@@ -104,6 +111,8 @@ try {
     });
     const broadcast:any={send(){},onMessage(){return {dispose(){}}}};
     function Fixture(){
+      const [visible,setVisible]=useState(true);
+      const [revision,setRevision]=useState(0);
       const tabs=useTabStore(s=>s.tabs);
       const path=useTabStore(s=>s.activeWorkspacePath)??alpha;
       const identity=useTabStore(s=>s.activeWorkspaceIdentity)??undefined;
@@ -111,10 +120,14 @@ try {
       const active=tabs.find(tab=>isWorkspaceTab(tab)&&buildWorkspaceSessionKey(tab)===buildWorkspaceSessionKey({workspacePath:path,workspaceIdentity:identity}));
       const nav=useWorkspaceTaskNavigation({intl:{formatMessage:({id}:any)=>id},workspaceAbsPath:path,workspaceIdentity:identity,activateTabByPath:api.getState().activateTabByPath,onNavigateToRepository:()=>{state.view='repository'}});
       state.tabs=api;state.select=nav.handleOpenRepository;
+      state.preferences=repositoryNavigationStore;
+      state.remount=()=>setRevision(value=>value+1);
+      state.leave=()=>{api.getState().activateTabByPath(alpha);setVisible(false)};
+      state.reenter=()=>{nav.handleOpenRepository();setVisible(true)};
       useEffect(()=>{api.getState().restoreTabs(sources,0);useZCodeSessionStore.getState().taskNavPushRepository(alpha)},[api]);
       return <div className='flex h-dvh min-w-0 flex-col bg-background text-foreground'>
         <nav className='flex shrink-0 gap-2 px-4 py-1'><Button aria-label='后退' disabled={!nav.canTaskNavBack} onClick={nav.handleTaskNavBack}>后退</Button><Button aria-label='前进' disabled={!nav.canTaskNavForward} onClick={nav.handleTaskNavForward}>前进</Button></nav>
-        <div className='min-h-0 flex-1'><RepositoryPanel workspacePath={path} workspaceIdentity={identity} remoteSessionId={active?.remoteSessionId} workspaceTabs={tabs.filter(isWorkspaceTab)} onSelectProject={nav.handleOpenRepository} theme='zai-light'/></div>
+        <div className='min-h-0 flex-1'>{visible?<RepositoryPanel key={revision} workspacePath={path} workspaceIdentity={identity} remoteSessionId={active?.remoteSessionId} workspaceTabs={tabs.filter(isWorkspaceTab)} onSelectProject={nav.handleOpenRepository} theme='zai-light'/>:<div data-testid='conversation-view'>会话</div>}</div>
       </div>
     }
     createRoot(document.getElementById('root')!).render(<ServiceProvider services={base}><PlatformProvider platform={{openExternal(){}} as any}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><StoreProvider broadcastService={broadcast}><TabStoreProvider><Fixture/></TabStoreProvider></StoreProvider></TooltipProvider></ZCodeIntlProvider></PlatformProvider></ServiceProvider>);
@@ -207,7 +220,7 @@ try {
   await page.getByRole("button", { name: "后退", exact: true }).click();
   await waitRow("local /synthetic/alpha/project origin");
   await page.getByRole("button", { name: "前进", exact: true }).click();
-  await waitRow("local /synthetic/beta/project origin");
+  await waitRow("local /synthetic/beta/project private");
   assert.equal((await snapshot()).history.entries.length, 2);
 
   await choose(remoteKeys[0], "one.example.invalid");
@@ -229,10 +242,13 @@ try {
   await editor.getByRole("button", { name: "取消", exact: true }).click();
   await editor.waitFor({ state: "detached" });
   await detail.getByRole("button", { name: "关闭详情", exact: true }).click();
+  await panel.getByRole("combobox", { name: "远端仓库", exact: true }).click();
+  await page.getByRole("option", { name: "private", exact: true }).click();
+  await waitRow("remote-one /synthetic/alpha/project private");
   await choose(remoteKeys[1], "two.example.invalid");
   await waitRow("remote-two /synthetic/alpha/project origin");
   await page.getByRole("button", { name: "后退", exact: true }).click();
-  await waitRow("remote-one /synthetic/alpha/project origin");
+  await waitRow("remote-one /synthetic/alpha/project private");
   await page.getByRole("button", { name: "前进", exact: true }).click();
   await waitRow("remote-two /synthetic/alpha/project origin");
 
@@ -252,7 +268,8 @@ try {
     localDiscoveries,
   );
   await choose(remoteKeys[0], "one.example.invalid");
-  await waitRow("remote-one /synthetic/alpha/project origin");
+  await waitRow("remote-one /synthetic/alpha/project private");
+  await assertDisconnectedRepositoryMemory({ page, remoteKeys, waitRow });
 
   await page.evaluate(() => {
     window.__projects.delayDiscovery = true;
@@ -260,12 +277,12 @@ try {
   await panel.getByRole("button", { name: "刷新", exact: true }).click();
   await page.waitForFunction(() => window.__projects.pending.length === 1);
   await choose("/synthetic/beta/project", "beta");
-  await waitRow("local /synthetic/beta/project origin");
+  await waitRow("local /synthetic/beta/project private");
   await page.evaluate(() => window.__projects.pending.shift()());
   await page.evaluate(
     () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   );
-  assert.match(await row().innerText(), /local \/synthetic\/beta\/project origin/);
+  assert.match(await row().innerText(), /local \/synthetic\/beta\/project private/);
 
   await choose("/synthetic/non-git", "non-git");
   await panel.getByText("当前项目不是 Git 仓库。", { exact: true }).waitFor();
@@ -330,7 +347,7 @@ try {
     }),
   );
   await page.getByRole("button", { name: "后退", exact: true }).click();
-  await waitRow("local /synthetic/beta/project origin");
+  await waitRow("local /synthetic/beta/project private");
   assert.equal((await snapshot()).history.cursor, 0);
   await page.getByRole("button", { name: "前进", exact: true }).click();
   await waitRow("local /synthetic/worktrees/abcd/project origin");
@@ -371,6 +388,10 @@ try {
     await picker().waitFor({ state: "detached" });
   }
   assert.deepEqual(errors, []);
+  await choose("/synthetic/beta/project", "beta");
+  await waitRow("local /synthetic/beta/project private");
+  await assertRepositorySelectionMemory({ page, panel, waitRow });
+  await assertRepositorySelectionReload({ page, panel, waitRow, choose });
   process.stdout.write(
     `PASS: repository project search, scroll, keyboard, empty states, exact local/remote/worktree navigation, history, stale replies, task/draft preservation and responsive themes. Screenshots: ${artifacts}\n`,
   );
