@@ -1,0 +1,265 @@
+<div id="zcode-issue-walkthrough">
+  <div class="z-preview-head"><span class="z-eyebrow">交互方案预览</span><span class="z-muted">示例数据 · 可点击体验</span></div>
+  <nav class="z-steps" aria-label="议题处理步骤"></nav>
+  <div class="z-window">
+    <header class="z-chrome"><span class="z-brand"><i data-lucide="command" aria-hidden="true"></i>ZCode</span><span class="z-project">topology <span class="z-muted">/ 工作空间</span></span><span class="z-preview-pill">方案预览</span></header>
+    <div class="z-body">
+      <aside class="z-sidebar">
+        <div class="z-workspace"><span class="z-avatar">T</span><div>topology<small class="z-muted">本地工作空间</small></div></div>
+        <div class="z-side-item"><i data-lucide="message-square" aria-hidden="true"></i>对话<span class="z-muted z-count">1</span></div>
+        <div class="z-side-item" data-side="task"><i data-lucide="list-checks" aria-hidden="true"></i>工作任务<span class="z-muted z-count">1</span></div>
+        <div class="z-side-item" data-side="repo"><i data-lucide="git-fork" aria-hidden="true"></i>代码仓库</div>
+        <div class="z-side-foot"><span class="z-dot"></span>主智能体保持当前对话</div>
+      </aside>
+      <main class="z-main" aria-label="当前操作页面"></main>
+    </div>
+  </div>
+  <div class="z-bottom"><button type="button" class="z-button z-quiet" data-action="previous"><i data-lucide="arrow-left" aria-hidden="true"></i>上一步</button><span class="z-muted" aria-live="polite" data-progress></span><button type="button" class="z-button z-quiet" data-action="next">查看下一步<i data-lucide="arrow-right" aria-hidden="true"></i></button></div>
+</div>
+<style>
+#zcode-issue-walkthrough {
+  --z-bg: light-dark(#ffffff,#18191c); --z-pane: light-dark(#f7f8fa,#202125); --z-soft: light-dark(#f0f2f5,#292b30);
+  --z-fg: light-dark(#24272e,#eceef2); --z-muted: light-dark(#646c7b,#a3abb9); --z-line: light-dark(#e4e7ec,#353840);
+  --z-primary: light-dark(#292d35,#eceef3); --z-onprimary: light-dark(#ffffff,#20232a);
+  --z-blue: light-dark(#3567c8,#99bbff); --z-bluebg: light-dark(#edf3ff,#26334e);
+  --z-green: light-dark(#23744c,#88d7ad); --z-greenbg: light-dark(#eaf6ef,#203a2d);
+  --z-amber: light-dark(#8c6016,#f0c574); --z-amberbg: light-dark(#fff5df,#3b3220);
+  --z-shadow: light-dark(#17233b12,#00000024);
+  color:var(--z-fg); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif; width:100%;
+}
+#zcode-issue-walkthrough * { box-sizing:border-box; }
+#zcode-issue-walkthrough button,#zcode-issue-walkthrough input,#zcode-issue-walkthrough select,#zcode-issue-walkthrough textarea { font:inherit; }
+#zcode-issue-walkthrough button { color:inherit; }
+#zcode-issue-walkthrough [hidden] { display:none !important; }
+#zcode-issue-walkthrough .z-preview-head { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:4px 100px 16px 0; }
+#zcode-issue-walkthrough .z-eyebrow { font-size:13px; font-weight:500; }
+#zcode-issue-walkthrough .z-muted { color:var(--z-muted); }
+#zcode-issue-walkthrough .z-steps { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; margin-bottom:16px; }
+#zcode-issue-walkthrough .z-step { display:flex; gap:8px; align-items:center; padding:10px 8px; border:0; border-bottom:2px solid var(--z-line); background:transparent; text-align:left; font-size:12px; }
+#zcode-issue-walkthrough .z-step-num { display:grid; place-items:center; width:23px; height:23px; flex-shrink:0; background:var(--z-soft); color:var(--z-muted); border-radius:7px; font-variant-numeric:tabular-nums; }
+#zcode-issue-walkthrough .z-step[aria-current="step"] { border-bottom-color:var(--z-blue); color:var(--z-blue); font-weight:500; }
+#zcode-issue-walkthrough .z-step[aria-current="step"] .z-step-num { background:var(--z-bluebg); color:var(--z-blue); }
+#zcode-issue-walkthrough .z-window { border:1px solid var(--z-line); border-radius:12px; overflow:hidden; background:var(--z-bg); box-shadow:0 8px 26px var(--z-shadow); }
+#zcode-issue-walkthrough .z-chrome { display:flex; align-items:center; flex-wrap:wrap; gap:20px; padding:13px 18px; border-bottom:1px solid var(--z-line); background:var(--z-pane); font-size:12px; }
+#zcode-issue-walkthrough .z-brand { display:flex; align-items:center; gap:7px; font-weight:500; }
+#zcode-issue-walkthrough svg { width:16px; height:16px; flex-shrink:0; }
+#zcode-issue-walkthrough .z-project { flex:1; }
+#zcode-issue-walkthrough .z-preview-pill { color:var(--z-muted); border:1px solid var(--z-line); padding:2px 7px; border-radius:5px; font-size:11px; }
+#zcode-issue-walkthrough .z-body { display:grid; grid-template-columns:174px minmax(0,1fr); min-height:566px; }
+#zcode-issue-walkthrough .z-sidebar { background:var(--z-pane); border-right:1px solid var(--z-line); padding:20px 12px; display:flex; flex-direction:column; gap:7px; }
+#zcode-issue-walkthrough .z-workspace { display:flex; align-items:center; gap:9px; margin:0 5px 23px; font-weight:500; font-size:13px; }
+#zcode-issue-walkthrough small { display:block; font-size:11px; font-weight:400; }
+#zcode-issue-walkthrough .z-avatar { width:30px; height:30px; border-radius:8px; display:grid; place-items:center; background:var(--z-soft); }
+#zcode-issue-walkthrough .z-side-item { display:flex; align-items:center; gap:9px; border-radius:6px; padding:8px 10px; color:var(--z-muted); font-size:13px; }
+#zcode-issue-walkthrough .z-side-item.z-selected { background:var(--z-soft); color:var(--z-fg); }
+#zcode-issue-walkthrough .z-count { margin-left:auto; font-size:11px; }
+#zcode-issue-walkthrough .z-side-foot { margin-top:auto; padding:30px 8px 0; font-size:11px; color:var(--z-muted); display:flex; align-items:center; gap:6px; }
+#zcode-issue-walkthrough .z-dot { width:6px; height:6px; background:var(--z-green); border-radius:50%; flex-shrink:0; }
+#zcode-issue-walkthrough .z-main { min-width:0; padding:25px 28px 28px; }
+#zcode-issue-walkthrough .z-section-label { color:var(--z-blue); font-size:12px; font-weight:500; margin-bottom:7px; display:flex; align-items:center; gap:6px; }
+#zcode-issue-walkthrough h2 { font-size:22px; font-weight:500; line-height:1.4; margin:0 0 7px; letter-spacing:-.4px; color:var(--z-fg); }
+#zcode-issue-walkthrough .z-subtitle { color:var(--z-muted); font-size:13px; margin:0 0 22px; }
+#zcode-issue-walkthrough h3 { font-size:14px; font-weight:500; color:var(--z-fg); margin:0; }
+#zcode-issue-walkthrough .z-panel { border:1px solid var(--z-line); border-radius:9px; background:var(--z-bg); overflow:hidden; }
+#zcode-issue-walkthrough .z-panel-head { padding:13px 16px; background:var(--z-pane); border-bottom:1px solid var(--z-line); display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+#zcode-issue-walkthrough .z-panel-body { padding:18px; }
+#zcode-issue-walkthrough .z-flex { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+#zcode-issue-walkthrough .z-spread { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+#zcode-issue-walkthrough .z-tabs { display:flex; gap:22px; border-bottom:1px solid var(--z-line); margin-bottom:4px; color:var(--z-muted); font-size:13px; }
+#zcode-issue-walkthrough .z-tab { padding:13px 0 11px; }
+#zcode-issue-walkthrough .z-tab.z-active { color:var(--z-fg); border-bottom:2px solid var(--z-fg); font-weight:500; }
+#zcode-issue-walkthrough .z-issue-row { padding:20px 2px; border-bottom:1px solid var(--z-line); display:flex; gap:12px; align-items:flex-start; }
+#zcode-issue-walkthrough .z-issue-row>svg { color:var(--z-green); margin-top:3px; }
+#zcode-issue-walkthrough .z-issue-info { flex:1; min-width:0; }
+#zcode-issue-walkthrough .z-issue-info h3 { margin-bottom:6px; }
+#zcode-issue-walkthrough .z-meta { color:var(--z-muted); font-size:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+#zcode-issue-walkthrough .z-button { display:inline-flex; align-items:center; justify-content:center; gap:6px; border:1px solid var(--z-line); border-radius:6px; padding:8px 13px; background:var(--z-bg); font-size:13px; font-weight:500; min-height:36px; }
+#zcode-issue-walkthrough .z-button.z-primary { background:var(--z-primary); border-color:var(--z-primary); color:var(--z-onprimary); }
+#zcode-issue-walkthrough .z-button.z-quiet { background:transparent; border-color:transparent; color:var(--z-muted); font-weight:400; }
+#zcode-issue-walkthrough button:disabled { opacity:.4; cursor:default; }
+#zcode-issue-walkthrough .z-badge { display:inline-flex; align-items:center; gap:5px; border-radius:5px; padding:3px 7px; font-size:11px; font-weight:500; background:var(--z-soft); color:var(--z-muted); }
+#zcode-issue-walkthrough .z-badge.z-open,#zcode-issue-walkthrough .z-badge.z-done { color:var(--z-green); background:var(--z-greenbg); }
+#zcode-issue-walkthrough .z-badge.z-review { color:var(--z-amber); background:var(--z-amberbg); }
+#zcode-issue-walkthrough .z-badge.z-running { color:var(--z-blue); background:var(--z-bluebg); }
+#zcode-issue-walkthrough .z-source { display:flex; gap:7px; align-items:center; padding:11px 12px; font-size:12px; background:var(--z-pane); border-radius:6px; margin-bottom:17px; flex-wrap:wrap; }
+#zcode-issue-walkthrough .z-source strong { font-weight:500; }
+#zcode-issue-walkthrough .z-field { display:block; margin-bottom:16px; font-size:12px; font-weight:500; }
+#zcode-issue-walkthrough .z-field>span { display:block; margin-bottom:6px; }
+#zcode-issue-walkthrough input[type=text],#zcode-issue-walkthrough textarea,#zcode-issue-walkthrough select { width:100%; min-width:0; background:var(--z-bg); color:var(--z-fg); border:1px solid var(--z-line); border-radius:6px; padding:9px 11px; font-size:13px; font-weight:400; }
+#zcode-issue-walkthrough textarea { min-height:95px; resize:vertical; display:block; }
+#zcode-issue-walkthrough .z-fields-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+#zcode-issue-walkthrough .z-hint { color:var(--z-muted); font-size:11px; margin:6px 0 0; font-weight:400; }
+#zcode-issue-walkthrough .z-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; border-top:1px solid var(--z-line); padding-top:16px; margin-top:18px; }
+#zcode-issue-walkthrough .z-detail-row { display:grid; grid-template-columns:90px minmax(0,1fr); gap:12px; padding:12px 0; border-bottom:1px solid var(--z-line); font-size:13px; }
+#zcode-issue-walkthrough .z-detail-row:last-child { border:0; }
+#zcode-issue-walkthrough .z-detail-label { color:var(--z-muted); }
+#zcode-issue-walkthrough .z-task-title { font-size:17px; font-weight:500; margin:12px 0; }
+#zcode-issue-walkthrough .z-status-note { display:flex; align-items:flex-start; gap:10px; padding:15px; background:var(--z-pane); border-radius:7px; margin-top:18px; font-size:13px; }
+#zcode-issue-walkthrough .z-status-note>svg { color:var(--z-blue); margin-top:2px; }
+#zcode-issue-walkthrough .z-status-note p { margin:3px 0 0; color:var(--z-muted); font-size:12px; }
+#zcode-issue-walkthrough .z-review-block { padding:13px 0; border-bottom:1px solid var(--z-line); }
+#zcode-issue-walkthrough .z-review-block:last-child { border:0; }
+#zcode-issue-walkthrough .z-review-block h3 { margin-bottom:6px; font-size:13px; }
+#zcode-issue-walkthrough .z-review-block p { color:var(--z-muted); font-size:13px; margin:0; }
+#zcode-issue-walkthrough .z-file { display:flex; gap:7px; align-items:center; color:var(--z-muted); font-size:12px; margin-top:5px; }
+#zcode-issue-walkthrough .z-choice { display:flex; gap:10px; align-items:flex-start; padding:13px 12px; border:1px solid var(--z-line); border-radius:7px; margin:10px 0; background:var(--z-bg); font-size:13px; }
+#zcode-issue-walkthrough .z-choice:has(input:checked) { border-color:var(--z-blue); background:var(--z-bluebg); }
+#zcode-issue-walkthrough .z-choice input { margin:4px 0 0; accent-color:var(--z-blue); }
+#zcode-issue-walkthrough .z-choice small { margin-top:3px; color:var(--z-muted); font-size:12px; }
+#zcode-issue-walkthrough .z-timeline { margin-top:22px; }
+#zcode-issue-walkthrough .z-event { display:grid; grid-template-columns:28px minmax(0,1fr); gap:12px; position:relative; padding-bottom:22px; }
+#zcode-issue-walkthrough .z-event:not(:last-child):before { content:""; position:absolute; left:13px; top:29px; bottom:0; width:1px; background:var(--z-line); }
+#zcode-issue-walkthrough .z-event-mark { width:28px; height:28px; background:var(--z-soft); border:1px solid var(--z-line); border-radius:50%; display:grid; place-items:center; }
+#zcode-issue-walkthrough .z-event-head { padding:3px 0 9px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; }
+#zcode-issue-walkthrough .z-comment { border:1px solid var(--z-line); border-radius:7px; padding:16px; font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; }
+#zcode-issue-walkthrough .z-comment-title { font-weight:500; margin-bottom:8px; }
+#zcode-issue-walkthrough .z-receipt { display:flex; gap:12px; flex-wrap:wrap; padding:12px; background:var(--z-greenbg); color:var(--z-green); font-size:12px; border-radius:6px; margin-top:16px; }
+#zcode-issue-walkthrough .z-receipt>span { display:inline-flex; align-items:center; gap:5px; }
+#zcode-issue-walkthrough .z-bottom { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:13px; font-size:12px; }
+@media(max-width:720px) {
+  #zcode-issue-walkthrough .z-body { grid-template-columns:1fr; min-height:0; }
+  #zcode-issue-walkthrough .z-sidebar { display:none; }
+  #zcode-issue-walkthrough .z-steps { grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; }
+  #zcode-issue-walkthrough .z-main { padding:22px 20px; }
+}
+@media(max-width:430px) {
+  #zcode-issue-walkthrough .z-preview-head { gap:5px; padding-right:90px; font-size:11px; }
+  #zcode-issue-walkthrough .z-chrome { gap:12px; padding:12px; }
+  #zcode-issue-walkthrough .z-preview-pill { display:none; }
+  #zcode-issue-walkthrough .z-main { padding:18px 14px; }
+  #zcode-issue-walkthrough h2 { font-size:20px; }
+  #zcode-issue-walkthrough .z-step { padding:8px 2px; gap:5px; font-size:11px; }
+  #zcode-issue-walkthrough .z-fields-row { grid-template-columns:1fr; gap:0; }
+  #zcode-issue-walkthrough input[type=text],#zcode-issue-walkthrough select,#zcode-issue-walkthrough textarea { font-size:16px; }
+  #zcode-issue-walkthrough .z-panel-body { padding:13px; }
+  #zcode-issue-walkthrough .z-issue-row { flex-wrap:wrap; }
+  #zcode-issue-walkthrough .z-issue-row>.z-button { margin-left:28px; }
+  #zcode-issue-walkthrough .z-bottom { flex-wrap:wrap; }
+  #zcode-issue-walkthrough .z-bottom [data-progress] { order:-1; width:100%; text-align:center; }
+  #zcode-issue-walkthrough .z-detail-row { grid-template-columns:70px minmax(0,1fr); gap:8px; }
+}
+@media(pointer:coarse) { #zcode-issue-walkthrough .z-button,#zcode-issue-walkthrough .z-step { min-height:44px; } }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('zcode-issue-walkthrough');
+  const main = root.querySelector('.z-main');
+  const stepNames = ['找到议题','指定智能体','开始任务','验收结果','同步议题','查看记录'];
+  const initial = { step:0, started:false, agent:'Codex · ACP', branch:'main', title:'修复：画布关联蓝线存在异常', choice:'comment', appliedChoice:'comment', synced:false, skipped:false,
+    prompt:'请调查并修复议题 #7：画布关联蓝线存在异常。\n\n检查连线关联与画布更新行为，补充回归验证。完成后给出原因、修改范围和实际验证结果，等待验收。',
+    summary:'处理结论（示例）\n原因：连线关联更新后，画布引用未同步刷新。\n修改：统一关联更新入口，并同步刷新连线。\n验证：示例验收项为切换关联、删除重连、保存后重新打开；实际执行结果由任务填写。\n交付：本地修改待审阅；提交 / MR 链接按实际情况补充。' };
+  let state = { ...initial };
+  let revision = -1;
+  const esc = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`;
+  const source = () => `<div class="z-source">${icon('link')}<span class="z-muted">关联议题</span><strong>person/topology · #7</strong><span class="z-muted">画布关联蓝线存在异常</span></div>`;
+  const button = (label,action,primary=false,iconName='') => `<button type="button" class="z-button ${primary?'z-primary':''} cursor-interaction" data-action="${action}">${iconName?icon(iconName):''}${label}</button>`;
+  const heading = (label,title,subtitle) => `<div class="z-section-label">${label}</div><h2>${title}</h2><p class="z-subtitle">${subtitle}</p>`;
+  function restore(snapshot) {
+    const saved = snapshot?.privateContent;
+    if (!saved || saved.version!==1) return false;
+    const incomingRevision = Number.isSafeInteger(saved.revision) ? saved.revision : 0;
+    if (incomingRevision<=revision) return false;
+    revision=incomingRevision;
+    for (const key of Object.keys(initial)) {
+      if (typeof saved[key]===typeof initial[key]) state[key] = saved[key];
+    }
+    state.step = Math.max(0,Math.min(5,Math.floor(state.step)));
+    if (!['comment','close'].includes(state.choice)) state.choice='comment';
+    return true;
+  }
+  function persist() {
+    revision++;
+    if (window.openai?.setWidgetState) window.openai.setWidgetState({ modelContent:{preview:'ZCode 议题处理流程',step:stepNames[state.step],executor:state.agent,feedback:state.choice==='close'?'记录后关闭议题':'仅记录结果'}, privateContent:{version:1,revision,...state} }).catch(()=>{});
+  }
+  function render() {
+    root.querySelector('.z-steps').innerHTML = stepNames.map((name,index)=>`<button type="button" class="z-step cursor-interaction" data-step="${index}" ${state.step===index?'aria-current="step"':''}><span class="z-step-num">${index+1}</span><span>${name}</span></button>`).join('');
+    root.querySelector('[data-side="repo"]').classList.toggle('z-selected',state.step===0||state.step===5);
+    root.querySelector('[data-side="task"]').classList.toggle('z-selected',state.step>0&&state.step<5);
+    root.querySelector('[data-progress]').textContent = `第 ${state.step+1} 步 / 共 6 步`;
+    root.querySelector('[data-action="previous"]').disabled = state.step===0;
+    root.querySelector('[data-action="next"]').disabled = state.step===5;
+    if (state.step===0) {
+      main.innerHTML = heading('01 / 代码仓库','找到议题，点击「处理」','从议题创建工作任务，保留来源关联。')+
+      `<div class="z-spread"><h3 class="z-flex">${icon('git-fork')}person/topology</h3><span class="z-badge">GitLab</span></div>
+       <div class="z-tabs"><span class="z-tab z-active">议题 <span class="z-muted">1</span></span><span class="z-tab">合并请求</span></div>
+       <div class="z-issue-row">${icon('circle-dot')}<div class="z-issue-info"><h3>画布关联蓝线存在异常</h3><div class="z-meta"><span>#7</span><span>打开</span><span>刚刚更新</span></div></div>${button('处理','create',true,'sparkles')}</div>
+       <div class="z-status-note">${icon('mouse-pointer-2')}<div>先选择执行智能体<p>点击「处理」后进入任务创建窗口，保存前可调整智能体与任务要求。</p></div></div>`;
+    } else if (state.step===1) {
+      main.innerHTML = heading('02 / 创建工作任务','选择由哪个智能体处理','只传递议题和任务要求，当前主智能体保持不变。')+
+       `<section class="z-panel" aria-label="新建任务"><div class="z-panel-head">${icon('list-plus')}<h3>新建任务</h3></div><div class="z-panel-body">${source()}
+       <label class="z-field"><span>任务名称</span><input type="text" data-field="title" value="${esc(state.title)}"></label>
+       <div class="z-fields-row"><label class="z-field"><span>执行智能体</span><select data-field="agent">${['Codex · ACP','Claude Code · ACP','API · 项目已配置模型'].map(a=>`<option ${state.agent===a?'selected':''}>${a}</option>`).join('')}</select><p class="z-hint">示例选项；实际显示项目可用的智能体。</p></label>
+       <label class="z-field"><span>基准分支</span><select data-field="branch">${['main','当前工作分支'].map(b=>`<option ${state.branch===b?'selected':''}>${b}</option>`).join('')}</select><p class="z-hint">运行位置：独立工作树</p></label></div>
+       <label class="z-field"><span>任务要求</span><textarea data-field="prompt" aria-label="任务要求">${esc(state.prompt)}</textarea></label>
+       <div class="z-actions">${button('取消','cancel')}${button('加入待办','save',true,'plus')}</div></div></section>`;
+    } else if (state.step===2) {
+      main.innerHTML = heading('03 / 工作任务',state.started?'任务正在执行':'任务已创建，点击「开始」',state.started?'执行结束后进入待审阅，等待你验收。':'保存不会立即运行，确认配置后再开始。')+
+       `<section class="z-panel"><div class="z-panel-head"><span class="z-muted">TASK-024 · 示例任务</span><span class="z-badge ${state.started?'z-running':''}">${state.started?'运行中':'待办'}</span></div><div class="z-panel-body"><div class="z-task-title">${esc(state.title)}</div>${source()}
+       <div class="z-detail-row"><span class="z-detail-label">执行智能体</span><span>${esc(state.agent)}</span></div><div class="z-detail-row"><span class="z-detail-label">工作环境</span><span>独立工作树 · ${esc(state.branch)}</span></div><div class="z-detail-row"><span class="z-detail-label">议题状态</span><span>打开</span></div>
+       <div class="z-status-note">${icon(state.started?'loader-circle':'circle-play')}<div>${state.started?'正在调查关联更新与连线刷新逻辑…':'准备好后开始执行'}<p>${state.started?'完成只生成结果，不自动合并、推送或关闭议题。':'所选智能体在此任务内执行，原对话保留。'}</p></div></div>
+       <div class="z-actions">${state.started?button('模拟执行完成','review',true,'check'):button('开始','start',true,'play')}</div></div></section>`;
+    } else if (state.step===3) {
+      main.innerHTML = heading('04 / 结果审阅','检查结果，再确认完成','以下为示例内容；实际展示智能体的执行结果和验证记录。')+
+       `<section class="z-panel"><div class="z-panel-head"><h3>TASK-024</h3><span class="z-badge z-review">待审阅</span><span class="z-muted">示例结果</span></div><div class="z-panel-body">
+       <div class="z-review-block"><h3>原因与修改</h3><p>示例：关联更新后画布引用未同步刷新。统一关联更新入口，补齐连线刷新。</p></div>
+       <div class="z-review-block"><h3>改动范围</h3><div class="z-file">${icon('file-code-2')}连线关联逻辑</div><div class="z-file">${icon('file-check-2')}画布交互回归场景</div></div>
+       <div class="z-review-block"><h3>验证记录</h3><p>展示实际执行的检查、结果及未验证项。预览中的切换关联、删除重连、保存重开仅为验收示例。</p></div>
+       <div class="z-review-block"><h3>交付状态</h3><p>本地修改待审阅 · 尚未提交 / 推送 / 合并</p></div>
+       <div class="z-actions">${button('继续修改','revise')}${button('确认完成…','complete',true,'check')}</div></div></section>`;
+    } else if (state.step===4) {
+      main.innerHTML = heading('05 / 完成与反馈','处理结果怎么回到议题？','编辑要写回的摘要，再决定是否同时关闭议题。')+
+       `<section class="z-panel"><div class="z-panel-head">${icon('message-square-text')}<h3>完成任务并同步议题</h3></div><div class="z-panel-body">${source()}
+       <label class="z-field"><span>处理摘要</span><textarea data-field="summary" style="min-height:170px">${esc(state.summary)}</textarea><p class="z-hint">附带任务编号；只写摘要，不复制完整对话。提交或 MR 链接按实际情况补充。</p></label>
+       <label class="z-choice cursor-interaction"><input type="radio" name="z-feedback" value="comment" ${state.choice==='comment'?'checked':''}><span>仅记录处理结果<small>向议题添加评论，议题保持打开。</small></span></label>
+       <label class="z-choice cursor-interaction"><input type="radio" name="z-feedback" value="close" ${state.choice==='close'?'checked':''}><span>记录结果并关闭议题<small>先添加评论，成功后再关闭议题。</small></span></label>
+       <div class="z-actions">${button('暂不同步，仅完成任务','skip')}${button(state.choice==='close'?'完成、记录并关闭':'完成并记录结果','sync',true,'check')}</div></div></section>`;
+    } else {
+      const closed = state.synced&&state.appliedChoice==='close';
+      const done = state.synced||state.skipped;
+      main.innerHTML = heading('06 / 议题记录',closed?'议题已关闭，处理过程可追溯':state.synced?'结果已记录，议题保持打开':state.skipped?'任务已完成，议题暂未同步':'回到议题查看处理记录','任务结果写入评论，关闭操作单独显示在议题时间线。')+
+       `<div class="z-spread"><h3>#7 画布关联蓝线存在异常</h3><span class="z-badge ${closed?'':'z-open'}">${icon(closed?'circle-check':'circle-dot')}${closed?'已关闭':'打开'}</span></div>
+       <div class="z-meta" style="margin-top:9px">person/topology<span>GitLab 议题</span></div>
+       <div class="z-timeline"><div class="z-event"><span class="z-event-mark">${icon('circle-dot')}</span><div><div class="z-event-head">创建了议题<span class="z-muted">较早前</span></div><p class="z-muted" style="font-size:13px;margin:0">画布关联蓝线存在异常，请排查关联更新行为。</p></div></div>
+       ${state.synced?`<div class="z-event"><span class="z-event-mark">${icon('message-square')}</span><div><div class="z-event-head">当前仓库账号添加了评论<span class="z-muted">刚刚 · 示例</span></div><div class="z-comment"><div class="z-comment-title">任务处理结果 · TASK-024</div>${esc(state.summary)}<div class="z-meta" style="margin-top:14px">关联任务：TASK-024 · 执行智能体：${esc(state.agent)}</div></div></div></div>`:''}
+       ${closed?`<div class="z-event"><span class="z-event-mark">${icon('circle-check')}</span><div class="z-event-head">当前仓库账号关闭了议题<span class="z-muted">评论写入后</span></div></div>`:''}</div>
+       ${done?`<div class="z-receipt"><span>${icon('check')} 任务：已完成</span><span>议题：${closed?'已关闭':'打开'}</span><span>结果：${state.synced?'已写入评论':'暂未同步'}</span></div>`:`<div class="z-status-note">${icon('message-square')}<div>还没有写回处理结果<p>回到上一步选择同步方式，即可看到评论和关闭记录。</p></div></div>`}
+       <div class="z-actions">${button('返回同步设置','settings')}${button('从头体验','reset')}</div>`;
+    }
+    if (globalThis.lucide) lucide.createIcons({attrs:{width:16,height:16}});
+  }
+  root.addEventListener('click',event=>{
+    const target = event.target.closest('button');
+    if (!target||!root.contains(target)||target.disabled) return;
+    if (target.hasAttribute('data-step')) state.step=Number(target.dataset.step);
+    else switch(target.dataset.action) {
+      case 'previous': state.step=Math.max(0,state.step-1); break;
+      case 'next': state.step=Math.min(5,state.step+1); break;
+      case 'create': state.step=1; break;
+      case 'cancel': state.step=0; break;
+      case 'save': state.step=2; state.started=false; state.synced=false; state.skipped=false; break;
+      case 'start': state.started=true; break;
+      case 'review': state.step=3; break;
+      case 'revise': state.step=2; state.started=false; break;
+      case 'complete': case 'settings': state.step=4; break;
+      case 'sync': state.synced=true; state.appliedChoice=state.choice; state.skipped=false; state.step=5; break;
+      case 'skip': state.skipped=true; state.synced=false; state.step=5; break;
+      case 'reset': state={...initial}; break;
+      default:return;
+    }
+    render(); persist();
+  });
+  root.addEventListener('input',event=>{
+    const field=event.target.dataset.field;
+    if (field&&Object.hasOwn(initial,field)) { state[field]=event.target.value; }
+  });
+  root.addEventListener('change',event=>{
+    if (event.target.name==='z-feedback') { state.choice=event.target.value; render(); }
+    persist();
+  });
+  restore(window.openai?.widgetState); render();
+  window.addEventListener('openai:set_globals',event=>{
+    if (restore(event.detail?.globals?.widgetState)) render();
+  });
+})();
+</script>

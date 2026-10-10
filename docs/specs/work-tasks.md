@@ -231,6 +231,8 @@ desktop: 原会话 continuous + 任务事实事件；mobile: 同一 Host 重读 
 
 此查询用于目标干净校验、任务是否需要提交、来源/处理工作树的最终校验，以及持有目标 index 锁后的再次检查。大输出本身不能成为 `git status output exceeded limit`，但非零退出、超时和 stderr 超限仍失败，不能把错误或截断解释成干净。任意未忽略的未跟踪文件或目录仍算脏；目标脏时在提交任务前拒绝，保留 `work-task.merge-target-dirty`，不自动忽略、暂存、stash、提交或删除用户文件。任务状态、Host owner/lease/runSeq、API/ACP 准入与合并发布顺序不变。
 
+桌面 scheduler 的 `packages/desktop/src/scheduler/schedulerProtocol.d.ts.map` 是可再生的 TypeScript 声明映射，由仓库根 `.gitignore` 精确忽略；只有该生成物时不应触发目标脏检查，其他未忽略文件仍阻止合并。不改变合并服务的状态判定规则，也不扩大为忽略全部 source map。
+
 ```text
 原 Host 合并认领 -> Git 存在性查询（首字节 + 等待真实退出）
   -> 干净：继续原提交/隔离合并/发布前复检
