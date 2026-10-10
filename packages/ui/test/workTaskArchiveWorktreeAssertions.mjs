@@ -235,6 +235,13 @@ export async function exerciseWorkTaskArchiveWorktree(page, artifacts) {
       }, theme);
       for (const width of [1280, 320]) {
         await page.setViewportSize({ width, height: 850 });
+        // ResizeObserver 更新后才能判断返回按钮，避免仍按桌面布局读取而漏掉手机返回。
+        await page.waitForFunction(
+          (width) =>
+            document.getElementById("work-task-workbench")?.getAttribute("data-wide") ===
+            String(width >= 768),
+          width,
+        );
         if (width === 320) {
           const back = panel.getByRole("button", { name: "返回待办", exact: true });
           if (await back.isVisible()) await back.click();
