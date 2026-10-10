@@ -14,7 +14,7 @@ import {
   type TouchEvent as ReactTouchEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { observeElementOffset, useVirtualizer, type Virtualizer } from "@tanstack/react-virtual";
 import { ArrowDownIcon } from "lucide-react";
 import { TID_V4_TIMELINE, TID_V4_TIMELINE_BOTTOM } from "@zcode/shared";
 import type {
@@ -722,6 +722,26 @@ function ConversationTimelineImpl({
   );
 
   const getScrollElement = useCallback(() => scrollRef.current, []);
+  const syncObservedScrollOffsetRef = useRef<((offset: number) => void) | null>(null);
+  const observeTimelineOffset = useCallback(
+    (
+      instance: Virtualizer<HTMLDivElement, Element>,
+      onOffset: (offset: number, isScrolling: boolean) => void,
+    ) => {
+      // 库的 offset observer 继续唯一写入虚拟坐标；layout 恢复通过同一回调同步，
+      // 不直接改 virtualizer 内部字段，也不把布局恢复标为用户滚动。
+      const syncOffset = (offset: number) => onOffset(offset, false);
+      syncObservedScrollOffsetRef.current = syncOffset;
+      const dispose = observeElementOffset(instance, onOffset);
+      return () => {
+        if (syncObservedScrollOffsetRef.current === syncOffset) {
+          syncObservedScrollOffsetRef.current = null;
+        }
+        dispose?.();
+      };
+    },
+    [],
+  );
   // virtualizer 以 getItemKey 的引用判断顺序是否变化。只从 ref 读 key 会让同数量
   // 的新窗口沿用旧位置；以 key 序列失效，正文流式更新但顺序不变时保持稳定。
   const virtualizedUnitKeys = JSON.stringify(virtualizedUnits.map((unit) => unit.key));
@@ -762,6 +782,7 @@ function ConversationTimelineImpl({
   const virtualizer = useVirtualizer({
     count: virtualizedUnits.length,
     getScrollElement,
+    observeElementOffset: observeTimelineOffset,
     estimateSize,
     overscan: ROW_OVERSCAN,
     getItemKey,
@@ -782,21 +803,32 @@ function ConversationTimelineImpl({
   };
   const virtualRows = virtualizer.getVirtualItems();
   const totalSize = virtualizer.getTotalSize();
+  const mountedHistoryRowsKey = JSON.stringify(virtualRows.map((row) => row.key));
+  const measuredHistoryIdentityRef = useRef<typeof getItemKey | null>(null);
   useLayoutEffect(() => {
-    // 切换时旧视口可能仍被 virtualizer 标记为 isScrolling，ref 测高会因此跳过。
-    // 只在会话/行序列变化时于绘制前测量当前挂载窗口，避免等待下一轮 RO 才消除重叠；
-    // 流式正文和普通用户滚动仍沿用原有 ResizeObserver 路径。
+    // Issue #50：大量历史切换后贴底会挂载另一个窗口，isScrolling 使新行 ref 跳过测高。
+    // 仅依赖全量 key 序列会漏掉这个 commit；按挂载窗口身份在绘制前协调高度，
+    // 避免新行以 72px 估计间距重叠。窗口不变时的流式测高仍走 ResizeObserver。
+    const scrollElement = scrollRef.current;
+    if (scrollElement && virtualizer.scrollOffset !== scrollElement.scrollTop) {
+      // 恢复已写入真实 scrollTop，但原生 scroll 尚未派发。先经同一 offset observer 协调视口，
+      // 否则旧 offset 会让同步测量遍历无关窗口，甚至触发 React 更新深度上限。
+      syncObservedScrollOffsetRef.current?.(scrollElement.scrollTop);
+    }
     const elements = virtualHistoryRef.current?.children;
     if (!elements) return;
     const previousSuppression = suppressVirtualizerAdjustmentDuringRestoreRef.current;
-    suppressVirtualizerAdjustmentDuringRestoreRef.current = true;
+    // 新窗口的普通滚动仍遵守原有尺寸变化锚定；只有身份切换或正在恢复时抑制校正。
+    suppressVirtualizerAdjustmentDuringRestoreRef.current =
+      previousSuppression || measuredHistoryIdentityRef.current !== getItemKey;
+    measuredHistoryIdentityRef.current = getItemKey;
     for (const element of elements) {
       const indexAttr = element.getAttribute("data-index");
       if (indexAttr === null) continue;
       virtualizer.resizeItem(Number(indexAttr), measureElement(element, undefined));
     }
     suppressVirtualizerAdjustmentDuringRestoreRef.current = previousSuppression;
-  }, [getItemKey, measureElement, virtualizer]);
+  }, [getItemKey, measureElement, mountedHistoryRowsKey, virtualizer]);
   const turnNavigatorVirtualItems: ConversationTurnNavigatorVirtualItem[] = useMemo(() => {
     const historyItems = virtualRows.map((row) => ({
       index: row.index,
@@ -1223,17 +1255,20 @@ function ConversationTimelineImpl({
       clearUserScrollIntent();
       markProgrammaticScroll();
       element.scrollTop = resolveChatSessionScrollRestoreTop(state, element);
+      syncObservedScrollOffsetRef.current?.(element.scrollTop);
       lastObservedScrollTopRef.current = element.scrollTop;
       followingRef.current = false;
       setBackToBottomVisible(shouldShowBackToBottom(false, unitsRef.current.length));
       syncTurnNavigatorViewport(element);
       userAdjustedScrollSinceRestoreRef.current = false;
       cacheCurrentScrollMemoryState(element);
+      notifyScrollObserversAfterCommit(element);
     },
     [
       cacheCurrentScrollMemoryState,
       clearUserScrollIntent,
       markProgrammaticScroll,
+      notifyScrollObserversAfterCommit,
       syncTurnNavigatorViewport,
     ],
   );

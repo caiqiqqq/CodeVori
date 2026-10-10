@@ -40,11 +40,14 @@ function rows(kind,offset=0,count=12){
     const id=index+offset;
     return [{id:'user:'+id,kind:'user',text:'Question '+id},
       {id:'assistant:'+id,kind:'assistant',text:kind==='short'?'Short answer '+id:
-        Array.from({length:8+id%4},(_,line)=>'Paragraph '+id+' / '+line+' — full answer.').join('\\n\\n')}];
+        Array.from({length:(kind==='long'?30:8)+id%4},(_,line)=>kind==='long'?
+          '## Paragraph '+id+' / '+line+'\\n\\nFull answer with **details** and [reference](https://example.invalid).':
+          'Paragraph '+id+' / '+line+' — full answer.').join('\\n\\n')}];
   }).flat();
   return buildAcpConversationRows({entries,status:'idle'}).map(row=>({...row,rowId:row.rowId+offset*4}));
 }
-const projections={short:rows('short'),tall:rows('tall'),shifted:rows('tall',20),
+const projections={short:rows('short'),tall:rows('tall'),largeShort:rows('short',0,120),
+  largeTall:rows('long',0,120),shifted:rows('tall',20),
   prepend:rows('tall',18,14),running:buildAcpConversationRows({entries:[
     {id:'user:0',kind:'user',text:'Running question'},
     {id:'assistant:0',kind:'assistant',text:'Running answer'}],status:'running'})};
@@ -75,7 +78,10 @@ createRoot(document.getElementById('root')!).render(<PlatformProvider platform={
     for (const theme of ["zai-light", "zai-dark"]) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       const errors = [];
-      page.on("pageerror", (error) => errors.push(error.message));
+      page.on("pageerror", (error) => {
+        errors.push(error.message);
+        console.error(error.message);
+      });
       await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://127.0.0.1:5187"}/${name}.html`);
       await page.locator('[data-ready="true"]').waitFor();
       await page.evaluate((theme) => {
@@ -224,6 +230,55 @@ createRoot(document.getElementById('root')!).render(<PlatformProvider platform={
       );
       await switchView("running", "running");
       await switchView("running", "tall");
+      // Issue #50: restoring to the bottom mounts a different window while isScrolling.
+      // Sampling a small history cannot catch refs that skip measurement in that window.
+      await switchView("draft", "empty");
+      await switchView("large-short", "largeShort");
+      await switchView("large-tall", "largeTall");
+      await switchView("large-short", "largeShort");
+      await switchView("large-tall", "largeTall");
+      const largeReadingTop = await page.evaluate(async () => {
+        window.__scroll.dispatchEvent(new WheelEvent("wheel", { deltaY: -400, bubbles: true }));
+        // Expose the first window before choosing a precise reading coordinate;
+        // a jump into unmeasured history otherwise inherits estimate-size anchoring.
+        window.__scroll.scrollTop = 0;
+        window.__scroll.dispatchEvent(new Event("scroll"));
+        await new Promise((resolve) => {
+          let frames = 0;
+          const step = () => (++frames === 18 ? resolve() : requestAnimationFrame(step));
+          requestAnimationFrame(step);
+        });
+        window.__scroll.scrollTop = 400;
+        window.__scroll.dispatchEvent(new Event("scroll"));
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        return window.__scroll.scrollTop;
+      });
+      await switchView("large-short", "largeShort");
+      await switchView("large-tall", "largeTall");
+      const largeRestoredTop = await page.evaluate(() => window.__scroll.scrollTop);
+      assert.ok(
+        Math.abs(largeRestoredTop - largeReadingTop) <= 2,
+        `Large history restores detached reading position: ${largeReadingTop} -> ${largeRestoredTop}`,
+      );
+      // Switch again before the previous window has settled; each commit must be safe to paint.
+      await page.evaluate(async () => {
+        for (const [session, kind] of [
+          ["large-short", "largeShort"],
+          ["large-tall", "largeTall"],
+          ["large-short", "largeShort"],
+        ]) {
+          window.__switchView(session, kind);
+          await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          );
+        }
+      });
+      await switchView("large-tall", "largeTall");
+      assert.ok(
+        (await page.locator("[data-v4-timeline-virtual-history] > [data-v4-turn-unit]").count()) <
+          120,
+        "Only the visible history window is mounted",
+      );
       await page.screenshot({ path: join(artifacts, `${width}-${theme}.png`) });
       const result = await page.evaluate(() => {
         window.__captureFrames = false;
