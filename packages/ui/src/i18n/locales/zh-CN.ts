@@ -1,6 +1,10 @@
 /** 中文翻译 */
 import { PRODUCT_NAME } from "@zcode/shared";
 const zhCN: Record<string, string> = {
+  "chat.visualization.title": "交互预览",
+  "chat.visualization.loading": "正在加载预览…",
+  "chat.visualization.failed": "无法加载预览，请检查工作区连接及 HTML 文件。",
+  "chat.visualization.retry": "重试",
   "settings.quickMessages.title": "快捷消息",
   "settings.quickMessages.description": "管理可复用的消息片段，拖动以调整顺序。",
   "settings.quickMessages.search": "按标题或内容搜索",
