@@ -6,7 +6,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { Emitter } from "@zcode/rpc";
+import { Emitter, type IDisposable } from "@zcode/rpc";
 import {
   parseZCodeProcessDiagnostic,
   ZCODE_AGENT_LIFECYCLE_LOG_MARKER,
@@ -29,6 +29,7 @@ import {
 import { isEffectiveDevelopmentNodeEnv } from "#src/runtime-tools/nodeEnv.js";
 import { createServiceLogger } from "#src/logger/serviceLogger.js";
 import { ZCodeProtocolClient } from "./zcodeProtocolClient.js";
+import { ZCODE_AGENT_RUNTIME_UNAVAILABLE_CODE } from "./zcodeAgent.js";
 import { ZCodeStdioTransport } from "./zcodeStdioTransport.js";
 import { readZCodeStdioTapDevState } from "./zcodeStdioTapDevConfig.js";
 import type { ZCodeAgentPresentationSurface } from "./zcodeAgentPresentationSurface.js";
@@ -540,6 +541,7 @@ export class ZCodeAgentProcessManager {
   private readonly ownedProcesses = new Set<ManagedZCodeAgentProcess>();
   private readonly startingByWorkspaceKey = new Map<string, Promise<ZCodeProtocolClient>>();
   private readonly restartGenerationByWorkspaceKey = new Map<string, number>();
+  private readonly workspaceStartBlocks = new Map<string, number>();
   private readonly runtimeGenerationByWorkspaceKey = new Map<string, number>();
   private readonly availableRuntimeIdentityByWorkspaceKey = new Map<string, string>();
   private readonly startAdmissionAbortControllersByWorkspaceKey = new Map<
@@ -837,6 +839,7 @@ export class ZCodeAgentProcessManager {
       throw new Error("ZCode agent process manager is disposed.");
     }
     const workspaceKey = resolveWorkspaceKey(params);
+    this.assertWorkspaceStartAllowed(workspaceKey);
     const existing = this.processesByWorkspaceKey.get(workspaceKey);
     if (existing && !existing.child.killed) {
       return existing.client;
@@ -1008,6 +1011,7 @@ export class ZCodeAgentProcessManager {
     if ((this.restartGenerationByWorkspaceKey.get(workspaceKey) ?? 0) !== startGeneration) {
       throw new Error("ZCode agent process start was cancelled.");
     }
+    this.assertWorkspaceStartAllowed(workspaceKey);
     // app 以本地开发方式启动时，让 agent 子进程也带上 ZCODE_RUNTIME_ENV=development；
     // 不再传 NODE_ENV，避免用户 shell/runtime 变量影响 ZCode 运行模式或泄漏到 Bash 工具。
     const runtimeEnv = resolveZCodeRuntimeEnv(process.env);
@@ -1403,6 +1407,42 @@ export class ZCodeAgentProcessManager {
         "workspace dispose",
       );
     }
+  }
+
+  /** Host 本地清理持有；不改变普通 dispose/restart 的懒启动语义。 */
+  blockWorkspaceStarts(params: { workspacePath: string; workspaceIdentity?: string }): IDisposable {
+    if (this.disposed) throw new Error("ZCode agent process manager is disposed.");
+    const workspaceKey = resolveWorkspaceKey(params);
+    // 修复依据：unavailable 会同步触发 UI 重连；屏障必须先于 dispose 发布事件，
+    // 并由 Git owner 持有到删除结束，防止已回收的工作树在删除中再次 spawn。
+    this.workspaceStartBlocks.set(
+      workspaceKey,
+      (this.workspaceStartBlocks.get(workspaceKey) ?? 0) + 1,
+    );
+    this.restartGenerationByWorkspaceKey.set(
+      workspaceKey,
+      (this.restartGenerationByWorkspaceKey.get(workspaceKey) ?? 0) + 1,
+    );
+    this.abortPendingStarts(workspaceKey);
+    let released = false;
+    return {
+      dispose: () => {
+        if (released) return;
+        released = true;
+        const count = this.workspaceStartBlocks.get(workspaceKey) ?? 0;
+        if (count <= 1) this.workspaceStartBlocks.delete(workspaceKey);
+        else this.workspaceStartBlocks.set(workspaceKey, count - 1);
+      },
+    };
+  }
+
+  private assertWorkspaceStartAllowed(workspaceKey: string): void {
+    if (!this.workspaceStartBlocks.has(workspaceKey)) return;
+    // 保持已有 runtime-unavailable 契约，让 continuous/replayable 原恢复逻辑处理拒绝。
+    throw Object.assign(new Error("ZCode Agent runtime is not running."), {
+      code: ZCODE_AGENT_RUNTIME_UNAVAILABLE_CODE,
+      workspaceKey,
+    });
   }
 
   private abortPendingStarts(

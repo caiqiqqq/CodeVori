@@ -6,8 +6,70 @@ import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import { createGitService } from "../src/git/gitService.js";
+import { createGitCliRepo } from "../src/git/repo/gitCliRepo.js";
+import { createGitCommandProvider } from "../src/git/providers/gitCommandProvider.js";
 
 const exec = promisify(execFile);
+
+for (const outcome of ["success", "invalid-target", "command-failed", "exception"] as const) {
+  test(`runtime startup barrier stays held through Git removal and releases on ${outcome}`, async () => {
+    const f = await fixture();
+    const commands = createGitCommandProvider();
+    let held = false;
+    let releases = 0;
+    let removeCalls = 0;
+    const service = createGitService({
+      repo: createGitCliRepo({
+        commandProvider: {
+          resolveGitBinary: () => commands.resolveGitBinary(),
+          run: async (input) => {
+            if (input.args[0] === "worktree" && input.args[1] === "remove") {
+              removeCalls++;
+              assert.equal(held, true, "runtime cannot restart during the removal command");
+              if (outcome === "exception") throw new Error("removal fixture failure");
+              if (outcome === "command-failed") {
+                const result = await commands.run({ ...input, args: ["--version"] });
+                return { ...result, exitCode: 1 };
+              }
+            }
+            return commands.run(input);
+          },
+        },
+      }),
+      prepareWorktreeRemoval: async () => {
+        held = true;
+        if (outcome === "invalid-target")
+          await exec("git", ["-C", f.target, "switch", "-qc", "replacement"]);
+        return {
+          dispose: () => {
+            assert.equal(held, true);
+            held = false;
+            releases++;
+          },
+        };
+      },
+    });
+    try {
+      const result = await service.removeManagedWorktree({
+        worktreeRootPath: f.root,
+        worktreePath: f.target,
+        projectPath: f.project,
+        expectedBranchName: "worktree/abcd",
+      });
+      assert.deepEqual(
+        result,
+        outcome === "success"
+          ? { ok: true }
+          : { ok: false, issue: outcome === "exception" ? "command-failed" : outcome },
+      );
+      assert.equal(releases, 1);
+      assert.equal(held, false);
+      assert.equal(removeCalls, outcome === "invalid-target" ? 0 : 1);
+    } finally {
+      await rm(f.directory, { recursive: true, force: true });
+    }
+  });
+}
 
 test("task cleanup rechecks the allocated branch after runtime preparation", async () => {
   const f = await fixture();
