@@ -9,10 +9,14 @@ export async function exerciseRepositoryTaskCreation(page, panel, artifacts) {
     await page.evaluate(() => window.__forge.remount());
     await handle().waitFor();
     await page.waitForFunction(
-      () =>
-        document.querySelector('[data-testid="repository-item-handle"]')?.textContent === "处理",
+      () => document.querySelector('[data-testid="repository-item-handle"]')?.innerText === "处理",
     );
   };
+  const beforeSave = await handle().boundingBox();
+  assert.equal(await handle().getAttribute("data-variant"), "ghost");
+  assert.equal(await handle().locator("svg").count(), 1);
+  await handle().focus();
+  assert.ok(await handle().evaluate((button) => button === document.activeElement));
   // Two clicks in one browser turn must admit exactly one read/save chain.
   await page.evaluate(() => {
     window.__forge.delayDetail = true;
@@ -25,6 +29,25 @@ export async function exerciseRepositoryTaskCreation(page, panel, artifacts) {
   assert.equal((await creates()).length, 0);
   await page.evaluate(() => window.__forge.finish());
   await panel.getByRole("button", { name: "已加入待办", exact: true }).waitFor();
+  const afterSave = await handle().boundingBox();
+  assert.ok(Math.abs(beforeSave.width - afterSave.width) < 1, "success must not resize the action");
+  assert.equal(await handle().evaluate((button) => getComputedStyle(button).opacity), "1");
+  for (const theme of ["theme-zai-light", "theme-zai-dark dark"]) {
+    await page.evaluate((theme) => {
+      document.documentElement.className = theme;
+    }, theme);
+    await page.evaluate(async () => {
+      await Promise.all(
+        document
+          .getAnimations()
+          .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+          .map((a) => a.finished.catch(() => {})),
+      );
+    });
+    await page.screenshot({
+      path: join(artifacts, `task-saved-${theme.includes("dark") ? "dark" : "light"}.png`),
+    });
+  }
   const [api] = await creates();
   assert.equal(api.workspacePath, "/synthetic/A");
   assert.equal(api.host, "A");
@@ -169,6 +192,18 @@ export async function exerciseRepositoryTaskCreation(page, panel, artifacts) {
     await page.setViewportSize({ width: 320, height: 850 });
     assert.ok(await handle().isVisible());
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const content = await panel.getByTestId("repository-item-row").first().boundingBox();
+    const action = await handle().boundingBox();
+    assert.ok(action.y >= content.y + content.height, "mobile action must not squeeze the title");
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await Promise.all(
+        document
+          .getAnimations()
+          .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+          .map((a) => a.finished.catch(() => {})),
+      );
+    });
     await page.screenshot({
       path: join(artifacts, `task-handle-${theme.includes("dark") ? "dark" : "light"}.png`),
     });

@@ -5,6 +5,7 @@ import { acpErrorMessageId } from "@/v4/acpErrorMessage.js";
 import type { useAcpConversation } from "@/v4/useAcpConversation.js";
 import { ChatErrorBanner } from "@/ChatErrorBanner.js";
 import { acpConversationOperationError } from "@/v4/acpConversationRows.js";
+import { AcpElicitationForm } from "@/v4/AcpElicitationForm.js";
 
 /** 权限和错误保留 Host 回执语义，落在原时间线消息尾部。 */
 export function AcpConversationStatus({
@@ -24,7 +25,7 @@ export function AcpConversationStatus({
   };
   const { selected, error, busy } = conversation;
   const operationError = acpConversationOperationError(selected, error, rows);
-  if (!operationError && !selected?.pendingPermission) return null;
+  if (!operationError && !selected?.pendingPermission && !selected?.pendingElicitation) return null;
   return (
     <section
       data-testid="acp-conversation-status"
@@ -35,6 +36,14 @@ export function AcpConversationStatus({
           error={{ code: "ACP_OPERATION_FAILED", message: errorText(operationError) }}
           onRetry={!selected ? conversation.retryConnection : undefined}
           onDismiss={conversation.dismissError}
+        />
+      ) : null}
+      {selected?.pendingElicitation ? (
+        <AcpElicitationForm
+          key={`${selected.workspaceIdentity?.trim() || selected.workspacePath}:${selected.id}:${selected.pendingElicitation.requestId}`}
+          request={selected.pendingElicitation}
+          busy={busy}
+          onRespond={conversation.respondElicitation}
         />
       ) : null}
       {selected?.pendingPermission ? (

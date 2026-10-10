@@ -1,6 +1,7 @@
-import { MessageSquare } from "lucide-react";
+import { Check, ListPlus, MessageSquare } from "lucide-react";
 import type { ForgeItem } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
+import { cn } from "@/components/lib/utils.js";
 import {
   RepositoryItemIcon,
   RepositoryLabels,
@@ -23,12 +24,12 @@ export function RepositoryItemRow({
 }) {
   const t = useRepositoryMessages();
   return (
-    <li className="flex min-w-0 items-center gap-2">
+    <li className="grid min-w-0 grid-cols-1 items-center gap-x-2 rounded-lg pl-3 pr-2 transition-colors hover:bg-hover focus-within:bg-hover sm:flex">
       <button
         type="button"
         data-testid="repository-item-row"
         onClick={onSelect}
-        className="flex min-w-0 flex-1 items-start gap-3 py-3 text-left hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring"
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-md py-3 text-left focus-visible:outline-2 focus-visible:outline-ring"
       >
         <span className="pt-0.5">
           <RepositoryItemIcon item={item} />
@@ -54,14 +55,29 @@ export function RepositoryItemRow({
       </button>
       <Button
         type="button"
-        variant="outline"
-        size="sm"
+        variant="ghost"
+        size="lg"
         data-testid="repository-item-handle"
         disabled={busy || created}
         onClick={onHandle}
-        className="shrink-0"
+        className={cn(
+          "mb-2 grid shrink-0 justify-self-end rounded-md px-2 text-ui-sm focus-visible:outline-2 focus-visible:outline-ring sm:mb-0",
+          created
+            ? "text-success disabled:opacity-100"
+            : "text-foreground-subtle hover:bg-surface-hover hover:text-foreground",
+        )}
       >
-        {created ? t("taskCreated") : t("process")}
+        <span aria-hidden="true" className="invisible col-start-1 row-start-1 pl-5">
+          {t("taskCreated")}
+        </span>
+        <span className="col-start-1 row-start-1 flex items-center justify-center gap-1.5">
+          {created ? (
+            <Check aria-hidden="true" className="size-3.5" />
+          ) : (
+            <ListPlus aria-hidden="true" className="size-3.5" />
+          )}
+          {created ? t("taskCreated") : t("process")}
+        </span>
       </Button>
     </li>
   );

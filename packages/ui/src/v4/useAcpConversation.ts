@@ -696,6 +696,17 @@ export function useAcpConversation(
     },
     [run, selected, service, target],
   );
+  const respondElicitation = useCallback(
+    (requestId: string, response: import("@zcode/shared").AcpElicitationResponse) => {
+      if (!selected) return Promise.resolve();
+      return run(
+        () => service.respondElicitation({ ...target, id: selected.id, requestId, ...response }),
+        selected.agent,
+        selected.id,
+      );
+    },
+    [run, selected, service, target],
+  );
   const remove = useCallback(() => {
     if (!selected) return;
     void run(
@@ -799,6 +810,7 @@ export function useAcpConversation(
     setConfigOption,
     stop,
     decide,
+    respondElicitation,
     remove,
     select,
     selectById,

@@ -111,6 +111,13 @@ export interface IAcpService {
   resumeWorkflow(input: AcpWorkflowControl): Promise<void>;
   getWorkflowArtifact(input: AcpWorkflowArtifactQuery): Promise<{ path: string }>;
   decide(input: AcpWorkspace & { id: string; requestId: string; optionId: string }): Promise<void>;
+  /** Structured form response; accepted answers are never stored as conversation messages. */
+  respondElicitation(
+    input: AcpWorkspace & {
+      id: string;
+      requestId: string;
+    } & import("@zcode/shared").AcpElicitationResponse,
+  ): Promise<void>;
   /** Automatic pane cleanup may discard a draft but must never delete an admitted turn. */
   remove(input: AcpWorkspace & { id: string; provisionalOnly?: boolean }): Promise<void>;
   /** Durable Host snapshots; coalesced stream updates may skip intermediate revisions. */

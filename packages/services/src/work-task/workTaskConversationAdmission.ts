@@ -41,7 +41,7 @@ export async function assertWorkTaskSourceIdle(
     if (!session) throw new Error("work-task.session-not-found");
     if (task.execution.kind !== "acp" || session.agent !== task.execution.agent)
       throw new Error("work-task.binding-invalid");
-    if (session.status === "running" || session.pendingPermission)
+    if (session.status === "running" || session.pendingPermission || session.pendingElicitation)
       throw new Error("work-task.session-busy");
     signal.throwIfAborted();
     return;

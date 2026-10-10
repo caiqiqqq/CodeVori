@@ -1,3 +1,4 @@
+import { chromium } from "playwright-core";
 import { exerciseWorkTaskAllProjects } from "./workTaskAllProjectsAssertions.mjs";
 import { exerciseWorkTaskWorkspaceMode } from "./workTaskWorkspaceModeAssertions.mjs";
 import { exerciseWorkTaskPromptAttachments } from "./workTaskPromptAttachmentsAssertions.mjs";
@@ -12,7 +13,17 @@ import { exerciseWorkTaskCompletion } from "./workTaskCompletionAssertions.mjs";
 import { exerciseWorkTaskNavigation } from "./workTaskNavigationAssertions.mjs";
 import { exerciseWorkTaskSaveRefresh } from "./workTaskSaveRefreshAssertions.mjs";
 import { exerciseWorkTaskArchiveWorktree } from "./workTaskArchiveWorktreeAssertions.mjs";
+import { exerciseWorkTaskEqualWidths } from "./workTaskEqualWidthAssertions.mjs";
 import { exerciseWorkTaskComposer } from "./workTaskComposerAssertions.mjs";
+
+export function launchWorkTaskBrowser() {
+  return chromium.launch({
+    headless: true,
+    // Playwright 默认隐藏滚动条，等宽回归必须保留真实占位才能复现分组宽度差异。
+    ignoreDefaultArgs:
+      process.env.ZCODE_E2E_SCENARIO === "equal-widths" ? ["--hide-scrollbars"] : [],
+  });
+}
 
 export {
   exerciseWorkTaskPromptAttachments,
@@ -26,6 +37,7 @@ export {
   exerciseWorkTaskCompletion,
 };
 export const workTaskScenarios = {
+  "equal-widths": exerciseWorkTaskEqualWidths,
   composer: exerciseWorkTaskComposer,
   "all-projects": exerciseWorkTaskAllProjects,
   "archive-worktree": exerciseWorkTaskArchiveWorktree,

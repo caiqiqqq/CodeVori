@@ -49,7 +49,7 @@ async function executeAcp(
     );
     if (!existing) throw new Error("work-task.session-not-found");
     if (existing.agent !== task.execution.agent) throw new Error("work-task.binding-invalid");
-    if (existing.status === "running" || existing.pendingPermission)
+    if (existing.status === "running" || existing.pendingPermission || existing.pendingElicitation)
       throw new Error("work-task.session-busy");
     context.signal.throwIfAborted();
   }
@@ -78,7 +78,10 @@ async function executeAcp(
     if (change.kind !== "updated" || change.session.id !== id || context.signal.aborted) return;
     if (change.session.status === "running") {
       void commit(context, {
-        status: change.session.pendingPermission ? "awaiting_input" : "running",
+        status:
+          change.session.pendingPermission || change.session.pendingElicitation
+            ? "awaiting_input"
+            : "running",
       }).catch(rejectAbort);
     }
   });

@@ -42,6 +42,11 @@ import {
   acpSessionRowUpdateSchema,
   acpSessionSearchInputSchema,
   acpWorkspaceSchema,
+  acpElicitationSchema,
+  acpElicitationResponseSchema,
+  validateAcpElicitationContent,
+  type AcpElicitation,
+  type AcpElicitationResponse,
   isAcpHistorySession,
   type AcpAgent,
   type AcpConfigOption,
@@ -151,6 +156,10 @@ export type AcpConnectionFactory = (input: {
   pluginServers?: ZCodePluginsAcpCapabilitiesResult["servers"];
   onUpdate: (update: AcpUpdate) => Promise<void>;
   onPermission: (request: AcpPermission) => Promise<string | null>;
+  onElicitation?: (
+    request: AcpElicitation,
+    signal?: AbortSignal,
+  ) => Promise<AcpElicitationResponse>;
   onExit: (reason: string) => void;
 }) => Promise<AcpConnectionPort>;
 
@@ -257,17 +266,21 @@ export function createAcpService(
   const delegationRegistrations = new Map<string, { revoke(): void; canDelegate?: boolean }>();
   const stopping = new Set<string>();
   const configuring = new Set<string>();
-  const pending = new Map<string, { requestId: string; resolve(value: string | null): void }>();
+  type InteractionResult = string | AcpElicitationResponse | null;
+  const pending = new Map<
+    string,
+    { requestId: string; responding?: boolean; resolve(value: InteractionResult): void }
+  >();
   const workflowMcp = createAcpWorkflowMcp(directory);
   const workflowRegistrations = new Map<string, { revoke(): void }>();
-  const permissionQueues = new Map<
+  const interactionQueues = new Map<
     string,
     Array<{
-      request: AcpPermission;
+      request: AcpPermission | AcpElicitation;
       runId?: string;
       receivedAt: number;
       trace: Pick<AcpDiagnosticEvent, "turnIndex" | "entryIndex" | "requestId">;
-      resolve(value: string | null): void;
+      resolve(value: InteractionResult): void;
     }>
   >();
   const workflowNotifications = new Map<string, Array<{ runId: string; result: unknown }>>();
@@ -484,6 +497,9 @@ export function createAcpService(
         }
       }
       const wasRunning = session.status === "running";
+      const hadInteraction = Boolean(session.pendingPermission || session.pendingElicitation);
+      session.pendingPermission = null;
+      session.pendingElicitation = null;
       const hadRunningTerminals = session.terminals.some((t) => t.status === "running");
       // Host 重启不能重新认领磁盘快照中的 PID；运行态必须降为未知终止。
       for (const terminal of session.terminals)
@@ -494,7 +510,6 @@ export function createAcpService(
         finishAcpThoughts(session, "interrupted", Date.now());
         interruptAcpCompactions(session);
         session.usageBaselineKnown = false;
-        session.pendingPermission = null;
         session.error = "ACP Agent 已断开，请重试发送新的消息。";
       }
       const recoveredQueue = session.queue.items.length > 0;
@@ -506,7 +521,13 @@ export function createAcpService(
         session.queue.autoDrain = false;
         session.queue.pauseReason = "error";
       }
-      if (migratedLegacyTime || wasRunning || recoveredQueue || hadRunningTerminals) {
+      if (
+        migratedLegacyTime ||
+        wasRunning ||
+        recoveredQueue ||
+        hadRunningTerminals ||
+        hadInteraction
+      ) {
         session.revision += 1;
         await save(session);
       }
@@ -532,38 +553,39 @@ export function createAcpService(
     }
     return session;
   };
-  const settlePermission = (id: string, receivedAt = Date.now()): void => {
-    const request = permissionQueues.get(id)?.[0];
+  const settleInteractions = (id: string, receivedAt = Date.now()): void => {
+    const request = interactionQueues.get(id)?.[0];
     const session = sessions.get(id);
     if (session && request && pending.get(id)?.requestId === request.request.requestId) {
       // 取消也属于授权事实；关联沿用请求接收时的轮次，不能用已释放的 active 猜测。
       void appendDiagnostic(
         session,
         {
-          kind: "permission-resolved",
+          kind: "fields" in request.request ? "elicitation-resolved" : "permission-resolved",
           ...request.trace,
-          permissionDecision: "cancelled",
+          ...("fields" in request.request ? {} : { permissionDecision: "cancelled" as const }),
         },
         receivedAt,
       );
     }
     pending.get(id)?.resolve(null);
     pending.delete(id);
-    for (const request of permissionQueues.get(id) ?? []) request.resolve(null);
-    permissionQueues.delete(id);
+    for (const request of interactionQueues.get(id) ?? []) request.resolve(null);
+    interactionQueues.delete(id);
   };
-  const requestPermission = (
+  const requestInteraction = (
     session: AcpSession,
-    request: AcpPermission,
+    request: AcpPermission | AcpElicitation,
     runId?: string,
-  ): Promise<string | null> =>
+  ): Promise<InteractionResult> =>
     new Promise((resolve) => {
-      const queue = permissionQueues.get(session.id) ?? [];
+      const queue = interactionQueues.get(session.id) ?? [];
       const commandId = active.get(session.id);
       const toolIndex = runId
         ? -1
         : session.entries.findIndex(
-            (entry) => entry.id === `tool:${commandId}:${request.toolCallId}`,
+            (entry) =>
+              entry.id === `tool:${commandId}:${"toolCallId" in request ? request.toolCallId : ""}`,
           );
       queue.push({
         request,
@@ -576,16 +598,53 @@ export function createAcpService(
           ...(/^[0-9a-f-]{36}$/i.test(request.requestId) ? { requestId: request.requestId } : {}),
         },
       });
-      permissionQueues.set(session.id, queue);
-      if (queue.length === 1) void showNextPermission(session);
+      interactionQueues.set(session.id, queue);
+      if (queue.length === 1) void showNextInteraction(session);
     });
+  const requestPermission = async (session: AcpSession, request: AcpPermission, runId?: string) => {
+    const result = await requestInteraction(session, request, runId);
+    return typeof result === "string" ? result : null;
+  };
+  const cancelInteractions = async (
+    session: AcpSession,
+    matches: (request: { request: AcpPermission | AcpElicitation; runId?: string }) => boolean,
+  ): Promise<void> => {
+    const queue = interactionQueues.get(session.id);
+    const cancelled = queue?.filter(matches) ?? [];
+    if (!cancelled.length) return;
+    const remaining = queue!.filter((request) => !matches(request));
+    if (remaining.length) interactionQueues.set(session.id, remaining);
+    else interactionQueues.delete(session.id);
+    try {
+      if (
+        cancelled.some(
+          (request) => pending.get(session.id)?.requestId === request.request.requestId,
+        )
+      ) {
+        pending.delete(session.id);
+        await mutate(session, () => {
+          session.pendingPermission = null;
+          session.pendingElicitation = null;
+        });
+        const request = cancelled[0]!;
+        await appendDiagnostic(session, {
+          kind: "fields" in request.request ? "elicitation-resolved" : "permission-resolved",
+          ...request.trace,
+          ...("fields" in request.request ? {} : { permissionDecision: "cancelled" as const }),
+        });
+        if (remaining.length) void showNextInteraction(session);
+      }
+    } finally {
+      for (const request of cancelled) request.resolve(null);
+    }
+  };
   const settleWorkflowPermissions = async (session: AcpSession, runId: string): Promise<void> => {
-    const queue = permissionQueues.get(session.id);
+    const queue = interactionQueues.get(session.id);
     if (!queue?.some((item) => item.runId === runId)) return;
     const activeRequest = queue[0]?.runId === runId ? queue[0] : undefined;
     const remaining = queue.filter((item) => item.runId !== runId);
-    if (remaining.length) permissionQueues.set(session.id, remaining);
-    else permissionQueues.delete(session.id);
+    if (remaining.length) interactionQueues.set(session.id, remaining);
+    else interactionQueues.delete(session.id);
     if (activeRequest && pending.get(session.id)?.requestId === activeRequest.request.requestId) {
       pending.delete(session.id);
       await appendDiagnostic(session, {
@@ -597,23 +656,24 @@ export function createAcpService(
       await mutate(session, () => {
         session.pendingPermission = null;
       });
-      if (remaining.length) void showNextPermission(session);
+      if (remaining.length) void showNextInteraction(session);
     }
     for (const item of queue) if (item.runId === runId) item.resolve(null);
   };
-  const showNextPermission = async (session: AcpSession): Promise<void> => {
-    const next = permissionQueues.get(session.id)?.[0];
+  const showNextInteraction = async (session: AcpSession): Promise<void> => {
+    const next = interactionQueues.get(session.id)?.[0];
     if (!next || pending.has(session.id) || removed.has(session.id)) return;
     pending.set(session.id, { requestId: next.request.requestId, resolve: next.resolve });
     try {
       const snapshotWrite = mutate(session, () => {
-        session.pendingPermission = next.request;
+        session.pendingPermission = "fields" in next.request ? null : next.request;
+        session.pendingElicitation = "fields" in next.request ? next.request : null;
       });
       // 先按接收顺序占住诊断队列，队列内部等快照落盘，避免 stop 比请求记录更早写入。
       const diagnosticWrite = appendDiagnostic(
         session,
         {
-          kind: "permission-requested",
+          kind: "fields" in next.request ? "elicitation-requested" : "permission-requested",
           ...next.trace,
         },
         next.receivedAt,
@@ -623,7 +683,7 @@ export function createAcpService(
       await diagnosticWrite;
     } catch (error) {
       logger.warn(undefined, "ACP permission persistence failed", { error: failureMessage(error) });
-      settlePermission(session.id);
+      settleInteractions(session.id);
     }
   };
   const deliverWorkflowNotifications = async (session: AcpSession): Promise<void> => {
@@ -762,7 +822,7 @@ export function createAcpService(
       });
     }
     generations.delete(id);
-    settlePermission(id);
+    settleInteractions(id);
     workflowRegistrations.get(id)?.revoke();
     workflowRegistrations.delete(id);
     delegationRegistrations.get(id)?.revoke();
@@ -958,6 +1018,34 @@ export function createAcpService(
           if (!active.has(session.id) || generations.get(session.id) !== generation) return null;
           return requestPermission(session, request);
         },
+        onElicitation: async (request, signal) => {
+          if (
+            disposed ||
+            signal?.aborted ||
+            !active.has(session.id) ||
+            stopping.has(session.id) ||
+            generations.get(session.id) !== generation
+          )
+            return { action: "cancel" };
+          const validated = acpElicitationSchema.parse(request);
+          const result = requestInteraction(session, validated);
+          const cancel = () => {
+            void cancelInteractions(
+              session,
+              (item) => item.request.requestId === validated.requestId,
+            ).catch(() => {
+              // 修复原因：协议撤销不能被磁盘失败阻塞，失败时取消该会话的全部等待对象。
+              settleInteractions(session.id);
+            });
+          };
+          signal?.addEventListener("abort", cancel, { once: true });
+          try {
+            const response = await result;
+            return response && typeof response !== "string" ? response : { action: "cancel" };
+          } finally {
+            signal?.removeEventListener("abort", cancel);
+          }
+        },
         onExit: (reason) => {
           const receivedAt = Date.now();
           if (generations.get(session.id) !== generation) return;
@@ -971,7 +1059,7 @@ export function createAcpService(
           // Adapter root 已退出仍需回收其进程组内可能存活的 App Server 后代。
           connections.get(session.id)?.close();
           connections.delete(session.id);
-          settlePermission(session.id, receivedAt);
+          settleInteractions(session.id, receivedAt);
           session.usageBaselineKnown = false;
           if (!active.has(session.id) && !session.queue.items.length) {
             void mutate(session, () => {});
@@ -986,6 +1074,7 @@ export function createAcpService(
           void mutate(session, () => {
             finishAcpTurn(session, commandId, receivedAt);
             session.pendingPermission = null;
+            session.pendingElicitation = null;
             session.status = "interrupted";
             session.usageBaselineKnown = false;
             session.error = reason;
@@ -1591,6 +1680,7 @@ export function createAcpService(
       }
       const usage = await port.prompt(prompt.text, blocks);
       const completedAt = Date.now();
+      if (ownsRun()) await cancelInteractions(session, (item) => !item.runId);
       await queueGate.run(session.id, async () => {
         if (ownsRun() && connections.get(session.id) === port && !disposed) {
           await mutate(session, () => {
@@ -1607,6 +1697,7 @@ export function createAcpService(
               completedAt,
             );
             session.pendingPermission = null;
+            session.pendingElicitation = null;
             // 修复依据：只有正常 end_turn 可自动继续，Agent 自行取消/拒绝/限额需暂停。
             if (session.error || (port.lastStopReason && port.lastStopReason !== "end_turn")) {
               session.queue.autoDrain = false;
@@ -1633,6 +1724,7 @@ export function createAcpService(
       const interruptedAt = Date.now();
       await queueGate.run(session.id, async () => {
         if (ownsRun()) {
+          await cancelInteractions(session, (item) => !item.runId);
           active.delete(session.id);
           // Capability/file validation precedes admission: rejected input never enters history.
           if (!admitted) {
@@ -1653,6 +1745,7 @@ export function createAcpService(
             session.queue.pauseReason = "error";
             session.usageBaselineKnown = false;
             session.pendingPermission = null;
+            session.pendingElicitation = null;
             const failure = failureFromAcpError(error, commandId);
             session.error = failure.title;
             recordAcpSessionFailure(session, commandId, failure);
@@ -1715,13 +1808,14 @@ export function createAcpService(
       });
       rejectAdmissions(session.id, new Error("ACP prompt stopped before admission"));
       if (!hadActive) return;
-      settlePermission(session.id, stoppedAt);
+      settleInteractions(session.id, stoppedAt);
       await mutate(session, () => {
         finishAcpTurn(session, commandId, stoppedAt);
         finishAcpThoughts(session, "interrupted", stoppedAt);
         session.status = "idle";
         session.usageBaselineKnown = false;
         session.pendingPermission = null;
+        session.pendingElicitation = null;
       });
       await appendDiagnostic(
         session,
@@ -2116,6 +2210,7 @@ export function createAcpService(
           usageBaseline: null,
           usageTurns: [],
           pendingPermission: null,
+          pendingElicitation: null,
           error: null,
         };
         try {
@@ -2430,7 +2525,7 @@ export function createAcpService(
       const selectedKind = session.pendingPermission.options.find(
         (item) => item.optionId === input.optionId,
       )?.kind;
-      const requestTrace = permissionQueues.get(session.id)?.[0]?.trace ?? {};
+      const requestTrace = interactionQueues.get(session.id)?.[0]?.trace ?? {};
       await mutate(session, () => {
         session.pendingPermission = null;
       });
@@ -2466,16 +2561,74 @@ export function createAcpService(
         throw new Error("ACP permission expired");
       }
       pending.delete(session.id);
-      const queue = permissionQueues.get(session.id);
+      const queue = interactionQueues.get(session.id);
       if (queue?.[0]?.request.requestId === input.requestId) {
         queue.shift();
-        if (!queue.length) permissionQueues.delete(session.id);
+        if (!queue.length) interactionQueues.delete(session.id);
         else
           queueMicrotask(() => {
-            void showNextPermission(session);
+            void showNextInteraction(session);
           });
       }
       decision.resolve(input.optionId);
+    },
+    async respondElicitation(input) {
+      const response = acpElicitationResponseSchema.parse(
+        input.action === "accept"
+          ? { action: input.action, content: input.content }
+          : { action: input.action },
+      );
+      const session = await scoped(input);
+      const decision = pending.get(session.id);
+      const request = session.pendingElicitation;
+      if (
+        !decision ||
+        decision.responding ||
+        !request ||
+        decision.requestId !== input.requestId ||
+        request.requestId !== input.requestId ||
+        !active.has(session.id) ||
+        stopping.has(session.id)
+      )
+        throw new Error("ACP elicitation expired");
+      if (
+        response.action === "accept" &&
+        !validateAcpElicitationContent(request.fields, response.content)
+      )
+        throw new Error("Invalid ACP elicitation answer");
+      // 修复原因：多个端可同时回答；先认领同一 request，清除快照后复核 live 等待对象。
+      decision.responding = true;
+      try {
+        await mutate(session, () => {
+          session.pendingElicitation = null;
+        });
+        await appendDiagnostic(session, {
+          kind: "elicitation-resolved",
+          ...(interactionQueues.get(session.id)?.[0]?.trace ?? {}),
+        });
+        if (
+          pending.get(session.id) !== decision ||
+          !active.has(session.id) ||
+          stopping.has(session.id)
+        )
+          throw new Error("ACP elicitation expired");
+        pending.delete(session.id);
+        const queue = interactionQueues.get(session.id);
+        if (queue?.[0]?.request.requestId === input.requestId) {
+          queue.shift();
+          if (!queue.length) interactionQueues.delete(session.id);
+          else void showNextInteraction(session);
+        }
+        decision.resolve(response);
+      } catch (error) {
+        if (pending.get(session.id) === decision) {
+          decision.responding = false;
+          await mutate(session, () => {
+            session.pendingElicitation = request;
+          });
+        }
+        throw error;
+      }
     },
     async remove(input) {
       const session = await scoped(input);
@@ -2555,7 +2708,7 @@ export function createAcpService(
       workflowHost.dispose();
       for (const id of connections.keys()) detach(id);
       for (const id of connecting.keys()) detach(id);
-      for (const id of pending.keys()) settlePermission(id);
+      for (const id of pending.keys()) settleInteractions(id);
       workflowMcp.dispose();
       emitter.dispose();
       traceEmitter.dispose();
