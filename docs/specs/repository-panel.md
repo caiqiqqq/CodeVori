@@ -276,6 +276,30 @@ panel remount / page restart -> local preference -> same navigation/read paths
   action, explaining the account mismatch instead of leaving an unrecoverable
   generic image error.
   Public external images may render without forge credentials and a referrer.
+- GitHub.com issue/PR descriptions and comments read
+  `https://github.com/user-attachments/assets/<UUID>` through the same bound
+  Host IGitService and selected GitHub account. Anonymous reads of private
+  attachments may return 404; do not treat these URLs as public images.
+  Revalidate repository/account before reading. Only this exact HTTPS origin
+  and attachment path may receive the account token; reject credentials,
+  query/fragment, arbitrary paths, local URLs and Enterprise-to-GitHub reads.
+  Follow at most one manually inspected HTTPS redirect to the exact GitHub
+  image storage hosts `github-production-user-asset-6210df.s3.amazonaws.com`
+  or `private-user-images.githubusercontent.com`, without account credentials
+  or cookies. Signed storage URLs stay inside Host and never enter RPC/logs.
+  Reuse the 12 MiB raster MIME/signature limits, temporary image URL lifecycle,
+  retry/original-page actions and existing zoom dialog. Authentication failures
+  do not invoke GitLab web sign-in or fall back to anonymous requests.
+  No new persistence, accepted state, Main bridge or stream protocol is needed.
+  Owner/event order: repository UI -> bound Host target/account validation ->
+  allowlisted attachment read -> credential-free storage read -> bounded raster
+  bytes -> hook-owned temporary URL -> existing preview; scope change/unmount
+  discards late replies and revokes URLs, on desktop and mobile Web alike.
+  Acceptance: service tests cover token destination, redirect rejection,
+  auth/network failures, malformed/oversize payloads and stale target rejection;
+  UI E2E covers actual image pixels/aspect ratio, failed-read retry, click zoom,
+  comments and stale Host replies at 1280/375px in both themes. Existing GitLab
+  sign-in and chat Markdown behavior must continue to pass.
 - Users may create an issue, publish a comment, close/reopen an item and merge a
   ready change request. Closing/reopening and merging require confirmation;
   no remote mutation runs automatically. Merge reads the latest head/state and

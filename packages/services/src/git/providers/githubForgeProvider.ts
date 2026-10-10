@@ -1,4 +1,9 @@
-import type { ForgeCheck, ForgeItemDetail, ForgeMergeMethod } from "@zcode/shared";
+import type {
+  ForgeCheck,
+  ForgeItemDetail,
+  ForgeMergeMethod,
+  ForgeImagePreview,
+} from "@zcode/shared";
 import { readForgeIssueOptions, forgeIssueAttributes } from "./forgeIssueOptions.js";
 import type { ForgeProviderAdapter } from "./forgeProvider.js";
 import {
@@ -26,11 +31,16 @@ const quoteSearch = (value: string) =>
 export function createGithubForgeProvider(
   api: ForgeApiClient,
   repository: string,
+  readImage?: (url: string) => Promise<ForgeImagePreview>,
 ): ForgeProviderAdapter {
   const repo = `repos/${repository.split("/").map(encodeURIComponent).join("/")}`;
   const itemPath = (request: { kind: string; number: number }) =>
     `${repo}/${request.kind === "issue" ? "issues" : "pulls"}/${request.number}`;
   return {
+    async readImage(request) {
+      if (!readImage) throw new Error("FORGE_MEDIA_UNAVAILABLE");
+      return readImage(request.url);
+    },
     async listItems(request) {
       const query = [
         `repo:${repository}`,
