@@ -7,7 +7,8 @@
   controls, themes and existing workspace navigation. Keep the local Git review
   pane and Version Control settings unchanged.
 - The panel follows the selected workspace Host, including remote workspaces.
-  Select a configured Git remote, defaulting to origin when present. Worktrees
+  Restore the last selected Git remote for this workspace identity, defaulting
+  to origin when no preference exists. Worktrees
   use their own Git remote configuration. No repository cloning or Git mutation
   happens when opening the panel.
 - The top-left repository title opens a searchable project picker backed by the
@@ -28,6 +29,34 @@
   call startDraft, change providers, close conversation tabs or clear composer
   drafts. The existing account/non-Git/missing-remote empty states still apply,
   and the picker remains usable in empty, loading and error states.
+- Remember the last successfully admitted Repository Panel project and each
+  workspace's explicitly selected remote across panel unmounts and app/page
+  restarts (issue #57). The UI-only repositoryNavigationStore owns this versioned
+  browser-local preference; TabStore remains the active workspace owner and
+  zcodeSessionStore remains the history owner. Store only path/identity and
+  remote names, never accounts, credentials, remote session IDs or issue drafts.
+  Keys are workspaceIdentity.trim() || workspacePath, so reconnecting the same
+  identity restores its remote while same-path local/remote projects stay isolated.
+  Sidebar entry with no explicit target tries the remembered project through
+  the existing exact-tab admission path; a closed, conversation-only, unavailable
+  or disconnected target falls back to the current project. Explicit picker
+  targets and history replay take precedence and update the remembered project
+  only after admission succeeds. A removed remote clears only its matching
+  preference, then rediscovery uses the Host's existing origin/first-remote
+  default. Late replies cannot clear another workspace or a newer selection.
+  Storage corruption/unavailability uses defaults or in-memory preferences and
+  must not block navigation. No preference is a forge/server fact or a command
+  to create an issue, resume a conversation, reconnect or open a project.
+
+```text
+picker / sidebar / history -> existing exact-tab admission -> TabStore activation
+  -> repositoryNavigationStore project preference -> existing history/view
+remote selection -> repositoryNavigationStore keyed preference
+  -> guarded Host discovery -> list / explicit new-issue target
+  -> removed remote: compare-and-clear preference -> Host default rediscovery
+panel remount / page restart -> local preference -> same navigation/read paths
+```
+
 - Support GitHub (including Enterprise), GitLab and Gitea/Forgejo. Reuse the
   encrypted accounts in Version Control settings. Match protocol/host/port/base
   path for HTTP remotes and hostname/base path for SSH remotes; an SSH transport
@@ -383,6 +412,17 @@ covered/previous generation reply -> ignored (no credential or queue replay)
   forge is authoritative, with no extra durable task queue or credential store.
 
 ## Validation
+
+- Unit: project/remote restoration after store recreation, trimmed identity/path
+  fallback, same-path isolation, reconnect stability, compare-and-clear for
+  removed remotes, malformed and blocked storage.
+- E2E: remote survives project switching and back/forward, panel remount and page
+  reload; sidebar entry restores the remembered project after conversation
+  navigation. Explicit targets win; missing/disconnected remembered projects
+  fall back without cross-identity activation. Removed remotes rediscover the
+  Host default, stale replies cannot overwrite newer selections. Creating an
+  issue uses the remembered remote only after explicit submission. Preserve
+  task/composer drafts and cover narrow/light/dark layouts.
 
 - E2E: list/detail Handle opens a prefilled task editor and confirmed Save saves a todo task with full detail content and exact
   project scope, leaving the list visible and producing no agent/forge writes.

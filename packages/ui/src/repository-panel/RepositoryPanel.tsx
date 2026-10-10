@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { useStore } from "zustand";
 import { ChevronLeft, ChevronRight, GitFork, Plus, RotateCw, Settings } from "lucide-react";
 import type { ForgeItem, ForgeItemRequest, ForgeTargetRequest } from "@zcode/shared";
 import { useRepositoryPanel } from "@/hooks/useRepositoryPanel.js";
@@ -6,6 +7,7 @@ import { useRepositoryTask } from "@/hooks/useRepositoryTask.js";
 import { useWorktreeProjectGroupsResolution } from "@/hooks/useWorktreeProjectGroups.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useTabStore } from "@/store/TabStoreProvider.js";
+import { repositoryNavigationStore } from "@/store/repositoryNavigationStore.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
 import { setPendingSettingsSectionIntent } from "@/lib/settingsNavigation.js";
 import { safeRepositoryExternalUrl } from "@/lib/forgePanel.js";
@@ -87,7 +89,11 @@ function RepositoryPanelContent({
   const t = useRepositoryMessages();
   const platform = usePlatform();
   const openSettingsTab = useTabStore((state) => state.openSettingsTab);
-  const [remoteName, setRemoteName] = useState<string | undefined>();
+  // remote 原先随面板卸载被清空；以 workspace 身份隔离的偏好是唯一选择 owner。
+  const remoteName = useStore(
+    repositoryNavigationStore,
+    (state) => state.remotes[workspaceIdentity?.trim() || workspacePath],
+  );
   const [filters, setFilters] = useState<RepositoryFilters>({
     kind: "issue",
     state: "open",
@@ -174,7 +180,9 @@ function RepositoryPanelContent({
             <Select
               value={panel.repository.remoteName ?? undefined}
               onValueChange={(name) => {
-                setRemoteName(name);
+                repositoryNavigationStore
+                  .getState()
+                  .selectRemote({ workspacePath, workspaceIdentity }, name);
                 setFilters((current) => ({ ...current, labels: [], page: 1 }));
                 setSelection(null);
                 setNewIssueTarget(null);

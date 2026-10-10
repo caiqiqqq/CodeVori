@@ -11,6 +11,7 @@ import {
   assertIssueSettingsDraft,
 } from "./repositoryIssueAssertions.mjs";
 import { assertRepositoryListLabelColors } from "./repositoryListLabelAssertions.mjs";
+import { assertIssueRememberedRemote } from "./repositorySelectionMemoryAssertions.mjs";
 import * as repositoryTask from "./repositoryTaskCreationAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
@@ -191,6 +192,7 @@ try {
       .querySelector('[data-testid="repository-item-row"]')
       ?.textContent?.includes("B private"),
   );
+  await assertIssueRememberedRemote({ page, panel, detail });
   await row().click();
   await detail.getByText("Synthetic description", { exact: true }).waitFor();
   await detail.getByRole("textbox", { name: "评论" }).fill("Delayed comment");
