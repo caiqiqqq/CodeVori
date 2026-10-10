@@ -1,4 +1,4 @@
-// Run with the desktop Vite server on 5174: node packages/ui/test/acpComposerControlsPreview.e2e.mjs
+// Run with the desktop Vite server; ZCODE_E2E_BASE_URL overrides the default 5174 address.
 // Isolated real toolbar: delayed ACP snapshots, no Agent launch, config write or model request.
 import assert from "node:assert/strict";
 import { rm, writeFile } from "node:fs/promises";
@@ -48,7 +48,7 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 800 } });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.goto(`http://localhost:5174/${name}.html`);
+    await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`);
     const loading = page.locator('[data-testid="acp-config-loading"]');
     await loading.waitFor({ timeout: 10000 }).catch((error) => {
       throw new Error(`Toolbar fixture failed: ${errors.join("; ") || error.message}`);

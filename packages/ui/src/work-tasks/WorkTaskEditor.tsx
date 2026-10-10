@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Save, SlidersHorizontal } from "lucide-react";
+import { Save } from "lucide-react";
 import {
   type WorkTask,
   type WorkTaskCreate,
@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/dialog.js";
 import { WorkTaskError, useWorkTaskMessages } from "./WorkTaskParts.js";
 import { WorkTaskPromptField } from "./WorkTaskPromptField.js";
-import { WorkTaskExecutionControls } from "./WorkTaskExecutionControls.js";
+import { WorkTaskExecutionControls, WorkTaskExecutorSelect } from "./WorkTaskExecutionControls.js";
 
 interface Props {
   scope: WorkTaskScope;
@@ -231,26 +231,6 @@ export function WorkTaskEditor({
             </p>
           </div>
 
-          <section
-            className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-surface p-3"
-            aria-label={t("executionConfig")}
-            data-testid="work-task-execution-config"
-          >
-            <h3 className="flex items-center gap-2 text-ui-base font-medium">
-              <SlidersHorizontal className="size-4" />
-              {t("executionConfig")}
-            </h3>
-            <WorkTaskExecutionControls
-              task={task}
-              models={models}
-              execution={execution}
-              busy={busy}
-              thought={thought}
-              changeExecution={changeExecution}
-              selectExecutor={selectExecutor}
-            />
-            <p className="text-ui-sm text-foreground-subtle">{t("executionConfigHint")}</p>
-          </section>
           <WorkTaskPromptField
             scope={scope}
             task={task}
@@ -259,7 +239,34 @@ export function WorkTaskEditor({
             assets={assets}
             inputApiRef={inputApiRef}
             onChange={setPrompt}
+            // 修复原因：任务输入区复用消息框的左右工具栏，图标配置与智能体选择分别进入原插槽。
+            trailingActions={
+              <WorkTaskExecutorSelect
+                task={task}
+                models={models}
+                execution={execution}
+                busy={busy}
+                selectExecutor={selectExecutor}
+              />
+            }
+            leadingActions={
+              <div
+                role="group"
+                className="contents"
+                aria-label={t("executionConfig")}
+                data-testid="work-task-execution-config"
+              >
+                <WorkTaskExecutionControls
+                  models={models}
+                  execution={execution}
+                  busy={busy}
+                  thought={thought}
+                  changeExecution={changeExecution}
+                />
+              </div>
+            }
           />
+          <p className="text-ui-sm text-foreground-subtle">{t("executionConfigHint")}</p>
           <WorkTaskError error={submission.error ?? assets.attachmentError ?? error} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>

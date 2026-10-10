@@ -65,6 +65,7 @@ export function ChatPromptEditor({
   dragAttachmentHint,
   topContent,
   leadingActions,
+  trailingActions,
   toolbarLayout = "compact",
   attachmentAction,
   acpMode,
@@ -128,6 +129,8 @@ export function ChatPromptEditor({
   dragAttachmentHint?: string;
   topContent?: ReactNode;
   leadingActions?: ReactNode;
+  /** 右侧模型/智能体等纯展示控件，不承载会话或提交状态。 */
+  trailingActions?: ReactNode;
   /** 表单内的配置工具栏允许换行；普通对话仍按优先级紧凑收起。 */
   toolbarLayout?: "compact" | "wrap";
   attachmentAction?: {
@@ -465,6 +468,7 @@ export function ChatPromptEditor({
             className="ml-auto flex shrink-0 items-center justify-end gap-1.5"
             data-composer-trailing-actions
           >
+            {trailingActions}
             {onCancel && cancelLabel ? (
               <ControlHintTooltip title={cancelLabel} shortcut="Esc">
                 <Button

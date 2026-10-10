@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { RefreshCw } from "lucide-react";
+import { CpuIcon, RefreshCw } from "lucide-react";
 import { type WorkTask, type WorkTaskExecution } from "@zcode/shared";
 import { useWorkTaskModels } from "@/hooks/useWorkTaskModels.js";
 import { ModelConfigSelect } from "@/ModelConfigSelect.js";
@@ -24,31 +24,13 @@ interface Props {
 }
 
 export function WorkTaskExecutionControls({
-  task,
   models,
   execution,
   busy,
   thought,
   changeExecution,
-  selectExecutor,
-}: Props) {
+}: Omit<Props, "task" | "selectExecutor">) {
   const t = useWorkTaskMessages();
-  const acpLabel = t("agents");
-  const groups = useMemo(
-    () => [
-      {
-        key: "execution-api",
-        label: t("apiExecutor"),
-        directItems: true,
-        items: models.apiGroups.some((group) => group.items.length)
-          ? [{ key: "api", value: "api", name: t("apiExecutor") }]
-          : [],
-      },
-      buildAcpModelSelectGroup(acpLabel, models.agents),
-    ],
-    [models.apiGroups, models.agents, acpLabel],
-  );
-  const value = execution?.kind === "acp" ? acpModelValue(execution.agent) : execution ? "api" : "";
   const agent = execution?.kind === "acp" ? execution.agent : null;
   const known = agent ? models.configs.find((snapshot) => snapshot.agent === agent) : null;
   const options =
@@ -66,6 +48,15 @@ export function WorkTaskExecutionControls({
               };
         })
       : [];
+  // 修复原因：图标工具栏应与消息输入框顺序一致，不依赖 Host 目录返回顺序。
+  const categories = ["mode", "collaboration_mode", "model", "thought_level", "model_config"];
+  const orderedOptions = [...options].sort((a, b) => {
+    const rank = (category?: string) => {
+      const index = categories.indexOf(category ?? "");
+      return index < 0 ? categories.length : index;
+    };
+    return rank(a.category) - rank(b.category);
+  });
   const modes =
     execution?.kind === "acp" && known?.modeState
       ? {
@@ -76,23 +67,6 @@ export function WorkTaskExecutionControls({
           ),
         }
       : null;
-  const lockedExecutor = !!task && task.runSeq > 0;
-  const selectModel = (candidate: string) => {
-    if (candidate === value && execution) {
-      selectExecutor(execution);
-      return;
-    }
-    const nextAgent = acpAgentFromModelValue(candidate);
-    if (nextAgent) {
-      selectExecutor({ kind: "acp", agent: nextAgent, config: [] });
-    } else if (candidate === "api" && models.view?.preferredSelection) {
-      selectExecutor({
-        kind: "api",
-        mode: "build",
-        modelSelection: models.view.preferredSelection,
-      });
-    }
-  };
   const updateAcpOption = async (configId: string, value: string | boolean) => {
     if (execution?.kind !== "acp") return;
     changeExecution({
@@ -112,45 +86,9 @@ export function WorkTaskExecutionControls({
   };
   return (
     <>
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <span className="text-ui-sm text-foreground-subtle">{t("executor")}</span>
-        <ModelConfigSelect
-          modelGroups={groups}
-          renderItemIcon={(item) => {
-            const itemAgent = acpAgentFromModelValue(item.value);
-            return itemAgent ? <AcpAgentIcon agent={itemAgent} /> : null;
-          }}
-          normalizedValue={value}
-          triggerIcon={agent ? <AcpAgentIcon agent={agent} /> : undefined}
-          triggerIconClassName={agent ? "inline-flex" : "hidden"}
-          triggerLabel={resolveModelDisplayName(groups, value) ?? t("selectModel")}
-          showManageModelsAction={false}
-          lockReasonMessage={t("executorLocked")}
-          isItemLocked={(candidate) =>
-            lockedExecutor &&
-            (task?.execution.kind === "acp"
-              ? candidate !== acpModelValue(task.execution.agent)
-              : !!acpAgentFromModelValue(candidate))
-          }
-          onValueChange={selectModel}
-          onOpenChange={(open) => {
-            if (open) {
-              models.refreshAgents();
-              void models.refreshConfigs();
-            }
-          }}
-          disabled={busy}
-          focusSelectorOnClose={null}
-          triggerTestId="work-task-model"
-          contentSide="bottom"
-          triggerLabelClassName="min-w-0 flex-1 truncate text-left"
-          triggerClassName="h-9 w-full max-w-full justify-between rounded-lg border border-input-border bg-input px-3 text-ui-base"
-        />
-      </div>
       {execution?.kind === "api" ? (
-        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
-            <span className="text-ui-sm text-foreground-subtle">{t("apiModel")}</span>
+        <div className="contents">
+          <div className="contents">
             <ModelConfigSelect
               modelGroups={models.apiGroups}
               normalizedValue={encodeCustomModelValue(
@@ -166,6 +104,7 @@ export function WorkTaskExecutionControls({
                   ),
                 ) ?? execution.modelSelection.modelId
               }
+              tooltipTitle={`${t("apiModel")}: ${execution.modelSelection.modelId}`}
               showManageModelsAction={false}
               lockReasonMessage={t("executorLocked")}
               isItemLocked={() => false}
@@ -186,9 +125,11 @@ export function WorkTaskExecutionControls({
               focusSelectorOnClose={null}
               triggerTestId="work-task-api-model"
               contentSide="bottom"
-              triggerIconClassName="hidden"
-              triggerLabelClassName="min-w-0 flex-1 truncate text-left"
-              triggerClassName="h-9 w-full max-w-full justify-between rounded-lg border border-input-border bg-input px-3 text-ui-base"
+              triggerIcon={<CpuIcon className="size-4" />}
+              triggerIconClassName="inline-flex"
+              indicatorClassName="hidden"
+              triggerLabelClassName="hidden"
+              triggerClassName="size-7 justify-center p-0"
             />
           </div>
           <WorkTaskApiConfigControls
@@ -199,11 +140,12 @@ export function WorkTaskExecutionControls({
           />
         </div>
       ) : agent ? (
-        <div className="min-w-0 max-w-full">
+        <div className="contents">
           <AcpComposerConfigControls
             agent={agent}
-            presentation="fields"
-            options={options}
+            className="contents"
+            iconOnly
+            options={orderedOptions}
             modes={modes}
             disabled={busy}
             loading={models.configStatus === "loading" && !options.length && !modes}
@@ -270,5 +212,86 @@ export function WorkTaskExecutionControls({
         </div>
       ) : null}
     </>
+  );
+}
+
+export function WorkTaskExecutorSelect({
+  task,
+  models,
+  execution,
+  busy,
+  selectExecutor,
+}: Pick<Props, "task" | "models" | "execution" | "busy" | "selectExecutor">) {
+  const t = useWorkTaskMessages();
+  const acpLabel = t("agents");
+  const groups = useMemo(
+    () => [
+      {
+        key: "execution-api",
+        label: t("apiExecutor"),
+        directItems: true,
+        items: models.apiGroups.some((group) => group.items.length)
+          ? [{ key: "api", value: "api", name: t("apiExecutor") }]
+          : [],
+      },
+      buildAcpModelSelectGroup(acpLabel, models.agents),
+    ],
+    [models.apiGroups, models.agents, acpLabel],
+  );
+  const value = execution?.kind === "acp" ? acpModelValue(execution.agent) : execution ? "api" : "";
+  const agent = execution?.kind === "acp" ? execution.agent : null;
+  const lockedExecutor = !!task && task.runSeq > 0;
+  const selectModel = (candidate: string) => {
+    if (candidate === value && execution) {
+      selectExecutor(execution);
+      return;
+    }
+    const nextAgent = acpAgentFromModelValue(candidate);
+    if (nextAgent) {
+      selectExecutor({ kind: "acp", agent: nextAgent, config: [] });
+    } else if (candidate === "api" && models.view?.preferredSelection) {
+      selectExecutor({
+        kind: "api",
+        mode: "build",
+        modelSelection: models.view.preferredSelection,
+      });
+    }
+  };
+  return (
+    <div className="contents">
+      <ModelConfigSelect
+        modelGroups={groups}
+        renderItemIcon={(item) => {
+          const itemAgent = acpAgentFromModelValue(item.value);
+          return itemAgent ? <AcpAgentIcon agent={itemAgent} /> : null;
+        }}
+        normalizedValue={value}
+        triggerIcon={agent ? <AcpAgentIcon agent={agent} /> : undefined}
+        triggerIconClassName={agent ? "inline-flex" : "hidden"}
+        triggerLabel={resolveModelDisplayName(groups, value) ?? t("selectModel")}
+        tooltipTitle={`${t("executor")}: ${resolveModelDisplayName(groups, value) ?? t("selectModel")}`}
+        showManageModelsAction={false}
+        lockReasonMessage={t("executorLocked")}
+        isItemLocked={(candidate) =>
+          lockedExecutor &&
+          (task?.execution.kind === "acp"
+            ? candidate !== acpModelValue(task.execution.agent)
+            : !!acpAgentFromModelValue(candidate))
+        }
+        onValueChange={selectModel}
+        onOpenChange={(open) => {
+          if (open) {
+            models.refreshAgents();
+            void models.refreshConfigs();
+          }
+        }}
+        disabled={busy}
+        focusSelectorOnClose={null}
+        triggerTestId="work-task-model"
+        contentSide="bottom"
+        triggerLabelClassName="min-w-0 truncate text-left"
+        triggerClassName="max-w-40"
+      />
+    </div>
   );
 }

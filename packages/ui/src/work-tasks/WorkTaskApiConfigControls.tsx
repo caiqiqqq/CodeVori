@@ -1,7 +1,6 @@
 import type { WorkTaskExecution, ZCodeConfigOption } from "@zcode/shared";
 import { BrainIcon } from "lucide-react";
-import { resolveModeOptionIcon } from "@/chat-input-toolbar/display.js";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select.js";
+import { ConfigSelect } from "@/chat-input-toolbar/display.js";
 import { useWorkTaskMessages } from "./WorkTaskParts.js";
 
 type ApiExecution = Extract<WorkTaskExecution, { kind: "api" }>;
@@ -18,62 +17,50 @@ export function WorkTaskApiConfigControls({
   onChange(next: ApiExecution): void;
 }) {
   const t = useWorkTaskMessages();
-  const ModeIcon = resolveModeOptionIcon(execution.mode);
-  const modeTitle = `${t("mode")}: ${t(`mode.${execution.mode}`)}`;
   const reasoningLevel = execution.modelSelection.options?.reasoningLevel;
   const reasoningName = thought?.options?.find((item) => item.value === reasoningLevel)?.name;
-  const reasoningTitle = `${t("reasoning")}: ${reasoningName ?? reasoningLevel ?? t("agentDefault")}`;
+  // 修复原因：任务表单曾自行实现一套 Select；复用消息工具栏的展示、定位及键盘交互。
   return (
     <>
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <span className="text-ui-sm text-foreground-subtle">{t("mode")}</span>
-        <Select
-          value={execution.mode}
-          onValueChange={(mode) => onChange({ ...execution, mode: mode as ApiExecution["mode"] })}
-          disabled={disabled}
-        >
-          <SelectTrigger className="w-full min-w-0" aria-label={modeTitle}>
-            <ModeIcon className="size-4" aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate text-left">{t(`mode.${execution.mode}`)}</span>
-          </SelectTrigger>
-          {/* 此触发器手动显示模式文字，仍保留 popper 定位，避免缺少 SelectValue 锚点造成菜单偏移。 */}
-          <SelectContent position="popper" side="top" align="start" sideOffset={4}>
-            {["build", "edit", "plan", "yolo"].map((mode) => (
-              <SelectItem key={mode} value={mode}>
-                {t(`mode.${mode}`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <ConfigSelect
+        option={{
+          id: "mode",
+          name: t("mode"),
+          category: "mode",
+          type: "select",
+          currentValue: execution.mode,
+          options: ["build", "edit", "plan", "yolo"].map((mode) => ({
+            value: mode,
+            name: t(`mode.${mode}`),
+          })),
+        }}
+        onValueChange={(mode) => onChange({ ...execution, mode: mode as ApiExecution["mode"] })}
+        disabled={disabled}
+        tooltipTitle={`${t("mode")}: ${t(`mode.${execution.mode}`)}`}
+        triggerSize="default"
+        triggerClassName="size-7 justify-center gap-0 p-0"
+        indicatorClassName="hidden"
+        labelVisibilityClassName="hidden"
+        restoreFocusSelector={null}
+      />
       {thought?.options?.length ? (
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <span className="text-ui-sm text-foreground-subtle">{t("reasoning")}</span>
-          <Select
-            value={execution.modelSelection.options?.reasoningLevel ?? ""}
-            onValueChange={(reasoningLevel) =>
-              onChange({
-                ...execution,
-                modelSelection: { ...execution.modelSelection, options: { reasoningLevel } },
-              })
-            }
-            disabled={disabled}
-          >
-            <SelectTrigger className="w-full min-w-0" aria-label={reasoningTitle}>
-              <BrainIcon className="size-4" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate text-left">
-                {reasoningName ?? reasoningLevel ?? t("agentDefault")}
-              </span>
-            </SelectTrigger>
-            <SelectContent position="popper" side="top" align="start" sideOffset={4}>
-              {thought.options.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <ConfigSelect
+          option={{ ...thought, currentValue: reasoningLevel ?? "" }}
+          onValueChange={(reasoningLevel) =>
+            onChange({
+              ...execution,
+              modelSelection: { ...execution.modelSelection, options: { reasoningLevel } },
+            })
+          }
+          disabled={disabled}
+          tooltipTitle={`${t("reasoning")}: ${reasoningName ?? reasoningLevel ?? t("agentDefault")}`}
+          leadingIcon={BrainIcon}
+          triggerSize="default"
+          triggerClassName="size-7 justify-center gap-0 p-0"
+          indicatorClassName="hidden"
+          labelVisibilityClassName="hidden"
+          restoreFocusSelector={null}
+        />
       ) : null}
     </>
   );
