@@ -20,6 +20,7 @@ interface Props {
   busy: boolean;
   thought: ReturnType<typeof resolveModelThoughtOption> | null;
   changeExecution(execution: WorkTaskExecution): void;
+  selectExecutor(execution: WorkTaskExecution): void;
 }
 
 export function WorkTaskExecutionControls({
@@ -29,22 +30,25 @@ export function WorkTaskExecutionControls({
   busy,
   thought,
   changeExecution,
+  selectExecutor,
 }: Props) {
   const t = useWorkTaskMessages();
   const acpLabel = t("agents");
   const groups = useMemo(
-    () => [...models.apiGroups, buildAcpModelSelectGroup(acpLabel, models.agents)],
+    () => [
+      {
+        key: "execution-api",
+        label: t("apiExecutor"),
+        directItems: true,
+        items: models.apiGroups.some((group) => group.items.length)
+          ? [{ key: "api", value: "api", name: t("apiExecutor") }]
+          : [],
+      },
+      buildAcpModelSelectGroup(acpLabel, models.agents),
+    ],
     [models.apiGroups, models.agents, acpLabel],
   );
-  const value =
-    execution?.kind === "acp"
-      ? acpModelValue(execution.agent)
-      : execution
-        ? encodeCustomModelValue(
-            execution.modelSelection.providerId,
-            execution.modelSelection.modelId,
-          )
-        : "";
+  const value = execution?.kind === "acp" ? acpModelValue(execution.agent) : execution ? "api" : "";
   const agent = execution?.kind === "acp" ? execution.agent : null;
   const known = agent ? models.configs.find((snapshot) => snapshot.agent === agent) : null;
   const options =
@@ -75,19 +79,17 @@ export function WorkTaskExecutionControls({
   const lockedExecutor = !!task && task.runSeq > 0;
   const selectModel = (candidate: string) => {
     if (candidate === value && execution) {
-      changeExecution(execution);
+      selectExecutor(execution);
       return;
     }
     const nextAgent = acpAgentFromModelValue(candidate);
     if (nextAgent) {
-      changeExecution({ kind: "acp", agent: nextAgent, config: [] });
-    } else {
-      const model = decodeCustomModelValue(candidate);
-      if (!model?.modelName) return;
-      changeExecution({
+      selectExecutor({ kind: "acp", agent: nextAgent, config: [] });
+    } else if (candidate === "api" && models.view?.preferredSelection) {
+      selectExecutor({
         kind: "api",
-        mode: execution?.kind === "api" ? execution.mode : "build",
-        modelSelection: { providerId: model.providerId, modelId: model.modelName },
+        mode: "build",
+        modelSelection: models.view.preferredSelection,
       });
     }
   };
@@ -110,50 +112,97 @@ export function WorkTaskExecutionControls({
   };
   return (
     <>
-      <ModelConfigSelect
-        modelGroups={groups}
-        renderItemIcon={(item) => {
-          const itemAgent = acpAgentFromModelValue(item.value);
-          return itemAgent ? <AcpAgentIcon agent={itemAgent} /> : null;
-        }}
-        normalizedValue={value}
-        triggerIcon={agent ? <AcpAgentIcon agent={agent} /> : undefined}
-        triggerIconClassName={agent ? "inline-flex" : "hidden"}
-        triggerLabel={resolveModelDisplayName(groups, value) ?? t("selectModel")}
-        showManageModelsAction={false}
-        lockReasonMessage={t("executorLocked")}
-        isItemLocked={(candidate) =>
-          lockedExecutor &&
-          (task?.execution.kind === "acp"
-            ? candidate !== acpModelValue(task.execution.agent)
-            : !!acpAgentFromModelValue(candidate))
-        }
-        onValueChange={selectModel}
-        onOpenChange={(open) => {
-          if (open) {
-            models.refreshAgents();
-            void models.refreshConfigs();
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <span className="text-ui-sm text-foreground-subtle">{t("executor")}</span>
+        <ModelConfigSelect
+          modelGroups={groups}
+          renderItemIcon={(item) => {
+            const itemAgent = acpAgentFromModelValue(item.value);
+            return itemAgent ? <AcpAgentIcon agent={itemAgent} /> : null;
+          }}
+          normalizedValue={value}
+          triggerIcon={agent ? <AcpAgentIcon agent={agent} /> : undefined}
+          triggerIconClassName={agent ? "inline-flex" : "hidden"}
+          triggerLabel={resolveModelDisplayName(groups, value) ?? t("selectModel")}
+          showManageModelsAction={false}
+          lockReasonMessage={t("executorLocked")}
+          isItemLocked={(candidate) =>
+            lockedExecutor &&
+            (task?.execution.kind === "acp"
+              ? candidate !== acpModelValue(task.execution.agent)
+              : !!acpAgentFromModelValue(candidate))
           }
-        }}
-        disabled={busy}
-        focusSelectorOnClose={null}
-        triggerTestId="work-task-model"
-        contentSide="bottom"
-        labelVisibilityClassName="inline-flex min-w-0 truncate"
-        triggerClassName="max-w-full"
-      />
-      {execution?.kind === "api" ? (
-        <WorkTaskApiConfigControls
-          execution={execution}
-          thought={thought}
+          onValueChange={selectModel}
+          onOpenChange={(open) => {
+            if (open) {
+              models.refreshAgents();
+              void models.refreshConfigs();
+            }
+          }}
           disabled={busy}
-          onChange={changeExecution}
+          focusSelectorOnClose={null}
+          triggerTestId="work-task-model"
+          contentSide="bottom"
+          triggerLabelClassName="min-w-0 flex-1 truncate text-left"
+          triggerClassName="h-9 w-full max-w-full justify-between rounded-lg border border-input-border bg-input px-3 text-ui-base"
         />
+      </div>
+      {execution?.kind === "api" ? (
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
+            <span className="text-ui-sm text-foreground-subtle">{t("apiModel")}</span>
+            <ModelConfigSelect
+              modelGroups={models.apiGroups}
+              normalizedValue={encodeCustomModelValue(
+                execution.modelSelection.providerId,
+                execution.modelSelection.modelId,
+              )}
+              triggerLabel={
+                resolveModelDisplayName(
+                  models.apiGroups,
+                  encodeCustomModelValue(
+                    execution.modelSelection.providerId,
+                    execution.modelSelection.modelId,
+                  ),
+                ) ?? execution.modelSelection.modelId
+              }
+              showManageModelsAction={false}
+              lockReasonMessage={t("executorLocked")}
+              isItemLocked={() => false}
+              onValueChange={(candidate) => {
+                const model = decodeCustomModelValue(candidate);
+                if (
+                  model?.providerId === execution.modelSelection.providerId &&
+                  model.modelName === execution.modelSelection.modelId
+                )
+                  return;
+                if (model?.modelName)
+                  changeExecution({
+                    ...execution,
+                    modelSelection: { providerId: model.providerId, modelId: model.modelName },
+                  });
+              }}
+              disabled={busy}
+              focusSelectorOnClose={null}
+              triggerTestId="work-task-api-model"
+              contentSide="bottom"
+              triggerIconClassName="hidden"
+              triggerLabelClassName="min-w-0 flex-1 truncate text-left"
+              triggerClassName="h-9 w-full max-w-full justify-between rounded-lg border border-input-border bg-input px-3 text-ui-base"
+            />
+          </div>
+          <WorkTaskApiConfigControls
+            execution={execution}
+            thought={thought}
+            disabled={busy}
+            onChange={changeExecution}
+          />
+        </div>
       ) : agent ? (
-        <div className="min-w-0 max-w-full [&>div]:flex-wrap">
+        <div className="min-w-0 max-w-full">
           <AcpComposerConfigControls
             agent={agent}
-            iconOnly
+            presentation="fields"
             options={options}
             modes={modes}
             disabled={busy}
@@ -184,7 +233,7 @@ export function WorkTaskExecutionControls({
               data-testid="work-task-agent-default"
               className="text-ui-sm text-foreground-subtle"
             >
-              {t("agentDefault")}
+              {t("configUnavailable")}
             </span>
           ) : null}
           {execution?.kind === "acp"

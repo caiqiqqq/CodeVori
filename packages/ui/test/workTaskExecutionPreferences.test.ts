@@ -4,6 +4,7 @@ import type { ModelSelectionView } from "@zcode/services";
 import type { AcpAgentAvailability, WorkTaskExecution } from "@zcode/shared";
 import {
   createWorkTaskExecutionPreferenceStore,
+  isWorkTaskExecutionAvailable,
   resolveWorkTaskExecutionPreference,
 } from "../src/store/workTaskExecutionPreferenceStore.js";
 
@@ -159,4 +160,20 @@ test("only available choices restore and fallback never changes the stored prefe
   assert.equal(resolveWorkTaskExecutionPreference(api, null, []), null);
   assert.deepEqual(resolveWorkTaskExecutionPreference(null, view, []), fallback);
   assert.deepEqual(codex.config.at(-1), { configId: "fast", value: false });
+});
+
+test("confirmed execution availability never substitutes the preferred API target", () => {
+  assert.equal(isWorkTaskExecutionAvailable(api, view, []), true);
+  assert.equal(isWorkTaskExecutionAvailable(codex, null, agents), true);
+  assert.equal(isWorkTaskExecutionAvailable(codex, view, []), false);
+  assert.equal(isWorkTaskExecutionAvailable(codex, view, [{ ...agents[0]!, ready: false }]), false);
+  assert.equal(isWorkTaskExecutionAvailable(api, null, agents), false);
+  assert.equal(
+    isWorkTaskExecutionAvailable(
+      { ...api, modelSelection: { providerId: "other", modelId: "model" } },
+      view,
+      agents,
+    ),
+    false,
+  );
 });

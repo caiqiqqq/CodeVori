@@ -132,7 +132,7 @@ export async function exerciseWorkTaskExecutionPreferences(page, artifacts) {
 
   await project("Other");
   await open();
-  await editor.getByTestId("work-task-model").getByText("TestModel", { exact: true }).waitFor();
+  await editor.getByTestId("work-task-api-model").getByText("TestModel", { exact: true }).waitFor();
   await editor.getByRole("combobox", { name: /^权限模式:/ }).click();
   await page.getByRole("option").nth(3).click();
   await editor.getByRole("combobox", { name: /^思考强度:/ }).click();
@@ -147,7 +147,7 @@ export async function exerciseWorkTaskExecutionPreferences(page, artifacts) {
   await page.reload();
   assert.equal(await panel.getByTestId("work-task-project").innerText(), "Other");
   await open();
-  await editor.getByTestId("work-task-model").getByText("TestModel", { exact: true }).waitFor();
+  await editor.getByTestId("work-task-api-model").getByText("TestModel", { exact: true }).waitFor();
   assert.equal(
     await editor.getByRole("combobox", { name: /^权限模式:/ }).getAttribute("aria-label"),
     rememberedApi,

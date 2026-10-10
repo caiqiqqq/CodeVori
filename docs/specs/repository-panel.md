@@ -175,17 +175,20 @@
   failure disables merging without hiding the item, comments or files.
 - Open repository/item/check links through IPlatformService. Validate external
   links as HTTP(S) URLs and never display a credential-bearing remote URL.
-- "Handle with agent" creates an existing ZCode conversation draft prefilled
-  with the item's title, URL and description. API and ACP use the same composer;
-  no automatic prompt, branch switch, worktree creation or remote writeback is
-  introduced. External issue text is identified as untrusted source content.
-- Each outer list row has a separate "Handle" button. It reads the full item
-  through the selected Host's IGitService, then saves a task through that same
-  Host's IWorkTaskService.create with the exact workspacePath, workspaceIdentity
-  and remoteSessionId. The task title comes from the item title (within the
-  existing 200-character limit); the prompt reuses the existing untrusted-source
-  wrapper with repository, kind, number, URL and description. The existing
-  20,000-character description boundary and source-link notice still apply.
+- List "Handle" and detail "Handle with agent" share one task-creation flow.
+  Read the complete item through the selected Host's IGitService, then open the
+  existing WorkTaskEditor as a new-task draft with its title (200-character
+  limit) and untrusted-source prompt prefilled. Keep the repository project
+  fixed; expose the existing branch/worktree and API/ACP execution controls.
+  The 20,000-character description boundary and source-link notice still apply.
+- WorkTaskEditor owns the editable prompt, attachments, branch/worktree and
+  execution draft. A new-task initial draft is separate from a persisted task;
+  do not fabricate a historical WorkTask or inherit conversation history. The
+  project preference is only an initial selection; the user can change it.
+  Preserve exact API provider/model/options/mode or ACP agent/config. Validate
+  the confirmed execution against the bound Host's current catalog before
+  saving; an unavailable target reports an error without silently substituting
+  another executor. Missing API configuration must not block choosing ACP.
 - List rows share one subtle hover surface across the item and its action,
   with inset padding and rounded corners. Handle is a quiet ghost action with
   a task-add icon and readable text, always visible on touch and keyboard.
@@ -195,22 +198,39 @@
   preserve wrapping and no horizontal overflow at 320px in both themes.
   At narrow widths, place the action below the content at the trailing edge
   so long titles and metadata retain the row's full reading width.
-- Save only: WorkTaskService owns persistence and the initial todo status.
-  Do not start, queue, create a conversation/worktree, close the forge item,
-  merge or write back to the forge. The detail's conversation-draft action
-  keeps its existing behavior. The list remains visible after saving and the
-  button shows "Added to To-do". It stays disabled for that item for the current
-  repository content lifetime; this is transient feedback, not a durable
-  forge-to-task mapping. Returning after remount may intentionally save again.
-- Reuse the task editor's project execution preference resolution: keep exact
-  API provider/model/options/mode or an enabled, ready ACP identity/config;
-  otherwise use the selected Host's preferred API selection. With no usable
-  execution selection show an actionable error and create nothing.
-- Admit one handle operation at a time synchronously. Disable handle buttons
-  while reading/saving, never retry writes automatically, and allow explicit
-  retry after failure. Workspace/Host/remote/account changes discard old UI
-  replies and prevent a late detail/model read from initiating a task save.
-  An already dispatched save remains owned by its original Host/project.
+- Confirming Save calls the selected Host's IWorkTaskService.create with the
+  exact workspacePath, workspaceIdentity and remoteSessionId. WorkTaskService
+  remains the single owner of persistence and initial todo status. Opening,
+  selecting and saving never start/queue a task, create an Agent conversation or
+  worktree, change the main Agent, close an item, merge or write back to the forge.
+  Cancellation creates nothing. Failed saves retain the editor's inputs for
+  explicit retry. Success closes the editor, retains the list/detail, and shows
+  "Added to To-do" on both entrypoints for the current repository content lifetime;
+  this is transient feedback, not a durable forge-to-task mapping.
+- Admit one item read/save at a time synchronously; repeated Handle clicks open
+  only one editor, and repeated Save submits only one create command. Workspace,
+  Host, remote or account changes discard the old draft and late reads; check
+  ownership again after execution validation before dispatching create. An
+  already dispatched save remains owned by its original Host/project and cannot
+  close or mark a new project's editor. Desktop and mobile use the same save-only
+  command; this change does not alter continuous/replayable session delivery.
+
+### Handle acceptance cases
+
+- List and detail both open the same prefilled new-task editor; opening and
+  canceling issue no create/start/Agent commands.
+- Change API provider/model/reasoning/mode or select an available ACP agent and
+  config; Save retains the exact configuration and original issue title.
+- With no preferred API selection, an available ACP can still be selected.
+  If the chosen executor disappears before Save, create nothing and retain the
+  draft with an actionable error; never fall back to a different executor.
+- Double-click Handle/Save admits one operation. Detail/save failures can be
+  explicitly retried; save errors preserve prompt/config. Cancel permits reopen.
+- Switch project/Host/remote during read, with an open editor, during execution
+  validation, or after save dispatch: stale reads never start a save; dispatched
+  writes remain scoped to the original Host and never mark the new view.
+- Preserve remote identity/session routing, keyboard access, both themes and
+  usable 320px mobile layout. No conversation draft or forge write is created.
 
 ## Ownership And Boundaries
 
@@ -341,9 +361,9 @@ legacy authentication required -> explicit sign-in action -> bound Host command
 cancel / Host or parent disposal -> close native window -> settle authorization
 old detail/image owner reply -> ignored; temporary object URL -> revoked
 confirmed write -> target/head validation -> one API write -> refresh snapshot
-handle item -> existing create-task action -> shared API/ACP composer draft
-list Handle -> bound Host full-item read + execution preference resolution
-            -> current-owner check -> same Host IWorkTaskService.create
+list/detail Handle -> bound Host full-item read -> new WorkTaskEditor draft
+            -> explicit API/ACP selection -> confirmed Save
+            -> execution validation + current-owner check -> same Host IWorkTaskService.create
             -> persisted todo -> existing task events/read model
             -> matching row's transient success feedback
 scope change before save -> discard old read (no create)
@@ -364,7 +384,7 @@ covered/previous generation reply -> ignored (no credential or queue replay)
 
 ## Validation
 
-- E2E: outer list Handle saves a todo task with full detail content and exact
+- E2E: list/detail Handle opens a prefilled task editor and confirmed Save saves a todo task with full detail content and exact
   project scope, leaving the list visible and producing no agent/forge writes.
   Cover double-click admission, save/read failures and explicit retry, preferred
   API and remembered ACP configurations, missing model, same-path remote
@@ -403,7 +423,7 @@ covered/previous generation reply -> ignored (no credential or queue replay)
   Verify the picker in non-Git/error states, narrow widths and light/dark themes.
 - E2E: sidebar entry, list/tab/search/state/page flows, missing-account recovery,
   details/comments/files/checks, create/comment/close/reopen/merge confirmation,
-  agent draft handoff, delayed old replies after workspace/remote changes,
+  task editor selection and cancellation, delayed old replies after workspace/remote changes,
   mobile layout, light/dark themes and no horizontal overflow.
 - Unit: GitLab/GitHub/Gitea detail metadata normalization; GitLab system-note
   pagination, task totals, optional participants/links/label failures; safe web

@@ -11,6 +11,7 @@ import { WorkTaskAttachments } from "./WorkTaskAttachments.js";
 export function WorkTaskPromptField({
   scope,
   task,
+  initialPrompt,
   busy,
   assets,
   inputApiRef,
@@ -19,6 +20,7 @@ export function WorkTaskPromptField({
 }: {
   scope: WorkTaskScope;
   task: WorkTask | null;
+  initialPrompt?: string;
   busy: boolean;
   assets: ReturnType<typeof useWorkTaskPromptAssets>;
   inputApiRef: MutableRefObject<LexicalChatInputHandle | null>;
@@ -37,7 +39,7 @@ export function WorkTaskPromptField({
             workspacePath={scope.workspacePath}
             workspaceIdentity={scope.workspaceIdentity}
             taskId={null}
-            initialValue={task?.prompt ?? ""}
+            initialValue={task?.prompt ?? initialPrompt ?? ""}
             initialEditorStateJson={task?.promptEditorState}
             inputApiRef={inputApiRef}
             inputTestId="work-task-prompt"

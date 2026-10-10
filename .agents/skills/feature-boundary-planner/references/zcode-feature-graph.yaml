@@ -516,7 +516,7 @@ nodes:
       - Selecting an Agent or creating a task only saves configuration; it does not create or prompt an Agent session.
       - Existing task session bindings cannot switch execution kind or ACP Agent on retry.
       - File collection and mentions never create, prewarm or authenticate an Agent; failed saves preserve the independent draft.
-      - Model and execution controls render inside the shared editor toolbar; wrapping is task-only and never changes conversation state or submission semantics.
+      - Work task execution controls render as labeled fields outside the shared prompt editor; the task editor owns per-executor drafts and never changes conversation configuration or submission semantics.
   - id: shared-ui.chat-prompt-editor
     kind: shared-ui
     label: Existing shared chat prompt editor and attachment collection
@@ -720,7 +720,7 @@ edges:
     to: shared-ui.chat-prompt-editor
     type: shares-component
     rank: must-inspect
-    condition: Embedded task descriptions, attachments and wrapping execution controls reuse the existing input shell without an Agent session.
+    condition: Embedded task descriptions and attachments reuse the existing input shell without an Agent session; labeled execution controls stay outside the shell.
   - from: surface.work-task-editor
     to: service.composer-host-file-search
     type: options-from

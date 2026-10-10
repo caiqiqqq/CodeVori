@@ -17,6 +17,7 @@ import { exerciseWorkTaskEqualWidths } from "./workTaskEqualWidthAssertions.mjs"
 import { exerciseWorkTaskComposer } from "./workTaskComposerAssertions.mjs";
 import { exerciseWorkTaskSelectionVisibility } from "./workTaskSelectionVisibilityAssertions.mjs";
 import { exerciseWorkTaskSidebarWidth } from "./workTaskSidebarWidthAssertions.mjs";
+import { exerciseWorkTaskExecutionConfig } from "./workTaskExecutionConfigAssertions.mjs";
 
 export function launchWorkTaskBrowser() {
   return chromium.launch({
@@ -39,6 +40,7 @@ export {
   exerciseWorkTaskCompletion,
 };
 export const workTaskScenarios = {
+  "execution-config": exerciseWorkTaskExecutionConfig,
   "sidebar-width": exerciseWorkTaskSidebarWidth,
   "selection-visibility": exerciseWorkTaskSelectionVisibility,
   "equal-widths": exerciseWorkTaskEqualWidths,

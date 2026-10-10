@@ -57,25 +57,28 @@ export function createWorkTaskExecutionPreferenceStore(
 
 export const workTaskExecutionPreferenceStore = createWorkTaskExecutionPreferenceStore();
 
+/** Availability only: confirmation must never substitute an unavailable explicit choice. */
+export function isWorkTaskExecutionAvailable(
+  execution: WorkTaskExecution,
+  view: ModelSelectionView | null,
+  agents: readonly AcpAgentAvailability[],
+): boolean {
+  if (execution.kind === "acp")
+    return agents.some((item) => item.agent === execution.agent && item.enabled && item.ready);
+  const { providerId, modelId } = execution.modelSelection;
+  return !!view?.providers.some(
+    (provider) =>
+      provider.providerId === providerId &&
+      provider.models.some((model) => model.modelId === modelId),
+  );
+}
+
 export function resolveWorkTaskExecutionPreference(
   remembered: WorkTaskExecution | null,
   view: ModelSelectionView | null,
   agents: readonly AcpAgentAvailability[],
 ): WorkTaskExecution | null {
-  if (remembered?.kind === "acp") {
-    if (agents.some((item) => item.agent === remembered.agent && item.enabled && item.ready))
-      return remembered;
-  } else if (remembered?.kind === "api") {
-    const { providerId, modelId } = remembered.modelSelection;
-    if (
-      view?.providers.some(
-        (provider) =>
-          provider.providerId === providerId &&
-          provider.models.some((model) => model.modelId === modelId),
-      )
-    )
-      return remembered;
-  }
+  if (remembered && isWorkTaskExecutionAvailable(remembered, view, agents)) return remembered;
   return view?.preferredSelection
     ? { kind: "api", modelSelection: view.preferredSelection, mode: "build" }
     : null;

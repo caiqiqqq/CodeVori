@@ -49,12 +49,8 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
               .isVisible(),
           );
         }
-        if (kind === "api")
-          await page.getByTestId("chat-model-select-group-registry-provider:api").hover();
         await page
-          .getByTestId(
-            `chat-model-select-item-${kind === "api" ? "custom:api:TestModel" : "acp:codex"}`,
-          )
+          .getByTestId(`chat-model-select-item-${kind === "api" ? "api" : "acp:codex"}`)
           .click();
         if (width === 1280 && kind === "api") {
           await prompt.fill("Draft scoped to the original project");
@@ -63,7 +59,7 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
           await editor.getByText("/synthetic/other", { exact: true }).waitFor();
           assert.equal((await prompt.innerText()).trim(), "");
           await editor
-            .getByTestId("work-task-model")
+            .getByTestId("work-task-api-model")
             .getByText("TestModel", { exact: true })
             .waitFor();
         }
@@ -74,28 +70,29 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
         assert.match(await prompt.innerText(), /Independent task draft\nSecond line/);
         assert.equal(await editor.locator("form").count(), 1);
         const toolbar = editor.locator("[data-composer-leading-actions]");
-        assert.equal(await toolbar.getByTestId("work-task-model").count(), 1);
-        assert.equal(await toolbar.getByTestId("work-task-add-menu").count(), 1);
+        const config = editor.getByTestId("work-task-execution-config");
+        assert.equal(await toolbar.getByTestId("work-task-model").count(), 0);
+        assert.equal(await editor.getByTestId("work-task-add-menu").count(), 1);
         if (kind === "api") {
-          const mode = toolbar.getByRole("combobox", { name: /^权限模式:/ });
-          await assertIconControl(page, mode, "svg");
+          const mode = config.getByRole("combobox", { name: /^权限模式:/ });
+          await assertTextControl(mode, "svg");
           await mode.focus();
           await mode.press("ArrowDown");
           await page.getByRole("option").nth(2).click();
           assert.match(await mode.getAttribute("aria-label"), /规划/);
-          const reasoning = toolbar.getByRole("combobox", { name: /^思考强度:/ });
-          await assertIconControl(page, reasoning, ".lucide-brain");
+          const reasoning = config.getByRole("combobox", { name: /^思考强度:/ });
+          await assertTextControl(reasoning, ".lucide-brain");
           await reasoning.click();
           await page.getByRole("option", { name: "low", exact: true }).click();
           assert.match(await reasoning.getAttribute("aria-label"), /low/);
         } else {
           assert.ok(
-            await toolbar
+            await config
               .getByTestId("work-task-model")
               .locator('[data-acp-agent-icon="codex"]')
               .isVisible(),
           );
-          assert.equal(await toolbar.getByTestId("acp-composer-config-controls").count(), 1);
+          assert.equal(await config.getByTestId("acp-composer-config-controls").count(), 1);
           for (const [id, icon] of [
             ["mode", "shield-check"],
             ["collaboration_mode", "users"],
@@ -104,22 +101,21 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
             ["fast", "zap"],
             ["extra-4", "settings-2"],
           ]) {
-            await assertIconControl(
-              page,
-              toolbar.getByTestId(`acp-config-trigger-${id}`),
+            await assertTextControl(
+              config.getByTestId(`acp-config-trigger-${id}`),
               `.lucide-${icon}`,
             );
           }
-          await toolbar.getByTestId("acp-config-trigger-extra-4").click();
+          await config.getByTestId("acp-config-trigger-extra-4").click();
           await page.getByTestId("acp-config-choice-extra-4-true").click();
           assert.doesNotMatch(
-            await toolbar.getByTestId("acp-config-trigger-extra-4").getAttribute("aria-label"),
+            await config.getByTestId("acp-config-trigger-extra-4").getAttribute("aria-label"),
             /智能体默认配置/,
           );
-          await toolbar.getByTestId("acp-config-trigger-extra-4").click();
+          await config.getByTestId("acp-config-trigger-extra-4").click();
           await page.getByTestId("acp-config-default-extra-4").click();
           assert.match(
-            await toolbar.getByTestId("acp-config-trigger-extra-4").getAttribute("aria-label"),
+            await config.getByTestId("acp-config-trigger-extra-4").getAttribute("aria-label"),
             /智能体默认配置/,
           );
         }
@@ -135,25 +131,18 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
               .map((animation) => animation.finished.catch(() => {})),
           );
         });
-        const model = await toolbar.getByTestId("work-task-model").boundingBox();
-        const add = await toolbar.getByTestId("work-task-add-menu").boundingBox();
         assert.ok(
-          Math.abs(model.y + model.height / 2 - add.y - add.height / 2) < 2,
-          "add and model controls share the first toolbar row",
-        );
-        assert.ok(
-          await toolbar.evaluate((element) => {
-            const shell = element.parentElement.parentElement;
-            const bounds = shell.getBoundingClientRect();
+          await config.evaluate((element) => {
+            const bounds = element.getBoundingClientRect();
             return (
-              shell.scrollWidth <= shell.clientWidth + 1 &&
+              element.scrollWidth <= element.clientWidth + 1 &&
               [...element.querySelectorAll('button, [role="combobox"]')].every((control) => {
                 const rect = control.getBoundingClientRect();
                 return rect.width > 0 && rect.left >= bounds.left && rect.right <= bounds.right + 1;
               })
             );
           }),
-          `${theme}/${width}/${kind}: all composer controls fit inside the input shell`,
+          `${theme}/${width}/${kind}: all execution controls fit inside the configuration region`,
         );
         assert.ok(
           await editor.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
@@ -202,16 +191,9 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
   }
 }
 
-async function assertIconControl(page, control, icon) {
-  assert.ok(await control.locator(icon).isVisible(), "configuration icon is visible");
-  assert.equal((await control.innerText()).trim(), "", "trigger displays only the icon");
+async function assertTextControl(control, icon) {
+  assert.ok(await control.locator(icon).first().isVisible(), "configuration icon is visible");
+  assert.ok((await control.innerText()).trim().length > 0, "trigger shows its selected value");
   const label = await control.getAttribute("aria-label");
   assert.match(label, /.+: .+/);
-  await control.hover();
-  await page.getByRole("tooltip").getByText(label, { exact: true }).waitFor();
-  await page.keyboard.press("Escape");
-  await page.getByTestId("work-task-prompt").hover();
-  await page.getByTestId("work-task-prompt").focus();
-  // 多个退出动画的 portal 可能短暂共存，等待全部卸载后再打开下一个菜单。
-  await page.waitForFunction(() => !document.querySelector('[role="tooltip"]'));
 }

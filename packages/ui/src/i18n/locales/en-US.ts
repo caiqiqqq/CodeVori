@@ -66,8 +66,13 @@ const enUS: Record<string, string> = {
   "workTasks.error.work-task.attachment-chunk-order":
     "Attachment chunks arrived out of order. Save again.",
   "workTasks.agents": "Agents",
+  "workTasks.executionConfig": "Execution configuration",
+  "workTasks.executor": "Execution agent",
+  "workTasks.apiExecutor": "ZCode / API",
+  "workTasks.apiModel": "Model / provider",
+  "workTasks.executionConfigHint": "Applies to this task. The current conversation is unchanged.",
+  "workTasks.configUnavailable": "No configuration options available. Using agent defaults.",
   "workTasks.selectModel": "Select model or agent",
-  "workTasks.executor": "Agent / Model",
   "workTasks.agentDefault": "Agent default",
   "workTasks.configReadFailed": "Could not read agent configuration: {message}",
   "workTasks.configRetry": "Retry reading agent configuration",
@@ -399,11 +404,12 @@ const enUS: Record<string, string> = {
   "repositoryPanel.handle": "Handle with Agent",
   "repositoryPanel.process": "Handle",
   "repositoryPanel.taskCreated": "Added to To-do",
-  "repositoryPanel.error.TASK_SAVE": "Could not create the to-do task. Click Handle to retry.",
+  "repositoryPanel.error.TASK_SAVE":
+    "Could not create the to-do task. Retry saving your current draft.",
   "repositoryPanel.error.TASK_UNSUPPORTED":
     "This project's Host does not support to-do tasks. Update the Host first.",
   "repositoryPanel.error.NO_EXECUTION":
-    "No task execution model is available. Configure a model or agent in To-do Tasks, then retry.",
+    "The selected model or agent is unavailable. Select another executor and save again.",
   "repositoryPanel.closeIssue": "Close Issue",
   "repositoryPanel.closeRequest": "Close Request",
   "repositoryPanel.reopen": "Reopen",

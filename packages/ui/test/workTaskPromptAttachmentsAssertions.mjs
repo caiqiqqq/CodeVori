@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { selectWorkTaskExecution } from "./workTaskExecutionConfigAssertions.mjs";
 
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S8AAAAASUVORK5CYII=",
@@ -14,12 +15,7 @@ export async function exerciseWorkTaskPromptAttachments(page, artifacts) {
   const prompt = editor.getByTestId("work-task-prompt");
   const chips = editor.getByTestId("work-task-attachment");
   await panel.getByTestId("work-task-board").waitFor();
-  const select = async (value) => {
-    await editor.getByTestId("work-task-model").click();
-    if (value.startsWith("custom:"))
-      await page.getByTestId("chat-model-select-group-registry-provider:api").hover();
-    await page.getByTestId(`chat-model-select-item-${value}`).click();
-  };
+  const select = (value) => selectWorkTaskExecution(page, editor, value);
   const choose = async (files) => {
     await editor.getByTestId("work-task-add-menu").click();
     const chooser = page.waitForEvent("filechooser");

@@ -75,9 +75,14 @@ try {
       },
       async listForgeItems(r:any){state.calls.push({op:'list',host,...r});return {items:[item(host,r)],page:r.page,pageSize:20,hasMore:false,total:1,reachableTotal:1,incomplete:false}},
       async listForgeLabels(){return []},
-      async getForgeItem(r:any){return {...item(host,r),change:null}},
+      async getForgeItem(r:any){state.calls.push({op:'detail',host,...r});return {...item(host,r),change:null}},
       async listForgeComments(){return {items:[],page:1,pageSize:30,hasMore:false,total:0}},
-    }});
+    },
+    clientConfigService:{async getSnapshot(){throw new Error('Files-only draft must not read plugins')}},
+    modelSelectionService:{async getView(){return {revision:1,providers:[],preferredSelection:null}},onDidChange(){return {dispose(){}}}},
+    acpService:{async listAvailableAgents(){state.calls.push({op:'agents',host});return [{agent:'codex',enabled:true,ready:true}]},async listAgentConfigs(){return []},onDynamicAgentConfigsChanged:()=>()=>({dispose(){}})},
+    workTaskService:{async create(){throw new Error('Navigation must not save a task')}},
+    });
     const base:any=services('local');
     const registry=useRemoteWorkspaceSessionStore.getState();
     state.disconnect=()=>registry.unregisterSession('session-two');
@@ -109,7 +114,7 @@ try {
       useEffect(()=>{api.getState().restoreTabs(sources,0);useZCodeSessionStore.getState().taskNavPushRepository(alpha)},[api]);
       return <div className='flex h-dvh min-w-0 flex-col bg-background text-foreground'>
         <nav className='flex shrink-0 gap-2 px-4 py-1'><Button aria-label='后退' disabled={!nav.canTaskNavBack} onClick={nav.handleTaskNavBack}>后退</Button><Button aria-label='前进' disabled={!nav.canTaskNavForward} onClick={nav.handleTaskNavForward}>前进</Button></nav>
-        <div className='min-h-0 flex-1'><RepositoryPanel workspacePath={path} workspaceIdentity={identity} remoteSessionId={active?.remoteSessionId} workspaceTabs={tabs.filter(isWorkspaceTab)} onSelectProject={nav.handleOpenRepository} theme='zai-light' onCreateTask={(request:any)=>state.calls.push({op:'agent',...request})}/></div>
+        <div className='min-h-0 flex-1'><RepositoryPanel workspacePath={path} workspaceIdentity={identity} remoteSessionId={active?.remoteSessionId} workspaceTabs={tabs.filter(isWorkspaceTab)} onSelectProject={nav.handleOpenRepository} theme='zai-light'/></div>
       </div>
     }
     createRoot(document.getElementById('root')!).render(<ServiceProvider services={base}><PlatformProvider platform={{openExternal(){}} as any}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><StoreProvider broadcastService={broadcast}><TabStoreProvider><Fixture/></TabStoreProvider></StoreProvider></TooltipProvider></ZCodeIntlProvider></PlatformProvider></ServiceProvider>);
@@ -211,13 +216,18 @@ try {
   const detail = page.getByTestId("repository-item-detail");
   await detail.getByText("Synthetic issue", { exact: true }).waitFor();
   await detail.getByRole("button", { name: "交给智能体处理", exact: true }).click();
+  const editor = page.getByTestId("work-task-editor");
+  await editor.waitFor();
   const handoff = await page.evaluate(() =>
-    window.__projects.calls.find((call) => call.op === "agent"),
+    window.__projects.calls.filter((c) => c.op === "detail").at(-1),
   );
-  assert.deepEqual(handoff.targetWorkspace, {
-    workspacePath: "/synthetic/alpha/project",
-    workspaceIdentity: remoteKeys[0],
-  });
+  assert.equal(handoff.host, "remote-one");
+  assert.equal(handoff.workspacePath, "/synthetic/alpha/project");
+  assert.equal(handoff.workspaceIdentity, remoteKeys[0]);
+  await editor.getByTestId("work-task-model").click();
+  await page.getByTestId("chat-model-select-item-acp:codex").click();
+  await editor.getByRole("button", { name: "取消", exact: true }).click();
+  await editor.waitFor({ state: "detached" });
   await detail.getByRole("button", { name: "关闭详情", exact: true }).click();
   await choose(remoteKeys[1], "two.example.invalid");
   await waitRow("remote-two /synthetic/alpha/project origin");
@@ -299,14 +309,14 @@ try {
     await page.evaluate(
       () =>
         window.__projects.calls.filter(
-          (call) => !["list", "discover", "agent", "repository-info"].includes(call.op),
+          (call) => !["list", "discover", "detail", "agents", "repository-info"].includes(call.op),
         ).length,
     ),
     0,
   );
   assert.equal(
     await page.evaluate(() => window.__projects.calls.filter((call) => call.op === "agent").length),
-    1,
+    0,
   );
 
   await page.evaluate(() =>

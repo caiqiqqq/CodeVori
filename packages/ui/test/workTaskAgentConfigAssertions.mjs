@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { selectWorkTaskExecution } from "./workTaskExecutionConfigAssertions.mjs";
 
 export async function exerciseWorkTaskAcpCreation(page, panel, card) {
   const editor = page.getByTestId("work-task-editor");
@@ -50,12 +51,7 @@ export async function exerciseWorkTaskAcpCreation(page, panel, card) {
 export async function exerciseWorkTaskAgentConfigSelection(page, panel, artifacts) {
   const originalTheme = await page.evaluate(() => document.documentElement.className);
   const editor = page.getByTestId("work-task-editor");
-  const select = async (value) => {
-    await editor.getByTestId("work-task-model").click();
-    if (value.startsWith("custom:"))
-      await page.getByTestId("chat-model-select-group-registry-provider:api").hover();
-    await page.getByTestId(`chat-model-select-item-${value}`).click();
-  };
+  const select = (value) => selectWorkTaskExecution(page, editor, value);
   const choice = async (id, value) => {
     await editor.getByTestId(`acp-config-trigger-${id}`).click();
     await page.getByTestId(`acp-config-choice-${id}-${value}`).click();
@@ -113,7 +109,7 @@ export async function exerciseWorkTaskAgentConfigSelection(page, panel, artifact
   await select("acp:codex");
   assert.match(
     await editor.getByTestId("acp-config-trigger-model").getAttribute("aria-label"),
-    /智能体默认配置/,
+    /CodexModel/,
   );
   assert.equal(await editor.getByTestId("acp-config-trigger-mode").count(), 0);
   await select("custom:api:TestModel");
