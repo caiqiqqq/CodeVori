@@ -1,5 +1,17 @@
-import type { WorkTaskAttachmentImport, WorkTaskCreate } from "@zcode/shared";
+import type {
+  WorkTaskAttachmentImport,
+  WorkTaskCreate,
+  WorkTaskResultRequest,
+} from "@zcode/shared";
 import type { IWorkTaskService } from "./contract.js";
+
+export async function generateEditableResult(
+  service: IWorkTaskService,
+  request: WorkTaskResultRequest,
+) {
+  // 生成是只读摘要；由调用者保存草稿，另行确认 complete/merge。
+  return service.generateResult(request);
+}
 
 export async function archiveCompletedTaskAndRemoveWorktree(
   service: IWorkTaskService,

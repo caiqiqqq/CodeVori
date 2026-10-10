@@ -1,4 +1,6 @@
 import type {
+  GitTaskChangeRecordRequest,
+  GitTaskChangeRecordResult,
   GitBranchMutationResult,
   GitBranchComparison,
   GitCommitGraphRequest,
@@ -71,6 +73,7 @@ import { ServiceChannels } from "@zcode/shared";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IGitService {
+  getTaskChangeRecord(input: GitTaskChangeRecordRequest): Promise<GitTaskChangeRecordResult>;
   getForgeRepository(params: ForgeRepositoryRequest): Promise<ForgeRepositoryInfo>;
   listForgeItems(params: ForgeListRequest): Promise<ForgeItemList>;
   getForgeItem(params: ForgeItemRequest): Promise<ForgeItemDetail>;

@@ -107,6 +107,28 @@ const enUS: Record<string, string> = {
   "workTasks.resultComment": "Result comment",
   "workTasks.resultCommentHint":
     "Describe the result. The task ID and accurate local completion outcome will be appended.",
+  "workTasks.error.work-task.result-invalid-output":
+    "The model did not return a usable draft. Try again.",
+  "workTasks.error.work-task.result-generation-failed":
+    "Draft generation failed. Try again; your comment is preserved.",
+  "workTasks.aiFill": "Fill with AI",
+  "workTasks.aiFilling": "Generating",
+  "workTasks.aiCancel": "Cancel generation",
+  "workTasks.aiReplaceHint": "Replace your edited comment?",
+  "workTasks.aiReplace": "Replace and generate",
+  "workTasks.changeRecordsHint":
+    "Verified commits and change records are appended when you confirm completion.",
+  "workTasks.originalTaskCompleteMerging":
+    "Task execution has finished; processing the merge into {branch}.",
+  "workTasks.error.work-task.result-model-unavailable":
+    "No API summary model is available. Configure a model first.",
+  "workTasks.error.work-task.result-unsupported": "This Host does not support AI result drafts.",
+  "workTasks.error.work-task.result-busy": "A result draft is already being generated.",
+  "workTasks.error.work-task.result-canceled": "Draft generation was canceled.",
+  "workTasks.error.work-task.result-source-changed":
+    "The task or its source changed. Reopen the dialog to generate again.",
+  "workTasks.error.work-task.result-branch-mismatch":
+    "The task branch changed; change records could not be verified.",
   "workTasks.resultDefault": "The task result has been accepted.",
   "workTasks.commentReceipt": "Comment writeback",
   "workTasks.closeReceipt": "Issue closure",
@@ -218,7 +240,7 @@ const enUS: Record<string, string> = {
   "workTasks.mergeConflicts": "Conflicted files",
   "workTasks.mergeConversation": "View merge conversation",
   "workTasks.originalConversation": "Return to task conversation",
-  "workTasks.mergePhase.queued": "Merge queued",
+  "workTasks.mergePhase.queued": "Waiting to merge",
   "workTasks.mergePhase.preparing": "Preparing merge",
   "workTasks.mergePhase.resolving": "Processing merge",
   "workTasks.mergePhase.awaiting_input": "Merge needs input",
@@ -267,13 +289,13 @@ const enUS: Record<string, string> = {
   "workTasks.runCount": "{count} runs",
   "workTasks.events": "Activity",
   "workTasks.column.todo": "To do",
-  "workTasks.column.inProgress": "In progress",
+  "workTasks.column.inProgress": "Processing",
   "workTasks.column.attention": "Needs attention",
   "workTasks.column.done": "Done",
   "workTasks.status.todo": "To do",
   "workTasks.status.queued": "Queued",
   "workTasks.status.preparing": "Preparing",
-  "workTasks.status.running": "Running",
+  "workTasks.status.running": "Task running",
   "workTasks.status.awaiting_input": "Waiting for input",
   "workTasks.status.review": "Ready for review",
   "workTasks.status.failed": "Failed",

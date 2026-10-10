@@ -23,7 +23,8 @@ export function WorkTaskMergeControls({
   const selectable = task.status === "review" && !task.archived && !!task.worktree;
   const branches = useWorkTaskMergeTarget(task, selectable);
   const { target, options } = branches;
-  const disabled = panel.busy || task.stopPending || merging || !panel.executable;
+  const disabled =
+    panel.busy || forgeOptions.ai.loading || task.stopPending || merging || !panel.executable;
   // 草稿所有者留在看板中；审查标签卸载时只撤销 portal，重开不能丢失所选分支。
   if (!container) return null;
   return createPortal(

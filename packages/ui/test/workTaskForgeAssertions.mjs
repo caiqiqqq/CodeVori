@@ -165,7 +165,7 @@ export async function exerciseWorkTaskForge(page, artifacts) {
       animations: "disabled",
     });
     await merge.getByTestId("work-task-merge").click();
-    await merge.getByText("合并排队中", { exact: true }).waitFor();
+    await merge.getByText("等待合并", { exact: true }).waitFor();
     const call = await page.evaluate(() => window.__tasks.calls.find((c) => c.op === "merge"));
     assert.equal(call.workspacePath, "/synthetic/project");
     assert.equal(call.targetBranch, "main");

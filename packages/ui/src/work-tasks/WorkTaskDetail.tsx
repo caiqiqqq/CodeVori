@@ -64,6 +64,14 @@ export function WorkTaskDetail({
           </span>
         </div>
         <p className="whitespace-pre-wrap break-all text-ui-base">{task.prompt}</p>
+        {task.merge && !["merged", "failed", "canceled"].includes(task.merge.phase) ? (
+          <p
+            className="break-all text-ui-sm text-foreground-subtle"
+            data-testid="work-task-merge-hint"
+          >
+            {t("originalTaskCompleteMerging", { branch: task.merge.targetBranch })}
+          </p>
+        ) : null}
         <WorkTaskAttachments scope={task} saved={task.attachments} />
         <WorkTaskError error={task.failureReason ?? null} />
         {task.worktree ? (

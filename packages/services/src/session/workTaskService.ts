@@ -12,7 +12,6 @@ import {
   workTaskScopeSchema,
   workTaskStartSchema,
   workTaskTargetSchema,
-  workTaskCompleteSchema,
   workTaskUpdateSchema,
   workTaskAttachmentImportSchema,
   workTaskAttachmentBeginSchema,
@@ -29,7 +28,6 @@ import {
   type WorkTaskScope,
   type WorkTaskStart,
   type WorkTaskTarget,
-  type WorkTaskComplete,
   type WorkTaskUpdate,
   type WorkTaskMergeRequest,
   type WorkTaskArchive,
@@ -55,6 +53,9 @@ export class WorkTaskService implements IWorkTaskService {
   private readonly events = new Map<string, Emitter<void>>();
   private readonly observations = new Map<string, { key: string; subscription: IDisposable }>();
   private readonly forge: WorkTaskForgeCoordinator;
+  readonly generateResult: IWorkTaskService["generateResult"];
+  readonly cancelResult: IWorkTaskService["cancelResult"];
+  readonly complete: IWorkTaskService["complete"];
   private readonly cleaning = new Set<string>();
   private revisions = new Map<string, number>();
   private initialized: Promise<void> | null = null;
@@ -66,7 +67,11 @@ export class WorkTaskService implements IWorkTaskService {
   constructor(private readonly options: WorkTaskServiceOptions) {
     const changed = () => this.publish();
     const closed = () => this.closed;
-    this.forge = new WorkTaskForgeCoordinator(options, this.owner, changed, closed);
+    const ready = () => this.ready();
+    this.forge = new WorkTaskForgeCoordinator(options, this.owner, changed, closed, ready);
+    this.generateResult = this.forge.result.generate.bind(this.forge.result);
+    this.cancelResult = this.forge.result.cancel.bind(this.forge.result);
+    this.complete = this.forge.complete.bind(this.forge);
   }
 
   startScheduler() {
@@ -323,11 +328,6 @@ export class WorkTaskService implements IWorkTaskService {
     this.wake();
     return task;
   }
-  async complete(input: WorkTaskComplete) {
-    const parsed = workTaskCompleteSchema.parse(input);
-    await this.ready();
-    return this.forge.complete(parsed);
-  }
   async merge(input: WorkTaskMergeRequest) {
     const parsed = workTaskMergeRequestSchema.parse(input);
     this.assertLocal(parsed);
@@ -335,8 +335,8 @@ export class WorkTaskService implements IWorkTaskService {
     if (!this.options.merge) throw new Error("work-task.merge-unsupported");
     const current = this.options.repo.get(parsed, parsed.id);
     const { projectPath } = await this.options.merge.validate(current, parsed.targetBranch);
-    if (this.closed) throw new Error("work-task.host-closed");
-    const task = this.options.repo.enqueueMerge(parsed, projectPath);
+    const records = await this.forge.result.capture(current, parsed.forge, parsed.targetBranch);
+    const task = this.options.repo.enqueueMerge(parsed, projectPath, records);
     this.publish();
     this.wake();
     return task;
@@ -378,6 +378,7 @@ export class WorkTaskService implements IWorkTaskService {
   disposeAll() {
     if (this.closed) return;
     this.closed = true;
+    this.forge.result.dispose();
     for (const observation of this.observations.values()) observation.subscription.dispose();
     this.observations.clear();
     if (this.timer) clearInterval(this.timer);

@@ -537,7 +537,7 @@ nodes:
   - id: surface.work-task-review
     kind: ui-surface
     label: Work task review, follow-up, ordinary completion and selected-branch merge
-    aliases: [合并并完成, 完成方式]
+    aliases: [合并并完成, 完成方式, AI 填写, 结果评论, 修改记录, 处理中]
     codeSeeds:
       - file: packages/ui/src/work-tasks/WorkTaskDetail.tsx
         symbol: WorkTaskDetail
@@ -551,6 +551,12 @@ nodes:
         symbol: useWorkTaskMergeTarget
       - file: packages/ui/src/hooks/useWorkTaskAcceptance.ts
         symbol: useWorkTaskAcceptance
+      - file: packages/ui/src/hooks/useWorkTaskResultDraft.ts
+        symbol: useWorkTaskResultDraft
+      - file: packages/services/src/session/workTaskResultCoordinator.ts
+        symbol: WorkTaskResultCoordinator
+      - file: packages/services/src/work-task/workTaskResult.ts
+        symbol: createWorkTaskResult
       - file: packages/ui/src/work-tasks/WorkTasksPanel.tsx
         symbol: WorkTasksBoard
       - file: packages/ui/src/app-shell/AnimatedSidePanePanel.tsx
