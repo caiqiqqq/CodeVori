@@ -24,6 +24,10 @@ import {
   type WorkTaskAttachmentChunk,
   type WorkTaskAttachmentTarget,
   type WorkTaskArchive,
+  type WorkTaskResultRequest,
+  type WorkTaskResultCancel,
+  type WorkTaskResultDraft,
+  type WorkTaskChangeRecord,
 } from "@zcode/shared";
 import type {
   V4AttachmentBeginResult,
@@ -34,6 +38,8 @@ import type { Event, IDisposable } from "@zcode/rpc";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IWorkTaskService {
+  generateResult(input: WorkTaskResultRequest): Promise<WorkTaskResultDraft>;
+  cancelResult(input: WorkTaskResultCancel): Promise<void>;
   attachmentImport(input: WorkTaskAttachmentImport): Promise<WorkTaskAttachment>;
   attachmentBegin(input: WorkTaskAttachmentBegin): Promise<V4AttachmentBeginResult>;
   attachmentChunk(input: WorkTaskAttachmentChunk): Promise<V4AttachmentChunkResult>;
@@ -47,6 +53,7 @@ export interface IWorkTaskService {
   cancel(input: WorkTaskTarget): Promise<WorkTask>;
   complete(input: WorkTaskComplete): Promise<WorkTask>;
   merge(input: WorkTaskMergeRequest): Promise<WorkTask>;
+  /** removeWorktree returns durable admission; list/events carry cleanup outcome. */
   archive(input: WorkTaskArchive): Promise<WorkTask>;
   /** @deprecated Compatibility setting only; does not limit task execution. */
   setConcurrency(input: WorkTaskScope & { concurrency: number }): Promise<void>;
@@ -96,4 +103,10 @@ export interface WorkTaskForgePort {
   listForgeComments(input: ForgePageRequest): Promise<ForgePage<ForgeComment>>;
   createForgeComment(input: ForgeCommentRequest): Promise<void>;
   setForgeItemState(input: ForgeStateRequest): Promise<void>;
+}
+
+/** Host-injected read-only evidence and text generation; never sends task conversation input. */
+export interface WorkTaskResultPort {
+  generate(task: WorkTask, input: WorkTaskResultRequest, signal: AbortSignal): Promise<string>;
+  records(task: WorkTask, targetBranch?: string): Promise<WorkTaskChangeRecord>;
 }

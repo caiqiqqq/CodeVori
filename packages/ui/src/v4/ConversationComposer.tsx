@@ -656,7 +656,7 @@ function ConversationComposerImpl({
   const textRef = useRef("");
   const contentRevisionRef = useRef(0);
   const pendingRef = useRef(false);
-  const acpSubmissionRef = useRef<object | null>(null);
+  const submissionRef = useRef<object | null>(null);
   const acpTargetRef = useRef({ agent: acpAgent, sessionId: acpSessionId });
   acpTargetRef.current = { agent: acpAgent, sessionId: acpSessionId };
   const snapshotRef = useRef(snapshot);
@@ -1030,12 +1030,14 @@ function ConversationComposerImpl({
       }
     }
     draftScopeRef.current = draftScopeId;
-    // ACP admission 仍在途时可切换另一个会话。只释放当前 UI 的提交锁，
-    // 旧请求继续清理它冻结的附件 scope；其 finally 不得解锁新提交。
-    if (targetChanged && acpSubmissionRef.current) {
-      acpSubmissionRef.current = null;
+    // Bug 原因：原生发送的 pending 曾跨会话保留，导致新目标无法发送；
+    // 与 ACP 共用提交身份，切换只释放 UI 锁，旧 finally 不得解锁新请求。
+    if (targetChanged) {
+      submissionRef.current = null;
       pendingRef.current = false;
       setPending(false);
+      suppressDraftPersistRef.current = false;
+      setHeldQueueConfirmation(null);
     }
     draftTargetRef.current = {
       workspacePath,
@@ -1274,6 +1276,8 @@ function ConversationComposerImpl({
           ...submittedDraft,
           updatedAt: Date.now(),
         };
+        const submission = {};
+        submissionRef.current = submission;
         pendingRef.current = true;
         setPending(true);
         try {
@@ -1371,8 +1375,11 @@ function ConversationComposerImpl({
             { variant: "warning" },
           );
         } finally {
-          pendingRef.current = false;
-          setPending(false);
+          if (submissionRef.current === submission) {
+            submissionRef.current = null;
+            pendingRef.current = false;
+            setPending(false);
+          }
         }
         return;
       }
@@ -1401,7 +1408,7 @@ function ConversationComposerImpl({
         const submittedAttachmentIds = attachmentsApi.attachments.map((item) => item.id);
         if (pendingRef.current) return;
         const submission = {};
-        acpSubmissionRef.current = submission;
+        submissionRef.current = submission;
         pendingRef.current = true;
         setPending(true);
         try {
@@ -1418,6 +1425,7 @@ function ConversationComposerImpl({
           // 修复原因：Agent prompt 会等整轮结束；Host 接纳 user row 或队列项即清空本次草稿。
           // 清掉仍排队的草稿落盘，避免迟到 debounce 在清空后重新写回已发送正文。
           if (
+            submissionRef.current === submission &&
             contentRevisionRef.current === submittedRevision &&
             acpTargetRef.current.agent === target.agent &&
             (acpTargetRef.current.sessionId === target.sessionId ||
@@ -1434,7 +1442,7 @@ function ConversationComposerImpl({
           await attachmentsApi.adoptSentAttachments(submittedAttachmentIds);
           attachmentsApi.clearAttachments(submittedAttachmentIds);
         } catch (error) {
-          if (acpSubmissionRef.current === submission)
+          if (submissionRef.current === submission)
             toast(
               error instanceof Error && error.message === ACP_HOST_UPGRADE_REQUIRED
                 ? intl.formatMessage({ id: "acp.hostUpgradeRequired" })
@@ -1445,8 +1453,8 @@ function ConversationComposerImpl({
             );
           logger.warn(`[v4-composer] ACP 发送失败: ${String(error)}`);
         } finally {
-          if (acpSubmissionRef.current === submission) {
-            acpSubmissionRef.current = null;
+          if (submissionRef.current === submission) {
+            submissionRef.current = null;
             pendingRef.current = false;
             setPending(false);
           }
@@ -1493,6 +1501,8 @@ function ConversationComposerImpl({
         trigger: sendTriggerRef.current === "button" ? "button" : "shortcut",
         workspaceKind: workspaceIdentity?.trim() ? "remote" : "local",
       });
+      const submissionToken = {};
+      submissionRef.current = submissionToken;
       pendingRef.current = true;
       setPending(true);
       // Bug 根因：草稿 intent 只保存用户显式改动，正常继承模型位于冻结初始化 config。
@@ -1556,6 +1566,8 @@ function ConversationComposerImpl({
       };
       const restoreSubmittedDraft = () => {
         if (!draftSubmissionClaimed) return;
+        // 旧请求失败不能把冻结的正文恢复到已经切换的编辑器。
+        if (submissionRef.current !== submissionToken) return;
         // 用户在等待期间已经产生更新时，当前完整正文是更新后的事实；旧失败回包不能覆盖。
         if (contentRevisionRef.current === cleanupRevision) {
           updateComposerContent(submittedDraft);
@@ -1574,7 +1586,7 @@ function ConversationComposerImpl({
       };
       const finalizeSubmittedDraft = () => {
         if (!draftSubmissionClaimed) return;
-        suppressDraftPersistRef.current = false;
+        if (submissionRef.current === submissionToken) suppressDraftPersistRef.current = false;
         draftSubmissionClaimed = false;
       };
       const rollbackPromptHistory = () => {
@@ -1584,14 +1596,18 @@ function ConversationComposerImpl({
         const currentPromptHistory = readPromptHistoryEntries(workspacePath);
         if (arePromptHistoryEntriesEqual(currentPromptHistory, promptHistoryAfterAppend)) {
           persistPromptHistoryEntries(workspacePath, promptHistoryBeforeSend);
-          setPromptHistory(promptHistoryBeforeSend);
+          if (submissionRef.current === submissionToken) setPromptHistory(promptHistoryBeforeSend);
           return;
         }
-        setPromptHistory(currentPromptHistory);
+        if (submissionRef.current === submissionToken) setPromptHistory(currentPromptHistory);
       };
       try {
         // 二次门禁：只消费预传完成的 ref，不在点击发送时回落上传。
         const readyAttachmentRefs = await attachmentsApi.prepareForSend();
+        if (submissionRef.current !== submissionToken) {
+          sendAction.noop();
+          return;
+        }
         if (readyAttachmentRefs === null) {
           if (telemetrySeed.localTtft)
             getLocalTtftObserver()?.exclude(telemetrySeed.localTtft, "rejected");
@@ -1684,10 +1700,16 @@ function ConversationComposerImpl({
           return;
         }
         if (sendResult === "confirmationRequired") {
-          if (telemetrySeed.localTtft)
-            getLocalTtftObserver()?.confirmation(telemetrySeed.localTtft, true);
           rollbackPromptHistory();
           restoreSubmittedDraft();
+          if (submissionRef.current !== submissionToken) {
+            if (telemetrySeed.localTtft)
+              getLocalTtftObserver()?.exclude(telemetrySeed.localTtft, "rejected");
+            sendAction.noop();
+            return;
+          }
+          if (telemetrySeed.localTtft)
+            getLocalTtftObserver()?.confirmation(telemetrySeed.localTtft, true);
           const latestQueueItemIds =
             snapshotRef.current?.queue.items.map((item) => item.queueItemId) ?? [];
           // 首次提交冻结当前队列；跨端 stale 后用最新投影替换，要求用户重新确认。
@@ -1701,11 +1723,14 @@ function ConversationComposerImpl({
           sendAction.noop();
           return;
         }
-        setHeldQueueConfirmation(null);
+        if (submissionRef.current === submissionToken) setHeldQueueConfirmation(null);
         // 暂存内容只有在发送成功后才移交给 task；失败仍保留为可重试草稿。
         await attachmentsApi.adoptSentAttachments(submittedAttachmentIds);
         // Bug 原因：发送等待期间产生的新正文属于下一次 Submission，旧 ACK 不能清除。
-        if (contentRevisionRef.current === cleanupRevision) {
+        if (
+          submissionRef.current === submissionToken &&
+          contentRevisionRef.current === cleanupRevision
+        ) {
           inputApiRef.current?.clear();
           updateText("");
         }
@@ -1739,8 +1764,11 @@ function ConversationComposerImpl({
         });
         sendAction.fail({ failureStage: "composer_send" });
       } finally {
-        pendingRef.current = false;
-        setPending(false);
+        if (submissionRef.current === submissionToken) {
+          submissionRef.current = null;
+          pendingRef.current = false;
+          setPending(false);
+        }
       }
     },
     [

@@ -248,6 +248,7 @@ import {
   WINDOWS_UPDATE_LOCK_RELEASE_GRACE_MS,
 } from "./windowsInstallResourceLocks.js";
 import { mainMemoryDiagnosticsRegistry } from "./mainMemoryDiagnostics.js";
+import { reportMainException } from "./mainLoopDiagnostics.js";
 
 registerLocalMediaPreviewScheme(protocol);
 const localMediaPreviewPathRegistry = createLocalMediaPreviewPathRegistry();
@@ -275,6 +276,7 @@ if (!shouldUseElectronDefaultUserDataPath) {
 process.title = runtimeApplicationName;
 
 process.on("unhandledRejection", (reason) => {
+  reportMainException(logger, "unhandled-rejection", reason);
   logger.error("unhandledRejection:", reason);
 });
 

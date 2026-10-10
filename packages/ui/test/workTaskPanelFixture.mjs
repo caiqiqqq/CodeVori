@@ -1,7 +1,9 @@
 import { workTaskAcceptanceFixture } from "./workTaskAcceptanceFixture.mjs";
+import { workTaskResultFixture } from "./workTaskResultFixture.mjs";
 
 export const workTaskPanelFixture = `
     ${workTaskAcceptanceFixture}
+    ${workTaskResultFixture}
     function Fixture(){
       state.setLocale=useZCodeIntl().setLocale;
       const [version,setVersion]=useState(0);

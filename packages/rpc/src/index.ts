@@ -102,6 +102,11 @@ export {
   LoggingChannelServer,
   LoggingChannelClient,
 } from "./logging-middleware.js";
+export {
+  OperationDiagnostics,
+  summarizeDiagnosticError,
+  type OperationDiagnostic,
+} from "./operation-diagnostics.js";
 
 export {
   type NetworkTransportKind,

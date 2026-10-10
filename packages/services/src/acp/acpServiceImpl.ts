@@ -67,6 +67,7 @@ import {
   acpWorkflowArtifactQuerySchema,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
+import { OperationDiagnostics } from "@zcode/rpc";
 import { getZCodeDataRootDir } from "../paths.js";
 import type { IMcpSyncService } from "../mcp-sync/mcpSync.js";
 import type { ISkillsService } from "../skills/skills.js";
@@ -164,6 +165,10 @@ export type AcpConnectionFactory = (input: {
 }) => Promise<AcpConnectionPort>;
 
 const logger = createServiceLogger("acp-sessions");
+const performanceDiagnostics = new OperationDiagnostics(
+  (record) => logger.info(undefined, "[diagnostics]", record),
+  { scope: "acp-host" },
+);
 const workspaceKey = (workspace: AcpWorkspace): string =>
   workspace.workspaceIdentity?.trim() || workspace.workspacePath;
 const failureMessage = (error: unknown): string =>
@@ -851,19 +856,33 @@ export function createAcpService(
     // 启动禁用的 Agent。每次新连接都向同一个 Host 设置所有者重新解析，复用连接不重启。
     const connectionTask = (async () => {
       const [mcpSettings, launch, plugins] = await Promise.all([
-        options.mcpSyncService?.loadMcpFromUserDirectory({ workspacePath: session.workspacePath }),
+        performanceDiagnostics.run(`acp.attach.mcp-settings.${session.agent}`, async () =>
+          options.mcpSyncService?.loadMcpFromUserDirectory({
+            workspacePath: session.workspacePath,
+          }),
+        ),
         options.connect && !options.agentManager
           ? undefined
-          : agentManager.resolveLaunch(session.agent),
-        options.pluginSource?.getAcpPluginCapabilities({
-          workspacePath: session.workspacePath,
-          ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
-          ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
-        }),
+          : performanceDiagnostics.run(`acp.attach.launch.${session.agent}`, () =>
+              agentManager.resolveLaunch(session.agent),
+            ),
+        performanceDiagnostics.run(`acp.attach.plugins.${session.agent}`, async () =>
+          options.pluginSource?.getAcpPluginCapabilities({
+            workspacePath: session.workspacePath,
+            ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
+            ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
+          }),
+        ),
       ]);
-      const workflowRegistration = await workflowHost.register(session);
+      const workflowRegistration = await performanceDiagnostics.run(
+        `acp.attach.workflow.${session.agent}`,
+        () => workflowHost.register(session),
+      );
       workflowRegistrations.set(session.id, workflowRegistration);
-      const delegationRegistration = await options.delegation?.register(session);
+      const delegationRegistration = await performanceDiagnostics.run(
+        `acp.attach.delegation.${session.agent}`,
+        async () => options.delegation?.register(session),
+      );
       if (delegationRegistration) delegationRegistrations.set(session.id, delegationRegistration);
       return connect({
         agent: session.agent,

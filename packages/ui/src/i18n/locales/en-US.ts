@@ -102,11 +102,36 @@ const enUS: Record<string, string> = {
     "The task worktree is unavailable. You can complete the task and retain its record.",
   "workTasks.retryForge": "Retry issue sync",
   "workTasks.linkedItem": "Linked issue / PR",
+  "workTasks.sourceIssue": "Issue #{number}",
+  "workTasks.sourcePullRequest": "PR #{number}",
+  "workTasks.openSource": "Open {item}: {title}",
   "workTasks.closeLinkedIssue": "Close the linked issue",
   "workTasks.sendResultComment": "Post a result comment",
   "workTasks.resultComment": "Result comment",
   "workTasks.resultCommentHint":
     "Describe the result. The task ID and accurate local completion outcome will be appended.",
+  "workTasks.error.work-task.result-invalid-output":
+    "The model did not return a usable draft. Try again.",
+  "workTasks.error.work-task.result-generation-failed":
+    "Draft generation failed. Try again; your comment is preserved.",
+  "workTasks.aiFill": "Fill with AI",
+  "workTasks.aiFilling": "Generating",
+  "workTasks.aiCancel": "Cancel generation",
+  "workTasks.aiReplaceHint": "Replace your edited comment?",
+  "workTasks.aiReplace": "Replace and generate",
+  "workTasks.changeRecordsHint":
+    "Verified commits and change records are appended when you confirm completion.",
+  "workTasks.originalTaskCompleteMerging":
+    "Task execution has finished; processing the merge into {branch}.",
+  "workTasks.error.work-task.result-model-unavailable":
+    "No API summary model is available. Configure a model first.",
+  "workTasks.error.work-task.result-unsupported": "This Host does not support AI result drafts.",
+  "workTasks.error.work-task.result-busy": "A result draft is already being generated.",
+  "workTasks.error.work-task.result-canceled": "Draft generation was canceled.",
+  "workTasks.error.work-task.result-source-changed":
+    "The task or its source changed. Reopen the dialog to generate again.",
+  "workTasks.error.work-task.result-branch-mismatch":
+    "The task branch changed; change records could not be verified.",
   "workTasks.resultDefault": "The task result has been accepted.",
   "workTasks.commentReceipt": "Comment writeback",
   "workTasks.closeReceipt": "Issue closure",
@@ -154,9 +179,12 @@ const enUS: Record<string, string> = {
   "workTasks.openConversation": "Open conversation",
   "workTasks.handleInput": "Handle conversation request",
   "workTasks.archive": "Archive",
+  "workTasks.cleanup.running": "Cleaning up",
+  "workTasks.cleanup.failed": "Cleanup failed",
+  "workTasks.retryCleanup": "Retry cleanup",
   "workTasks.archiveAndRemoveWorktree": "Archive and delete worktree",
   "workTasks.archiveAndRemoveWorktreeBody":
-    "Delete this task’s worktree directory and archive the task. The branch and conversation history will be kept. Uncommitted changes or active conversations prevent deletion.",
+    "Clean up the worktree in the background and archive the task on success. You can use other tasks while cleanup runs. The branch and conversation history will be kept. Uncommitted changes or active conversations prevent deletion.",
   "workTasks.error.work-task.not-cleanable":
     "Only completed tasks with an isolated worktree can be cleaned up.",
   "workTasks.error.work-task.cleanup-in-progress":
@@ -218,7 +246,7 @@ const enUS: Record<string, string> = {
   "workTasks.mergeConflicts": "Conflicted files",
   "workTasks.mergeConversation": "View merge conversation",
   "workTasks.originalConversation": "Return to task conversation",
-  "workTasks.mergePhase.queued": "Merge queued",
+  "workTasks.mergePhase.queued": "Waiting to merge",
   "workTasks.mergePhase.preparing": "Preparing merge",
   "workTasks.mergePhase.resolving": "Processing merge",
   "workTasks.mergePhase.awaiting_input": "Merge needs input",
@@ -267,13 +295,13 @@ const enUS: Record<string, string> = {
   "workTasks.runCount": "{count} runs",
   "workTasks.events": "Activity",
   "workTasks.column.todo": "To do",
-  "workTasks.column.inProgress": "In progress",
+  "workTasks.column.inProgress": "Processing",
   "workTasks.column.attention": "Needs attention",
   "workTasks.column.done": "Done",
   "workTasks.status.todo": "To do",
   "workTasks.status.queued": "Queued",
   "workTasks.status.preparing": "Preparing",
-  "workTasks.status.running": "Running",
+  "workTasks.status.running": "Task running",
   "workTasks.status.awaiting_input": "Waiting for input",
   "workTasks.status.review": "Ready for review",
   "workTasks.status.failed": "Failed",
@@ -397,6 +425,34 @@ const enUS: Record<string, string> = {
   "repositoryPanel.preview": "Preview",
   "repositoryPanel.emptyPreview": "Nothing to preview",
   "repositoryPanel.markdownSupported": "Markdown supported",
+  "repositoryPanel.addImages": "Add images",
+  "repositoryPanel.imageUploadHint":
+    "Choose, paste or drop images; up to 4 MB each, 8 images total",
+  "repositoryPanel.imageWebLoginHint":
+    "Choose, paste or drop up to 8 images, 4 MB each; GitHub may require web sign-in",
+  "repositoryPanel.imageWebUnavailable":
+    "This Host cannot upload GitHub images. Use the repository website",
+  "repositoryPanel.imageProviderUnsupported":
+    "This provider does not support images before issue creation",
+  "repositoryPanel.openRepositoryWeb": "Open repository website",
+  "repositoryPanel.imageUploading": "Uploading image…",
+  "repositoryPanel.imageUploaded": "Image uploaded",
+  "repositoryPanel.removeImage": "Remove image {name}",
+  "repositoryPanel.error.UPLOAD_LIMIT": "An issue can contain up to 8 uploaded images",
+  "repositoryPanel.error.UPLOAD_INVALID_FILE":
+    "Choose a PNG, JPEG, GIF or WebP image no larger than 4 MB",
+  "repositoryPanel.error.UPLOAD_UNAVAILABLE":
+    "The website attachment control is unavailable. Keep your draft and upload on the repository website",
+  "repositoryPanel.error.UPLOAD_UNCERTAIN":
+    "The image upload could not be confirmed. Your draft is retained; retrying may leave a duplicate asset",
+  "repositoryPanel.error.UPLOAD_BUSY":
+    "The Host is processing other image uploads. Try again later",
+  "repositoryPanel.error.BODY_TOO_LONG":
+    "The body including image links exceeds 65000 characters. Shorten it before creating",
+  "repositoryPanel.error.MEDIA_IDENTITY_CHANGED":
+    "The web account does not match the repository account. Sign in with the bound account",
+  "repositoryPanel.error.MEDIA_AUTHENTICATION_CANCELLED":
+    "Image upload or sign-in was cancelled. Your draft is retained",
   "repositoryPanel.noSelection": "None",
   "repositoryPanel.selectOptions": "Select {field}",
   "repositoryPanel.noOptions": "No options available",

@@ -1,11 +1,24 @@
-import type { WorkTaskAttachmentImport, WorkTaskCreate } from "@zcode/shared";
+import type {
+  WorkTaskAttachmentImport,
+  WorkTaskCreate,
+  WorkTaskResultRequest,
+} from "@zcode/shared";
 import type { IWorkTaskService } from "./contract.js";
+
+export async function generateEditableResult(
+  service: IWorkTaskService,
+  request: WorkTaskResultRequest,
+) {
+  // 生成是只读摘要；由调用者保存草稿，另行确认 complete/merge。
+  return service.generateResult(request);
+}
 
 export async function archiveCompletedTaskAndRemoveWorktree(
   service: IWorkTaskService,
   workspacePath: string,
   id: string,
 ) {
+  // 返回的是持久化受理；调用方用 list/onDynamicChanged 读取归档或失败结果。
   return service.archive({ workspacePath, id, archived: true, removeWorktree: true });
 }
 
