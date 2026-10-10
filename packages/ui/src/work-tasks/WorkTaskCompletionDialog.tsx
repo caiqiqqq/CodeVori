@@ -1,8 +1,10 @@
 import { useRef, useState } from "react";
-import { Check } from "lucide-react";
+import { Check, GitMerge } from "lucide-react";
 import { isWorkTaskForgePending, type WorkTask } from "@zcode/shared";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
-import { canReviewWorkTaskCompletion } from "@/lib/workTaskBoard.js";
+import { canMergeWorkTask, canReviewWorkTaskCompletion } from "@/lib/workTaskBoard.js";
+import { useWorkTaskMergeTarget } from "@/hooks/useWorkTaskMergeTarget.js";
+import { useWorkTaskAcceptance } from "@/hooks/useWorkTaskAcceptance.js";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,6 +16,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog.js";
 import { Checkbox } from "@/components/ui/checkbox.js";
+import { Button } from "@/components/ui/button.js";
+import { WorkTaskBranchSelect } from "./WorkTaskBranchSelect.js";
 import { WorkTaskForgeOptionsFields, useWorkTaskForgeOptions } from "./WorkTaskForgeOptions.js";
 import { WorkTaskError, useWorkTaskMessages } from "./WorkTaskParts.js";
 
@@ -31,7 +35,20 @@ export function WorkTaskCompletionDialog({
   const options = useWorkTaskForgeOptions(task);
   const retry = task.status === "done" && isWorkTaskForgePending(task);
   const [resend, setResend] = useState(false);
-  const disabled = panel.busy || !canReviewWorkTaskCompletion(task);
+  const eligible = canMergeWorkTask(task, panel.executable);
+  const assessment = useWorkTaskAcceptance(task, eligible);
+  const canMerge = eligible && assessment !== "unavailable";
+  const [choice, setChoice] = useState<"merge" | "accept" | null>(null);
+  // 用户已选合并后，迟到的不可用/断连结果只能阻止合并，不能悄悄改成完成并关闭议题。
+  const mode = choice ?? (canMerge && assessment !== "empty" ? "merge" : "accept");
+  const showChoices = canMerge || choice !== null;
+  const merging = !retry && mode === "merge";
+  const branches = useWorkTaskMergeTarget(task, canMerge);
+  const disabled =
+    panel.busy ||
+    !canReviewWorkTaskCompletion(task) ||
+    (canMerge && !choice && assessment === "loading") ||
+    (merging && (!canMerge || !branches.valid));
   return (
     <AlertDialog
       open
@@ -40,6 +57,7 @@ export function WorkTaskCompletionDialog({
       }}
     >
       <AlertDialogContent
+        className="max-h-[85dvh] overflow-y-auto"
         data-testid="work-task-completion-dialog"
         onEscapeKeyDown={(event) => {
           if (panel.busy) event.preventDefault();
@@ -53,8 +71,75 @@ export function WorkTaskCompletionDialog({
           >
             {task.title}
           </p>
-          <AlertDialogDescription>{t("confirmCompleteBody")}</AlertDialogDescription>
+          <AlertDialogDescription>
+            {t(merging ? "confirmMergeCompleteBody" : "confirmCompleteBody")}
+          </AlertDialogDescription>
         </AlertDialogHeader>
+        {assessment === "unavailable" && !showChoices ? (
+          <p className="text-ui-sm text-foreground-subtle">{t("acceptance.unavailable")}</p>
+        ) : null}
+        {showChoices ? (
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t("completionMethod")}>
+              {(["merge", "accept"] as const).map((value) => (
+                <Button
+                  key={value}
+                  variant={mode === value ? "secondary" : "outline"}
+                  className="min-w-0 flex-1 basis-44"
+                  disabled={panel.busy || (value === "merge" && !canMerge)}
+                  aria-pressed={mode === value}
+                  data-testid={`work-task-completion-${value}`}
+                  onClick={() => setChoice(value)}
+                >
+                  {value === "merge" ? (
+                    <GitMerge className="size-4" />
+                  ) : (
+                    <Check className="size-4" />
+                  )}
+                  {t(value === "merge" ? "mergeAndComplete" : "acceptWithoutMerge")}
+                </Button>
+              ))}
+            </div>
+            <p
+              className="text-ui-sm text-foreground-subtle"
+              data-testid="work-task-acceptance-hint"
+            >
+              {t(`acceptance.${assessment}`)}
+            </p>
+            {merging && canMerge ? (
+              <>
+                <label className="flex min-w-0 flex-col gap-1.5 text-ui-sm text-foreground-subtle">
+                  {t("mergeTarget")}
+                  <WorkTaskBranchSelect
+                    label={t("mergeTarget")}
+                    value={branches.target}
+                    branches={branches.options}
+                    testId="work-task-completion-target"
+                    onChange={branches.select}
+                    disabled={panel.busy || branches.loading}
+                    onOpen={() => {
+                      void branches.refresh();
+                    }}
+                  />
+                </label>
+                <WorkTaskError error={branches.error} />
+                {branches.error ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="self-start"
+                    disabled={panel.busy}
+                    onClick={() => {
+                      void branches.refresh();
+                    }}
+                  >
+                    {t("branchRetry")}
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        ) : null}
         {retry ? (
           <div className="flex flex-col gap-2 text-ui-sm" data-testid="work-task-forge-receipts">
             <p>
@@ -89,8 +174,10 @@ export function WorkTaskCompletionDialog({
               event.preventDefault();
               if (disabled || submitted.current) return;
               submitted.current = true;
-              void panel
-                .complete(task.id, retry ? undefined : options.value, resend)
+              const request = merging
+                ? panel.merge(task.id, branches.target!, options.value)
+                : panel.complete(task.id, retry ? undefined : options.value, resend);
+              void request
                 .then((ok) => {
                   if (ok) onClose(task.id);
                 })
@@ -99,8 +186,16 @@ export function WorkTaskCompletionDialog({
                 });
             }}
           >
-            <Check className="size-4" />
-            {t(retry ? "retryForge" : "complete")}
+            {merging ? <GitMerge className="size-4" /> : <Check className="size-4" />}
+            {t(
+              retry
+                ? "retryForge"
+                : merging
+                  ? "mergeAndComplete"
+                  : canMerge
+                    ? "acceptWithoutMerge"
+                    : "complete",
+            )}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

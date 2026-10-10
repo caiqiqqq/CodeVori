@@ -14,6 +14,7 @@ import {
   playTaskNotificationSound,
   setStreamClientId,
   setReactErrorArmsReporter,
+  startRendererPerformanceDiagnostics,
 } from "@zcode/ui";
 import "@zcode/ui/styles.css";
 import { connectViaMessagePort, createMessagePortServiceConnection } from "@zcode/client";
@@ -45,6 +46,8 @@ type DesktopRendererImportMetaEnv = {
 };
 
 startPerformanceTimelineCleanup();
+const performanceDiagnostics = startRendererPerformanceDiagnostics();
+window.addEventListener("pagehide", () => performanceDiagnostics.stop(), { once: true });
 
 // T4:renderer bundle 开始执行。同时从 loadURL query 解析 main 注入的 T0-T3。
 const rendererStartedAt = Date.now();

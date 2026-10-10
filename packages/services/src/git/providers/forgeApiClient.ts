@@ -46,14 +46,20 @@ export function createForgeApiClient(options: {
         "Authorization",
         `${options.provider === "gitea" ? "token" : "Bearer"} ${options.secret}`,
       );
-    if (write) headers.set("Content-Type", "application/json");
+    const multipart = write?.body instanceof FormData;
+    if (write && !multipart) headers.set("Content-Type", "application/json");
     let response: Response;
     try {
       response = await options.fetcher(url.href, {
         headers,
         redirect: "error",
         signal: AbortSignal.timeout(15_000),
-        ...(write ? { method: write.method, body: JSON.stringify(write.body) } : {}),
+        ...(write
+          ? {
+              method: write.method,
+              body: multipart ? (write.body as FormData) : JSON.stringify(write.body),
+            }
+          : {}),
       });
     } catch {
       throw new Error("FORGE_NETWORK");

@@ -1,5 +1,33 @@
 # Repository Panel
 
+## Linked task status colors (issue #62)
+
+- The highlighted statuses in issue #62 are linked work-task progress, separate
+  from the forge item's open/closed icon. Reuse the existing Host-owned task
+  snapshot and status projection; no new state, persistence or command path.
+- One repository task-status presentation owns the color mapping for list and
+  detail controls. Todo/canceled use `foreground-subtle`; processing (queued,
+  preparing, running or merge applying) uses `warning`; awaiting input uses
+  `interaction-confirmation-foreground`; review uses `icon-blue`; done uses
+  `success`; failed uses `destructive`. Done with unsettled forge writeback
+  retains “processed, sync pending” and uses `warning`, ahead of done green.
+- The status text and the list control's icon share the same color, including
+  hover and disabled busy states. Keep localized status text, keyboard access,
+  task navigation, retry/reprocess availability and forge state unchanged.
+- Colors are a pure render-time projection of the current task snapshot. They
+  must update immediately when the existing task event refreshes the shared
+  list, for desktop continuous and mobile replayable surfaces alike.
+
+```text
+Host task owner -> existing scoped task event/snapshot -> shared UI task list
+  -> repository status projection -> list icon/text + detail status text
+```
+
+Acceptance: synthetic browser E2E covers every task status, applying merge,
+pending/failed/settled forge writeback, live status changes and task navigation;
+list/detail computed colors match semantic tokens in Zai light/dark at desktop
+and 320px widths. No real forge/model writes.
+
 ## Issue task lifecycle and writeback
 
 - Host WorkTaskService/SQLite owns the durable source association: validated repository
@@ -248,6 +276,30 @@ panel remount / page restart -> local preference -> same navigation/read paths
   action, explaining the account mismatch instead of leaving an unrecoverable
   generic image error.
   Public external images may render without forge credentials and a referrer.
+- GitHub.com issue/PR descriptions and comments read
+  `https://github.com/user-attachments/assets/<UUID>` through the same bound
+  Host IGitService and selected GitHub account. Anonymous reads of private
+  attachments may return 404; do not treat these URLs as public images.
+  Revalidate repository/account before reading. Only this exact HTTPS origin
+  and attachment path may receive the account token; reject credentials,
+  query/fragment, arbitrary paths, local URLs and Enterprise-to-GitHub reads.
+  Follow at most one manually inspected HTTPS redirect to the exact GitHub
+  image storage hosts `github-production-user-asset-6210df.s3.amazonaws.com`
+  or `private-user-images.githubusercontent.com`, without account credentials
+  or cookies. Signed storage URLs stay inside Host and never enter RPC/logs.
+  Reuse the 12 MiB raster MIME/signature limits, temporary image URL lifecycle,
+  retry/original-page actions and existing zoom dialog. Authentication failures
+  do not invoke GitLab web sign-in or fall back to anonymous requests.
+  No new persistence, accepted state, Main bridge or stream protocol is needed.
+  Owner/event order: repository UI -> bound Host target/account validation ->
+  allowlisted attachment read -> credential-free storage read -> bounded raster
+  bytes -> hook-owned temporary URL -> existing preview; scope change/unmount
+  discards late replies and revokes URLs, on desktop and mobile Web alike.
+  Acceptance: service tests cover token destination, redirect rejection,
+  auth/network failures, malformed/oversize payloads and stale target rejection;
+  UI E2E covers actual image pixels/aspect ratio, failed-read retry, click zoom,
+  comments and stale Host replies at 1280/375px in both themes. Existing GitLab
+  sign-in and chat Markdown behavior must continue to pass.
 - Users may create an issue, publish a comment, close/reopen an item and merge a
   ready change request. Closing/reopening and merging require confirmation;
   no remote mutation runs automatically. Merge reads the latest head/state and
@@ -322,7 +374,7 @@ panel remount / page restart -> local preference -> same navigation/read paths
   assignees and an open milestone, matching the supported forge create API.
   GitLab also provides confidentiality and a calendar due date. Unsupported
   fields are omitted. This increment does not implement issue templates,
-  file uploads, project boards or custom issue types.
+  project boards or custom issue types.
 - The dialog owns the unsent title, body and selected attributes. Catalogs are
   fresh, target-bound Host reads through getForgeIssueOptions. Read all bounded
   pages (100 pages, 100 rows per page), in parallel per section. Section errors
@@ -339,6 +391,67 @@ panel remount / page restart -> local preference -> same navigation/read paths
   safe web Markdown renderer and repository-relative links, without local file
   navigation or authenticated draft-image reads. Empty bodies have a localized
   placeholder. Keep keyboard, mobile-safe inputs, theme and locale support.
+
+### New-issue images
+
+- The draft editor accepts image files, pasted screenshots and dropped images.
+  Accept PNG, JPEG, GIF and WebP, at most 4 MiB each and eight images per draft.
+  Keep local thumbnails, uploading/failed/succeeded state, retry and removal.
+  Block issue creation while any retained image is uploading or failed. Text
+  remains editable during uploads; successful uploads append escaped Markdown
+  to the latest body, never overwrite intervening edits. Preview local draft
+  thumbnails without requiring an issue number or sending credentials to UI.
+- UI/hook owns the unsent draft and files. Host IGitService owns target validation,
+  upload admission and bounded request receipts. Bind each request to normalized
+  workspace identity/path, repository, remote and account. Repeated identical
+  request IDs within the same live Host join the same promise/receipt, including
+  mobile reconnect; reuse with different bytes is rejected. No automatic retry
+  of external writes. Explicit retry uses a new request ID. Host restart does not
+  claim a completed upload was recovered. A still-mounted draft retains its file
+  and requires explicit retry; an existing scope/connection owner reset disposes
+  its draft, consistent with other repository drafts. This increment does not
+  add persistent drafts or automatic reconnect resubmission. Removing a draft
+  reference does not remotely delete an asset.
+- GitLab uses the authenticated project Uploads API with multipart form data.
+  GitHub.com Desktop uses its own new-issue webpage's file input, in an account-isolated
+  sandboxed native window; verify the logged-in username before attaching bytes.
+  Observe the webpage's completed Markdown value, validate the attachment URL,
+  and close the window. Never submit the website's issue form. No copied browser
+  cookies, hardcoded upload-policy endpoints, token-to-cookie conversion, or
+  third-party image hosting. Missing/changed webpage controls fail explicitly.
+  Login/cancel/account mismatch and upload failures preserve the client draft.
+  On account mismatch, clear only this feature's isolated native session so the
+  next explicit retry can sign in correctly; never touch the user's browser profile.
+- The native upload transport is a port behind Host, not UI or task state in Main.
+  Extend the strict existing Host native-media protocol with typed upload request
+  and result variants. Tokens/cookies stay on Host/Main; native replies contain
+  only validated image URLs. Validate file signatures, actual byte counts,
+  filename and returned URLs on Host as well as native context on Main.
+- Standalone Web/server Hosts without a native GitHub upload port report that
+  capability unavailable. Gitea pre-creation image upload is explicitly unsupported
+  until a compatible server API is implemented. UI shows the reason and an
+  existing repository webpage link; do not silently create an issue to attach files.
+- Desktop and mobile remote use the same scoped Host command/receipt; existing
+  desktop-continuous and web-remote-replayable transports remain unchanged. On
+  project/Host/account switch or dialog disposal, late replies cannot affect a
+  new draft. Switching to Settings retains the same mounted draft/upload state.
+
+```text
+choose/paste/drop -> UI draft(file + request ID) -> Host validate/admit
+  -> GitLab multipart / GitHub native account window -> validated attachment URL
+  -> Host receipt -> same live draft appends Markdown -> user create -> existing createForgeIssue
+reconnect -> identical request ID -> same Host receipt; new draft -> old response ignored
+```
+
+Acceptance: service tests cover multipart, invalid bytes/URL, target changes,
+duplicate request admission and unsupported Hosts. Native protocol and synthetic
+browser tests cover username mismatch, completed value, failed/changed DOM,
+cancel/disposal and no website issue submission. Editor E2E covers selection,
+paste/drop, retained concurrent text edits, failure/retry/removal, creation gate,
+late replies after switching, settings retention, mobile and both themes.
+Synthetic tests are not proof of a real GitHub/GitLab upload; report live-provider
+validation separately.
+
 - The description editor has a visible input border and surface at rest, with
   a focus treatment inside the same boundary. Attribute multi-select triggers
   show a chevron and a localized selection prompt. Labels show native color

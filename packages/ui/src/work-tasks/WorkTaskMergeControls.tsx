@@ -1,8 +1,7 @@
 import { GitMerge } from "lucide-react";
-import { useState } from "react";
 import { createPortal } from "react-dom";
 import { isWorkTaskMerging, type WorkTask } from "@zcode/shared";
-import { useWorkTaskBranches } from "@/hooks/useWorkTaskBranches.js";
+import { useWorkTaskMergeTarget } from "@/hooks/useWorkTaskMergeTarget.js";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import { Button } from "@/components/ui/button.js";
 import { WorkTaskBranchSelect } from "./WorkTaskBranchSelect.js";
@@ -22,14 +21,8 @@ export function WorkTaskMergeControls({
   const forgeOptions = useWorkTaskForgeOptions(task);
   const merging = isWorkTaskMerging(task);
   const selectable = task.status === "review" && !task.archived && !!task.worktree;
-  const branches = useWorkTaskBranches(
-    { ...task, workspacePath: task.worktree?.projectPath ?? task.workspacePath },
-    selectable,
-  );
-  const [selection, setSelection] = useState<string | null>(null);
-  const target =
-    selection ?? task.merge?.targetBranch ?? task.sourceBranch ?? branches.currentBranch;
-  const options = branches.branches.filter((branch) => branch.name !== task.worktree?.branchName);
+  const branches = useWorkTaskMergeTarget(task, selectable);
+  const { target, options } = branches;
   const disabled = panel.busy || task.stopPending || merging || !panel.executable;
   // 草稿所有者留在看板中；审查标签卸载时只撤销 portal，重开不能丢失所选分支。
   if (!container) return null;
@@ -51,7 +44,7 @@ export function WorkTaskMergeControls({
                 value={target}
                 branches={options}
                 testId="work-task-merge-target"
-                onChange={(value) => setSelection(value ?? null)}
+                onChange={branches.select}
                 disabled={disabled || branches.loading}
                 onOpen={() => {
                   void branches.refresh();
@@ -63,12 +56,7 @@ export function WorkTaskMergeControls({
               size="lg"
               className="ml-auto gap-2 border-icon-blue/20 bg-accent px-3 font-medium text-foreground hover:border-icon-blue/40 hover:bg-icon-blue/15 focus-visible:border-icon-blue focus-visible:bg-icon-blue/15 active:bg-icon-blue/20 disabled:border-border disabled:bg-surface disabled:text-foreground-subtlest disabled:opacity-100"
               data-testid="work-task-merge"
-              disabled={
-                disabled ||
-                branches.loading ||
-                !!branches.error ||
-                !options.some((branch) => branch.name === target)
-              }
+              disabled={disabled || !branches.valid}
               onClick={() => {
                 if (target) void panel.merge(task.id, target, forgeOptions.value);
               }}
