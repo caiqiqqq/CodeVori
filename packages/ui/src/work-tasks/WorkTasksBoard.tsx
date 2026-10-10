@@ -251,7 +251,7 @@ export function WorkTasksBoard({
       />
       {completionTask && canReviewWorkTaskCompletion(completionTask) ? (
         <WorkTaskCompletionDialog
-          key={workTaskSelectionKey(completionTask)}
+          key={`${workTaskSelectionKey(completionTask)}:${completionTask.runSeq}`}
           task={completionTask}
           panel={panel.forScope(completionTask)}
           onClose={closeCompletion}

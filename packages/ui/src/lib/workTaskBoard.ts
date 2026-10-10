@@ -18,6 +18,10 @@ export function canReviewWorkTaskCompletion(task: WorkTask): boolean {
   );
 }
 
+export function canMergeWorkTask(task: WorkTask, executable: boolean): boolean {
+  return executable && canCompleteWorkTask(task) && !!task.worktree;
+}
+
 export const WORK_TASK_COLUMNS = ["todo", "inProgress", "attention", "done"] as const;
 export type WorkTaskColumn = (typeof WORK_TASK_COLUMNS)[number];
 export function columnForWorkTaskStatus(status: WorkTaskStatus): WorkTaskColumn {
