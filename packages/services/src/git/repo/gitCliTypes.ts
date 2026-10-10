@@ -1,3 +1,4 @@
+import type { IDisposable } from "@zcode/rpc";
 import type {
   GitBranchMutationResult,
   GitChangeKind,
@@ -104,7 +105,7 @@ export interface GitCliRepo {
   listManagedWorktrees(worktreeRootPath: string): Promise<GitManagedWorktreeProject[]>;
   removeManagedWorktree(
     params: GitRemoveManagedWorktreeRequest,
-    prepare?: (worktreePath: string) => Promise<"workspace-busy" | null>,
+    prepare?: (worktreePath: string) => Promise<"workspace-busy" | IDisposable | null>,
   ): Promise<GitRemoveManagedWorktreeResult>;
   getDiff(params: GitDiffQuery): Promise<GitDiffResult>;
   getBranchComparison(workspacePath: string): Promise<GitBranchComparisonSnapshot>;

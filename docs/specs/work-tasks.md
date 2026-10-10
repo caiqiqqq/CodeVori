@@ -42,6 +42,20 @@ desktop continuous / mobile replayable 均保持既有会话链路与 owner/leas
 
 性能诊断沿用上述唯一写入链路。每次实际清理分别在 Git、runtime 准备、任务归档三个边界输出一条生产可用的 `info` 计时摘要；记录总耗时、已执行阶段的耗时、终态和最后阶段。Git 区分目标解析、初次登记校验、锁检查、脏目录检查、runtime 准备、删除前重新校验、`git worktree remove` 与空父目录清理；runtime 区分 CLI 活动查询、ACP 检查/释放和 CLI 回收；归档区分工作树清理与同步归档事务。用工作树路径的 SHA-256 摘要关联三条日志，不记录原路径、任务名称/正文、命令输出或凭据。普通归档不产生清理计时。失败也记录已完成阶段，诊断输出失败不得改变清理结果；不增加队列、重试、超时或协议字段，不改变 desktop continuous 与 mobile replayable 的原通知语义。
 
+清理期间的 Agent 启动由现有进程管理器统一准入。Host 在 runtime 准备入口同步取得 workspace 启动屏障；在途启动失效，后续冷启动或自动重订阅收到原 runtime-unavailable 错误，不排队、不等待删除超时。CLI 活动查询仍走 existing-only；忙碌、ACP 拒绝或回收失败立即释放屏障。准备成功将屏障释放句柄交给 Git 删除 owner，覆盖最终登记复核、非 force 删除与空父目录清理，成功/拒绝/异常均在 finally 释放一次。屏障按 `workspaceIdentity?.trim() || workspacePath` 隔离，可嵌套持有，最后一个句柄释放后才允许新启动；不干预其他 workspace、普通 runtime 重启或历史目录的既有 cwd fallback。
+
+屏障属于 Host 本地装配端口，不新增 renderer/远程 RPC；桌面的 continuous 与手机的 replayable 订阅仍遵守原运行时不可用与恢复语义。Git 的任务互斥、注册/分支/锁/脏目录检查和删除前复核保持不变；不改成后台删除，也不提前归档或隐藏失败任务。
+
+```text
+Host 清理准备 -> ProcessManager 持有启动屏障 -> existing-only 活动检查/ACP 释放
+  -> CLI dispose -> unavailable -> UI 原重连（新启动拒绝）
+  -> Git owner 持有释放句柄 -> 最终复核 -> 非 force remove -> 父目录清理
+  -> finally 释放屏障 -> 原任务复核/归档/通知
+准备拒绝或异常 -> 立即释放；在途启动按原代际/abort 身份失效
+```
+
+验收新增：unavailable 监听器同步请求 getClient 不能在旧进程退出前重新 spawn；删除命令挂起时重复冷读/订阅不启动；回收前已进入 command/env resolve 的旧启动在屏障释放后仍不能复活；嵌套句柄幂等释放、同路径不同 identity 隔离、其他 workspace 不受影响；Git 成功、最终复核失败、删除失败均释放句柄。普通重启仍能重新启动，失败删除后的 workspace 仍可恢复读取。
+
 ```text
 WorkTaskService（archive 摘要）
   -> Git owner（git 摘要） -> runtime 准备端口（runtime 摘要）

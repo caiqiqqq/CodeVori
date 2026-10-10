@@ -373,6 +373,7 @@ import { createCredentialService } from "./credential/credentialService.js";
 import { createBroadcastService } from "./broadcast/broadcastService.js";
 import {
   createZCodeAgentService,
+  blockHostWorkspaceAgentStarts,
   getHostAcpPluginCapabilities,
 } from "./zcode-agent/zcodeAgentService.js";
 import type { ZCodeAgentCommandResolver } from "./zcode-agent/zcodeAgentProcessManager.js";
@@ -2462,6 +2463,7 @@ export function createLocalServices(options: {
     prepareWorktreeRemoval: async (worktreePath) => {
       const workspace = { workspacePath: worktreePath };
       const timing = createWorktreeRemovalTiming("runtime", worktreePath);
+      const startupBlock = blockHostWorkspaceAgentStarts(zcodeAgentService, workspace);
       let outcome = "failed";
       try {
         // 先检查 CLI 活跃状态，避免它仍忙碌时提前断开该目录下空闲的 ACP 连接。
@@ -2499,8 +2501,10 @@ export function createLocalServices(options: {
           if ((error as { code?: unknown }).code !== "ZCODE_AGENT_RUNTIME_UNAVAILABLE") throw error;
         }
         outcome = "success";
-        return null;
+        return startupBlock;
       } finally {
+        // 成功时由 Git 删除 owner 持有到 finally；拒绝/异常时不留下禁止启动的状态。
+        if (outcome !== "success") startupBlock.dispose();
         timing.finish(outcome);
       }
     },

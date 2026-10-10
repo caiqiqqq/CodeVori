@@ -584,10 +584,15 @@ nodes:
         symbol: prepareWorkTaskWorktree
       - file: packages/shared/src/worktree.ts
         symbol: resolveWorktreeRootPath
+      - file: packages/services/src/git/repo/gitCliRepo.ts
+        symbol: createGitCliRepo
+      - file: packages/services/src/zcode-agent/zcodeAgentProcessManager.ts
+        symbol: ZCodeAgentProcessManager
     invariants:
       - Allocate under the configured Worktrees root; retry reuses only a verified project and branch binding.
       - Resolve the selected local source branch only at first allocation and persist its base commit; retries never follow later branch movement.
       - Use canonical filesystem paths for ownership; do not touch an unrelated directory or branch.
+      - Explicit archive-and-remove holds the local Agent startup barrier through runtime disposal and final Git removal; normal archive never deletes files.
   - id: capability.agent-delegation
     kind: capability
     label: Cross-agent delegation from an existing conversation
