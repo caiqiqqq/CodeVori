@@ -171,14 +171,14 @@ try {
       `!document.querySelector(${JSON.stringify(row)})?.querySelector('[data-unread-indicator]')`,
     ),
   );
-  await menuAction(row, "归档任务");
+  await menuAction(row, "归档对话");
   await waitFor(async () => evaluate(`!document.querySelector(${JSON.stringify(row)})`));
   await mouse('button[aria-label="归档"]');
   const archivedRow = `[data-testid=${JSON.stringify(`archived-acp-task-${sessionId}`)}]`;
   await waitFor(async () =>
     evaluate(`Boolean(document.querySelector(${JSON.stringify(archivedRow)}))`),
   );
-  await mouse(`${archivedRow} button[aria-label="取消归档任务"]`);
+  await mouse(`${archivedRow} button[aria-label="恢复对话"]`);
   await waitFor(async () => evaluate(`!document.querySelector(${JSON.stringify(archivedRow)})`));
   await mouse('button[data-state="on"][aria-label="关闭"]');
   await waitFor(async () => evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`));
@@ -193,7 +193,7 @@ try {
         if (!(await evaluate(`Boolean(document.querySelector(${JSON.stringify(archivedRow)}))`)))
           await mouse('button[aria-label="归档"]');
         if (await evaluate(`Boolean(document.querySelector(${JSON.stringify(archivedRow)}))`))
-          await mouse(`${archivedRow} button[aria-label="取消归档任务"]`);
+          await mouse(`${archivedRow} button[aria-label="恢复对话"]`);
         await waitFor(async () =>
           evaluate(`!document.querySelector(${JSON.stringify(archivedRow)})`),
         );

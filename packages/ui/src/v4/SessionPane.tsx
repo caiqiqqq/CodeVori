@@ -138,6 +138,7 @@ import { AgentDelegationPanel } from "@/delegation/AgentDelegationPanel.js";
 import { useAgentDelegation } from "@/hooks/useAgentDelegation.js";
 import { acpEntryRowId, buildAcpConversationRows } from "@/v4/acpConversationRows.js";
 import { useAcpConversation } from "@/v4/useAcpConversation.js";
+import { useConversationArchive } from "@/hooks/useConversationArchive.js";
 import { AcpConversationQueuePanel } from "@/v4/AcpConversationQueuePanel.js";
 import { useAcpAttachmentReader } from "@/hooks/useAcpAttachmentReader.js";
 import { useAcpComposerConfigPreview } from "@/v4/composer/useAcpComposerConfigPreview.js";
@@ -625,6 +626,17 @@ export function SessionPane({
     acpAgent,
     handleAcpSessionArchived,
   );
+  const nativeArchive = useConversationArchive(
+    workspacePath,
+    workspaceIdentity,
+    acpAgent ? null : sessionId,
+  );
+  const archiveBlocked = acpAgent
+    ? Boolean(acpConversation.selected?.archived || acpConversation.selected?.deletionState)
+    : nativeArchive !== "active";
+  const archiveDeleting = acpAgent
+    ? Boolean(acpConversation.selected?.deletionState)
+    : nativeArchive === "pending";
   const acpConfigPreview = useAcpComposerConfigPreview({
     agent: acpAgent,
     workspacePath,
@@ -4104,12 +4116,14 @@ export function SessionPane({
   });
   // retry 的产品裁决属于行级权威投影。这里仅提供命令能力，入口是否展示
   // 完全读取 row.actions.canRetry，禁止再用 pane phase 形成第二套 guard。
-  const retryActionsEnabled = !readOnly && !selectionSideChat && Boolean(sessionId);
+  const retryActionsEnabled =
+    !readOnly && !archiveBlocked && !selectionSideChat && Boolean(sessionId);
   // fork 可用性完全由 row.actions.canFork（CLI stable resolver 投影）裁决；pane 只提供命令回调。
   const forkActionsEnabled = !readOnly && !selectionSideChat && Boolean(sessionId);
   // editUserQuery 已由 command 层防御 latest real user query，并在 running
   // 提交时先 stop barrier 再 rewind/rerun；UI 不应再用 completed gate 把入口整轮隐藏。
-  const editActionsEnabled = !readOnly && !selectionSideChat && Boolean(sessionId);
+  const editActionsEnabled =
+    !readOnly && !archiveBlocked && !selectionSideChat && Boolean(sessionId);
   const isDraft = sessionId === null;
   // 修复原因：ACP 首轮已由 Host 接受后，原生 taskId 仍为空；布局必须看当前可见
   // 对话是否为空，不能把原生 draftMode 误当作首页样式的事实。
@@ -4800,7 +4814,13 @@ export function SessionPane({
 
   // subagent 右侧 child tab 是观察视图；复用普通 SessionPane 时
   // 若仍创建 composer，会让用户误以为可以直接向 child session 继续输入。
-  const composerNode = readOnly ? null : (
+  const composerNode = readOnly ? null : archiveBlocked ? (
+    <div role="status" className="px-4 py-3 text-ui-sm text-foreground-subtle">
+      {intl.formatMessage({
+        id: archiveDeleting ? "taskList.archiveDeletionPending" : "taskList.archiveReadOnly",
+      })}
+    </div>
+  ) : (
     <ConversationComposer
       key="conversation-composer"
       // Snapshot 仍服务用量、路由与运行态；工具栏的 mode/model 只读下方 Composer Draft。

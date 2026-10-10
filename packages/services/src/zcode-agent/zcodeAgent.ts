@@ -701,6 +701,8 @@ export interface IZCodeAgentService {
   closeSession(
     params: ZCodeAgentSessionTarget & { expectedPersistence?: "deferred" | "immediate" },
   ): Promise<boolean>;
+  /** Delete persisted contents on the owning CLI; never start or stop a conversation turn. */
+  purgeSession(params: ZCodeAgentSessionTarget): Promise<"deleted" | "busy">;
   setModel(params: ZCodeAgentSetModelParams): Promise<ZCodeSessionStateSnapshot>;
   setThoughtLevel(params: ZCodeAgentSetThoughtLevelParams): Promise<ZCodeSessionStateSnapshot>;
   setMode(params: ZCodeAgentSetModeParams): Promise<ZCodeSessionStateSnapshot>;

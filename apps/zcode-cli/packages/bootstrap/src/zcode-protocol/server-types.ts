@@ -33,6 +33,7 @@ import type { ZCodeApp, ZCodeAppOptions } from "../app/types.js";
 import type { V4InteractionRegistry } from "../zcode-protocol-v4/interaction-registry.js";
 import type { ConversationV4Gateway } from "../zcode-protocol-v4/v4-gateway.js";
 import type { SessionResidentPool, SessionResidentPoolOptions } from "./session-resident-pool.js";
+import type { SessionLifecycleGate } from "./session-lifecycle-gate.js";
 
 export interface ParamsSchema<T> {
   parse(input: unknown): T;
@@ -45,6 +46,7 @@ export interface ZCodeProtocolAgentDependencies {
    * 默认 turn 窗口保留策略；测试可注入 spy 或 unbounded 实现做对照。
    */
   createSessionEventStore?(sessionId: string): SessionEventStorePort;
+  purgeSessionArtifacts?(sessionId: string, retainedUris: readonly string[]): Promise<void>;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   loggerFactory?: LoggerFactory;
@@ -125,6 +127,8 @@ export interface ZCodeProtocolClientRequestOptions {
 }
 
 export interface ZCodeProtocolAgentServerContext {
+  sessionLifecycleGate?: SessionLifecycleGate;
+  purgingSessionIds?: Set<string>;
   /** 进程退出期间，迟到的异步物化不能重新登记 session。 */
   assertServing?: () => void;
   deps: ZCodeProtocolAgentResolvedDependencies;
@@ -307,6 +311,11 @@ export function requireSession(
   sessionId: string,
   options: { deliveryKind?: ZCodeDeliveryKind; operation?: string } = {},
 ): ZCodeProtocolSessionRecord {
+  if (context.purgingSessionIds?.has(sessionId))
+    throw new ProtocolRequestError(
+      zcodeProtocolErrorCodes.sessionUnavailable,
+      "Conversation deletion pending",
+    );
   const record = context.sessions.get(sessionId);
   if (!record) {
     // 诊断：readSession 只读取活跃 runtime；记录缺失时要区分“冷会话尚未恢复”和“ID 已失效”，

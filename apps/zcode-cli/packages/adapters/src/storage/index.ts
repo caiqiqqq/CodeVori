@@ -1,7 +1,7 @@
 // Storage adapters - EventStore, ArtifactStore, MemoryStore implementations
 
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, stat, unlink, writeFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type {
@@ -53,6 +53,48 @@ export class NodeToolArtifactStore implements ToolArtifactStorePort {
     this.rootDir = options.rootDir;
     this.pdfCacheRootDir = options.pdfCacheRootDir ?? join(dirname(options.rootDir), "pdf-cache");
     this.videoCacheRootDir = options.videoCacheRootDir;
+  }
+  async purgeSessionArtifacts(sessionId: string, retainedUris: readonly string[]): Promise<void> {
+    // 专属文件只按 store 生成的目录清理，绝不沿正文中的用户文件路径删除。
+    const segment = sanitizePathSegment(sessionId);
+    if (!segment || segment === "." || segment === ".." || segment !== sessionId)
+      throw new Error("Invalid artifact session owner");
+    const prefix = `zcode-artifact://${encodeURIComponent(sessionId)}/`;
+    await Promise.all(
+      [...this.mediaAttachmentPathFlights]
+        .filter(([uri]) => uri.startsWith(prefix))
+        .map(([, flight]) => flight),
+    );
+    const retainedIds = retainedUris.map((uri) => parseArtifactUri(uri).artifactId);
+    const retainedHashes = retainedUris.map((uri) =>
+      createHash("sha256").update(uri).digest("hex").slice(0, 32),
+    );
+    for (const root of [
+      this.rootDir,
+      this.imageCacheRootDir,
+      this.pdfCacheRootDir,
+      this.videoCacheRootDir,
+    ]) {
+      const directory = join(root, segment);
+      if (!retainedUris.length) {
+        await rm(directory, { recursive: true, force: true });
+        continue;
+      }
+      let entries: string[];
+      try {
+        entries = await readdir(directory);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
+      for (const entry of entries) {
+        const retained =
+          root === this.rootDir
+            ? retainedIds.some((id) => entry.includes(id))
+            : retainedHashes.some((hash) => entry.includes(hash));
+        if (!retained) await rm(join(directory, entry), { force: true });
+      }
+    }
   }
 
   async writeToolResultArtifact(

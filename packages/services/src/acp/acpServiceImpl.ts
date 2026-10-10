@@ -200,6 +200,7 @@ export function createAcpService(
       >;
       onInput(session: AcpSession): Promise<void>;
       onStop(session: AcpSession): Promise<void>;
+      canPurge?(session: AcpSession): Promise<boolean>;
       onResultInput(session: AcpSession, commandId: string): Promise<void>;
     };
   } = {},
@@ -462,6 +463,7 @@ export function createAcpService(
     change: () => void,
     streaming = false,
   ): Promise<void> => {
+    if (session.deletionState) throw new Error("conversation deletion pending; retry deletion");
     change();
     if (!session.error) delete session.errorCommandId;
     if (session.status !== "running") {
@@ -814,7 +816,7 @@ export function createAcpService(
   });
   const detach = (id: string): void => {
     const session = sessions.get(id);
-    if (session?.terminals.some((t) => t.status === "running")) {
+    if (!session?.deletionState && session?.terminals.some((t) => t.status === "running")) {
       // 主动断开也要发布失去进程所有权的事实；不能让旧连接的 running 悬挂在面板。
       void mutate(session, () => {
         for (const terminal of session.terminals)
@@ -1315,6 +1317,7 @@ export function createAcpService(
 
   const ensureOpen = (session: AcpSession): void => {
     if (disposed || removed.has(session.id)) throw new Error("ACP session closed");
+    if (session.deletionState) throw new Error("conversation deletion pending; retry deletion");
   };
   const editableQueueItem = (session: AcpSession, id: string): AcpQueueItem => {
     const item = session.queue.items.find((candidate) => candidate.commandId === id);
@@ -1852,6 +1855,7 @@ export function createAcpService(
       throw new Error("ACP prompt is empty");
     const receipt = await queueGate.run(session.id, async () => {
       ensureOpen(session);
+      if (session.archived) throw new Error("Restore the archived conversation before sending");
       if (
         session.entries.some((entry) => entry.id === `user:${prompt.commandId}`) ||
         session.queue.items.some((item) => item.commandId === prompt.commandId) ||
@@ -1906,6 +1910,76 @@ export function createAcpService(
     });
     scheduleQueueDrain(session);
     return receipt;
+  };
+
+  const removeSession = async (
+    input: AcpWorkspace & { id: string; provisionalOnly?: boolean },
+    archivedOnly: boolean,
+  ): Promise<boolean> => {
+    let session: AcpSession;
+    try {
+      session = await scoped(input);
+    } catch (error) {
+      if (archivedOnly && (error as NodeJS.ErrnoException).code === "ENOENT") return true;
+      throw error;
+    }
+    return queueGate.run(session.id, async () => {
+      if (
+        archivedOnly &&
+        (!session.archived ||
+          active.has(session.id) ||
+          stopping.has(session.id) ||
+          configuring.has(session.id) ||
+          session.terminals.some((terminal) => terminal.status === "running") ||
+          session.queue.items.length ||
+          pending.has(session.id) ||
+          workflowHost.ownsLive(session.id) ||
+          session.status === "running")
+      )
+        return false;
+      if (input.provisionalOnly && (!session.provisional || active.has(session.id))) return false;
+      if (
+        archivedOnly &&
+        options.delegation?.canPurge &&
+        !(await options.delegation.canPurge(session))
+      )
+        return false;
+      if (!archivedOnly) removed.add(session.id);
+      // 修复原因：旧归档删除检查只在 UI，另一端恢复后仍会被删除；检查与 restore 共用 admission gate。
+      // 快照最后删除，失败时保留 pending，可重启后继续清理附件和诊断。
+      if (archivedOnly) {
+        session.deletionState = "pending";
+        session.revision += 1;
+        await save(session);
+      }
+      workflowHost.stopSession(session.id);
+      rejectAdmissions(session.id, new Error("ACP session removed before admission"));
+      active.delete(session.id);
+      activeTokens.delete(session.id);
+      detach(session.id);
+      await options.delegation?.onStop(session);
+      for (const [key, id] of created) if (id === session.id) created.delete(key);
+      await streamingWrites.get(session.id);
+      await writes.get(session.id);
+      await diagnosticWrites.get(session.id);
+      await Promise.allSettled(attachmentWrites.get(session.id) ?? []);
+      await attachmentStore.remove(session.id);
+      await rm(diagnosticFile(session.id), { force: true });
+      await rm(file(session.id), { force: true });
+      removed.add(session.id);
+      stopping.delete(session.id);
+      sessions.delete(session.id);
+      streamingWrites.delete(session.id);
+      scheduledSnapshotRevisions.delete(session.id);
+      emitter.fire({
+        kind: "removed",
+        id: session.id,
+        workspaceKey: workspaceKey(session),
+        workspacePath: session.workspacePath,
+        ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
+      });
+      return true;
+    });
   };
 
   const service: IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } = {
@@ -1982,6 +2056,16 @@ export function createAcpService(
     },
     async list(workspace) {
       return (await listScopedSessions(workspace)).map((value) => structuredClone(value));
+    },
+    async listArchivedWorkspaces() {
+      const scopes = new Map<string, AcpWorkspace>();
+      for (const session of await listAllSessions())
+        if (session.archived)
+          scopes.set(workspaceKey(session), {
+            workspacePath: session.workspacePath,
+            ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
+          });
+      return [...scopes.values()];
     },
     async prepareWorktreeRemoval(workspace) {
       const scopedSessions = await listScopedSessions(workspace);
@@ -2090,46 +2174,50 @@ export function createAcpService(
     async updateRow(input) {
       const { action, ...target } = acpSessionRowUpdateSchema.parse(input);
       const session = await scoped(target);
-      if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
-      if (!isAcpHistorySession(session)) throw new Error("ACP session has no durable history");
-      if (action.kind === "rename") {
-        const title = action.title.trim();
-        if (!title) throw new Error("ACP title is empty");
-        if (session.title !== title)
+      return queueGate.run(session.id, async () => {
+        if (session.deletionState) throw new Error("conversation deletion pending; retry deletion");
+        if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
+        if (!isAcpHistorySession(session)) throw new Error("ACP session has no durable history");
+        if (action.kind === "rename") {
+          const title = action.title.trim();
+          if (!title) throw new Error("ACP title is empty");
+          if (session.title !== title)
+            await mutate(session, () => {
+              session.title = title;
+            });
+        } else if (action.kind === "pin") {
+          if (session.archived && action.pinned)
+            throw new Error("Archived ACP session cannot be pinned");
+          if (session.pinned !== action.pinned)
+            await mutate(session, () => {
+              session.pinned = action.pinned;
+            });
+        } else if (action.kind === "archive") {
+          if (session.archived !== action.archived)
+            await mutate(session, () => {
+              // 修复原因：归档是 Host 的持久行状态，不能沿用原生 task id；归档时
+              // 清除置顶，避免同一 ACP 会话同时落在置顶区和归档区。
+              session.archived = action.archived;
+              if (action.archived) session.pinned = false;
+            });
+        } else if (action.unread) {
+          if (!session.unreadAt)
+            await mutate(session, () => {
+              session.unreadAt = Date.now();
+            });
+        } else if (session.unreadAt !== null) {
           await mutate(session, () => {
-            session.title = title;
+            session.unreadAt = null;
           });
-      } else if (action.kind === "pin") {
-        if (session.archived && action.pinned)
-          throw new Error("Archived ACP session cannot be pinned");
-        if (session.pinned !== action.pinned)
-          await mutate(session, () => {
-            session.pinned = action.pinned;
-          });
-      } else if (action.kind === "archive") {
-        if (session.archived !== action.archived)
-          await mutate(session, () => {
-            // 修复原因：归档是 Host 的持久行状态，不能沿用原生 task id；归档时
-            // 清除置顶，避免同一 ACP 会话同时落在置顶区和归档区。
-            session.archived = action.archived;
-            if (action.archived) session.pinned = false;
-          });
-      } else if (action.unread) {
-        if (!session.unreadAt)
-          await mutate(session, () => {
-            session.unreadAt = Date.now();
-          });
-      } else if (session.unreadAt !== null) {
-        await mutate(session, () => {
-          session.unreadAt = null;
-        });
-      }
-      // 修复原因：ACP id 不能交给原生 task service；列表状态必须在目标 Host
-      // 的快照写入后发布，远端重连才能通过同一 revision 恢复置顶和未读。
-      return structuredClone(session);
+        }
+        // 修复原因：ACP id 不能交给原生 task service；列表状态必须在目标 Host
+        // 的快照写入后发布，远端重连才能通过同一 revision 恢复置顶和未读。
+        return structuredClone(session);
+      });
     },
     async refresh(input) {
       const session = await scoped(input);
+      ensureOpen(session);
       if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
       if (session.supersededBy)
         return structuredClone(await scoped({ ...input, id: session.supersededBy }));
@@ -2390,6 +2478,7 @@ export function createAcpService(
     },
     async setGoal(input) {
       const session = await scoped(input);
+      ensureOpen(session);
       if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
       const goal = input.goal?.trim() || null;
       if (goal && goal.length > 4000) throw new Error("ACP goal exceeds 4000 characters");
@@ -2402,6 +2491,7 @@ export function createAcpService(
     async setConfigOption(input) {
       input = acpSetConfigOptionInputSchema.parse(input);
       const session = await scoped(input);
+      ensureOpen(session);
       if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
       if (active.has(session.id) || stopping.has(session.id) || configuring.has(session.id))
         throw new Error("ACP session is busy");
@@ -2630,44 +2720,8 @@ export function createAcpService(
         throw error;
       }
     },
-    async remove(input) {
-      const session = await scoped(input);
-      const admitted = await queueGate.run(session.id, async () => {
-        // 修复原因：与 enqueue/admission 共用栅栏，清理预连接不能删除刚接受的队列。
-        if (input.provisionalOnly && (!session.provisional || active.has(session.id))) return false;
-        workflowHost.stopSession(session.id);
-        removed.add(session.id);
-        rejectAdmissions(session.id, new Error("ACP session removed before admission"));
-        active.delete(session.id);
-        activeTokens.delete(session.id);
-        detach(session.id);
-        return true;
-      });
-      if (!admitted) return;
-      await options.delegation?.onStop(session);
-      for (const [key, id] of created) if (id === session.id) created.delete(key);
-      removed.add(session.id);
-      active.delete(session.id);
-      stopping.delete(session.id);
-      detach(session.id);
-      await streamingWrites.get(session.id);
-      await writes.get(session.id);
-      await diagnosticWrites.get(session.id);
-      await Promise.allSettled(attachmentWrites.get(session.id) ?? []);
-      await attachmentStore.remove(session.id);
-      await rm(file(session.id), { force: true });
-      await rm(diagnosticFile(session.id), { force: true });
-      sessions.delete(session.id);
-      streamingWrites.delete(session.id);
-      scheduledSnapshotRevisions.delete(session.id);
-      emitter.fire({
-        kind: "removed",
-        id: session.id,
-        workspaceKey: workspaceKey(session),
-        workspacePath: session.workspacePath,
-        ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
-      });
-    },
+    remove: (input) => removeSession(input, false).then(() => {}),
+    removeArchived: (input) => removeSession(input, true),
     onDynamicExecutionTraceChanged(workspace) {
       const target = acpWorkspaceSchema.parse(workspace);
       return (listener) =>

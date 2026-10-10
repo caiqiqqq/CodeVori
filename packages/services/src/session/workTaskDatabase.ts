@@ -8,6 +8,8 @@ import {
   workTaskSchema,
   workTaskExecutionPath,
   type WorkTask,
+  type WorkTaskScope,
+  WORK_TASK_ACTIVE_STATUSES,
 } from "@zcode/shared";
 
 const require = createRequire(import.meta.url);
@@ -166,4 +168,37 @@ export async function openWorkTaskDatabase(path: string) {
     db.close();
     throw error;
   }
+}
+
+/** Persisted running/queued execution bindings protect both ordinary and merge conversations. */
+export function hasActiveWorkTaskConversation(
+  db: WorkTaskDatabase,
+  scope: WorkTaskScope,
+  session: { kind: "api" | "acp"; id: string },
+): boolean {
+  const rows = db.prepare("SELECT data FROM work_tasks").all() as { data: string }[];
+  return rows
+    .map((row) => workTaskSchema.parse(JSON.parse(row.data)))
+    .some((task) => {
+      if (
+        resolveWorkspaceKey({ ...task, workspacePath: scope.workspacePath }) !==
+        resolveWorkspaceKey(scope)
+      )
+        return false;
+      const execution =
+        workTaskExecutionPath(task) === scope.workspacePath &&
+        task.session?.kind === session.kind &&
+        task.session.id === session.id;
+      const merge =
+        task.merge?.worktree?.path === scope.workspacePath &&
+        task.merge.session?.kind === session.kind &&
+        task.merge.session.id === session.id;
+      return (
+        (execution || merge) &&
+        (task.stopPending ||
+          task.status === "queued" ||
+          WORK_TASK_ACTIVE_STATUSES.includes(task.status) ||
+          isWorkTaskMerging(task))
+      );
+    });
 }
