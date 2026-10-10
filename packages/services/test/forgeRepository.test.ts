@@ -5,6 +5,119 @@ import type { PrivateGitAccount } from "../src/git/repo/versionControlRepo.js";
 import type { ForgeWebMediaContext, ForgeWebMediaPort } from "@zcode/shared";
 
 const accountId = "3c88bcca-98b9-4aaa-9c0c-2f869f0c1b01";
+const imageUpload = {
+  requestId: "4c88bcca-98b9-4aaa-9c0c-2f869f0c1b01",
+  filename: "screen.png",
+  mediaType: "image/png" as const,
+  dataBase64: "iVBORw0KGgo=",
+  totalBytes: 8,
+};
+
+test("GitLab image uploads use multipart and deduplicate a live Host request", async () => {
+  const url =
+    "https://gitlab.example.invalid/team/project/uploads/0123456789abcdef0123456789abcdef/screen.png";
+  const f = fixture(
+    "https://gitlab.example.invalid/team/project.git",
+    [account("gitlab", "https://gitlab.example.invalid")],
+    [{ full_path: url }],
+  );
+  const target = await f.target();
+  const request = { ...target, ...imageUpload };
+  const [first, second] = await Promise.all([
+    f.service.uploadForgeImage(request),
+    f.service.uploadForgeImage(request),
+  ]);
+  assert.equal(first.url, url);
+  assert.deepEqual(second, first);
+  assert.deepEqual(
+    await f.service.uploadForgeImage(request),
+    first,
+    "Replay returns the settled receipt",
+  );
+  assert.equal(f.state.calls.length, 1);
+  assert.ok(f.state.calls[0]!.init.body instanceof FormData);
+  assert.equal(new Headers(f.state.calls[0]!.init.headers).has("Content-Type"), false);
+  assert.equal((f.state.calls[0]!.init.body as FormData).get("file") instanceof Blob, true);
+  await assert.rejects(
+    f.service.uploadForgeImage({ ...request, filename: "different.png" }),
+    /FORGE_CONFLICT/,
+  );
+});
+
+test("GitLab upload links retain project base paths and escape Markdown parentheses", async () => {
+  const f = fixture(
+    "https://gitlab.example.invalid/git/team/project.git",
+    [account("gitlab", "https://gitlab.example.invalid/git")],
+    [
+      {
+        url: "/uploads/0123456789abcdef0123456789abcdef/screen(1).png",
+        full_path: "/team/project/uploads/0123456789abcdef0123456789abcdef/screen(1).png",
+      },
+    ],
+  );
+  const result = await f.service.uploadForgeImage({ ...(await f.target()), ...imageUpload });
+  assert.equal(
+    result.url,
+    "https://gitlab.example.invalid/git/team/project/uploads/0123456789abcdef0123456789abcdef/screen%281%29.png",
+  );
+});
+
+test("image uploads reject invalid bytes and untrusted provider URLs", async () => {
+  const f = fixture(
+    "https://gitlab.example.invalid/team/project.git",
+    [account("gitlab", "https://gitlab.example.invalid")],
+    [{ full_path: "https://other.example.invalid/image.png" }],
+  );
+  const target = await f.target();
+  await assert.rejects(
+    f.service.uploadForgeImage({ ...target, ...imageUpload, totalBytes: 9 }),
+    /FORGE_INVALID_MEDIA/,
+  );
+  await assert.rejects(
+    f.service.uploadForgeImage({ ...target, ...imageUpload, mediaType: "image/jpeg" }),
+    /FORGE_INVALID_MEDIA/,
+  );
+  assert.equal(f.state.calls.length, 0);
+  await assert.rejects(
+    f.service.uploadForgeImage({ ...target, ...imageUpload }),
+    /FORGE_INVALID_MEDIA/,
+  );
+});
+
+test("GitHub requires a native port, checks account changes and never sends credentials through it", async () => {
+  const standalone = fixture("https://github.com/team/project.git", [
+    account("github", "https://github.com"),
+  ]);
+  assert.equal(
+    (await standalone.service.getForgeImageUploadCapability(await standalone.target())).supported,
+    false,
+  );
+  const calls: unknown[] = [];
+  const f = fixture(
+    "https://github.com/team/project.git",
+    [account("github", "https://github.com")],
+    [],
+    {
+      async read() {
+        throw new Error("unused");
+      },
+      async authenticate() {},
+      async upload(context) {
+        calls.push(context);
+        f.state.accounts = [{ ...f.state.accounts[0]!, secret: "rotated-synthetic-token" }];
+        return {
+          url: "https://github.com/user-attachments/assets/4c88bcca-98b9-4aaa-9c0c-2f869f0c1b01",
+        };
+      },
+    },
+  );
+  const target = await f.target();
+  await assert.rejects(
+    f.service.uploadForgeImage({ ...target, ...imageUpload }),
+    /FORGE_TARGET_CHANGED/,
+  );
+  assert.doesNotMatch(JSON.stringify(calls), /synthetic-forge-token/);
+});
 const account = (
   provider: PrivateGitAccount["provider"],
   serverUrl: string,

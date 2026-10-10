@@ -43,6 +43,55 @@ export const forgeImagePreviewSchema = z.object({
     .max(12 * 1024 * 1024),
 });
 export type ForgeImagePreview = z.infer<typeof forgeImagePreviewSchema>;
+export const FORGE_IMAGE_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
+export const forgeImageUploadFileSchema = z
+  .object({
+    // eslint-disable-next-line no-control-regex -- 上传名不能包含路径分隔符、控制字符或点目录。
+    filename: z
+      .string()
+      .trim()
+      .min(1)
+      .max(256)
+      .regex(/^(?!\.{1,2}$)[^/\\\u0000-\u001f\u007f]+$/),
+    mediaType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+    dataBase64: z
+      .string()
+      .min(1)
+      .max(4 * Math.ceil(FORGE_IMAGE_UPLOAD_MAX_BYTES / 3))
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+    totalBytes: z.number().int().positive().max(FORGE_IMAGE_UPLOAD_MAX_BYTES),
+  })
+  .superRefine((image, ctx) => {
+    let bytes: string;
+    try {
+      bytes = atob(image.dataBase64);
+    } catch {
+      ctx.addIssue({ code: "custom", message: "Invalid image bytes" });
+      return;
+    }
+    const valid =
+      image.mediaType === "image/png"
+        ? bytes.startsWith("\x89PNG\r\n\x1a\n")
+        : image.mediaType === "image/jpeg"
+          ? bytes.startsWith("\xff\xd8\xff")
+          : image.mediaType === "image/gif"
+            ? ["GIF87a", "GIF89a"].includes(bytes.slice(0, 6))
+            : bytes.startsWith("RIFF") && bytes.slice(8, 12) === "WEBP";
+    if (bytes.length !== image.totalBytes || btoa(bytes) !== image.dataBase64 || !valid)
+      ctx.addIssue({ code: "custom", message: "Invalid image bytes" });
+  });
+export const forgeImageUploadRequestSchema = forgeTargetRequestSchema.extend({
+  requestId: z.string().uuid(),
+  ...forgeImageUploadFileSchema.shape,
+});
+export type ForgeImageUploadRequest = z.infer<typeof forgeImageUploadRequestSchema>;
+export const forgeImageUploadResultSchema = z.object({ url: z.string().url().max(8192) }).strict();
+export type ForgeImageUploadResult = z.infer<typeof forgeImageUploadResultSchema>;
+export interface ForgeImageUploadCapability {
+  supported: boolean;
+  requiresWebLogin: boolean;
+  reason?: "provider-unsupported" | "web-login-unavailable";
+}
 // 仅用于 Window Host 与 Main 的原生传输；不携带账号令牌或浏览器 Cookie。
 export const forgeWebMediaContextSchema = z
   .object({
@@ -56,7 +105,20 @@ export const forgeWebMediaContextSchema = z
   })
   .strict();
 export type ForgeWebMediaContext = z.infer<typeof forgeWebMediaContextSchema>;
+export const forgeWebUploadContextSchema = forgeWebMediaContextSchema
+  .omit({ url: true, loginUrl: true })
+  .extend({ image: forgeImageUploadFileSchema.strict() })
+  .strict();
+export type ForgeWebUploadContext = z.infer<typeof forgeWebUploadContextSchema>;
 export const hostForgeWebMediaRequestSchema = z.discriminatedUnion("action", [
+  z
+    .object({
+      type: z.literal("forge-web-media-request"),
+      requestId: z.string().uuid(),
+      action: z.literal("upload"),
+      context: forgeWebUploadContextSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("forge-web-media-request"),
@@ -79,6 +141,7 @@ export const hostForgeWebMediaResultSchema = z
     requestId: z.string().uuid(),
     ok: z.boolean(),
     preview: forgeImagePreviewSchema.optional(),
+    upload: forgeImageUploadResultSchema.optional(),
     error: z
       .string()
       .regex(/^FORGE_[A-Z_]+$/)
@@ -88,6 +151,7 @@ export const hostForgeWebMediaResultSchema = z
 export type HostForgeWebMediaRequest = z.infer<typeof hostForgeWebMediaRequestSchema>;
 export type HostForgeWebMediaResult = z.infer<typeof hostForgeWebMediaResultSchema>;
 export interface ForgeWebMediaPort {
+  upload?(context: ForgeWebUploadContext): Promise<ForgeImageUploadResult>;
   read(context: ForgeWebMediaContext): Promise<ForgeImagePreview>;
   authenticate(context: ForgeWebMediaContext): Promise<void>;
 }
