@@ -16,6 +16,7 @@ export function WorkTaskPromptField({
   assets,
   inputApiRef,
   leadingActions,
+  trailingActions,
   onChange,
 }: {
   scope: WorkTaskScope;
@@ -25,6 +26,7 @@ export function WorkTaskPromptField({
   assets: ReturnType<typeof useWorkTaskPromptAssets>;
   inputApiRef: MutableRefObject<LexicalChatInputHandle | null>;
   leadingActions?: ReactNode;
+  trailingActions?: ReactNode;
   onChange(value: string): void;
 }) {
   const t = useWorkTaskMessages();
@@ -43,13 +45,14 @@ export function WorkTaskPromptField({
             initialEditorStateJson={task?.promptEditorState}
             inputApiRef={inputApiRef}
             inputTestId="work-task-prompt"
-            shellClassName="[&_[contenteditable]]:min-h-32 [&_[contenteditable]]:max-h-64"
+            shellClassName="[&_[contenteditable]]:min-h-16 [&_[contenteditable]]:max-h-64"
             placeholder={t("prompt")}
             disabled={busy}
             submitDisabled
             submitLabel={t("save")}
             submitControl={<span />}
             leadingActions={leadingActions}
+            trailingActions={trailingActions}
             toolbarLayout={leadingActions ? "wrap" : "compact"}
             enterSubmits={false}
             filesOnlyMentions

@@ -58,10 +58,10 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
           await page.getByRole("option", { name: "Other", exact: true }).click();
           await editor.getByText("/synthetic/other", { exact: true }).waitFor();
           assert.equal((await prompt.innerText()).trim(), "");
-          await editor
-            .getByTestId("work-task-api-model")
-            .getByText("TestModel", { exact: true })
-            .waitFor();
+          assert.match(
+            await editor.getByTestId("work-task-api-model").getAttribute("aria-label"),
+            /TestModel/,
+          );
         }
         await prompt.fill("Independent task draft");
         await prompt.press("End");
@@ -72,39 +72,45 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
         const toolbar = editor.locator("[data-composer-leading-actions]");
         const config = editor.getByTestId("work-task-execution-config");
         assert.equal(await toolbar.getByTestId("work-task-model").count(), 0);
+        assert.equal(
+          await editor
+            .locator("[data-composer-trailing-actions]")
+            .getByTestId("work-task-model")
+            .count(),
+          1,
+        );
+        assert.equal(await toolbar.getByTestId("work-task-execution-config").count(), 1);
+        assert.equal(await config.locator("h3").count(), 0);
         assert.equal(await editor.getByTestId("work-task-add-menu").count(), 1);
         if (kind === "api") {
           const mode = config.getByRole("combobox", { name: /^权限模式:/ });
-          await assertTextControl(mode, "svg");
+          await assertIconControl(mode, "svg");
           await mode.focus();
           await mode.press("ArrowDown");
           await page.getByRole("option").nth(2).click();
           assert.match(await mode.getAttribute("aria-label"), /规划/);
           const reasoning = config.getByRole("combobox", { name: /^思考强度:/ });
-          await assertTextControl(reasoning, ".lucide-brain");
+          await assertIconControl(reasoning, ".lucide-brain");
           await reasoning.click();
           await page.getByRole("option", { name: "low", exact: true }).click();
           assert.match(await reasoning.getAttribute("aria-label"), /low/);
         } else {
           assert.ok(
-            await config
+            await editor
               .getByTestId("work-task-model")
               .locator('[data-acp-agent-icon="codex"]')
               .isVisible(),
           );
           assert.equal(await config.getByTestId("acp-composer-config-controls").count(), 1);
-          for (const [id, icon] of [
-            ["mode", "shield-check"],
-            ["collaboration_mode", "users"],
-            ["model", "cpu"],
-            ["reasoning", "brain"],
-            ["fast", "zap"],
-            ["extra-4", "settings-2"],
+          for (const id of [
+            "mode",
+            "collaboration_mode",
+            "model",
+            "reasoning",
+            "fast",
+            "extra-4",
           ]) {
-            await assertTextControl(
-              config.getByTestId(`acp-config-trigger-${id}`),
-              `.lucide-${icon}`,
-            );
+            await assertIconControl(config.getByTestId(`acp-config-trigger-${id}`), null);
           }
           await config.getByTestId("acp-config-trigger-extra-4").click();
           await page.getByTestId("acp-config-choice-extra-4-true").click();
@@ -133,9 +139,12 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
         });
         assert.ok(
           await config.evaluate((element) => {
-            const bounds = element.getBoundingClientRect();
+            const bounds = element
+              .closest("[data-composer-leading-actions]")
+              .getBoundingClientRect();
             return (
-              element.scrollWidth <= element.clientWidth + 1 &&
+              element.closest("[data-composer-leading-actions]").scrollWidth <=
+                element.closest("[data-composer-leading-actions]").clientWidth + 1 &&
               [...element.querySelectorAll('button, [role="combobox"]')].every((control) => {
                 const rect = control.getBoundingClientRect();
                 return rect.width > 0 && rect.left >= bounds.left && rect.right <= bounds.right + 1;
@@ -191,9 +200,11 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
   }
 }
 
-async function assertTextControl(control, icon) {
-  assert.ok(await control.locator(icon).first().isVisible(), "configuration icon is visible");
-  assert.ok((await control.innerText()).trim().length > 0, "trigger shows its selected value");
+async function assertIconControl(control, icon) {
+  if (icon)
+    assert.ok(await control.locator(icon).first().isVisible(), "configuration icon is visible");
+  assert.equal((await control.innerText()).trim(), "", "configuration is icon-only");
+  assert.ok(await control.locator("svg").first().isVisible());
   const label = await control.getAttribute("aria-label");
   assert.match(label, /.+: .+/);
 }

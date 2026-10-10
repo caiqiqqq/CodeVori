@@ -10,6 +10,7 @@ import {
   ZapIcon,
 } from "lucide-react";
 import type { AcpAgent, AcpConfigOption, AcpModeState } from "@zcode/shared";
+import { cn } from "@/components/lib/utils.js";
 import { Button } from "@/components/ui/button.js";
 import {
   DropdownMenu,
@@ -39,7 +40,7 @@ interface Props {
   modes: AcpModeState | null;
   loading?: boolean;
   iconOnly?: boolean;
-  presentation?: "toolbar" | "fields";
+  className?: string;
   disabled: boolean;
   onChange?: (id: string, value: string | boolean) => Promise<void>;
   focusSelectorOnClose?: string | null;
@@ -75,14 +76,13 @@ function AcpComposerConfigControlsImpl({
   modes,
   loading = false,
   iconOnly = false,
-  presentation = "toolbar",
+  className,
   disabled,
   onChange,
   defaultOption,
   focusSelectorOnClose = `[data-testid="${TID_V4_COMPOSER_INPUT}"]`,
 }: Props) {
   const { intl, locale } = useZCodeIntl();
-  const fields = presentation === "fields";
   const controls: AcpConfigOption[] = options.length
     ? options
     : modes
@@ -107,9 +107,7 @@ function AcpComposerConfigControlsImpl({
   };
   return (
     <div
-      className={
-        fields ? "grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2" : "flex min-w-0 items-center gap-1"
-      }
+      className={cn("flex min-w-0 items-center gap-1", className)}
       data-testid="acp-composer-config-controls"
     >
       {loading ? (
@@ -154,55 +152,41 @@ function AcpComposerConfigControlsImpl({
               })();
         const label = acpConfigOptionLabel(locale, agent, option);
         const title = `${label}: ${selectedName}`;
-        const Icon = categoryIcon(option.category) ?? (iconOnly || fields ? Settings2Icon : null);
+        const Icon = categoryIcon(option.category) ?? (iconOnly ? Settings2Icon : null);
         return (
-          <div
-            key={`${agent}:${sessionId ?? "pending"}:${option.id}`}
-            className={fields ? "flex min-w-0 flex-col gap-1.5" : "contents"}
-          >
-            {fields ? (
-              <span data-config-label className="text-ui-sm text-foreground-subtle">
-                {label}
-              </span>
-            ) : null}
+          <div key={`${agent}:${sessionId ?? "pending"}:${option.id}`} className="contents">
             <DropdownMenu>
               <ControlHintTooltip title={title}>
                 <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
-                    variant={fields ? "outline" : "ghost"}
+                    variant="ghost"
                     size="sm"
                     disabled={disabled || !onChange}
                     data-testid={`acp-config-trigger-${option.id}`}
                     data-composer-collapse-priority="1"
                     aria-label={title}
                     className={
-                      fields
-                        ? "h-9 w-full min-w-0 justify-between rounded-lg border-input-border bg-input px-3 text-ui-base"
-                        : iconOnly
-                          ? "h-7 w-7 shrink-0 rounded-lg p-0"
-                          : "group/acp h-7 max-w-44 gap-1 rounded-lg px-2 text-ui-base data-[composer-compact=true]:w-8 data-[composer-compact=true]:px-0"
+                      iconOnly
+                        ? "h-7 w-7 shrink-0 rounded-lg p-0"
+                        : "group/acp h-7 max-w-44 gap-1 rounded-lg px-2 text-ui-base data-[composer-compact=true]:w-8 data-[composer-compact=true]:px-0"
                     }
                   >
                     <span
                       className={
-                        fields
-                          ? "min-w-0 truncate text-left"
-                          : iconOnly
-                            ? "hidden"
-                            : "truncate group-data-[composer-compact=true]/acp:hidden"
+                        iconOnly
+                          ? "hidden"
+                          : "truncate group-data-[composer-compact=true]/acp:hidden"
                       }
                     >
-                      {fields ? selectedName : title}
+                      {title}
                     </span>
                     {Icon ? (
                       <Icon
                         className={
-                          fields
-                            ? "size-4 shrink-0"
-                            : iconOnly
-                              ? "size-4"
-                              : "hidden size-4 group-data-[composer-compact=true]/acp:block"
+                          iconOnly
+                            ? "size-4"
+                            : "hidden size-4 group-data-[composer-compact=true]/acp:block"
                         }
                         aria-hidden="true"
                       />
@@ -215,19 +199,13 @@ function AcpComposerConfigControlsImpl({
                       </span>
                     )}
                     {!iconOnly ? (
-                      <ChevronDownIcon
-                        className={
-                          fields
-                            ? "size-3.5 shrink-0"
-                            : "size-3.5 shrink-0 group-data-[composer-compact=true]/acp:hidden"
-                        }
-                      />
+                      <ChevronDownIcon className="size-3.5 shrink-0 group-data-[composer-compact=true]/acp:hidden" />
                     ) : null}
                   </Button>
                 </DropdownMenuTrigger>
               </ControlHintTooltip>
               <DropdownMenuContent
-                side={fields ? "bottom" : "top"}
+                side="top"
                 sideOffset={4}
                 align="start"
                 className="max-h-80 w-64 max-w-[calc(100vw-2rem)] overflow-y-auto"
