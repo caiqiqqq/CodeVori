@@ -88,6 +88,18 @@ const enUS: Record<string, string> = {
   "workTasks.retry": "Restart",
   "workTasks.cancel": "Cancel execution",
   "workTasks.complete": "Accept result",
+  "workTasks.completionMethod": "Completion method",
+  "workTasks.mergeAndComplete": "Merge and complete",
+  "workTasks.acceptWithoutMerge": "Complete without merging",
+  "workTasks.confirmMergeCompleteBody":
+    "Commit the task worktree changes and merge into the selected local branch. The task is completed only after success. Nothing is pushed automatically.",
+  "workTasks.acceptance.loading": "Checking the task worktree for changes…",
+  "workTasks.acceptance.changed": "The task has changes or new commits. Merging is recommended.",
+  "workTasks.acceptance.empty": "The task made no changes. You can complete it directly.",
+  "workTasks.acceptance.unknown":
+    "Could not confirm task changes. Merging is recommended; you can explicitly choose to complete without merging.",
+  "workTasks.acceptance.unavailable":
+    "The task worktree is unavailable. You can complete the task and retain its record.",
   "workTasks.retryForge": "Retry issue sync",
   "workTasks.linkedItem": "Linked issue / PR",
   "workTasks.closeLinkedIssue": "Close the linked issue",
