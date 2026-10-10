@@ -1,8 +1,20 @@
-import { isWorkTaskMerging, type WorkTask, type WorkTaskStatus } from "@zcode/shared";
+import {
+  isWorkTaskForgePending,
+  isWorkTaskMerging,
+  type WorkTask,
+  type WorkTaskStatus,
+} from "@zcode/shared";
 
 export function canCompleteWorkTask(task: WorkTask): boolean {
   return (
     task.status === "review" && !task.archived && !task.stopPending && !isWorkTaskMerging(task)
+  );
+}
+
+export function canReviewWorkTaskCompletion(task: WorkTask): boolean {
+  return (
+    canCompleteWorkTask(task) ||
+    (task.status === "done" && !task.stopPending && isWorkTaskForgePending(task))
   );
 }
 

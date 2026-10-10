@@ -12,6 +12,7 @@ import {
   workTaskScopeSchema,
   workTaskStartSchema,
   workTaskTargetSchema,
+  workTaskCompleteSchema,
   workTaskUpdateSchema,
   workTaskAttachmentImportSchema,
   workTaskAttachmentBeginSchema,
@@ -28,12 +29,14 @@ import {
   type WorkTaskScope,
   type WorkTaskStart,
   type WorkTaskTarget,
+  type WorkTaskComplete,
   type WorkTaskUpdate,
   type WorkTaskMergeRequest,
   type WorkTaskArchive,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import type { IWorkTaskService, WorkTaskConversationEvent } from "./workTask.js";
+import { WorkTaskForgeCoordinator } from "./workTaskForgeCoordinator.js";
 import { archiveWorkTask } from "./workTaskArchive.js";
 import type { WorkTaskServiceOptions } from "./workTaskServiceOptions.js";
 
@@ -51,6 +54,7 @@ export class WorkTaskService implements IWorkTaskService {
   private readonly runs = new Map<string, Run>();
   private readonly events = new Map<string, Emitter<void>>();
   private readonly observations = new Map<string, { key: string; subscription: IDisposable }>();
+  private readonly forge: WorkTaskForgeCoordinator;
   private readonly cleaning = new Set<string>();
   private revisions = new Map<string, number>();
   private initialized: Promise<void> | null = null;
@@ -59,7 +63,11 @@ export class WorkTaskService implements IWorkTaskService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private closed = false;
   private disposal: Promise<void> | null = null;
-  constructor(private readonly options: WorkTaskServiceOptions) {}
+  constructor(private readonly options: WorkTaskServiceOptions) {
+    const changed = () => this.publish();
+    const closed = () => this.closed;
+    this.forge = new WorkTaskForgeCoordinator(options, this.owner, changed, closed);
+  }
 
   startScheduler() {
     void this.ready().catch((error) =>
@@ -168,6 +176,7 @@ export class WorkTaskService implements IWorkTaskService {
   }
   private finishRun(run: Run, error?: string) {
     this.options.repo.finish(run.task, this.owner, error);
+    this.forge.onSettled(this.options.repo.get(run.task, run.task.id));
     if (this.runs.get(run.task.id) === run) this.runs.delete(run.task.id);
     this.publish();
     this.wake();
@@ -245,6 +254,7 @@ export class WorkTaskService implements IWorkTaskService {
     const parsed = workTaskCreateSchema.parse(input);
     await this.ready();
     await this.validateAttachments(parsed, parsed.attachments);
+    await this.forge.validateSource(parsed);
     const task = this.options.repo.create(parsed);
     this.publish();
     return task;
@@ -313,12 +323,10 @@ export class WorkTaskService implements IWorkTaskService {
     this.wake();
     return task;
   }
-  async complete(input: WorkTaskTarget) {
-    const parsed = workTaskTargetSchema.parse(input);
+  async complete(input: WorkTaskComplete) {
+    const parsed = workTaskCompleteSchema.parse(input);
     await this.ready();
-    const task = this.options.repo.complete(parsed, parsed.id);
-    this.publish();
-    return task;
+    return this.forge.complete(parsed);
   }
   async merge(input: WorkTaskMergeRequest) {
     const parsed = workTaskMergeRequestSchema.parse(input);
@@ -383,6 +391,7 @@ export class WorkTaskService implements IWorkTaskService {
       this.options.repo.interruptOwned(this.owner);
       for (const run of this.runs.values()) run.abort.abort();
       await Promise.all([...this.runs.values()].map((run) => run.promise));
+      await this.forge.drain();
       this.options.repo.close();
     }
     for (const event of this.events.values()) event.dispose();

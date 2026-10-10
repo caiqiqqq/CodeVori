@@ -7,6 +7,14 @@ import {
   type WorkTaskScope,
   type WorkTaskStart,
   type WorkTaskTarget,
+  type WorkTaskComplete,
+  type ForgeItemRequest,
+  type ForgePageRequest,
+  type ForgeCommentRequest,
+  type ForgeStateRequest,
+  type ForgeItem,
+  type ForgeComment,
+  type ForgePage,
   type WorkTaskUpdate,
   type WorkTaskMerge,
   type WorkTaskMergeRequest,
@@ -37,7 +45,7 @@ export interface IWorkTaskService {
   start(input: WorkTaskStart): Promise<WorkTask>;
   startAll(input: WorkTaskScope): Promise<void>;
   cancel(input: WorkTaskTarget): Promise<WorkTask>;
-  complete(input: WorkTaskTarget): Promise<WorkTask>;
+  complete(input: WorkTaskComplete): Promise<WorkTask>;
   merge(input: WorkTaskMergeRequest): Promise<WorkTask>;
   archive(input: WorkTaskArchive): Promise<WorkTask>;
   /** @deprecated Compatibility setting only; does not limit task execution. */
@@ -80,4 +88,12 @@ export interface WorkTaskConversationEvent {
 export interface WorkTaskConversationPort {
   watch(task: WorkTask, listener: (event: WorkTaskConversationEvent) => void): IDisposable;
   stop(task: WorkTask, event: WorkTaskConversationEvent): Promise<void>;
+}
+
+/** Existing Forge adapter capabilities injected by the Host; no runtime/credential ownership here. */
+export interface WorkTaskForgePort {
+  getForgeItem(input: ForgeItemRequest): Promise<ForgeItem>;
+  listForgeComments(input: ForgePageRequest): Promise<ForgePage<ForgeComment>>;
+  createForgeComment(input: ForgeCommentRequest): Promise<void>;
+  setForgeItemState(input: ForgeStateRequest): Promise<void>;
 }

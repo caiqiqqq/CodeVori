@@ -8,7 +8,10 @@ export async function exerciseRepositoryTaskCreation(page, panel, artifacts) {
   const creates = () =>
     page.evaluate(() => window.__forge.calls.filter((c) => c.op === "task-create"));
   const remount = async () => {
-    await page.evaluate(() => window.__forge.remount());
+    await page.evaluate(() => {
+      window.__forge.resetTasks();
+      window.__forge.remount();
+    });
     await handle().waitFor();
     assert.equal(await handle().innerText(), "处理");
   };
@@ -76,6 +79,32 @@ export async function exerciseRepositoryTaskCreation(page, panel, artifacts) {
   assert.equal(api.sourceBranch, "main");
   assert.equal(await page.evaluate(() => window.__forge.tasks[0].status), "todo");
   assert.ok(Math.abs(beforeSave.width - (await handle().boundingBox()).width) < 1);
+  assert.equal(api.source.number, 7);
+  assert.equal(api.source.repositoryKey, "Aorigin");
+  await page.evaluate(() => window.__forge.remount());
+  await panel.getByRole("button", { name: "已加入待办", exact: true }).waitFor();
+  for (const [status, label] of [
+    ["running", "处理中"],
+    ["review", "待验收"],
+    ["done", "已处理"],
+  ]) {
+    await page.evaluate((status) => window.__forge.taskStatus(status), status);
+    await panel.getByRole("button", { name: label, exact: true }).waitFor();
+  }
+  await panel.getByRole("button", { name: "重新处理", exact: true }).click();
+  await editor.waitFor();
+  await cancel();
+  await handle().click();
+  assert.equal(await editor.count(), 0);
+  assert.equal((await creates()).length, 1);
+  await panel.getByTestId("repository-item-row").first().click();
+  const linkedDetail = panel.getByTestId("repository-item-detail");
+  await linkedDetail.waitFor();
+  await page.evaluate(() => window.__forge.completeIssue());
+  await linkedDetail.getByText("Task accepted and issue closed", { exact: true }).waitFor();
+  await linkedDetail.getByRole("button", { name: "关闭详情", exact: true }).click();
+  await panel.getByTestId("repository-item-row").waitFor({ state: "detached" });
+  await page.evaluate(() => window.__forge.resetIssue());
   await remount();
 
   await page.evaluate(() => {
@@ -264,13 +293,16 @@ export async function exerciseRepositoryTaskCreation(page, panel, artifacts) {
 
 export const repositoryTaskServicesFixture = `
     state.tasks=[];
+    const taskListeners:any={A:new Set(),B:new Set()};
+    state.resetTasks=()=>{state.tasks=[];for(const callbacks of Object.values(taskListeners) as any[])for(const callback of callbacks)callback()};
+    state.taskStatus=(status:string)=>{state.tasks[0].status=status;for(const callbacks of Object.values(taskListeners) as any[])for(const callback of callbacks)callback()};
     state.execution={kind:'api',mode:'plan',modelSelection:{providerId:'synthetic',modelId:'model',options:{reasoningLevel:'high'}}};
     state.remember=(scope:any,execution:any)=>workTaskExecutionPreferenceStore.getState().remember(scope,execution);
     for(const host of ['A','B']) {
     hosts[host].gitService.getLocalBranches=async()=>({headRefType:'branch',currentBranchName:'main',branches:[{name:'main',isCurrent:true,upstreamName:null,commitHash:'abcdef',commitTimestampMs:1}]});
     Object.assign(hosts[host], {clientConfigService:{async getSnapshot(){state.calls.push({op:'forbidden-client-config'});throw new Error('Files-only editor must not load plugins')}},modelSelectionService:{async getView(){return {revision:1,providers:state.noModel?[]:[{providerId:'synthetic',providerName:'Synthetic',config:{api:{type:'openai-chat-completions'}},models:[{modelId:'model',config:{optionSpecs:{reasoningLevel:{values:['low','high']}}}},{modelId:'other',config:{optionSpecs:{}}}]}],preferredSelection:state.noModel?null:state.execution.modelSelection}},onDidChange(){return {dispose(){}}}},
     acpService:{async listAvailableAgents(){state.calls.push({host,op:'agents'});if(state.delayAgents){state.delayAgents=false;await new Promise(resolve=>state.pending.push(resolve))}return [{agent:'codex',enabled:true,ready:!state.noAgent}]},async listAgentConfigs(){return [{agent:'codex',source:'host',modeState:null,configOptions:[{id:'model',name:'Model',type:'select',category:'model',currentValue:'synthetic-acp',options:[{value:'synthetic-acp',name:'Synthetic ACP'}]}]}]},onDynamicAgentConfigsChanged:()=>()=>({dispose(){}}),async create(){state.calls.push({op:'acp-create'});throw new Error('Must not launch')},async prompt(){state.calls.push({op:'acp-prompt'});throw new Error('Must not prompt')}},
-    workTaskService:{async create(r:any){state.calls.push({host,op:'task-create',...clone(r)});if(state.failTask){state.failTask=false;throw new Error('Synthetic task save failure')}if(state.delayTask){state.delayTask=false;await new Promise(resolve=>state.pending.push(resolve))}const task={...clone(r),id:crypto.randomUUID(),status:'todo'};state.tasks.push(task);return task},async start(){state.calls.push({op:'start'});throw new Error('Handle must never start a task')}}});}
+    workTaskService:{async list(r:any){return {tasks:clone(state.tasks.filter((t:any)=>t.workspacePath===r.workspacePath&&t.workspaceIdentity===r.workspaceIdentity)),concurrency:1}},onDynamicChanged:()=> (callback:any)=>{taskListeners[host].add(callback);return {dispose(){taskListeners[host].delete(callback)}}},async create(r:any){state.calls.push({host,op:'task-create',...clone(r)});if(state.failTask){state.failTask=false;throw new Error('Synthetic task save failure')}if(state.delayTask){state.delayTask=false;await new Promise(resolve=>state.pending.push(resolve))}const task={...clone(r),id:crypto.randomUUID(),status:'todo',createdAt:Date.now(),updatedAt:Date.now()};state.tasks.push(task);for(const callback of taskListeners[host])callback();return task},async start(){state.calls.push({op:'start'});throw new Error('Handle must never start a task')}}});}
     useRemoteWorkspaceSessionStore.getState().registerSession({sessionId:'task-remote',services:hosts.B});
 `;
 
@@ -289,6 +321,7 @@ export function observeRepositoryErrors(page) {
 }
 
 export async function exerciseRepositoryDetailTaskCreation(page, detail) {
+  await page.evaluate(() => window.__forge.resetTasks());
   const editor = page.getByTestId("work-task-editor");
   const count = () =>
     page.evaluate(() => window.__forge.calls.filter((c) => c.op === "task-create").length);

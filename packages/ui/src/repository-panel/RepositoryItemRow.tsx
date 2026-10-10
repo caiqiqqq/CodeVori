@@ -1,5 +1,6 @@
 import { Check, ListPlus, MessageSquare } from "lucide-react";
-import type { ForgeItem } from "@zcode/shared";
+import { isWorkTaskForgePending, type ForgeItem, type WorkTask } from "@zcode/shared";
+import { RepositoryTaskStatus } from "./RepositoryTaskStatus.js";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/components/lib/utils.js";
 import {
@@ -13,14 +14,18 @@ export function RepositoryItemRow({
   item,
   busy,
   created,
+  linkedTask,
   onSelect,
   onHandle,
+  onHandleAgain,
 }: {
   item: ForgeItem;
   busy: boolean;
   created: boolean;
+  linkedTask?: WorkTask;
   onSelect: () => void;
   onHandle: () => void;
+  onHandleAgain?: () => void;
 }) {
   const t = useRepositoryMessages();
   return (
@@ -58,7 +63,7 @@ export function RepositoryItemRow({
         variant="ghost"
         size="lg"
         data-testid="repository-item-handle"
-        disabled={busy || created}
+        disabled={busy}
         onClick={onHandle}
         className={cn(
           "mb-2 grid shrink-0 justify-self-end rounded-md px-2 text-ui-sm focus-visible:outline-2 focus-visible:outline-ring sm:mb-0",
@@ -76,9 +81,20 @@ export function RepositoryItemRow({
           ) : (
             <ListPlus aria-hidden="true" className="size-3.5" />
           )}
-          {created ? t("taskCreated") : t("process")}
+          {linkedTask ? <RepositoryTaskStatus task={linkedTask} /> : t("process")}
         </span>
       </Button>
+      {linkedTask?.status === "done" ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={busy || isWorkTaskForgePending(linkedTask)}
+          onClick={onHandleAgain}
+          className="mb-2 justify-self-end text-ui-sm sm:mb-0"
+        >
+          {t("reprocess")}
+        </Button>
+      ) : null}
     </li>
   );
 }

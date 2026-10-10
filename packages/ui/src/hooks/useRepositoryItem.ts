@@ -41,6 +41,7 @@ export function useRepositoryItem(
   request: ForgeItemRequest,
   gitService: IGitService,
   withExtras = false,
+  externalRevision = "",
 ) {
   const owner = useMemo(() => ({}), [gitService, request]);
   const [state, setState] = useState<DetailState>(() => initial(owner));
@@ -74,7 +75,7 @@ export function useRepositoryItem(
     return () => {
       alive = false;
     };
-  }, [gitService, owner, request, revision, withExtras]);
+  }, [gitService, owner, request, revision, withExtras, externalRevision]);
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   const loadMore = async (section: "comments" | "files") => {
     const snapshot = state[section];

@@ -34,7 +34,7 @@ import {
   exerciseWorkTaskAgentConfigPersistence,
 } from "./workTaskAgentConfigAssertions.mjs";
 import { exerciseWorkTaskWorkspaceTools } from "./workTaskWorkspaceToolsAssertions.mjs";
-import { workTaskPanelFixture } from "./workTaskPanelFixture.mjs";
+import { workTaskPanelFixture, workTaskForgeServiceFixture } from "./workTaskPanelFixture.mjs";
 import { workTaskNavigationFixture } from "./workTaskNavigationAssertions.mjs";
 import { workTaskPromptAssetsFixture } from "./workTaskPromptAssetsFixture.mjs";
 import { routeWorkTaskConversationFixture } from "./workTaskConversationFixture.mjs";
@@ -97,7 +97,7 @@ try {
       async start(r:any){state.calls.push({op:'start',...r});if(state.delayStart){state.delayStart=false;await new Promise<void>(resolve=>state.pendingStarts.push(resolve))}if(state.failStart){state.failStart=false;throw new Error('Synthetic start failed')}const task=get(r);start(task,r.feedback);return clone(task)},
       async startAll(r:any){state.calls.push({op:'startAll',...r});for(const task of rows(r))if(task.status==='todo')start(task)},
       async cancel(r:any){state.calls.push({op:'cancel',...r});const task=get(r);if(task.merge&&!['merged','failed','canceled'].includes(task.merge.phase)){if(task.merge.phase==='applying')throw new Error('work-task.merge-applying');task.merge.phase='canceled';task.status='review'}else task.status='canceled';changed();return clone(task)},
-      async complete(r:any){state.calls.push({op:'complete',...r});if(state.delayComplete){state.delayComplete=false;await new Promise<void>(resolve=>state.pendingCompletions.push(resolve))}if(state.failComplete){state.failComplete=false;throw new Error('Synthetic completion failed')}const task=get(r);if(task.status!=='review'||task.stopPending||(task.merge&&!['merged','failed','canceled'].includes(task.merge.phase)))throw new Error('work-task.not-reviewable');task.status='done';task.completion='accepted_without_merge';changed();return clone(task)},
+      ${workTaskForgeServiceFixture}
       async merge(r:any){state.calls.push({op:'merge',...r});if(state.failMerge){state.failMerge=false;throw new Error('work-task.merge-target-dirty')}const task=get(r);task.status='queued';task.runSeq++;task.failureReason=undefined;task.merge={id:crypto.randomUUID(),projectPath:task.worktree.projectPath,targetBranch:r.targetBranch,phase:'queued'};changed();return clone(task)},
       async archive(r:any){state.calls.push({op:'archive',...r});const task=get(r);if(r.removeWorktree){if(state.delayCleanup){state.delayCleanup=false;await new Promise<void>(resolve=>state.pendingCleanups.push(resolve))}if(state.failCleanup){state.failCleanup=false;throw new Error('work-task.worktree-remove-dirty-worktree')}}task.archived=r.archived;changed();return clone(task)},
       async setConcurrency(r:any){state.calls.push({op:'concurrency',...r});state.concurrency=r.concurrency;changed()},

@@ -1,14 +1,18 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import type {
-  ForgeItem,
-  ForgeRepository,
-  ForgeTargetRequest,
-  WorkTaskCreate,
-  WorkTaskScope,
+import {
+  workTaskSourceKey,
+  type WorkTask,
+  type WorkTaskSource,
+  type ForgeItem,
+  type ForgeRepository,
+  type ForgeTargetRequest,
+  type WorkTaskCreate,
+  type WorkTaskScope,
 } from "@zcode/shared";
 import { buildForgeAgentPrompt } from "@/lib/forgePanel.js";
 import { isWorkTaskExecutionAvailable } from "@/store/workTaskExecutionPreferenceStore.js";
 import { useWorkspaceServicesResolution } from "./useWorkspaceServices.js";
+import { useWorkTasks } from "./useWorkTasks.js";
 import { useForgeMutation } from "./useForgeMutation.js";
 
 /** Draft preparation only; accepted tasks remain owned by the repository's Host. */
@@ -42,19 +46,42 @@ export function useRepositoryTask(scope: WorkTaskScope, target: ForgeTargetReque
     };
   }, [owner]);
   const mutation = useForgeMutation(target && rpcReady ? owner : null);
-  const [saved, setSaved] = useState({ owner, keys: new Set<string>() });
+  const tasks = useWorkTasks(scope, true, !!target && rpcReady);
+  const links = useMemo(() => {
+    const result = new Map<string, WorkTask>();
+    for (const task of tasks.board?.tasks ?? []) {
+      if (!task.source) continue;
+      const key = workTaskSourceKey(task.source);
+      const previous = result.get(key);
+      if (
+        !previous ||
+        task.createdAt > previous.createdAt ||
+        (task.createdAt === previous.createdAt && task.id > previous.id)
+      )
+        result.set(key, task);
+    }
+    return result;
+  }, [tasks.board]);
+  const linkedTask = (item: ForgeItem): WorkTask | undefined =>
+    target
+      ? links.get(workTaskSourceKey({ ...target, kind: item.kind, number: item.number }))
+      : undefined;
+  const isCreated = (item: ForgeItem) => {
+    const task = linkedTask(item);
+    return !!task && !["failed", "canceled"].includes(task.status);
+  };
   const [prepared, setPrepared] = useState<{
     owner: object;
     key: string;
     initialDraft: Pick<WorkTaskCreate, "title" | "prompt">;
+    source: WorkTaskSource;
   } | null>(null);
-  const created = saved.owner === owner ? saved.keys : new Set<string>();
   const draft = prepared?.owner === owner ? prepared : null;
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const itemKey = (item: ForgeItem) => `${item.kind}:${item.number}`;
-  const prepare = async (repository: ForgeRepository, item: ForgeItem) => {
-    if (!target || !rpcReady || draft || created.has(itemKey(item))) return;
+  const prepare = async (repository: ForgeRepository, item: ForgeItem, again = false) => {
+    if (!target || !rpcReady || draft || (isCreated(item) && !again)) return;
     const result = await mutation.run(async () => {
       if (!workTaskService) throw new Error("FORGE_TASK_UNSUPPORTED");
       const detail = await gitService.getForgeItem({
@@ -62,9 +89,19 @@ export function useRepositoryTask(scope: WorkTaskScope, target: ForgeTargetReque
         kind: item.kind,
         number: item.number,
       });
+      if (!detail.url) throw new Error("FORGE_INVALID_ITEM");
       return {
         owner,
         key: itemKey(item),
+        source: {
+          repositoryKey: target.repositoryKey,
+          accountId: target.accountId,
+          remoteName: target.remoteName,
+          kind: detail.kind,
+          number: detail.number,
+          url: detail.url,
+          title: detail.title.slice(0, 256),
+        },
         initialDraft: {
           title: detail.title.trim().slice(0, 200),
           prompt: buildForgeAgentPrompt(repository, detail),
@@ -96,21 +133,38 @@ export function useRepositoryTask(scope: WorkTaskScope, target: ForgeTargetReque
       if (!isWorkTaskExecutionAvailable(execution, view, agents))
         throw new Error("FORGE_NO_EXECUTION");
       try {
-        return await workTaskService.create({ ...input, ...scope });
+        return await workTaskService.create({ ...input, ...scope, source: draft.source });
       } catch {
         throw new Error("FORGE_TASK_SAVE");
       }
     });
     if (!result?.value || ownerRef.current !== owner || draftRef.current !== draft) return false;
-    setSaved((previous) => ({
-      owner,
-      keys: new Set([...(previous.owner === owner ? previous.keys : []), draft.key]),
-    }));
+    void tasks.refresh();
     return true;
   };
+  const linked = [...links.values()].filter(
+    (task) => task.source?.repositoryKey === target?.repositoryKey && task.forgeWriteback,
+  );
+  const writebackVersion = JSON.stringify(
+    linked
+      .map((task) => [
+        task.forgeWriteback!.id,
+        task.forgeWriteback!.commentState === "done",
+        task.forgeWriteback!.closeState === "done",
+      ])
+      .sort(),
+  );
+  const closedItemsKey = JSON.stringify(
+    linked
+      .filter((task) => task.forgeWriteback?.closeState === "done")
+      .map((task) => `${task.source!.kind}:${task.source!.number}`)
+      .sort(),
+  );
   return {
     prepare,
     create,
+    writebackVersion,
+    closedItemsKey,
     draft,
     close: () => {
       draftRef.current = null;
@@ -118,6 +172,7 @@ export function useRepositoryTask(scope: WorkTaskScope, target: ForgeTargetReque
     },
     busy: mutation.busy,
     error: mutation.error,
-    isCreated: (item: ForgeItem) => created.has(itemKey(item)),
+    isCreated,
+    linkedTask,
   };
 }

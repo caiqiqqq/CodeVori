@@ -1,6 +1,11 @@
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { IWorkTaskService } from "@zcode/services";
-import type { WorkTaskCreate, WorkTaskScope, WorkTaskUpdate } from "@zcode/shared";
+import type {
+  WorkTaskCreate,
+  WorkTaskScope,
+  WorkTaskUpdate,
+  WorkTaskForgeOptions,
+} from "@zcode/shared";
 import { useBaseWorkspaceServices } from "./useWorkspaceServices.js";
 import { useRemoteWorkspaceSessionStore } from "@/store/remoteWorkspaceSessionStore.js";
 import { workTaskNavigationKey } from "@/store/workTaskNavigationStore.js";
@@ -36,9 +41,19 @@ function commands(scope: WorkTaskScope, run: Run) {
       run(scope, (target) => target.start({ ...scope, id, ...(feedback ? { feedback } : {}) })),
     startAll: () => run(scope, (target) => target.startAll(scope)),
     cancel: (id: string) => run(scope, (target) => target.cancel({ ...scope, id })),
-    complete: (id: string) => run(scope, (target) => target.complete({ ...scope, id })),
-    merge: (id: string, targetBranch: string) =>
-      run(scope, (target) => target.merge({ ...scope, id, targetBranch })),
+    complete: (id: string, forge?: WorkTaskForgeOptions, resendComment?: boolean) =>
+      run(scope, (target) =>
+        target.complete({
+          ...scope,
+          id,
+          ...(forge ? { forge } : {}),
+          ...(resendComment ? { resendComment } : {}),
+        }),
+      ),
+    merge: (id: string, targetBranch: string, forge?: WorkTaskForgeOptions) =>
+      run(scope, (target) =>
+        target.merge({ ...scope, id, targetBranch, ...(forge ? { forge } : {}) }),
+      ),
     archive: (id: string, archived: boolean) =>
       run(scope, (target) => target.archive({ ...scope, id, archived })),
     archiveAndRemoveWorktree: (id: string) =>
