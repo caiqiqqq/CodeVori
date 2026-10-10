@@ -1,14 +1,19 @@
 import { createHash } from "node:crypto";
 import { BrowserWindow, session } from "electron";
-import type { ForgeWebMediaContext } from "@zcode/shared";
+import type { ForgeWebMediaContext, ForgeWebUploadContext } from "@zcode/shared";
 import { createForgeNativeMediaTransport } from "./forgeWebMedia.js";
+import { executeGithubImageUpload } from "./electronGithubImageUpload.js";
 
-export function executeForgeWebMedia(params: {
-  win: BrowserWindow;
-  action: "read" | "authenticate";
-  context: ForgeWebMediaContext;
-  signal: AbortSignal;
-}) {
+export async function executeForgeWebMedia(
+  params: {
+    win: BrowserWindow;
+    signal: AbortSignal;
+  } & (
+    | { action: "read" | "authenticate"; context: ForgeWebMediaContext }
+    | { action: "upload"; context: ForgeWebUploadContext }
+  ),
+) {
+  if (params.action === "upload") return executeGithubImageUpload(params);
   if (params.win.isDestroyed())
     return Promise.reject(new Error("FORGE_MEDIA_AUTHENTICATION_CANCELLED"));
   const controller = new AbortController();

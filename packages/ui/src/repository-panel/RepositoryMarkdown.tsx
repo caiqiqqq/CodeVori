@@ -6,7 +6,11 @@ import { MessageResponse } from "@/components/ai-elements/message.js";
 import type { MarkdownImageProps } from "@/components/ai-elements/markdown-image.js";
 import { ImagePreviewDialog } from "@/components/ai-elements/image-preview-dialog.js";
 import { useRepositoryImage } from "@/hooks/useRepositoryImage.js";
-import { isGitlabUploadImage, resolveForgeContentUrl } from "@/lib/forgeContent.js";
+import {
+  isGithubAttachmentImage,
+  isGitlabUploadImage,
+  resolveForgeContentUrl,
+} from "@/lib/forgeContent.js";
 import type { CodePreviewSettings } from "@/lib/codePreviewSettings.js";
 import type { Theme } from "@/useTheme.js";
 import { Button } from "@/components/ui/button.js";
@@ -32,18 +36,21 @@ function RepositoryImage({
 }) {
   const t = useRepositoryMessages();
   const privateUpload = isGitlabUploadImage(context.repository, source);
+  // GitHub 私有附件也需要绑定 Host 的账号读取，直接交给 img 会得到匿名 404。
+  const hostRead = privateUpload || isGithubAttachmentImage(context.repository, source);
   const media = useRepositoryImage(
     context.request,
     context.gitService,
-    privateUpload ? source : null,
+    hostRead ? source : null,
     context.active,
   );
-  const url = privateUpload ? media.url : source;
+  const url = hostRead ? media.url : source;
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const [publicRevision, setPublicRevision] = useState(0);
   const [preview, setPreview] = useState(false);
   const error = media.error || (url && failedUrl === url ? "RESPONSE" : null);
-  const needsSignIn = error === "MEDIA_AUTHENTICATION" || error === "MEDIA_IDENTITY_CHANGED";
+  const needsSignIn =
+    privateUpload && (error === "MEDIA_AUTHENTICATION" || error === "MEDIA_IDENTITY_CHANGED");
   return (
     <div className="my-4 min-w-0" data-testid="repository-image">
       {error ? (
@@ -83,7 +90,7 @@ function RepositoryImage({
             disabled={media.authentication.busy}
             onClick={() => {
               setFailedUrl(null);
-              if (privateUpload) media.retry();
+              if (hostRead) media.retry();
               else setPublicRevision((value) => value + 1);
             }}
           >

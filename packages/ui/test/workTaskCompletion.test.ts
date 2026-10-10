@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { workTaskSchema, workTaskStatusSchema, type WorkTaskMerge } from "@zcode/shared";
-import { canCompleteWorkTask } from "../src/lib/workTaskBoard.js";
+import { canCompleteWorkTask, canMergeWorkTask } from "../src/lib/workTaskBoard.js";
 
 const task = workTaskSchema.parse({
   workspacePath: "/synthetic/project",
@@ -67,4 +67,22 @@ test("ordinary completion never bypasses an active merge", () => {
       ["merged", "failed", "canceled"].includes(phase),
       phase,
     );
+});
+
+test("merge acceptance requires a settled executable worktree task", () => {
+  const bound = {
+    ...task,
+    worktree: {
+      rootPath: "/synthetic/trees",
+      path: "/synthetic/trees/task/project",
+      projectPath: task.workspacePath,
+      branchName: "worktree/task",
+      baseCommit: "base",
+    },
+  };
+  assert.equal(canMergeWorkTask(bound, true), true);
+  assert.equal(canMergeWorkTask(bound, false), false);
+  assert.equal(canMergeWorkTask(task, true), false);
+  for (const patch of [{ status: "done" as const }, { archived: true }, { stopPending: true }])
+    assert.equal(canMergeWorkTask({ ...bound, ...patch }, true), false);
 });

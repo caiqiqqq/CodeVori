@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { resolveForgeContentUrl, isGitlabUploadImage } from "../src/lib/forgeContent.js";
+import {
+  resolveForgeContentUrl,
+  isGitlabUploadImage,
+  isGithubAttachmentImage,
+} from "../src/lib/forgeContent.js";
 const repository = {
   key: "synthetic",
   name: "team/sub/project",
@@ -10,6 +14,33 @@ const repository = {
   accountUsername: "tester",
 };
 const itemUrl = `${repository.url}/-/issues/7`;
+test("GitHub.com attachments use Host reads only for the exact attachment origin and path", () => {
+  const github = {
+    ...repository,
+    provider: "github" as const,
+    url: "https://github.com/team/project",
+  };
+  const source = "https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc";
+  assert.equal(isGithubAttachmentImage(github, source), true);
+  for (const url of [
+    source.replace("https:", "http:"),
+    `${source}?x=1`,
+    `${source}#x`,
+    source.replace("github.com", "github.com.example.invalid"),
+    "https://github.com/login",
+    "https://public.example.invalid/image.png",
+  ]) {
+    assert.equal(isGithubAttachmentImage(github, url), false);
+  }
+  assert.equal(isGithubAttachmentImage(repository, source), false);
+  assert.equal(
+    isGithubAttachmentImage(
+      { ...github, url: "https://enterprise.example.invalid/team/project" },
+      source,
+    ),
+    false,
+  );
+});
 test("GitLab upload links resolve against the project including nested groups and base paths", () => {
   for (const path of ["/uploads/abc/image.png", "uploads/abc/image.png"]) {
     assert.equal(

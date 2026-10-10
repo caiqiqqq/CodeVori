@@ -67,6 +67,14 @@ const errorKeys = new Set([
   "NO_EXECUTION",
   "TASK_SAVE",
   "TASK_UNSUPPORTED",
+  "UPLOAD_LIMIT",
+  "UPLOAD_INVALID_FILE",
+  "UPLOAD_UNAVAILABLE",
+  "UPLOAD_UNCERTAIN",
+  "UPLOAD_BUSY",
+  "BODY_TOO_LONG",
+  "MEDIA_IDENTITY_CHANGED",
+  "MEDIA_AUTHENTICATION_CANCELLED",
 ]);
 export function RepositoryError({ error, retry }: { error: string; retry?: () => void }) {
   const t = useRepositoryMessages();
