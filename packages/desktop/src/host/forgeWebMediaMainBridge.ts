@@ -1,22 +1,24 @@
 import { randomUUID } from "node:crypto";
 import {
   forgeImagePreviewSchema,
+  forgeImageUploadResultSchema,
+  hostForgeWebMediaRequestSchema,
   type ForgeWebMediaContext,
+  type ForgeWebUploadContext,
   type ForgeWebMediaPort,
-  type ForgeImagePreview,
   type HostForgeWebMediaRequest,
   type HostForgeWebMediaResult,
 } from "@zcode/shared";
 
 export function createForgeWebMediaMainBridge(post: (message: HostForgeWebMediaRequest) => void) {
-  const authorizations = new Map<string, Promise<ForgeImagePreview | undefined>>();
+  const authorizations = new Map<string, Promise<HostForgeWebMediaResult>>();
   const pending = new Map<
     string,
     {
-      resolve(value: ForgeImagePreview | undefined): void;
+      resolve(value: HostForgeWebMediaResult): void;
       reject(error: Error): void;
       timer: ReturnType<typeof setTimeout>;
-      action: "read" | "authenticate";
+      action: "read" | "authenticate" | "upload";
     }
   >();
   let disposed = false;
@@ -27,8 +29,11 @@ export function createForgeWebMediaMainBridge(post: (message: HostForgeWebMediaR
       /* Main/Host 已关闭。 */
     }
   };
-  const request = (action: "read" | "authenticate", context: ForgeWebMediaContext) =>
-    new Promise<ForgeImagePreview | undefined>((resolve, reject) => {
+  const request = (
+    action: "read" | "authenticate" | "upload",
+    context: ForgeWebMediaContext | ForgeWebUploadContext,
+  ) =>
+    new Promise<HostForgeWebMediaResult>((resolve, reject) => {
       if (disposed) {
         reject(new Error("FORGE_MEDIA_AUTHENTICATION_UNAVAILABLE"));
         return;
@@ -44,11 +49,18 @@ export function createForgeWebMediaMainBridge(post: (message: HostForgeWebMediaR
             ),
           );
         },
-        action === "authenticate" ? 605_000 : 45_000,
+        action === "read" ? 45_000 : 605_000,
       );
       pending.set(requestId, { resolve, reject, timer, action });
       try {
-        post({ type: "forge-web-media-request", requestId, action, context });
+        post(
+          hostForgeWebMediaRequestSchema.parse({
+            type: "forge-web-media-request",
+            requestId,
+            action,
+            context,
+          }),
+        );
       } catch {
         clearTimeout(timer);
         pending.delete(requestId);
@@ -56,8 +68,11 @@ export function createForgeWebMediaMainBridge(post: (message: HostForgeWebMediaR
       }
     });
   const port: ForgeWebMediaPort = {
+    async upload(context) {
+      return forgeImageUploadResultSchema.parse((await request("upload", context)).upload);
+    },
     async read(context) {
-      return forgeImagePreviewSchema.parse(await request("read", context));
+      return forgeImagePreviewSchema.parse((await request("read", context)).preview);
     },
     async authenticate(context) {
       const key = JSON.stringify([
@@ -85,7 +100,9 @@ export function createForgeWebMediaMainBridge(post: (message: HostForgeWebMediaR
       if (!message.ok) entry.reject(new Error(message.error ?? "FORGE_RESPONSE"));
       else if (entry.action === "read" && !message.preview)
         entry.reject(new Error("FORGE_RESPONSE"));
-      else entry.resolve(message.preview);
+      else if (entry.action === "upload" && !message.upload)
+        entry.reject(new Error("FORGE_RESPONSE"));
+      else entry.resolve(message);
     },
     dispose() {
       disposed = true;

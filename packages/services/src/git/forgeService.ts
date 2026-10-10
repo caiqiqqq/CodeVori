@@ -16,6 +16,7 @@ import {
   type ForgeTargetRequest,
 } from "@zcode/shared";
 import type { IGitService } from "./git.js";
+import { createForgeImageUploads } from "./forgeImageUploads.js";
 import { createGitCliRepo } from "./repo/gitCliRepo.js";
 import type { GitCliRepo } from "./repo/gitCliTypes.js";
 import { createVersionControlRepo, type VersionControlRepo } from "./repo/versionControlRepo.js";
@@ -38,6 +39,8 @@ import { createGiteaForgeProvider } from "./providers/giteaForgeProvider.js";
 
 export type ForgeService = Pick<
   IGitService,
+  | "getForgeImageUploadCapability"
+  | "uploadForgeImage"
   | "getForgeRepository"
   | "listForgeItems"
   | "getForgeItem"
@@ -207,12 +210,13 @@ export function createForgeService(options?: {
       (info.status === "unsupported" && request.accountId)
     )
       throw new Error("FORGE_MISSING_ACCOUNT");
-    if (!adapter || !account || info.repository?.key !== request.repositoryKey)
+    if (!adapter || !account || !info.repository || info.repository.key !== request.repositoryKey)
       throw new Error("FORGE_TARGET_CHANGED");
-    return { adapter, account };
+    return { adapter, account, repository: info.repository };
   };
   const target = async (request: ForgeTargetRequest) => (await verifiedTarget(request)).adapter;
   return {
+    ...createForgeImageUploads(verifiedTarget, options?.webMedia),
     async getForgeRepository(input) {
       return (await resolve(forgeRepositoryRequestSchema.parse(input))).info;
     },

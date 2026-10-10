@@ -397,6 +397,34 @@ const enUS: Record<string, string> = {
   "repositoryPanel.preview": "Preview",
   "repositoryPanel.emptyPreview": "Nothing to preview",
   "repositoryPanel.markdownSupported": "Markdown supported",
+  "repositoryPanel.addImages": "Add images",
+  "repositoryPanel.imageUploadHint":
+    "Choose, paste or drop images; up to 4 MB each, 8 images total",
+  "repositoryPanel.imageWebLoginHint":
+    "Choose, paste or drop up to 8 images, 4 MB each; GitHub may require web sign-in",
+  "repositoryPanel.imageWebUnavailable":
+    "This Host cannot upload GitHub images. Use the repository website",
+  "repositoryPanel.imageProviderUnsupported":
+    "This provider does not support images before issue creation",
+  "repositoryPanel.openRepositoryWeb": "Open repository website",
+  "repositoryPanel.imageUploading": "Uploading image…",
+  "repositoryPanel.imageUploaded": "Image uploaded",
+  "repositoryPanel.removeImage": "Remove image {name}",
+  "repositoryPanel.error.UPLOAD_LIMIT": "An issue can contain up to 8 uploaded images",
+  "repositoryPanel.error.UPLOAD_INVALID_FILE":
+    "Choose a PNG, JPEG, GIF or WebP image no larger than 4 MB",
+  "repositoryPanel.error.UPLOAD_UNAVAILABLE":
+    "The website attachment control is unavailable. Keep your draft and upload on the repository website",
+  "repositoryPanel.error.UPLOAD_UNCERTAIN":
+    "The image upload could not be confirmed. Your draft is retained; retrying may leave a duplicate asset",
+  "repositoryPanel.error.UPLOAD_BUSY":
+    "The Host is processing other image uploads. Try again later",
+  "repositoryPanel.error.BODY_TOO_LONG":
+    "The body including image links exceeds 65000 characters. Shorten it before creating",
+  "repositoryPanel.error.MEDIA_IDENTITY_CHANGED":
+    "The web account does not match the repository account. Sign in with the bound account",
+  "repositoryPanel.error.MEDIA_AUTHENTICATION_CANCELLED":
+    "Image upload or sign-in was cancelled. Your draft is retained",
   "repositoryPanel.noSelection": "None",
   "repositoryPanel.selectOptions": "Select {field}",
   "repositoryPanel.noOptions": "No options available",

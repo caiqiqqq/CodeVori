@@ -32,6 +32,8 @@ import {
   type RemoteTarget,
   type WorkspacePurpose,
   type ForgeWebMediaContext,
+  type ForgeWebUploadContext,
+  type ForgeImageUploadResult,
   type ForgeImagePreview,
   ZCODE_DESKTOP_CONTEXT_PROMPT_ENABLED_ENV,
 } from "@zcode/shared";
@@ -247,12 +249,15 @@ export function spawnHostProcess(
     }) => Promise<{ ok: boolean; [k: string]: unknown }>;
     /** Host 已完成附件授权后，由 Main 将本地视频 realpath 加入精确协议授权集合。 */
     authorizeLocalMediaPreviewPath?: (path: string) => Promise<string>;
-    handleForgeWebMediaRequest?: (params: {
-      win: BrowserWindow;
-      action: "read" | "authenticate";
-      context: ForgeWebMediaContext;
-      signal: AbortSignal;
-    }) => Promise<ForgeImagePreview | void>;
+    handleForgeWebMediaRequest?: (
+      params: {
+        win: BrowserWindow;
+        signal: AbortSignal;
+      } & (
+        | { action: "read" | "authenticate"; context: ForgeWebMediaContext }
+        | { action: "upload"; context: ForgeWebUploadContext }
+      ),
+    ) => Promise<ForgeImagePreview | ForgeImageUploadResult | void>;
   },
   options?: SpawnHostProcessOptions,
 ): ElectronUtilityProcess {
@@ -387,7 +392,12 @@ export function spawnHostProcess(
         forgeMediaRequests.get(request.requestId)?.abort();
         return;
       }
-      const reply = (value: { ok: boolean; preview?: ForgeImagePreview; error?: string }) => {
+      const reply = (value: {
+        ok: boolean;
+        preview?: ForgeImagePreview;
+        upload?: ForgeImageUploadResult;
+        error?: string;
+      }) => {
         try {
           child.postMessage({
             type: HostMessageTypes.ForgeWebMediaResult,
@@ -407,11 +417,15 @@ export function spawnHostProcess(
       forgeMediaRequests.set(request.requestId, controller);
       void execute({
         win,
-        action: request.action,
-        context: request.context,
+        ...request,
         signal: controller.signal,
       })
-        .then((preview) => reply({ ok: true, ...(preview ? { preview } : {}) }))
+        .then((value) =>
+          reply({
+            ok: true,
+            ...(value ? ("url" in value ? { upload: value } : { preview: value }) : {}),
+          }),
+        )
         .catch((error: unknown) =>
           reply({
             ok: false,
