@@ -537,6 +537,7 @@ nodes:
   - id: surface.work-task-review
     kind: ui-surface
     label: Work task review, follow-up, ordinary completion and selected-branch merge
+    aliases: [合并并完成, 完成方式]
     codeSeeds:
       - file: packages/ui/src/work-tasks/WorkTaskDetail.tsx
         symbol: WorkTaskDetail
@@ -546,6 +547,10 @@ nodes:
         symbol: canCompleteWorkTask
       - file: packages/ui/src/work-tasks/WorkTaskMergeControls.tsx
         symbol: WorkTaskMergeControls
+      - file: packages/ui/src/hooks/useWorkTaskMergeTarget.ts
+        symbol: useWorkTaskMergeTarget
+      - file: packages/ui/src/hooks/useWorkTaskAcceptance.ts
+        symbol: useWorkTaskAcceptance
       - file: packages/ui/src/work-tasks/WorkTasksPanel.tsx
         symbol: WorkTasksBoard
       - file: packages/ui/src/app-shell/AnimatedSidePanePanel.tsx
@@ -553,7 +558,8 @@ nodes:
     invariants:
       - Merge controls project into the existing Git review tab while retaining the branch draft in the board subtree; no additional task subscription is created.
       - Closing the side pane or review tab preserves the branch and conversation drafts; changing task resets the branch draft.
-      - Header and task-row completion share one task-id-scoped board confirmation and the original complete command; details do not own another dialog and completion never writes Git or replaces a conversation.
+      - Header and task-row acceptance share one task-id-scoped board confirmation with an explicit merge or ordinary complete choice; details do not own another dialog. Ordinary complete never writes Git or replaces a conversation.
+      - The acceptance dialog and review pane reuse the scoped merge-target draft and branch selector. Read-only worktree checks recommend a mode; the Host still admits the original merge/complete commands and owns durable results.
   - id: service.work-task-merge
     kind: service
     label: Owner-admitted local merge with isolated API or ACP conflict resolution
