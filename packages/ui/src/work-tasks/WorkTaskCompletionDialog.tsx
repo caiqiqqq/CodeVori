@@ -1,8 +1,8 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Check } from "lucide-react";
-import type { WorkTask } from "@zcode/shared";
+import { isWorkTaskForgePending, type WorkTask } from "@zcode/shared";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
-import { canCompleteWorkTask } from "@/lib/workTaskBoard.js";
+import { canReviewWorkTaskCompletion } from "@/lib/workTaskBoard.js";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,6 +13,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog.js";
+import { Checkbox } from "@/components/ui/checkbox.js";
+import { WorkTaskForgeOptionsFields, useWorkTaskForgeOptions } from "./WorkTaskForgeOptions.js";
 import { WorkTaskError, useWorkTaskMessages } from "./WorkTaskParts.js";
 
 export function WorkTaskCompletionDialog({
@@ -26,7 +28,10 @@ export function WorkTaskCompletionDialog({
 }) {
   const t = useWorkTaskMessages();
   const submitted = useRef(false);
-  const disabled = panel.busy || !canCompleteWorkTask(task);
+  const options = useWorkTaskForgeOptions(task);
+  const retry = task.status === "done" && isWorkTaskForgePending(task);
+  const [resend, setResend] = useState(false);
+  const disabled = panel.busy || !canReviewWorkTaskCompletion(task);
   return (
     <AlertDialog
       open
@@ -41,7 +46,7 @@ export function WorkTaskCompletionDialog({
         }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>{t("confirmComplete")}</AlertDialogTitle>
+          <AlertDialogTitle>{t(retry ? "retryForge" : "confirmComplete")}</AlertDialogTitle>
           <p
             className="break-all text-ui-base font-medium"
             data-testid="work-task-completion-title"
@@ -50,7 +55,30 @@ export function WorkTaskCompletionDialog({
           </p>
           <AlertDialogDescription>{t("confirmCompleteBody")}</AlertDialogDescription>
         </AlertDialogHeader>
-        <WorkTaskError error={panel.error} />
+        {retry ? (
+          <div className="flex flex-col gap-2 text-ui-sm" data-testid="work-task-forge-receipts">
+            <p>
+              {t("commentReceipt")}: {t(`forgeStep.${task.forgeWriteback!.commentState}`)}
+            </p>
+            <p>
+              {t("closeReceipt")}: {t(`forgeStep.${task.forgeWriteback!.closeState}`)}
+            </p>
+            {["uncertain", "sending"].includes(task.forgeWriteback!.commentState) ? (
+              <label className="flex items-start gap-2">
+                <Checkbox
+                  data-testid="work-task-forge-resend"
+                  checked={resend}
+                  disabled={panel.busy}
+                  onCheckedChange={(v) => setResend(v === true)}
+                />
+                {t("resendComment")}
+              </label>
+            ) : null}
+          </div>
+        ) : (
+          <WorkTaskForgeOptionsFields task={task} options={options} disabled={panel.busy} />
+        )}
+        <WorkTaskError error={panel.error ?? task.forgeWriteback?.error ?? null} />
         <AlertDialogFooter>
           <AlertDialogCancel disabled={panel.busy}>{t("close")}</AlertDialogCancel>
           <AlertDialogAction
@@ -62,7 +90,7 @@ export function WorkTaskCompletionDialog({
               if (disabled || submitted.current) return;
               submitted.current = true;
               void panel
-                .complete(task.id)
+                .complete(task.id, retry ? undefined : options.value, resend)
                 .then((ok) => {
                   if (ok) onClose(task.id);
                 })
@@ -72,7 +100,7 @@ export function WorkTaskCompletionDialog({
             }}
           >
             <Check className="size-4" />
-            {t("complete")}
+            {t(retry ? "retryForge" : "complete")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -8,7 +8,7 @@ import {
   RotateCcw,
   Square,
 } from "lucide-react";
-import { WORK_TASK_ACTIVE_STATUSES, type WorkTask } from "@zcode/shared";
+import { isWorkTaskForgePending, WORK_TASK_ACTIVE_STATUSES, type WorkTask } from "@zcode/shared";
 import { useWorkTaskEvents } from "@/hooks/useWorkTaskEvents.js";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import { Button } from "@/components/ui/button.js";
@@ -142,6 +142,39 @@ export function WorkTaskDetail({
             </Button>
           )}
         </div>
+        {task.source ? (
+          <section
+            className="flex flex-col gap-2 border-t border-border pt-3 text-ui-sm"
+            data-testid="work-task-source"
+          >
+            <p className="break-all">
+              {t("linkedItem")}: #{task.source.number} · {task.source.title}
+            </p>
+            {task.forgeWriteback ? (
+              <>
+                <p>
+                  {t("commentReceipt")}: {t(`forgeStep.${task.forgeWriteback.commentState}`)}
+                </p>
+                <p>
+                  {t("closeReceipt")}: {t(`forgeStep.${task.forgeWriteback.closeState}`)}
+                </p>
+                <WorkTaskError error={task.forgeWriteback.error ?? null} />
+                {task.status === "done" && isWorkTaskForgePending(task) ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={panel.busy}
+                    onClick={() => {
+                      void panel.complete(task.id);
+                    }}
+                  >
+                    {t("retryForge")}
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+          </section>
+        ) : null}
         {task.status === "review" && !task.archived ? (
           <form
             className="flex flex-col gap-2 border-t border-border pt-3"
@@ -181,7 +214,9 @@ export function WorkTaskDetail({
             <h3 className="mb-2 text-ui-sm font-medium text-foreground-subtle">{t("events")}</h3>
             <ol className="flex max-h-40 flex-col gap-1 overflow-y-auto text-ui-sm text-foreground-subtle">
               {events
-                .filter((event) => event.type !== "execution-updated")
+                .filter(
+                  (event) => !["execution-updated", "forge-writeback-lease"].includes(event.type),
+                )
                 .map((event) => (
                   <li key={event.sequence} className="flex min-w-0 gap-2">
                     <span className="shrink-0 font-mono text-foreground-subtlest">

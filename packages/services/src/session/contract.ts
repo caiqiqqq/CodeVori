@@ -1,6 +1,7 @@
 export {
   IWorkTaskService,
   type WorkTaskExecutionContext,
+  type WorkTaskForgePort,
   type WorkTaskExecutionPort,
   type WorkTaskExecutionUpdate,
   type WorkTaskMergePort,

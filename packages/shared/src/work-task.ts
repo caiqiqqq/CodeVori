@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { forgeItemRequestSchema } from "./forge.js";
 import { modelSelectionSchema } from "./model-selection.js";
 import { acpAgentSchema } from "./zcode-protocol/acp.js";
 import { attachmentRefSchema } from "./zcode-protocol-v4/attachment-ref.js";
@@ -182,6 +183,44 @@ export function isWorkTaskMerging(task: Pick<WorkTask, "merge">): boolean {
   return !!task.merge && !["merged", "failed", "canceled"].includes(task.merge.phase);
 }
 
+// 议题来源独立于提示词；范围始终从任务取得，禁止回写重定向到其他工作区。
+export const workTaskSourceSchema = forgeItemRequestSchema
+  .omit({ workspacePath: true, workspaceIdentity: true })
+  .extend({ url: z.string().url().max(8192), title: z.string().max(256) })
+  .strict();
+export type WorkTaskSource = z.infer<typeof workTaskSourceSchema>;
+export const workTaskForgeOptionsSchema = z
+  .object({
+    closeIssue: z.boolean(),
+    comment: z.string().trim().min(1).max(60_000).optional(),
+  })
+  .strict();
+export type WorkTaskForgeOptions = z.infer<typeof workTaskForgeOptionsSchema>;
+const forgeStepSchema = z.enum(["pending", "sending", "done", "skipped", "failed", "uncertain"]);
+export const workTaskForgeWritebackSchema = workTaskForgeOptionsSchema
+  .extend({
+    id: z.string().uuid(),
+    runSeq: z.number().int().nonnegative(),
+    commentState: forgeStepSchema,
+    closeState: forgeStepSchema,
+    error: z.string().max(256).optional(),
+    owner: z.string().uuid().optional(),
+    leaseUntil: z.number().optional(),
+  })
+  .strict();
+export type WorkTaskForgeWriteback = z.infer<typeof workTaskForgeWritebackSchema>;
+export function isWorkTaskForgePending(task: Pick<WorkTask, "forgeWriteback">): boolean {
+  const state = task.forgeWriteback;
+  return (
+    !!state && [state.commentState, state.closeState].some((s) => s !== "done" && s !== "skipped")
+  );
+}
+export function workTaskSourceKey(
+  source: Pick<WorkTaskSource, "repositoryKey" | "kind" | "number">,
+): string {
+  return JSON.stringify([source.repositoryKey, source.kind, source.number]);
+}
+
 export const workTaskSchema = workTaskScopeSchema
   .extend({
     ...promptAssetsShape,
@@ -189,6 +228,8 @@ export const workTaskSchema = workTaskScopeSchema
     title: z.string().trim().min(1).max(200),
     prompt: z.string().trim().min(1).max(100_000),
     execution: workTaskExecutionSchema,
+    source: workTaskSourceSchema.optional(),
+    forgeWriteback: workTaskForgeWritebackSchema.optional(),
     sourceBranch: z.string().trim().min(1).max(1024).optional(),
     /** Missing on legacy tasks means isolated worktree execution. */
     useWorktree: z.boolean().optional(),
@@ -220,6 +261,7 @@ export const workTaskCreateSchema = workTaskScopeSchema
     title: workTaskSchema.shape.title,
     prompt: workTaskSchema.shape.prompt,
     execution: workTaskExecutionSchema,
+    source: workTaskSchema.shape.source,
     sourceBranch: workTaskSchema.shape.sourceBranch,
     useWorktree: workTaskSchema.shape.useWorktree,
   })
@@ -232,14 +274,27 @@ export function workTaskExecutionPath(task: WorkTask): string | undefined {
 }
 export const workTaskTargetSchema = workTaskScopeSchema.extend({ id: z.string().min(1) }).strict();
 export type WorkTaskTarget = z.infer<typeof workTaskTargetSchema>;
-export const workTaskUpdateSchema = workTaskCreateSchema.extend({ id: z.string().min(1) }).strict();
+export const workTaskCompleteSchema = workTaskTargetSchema
+  .extend({
+    forge: workTaskForgeOptionsSchema.optional(),
+    resendComment: z.boolean().optional(),
+  })
+  .strict();
+export type WorkTaskComplete = z.infer<typeof workTaskCompleteSchema>;
+export const workTaskUpdateSchema = workTaskCreateSchema
+  .omit({ source: true })
+  .extend({ id: z.string().min(1) })
+  .strict();
 export type WorkTaskUpdate = z.infer<typeof workTaskUpdateSchema>;
 export const workTaskStartSchema = workTaskTargetSchema
   .extend({ feedback: z.string().trim().min(1).max(100_000).optional() })
   .strict();
 export type WorkTaskStart = z.infer<typeof workTaskStartSchema>;
 export const workTaskMergeRequestSchema = workTaskTargetSchema
-  .extend({ targetBranch: workTaskMergeSchema.shape.targetBranch })
+  .extend({
+    targetBranch: workTaskMergeSchema.shape.targetBranch,
+    forge: workTaskForgeOptionsSchema.optional(),
+  })
   .strict();
 export type WorkTaskMergeRequest = z.infer<typeof workTaskMergeRequestSchema>;
 export const workTaskListSchema = workTaskScopeSchema

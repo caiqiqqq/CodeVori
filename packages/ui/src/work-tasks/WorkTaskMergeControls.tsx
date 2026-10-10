@@ -6,6 +6,7 @@ import { useWorkTaskBranches } from "@/hooks/useWorkTaskBranches.js";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import { Button } from "@/components/ui/button.js";
 import { WorkTaskBranchSelect } from "./WorkTaskBranchSelect.js";
+import { WorkTaskForgeOptionsFields, useWorkTaskForgeOptions } from "./WorkTaskForgeOptions.js";
 import { WorkTaskError, useWorkTaskMessages } from "./WorkTaskParts.js";
 
 export function WorkTaskMergeControls({
@@ -18,6 +19,7 @@ export function WorkTaskMergeControls({
   container: HTMLElement | null;
 }) {
   const t = useWorkTaskMessages();
+  const forgeOptions = useWorkTaskForgeOptions(task);
   const merging = isWorkTaskMerging(task);
   const selectable = task.status === "review" && !task.archived && !!task.worktree;
   const branches = useWorkTaskBranches(
@@ -68,13 +70,14 @@ export function WorkTaskMergeControls({
                 !options.some((branch) => branch.name === target)
               }
               onClick={() => {
-                if (target) void panel.merge(task.id, target);
+                if (target) void panel.merge(task.id, target, forgeOptions.value);
               }}
             >
               <GitMerge className="size-4 text-icon-blue group-disabled/button:text-foreground-subtlest" />
               {t("commitAndMerge")}
             </Button>
           </div>
+          <WorkTaskForgeOptionsFields task={task} options={forgeOptions} disabled={disabled} />
           <WorkTaskError error={branches.error} />
           {branches.error ? (
             <Button

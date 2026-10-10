@@ -2,7 +2,7 @@ import {
   openWorkTaskDatabase,
   hasActiveWorkTaskConversation,
   listWorkTaskConversations,
-  recordWorkTaskChange,
+  listWorkTaskEvents,
   writeWorkTask,
   claimNextWorkTask,
   appendWorkTaskQueue,
@@ -14,6 +14,13 @@ import {
   assertWorkTaskWorkspaceEditable,
 } from "./workTaskConversationState.js";
 import { finishWorkTaskRun, interruptWorkTaskRun } from "./workTaskRunState.js";
+import { claimWorkTaskForge, writeWorkTaskForge } from "./workTaskForgePersistence.js";
+import {
+  assertWorkTaskSourceAvailable,
+  prepareWorkTaskForge,
+  completeWorkTaskForge,
+} from "./workTaskForgeState.js";
+import { createWorkTaskDraft } from "./workTaskDraft.js";
 import { isDeepStrictEqual } from "node:util";
 import {
   WORK_TASK_ACTIVE_STATUSES,
@@ -23,6 +30,8 @@ import {
   workTaskSchema,
   type WorkTask,
   type WorkTaskCreate,
+  type WorkTaskForgeOptions,
+  type WorkTaskForgeWriteback,
   type WorkTaskEvent,
   type WorkTaskScope,
   type WorkTaskUpdate,
@@ -128,34 +137,9 @@ export class WorkTaskRepo {
     return writeWorkTask(this.database(), task, type, owner, leaseUntil);
   }
   create(input: WorkTaskCreate): WorkTask {
-    return this.transaction(() => {
-      assertWorkTaskWorkspaceEditable(null, input);
-      const now = Date.now();
-      const task: WorkTask = {
-        ...input,
-        id: uuidv7(),
-        sessionRequestId: uuidv7(),
-        commandId: uuidv7(),
-        status: "todo",
-        archived: false,
-        runSeq: 0,
-        runText: input.prompt,
-        runUsesPromptAssets: true,
-        stopPending: false,
-        createdAt: now,
-        updatedAt: now,
-      };
-      this.database()
-        .prepare("INSERT INTO work_tasks(id,workspace_key,status,data) VALUES(?,?,?,?)")
-        .run(
-          task.id,
-          resolveWorkspaceKey(task),
-          task.status,
-          JSON.stringify(workTaskSchema.parse(task)),
-        );
-      recordWorkTaskChange(this.database(), task, "created");
-      return task;
-    });
+    return this.transaction(() =>
+      createWorkTaskDraft(this.database(), input, input.source ? this.list(input, true) : []),
+    );
   }
   update(input: WorkTaskUpdate): WorkTask {
     return this.transaction(() => {
@@ -181,6 +165,7 @@ export class WorkTaskRepo {
   private enqueueInside(scope: WorkTaskScope, id: string, feedback?: string): WorkTask {
     const row = this.row(scope, id);
     const task = decode(row);
+    assertWorkTaskSourceAvailable(this.list(scope, true), task.source, task.id);
     if (isWorkTaskMerging(task)) throw new Error("work-task.merge-in-progress");
     if (task.status === "queued" || WORK_TASK_ACTIVE_STATUSES.includes(task.status)) return task;
     if (
@@ -232,7 +217,14 @@ export class WorkTaskRepo {
       appendWorkTaskQueue(this.database(), id);
       const merge: WorkTaskMerge = { id: uuidv7(), projectPath, targetBranch, phase: "queued" };
       return this.write(
-        { ...task, merge, status: "queued", failureReason: undefined, updatedAt: Date.now() },
+        {
+          ...task,
+          merge,
+          status: "queued",
+          forgeWriteback: prepareWorkTaskForge({ ...task, runSeq: task.runSeq + 1 }, input.forge),
+          failureReason: undefined,
+          updatedAt: Date.now(),
+        },
         "merge-queued",
       );
     });
@@ -321,16 +313,27 @@ export class WorkTaskRepo {
       );
     });
   }
-  complete(scope: WorkTaskScope, id: string): WorkTask {
+  complete(scope: WorkTaskScope, id: string, forge?: WorkTaskForgeOptions): WorkTask {
     return this.transaction(() => {
-      const task = this.get(scope, id);
-      if (task.status !== "review" || task.stopPending || isWorkTaskMerging(task))
-        throw new Error("work-task.not-reviewable");
-      return this.write(
-        { ...task, status: "done", completion: "accepted_without_merge", updatedAt: Date.now() },
-        "accepted",
-      );
+      const task = completeWorkTaskForge(this.get(scope, id), forge);
+      return this.write(task, "accepted");
     });
+  }
+  claimForgeWriteback(scope: WorkTaskScope & { id: string }, owner: string): WorkTask {
+    return this.transaction(() =>
+      claimWorkTaskForge(this.database(), this.get(scope, scope.id), owner),
+    );
+  }
+  writeForgeState(
+    scope: WorkTaskScope & { id: string },
+    requestId: string,
+    next: WorkTaskForgeWriteback,
+    owner?: string,
+    event?: string,
+  ): WorkTask {
+    return this.transaction(() =>
+      writeWorkTaskForge(this.database(), this.get(scope, scope.id), requestId, next, owner, event),
+    );
   }
   archive(scope: WorkTaskScope, id: string, archived: boolean): WorkTask {
     return this.transaction(() => {
@@ -396,11 +399,6 @@ export class WorkTaskRepo {
   }
   events(scope: WorkTaskScope, id: string): WorkTaskEvent[] {
     this.row(scope, id);
-    const rows = this.database()
-      .prepare(
-        "SELECT sequence, task_id AS taskId, run_seq AS runSeq, at, type, message FROM work_task_events WHERE task_id=? ORDER BY sequence DESC LIMIT 100",
-      )
-      .all(id) as unknown as WorkTaskEvent[];
-    return rows.reverse();
+    return listWorkTaskEvents(this.database(), id);
   }
 }

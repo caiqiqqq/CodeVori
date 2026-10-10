@@ -1,3 +1,4 @@
+import { exerciseWorkTaskForge } from "./workTaskForgeAssertions.mjs";
 import { chromium } from "playwright-core";
 import { exerciseWorkTaskAllProjects } from "./workTaskAllProjectsAssertions.mjs";
 import { exerciseWorkTaskWorkspaceMode } from "./workTaskWorkspaceModeAssertions.mjs";
@@ -40,6 +41,7 @@ export {
   exerciseWorkTaskCompletion,
 };
 export const workTaskScenarios = {
+  "forge-completion": exerciseWorkTaskForge,
   "execution-config": exerciseWorkTaskExecutionConfig,
   "sidebar-width": exerciseWorkTaskSidebarWidth,
   "selection-visibility": exerciseWorkTaskSelectionVisibility,

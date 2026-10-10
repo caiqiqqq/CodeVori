@@ -12,7 +12,7 @@ import {
 } from "@/store/workTaskNavigationStore.js";
 import { workTaskProjectOptions } from "@/lib/workTaskProjectOptions.js";
 import {
-  canCompleteWorkTask,
+  canReviewWorkTaskCompletion,
   filterWorkTasks,
   groupWorkTasksByColumn,
 } from "@/lib/workTaskBoard.js";
@@ -83,7 +83,7 @@ export function WorkTasksBoard({
   const tasks = useMemo(() => filterWorkTasks(panel.board?.tasks ?? [], {}), [panel.board?.tasks]);
   const selected = tasks.find((task) => taskKey(task) === selection);
   const completionTask = tasks.find((task) => taskKey(task) === completionId);
-  if (completionId && (!completionTask || !canCompleteWorkTask(completionTask)))
+  if (completionId && (!completionTask || !canReviewWorkTaskCompletion(completionTask)))
     setCompletionId(null);
   const showMergeConversation =
     !!selected?.merge?.session &&
@@ -113,7 +113,7 @@ export function WorkTasksBoard({
   };
   const openInline = (task: WorkTask) => selectTask(taskKey(task));
   const requestCompletion = (task: WorkTask) => {
-    if (canCompleteWorkTask(task)) setCompletionId(taskKey(task));
+    if (canReviewWorkTaskCompletion(task)) setCompletionId(taskKey(task));
   };
   const closeCompletion = useCallback(
     (id: string) => {
@@ -249,7 +249,7 @@ export function WorkTasksBoard({
           />
         }
       />
-      {completionTask && canCompleteWorkTask(completionTask) ? (
+      {completionTask && canReviewWorkTaskCompletion(completionTask) ? (
         <WorkTaskCompletionDialog
           key={workTaskSelectionKey(completionTask)}
           task={completionTask}

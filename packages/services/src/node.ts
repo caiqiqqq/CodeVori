@@ -2677,6 +2677,7 @@ export function createLocalServices(options: {
   agentDelegationService.startScheduler();
   const workTaskService = new WorkTaskService({
     repo: workTaskRepo,
+    forge: gitService,
     attachments: workTaskAttachments,
     execute: (task, context) => workTaskExecution.execute(task, context),
     merge: createWorkTaskMerge(workTaskExecutionDependencies),

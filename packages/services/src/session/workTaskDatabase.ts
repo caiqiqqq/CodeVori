@@ -9,6 +9,7 @@ import {
   workTaskExecutionPath,
   type WorkTask,
   type WorkTaskScope,
+  type WorkTaskEvent,
   WORK_TASK_ACTIVE_STATUSES,
 } from "@zcode/shared";
 
@@ -201,4 +202,13 @@ export function hasActiveWorkTaskConversation(
           isWorkTaskMerging(task))
       );
     });
+}
+
+export function listWorkTaskEvents(db: WorkTaskDatabase, id: string): WorkTaskEvent[] {
+  const rows = db
+    .prepare(
+      "SELECT sequence, task_id AS taskId, run_seq AS runSeq, at, type, message FROM work_task_events WHERE task_id=? ORDER BY sequence DESC LIMIT 100",
+    )
+    .all(id) as unknown as WorkTaskEvent[];
+  return rows.reverse();
 }

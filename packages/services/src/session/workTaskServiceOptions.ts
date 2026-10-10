@@ -1,6 +1,7 @@
 import type { WorkTask } from "@zcode/shared";
 import type {
   WorkTaskExecutionContext,
+  WorkTaskForgePort,
   WorkTaskConversationPort,
   WorkTaskMergePort,
 } from "./workTask.js";
@@ -10,6 +11,7 @@ import type { WorkTaskAttachmentStore } from "./workTaskAttachmentStore.js";
 export interface WorkTaskServiceOptions {
   repo: WorkTaskRepo;
   attachments?: WorkTaskAttachmentStore;
+  forge?: WorkTaskForgePort;
   execute(task: WorkTask, context: WorkTaskExecutionContext): Promise<void>;
   merge?: WorkTaskMergePort;
   conversation?: WorkTaskConversationPort;
