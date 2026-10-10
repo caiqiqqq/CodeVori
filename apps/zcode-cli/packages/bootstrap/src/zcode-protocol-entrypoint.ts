@@ -1,4 +1,6 @@
-import { createConfig } from "@zcode/adapters/config";
+import { createConfig, resolvePath } from "@zcode/adapters/config";
+import { join } from "node:path";
+import { createNodeToolArtifactStore } from "@zcode/adapters/storage";
 import { createNodeModelSelectionFacade } from "@zcode/provider-node";
 import { createNodeLoggerFactory } from "@zcode/adapters/logging";
 import {
@@ -136,6 +138,13 @@ export async function runZCodeProtocolAgent(
   try {
     // 数据库准备先于账号、Registry 和遥测，不把远端材料等待混进迁移门禁。
     const configResult = createConfig({ env: options.env });
+    const storageRoot = resolvePath(configResult.config.storage.dir);
+    const artifactStore = createNodeToolArtifactStore({
+      rootDir: join(storageRoot, "cli", "artifacts"),
+      imageCacheRootDir: join(storageRoot, "cli", "image-cache"),
+      pdfCacheRootDir: join(storageRoot, "cli", "pdf-cache"),
+      videoCacheRootDir: join(storageRoot, "cli", "video-cache"),
+    });
     sessionStore = await acquireProtocolStartupResource({
       signal: options.lifecycle?.signal,
       logger,
@@ -247,6 +256,8 @@ export async function runZCodeProtocolAgent(
     );
     options.lifecycle?.signal.throwIfAborted();
     const server = (serverForCleanup = new ZCodeProtocolAgentServer({
+      purgeSessionArtifacts: (sessionId, retainedUris) =>
+        artifactStore.purgeSessionArtifacts!(sessionId, retainedUris),
       createZCodeApp: (appOptions = {}) =>
         createZCodeApp({
           ...applyProtocolProviderRegistry(
@@ -278,6 +289,7 @@ export async function runZCodeProtocolAgent(
               }
             : {}),
           sourceTitle: "electron",
+          artifactStore,
           onToolExecResource: (params) =>
             connection.send({ method: zcodeProtocolNotifications.toolExecResource, params }),
         }),

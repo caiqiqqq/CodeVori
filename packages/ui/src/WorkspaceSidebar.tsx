@@ -1271,15 +1271,18 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon-sm"
                 className="shrink-0 text-foreground-subtle hover:text-foreground data-[state=on]:bg-hover data-[state=on]:text-foreground"
                 data-state={showArchivedTasks ? "on" : "off"}
+                aria-pressed={showArchivedTasks}
                 aria-label={archivedTasksActionLabel}
                 onClick={() => {
                   setShowArchivedTasks((current) => !current);
                 }}
               >
                 {showArchivedTasks ? <X className="size-3.5" /> : <Archive className="size-3.5" />}
+                <span className="text-ui-sm">
+                  {intl.formatMessage({ id: "workspaceSidebar.archivedTasks" })}
+                </span>
               </Button>
             </ControlHintTooltip>
           </div>

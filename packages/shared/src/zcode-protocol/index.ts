@@ -1999,6 +1999,19 @@ export const zcodeSessionCloseResultSchema = z
   })
   .strict();
 export type ZCodeSessionCloseResult = z.infer<typeof zcodeSessionCloseResultSchema>;
+/** Host-only destructive operation; workspace scope is checked against durable storage. */
+export const zcodeSessionPurgeParamsSchema = z
+  .object({
+    sessionId: nonEmptyString,
+    workspace: zcodeWorkspaceRefSchema,
+  })
+  .strict();
+export const zcodeSessionPurgeResultSchema = z
+  .object({
+    status: z.enum(["deleted", "busy"]),
+  })
+  .strict();
+export type ZCodeSessionPurgeResult = z.infer<typeof zcodeSessionPurgeResultSchema>;
 export const zcodeWorkspaceReadPresentationParamsSchema = z
   .object({ workspace: zcodeWorkspaceRefSchema })
   .strict();
@@ -3623,6 +3636,7 @@ export const zcodeProtocolMethods = {
   sessionCompact: "session/compact",
   sessionGoal: "session/goal",
   sessionClose: "session/close",
+  sessionPurge: "session/purge",
   // setModel 仍被 zcodeSessionService 的 desktop 旧链路消费；replayable
   // switchModelConfig 已直接由目标 Environment Registry 解析 Selection。
   sessionSetModel: "session/setModel",

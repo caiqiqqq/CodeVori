@@ -82,6 +82,7 @@ import {
   zcodeToolExecResourceSchema,
   zcodeProcessResourceSampleSchema,
   zcodeSessionCloseResultSchema,
+  zcodeSessionPurgeResultSchema,
   zcodeSessionCompactResultSchema,
   zcodeSessionEventsResultSchema,
   zcodeSessionGoalResultSchema,
@@ -905,6 +906,10 @@ interface CreateZCodeAgentServiceOptions extends Omit<
     envelope: CommandEnvelope,
   ) => Promise<void>;
   pauseDelegations?: (workspace: ZCodeAgentWorkspaceTarget, sessionId: string) => Promise<void>;
+  canPurgeConversation?: (
+    workspace: ZCodeAgentWorkspaceTarget,
+    sessionId: string,
+  ) => Promise<boolean>;
   resolveOffPeakTaskService?: () =>
     | Pick<IOffPeakTaskService, "createTask" | "list" | "getCodingPlanSupport">
     | undefined;
@@ -4505,6 +4510,14 @@ export function createZCodeAgentService(
     },
 
     async sendPrompt(params: ZCodeAgentSendPromptParams) {
+      const lifecycle = await automationTaskIndexRepo.getConversationLifecycle({
+        ...params,
+        taskId: params.sessionId,
+      });
+      if (lifecycle === "archived" || lifecycle === "pending" || lifecycle === "deleted")
+        throw new Error(
+          "Restore the archived conversation before sending; pending deletion can only be retried",
+        );
       const startedAt = Date.now();
       const client = await getClient(params);
       const sessionTraceId = params.sessionTraceId?.trim() || getSessionTraceId(params);
@@ -4678,6 +4691,28 @@ export function createZCodeAgentService(
         });
         throw error;
       }
+    },
+
+    async purgeSession(params) {
+      if (
+        options?.canPurgeConversation &&
+        !(await options.canPurgeConversation(params, params.sessionId))
+      )
+        return "busy";
+      const client = await getClient(params);
+      const result = await client.request(
+        zcodeProtocolMethods.sessionPurge,
+        {
+          sessionId: params.sessionId,
+          workspace: {
+            workspaceKey: resolveWorkspaceKey(params),
+            workspacePath: params.workspacePath,
+            ...(params.workspaceIdentity ? { workspaceIdentity: params.workspaceIdentity } : {}),
+          },
+        },
+        zcodeSessionPurgeResultSchema,
+      );
+      return result.status;
     },
 
     async closeSession(
@@ -5130,6 +5165,30 @@ export function createZCodeAgentService(
     },
 
     async sendConversationCommandV4(params: ZCodeAgentConversationCommandParams) {
+      const sessionId = params.envelope.sessionId;
+      if (sessionId) {
+        const lifecycle = await automationTaskIndexRepo.getConversationLifecycle({
+          ...params,
+          taskId: sessionId,
+        });
+        const startsInput = [
+          "sendText",
+          "sendGoalCommand",
+          "retryTurn",
+          "editUserQuery",
+          "compact",
+          "sendQueuedNow",
+        ].includes(params.envelope.type);
+        // 修复原因：桌面直接使用 V4 而手机会经 task adapter；门禁必须落在两端共用的 Host 边界。
+        if (
+          lifecycle === "pending" ||
+          lifecycle === "deleted" ||
+          (lifecycle === "archived" && startsInput)
+        )
+          throw new Error(
+            "Restore the archived conversation before sending; pending deletion can only be retried",
+          );
+      }
       const client = await getClient(params);
       const planPayload = params.envelope.payload as {
         planEnabled?: boolean;

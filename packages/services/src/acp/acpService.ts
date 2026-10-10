@@ -60,6 +60,8 @@ export interface IAcpService {
   manageAgent(input: AcpAgentManagement): Promise<AcpAgentInfo>;
   onDynamicAgentOperation(operationId: string): Event<AcpAgentOperationEvent>;
   list(workspace: AcpWorkspace): Promise<AcpSession[]>;
+  /** Persisted archive scopes on this Host only; no Agent connections. */
+  listArchivedWorkspaces(): Promise<AcpWorkspace[]>;
   /** Refuse active prompts/workflows, then disconnect idle adapters while preserving durable history. */
   prepareWorktreeRemoval(workspace: AcpWorkspace): Promise<boolean>;
   /** Current target Host's persisted usage; missing native reports remain unknown. */
@@ -120,6 +122,8 @@ export interface IAcpService {
   ): Promise<void>;
   /** Automatic pane cleanup may discard a draft but must never delete an admitted turn. */
   remove(input: AcpWorkspace & { id: string; provisionalOnly?: boolean }): Promise<void>;
+  /** Conditional permanent deletion; restored or busy sessions are preserved. Retry pending cleanup. */
+  removeArchived(input: AcpWorkspace & { id: string }): Promise<boolean>;
   /** Durable Host snapshots; coalesced stream updates may skip intermediate revisions. */
   onDynamicSessionChanged(workspace: AcpWorkspace): Event<AcpSessionChanged>;
 }

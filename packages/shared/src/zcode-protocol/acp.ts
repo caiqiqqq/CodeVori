@@ -573,6 +573,7 @@ export const acpSessionSchema = acpWorkspaceSchema.extend({
   /** Sidebar metadata belongs to this Host snapshot; older files use unpinned/read defaults. */
   pinned: z.boolean().default(false),
   archived: z.boolean().default(false),
+  deletionState: z.literal("pending").optional(),
   unreadAt: z.number().int().positive().nullable().default(null),
   goal: z.string().nullable().default(null),
   configOptions: z.array(acpConfigOptionSchema).default([]),

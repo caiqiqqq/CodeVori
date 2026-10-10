@@ -110,6 +110,17 @@ export class AgentDelegationService implements IAgentDelegationService {
     this.abortCanceled();
     this.emitter.fire();
   }
+  async hasPendingChildren(parent: DelegationParent): Promise<boolean> {
+    await this.repo.open();
+    const key = parentKey(delegationParentSchema.parse(parent));
+    return this.repo
+      .list()
+      .some(
+        (task) =>
+          (parentKey(task.parent) === key || parentKey(task.rootParent) === key) &&
+          !terminal.has(task.status),
+      );
+  }
   async delegate(raw: DelegationCreate) {
     if (this.disposed) throw new Error("delegation.closed");
     const task = await admitDelegation(this.repo, this.deps, raw);

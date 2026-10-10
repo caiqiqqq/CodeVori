@@ -46,11 +46,11 @@ export function WorkspaceArchivedAcpSessionItem({
     ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
   };
   const restoreLabel = intl.formatMessage({ id: "taskList.unarchive" });
-  const deleteLabel = intl.formatMessage({ id: "taskList.delete" });
+  const deleteLabel = intl.formatMessage({ id: "taskList.deletePermanently" });
   const isRemote = Boolean(session.workspaceIdentity?.trim());
 
   async function restore() {
-    if (readOnly || busy) return;
+    if (readOnly || busy || session.deletionState) return;
     setBusy(true);
     try {
       await service.updateRow({ ...target, action: { kind: "archive", archived: false } });
@@ -68,11 +68,13 @@ export function WorkspaceArchivedAcpSessionItem({
       title: intl.formatMessage({ id: "confirmDialog.archivedTaskDeleteTitle" }),
       description: intl.formatMessage({ id: "taskList.acpDeleteDescription" }),
       confirmLabel: deleteLabel,
+      confirmVariant: "destructive",
     });
     if (!confirmed) return;
     setBusy(true);
     try {
-      await service.remove(target);
+      if (!(await service.removeArchived(target)))
+        toast(intl.formatMessage({ id: "taskList.archiveDeleteSkipped" }));
     } catch (error) {
       logger.warn("[acp-sidebar] 删除归档智能体会话失败", { error });
       toast(intl.formatMessage({ id: "taskList.acpDeleteFailed" }));
@@ -131,7 +133,7 @@ export function WorkspaceArchivedAcpSessionItem({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                disabled={readOnly || busy}
+                disabled={readOnly || busy || Boolean(session.deletionState)}
                 aria-label={restoreLabel}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -165,7 +167,10 @@ export function WorkspaceArchivedAcpSessionItem({
         </li>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
-        <ContextMenuItem disabled={readOnly || busy} onSelect={() => void restore()}>
+        <ContextMenuItem
+          disabled={readOnly || busy || Boolean(session.deletionState)}
+          onSelect={() => void restore()}
+        >
           {restoreLabel}
         </ContextMenuItem>
         <ContextMenuSeparator />

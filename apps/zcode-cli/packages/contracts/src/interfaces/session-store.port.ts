@@ -1100,6 +1100,15 @@ export interface SessionStorePort {
   updateSession(input: UpdateSessionInput): Promise<SessionInfo>;
   getSession(sessionID: SessionId): Promise<SessionInfo | null>;
   listSessions(input?: ListSessionsInput): Promise<SessionInfo[]>;
+  /** Idempotent, workspace-scoped cleanup. Busy sessions remain untouched. No child/file deletion. */
+  purgeSession?(input: {
+    sessionID: SessionId;
+    workspaceID: string;
+    directory: string;
+    checkOnly?: boolean;
+  }): Promise<"deleted" | "busy">;
+  /** Artifact references held by surviving conversations; protects independent forks during purge. */
+  retainedSessionArtifactUris?(sessionID: SessionId): Promise<string[]>;
   /**
    * 用 host task-index allowlist 为旧远端 session 补写 workspace identity。
    * 实现必须同时校验 id、directory 与 workspace_id is null，禁止覆盖已有 identity。

@@ -113,6 +113,15 @@ export class CommandInbox {
   private readonly sessionGates = new AsyncGateRegistry();
 
   constructor(private readonly host: CommandInboxHost) {}
+  /** Maintenance participates in the same admission gate as accepted input. */
+  async withSessionGate<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+    const release = await this.sessionGates.acquire(this.bucketKey(sessionId));
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
 
   async handle(raw: unknown): Promise<CommandInboxOutcome> {
     const parsed = parseCommandEnvelope(raw);

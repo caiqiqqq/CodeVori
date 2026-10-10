@@ -19,6 +19,7 @@ function sameSidebarRows(
         previous.title === row.title &&
         previous.pinned === row.pinned &&
         previous.archived === row.archived &&
+        previous.deletionState === row.deletionState &&
         previous.unreadAt === row.unreadAt &&
         previous.status === row.status &&
         previous.createdAt === row.createdAt &&
@@ -30,7 +31,7 @@ function sameSidebarRows(
 
 /** Sidebar observes each resolved target Host; it owns no accepted ACP state. */
 export function useAcpSidebarSessions(
-  workspaceTabs: WorkspaceTabState[],
+  workspaceTabs: Pick<WorkspaceTabState, "workspacePath" | "workspaceIdentity">[],
   serviceLookup: Map<string, { services: IServiceAccessor; remoteSessionId?: string }>,
 ): AcpSidebarSession[] {
   const [byWorkspace, setByWorkspace] = useState<Record<string, AcpSidebarSession[]>>({});

@@ -14,11 +14,17 @@ import { getWindowControllerTaskListRegistry } from "@/v4/windowControllerTaskLi
 import type { WindowControllerTaskListVersion } from "@/v4/windowControllerTaskListRegistry.js";
 
 type GlobalTaskListItem = WindowHostControllerTaskListItem;
+type TaskListWorkspaceScope = Pick<
+  WorkspaceTabState,
+  "workspacePath" | "workspaceIdentity" | "remoteSessionId"
+>;
 
 const subscribeToNothing = () => () => {};
 const zeroRevision = () => 0;
 
-function buildWorkspaceScopes(workspaceTabs: WorkspaceTabState[]): ZCodeTaskListWorkspaceScope[] {
+function buildWorkspaceScopes(
+  workspaceTabs: TaskListWorkspaceScope[],
+): ZCodeTaskListWorkspaceScope[] {
   const scopes = new Map<string, ZCodeTaskListWorkspaceScope>();
   for (const tab of workspaceTabs) {
     const scope = {
@@ -35,7 +41,7 @@ function buildWorkspaceScopes(workspaceTabs: WorkspaceTabState[]): ZCodeTaskList
 
 export function useGlobalTaskList(params: {
   kind: ZCodeTaskListKind;
-  workspaceTabs: WorkspaceTabState[];
+  workspaceTabs: TaskListWorkspaceScope[];
   sortBy: "created" | "updated";
   searchQuery: string;
   expanded: boolean;
