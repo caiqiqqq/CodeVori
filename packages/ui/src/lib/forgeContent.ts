@@ -39,3 +39,21 @@ export function isGitlabUploadImage(repository: ForgeRepository, source: string)
     return false;
   }
 }
+
+export function isGithubAttachmentImage(repository: ForgeRepository, source: string): boolean {
+  if (repository.provider !== "github") return false;
+  try {
+    const url = new URL(source);
+    return (
+      new URL(repository.url).origin === "https://github.com" &&
+      url.origin === "https://github.com" &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      /^\/user-attachments\/assets\/[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}

@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 export const LOG_RETENTION_DAYS = 14;
 
-const LOG_FILE_NAME_RE = /^(\d{4})-(\d{2})-(\d{2})\.log$/;
+const LOG_FILE_NAME_RE = /^(\d{4})-(\d{2})-(\d{2})(?:\.diagnostics)?\.log$/;
 
 function getStartOfLocalDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());

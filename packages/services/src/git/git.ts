@@ -1,4 +1,7 @@
 import type {
+  ForgeImageUploadRequest,
+  ForgeImageUploadResult,
+  ForgeImageUploadCapability,
   GitBranchMutationResult,
   GitBranchComparison,
   GitCommitGraphRequest,
@@ -71,6 +74,8 @@ import { ServiceChannels } from "@zcode/shared";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IGitService {
+  getForgeImageUploadCapability(params: ForgeTargetRequest): Promise<ForgeImageUploadCapability>;
+  uploadForgeImage(params: ForgeImageUploadRequest): Promise<ForgeImageUploadResult>;
   getForgeRepository(params: ForgeRepositoryRequest): Promise<ForgeRepositoryInfo>;
   listForgeItems(params: ForgeListRequest): Promise<ForgeItemList>;
   getForgeItem(params: ForgeItemRequest): Promise<ForgeItemDetail>;

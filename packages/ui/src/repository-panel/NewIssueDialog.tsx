@@ -15,10 +15,12 @@ import { Textarea } from "@/components/ui/textarea.js";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
 import { MessageResponse } from "@/components/ai-elements/message.js";
 import { useForgeIssueOptions } from "@/hooks/useForgeIssueOptions.js";
+import { useForgeImageUploads, forgeImageMarkdown } from "@/hooks/useForgeImageUploads.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { resolveForgeContentUrl } from "@/lib/forgeContent.js";
 import type { Theme } from "@/useTheme.js";
 import { NewIssueAttributes } from "./NewIssueAttributes.js";
+import { NewIssueImages } from "./NewIssueImages.js";
 import { RepositoryError, useRepositoryMessages } from "./RepositoryParts.js";
 
 export function NewIssueDialog({
@@ -48,12 +50,28 @@ export function NewIssueDialog({
   const [draft, setDraft] = useState<ForgeIssueDraft>({ title: "", body: "" });
   const [mode, setMode] = useState("write");
   const options = useForgeIssueOptions(gitService, target, open);
+  const uploads = useForgeImageUploads(gitService, target, (file, url) => {
+    // 上传完成后追加到最新正文；使用函数更新，不能覆盖上传期间继续输入的文字。
+    setDraft((previous) => ({
+      ...previous,
+      body: `${previous.body}${previous.body ? "\n\n" : ""}${forgeImageMarkdown(file.name, url)}`,
+    }));
+  });
   const codePreviewSettings = useZCodeStore((state) => state.codePreviewSettings);
   const webContent = useMemo(
     () => ({
       resolveUrl: (href: string) => resolveForgeContentUrl(repository, repository.url, href),
-      // 未创建的正文没有 item 身份；预览图片只提供网页链接，不伪造议题号读取私有附件。
+      // 当前草稿使用本地缩略图预览；其他图片只提供网页链接，不伪造议题号读取私有附件。
       renderImage: (props: { src?: string; alt?: string }) => {
+        const local = uploads.images.find((image) => image.url === props.src);
+        if (local)
+          return (
+            <img
+              src={local.preview}
+              alt={props.alt || local.file.name}
+              className="h-auto max-w-full rounded-lg"
+            />
+          );
         const url = props.src
           ? resolveForgeContentUrl(repository, repository.url, props.src)
           : null;
@@ -69,7 +87,7 @@ export function NewIssueDialog({
         ) : null;
       },
     }),
-    [repository, onOpen],
+    [repository, onOpen, uploads.images],
   );
   const update = (patch: Partial<ForgeIssueDraft>) =>
     setDraft((previous) => ({ ...previous, ...patch }));
@@ -88,7 +106,8 @@ export function NewIssueDialog({
           className="flex min-w-0 flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!busy && draft.title.trim()) void onSubmit({ ...draft, title: draft.title.trim() });
+            if (!busy && !uploads.blocked && draft.title.trim() && draft.body.length <= 65000)
+              void onSubmit({ ...draft, title: draft.title.trim() });
           }}
         >
           <div className="grid min-w-0 gap-5 md:grid-cols-[minmax(0,1fr)_14rem]">
@@ -129,6 +148,27 @@ export function NewIssueDialog({
                     // 通用 Textarea 的弱边框在弹窗同色背景中不可辨识；使用表单输入的语义边框和表面。
                     className="field-sizing-fixed min-h-32 resize-y rounded-lg border border-input-border bg-input hover:border-input-border-hover focus-visible:border-input-border-focused focus-visible:bg-input-focused text-mobile-input-safe md:min-h-56 md:text-ui-base"
                     onChange={(event) => update({ body: event.target.value })}
+                    onPaste={(event) => {
+                      if (busy || !uploads.capability?.supported) return;
+                      const files = Array.from(event.clipboardData.files);
+                      if (files.length) {
+                        event.preventDefault();
+                        uploads.add(files);
+                      }
+                    }}
+                    onDragOver={(event) => {
+                      if (
+                        !busy &&
+                        uploads.capability?.supported &&
+                        event.dataTransfer.types.includes("Files")
+                      )
+                        event.preventDefault();
+                    }}
+                    onDrop={(event) => {
+                      if (!event.dataTransfer.files.length) return;
+                      event.preventDefault();
+                      if (!busy) uploads.add(Array.from(event.dataTransfer.files));
+                    }}
                   />
                 </div>
                 {mode === "preview" ? (
@@ -152,6 +192,23 @@ export function NewIssueDialog({
                   </div>
                 ) : null}
                 <span className="text-ui-xs text-foreground-subtle">{t("markdownSupported")}</span>
+                <NewIssueImages
+                  uploads={uploads}
+                  disabled={busy}
+                  onOpenRepository={() => onOpen(repository.url)}
+                  onRemove={(id) => {
+                    const image = uploads.remove(id);
+                    if (image?.url)
+                      setDraft((previous) => ({
+                        ...previous,
+                        body: previous.body.replace(
+                          forgeImageMarkdown(image.file.name, image.url!),
+                          "",
+                        ),
+                      }));
+                  }}
+                />
+                {draft.body.length > 65000 ? <RepositoryError error="BODY_TOO_LONG" /> : null}
               </div>
             </div>
             <NewIssueAttributes
@@ -170,7 +227,10 @@ export function NewIssueDialog({
             <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
               {t("cancel")}
             </Button>
-            <Button type="submit" disabled={busy || !draft.title.trim()}>
+            <Button
+              type="submit"
+              disabled={busy || uploads.blocked || !draft.title.trim() || draft.body.length > 65000}
+            >
               <Plus className="size-4" />
               {t(busy ? "creating" : "create")}
             </Button>
