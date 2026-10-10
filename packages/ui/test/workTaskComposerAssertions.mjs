@@ -11,6 +11,17 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
   await page.getByRole("option", { name: "全部", exact: true }).click();
   await page.evaluate(() => {
     const codex = window.__tasks.catalog.find((entry) => entry.agent === "codex");
+    codex.configOptions.find((option) => option.id === "fast").category = "model_config";
+    codex.configOptions.push(
+      ...["mode", "collaboration_mode"].map((category) => ({
+        id: category,
+        name: category,
+        category,
+        type: "select",
+        currentValue: "default",
+        options: [{ value: "default", name: "Default" }],
+      })),
+    );
     codex.configOptions.push(
       ...Array.from({ length: 5 }, (_, index) => ({
         id: `extra-${index}`,
@@ -30,6 +41,14 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
       for (const kind of ["api", "acp"]) {
         await panel.getByTestId("work-task-new").click();
         await editor.getByTestId("work-task-model").click();
+        for (const agent of ["codex", "claude"]) {
+          assert.ok(
+            await page
+              .getByTestId(`chat-model-select-item-acp:${agent}`)
+              .locator(`[data-acp-agent-icon="${agent}"]`)
+              .isVisible(),
+          );
+        }
         if (kind === "api")
           await page.getByTestId("chat-model-select-group-registry-provider:api").hover();
         await page
@@ -58,19 +77,49 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
         assert.equal(await toolbar.getByTestId("work-task-model").count(), 1);
         assert.equal(await toolbar.getByTestId("work-task-add-menu").count(), 1);
         if (kind === "api") {
-          assert.equal(
-            await toolbar.getByRole("combobox", { name: "权限模式", exact: true }).count(),
-            1,
-          );
-          const reasoning = toolbar.getByRole("combobox", { name: "思考强度", exact: true });
+          const mode = toolbar.getByRole("combobox", { name: /^权限模式:/ });
+          await assertIconControl(page, mode, "svg");
+          await mode.focus();
+          await mode.press("ArrowDown");
+          await page.getByRole("option").nth(2).click();
+          assert.match(await mode.getAttribute("aria-label"), /规划/);
+          const reasoning = toolbar.getByRole("combobox", { name: /^思考强度:/ });
+          await assertIconControl(page, reasoning, ".lucide-brain");
           await reasoning.click();
           await page.getByRole("option", { name: "low", exact: true }).click();
+          assert.match(await reasoning.getAttribute("aria-label"), /low/);
         } else {
+          assert.ok(
+            await toolbar
+              .getByTestId("work-task-model")
+              .locator('[data-acp-agent-icon="codex"]')
+              .isVisible(),
+          );
           assert.equal(await toolbar.getByTestId("acp-composer-config-controls").count(), 1);
+          for (const [id, icon] of [
+            ["mode", "shield-check"],
+            ["collaboration_mode", "users"],
+            ["model", "cpu"],
+            ["reasoning", "brain"],
+            ["fast", "zap"],
+            ["extra-4", "settings-2"],
+          ]) {
+            await assertIconControl(
+              page,
+              toolbar.getByTestId(`acp-config-trigger-${id}`),
+              `.lucide-${icon}`,
+            );
+          }
           await toolbar.getByTestId("acp-config-trigger-extra-4").click();
           await page.getByTestId("acp-config-choice-extra-4-true").click();
           assert.doesNotMatch(
-            await toolbar.getByTestId("acp-config-trigger-extra-4").innerText(),
+            await toolbar.getByTestId("acp-config-trigger-extra-4").getAttribute("aria-label"),
+            /智能体默认配置/,
+          );
+          await toolbar.getByTestId("acp-config-trigger-extra-4").click();
+          await page.getByTestId("acp-config-default-extra-4").click();
+          assert.match(
+            await toolbar.getByTestId("acp-config-trigger-extra-4").getAttribute("aria-label"),
             /智能体默认配置/,
           );
         }
@@ -126,4 +175,43 @@ export async function exerciseWorkTaskComposer(page, artifacts) {
       }
     }
   }
+  await page.evaluate(() => {
+    const codex = window.__tasks.catalog.find((entry) => entry.agent === "codex");
+    codex.configOptions = codex.configOptions.filter((option) => !option.id.startsWith("extra-"));
+    window.__tasks.publishConfig();
+  });
+  for (const [theme, width] of [
+    ["zai-light", 1280],
+    ["zai-dark", 390],
+  ]) {
+    await page.setViewportSize({ width, height: 850 });
+    await page.evaluate((theme) => {
+      document.documentElement.className =
+        theme === "zai-dark" ? "theme-zai-dark dark" : "theme-zai-light";
+    }, theme);
+    await panel.getByTestId("work-task-new").click();
+    await editor.getByTestId("work-task-model").click();
+    await page.getByTestId("chat-model-select-item-acp:codex").click();
+    await prompt.fill("任务描述与智能体配置统一管理");
+    await editor.screenshot({
+      path: join(artifacts, `task-icons-${theme}-${width}.png`),
+      animations: "disabled",
+    });
+    await editor.getByRole("button", { name: "取消", exact: true }).click();
+    await editor.waitFor({ state: "detached" });
+  }
+}
+
+async function assertIconControl(page, control, icon) {
+  assert.ok(await control.locator(icon).isVisible(), "configuration icon is visible");
+  assert.equal((await control.innerText()).trim(), "", "trigger displays only the icon");
+  const label = await control.getAttribute("aria-label");
+  assert.match(label, /.+: .+/);
+  await control.hover();
+  await page.getByRole("tooltip").getByText(label, { exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByTestId("work-task-prompt").hover();
+  await page.getByTestId("work-task-prompt").focus();
+  // 多个退出动画的 portal 可能短暂共存，等待全部卸载后再打开下一个菜单。
+  await page.waitForFunction(() => !document.querySelector('[role="tooltip"]'));
 }
