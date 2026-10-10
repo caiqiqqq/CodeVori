@@ -179,8 +179,84 @@
   with the item's title, URL and description. API and ACP use the same composer;
   no automatic prompt, branch switch, worktree creation or remote writeback is
   introduced. External issue text is identified as untrusted source content.
+- Each outer list row has a separate "Handle" button. It reads the full item
+  through the selected Host's IGitService, then saves a task through that same
+  Host's IWorkTaskService.create with the exact workspacePath, workspaceIdentity
+  and remoteSessionId. The task title comes from the item title (within the
+  existing 200-character limit); the prompt reuses the existing untrusted-source
+  wrapper with repository, kind, number, URL and description. The existing
+  20,000-character description boundary and source-link notice still apply.
+- List rows share one subtle hover surface across the item and its action,
+  with inset padding and rounded corners. Handle is a quiet ghost action with
+  a task-add icon and readable text, always visible on touch and keyboard.
+  Reserve space for the localized success label so saving does not displace
+  the title or action. Success uses a check icon and success text at full opacity,
+  retaining the disabled command. Use existing design tokens and button sizes;
+  preserve wrapping and no horizontal overflow at 320px in both themes.
+  At narrow widths, place the action below the content at the trailing edge
+  so long titles and metadata retain the row's full reading width.
+- Save only: WorkTaskService owns persistence and the initial todo status.
+  Do not start, queue, create a conversation/worktree, close the forge item,
+  merge or write back to the forge. The detail's conversation-draft action
+  keeps its existing behavior. The list remains visible after saving and the
+  button shows "Added to To-do". It stays disabled for that item for the current
+  repository content lifetime; this is transient feedback, not a durable
+  forge-to-task mapping. Returning after remount may intentionally save again.
+- Reuse the task editor's project execution preference resolution: keep exact
+  API provider/model/options/mode or an enabled, ready ACP identity/config;
+  otherwise use the selected Host's preferred API selection. With no usable
+  execution selection show an actionable error and create nothing.
+- Admit one handle operation at a time synchronously. Disable handle buttons
+  while reading/saving, never retry writes automatically, and allow explicit
+  retry after failure. Workspace/Host/remote/account changes discard old UI
+  replies and prevent a late detail/model read from initiating a task save.
+  An already dispatched save remains owned by its original Host/project.
 
 ## Ownership And Boundaries
+
+### Native issue creation
+
+- The new-issue dialog provides a Markdown Write/Preview editor, labels,
+  assignees and an open milestone, matching the supported forge create API.
+  GitLab also provides confidentiality and a calendar due date. Unsupported
+  fields are omitted. This increment does not implement issue templates,
+  file uploads, project boards or custom issue types.
+- The dialog owns the unsent title, body and selected attributes. Catalogs are
+  fresh, target-bound Host reads through getForgeIssueOptions. Read all bounded
+  pages (100 pages, 100 rows per page), in parallel per section. Section errors
+  are visible and retryable; unavailable fields are disabled, while title/body
+  creation remains usable. Never silently truncate an attribute catalog.
+- GitHub uses label names, assignee logins and milestone numbers; GitLab uses
+  label names, member IDs and milestone IDs; Gitea uses label IDs, assignee
+  logins and milestone IDs. Shared schemas validate bounded, unique selections
+  and real calendar dates. Provider adapters reject unsupported attribute writes
+  before HTTP. Selected attributes are included in the single create request;
+  no follow-up edits or automatic write retries. Label selection only offers
+  the existing catalog; this dialog has no new-label command.
+- Opening or previewing a draft never writes remotely. Preview uses the existing
+  safe web Markdown renderer and repository-relative links, without local file
+  navigation or authenticated draft-image reads. Empty bodies have a localized
+  placeholder. Keep keyboard, mobile-safe inputs, theme and locale support.
+- The description editor has a visible input border and surface at rest, with
+  a focus treatment inside the same boundary. Attribute multi-select triggers
+  show a chevron and a localized selection prompt. Labels show native color
+  dots in both the menu and the selected projection below the trigger; clicking
+  an already checked label removes it. Reuse RepositoryLabels for that projection.
+- Catalog reads follow dialog visibility, workspace identity, Host, remote and
+  account. Old replies never populate another target. Settings coverage preserves
+  drafts, pauses reads and reloads catalogs on return. Write admission remains
+  useForgeMutation; failure retains the complete draft and selections.
+
+```text
+dialog draft -> workspace hook -> target revalidation -> one provider POST
+dialog visible -> bound Host -> parallel paged catalogs -> guarded UI projection
+covered/old target reply -> ignored; explicit retry -> fresh read, never create
+```
+
+- Validation: provider endpoints/pagination and exact write payloads, unsupported
+  fields and invalid dates rejected before IO, section permission errors,
+  stale target rejection; E2E Write/Preview, attribute selection, failed-create
+  draft retention, settings/Host switches and narrow-screen containment.
 
 - The Git Host owns remote discovery, accepted account selection and API calls.
   Public typed operations are exposed through IGitService; shared Zod schemas
@@ -266,6 +342,12 @@ cancel / Host or parent disposal -> close native window -> settle authorization
 old detail/image owner reply -> ignored; temporary object URL -> revoked
 confirmed write -> target/head validation -> one API write -> refresh snapshot
 handle item -> existing create-task action -> shared API/ACP composer draft
+list Handle -> bound Host full-item read + execution preference resolution
+            -> current-owner check -> same Host IWorkTaskService.create
+            -> persisted todo -> existing task events/read model
+            -> matching row's transient success feedback
+scope change before save -> discard old read (no create)
+scope change after save admission -> original Host persists; ignore old UI reply
 settings account save -> encrypted Host account owner -> settings response
 return to repository -> shell visibility -> new discovery generation
                                         -> same Host account match -> snapshot
@@ -281,6 +363,14 @@ covered/previous generation reply -> ignored (no credential or queue replay)
   forge is authoritative, with no extra durable task queue or credential store.
 
 ## Validation
+
+- E2E: outer list Handle saves a todo task with full detail content and exact
+  project scope, leaving the list visible and producing no agent/forge writes.
+  Cover double-click admission, save/read failures and explicit retry, preferred
+  API and remembered ACP configurations, missing model, same-path remote
+  identity, stale detail replies after project/remote changes, and a save already
+  dispatched before switching projects. Check keyboard access, narrow layout,
+  light/dark themes and success feedback.
 
 - Unit: SSH/HTTPS remotes, nested GitLab groups, self-hosted base paths,
   protocol/host/port matching, explicit providers, generic/missing accounts,

@@ -1,15 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  GitFork,
-  MessageSquare,
-  Plus,
-  RotateCw,
-  Settings,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, GitFork, Plus, RotateCw, Settings } from "lucide-react";
 import type { ForgeItem, ForgeItemRequest, ForgeTargetRequest } from "@zcode/shared";
 import { useRepositoryPanel } from "@/hooks/useRepositoryPanel.js";
+import { useRepositoryTask } from "@/hooks/useRepositoryTask.js";
 import { useWorktreeProjectGroupsResolution } from "@/hooks/useWorktreeProjectGroups.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useTabStore } from "@/store/TabStoreProvider.js";
@@ -33,16 +26,14 @@ import type { CreateTaskRequest } from "@/app-shell/types.js";
 import type { Theme } from "@/useTheme.js";
 import { RepositoryToolbar, type RepositoryFilters } from "./RepositoryToolbar.js";
 import { RepositoryItemDetail } from "./RepositoryItemDetail.js";
+import { RepositoryItemRow } from "./RepositoryItemRow.js";
 import { NewIssueDialog } from "./NewIssueDialog.js";
 import { RepositoryProjectSelector } from "./RepositoryProjectSelector.js";
 import {
   RepositoryError,
   RepositoryExternalButton,
   RepositoryIconButton,
-  RepositoryItemIcon,
-  RepositoryLabels,
   RepositoryLoading,
-  RepositoryTime,
   useRepositoryMessages,
 } from "./RepositoryParts.js";
 
@@ -111,6 +102,10 @@ function RepositoryPanelContent({
     { workspacePath, workspaceIdentity, remoteSessionId },
     { ...filters, remoteName },
     active,
+  );
+  const task = useRepositoryTask(
+    { workspacePath, workspaceIdentity, remoteSessionId },
+    panel.target,
   );
   const [selection, setSelection] = useState<{
     target: ForgeTargetRequest;
@@ -248,6 +243,7 @@ function RepositoryPanelContent({
             </div>
           ) : null}
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 md:px-6 [scrollbar-gutter:stable]">
+            {task.error ? <RepositoryError error={task.error} /> : null}
             {panel.error ? (
               <RepositoryError error={panel.error} retry={panel.refresh} />
             ) : !repo && panel.discoveryLoading ? (
@@ -303,38 +299,18 @@ function RepositoryPanelContent({
                       ) : null}
                     </div>
                     {data.items.length ? (
-                      <ul className="divide-y divide-border">
+                      <ul className="flex flex-col gap-1">
                         {data.items.map((item) => (
-                          <li key={`${item.kind}:${item.number}`}>
-                            <button
-                              type="button"
-                              data-testid="repository-item-row"
-                              onClick={() => selectItem(item)}
-                              className="flex w-full min-w-0 items-start gap-3 py-3 text-left hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring"
-                            >
-                              <span className="pt-0.5">
-                                <RepositoryItemIcon item={item} />
-                              </span>
-                              <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-                                <span className="break-words text-ui-base font-medium [overflow-wrap:anywhere]">
-                                  {item.title}
-                                </span>
-                                <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-ui-sm text-foreground-subtle">
-                                  <span>#{item.number}</span>
-                                  <span className="break-all">{item.author.username}</span>
-                                  <RepositoryTime value={item.updatedAt} />
-                                  {item.draft ? <span>{t("draft")}</span> : null}
-                                  <RepositoryLabels labels={item.labels} />
-                                </span>
-                              </span>
-                              {item.commentCount > 0 ? (
-                                <span className="flex shrink-0 items-center gap-1 text-ui-xs text-foreground-subtle">
-                                  <MessageSquare className="size-3.5" />
-                                  {item.commentCount}
-                                </span>
-                              ) : null}
-                            </button>
-                          </li>
+                          <RepositoryItemRow
+                            key={`${item.kind}:${item.number}`}
+                            item={item}
+                            busy={task.busy}
+                            created={task.isCreated(item)}
+                            onSelect={() => selectItem(item)}
+                            onHandle={() => {
+                              void task.create(repo, item);
+                            }}
+                          />
                         ))}
                       </ul>
                     ) : (
@@ -374,12 +350,16 @@ function RepositoryPanelContent({
       {repo && panel.target && newIssueTarget === panel.target ? (
         <NewIssueDialog
           open={active}
-          repositoryName={repo.name}
+          repository={repo}
+          target={panel.target}
+          gitService={panel.gitService}
+          theme={theme}
+          onOpen={openExternal}
           busy={panel.mutation.busy}
           error={panel.mutation.error}
           onClose={() => setNewIssueTarget(null)}
-          onSubmit={async (title, body) => {
-            const item = await panel.createIssue(title, body);
+          onSubmit={async (draft) => {
+            const item = await panel.createIssue(draft);
             if (item) {
               setNewIssueTarget(null);
               selectItem(item);

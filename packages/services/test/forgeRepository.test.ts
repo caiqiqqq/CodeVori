@@ -91,6 +91,112 @@ function fixture(
   return { service, state, repository, target };
 }
 
+test("issue catalogs and create attributes use each provider's native identifiers", async () => {
+  for (const provider of ["github", "gitlab", "gitea"] as const) {
+    const host = provider === "github" ? "github.com" : `${provider}.example.invalid`;
+    const f = fixture(
+      `https://${host}/team/project.git`,
+      [account(provider, `https://${host}`)],
+      [
+        [{ id: 10, name: "bug", color: "ff0000" }],
+        [{ id: 20, login: "alice", username: "alice" }],
+        [{ id: 30, number: 3, title: "Release" }],
+        { id: 100, iid: 100, number: 100, title: "New", user: { login: "alice" } },
+      ],
+    );
+    const target = await f.target();
+    const options = await f.service.getForgeIssueOptions(target);
+    assert.equal(options.labels.items[0]?.key, provider === "gitea" ? "10" : "bug");
+    assert.equal(options.assignees.items[0]?.key, provider === "gitlab" ? "20" : "alice");
+    assert.equal(options.milestones.items[0]?.key, provider === "github" ? "3" : "30");
+    await f.service.createForgeIssue({
+      ...target,
+      title: "New",
+      body: "**body**",
+      labels: [options.labels.items[0]!.key],
+      assignees: [options.assignees.items[0]!.key],
+      milestone: options.milestones.items[0]!.key,
+      ...(provider === "gitlab" ? { confidential: true, dueDate: "2026-10-31" } : {}),
+    });
+    const payload = JSON.parse(String(f.state.calls.at(-1)!.init.body));
+    assert.deepEqual(
+      payload,
+      provider === "gitlab"
+        ? {
+            title: "New",
+            description: "**body**",
+            labels: "bug",
+            assignee_ids: [20],
+            milestone_id: 30,
+            confidential: true,
+            due_date: "2026-10-31",
+          }
+        : {
+            title: "New",
+            body: "**body**",
+            labels: provider === "gitea" ? [10] : ["bug"],
+            assignees: ["alice"],
+            milestone: provider === "github" ? 3 : 30,
+          },
+    );
+    assert.match(
+      f.state.calls[1]!.url.pathname,
+      provider === "gitlab" ? /members\/all$/ : /assignees$/,
+    );
+  }
+});
+
+test("issue catalog pagination and section failures remain explicit", async () => {
+  const f = fixture(
+    "https://github.com/team/project.git",
+    [account("github", "https://github.com")],
+    [
+      new Response(JSON.stringify([{ name: "first" }]), {
+        headers: {
+          "content-type": "application/json",
+          link: '<https://api.github.com/next>; rel="next"',
+        },
+      }),
+      new Response(null, { status: 403 }),
+      [],
+      [{ name: "last" }],
+    ],
+  );
+  const target = await f.target();
+  const result = await f.service.getForgeIssueOptions(target);
+  assert.deepEqual(
+    result.labels.items.map((label) => label.key),
+    ["first", "last"],
+  );
+  assert.equal(result.assignees.error, "FORGE_FORBIDDEN");
+  assert.deepEqual(result.assignees.items, []);
+  assert.equal(f.state.calls.at(-1)?.url.searchParams.get("page"), "2");
+  const before = f.state.calls.length;
+  await assert.rejects(
+    f.service.createForgeIssue({ ...target, title: "New", body: "", dueDate: "2026-02-31" }),
+  );
+  await assert.rejects(
+    f.service.createForgeIssue({ ...target, title: "New", body: "", confidential: true }),
+    /FORGE_INVALID_ITEM/,
+  );
+  assert.equal(f.state.calls.length, before);
+  await assert.rejects(
+    f.service.createForgeIssue({ ...target, title: "New", body: "", labels: ["bug", "bug"] }),
+  );
+  await assert.rejects(
+    f.service.createForgeIssue({
+      ...target,
+      title: "New",
+      body: "",
+      assignees: Array.from({ length: 11 }, (_, index) => `user${index}`),
+    }),
+    /FORGE_INVALID_ITEM/,
+  );
+  f.state.remote = "https://github.com/team/other.git";
+  await assert.rejects(f.service.getForgeIssueOptions(target), /FORGE_TARGET_CHANGED/);
+  assert.equal(f.state.calls.length, before);
+});
+
 test("repository discovery resolves public and self-hosted remotes without networking or secrets", async () => {
   for (const [remote, provider, server, name] of [
     ["git@github.com:team/project.git", "github", "https://github.com", "team/project"],

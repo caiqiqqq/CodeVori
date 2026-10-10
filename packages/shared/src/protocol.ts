@@ -234,7 +234,15 @@ export interface ResourceUsageSnapshot {
   processes: ResourceUsageProcess[];
 }
 
+export interface QuickMessage {
+  id: string;
+  title: string;
+  content: string;
+}
+
 export interface AppSettings {
+  /** 应用级快捷消息，数组顺序用于设置列表和输入框菜单。 */
+  quickMessages?: QuickMessage[];
   /** 当前 App/Host 不再显示提交前体验套餐推荐；不改变任何入口的模型选择。 */
   startPlanRecommendationDismissed?: boolean;
   recentProjects: string[]; // 最近项目列表，最多保留 10 个

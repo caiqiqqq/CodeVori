@@ -1,5 +1,6 @@
 import type { ForgeItemDetail, ForgeMergeMethod } from "@zcode/shared";
 import { formatPatch, parsePatch } from "diff";
+import { readForgeIssueOptions, forgeIssueAttributes } from "./forgeIssueOptions.js";
 import type { ForgeProviderAdapter } from "./forgeProvider.js";
 import {
   author,
@@ -157,6 +158,9 @@ export function createGiteaForgeProvider(
     async listLabels() {
       return labels((await api(`${repo}/labels`, { limit: 100 })).data, true);
     },
+    getIssueOptions() {
+      return readForgeIssueOptions(api, repo, "gitea");
+    },
     async createIssue(request) {
       return item(
         record(
@@ -164,7 +168,14 @@ export function createGiteaForgeProvider(
             await api(
               `${repo}/issues`,
               {},
-              { method: "POST", body: { title: request.title, body: request.body } },
+              {
+                method: "POST",
+                body: {
+                  title: request.title,
+                  body: request.body,
+                  ...forgeIssueAttributes(request, "gitea"),
+                },
+              },
             )
           ).data,
         ),
