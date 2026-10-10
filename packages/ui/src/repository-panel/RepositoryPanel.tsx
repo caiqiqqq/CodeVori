@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, GitFork, Plus, RotateCw, Settings } from "lucide-react";
 import type { ForgeItem, ForgeItemRequest, ForgeTargetRequest } from "@zcode/shared";
 import { useRepositoryPanel } from "@/hooks/useRepositoryPanel.js";
+import { useRepositoryRemote } from "@/hooks/useRepositoryRemote.js";
 import { useRepositoryTaskItems } from "@/hooks/useRepositoryTaskItems.js";
 import { useRepositoryTask } from "@/hooks/useRepositoryTask.js";
 import { useWorktreeProjectGroupsResolution } from "@/hooks/useWorktreeProjectGroups.js";
@@ -91,7 +92,7 @@ function RepositoryPanelContent({
   const t = useRepositoryMessages();
   const platform = usePlatform();
   const openSettingsTab = useTabStore((state) => state.openSettingsTab);
-  const [remoteName, setRemoteName] = useState<string | undefined>();
+  const { remoteName, selectRemote } = useRepositoryRemote(workspacePath, workspaceIdentity);
   const [filters, setFilters] = useState<RepositoryFilters>({
     kind: "issue",
     state: "open",
@@ -191,7 +192,7 @@ function RepositoryPanelContent({
             <Select
               value={panel.repository.remoteName ?? undefined}
               onValueChange={(name) => {
-                setRemoteName(name);
+                selectRemote(name);
                 setFilters((current) => ({ ...current, labels: [], page: 1 }));
                 setSelection(null);
                 setNewIssueTarget(null);

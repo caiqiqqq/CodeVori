@@ -31,6 +31,7 @@ import {
   DEFAULT_GIT_OUTPUT_BYTES,
   DEFAULT_GIT_PUSH_OUTPUT_BYTES,
   DEFAULT_GIT_PUSH_TIMEOUT_MS,
+  DEFAULT_GIT_WORKTREE_REMOVE_TIMEOUT_MS,
   getGitNullDevicePath,
   normalizeGitPath,
   normalizeWorkspaceInRepoPath,
@@ -1716,7 +1717,7 @@ export function createGitCliRepo(options?: {
             commandProvider.run({
               cwd: project,
               args: ["worktree", "remove", "--", target],
-              timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+              timeoutMs: DEFAULT_GIT_WORKTREE_REMOVE_TIMEOUT_MS,
             }),
           );
           if (removal.exitCode !== 0 || removal.timedOut || removal.outputTruncated) {

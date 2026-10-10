@@ -40,6 +40,8 @@ export class WorkTaskForgeCoordinator {
     await this.ready();
     if (this.pending.has(input.id)) throw new Error("work-task.forge-busy");
     let task = this.options.repo.get(input, input.id);
+    // 后台清理期间沿用主线的准入限制，完成及回写统一由当前任务事实决定。
+    if (task.worktreeCleanup?.phase === "running") throw new Error("work-task.cleanup-in-progress");
     if (task.status !== "done") {
       const records = await this.result.capture(task, input.forge);
       task = this.options.repo.complete(input, input.id, input.forge, records);

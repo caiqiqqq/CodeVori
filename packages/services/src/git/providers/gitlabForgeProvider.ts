@@ -36,6 +36,25 @@ export function createGitlabForgeProvider(
   const itemPath = (request: { kind: string; number: number }) =>
     `${repo}/${request.kind === "issue" ? "issues" : "merge_requests"}/${request.number}`;
   return {
+    async uploadImage(request) {
+      if (!repositoryUrl) throw new Error("FORGE_MEDIA_UNAVAILABLE");
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array(Buffer.from(request.dataBase64, "base64"))], {
+          type: request.mediaType,
+        }),
+        request.filename,
+      );
+      const raw = record((await api(`${repo}/uploads`, {}, { method: "POST", body: form })).data);
+      // 上传 API 的 url 相对项目；优先从已绑定项目拼接，兼容部署在子路径下的 GitLab。
+      const source = string(raw.url)
+        ? `${repositoryUrl.replace(/\/$/, "")}${string(raw.url)}`
+        : string(raw.full_path);
+      const url = new URL(source, `${repositoryUrl}/`).href;
+      gitlabUploadApiPath(repository, repositoryUrl, url);
+      return { url };
+    },
     async listItems(request) {
       // GitLab 的 closed 不含 merged；按服务端原始页翻页，筛掉 opened/locked 后不能继续展示原始总数。
       const includeMerged = request.kind === "pull-request" && request.state === "closed";

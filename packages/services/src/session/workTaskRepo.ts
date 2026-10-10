@@ -1,4 +1,10 @@
 import {
+  beginWorktreeCleanup,
+  finishWorktreeCleanup,
+  canRenewWorkTaskLease,
+  interruptWorkTaskOwners,
+} from "./workTaskCleanupPersistence.js";
+import {
   openWorkTaskDatabase,
   hasActiveWorkTaskConversation,
   listWorkTaskConversations,
@@ -13,7 +19,7 @@ import {
   workTaskRunPrompt,
   assertWorkTaskWorkspaceEditable,
 } from "./workTaskConversationState.js";
-import { finishWorkTaskRun, interruptWorkTaskRun } from "./workTaskRunState.js";
+import { finishWorkTaskRun } from "./workTaskRunState.js";
 import { claimWorkTaskForge, writeWorkTaskForge } from "./workTaskForgePersistence.js";
 import {
   assertWorkTaskSourceAvailable,
@@ -336,6 +342,8 @@ export class WorkTaskRepo {
   archive(scope: WorkTaskScope, id: string, archived: boolean): WorkTask {
     return this.transaction(() => {
       const task = this.get(scope, id);
+      if (task.worktreeCleanup?.phase === "running")
+        throw new Error("work-task.cleanup-in-progress");
       if (
         task.stopPending ||
         task.status === "queued" ||
@@ -348,6 +356,14 @@ export class WorkTaskRepo {
       );
     });
   }
+  beginWorktreeCleanup(scope: WorkTaskScope, id: string, owner: string, leaseMs: number): WorkTask {
+    return this.transaction(() =>
+      beginWorktreeCleanup(this.database(), this.get(scope, id), owner, leaseMs),
+    );
+  }
+  finishWorktreeCleanup(task: WorkTask, owner: string, error?: string): boolean {
+    return this.transaction(() => finishWorktreeCleanup(this.database(), task, owner, error));
+  }
   /** Preserve legacy settings without imposing a project execution limit. */
   setConcurrency(scope: WorkTaskScope, concurrency: number) {
     this.database()
@@ -359,41 +375,17 @@ export class WorkTaskRepo {
   renew(task: WorkTask, owner: string, now: number, leaseMs: number): boolean {
     const row = this.row(task, task.id);
     const current = decode(row);
-    if (
-      row.owner !== owner ||
-      current.runSeq !== task.runSeq ||
-      !WORK_TASK_ACTIVE_STATUSES.includes(current.status) ||
-      (row.lease_until ?? 0) <= now
-    )
-      return false;
+    if (!canRenewWorkTaskLease(row, current, task, owner, now)) return false;
     this.database()
       .prepare("UPDATE work_tasks SET lease_until=? WHERE id=? AND owner=? AND lease_until>?")
       .run(now + leaseMs, task.id, owner, now);
     return true;
   }
   recoverExpired(now: number) {
-    this.transaction(() => {
-      const rows = this.database()
-        .prepare(
-          "SELECT data,owner,lease_until FROM work_tasks WHERE owner IS NOT NULL AND lease_until<=?",
-        )
-        .all(now) as unknown as Row[];
-      for (const row of rows) {
-        const task = decode(row);
-        this.write(interruptWorkTaskRun(task, now, false), "host-interrupted", null);
-      }
-    });
+    this.transaction(() => interruptWorkTaskOwners(this.database(), now));
   }
   interruptOwned(owner: string) {
-    this.transaction(() => {
-      const rows = this.database()
-        .prepare("SELECT data,owner,lease_until FROM work_tasks WHERE owner=?")
-        .all(owner) as unknown as Row[];
-      for (const row of rows) {
-        const task = decode(row);
-        this.write(interruptWorkTaskRun(task, Date.now(), true), "host-stopping");
-      }
-    });
+    this.transaction(() => interruptWorkTaskOwners(this.database(), Date.now(), owner));
   }
   events(scope: WorkTaskScope, id: string): WorkTaskEvent[] {
     this.row(scope, id);

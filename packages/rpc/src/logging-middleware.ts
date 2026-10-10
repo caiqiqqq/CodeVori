@@ -13,6 +13,16 @@
 import type { IChannelServer, IChannelClient, IChannel, IServerChannel } from "./channels.js";
 import type { CancellationToken } from "./foundation.js";
 import { Event } from "./foundation.js";
+import { OperationDiagnostics } from "./operation-diagnostics.js";
+
+function safeLog(logger: RPCLogger, ...args: Parameters<RPCLogger>): void {
+  // 日志 sink 异常不能改变 RPC 返回值，也不能覆盖原始业务异常。
+  try {
+    logger(...args);
+  } catch {
+    /* best effort */
+  }
+}
 
 // ============================================================================
 // 日志函数类型
@@ -29,6 +39,7 @@ class LoggingServerChannel<TContext> implements IServerChannel<TContext> {
     private inner: IServerChannel<TContext>,
     private channelName: string,
     private logger: RPCLogger,
+    private diagnostics: OperationDiagnostics,
   ) {}
 
   async call<T>(
@@ -39,13 +50,16 @@ class LoggingServerChannel<TContext> implements IServerChannel<TContext> {
   ): Promise<T> {
     const start = performance.now();
     try {
-      const result = await this.inner.call<T>(ctx, command, arg, cancellationToken);
+      const invoke = () => this.inner.call<T>(ctx, command, arg, cancellationToken);
+      const result = /^(list|read|get|load|refresh|search|create)/i.test(command)
+        ? await this.diagnostics.run(`${this.channelName}.${command}`, invoke)
+        : await invoke();
       const elapsed = (performance.now() - start).toFixed(1);
-      this.logger(`[rpc:call] ${this.channelName}.${command} OK (${elapsed}ms)`);
+      safeLog(this.logger, `[rpc:call] ${this.channelName}.${command} OK (${elapsed}ms)`);
       return result;
     } catch (err) {
       const elapsed = (performance.now() - start).toFixed(1);
-      this.logger(`[rpc:call] ${this.channelName}.${command} FAIL (${elapsed}ms)`, err);
+      safeLog(this.logger, `[rpc:call] ${this.channelName}.${command} FAIL (${elapsed}ms)`, err);
       throw err;
     }
   }
@@ -53,10 +67,10 @@ class LoggingServerChannel<TContext> implements IServerChannel<TContext> {
   listen<T>(ctx: TContext, event: string, arg?: any): Event<T> {
     try {
       const result = this.inner.listen<T>(ctx, event, arg);
-      this.logger(`[rpc:listen] ${this.channelName}.${event} subscribed`);
+      safeLog(this.logger, `[rpc:listen] ${this.channelName}.${event} subscribed`);
       return result;
     } catch (err) {
-      this.logger(`[rpc:listen] ${this.channelName}.${event} FAIL`, err);
+      safeLog(this.logger, `[rpc:listen] ${this.channelName}.${event} FAIL`, err);
       throw err;
     }
   }
@@ -77,16 +91,22 @@ class LoggingServerChannel<TContext> implements IServerChannel<TContext> {
  * ```
  */
 export class LoggingChannelServer<TContext = string> implements IChannelServer<TContext> {
+  private readonly diagnostics: OperationDiagnostics;
   constructor(
     private inner: IChannelServer<TContext>,
     private logger: RPCLogger,
-  ) {}
+  ) {
+    this.diagnostics = new OperationDiagnostics(
+      (record) => safeLog(logger, "[diagnostics]", record),
+      { scope: "rpc-server" },
+    );
+  }
 
   registerChannel(channelName: string, channel: IServerChannel<TContext>): void {
-    this.logger(`[rpc:register] channel "${channelName}"`);
+    safeLog(this.logger, `[rpc:register] channel "${channelName}"`);
     this.inner.registerChannel(
       channelName,
-      new LoggingServerChannel(channel, channelName, this.logger),
+      new LoggingServerChannel(channel, channelName, this.logger, this.diagnostics),
     );
   }
 
@@ -111,17 +131,17 @@ class LoggingChannel implements IChannel {
     try {
       const result = await this.inner.call<T>(command, arg, cancellationToken);
       const elapsed = (performance.now() - start).toFixed(1);
-      this.logger(`[rpc:call] ${this.channelName}.${command} → OK (${elapsed}ms)`);
+      safeLog(this.logger, `[rpc:call] ${this.channelName}.${command} → OK (${elapsed}ms)`);
       return result;
     } catch (err) {
       const elapsed = (performance.now() - start).toFixed(1);
-      this.logger(`[rpc:call] ${this.channelName}.${command} → FAIL (${elapsed}ms)`, err);
+      safeLog(this.logger, `[rpc:call] ${this.channelName}.${command} → FAIL (${elapsed}ms)`, err);
       throw err;
     }
   }
 
   listen<T>(event: string, arg?: any): Event<T> {
-    this.logger(`[rpc:listen] ${this.channelName}.${event} → subscribed`);
+    safeLog(this.logger, `[rpc:listen] ${this.channelName}.${event} → subscribed`);
     return this.inner.listen<T>(event, arg);
   }
 }

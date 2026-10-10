@@ -7,6 +7,7 @@ import zhCN from "@/i18n/locales/zh-CN.js";
 import enUS from "@/i18n/locales/en-US.js";
 import { logger } from "@/logger.js";
 import { reportReactErrorToArms } from "@/lib/reactErrorArmsTelemetry.js";
+import { reportRendererException } from "@/lib/rendererPerformanceDiagnostics.js";
 import { cn } from "@/components/lib/utils.js";
 import { Button } from "@/components/ui/button.js";
 import { AlertTriangleIcon, RefreshCw } from "lucide-react";
@@ -315,6 +316,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
   override componentDidCatch(error: unknown, errorInfo: ErrorInfo) {
     const normalizedError = normalizeError(error);
+    reportRendererException("react-root", normalizedError);
     logger.error(
       "[AppErrorBoundary] React subtree crashed:",
       // Error 对象跨 preload 日志 bridge 序列化后会变成 {}，
@@ -389,6 +391,7 @@ export class ScopedErrorBoundary extends Component<
 
   override componentDidCatch(error: unknown, errorInfo: ErrorInfo) {
     const normalizedError = normalizeError(error);
+    reportRendererException("react-scoped", normalizedError);
     logger.error(
       `[ScopedErrorBoundary:${this.props.scope}] React subtree crashed:`,
       // Error 对象跨 preload 日志 bridge 序列化后会变成 {}，

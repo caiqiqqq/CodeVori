@@ -11,6 +11,7 @@ import type {
 import { useWorkspaceServicesResolution } from "./useWorkspaceServices.js";
 import { forgeErrorId } from "@/lib/forgePanel.js";
 import { useForgeMutation } from "./useForgeMutation.js";
+import { repositoryNavigationStore } from "@/store/repositoryNavigationStore.js";
 
 export function useRepositoryPanel(
   scope: { workspacePath: string; workspaceIdentity?: string; remoteSessionId?: string },
@@ -64,8 +65,17 @@ export function useRepositoryPanel(
       })
       .then(
         (info) => {
-          if (discoveryGeneration.current === generation)
+          if (discoveryGeneration.current === generation) {
+            // 已删除的记忆 remote 不应把面板永久锁在空态；清理匹配偏好后沿用 Host 默认选择。
+            if (
+              filters.remoteName &&
+              !info.remoteNames.includes(filters.remoteName) &&
+              info.status === "no-remote"
+            ) {
+              repositoryNavigationStore.getState().clearRemote(scope, filters.remoteName);
+            }
             setRepository({ owner, info, loading: false, error: null });
+          }
         },
         (error: unknown) => {
           if (discoveryGeneration.current === generation)

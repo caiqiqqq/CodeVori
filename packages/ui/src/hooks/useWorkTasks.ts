@@ -17,6 +17,7 @@ import { combineWorkTaskReads } from "./workTaskCombinedRead.js";
 type Run = (
   scope: WorkTaskScope,
   action: (target: IWorkTaskService) => Promise<unknown>,
+  onError?: (error: string) => void,
 ) => Promise<boolean>;
 function scopeOnly(input: WorkTaskScope): WorkTaskScope {
   // 项目 tab 和任务记录都包含额外字段；严格协议只接受三项 scope，不能直接展开整条记录。
@@ -56,9 +57,11 @@ function commands(scope: WorkTaskScope, run: Run) {
       ),
     archive: (id: string, archived: boolean) =>
       run(scope, (target) => target.archive({ ...scope, id, archived })),
-    archiveAndRemoveWorktree: (id: string) =>
-      run(scope, (target) =>
-        target.archive({ ...scope, id, archived: true, removeWorktree: true }),
+    archiveAndRemoveWorktree: (id: string, onError: (error: string) => void) =>
+      run(
+        scope,
+        (target) => target.archive({ ...scope, id, archived: true, removeWorktree: true }),
+        onError,
       ),
     setConcurrency: (concurrency: number) =>
       run(scope, (target) => target.setConcurrency({ ...scope, concurrency })),
@@ -120,7 +123,7 @@ export function useWorkTasks(
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
   const run = useCallback<Run>(
-    async (targetScope, action) => {
+    async (targetScope, action, onError) => {
       const source = sources.find(
         (item) => workTaskNavigationKey(item.scope) === workTaskNavigationKey(targetScope),
       );
@@ -135,8 +138,12 @@ export function useWorkTasks(
       } catch (error) {
         // update 成功而 start 失败仍投影已保存内容；列表失败不能覆盖命令错误。
         source.resource.refreshAfterMutation(version);
-        if (ownerRef.current === owner)
-          setMutation({ owner, error: workTaskErrorMessage(error), busy: false });
+        if (ownerRef.current === owner) {
+          const message = workTaskErrorMessage(error);
+          // 删除失败属于当前确认弹窗；共享错误会在列表重复显示并在关窗后残留。
+          setMutation({ owner, error: onError ? null : message, busy: false });
+          onError?.(message);
+        }
         return false;
       }
     },

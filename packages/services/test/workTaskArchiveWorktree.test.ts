@@ -78,23 +78,64 @@ for (const kind of ["api", "acp"] as const) {
       await service.archive({ ...scope, id: task.id, archived: true });
       assert.equal(calls, 0, "ordinary archive must never delete files");
       await service.archive({ ...scope, id: task.id, archived: false });
-      await assert.rejects(client.archive(input), /dirty-worktree/);
+      const observed: string[] = [];
+      const subscription = client.onDynamicChanged(scope)(() => {
+        const snapshot = repo.get(scope, task.id);
+        observed.push(snapshot.archived ? "archived" : (snapshot.worktreeCleanup?.phase ?? "idle"));
+      });
+      const acceptedFailure = await client.archive(input);
+      assert.equal(acceptedFailure.archived, false);
+      assert.equal(acceptedFailure.worktreeCleanup?.phase, "running");
+      await waitFor(() => repo.get(scope, task.id).worktreeCleanup?.phase === "failed");
+      assert.equal(
+        repo.get(scope, task.id).worktreeCleanup?.error,
+        "work-task.worktree-remove-dirty-worktree",
+      );
       assert.equal(repo.get(scope, task.id).archived, false);
       fail = false;
       release = () => {};
       const started = new Promise<void>((resolve) => {
         entered = resolve;
       });
-      const cleaning = client.archive(input);
+      const cleaning = await client.archive(input);
+      assert.equal(cleaning.archived, false);
+      assert.equal(cleaning.worktreeCleanup?.phase, "running");
       await started;
       await assert.rejects(service.archive(input), /cleanup-in-progress/);
       await assert.rejects(
         service.archive({ ...scope, id: task.id, archived: false }),
         /cleanup-in-progress/,
       );
+      const other = await service.create({
+        ...scope,
+        title: "Other task",
+        prompt: "Keep working",
+        execution: task.execution,
+      });
+      assert.equal(
+        (await service.archive({ ...scope, id: other.id, archived: true })).archived,
+        true,
+      );
+      const persistedRead = new WorkTaskRepo(join(dir, "tasks.sqlite"));
+      await persistedRead.ready();
+      assert.equal(persistedRead.get(scope, task.id).worktreeCleanup?.phase, "running");
+      persistedRead.close();
+      const board = await client.list(scope);
+      assert.equal(
+        board.tasks[0]?.worktreeCleanup?.phase,
+        "running",
+        "reconnecting client reads Host fact",
+      );
+      await assert.rejects(client.complete({ ...scope, id: task.id }), /cleanup-in-progress/);
+      await assert.rejects(client.cancel({ ...scope, id: task.id }), /cleanup-in-progress/);
       release?.();
-      assert.equal((await cleaning).archived, true);
+      await waitFor(() => repo.get(scope, task.id).archived);
+      assert.equal(repo.get(scope, task.id).worktreeCleanup, undefined);
       assert.equal(calls, 2);
+      assert.equal(observed[0], "running");
+      assert.ok(observed.includes("failed"));
+      assert.equal(observed.at(-1), "archived");
+      subscription.dispose();
       assert.deepEqual(repo.get(scope, task.id).worktree, allocation, "retain history allocation");
     } finally {
       release?.();
@@ -154,6 +195,112 @@ test("completed direct tasks, missing allocations and unsupported Hosts cannot d
   } finally {
     await service.disposeAllAndWait();
     await unavailable.disposeAllAndWait();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+async function waitFor(predicate: () => boolean) {
+  for (let i = 0; i < 200 && !predicate(); i++)
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(predicate(), true);
+}
+
+test("expired cleanup lease recovers without automatic deletion and ignores old attempt results", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zcode-cleanup-recovery-"));
+  const repo = new WorkTaskRepo(join(dir, "tasks.sqlite"));
+  const service = new WorkTaskService({
+    repo,
+    pollIntervalMs: 10,
+    execute: async (_task, context) => {
+      await context.update({ worktree: allocation });
+    },
+  });
+  try {
+    const task = await service.create({
+      ...scope,
+      title: "Recovery",
+      prompt: "Work",
+      execution: {
+        kind: "api",
+        modelSelection: { providerId: "test", modelId: "model" },
+        mode: "build",
+      },
+    });
+    await service.start({ ...scope, id: task.id });
+    await waitFor(() => repo.get(scope, task.id).status === "review");
+    await service.complete({ ...scope, id: task.id });
+    const old = repo.beginWorktreeCleanup(scope, task.id, "old-host", 10);
+    repo.recoverExpired(Date.now() + 100);
+    assert.equal(repo.get(scope, task.id).worktreeCleanup?.phase, "failed");
+    assert.equal(repo.get(scope, task.id).worktreeCleanup?.error, "work-task.host-interrupted");
+    const retry = repo.beginWorktreeCleanup(scope, task.id, "old-host", 30_000);
+    assert.notEqual(retry.worktreeCleanup?.id, old.worktreeCleanup?.id);
+    assert.equal(repo.finishWorktreeCleanup(old, "old-host"), false);
+    assert.equal(repo.get(scope, task.id).archived, false);
+    assert.equal(repo.finishWorktreeCleanup(retry, "old-host"), true);
+    assert.equal(repo.get(scope, task.id).archived, true);
+  } finally {
+    await service.disposeAllAndWait();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("Host shutdown drains accepted cleanup and preserves retryable interruption", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zcode-cleanup-shutdown-"));
+  const repo = new WorkTaskRepo(join(dir, "tasks.sqlite"));
+  let release!: () => void;
+  const removal = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const service = new WorkTaskService({
+    repo,
+    pollIntervalMs: 10,
+    execute: async (_task, context) => {
+      await context.update({ worktree: allocation });
+    },
+    removeWorktree: () => removal,
+  });
+  try {
+    const task = await service.create({
+      ...scope,
+      title: "Shutdown",
+      prompt: "Work",
+      execution: {
+        kind: "api",
+        modelSelection: { providerId: "test", modelId: "model" },
+        mode: "build",
+      },
+    });
+    await service.start({ ...scope, id: task.id });
+    await waitFor(() => repo.get(scope, task.id).status === "review");
+    await service.complete({ ...scope, id: task.id });
+    const accepted = await service.archive({
+      ...scope,
+      id: task.id,
+      archived: true,
+      removeWorktree: true,
+    });
+    assert.equal(accepted.worktreeCleanup?.phase, "running");
+    repo.recoverExpired(Date.now() + 31_000);
+    await assert.rejects(
+      service.archive({ ...scope, id: task.id, archived: true, removeWorktree: true }),
+      /cleanup-in-progress/,
+      "expired fact cannot replace still-running local IO",
+    );
+    service.disposeAll();
+    assert.equal(repo.get(scope, task.id).archived, false, "storage remains open during cleanup");
+    release();
+    await service.disposeAllAndWait();
+    const reopened = new WorkTaskRepo(join(dir, "tasks.sqlite"));
+    await reopened.ready();
+    const final = reopened.get(scope, task.id);
+    assert.equal(final.archived, false);
+    assert.equal(final.status, "done");
+    assert.equal(final.worktreeCleanup?.error, "work-task.host-interrupted");
+    reopened.close();
+  } finally {
+    release();
+    await service.disposeAllAndWait();
     await rm(dir, { recursive: true, force: true });
   }
 });

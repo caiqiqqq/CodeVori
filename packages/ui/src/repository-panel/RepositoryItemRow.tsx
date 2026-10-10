@@ -1,6 +1,6 @@
 import { Check, ListPlus, MessageSquare } from "lucide-react";
 import { isWorkTaskForgePending, type ForgeItem, type WorkTask } from "@zcode/shared";
-import { RepositoryTaskStatus } from "./RepositoryTaskStatus.js";
+import { RepositoryTaskStatus, repositoryTaskStatusColor } from "./RepositoryTaskStatus.js";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/components/lib/utils.js";
 import {
@@ -67,8 +67,8 @@ export function RepositoryItemRow({
         onClick={onHandle}
         className={cn(
           "mb-2 grid shrink-0 justify-self-end rounded-md px-2 text-ui-sm focus-visible:outline-2 focus-visible:outline-ring sm:mb-0",
-          created
-            ? "text-success disabled:opacity-100"
+          linkedTask
+            ? cn(repositoryTaskStatusColor(linkedTask), "disabled:opacity-100")
             : "text-foreground-subtle hover:bg-surface-hover hover:text-foreground",
         )}
       >

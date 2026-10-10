@@ -3,6 +3,9 @@ import { join } from "node:path";
 import { formatTimestamp } from "@zcode/shared";
 import { cleanupExpiredLogFiles, LOG_RETENTION_DAYS } from "./logRetention.js";
 import { getAppConfigDir, maybeThrowInjectedFsFault } from "@zcode/services/node";
+import { DiagnosticLogWriter } from "./diagnosticLogWriter.js";
+
+const diagnosticWriter = new DiagnosticLogWriter();
 
 function getLogDir() {
   const e2eLogDir =
@@ -77,6 +80,11 @@ function write(level: LogLevel, source: string, ...args: unknown[]) {
   const message = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
   const line = `[${ts}] [${level}] [pid:${pid}] [${source}] ${message}\n`;
   const logDir = getLogDir();
+  // 新增采集不走原主日志的同步 IO/console；不改变原日志和 crash dump 的处理方式。
+  if (message.includes("[diagnostics]")) {
+    diagnosticWriter.enqueue(join(logDir, `${formatDate(now)}.diagnostics.log`), line);
+    return;
+  }
   mkdirSync(logDir, { recursive: true });
   const filePath = join(logDir, `${formatDate(now)}.log`);
 

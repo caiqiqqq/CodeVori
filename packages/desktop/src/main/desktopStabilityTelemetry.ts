@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- 稳定性上报集中单模块，拆分反而增加跨文件状态同步 */
 import { createHash, randomUUID } from "node:crypto";
 import armsRum from "@arms/rum-electron";
-import { BrowserWindow, type WebContents } from "electron";
+import { app, BrowserWindow, type WebContents } from "electron";
 import {
   mapZCodeEnvToArmsRumEnv,
   type HostAgentProcessErrorResponse,
@@ -13,6 +13,8 @@ import {
 import type { CrashCapturePaths } from "./desktopCrashCapture.js";
 import { registerCrashEventMonitor as registerBaseCrashEventMonitor } from "./desktopCrashCapture.js";
 import { getResourceManagerWindowId } from "./resourceManagerWindow.js";
+import { startMainLoopDiagnostics } from "./mainLoopDiagnostics.js";
+let stopMainLoopDiagnostics: (() => void) | undefined;
 
 /** ANR：主线程无响应阈值（与 Electron unresponsive 对齐） */
 const STABILITY_ANR_THRESHOLD_MS = 5_000;
@@ -1008,6 +1010,14 @@ export function registerDesktopStabilityMonitors(
   logger: StabilityLogger,
   crashPaths: CrashCapturePaths,
 ): void {
+  // 重复装配稳定性监控不能增加诊断 timer 或异常监听。
+  if (!stopMainLoopDiagnostics) {
+    stopMainLoopDiagnostics = startMainLoopDiagnostics(logger);
+    app.once("will-quit", () => {
+      stopMainLoopDiagnostics?.();
+      stopMainLoopDiagnostics = undefined;
+    });
+  }
   registerBaseCrashEventMonitor(logger, crashPaths, {
     onRenderProcessGone: (webContents, details) => {
       markWebContentsCrash(webContents.id);

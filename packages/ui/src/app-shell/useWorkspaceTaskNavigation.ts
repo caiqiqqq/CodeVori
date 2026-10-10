@@ -28,6 +28,7 @@ import { taskNavigationTargetExists } from "@/lib/taskNavigationTarget.js";
 import { getRemoteWorkspaceSession } from "@/store/remoteWorkspaceSessionStore.js";
 import { useTabStoreApi } from "@/store/TabStoreProvider.js";
 import { isWorkspaceTab } from "@/store/tabStore.js";
+import { repositoryNavigationStore } from "@/store/repositoryNavigationStore.js";
 import { bumpTaskListMembershipVersion } from "@/v4/taskListMembershipVersion.js";
 
 export interface AutomationsNavigationTarget {
@@ -247,6 +248,7 @@ export function useWorkspaceTaskNavigation({
         );
       // 按路径激活会回退同路径远端；仓库项目选择和历史回放必须先确认精确身份仍存在。
       if (!tab || !isWorkspaceTab(tab)) return false;
+      if (tab.workspacePurpose === "conversation") return false;
       if (
         !allowUnavailable &&
         (tab.availability === "unavailable-local-directory" ||
@@ -265,7 +267,14 @@ export function useWorkspaceTaskNavigation({
   const handleOpenRepository = useCallback(
     (target?: Omit<RepositoryNavEntry, "kind">) => {
       if (target && !activateRepositoryWorkspace(target)) return;
-      const scope = target ?? { workspacePath: workspaceAbsPath, workspaceIdentity };
+      const remembered = repositoryNavigationStore.getState().project;
+      // 侧栏再次进入时恢复仓库项目；只通过已有 tab 的精确身份校验，失效目标回到当前项目。
+      const scope =
+        target ??
+        (remembered && activateRepositoryWorkspace(remembered)
+          ? remembered
+          : { workspacePath: workspaceAbsPath, workspaceIdentity });
+      repositoryNavigationStore.getState().selectProject(scope);
       taskNavPushRepository(scope.workspacePath, scope.workspaceIdentity);
       onNavigateToRepository?.(scope);
     },
@@ -332,6 +341,7 @@ export function useWorkspaceTaskNavigation({
       }
       if (isRepositoryNavEntry(currentEntry)) {
         if (activateRepositoryWorkspace(currentEntry, true)) {
+          repositoryNavigationStore.getState().selectProject(currentEntry);
           onNavigateToRepository?.(currentEntry);
           return;
         }
@@ -430,6 +440,7 @@ export function useWorkspaceTaskNavigation({
       }
       if (isRepositoryNavEntry(currentEntry)) {
         if (activateRepositoryWorkspace(currentEntry, true)) {
+          repositoryNavigationStore.getState().selectProject(currentEntry);
           onNavigateToRepository?.(currentEntry);
           return;
         }

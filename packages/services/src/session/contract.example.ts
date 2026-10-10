@@ -18,6 +18,7 @@ export async function archiveCompletedTaskAndRemoveWorktree(
   workspacePath: string,
   id: string,
 ) {
+  // 返回的是持久化受理；调用方用 list/onDynamicChanged 读取归档或失败结果。
   return service.archive({ workspacePath, id, archived: true, removeWorktree: true });
 }
 
