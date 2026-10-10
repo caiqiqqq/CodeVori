@@ -42,6 +42,9 @@ export function RepositoryItemDetail({
   onClose,
   onChanged,
   onHandle,
+  handleBusy = false,
+  isTaskCreated,
+  taskError = null,
   onOpen,
 }: {
   request: ForgeItemRequest;
@@ -52,6 +55,9 @@ export function RepositoryItemDetail({
   onClose: () => void;
   onChanged: () => void;
   onHandle: (item: ForgeItem) => void;
+  handleBusy?: boolean;
+  isTaskCreated?: (item: ForgeItem) => boolean;
+  taskError?: string | null;
   onOpen: (url: string) => void;
 }) {
   const t = useRepositoryMessages();
@@ -138,10 +144,16 @@ export function RepositoryItemDetail({
                 <span className="break-all font-mono">{change.baseBranch}</span>
               </div>
             ) : null}
+            {taskError ? <RepositoryError error={taskError} /> : null}
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => onHandle(item)}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={handleBusy || isTaskCreated?.(item)}
+                onClick={() => onHandle(item)}
+              >
                 <Bot className="size-4" />
-                {t("handle")}
+                {t(isTaskCreated?.(item) ? "taskCreated" : "handle")}
               </Button>
               {item.state !== "merged" ? (
                 <Button

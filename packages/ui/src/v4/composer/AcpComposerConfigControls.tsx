@@ -39,6 +39,7 @@ interface Props {
   modes: AcpModeState | null;
   loading?: boolean;
   iconOnly?: boolean;
+  presentation?: "toolbar" | "fields";
   disabled: boolean;
   onChange?: (id: string, value: string | boolean) => Promise<void>;
   focusSelectorOnClose?: string | null;
@@ -74,12 +75,14 @@ function AcpComposerConfigControlsImpl({
   modes,
   loading = false,
   iconOnly = false,
+  presentation = "toolbar",
   disabled,
   onChange,
   defaultOption,
   focusSelectorOnClose = `[data-testid="${TID_V4_COMPOSER_INPUT}"]`,
 }: Props) {
   const { intl, locale } = useZCodeIntl();
+  const fields = presentation === "fields";
   const controls: AcpConfigOption[] = options.length
     ? options
     : modes
@@ -103,7 +106,12 @@ function AcpComposerConfigControlsImpl({
     void onChange?.(id, value).catch(() => {});
   };
   return (
-    <div className="flex min-w-0 items-center gap-1" data-testid="acp-composer-config-controls">
+    <div
+      className={
+        fields ? "grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2" : "flex min-w-0 items-center gap-1"
+      }
+      data-testid="acp-composer-config-controls"
+    >
       {loading ? (
         <Button
           type="button"
@@ -146,167 +154,194 @@ function AcpComposerConfigControlsImpl({
               })();
         const label = acpConfigOptionLabel(locale, agent, option);
         const title = `${label}: ${selectedName}`;
-        const Icon = categoryIcon(option.category) ?? (iconOnly ? Settings2Icon : null);
+        const Icon = categoryIcon(option.category) ?? (iconOnly || fields ? Settings2Icon : null);
         return (
-          <DropdownMenu key={`${agent}:${sessionId ?? "pending"}:${option.id}`}>
-            <ControlHintTooltip title={title}>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={disabled || !onChange}
-                  data-testid={`acp-config-trigger-${option.id}`}
-                  data-composer-collapse-priority="1"
-                  aria-label={title}
-                  className={
-                    iconOnly
-                      ? "h-7 w-7 shrink-0 rounded-lg p-0"
-                      : "group/acp h-7 max-w-44 gap-1 rounded-lg px-2 text-ui-base data-[composer-compact=true]:w-8 data-[composer-compact=true]:px-0"
-                  }
-                >
-                  <span
+          <div
+            key={`${agent}:${sessionId ?? "pending"}:${option.id}`}
+            className={fields ? "flex min-w-0 flex-col gap-1.5" : "contents"}
+          >
+            {fields ? (
+              <span data-config-label className="text-ui-sm text-foreground-subtle">
+                {label}
+              </span>
+            ) : null}
+            <DropdownMenu>
+              <ControlHintTooltip title={title}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant={fields ? "outline" : "ghost"}
+                    size="sm"
+                    disabled={disabled || !onChange}
+                    data-testid={`acp-config-trigger-${option.id}`}
+                    data-composer-collapse-priority="1"
+                    aria-label={title}
                     className={
-                      iconOnly ? "hidden" : "truncate group-data-[composer-compact=true]/acp:hidden"
+                      fields
+                        ? "h-9 w-full min-w-0 justify-between rounded-lg border-input-border bg-input px-3 text-ui-base"
+                        : iconOnly
+                          ? "h-7 w-7 shrink-0 rounded-lg p-0"
+                          : "group/acp h-7 max-w-44 gap-1 rounded-lg px-2 text-ui-base data-[composer-compact=true]:w-8 data-[composer-compact=true]:px-0"
                     }
                   >
-                    {title}
-                  </span>
-                  {Icon ? (
-                    <Icon
-                      className={
-                        iconOnly
-                          ? "size-4"
-                          : "hidden size-4 group-data-[composer-compact=true]/acp:block"
-                      }
-                      aria-hidden="true"
-                    />
-                  ) : (
                     <span
-                      aria-hidden="true"
-                      className="hidden group-data-[composer-compact=true]/acp:inline"
+                      className={
+                        fields
+                          ? "min-w-0 truncate text-left"
+                          : iconOnly
+                            ? "hidden"
+                            : "truncate group-data-[composer-compact=true]/acp:hidden"
+                      }
                     >
-                      {label.slice(0, 2)}
+                      {fields ? selectedName : title}
                     </span>
-                  )}
-                  {!iconOnly ? (
-                    <ChevronDownIcon className="size-3.5 shrink-0 group-data-[composer-compact=true]/acp:hidden" />
-                  ) : null}
-                </Button>
-              </DropdownMenuTrigger>
-            </ControlHintTooltip>
-            <DropdownMenuContent
-              side="top"
-              sideOffset={4}
-              align="start"
-              className="max-h-80 w-64 max-w-[calc(100vw-2rem)] overflow-y-auto"
-              onCloseAutoFocus={(event) => {
-                event.preventDefault();
-                if (!isCoarseTouchDevice() && focusSelectorOnClose)
-                  document.querySelector<HTMLElement>(focusSelectorOnClose)?.focus();
-              }}
-            >
-              {option.description ? (
-                <>
-                  <DropdownMenuLabel className="whitespace-normal text-foreground-subtle">
-                    {acpConfigDescription(locale, agent, option, option.description)}
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                </>
-              ) : null}
-              {option.type === "boolean" && !defaultOption ? (
-                <DropdownMenuCheckboxItem
-                  checked={option.currentValue}
-                  onCheckedChange={(checked) => change(option.id, checked)}
-                  data-testid={`acp-config-choice-${option.id}-${!option.currentValue}`}
-                >
-                  {label}
-                </DropdownMenuCheckboxItem>
-              ) : (
-                <DropdownMenuRadioGroup
-                  value={inherited ? defaultValue : String(option.currentValue)}
-                  onValueChange={(value) => {
-                    if (defaultOption && value === defaultValue) {
-                      void defaultOption.onSelect(option.id).catch(() => {});
-                    } else change(option.id, option.type === "boolean" ? value === "true" : value);
-                  }}
-                >
-                  {defaultOption ? (
-                    <>
-                      <DropdownMenuRadioItem
-                        value={defaultValue}
-                        data-testid={`acp-config-default-${option.id}`}
+                    {Icon ? (
+                      <Icon
+                        className={
+                          fields
+                            ? "size-4 shrink-0"
+                            : iconOnly
+                              ? "size-4"
+                              : "hidden size-4 group-data-[composer-compact=true]/acp:block"
+                        }
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="hidden group-data-[composer-compact=true]/acp:inline"
                       >
-                        {defaultOption.label}
-                      </DropdownMenuRadioItem>
-                      <DropdownMenuSeparator />
-                    </>
-                  ) : null}
-                  {option.type === "boolean"
-                    ? [true, false].map((value) => (
+                        {label.slice(0, 2)}
+                      </span>
+                    )}
+                    {!iconOnly ? (
+                      <ChevronDownIcon
+                        className={
+                          fields
+                            ? "size-3.5 shrink-0"
+                            : "size-3.5 shrink-0 group-data-[composer-compact=true]/acp:hidden"
+                        }
+                      />
+                    ) : null}
+                  </Button>
+                </DropdownMenuTrigger>
+              </ControlHintTooltip>
+              <DropdownMenuContent
+                side={fields ? "bottom" : "top"}
+                sideOffset={4}
+                align="start"
+                className="max-h-80 w-64 max-w-[calc(100vw-2rem)] overflow-y-auto"
+                onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  if (!isCoarseTouchDevice() && focusSelectorOnClose)
+                    document.querySelector<HTMLElement>(focusSelectorOnClose)?.focus();
+                }}
+              >
+                {option.description ? (
+                  <>
+                    <DropdownMenuLabel className="whitespace-normal text-foreground-subtle">
+                      {acpConfigDescription(locale, agent, option, option.description)}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                  </>
+                ) : null}
+                {option.type === "boolean" && !defaultOption ? (
+                  <DropdownMenuCheckboxItem
+                    checked={option.currentValue}
+                    onCheckedChange={(checked) => change(option.id, checked)}
+                    data-testid={`acp-config-choice-${option.id}-${!option.currentValue}`}
+                  >
+                    {label}
+                  </DropdownMenuCheckboxItem>
+                ) : (
+                  <DropdownMenuRadioGroup
+                    value={inherited ? defaultValue : String(option.currentValue)}
+                    onValueChange={(value) => {
+                      if (defaultOption && value === defaultValue) {
+                        void defaultOption.onSelect(option.id).catch(() => {});
+                      } else
+                        change(option.id, option.type === "boolean" ? value === "true" : value);
+                    }}
+                  >
+                    {defaultOption ? (
+                      <>
                         <DropdownMenuRadioItem
-                          key={String(value)}
-                          value={String(value)}
-                          data-testid={`acp-config-choice-${option.id}-${value}`}
+                          value={defaultValue}
+                          data-testid={`acp-config-default-${option.id}`}
                         >
-                          {intl.formatMessage({
-                            id: value
-                              ? "chat.toolbar.thoughtLevel.value.on"
-                              : "chat.toolbar.thoughtLevel.value.off",
-                          })}
+                          {defaultOption.label}
                         </DropdownMenuRadioItem>
-                      ))
-                    : option.options.map((item) =>
-                        "group" in item ? (
-                          <div key={`group:${item.group}`}>
-                            <DropdownMenuLabel>
-                              {acpConfigGroupLabel(locale, item.name)}
-                            </DropdownMenuLabel>
-                            {item.options.map((choice) => (
-                              <DropdownMenuRadioItem
-                                key={choice.value}
-                                value={choice.value}
-                                data-testid={`acp-config-choice-${option.id}-${choice.value}`}
-                                className="items-start"
-                              >
-                                <span className="flex min-w-0 flex-col gap-0.5">
-                                  <span>{acpConfigChoiceLabel(locale, agent, option, choice)}</span>
-                                  {choice.description ? (
-                                    <span className="text-ui-sm text-foreground-subtle">
-                                      {acpConfigDescription(
-                                        locale,
-                                        agent,
-                                        option,
-                                        choice.description,
-                                      )}
-                                    </span>
-                                  ) : null}
-                                </span>
-                              </DropdownMenuRadioItem>
-                            ))}
-                          </div>
-                        ) : (
+                        <DropdownMenuSeparator />
+                      </>
+                    ) : null}
+                    {option.type === "boolean"
+                      ? [true, false].map((value) => (
                           <DropdownMenuRadioItem
-                            key={item.value}
-                            value={item.value}
-                            data-testid={`acp-config-choice-${option.id}-${item.value}`}
-                            className="items-start"
+                            key={String(value)}
+                            value={String(value)}
+                            data-testid={`acp-config-choice-${option.id}-${value}`}
                           >
-                            <span className="flex min-w-0 flex-col gap-0.5">
-                              <span>{acpConfigChoiceLabel(locale, agent, option, item)}</span>
-                              {item.description ? (
-                                <span className="text-ui-sm text-foreground-subtle">
-                                  {acpConfigDescription(locale, agent, option, item.description)}
-                                </span>
-                              ) : null}
-                            </span>
+                            {intl.formatMessage({
+                              id: value
+                                ? "chat.toolbar.thoughtLevel.value.on"
+                                : "chat.toolbar.thoughtLevel.value.off",
+                            })}
                           </DropdownMenuRadioItem>
-                        ),
-                      )}
-                </DropdownMenuRadioGroup>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                        ))
+                      : option.options.map((item) =>
+                          "group" in item ? (
+                            <div key={`group:${item.group}`}>
+                              <DropdownMenuLabel>
+                                {acpConfigGroupLabel(locale, item.name)}
+                              </DropdownMenuLabel>
+                              {item.options.map((choice) => (
+                                <DropdownMenuRadioItem
+                                  key={choice.value}
+                                  value={choice.value}
+                                  data-testid={`acp-config-choice-${option.id}-${choice.value}`}
+                                  className="items-start"
+                                >
+                                  <span className="flex min-w-0 flex-col gap-0.5">
+                                    <span>
+                                      {acpConfigChoiceLabel(locale, agent, option, choice)}
+                                    </span>
+                                    {choice.description ? (
+                                      <span className="text-ui-sm text-foreground-subtle">
+                                        {acpConfigDescription(
+                                          locale,
+                                          agent,
+                                          option,
+                                          choice.description,
+                                        )}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </DropdownMenuRadioItem>
+                              ))}
+                            </div>
+                          ) : (
+                            <DropdownMenuRadioItem
+                              key={item.value}
+                              value={item.value}
+                              data-testid={`acp-config-choice-${option.id}-${item.value}`}
+                              className="items-start"
+                            >
+                              <span className="flex min-w-0 flex-col gap-0.5">
+                                <span>{acpConfigChoiceLabel(locale, agent, option, item)}</span>
+                                {item.description ? (
+                                  <span className="text-ui-sm text-foreground-subtle">
+                                    {acpConfigDescription(locale, agent, option, item.description)}
+                                  </span>
+                                ) : null}
+                              </span>
+                            </DropdownMenuRadioItem>
+                          ),
+                        )}
+                  </DropdownMenuRadioGroup>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         );
       })}
     </div>

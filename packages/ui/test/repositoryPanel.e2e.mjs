@@ -57,7 +57,7 @@ try {
       async getVersionControlSettings(){return clone(snapshots[host])},
       async detectGit(){return {installed:true,path:'/synthetic/git',version:'git version 2.50.0'}},
       async addGitAccount(r:any){state.calls.push({host,op:'add-account',provider:r.provider,serverUrl:r.serverUrl});if(r.secret==='invalid')throw new Error('VERSION_CONTROL_authentication');snapshots[host].accounts.push({id:crypto.randomUUID(),provider:r.provider,serverUrl:r.serverUrl,username:r.provider+'-tester',scopes:[],avatarUrl:null,isDefault:false,createdAt:'2026-01-01T00:00:00Z'});return clone(snapshots[host])},
-      async getForgeRepository(r:any){state.calls.push({host,op:'discover',...r});const remoteName=r.remoteName||'origin';const matched=snapshots[host].accounts.find((a:any)=>a.provider==='gitlab'&&a.serverUrl==='https://forge.example.invalid');const status=state.accountDiscovery?(matched?'ready':snapshots[host].accounts.length?'account-mismatch':'unsupported'):state.status;const provider=state.accountDiscovery?(matched?.provider??null):(state.provider||'github');const result={status,remoteNames:['origin','private'],remoteName,host:'forge.example.invalid',provider,repository:status==='ready'?{key:host+remoteName,name:'team/'+host.toLowerCase(),url:'https://forge.example.invalid/team/'+host,provider,accountId:matched?.id??host,accountUsername:'tester'}:null};if(state.delayDiscovery){state.delayDiscovery=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return result},
+      async getForgeRepository(r:any){state.calls.push({host,op:'discover',...r});const remoteName=r.remoteName||state.forcedRemote||'origin';const matched=snapshots[host].accounts.find((a:any)=>a.provider==='gitlab'&&a.serverUrl==='https://forge.example.invalid');const status=state.accountDiscovery?(matched?'ready':snapshots[host].accounts.length?'account-mismatch':'unsupported'):state.status;const provider=state.accountDiscovery?(matched?.provider??null):(state.provider||'github');const result={status,remoteNames:['origin','private'],remoteName,host:'forge.example.invalid',provider,repository:status==='ready'?{key:host+remoteName,name:'team/'+host.toLowerCase(),url:'https://forge.example.invalid/team/'+host,provider,accountId:matched?.id??host,accountUsername:'tester'}:null};if(state.delayDiscovery){state.delayDiscovery=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return result},
       async listForgeItems(r:any){state.calls.push({host,op:'list',...r});const result={items:[{...baseItem(host,r),state:states[host]}],page:r.page,pageSize:20,hasMore:r.page===1,total:21,reachableTotal:21,incomplete:false};if(state.delayList){state.delayList=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return clone(result)},
       async listForgeLabels(){return [label]},
       async getForgeIssueOptions(r:any){state.calls.push({host,op:'options',...r});const result={labels:{items:[label,{key:'enhancement',name:'enhancement',color:'#a2eeef'}],error:null},assignees:{items:[{key:'alice',username:'alice',avatarUrl:null}],error:state.failOptions?'FORGE_FORBIDDEN':null},milestones:{items:[{key:'3',title:'Release'}],error:null}};if(state.delayOptions){state.delayOptions=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return clone(result)},
@@ -73,8 +73,8 @@ try {
     ${repositoryTask.repositoryTaskServicesFixture}
     const broadcast:any={send(){},onMessage(){return {dispose(){}}}};
     const platform:any={openExternal:(url:string)=>state.calls.push({op:'external',url})};
-    function Fixture(){const [host,setHost]=useState('A');const [version,setVersion]=useState(0);const settingsVisible=useTabStore(s=>s.activeTabId==='__settings__');const openSettings=useTabStore(s=>s.openSettingsTab);const closeTab=useTabStore(s=>s.closeTab);state.switchHost=setHost;state.remount=()=>setVersion(v=>v+1);state.settings=consumeInitialSettingsSection;state.openSettings=openSettings;
-      return <ServiceProvider services={hosts[host]}><div className='h-dvh bg-background text-foreground'><div hidden={settingsVisible} className='h-full'><RepositoryPanel key={version} active={!settingsVisible} workspacePath={state.taskRemote?'/synthetic/A':'/synthetic/'+host} workspaceIdentity={state.remote?'synthetic-disconnected-workspace':state.taskRemote?'synthetic-task-identity':undefined} remoteSessionId={state.taskRemote?'task-remote':undefined} theme='zai-light' onCreateTask={(request:any)=>state.calls.push({host,op:'agent',...request})}/></div>{settingsVisible?<div className='h-full overflow-auto p-4'><button onClick={()=>closeTab('__settings__')}>返回仓库</button><VersionControlSection/></div>:null}</div></ServiceProvider>}
+    function Fixture(){const [host,setHost]=useState('A');const [version,setVersion]=useState(0);state.changeRemote=()=>{state.forcedRemote='private';setVersion(v=>v+1)};const settingsVisible=useTabStore(s=>s.activeTabId==='__settings__');const openSettings=useTabStore(s=>s.openSettingsTab);const closeTab=useTabStore(s=>s.closeTab);state.switchHost=setHost;state.remount=()=>{state.forcedRemote=undefined;setVersion(v=>v+1)};state.settings=consumeInitialSettingsSection;state.openSettings=openSettings;
+      return <ServiceProvider services={hosts[host]}><div className='h-dvh bg-background text-foreground'><div hidden={settingsVisible} className='h-full'><RepositoryPanel key={version} active={!settingsVisible} workspacePath={state.taskRemote?'/synthetic/A':'/synthetic/'+host} workspaceIdentity={state.remote?'synthetic-disconnected-workspace':state.taskRemote?'synthetic-task-identity':undefined} remoteSessionId={state.taskRemote?'task-remote':undefined} theme='zai-light'/></div>{settingsVisible?<div className='h-full overflow-auto p-4'><button onClick={()=>closeTab('__settings__')}>返回仓库</button><VersionControlSection/></div>:null}</div></ServiceProvider>}
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><StoreProvider broadcastService={broadcast}><TabStoreProvider><Fixture/></TabStoreProvider></StoreProvider></TooltipProvider></ZCodeIntlProvider></PlatformProvider>);
   `,
   );
@@ -147,11 +147,7 @@ try {
   await detail.getByRole("button", { name: "重新打开", exact: true }).waitFor();
   await detail.getByRole("button", { name: "重新打开", exact: true }).click();
   await confirm.getByRole("button", { name: "确认重开", exact: true }).click();
-  await detail.getByRole("button", { name: "交给智能体处理", exact: true }).click();
-  const handoff = await page.evaluate(() => window.__forge.calls.find((c) => c.op === "agent"));
-  assert.equal(handoff.targetWorkspace.workspacePath, "/synthetic/A");
-  assert.match(handoff.initialPrompt, /外部仓库/);
-  assert.equal(handoff.autoSend, undefined);
+  await repositoryTask.exerciseRepositoryDetailTaskCreation(page, detail);
   await detail.getByRole("button", { name: "关闭详情", exact: true }).click();
   await panel.getByRole("tab", { name: "拉取请求", exact: true }).click();
   await assertListLabelColors();
@@ -398,7 +394,7 @@ try {
   assert.equal(await page.evaluate(() => window.__forge.calls.length), localCalls);
   assert.deepEqual(errors, []);
   process.stdout.write(
-    `PASS: scoped todo task creation, duplicate admission, read/save failures, API/ACP preferences, remote scope, stale read/save isolation; repository tabs, filters, pages, details, comments, confirmations, creation, agent draft, account mismatch and settings recovery, Host/discovery races, disconnected remote isolation and responsive themes. Screenshots: ${artifacts}\n`,
+    `PASS: scoped todo task creation, duplicate admission, read/save failures, API/ACP preferences, remote scope, stale read/save isolation; repository tabs, filters, pages, details, comments, confirmations, creation, agent selection, account mismatch and settings recovery, Host/discovery races, disconnected remote isolation and responsive themes. Screenshots: ${artifacts}\n`,
   );
 } finally {
   await browser?.close();

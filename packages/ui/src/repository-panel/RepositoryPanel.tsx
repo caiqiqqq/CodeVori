@@ -8,7 +8,7 @@ import { usePlatform } from "@/hooks/usePlatform.js";
 import { useTabStore } from "@/store/TabStoreProvider.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
 import { setPendingSettingsSectionIntent } from "@/lib/settingsNavigation.js";
-import { buildForgeAgentPrompt, safeRepositoryExternalUrl } from "@/lib/forgePanel.js";
+import { safeRepositoryExternalUrl } from "@/lib/forgePanel.js";
 import { getPathLeaf } from "@/lib/path.js";
 import type { RepositoryWorkspaceTab } from "@/lib/repositoryWorkspaces.js";
 import { buildWorkspaceSessionKey } from "@/lib/remoteWorkspaceHistory.js";
@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select.js";
-import type { CreateTaskRequest } from "@/app-shell/types.js";
+import { WorkTaskEditor } from "@/work-tasks/WorkTaskEditor.js";
 import type { Theme } from "@/useTheme.js";
 import { RepositoryToolbar, type RepositoryFilters } from "./RepositoryToolbar.js";
 import { RepositoryItemDetail } from "./RepositoryItemDetail.js";
@@ -43,7 +43,6 @@ interface RepositoryPanelProps {
   remoteSessionId?: string;
   active?: boolean;
   theme: Theme;
-  onCreateTask: (request?: CreateTaskRequest) => void;
   workspaceTabs?: readonly RepositoryWorkspaceTab[];
   onSelectProject?: (target: { workspacePath: string; workspaceIdentity?: string }) => void;
 }
@@ -80,7 +79,6 @@ function RepositoryPanelContent({
   remoteSessionId,
   active = true,
   theme,
-  onCreateTask,
   workspaceTabs,
   onSelectProject,
   projectGroups,
@@ -136,10 +134,7 @@ function RepositoryPanelContent({
   };
   const handleItem = (item: ForgeItem) => {
     if (!repo || !panel.target) return;
-    onCreateTask({
-      initialPrompt: buildForgeAgentPrompt(repo, item),
-      targetWorkspace: { workspacePath, ...(workspaceIdentity ? { workspaceIdentity } : {}) },
-    });
+    void task.prepare(repo, item);
   };
   const onFilterChange = (patch: Partial<RepositoryFilters>) =>
     setFilters((current) => ({ ...current, ...patch, page: patch.page ?? 1 }));
@@ -228,6 +223,9 @@ function RepositoryPanelContent({
           onClose={() => setSelection(null)}
           onChanged={panel.refresh}
           onHandle={handleItem}
+          handleBusy={task.busy}
+          isTaskCreated={task.isCreated}
+          taskError={task.error}
           onOpen={openExternal}
         />
       ) : (
@@ -304,11 +302,11 @@ function RepositoryPanelContent({
                           <RepositoryItemRow
                             key={`${item.kind}:${item.number}`}
                             item={item}
-                            busy={task.busy}
+                            busy={task.busy || !!task.draft}
                             created={task.isCreated(item)}
                             onSelect={() => selectItem(item)}
                             onHandle={() => {
-                              void task.create(repo, item);
+                              handleItem(item);
                             }}
                           />
                         ))}
@@ -347,6 +345,18 @@ function RepositoryPanelContent({
           ) : null}
         </>
       )}
+      {active && task.draft ? (
+        <WorkTaskEditor
+          key={task.draft.key}
+          scope={{ workspacePath, workspaceIdentity, remoteSessionId }}
+          task={null}
+          initialDraft={task.draft.initialDraft}
+          busy={task.busy}
+          error={task.error ? t(`error.${task.error}`) : null}
+          onClose={task.close}
+          onSave={task.create}
+        />
+      ) : null}
       {repo && panel.target && newIssueTarget === panel.target ? (
         <NewIssueDialog
           open={active}

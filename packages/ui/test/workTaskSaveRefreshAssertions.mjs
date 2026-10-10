@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { selectWorkTaskExecution } from "./workTaskExecutionConfigAssertions.mjs";
 
 export async function exerciseWorkTaskSaveRefresh(page, artifacts) {
   const panel = page.getByTestId("work-tasks-panel");
@@ -28,9 +29,7 @@ export async function exerciseWorkTaskSaveRefresh(page, artifacts) {
         await editor.getByTestId("work-task-model").click();
         await page.getByTestId("chat-model-select-item-acp:codex").click();
       } else {
-        await editor.getByTestId("work-task-model").click();
-        await page.getByRole("menuitem", { name: "Test API", exact: true }).hover();
-        await page.getByTestId("chat-model-select-item-custom:api:TestModel").click();
+        await selectWorkTaskExecution(page, editor, "custom:api:TestModel");
       }
       const prompt = `Save ${kind} at ${width}`;
       await editor.getByTestId("work-task-prompt").fill(prompt);

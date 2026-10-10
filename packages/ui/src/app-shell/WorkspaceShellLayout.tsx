@@ -2350,7 +2350,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                   workspaceTabs={workspaceTabs}
                                   onSelectProject={handleOpenRepository}
                                   theme={theme}
-                                  onCreateTask={handleCreateTaskInChat}
                                 />
                               </Suspense>
                             </ScopedErrorBoundary>

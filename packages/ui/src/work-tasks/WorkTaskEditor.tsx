@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Save } from "lucide-react";
+import { Save, SlidersHorizontal } from "lucide-react";
 import {
   type WorkTask,
   type WorkTaskCreate,
@@ -45,6 +45,7 @@ interface Props {
   projectOptions?: readonly WorkspaceTabState[];
   onProjectChange?(key: string): void;
   task: WorkTask | null;
+  initialDraft?: Pick<WorkTaskCreate, "title" | "prompt">;
   busy: boolean;
   error: string | null;
   startAfterSave?: boolean;
@@ -57,6 +58,7 @@ export function WorkTaskEditor({
   projectOptions,
   onProjectChange,
   task,
+  initialDraft,
   busy: externalBusy,
   error,
   startAfterSave = false,
@@ -72,7 +74,7 @@ export function WorkTaskEditor({
   );
   const sourceBranch = sourceDraft ? sourceDraft.value : branches.currentBranch;
   const [useWorktree, setUseWorktree] = useState(task?.useWorktree !== false);
-  const [prompt, setPrompt] = useState(task?.prompt ?? "");
+  const [prompt, setPrompt] = useState(task?.prompt ?? initialDraft?.prompt ?? "");
   const submission = useWorkTaskEditorSave(externalBusy);
   const { busy } = submission;
   const inputApiRef = useRef<LexicalChatInputHandle | null>(null);
@@ -80,6 +82,7 @@ export function WorkTaskEditor({
   const [draftExecution, setDraftExecution] = useState<WorkTaskExecution | null>(
     task?.execution ?? null,
   );
+  const executionDrafts = useRef(new Map<string, WorkTaskExecution>());
   // 修复原因：弹窗卸载会丢失选择；新建读取主动保存的偏好，历史任务仍以自身配置为准。
   const [rememberedExecution] = useState(() =>
     task ? null : workTaskExecutionPreferenceStore.getState().read(scope),
@@ -101,6 +104,13 @@ export function WorkTaskEditor({
     // 偏好只由主动选择写入，目录刷新和编辑旧任务不能改变下次新建配置。
     if (!task) workTaskExecutionPreferenceStore.getState().remember(scope, next);
   };
+  const selectExecutor = (next: WorkTaskExecution) => {
+    const key = (value: WorkTaskExecution) => (value.kind === "acp" ? `acp:${value.agent}` : "api");
+    // 修复原因：切换执行器不能丢失已选模式/模型，也不能把旧 Agent 覆盖带给新 Agent。
+    // 暂存仅属于本弹窗；当前 execution 仍是唯一保存来源。
+    if (execution) executionDrafts.current.set(key(execution), execution);
+    changeExecution(executionDrafts.current.get(key(next)) ?? next);
+  };
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!execution || !inputApiRef.current) return;
@@ -109,7 +119,9 @@ export function WorkTaskEditor({
       // 未显式选择的项留给实际 Agent 默认值，已保存的未知选项也不能悄悄丢弃。
       if (!inputApiRef.current) return;
       const title =
-        task?.title ?? inputApiRef.current.getMarkdown().trim().replace(/\s+/g, " ").slice(0, 200);
+        task?.title ??
+        initialDraft?.title ??
+        inputApiRef.current.getMarkdown().trim().replace(/\s+/g, " ").slice(0, 200);
       const draft = await assets.prepareDraft(title, execution, inputApiRef.current, signal);
       if (
         (await onSave({ ...draft, useWorktree, ...(sourceBranch ? { sourceBranch } : {}) })) &&
@@ -219,22 +231,33 @@ export function WorkTaskEditor({
             </p>
           </div>
 
+          <section
+            className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-surface p-3"
+            aria-label={t("executionConfig")}
+            data-testid="work-task-execution-config"
+          >
+            <h3 className="flex items-center gap-2 text-ui-base font-medium">
+              <SlidersHorizontal className="size-4" />
+              {t("executionConfig")}
+            </h3>
+            <WorkTaskExecutionControls
+              task={task}
+              models={models}
+              execution={execution}
+              busy={busy}
+              thought={thought}
+              changeExecution={changeExecution}
+              selectExecutor={selectExecutor}
+            />
+            <p className="text-ui-sm text-foreground-subtle">{t("executionConfigHint")}</p>
+          </section>
           <WorkTaskPromptField
             scope={scope}
             task={task}
+            initialPrompt={initialDraft?.prompt}
             busy={busy}
             assets={assets}
             inputApiRef={inputApiRef}
-            leadingActions={
-              <WorkTaskExecutionControls
-                task={task}
-                models={models}
-                execution={execution}
-                busy={busy}
-                thought={thought}
-                changeExecution={changeExecution}
-              />
-            }
             onChange={setPrompt}
           />
           <WorkTaskError error={submission.error ?? assets.attachmentError ?? error} />
