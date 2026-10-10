@@ -1,4 +1,9 @@
-import type { WorkTask, WorkTaskForgeWriteback } from "@zcode/shared";
+import {
+  workTaskChangeRecordSchema,
+  type WorkTask,
+  type WorkTaskForgeWriteback,
+  type WorkTaskChangeRecord,
+} from "@zcode/shared";
 import type { WorkTaskRepo } from "./workTaskRepo.js";
 import type { WorkTaskForgePort } from "./workTask.js";
 import { workTaskForgeComment, workTaskForgeMarker } from "./workTaskForgeState.js";
@@ -12,6 +17,7 @@ export async function writebackWorkTaskForge(input: {
   publish(): void;
   closed(): boolean;
   resendComment?: boolean;
+  readRecords?(task: WorkTask): Promise<WorkTaskChangeRecord>;
 }): Promise<WorkTask> {
   let task = input.repo.claimForgeWriteback(input.task, input.owner);
   const id = task.forgeWriteback!.id;
@@ -50,6 +56,18 @@ export async function writebackWorkTaskForge(input: {
   let step: "commentState" | "closeState" = "commentState";
   try {
     input.publish();
+    // 第一次发送前冻结真实合并结果；评论 ACK 丢失后重试必须使用同一份内容。
+    if (task.forgeWriteback!.commentState === "pending" && !task.forgeWriteback!.recordsFinalized) {
+      let records = task.forgeWriteback!.records;
+      try {
+        if (input.readRecords)
+          records = workTaskChangeRecordSchema.parse(await input.readRecords(task));
+      } catch {
+        records = { state: "unknown", commits: [], files: [], uncommitted: [], truncated: false };
+      }
+      assertOwner();
+      save({ records, recordsFinalized: true });
+    }
     if (!["done", "skipped"].includes(task.forgeWriteback!.commentState)) {
       const previous = task.forgeWriteback!.commentState;
       let found = false;

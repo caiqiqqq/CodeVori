@@ -5,6 +5,7 @@ import { isPathInWorkspaceScope, normalizeGitPath, toWorkspaceRelativeGitPath } 
 import { filterCommitMessageFilesByCurrentSession } from "./commitMessageFileScope.js";
 import type { IGitService } from "./git.js";
 import { createGitTaskMergeRepo, type GitTaskMergeRepo } from "./repo/gitTaskMergeRepo.js";
+import { createGitTaskChangeRecord } from "./repo/gitTaskChangeRecord.js";
 import { createForgeService } from "./forgeService.js";
 import type { GitCommitMessageGenerator } from "./gitCommitMessageGenerator.js";
 import {
@@ -185,6 +186,7 @@ export function createGitService(options?: {
   const repo = options?.repo ?? createGitCliRepo();
 
   return {
+    getTaskChangeRecord: createGitTaskChangeRecord(),
     ...(options?.taskMerge ?? createGitTaskMergeRepo({ repo })),
     ...(options?.versionControl ?? createVersionControlService()),
     ...createForgeService({ gitRepo: repo, ...options?.forgeOptions }),

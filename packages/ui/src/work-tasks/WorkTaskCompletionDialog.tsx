@@ -46,6 +46,7 @@ export function WorkTaskCompletionDialog({
   const branches = useWorkTaskMergeTarget(task, canMerge);
   const disabled =
     panel.busy ||
+    options.ai.loading ||
     !canReviewWorkTaskCompletion(task) ||
     (canMerge && !choice && assessment === "loading") ||
     (merging && (!canMerge || !branches.valid));
@@ -86,7 +87,7 @@ export function WorkTaskCompletionDialog({
                   key={value}
                   variant={mode === value ? "secondary" : "outline"}
                   className="min-w-0 flex-1 basis-44"
-                  disabled={panel.busy || (value === "merge" && !canMerge)}
+                  disabled={panel.busy || options.ai.loading || (value === "merge" && !canMerge)}
                   aria-pressed={mode === value}
                   data-testid={`work-task-completion-${value}`}
                   onClick={() => setChoice(value)}
@@ -116,7 +117,7 @@ export function WorkTaskCompletionDialog({
                     branches={branches.options}
                     testId="work-task-completion-target"
                     onChange={branches.select}
-                    disabled={panel.busy || branches.loading}
+                    disabled={panel.busy || options.ai.loading || branches.loading}
                     onOpen={() => {
                       void branches.refresh();
                     }}
@@ -161,7 +162,12 @@ export function WorkTaskCompletionDialog({
             ) : null}
           </div>
         ) : (
-          <WorkTaskForgeOptionsFields task={task} options={options} disabled={panel.busy} />
+          <WorkTaskForgeOptionsFields
+            task={task}
+            options={options}
+            disabled={panel.busy || options.ai.loading}
+            mode={mode}
+          />
         )}
         <WorkTaskError error={panel.error ?? task.forgeWriteback?.error ?? null} />
         <AlertDialogFooter>

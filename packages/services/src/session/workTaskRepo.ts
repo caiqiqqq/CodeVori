@@ -27,6 +27,7 @@ import {
   completeWorkTaskForge,
 } from "./workTaskForgeState.js";
 import { createWorkTaskDraft } from "./workTaskDraft.js";
+import { admitWorkTaskMerge } from "./workTaskMergeAdmission.js";
 import { isDeepStrictEqual } from "node:util";
 import {
   WORK_TASK_ACTIVE_STATUSES,
@@ -42,6 +43,7 @@ import {
   type WorkTaskScope,
   type WorkTaskUpdate,
   type WorkTaskMerge,
+  type WorkTaskChangeRecord,
   type WorkTaskMergeRequest,
 } from "@zcode/shared";
 import type { WorkTaskConversationEvent, WorkTaskExecutionUpdate } from "./workTask.js";
@@ -197,29 +199,16 @@ export class WorkTaskRepo {
   enqueue(scope: WorkTaskScope, id: string, feedback?: string): WorkTask {
     return this.transaction(() => this.enqueueInside(scope, id, feedback));
   }
-  enqueueMerge(input: WorkTaskMergeRequest, projectPath: string): WorkTask {
+  enqueueMerge(
+    input: WorkTaskMergeRequest,
+    projectPath: string,
+    records?: WorkTaskChangeRecord,
+  ): WorkTask {
     return this.transaction(() => {
       const { id, targetBranch } = input;
       const row = this.row(input, id);
       const task = decode(row);
-      if (row.owner && task.merge && ["applying", "merged"].includes(task.merge.phase))
-        throw new Error("work-task.merge-applying");
-      if (isWorkTaskMerging(task)) {
-        if (task.merge?.targetBranch !== targetBranch)
-          throw new Error("work-task.merge-in-progress");
-        return task;
-      }
-      if (task.completion === "merged" && task.merge?.targetBranch === targetBranch) return task;
-      if (
-        task.status !== "review" ||
-        task.archived ||
-        task.stopPending ||
-        row.owner ||
-        !task.worktree
-      )
-        throw new Error("work-task.not-reviewable");
-      if (task.worktree.branchName === targetBranch)
-        throw new Error("work-task.merge-invalid-target");
+      if (!admitWorkTaskMerge(task, !!row.owner, targetBranch)) return task;
       appendWorkTaskQueue(this.database(), id);
       const merge: WorkTaskMerge = { id: uuidv7(), projectPath, targetBranch, phase: "queued" };
       return this.write(
@@ -227,7 +216,11 @@ export class WorkTaskRepo {
           ...task,
           merge,
           status: "queued",
-          forgeWriteback: prepareWorkTaskForge({ ...task, runSeq: task.runSeq + 1 }, input.forge),
+          forgeWriteback: prepareWorkTaskForge(
+            { ...task, merge, runSeq: task.runSeq + 1 },
+            input.forge,
+            records,
+          ),
           failureReason: undefined,
           updatedAt: Date.now(),
         },
@@ -319,9 +312,14 @@ export class WorkTaskRepo {
       );
     });
   }
-  complete(scope: WorkTaskScope, id: string, forge?: WorkTaskForgeOptions): WorkTask {
+  complete(
+    scope: WorkTaskScope,
+    id: string,
+    forge?: WorkTaskForgeOptions,
+    records?: WorkTaskChangeRecord,
+  ): WorkTask {
     return this.transaction(() => {
-      const task = completeWorkTaskForge(this.get(scope, id), forge);
+      const task = completeWorkTaskForge(this.get(scope, id), forge, records);
       return this.write(task, "accepted");
     });
   }
