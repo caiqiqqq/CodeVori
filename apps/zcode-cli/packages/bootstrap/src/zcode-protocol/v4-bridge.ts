@@ -1633,6 +1633,8 @@ export function createConversationV4Gateway(
     invalidatePersistentCommandFacts: (sessionId) => persistentCommands.invalidate(sessionId),
     // gateway 已完成逐片总量/checksum 校验，只把完整 bytes 原子写 artifact。
     putSessionAttachment: async (sessionId, input) => {
+      if (context.purgingSessionIds?.has(sessionId))
+        throw new Error("Conversation deletion pending");
       const record = context.sessions.get(sessionId);
       if (!record) {
         throw new Error(`fault.attachment.sessionNotFound: ${sessionId}`);

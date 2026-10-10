@@ -450,6 +450,9 @@ export interface IZCodeTaskService {
     workspaceIdentity?: string;
   }): Promise<ZCodeTaskMeta[]>;
 
+  /** Current Host's known archive scopes; never opens a workspace or Agent. */
+  listArchivedWorkspaces(): Promise<ZCodeTaskListWorkspaceScope[]>;
+
   /** 批量归档超期旧任务；仅归档已完成、无未读、非 pinned 且当前未打开的 task */
   archiveStaleTasks(params: {
     workspacePath: string;
@@ -640,14 +643,14 @@ export interface IZCodeTaskService {
     workspaceIdentity?: string;
   }): Promise<void>;
 
-  /** 仅删除写入时仍归档的任务；已恢复、已删除或不存在时返回 false，不清理 CLI 会话。 */
+  /** 彻底删除仍归档且 idle 的会话内容；失败保留可重试进度，恢复或 busy 时返回 false。 */
   deleteArchivedTask(params: {
     taskId: string;
     workspacePath: string;
     workspaceIdentity?: string;
   }): Promise<boolean>;
 
-  /** 逐项执行归档条件删除，批次结束后统一通知列表；不清理 CLI 会话。 */
+  /** 逐项执行归档条件彻底删除，批次结束后统一通知列表；失败项保留可重试进度。 */
   deleteArchivedTasks(params: {
     workspacePath: string;
     workspaceIdentity?: string;

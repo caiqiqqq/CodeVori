@@ -1,4 +1,5 @@
 import * as permissionFullAccessRepository from "./repositories/permission-full-access.js";
+import { purgeSession } from "./repositories/session-purge.js";
 import { DatabaseSync } from "node:sqlite";
 import type {
   CollaborationMode,
@@ -310,6 +311,41 @@ export class SqliteSessionStore
   async createSession(input: CreateSessionInput): Promise<SessionInfo> {
     this.throwBeforeWrite();
     return sessionRepository.createSession(this.db, input);
+  }
+  async retainedSessionArtifactUris(sessionID: SessionId): Promise<string[]> {
+    const prefix = `zcode-artifact://${encodeURIComponent(sessionID)}/`;
+    const rows = this.db
+      .prepare(`SELECT data FROM part WHERE session_id<>? AND instr(data,?)>0
+      UNION ALL SELECT data FROM session_entry WHERE session_id<>? AND instr(data,?)>0
+      UNION ALL SELECT payload AS data FROM session_input WHERE session_id<>? AND instr(payload,?)>0
+      UNION ALL SELECT attachments AS data FROM input_history WHERE session_id<>? AND instr(attachments,?)>0`)
+      .all(sessionID, prefix, sessionID, prefix, sessionID, prefix, sessionID, prefix) as {
+      data: string;
+    }[];
+    const uris = new Set<string>();
+    for (const row of rows) {
+      const collect = (value: unknown): void => {
+        if (typeof value === "string") {
+          for (const match of value.matchAll(
+            /zcode-artifact:\/\/[a-zA-Z0-9%._~-]+\/[a-zA-Z0-9%_-]+/g,
+          ))
+            if (match[0].startsWith(prefix)) uris.add(match[0]);
+        } else if (Array.isArray(value)) value.forEach(collect);
+        else if (value && typeof value === "object") Object.values(value).forEach(collect);
+      };
+      collect(JSON.parse(row.data));
+    }
+    return [...uris];
+  }
+
+  async purgeSession(input: {
+    sessionID: SessionId;
+    workspaceID: string;
+    directory: string;
+    checkOnly?: boolean;
+  }): Promise<"deleted" | "busy"> {
+    this.throwBeforeWrite();
+    return purgeSession(this.db, input);
   }
 
   async createForkedSessionWithMetadata(

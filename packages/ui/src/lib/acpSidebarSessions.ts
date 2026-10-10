@@ -13,6 +13,7 @@ export interface AcpSidebarSession {
   /** Search results can select the same session before sidebar metadata is available. */
   pinned?: boolean;
   archived?: boolean;
+  deletionState?: "pending";
   unreadAt?: number | null;
   status: AcpSession["status"];
   workspacePath: string;
@@ -53,6 +54,7 @@ export function projectAcpSidebarSessions(
         title: session.title,
         pinned: session.pinned,
         archived: session.archived,
+        deletionState: session.deletionState,
         unreadAt: session.unreadAt,
         status: session.status,
         workspacePath: session.workspacePath,

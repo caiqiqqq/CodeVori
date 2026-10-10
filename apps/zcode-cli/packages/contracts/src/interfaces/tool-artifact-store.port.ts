@@ -104,6 +104,8 @@ export type MediaAttachmentPathResult =
   | { status: "unsupported" };
 
 export interface ToolArtifactStorePort {
+  /** Remove only owned artifacts/caches; retain URIs referenced by surviving sessions. Idempotent. */
+  purgeSessionArtifacts?(sessionId: string, retainedUris: readonly string[]): Promise<void>;
   writeToolResultArtifact(
     request: ToolArtifactWriteRequest,
     options?: { signal?: AbortSignal },

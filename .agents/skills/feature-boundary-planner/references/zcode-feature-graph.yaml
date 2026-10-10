@@ -164,6 +164,25 @@ nodes:
         symbol: createSubagentsService
       - file: packages/services/src/subagents/subagentStorage.ts
         symbol: resolveSubagentStateFile
+  - id: capability.conversation-archive
+    kind: capability
+    label: Archived conversations, restore and permanent removal
+    aliases: [conversation archive, archived conversations, 已归档对话, 恢复对话, 彻底删除]
+    codeSeeds:
+      - file: packages/ui/src/settings/ConversationArchiveSection.tsx
+        symbol: ConversationArchiveSection
+      - file: packages/ui/src/WorkspaceArchivedTasksFlatSection.tsx
+        symbol: WorkspaceArchivedTasksFlatSection
+      - file: packages/services/src/session/taskIndexRepo.ts
+        symbol: TaskIndexRepo
+      - file: packages/services/src/acp/acpServiceImpl.ts
+        symbol: createAcpService
+      - file: apps/zcode-cli/packages/bootstrap/src/zcode-protocol/session-purge.ts
+        symbol: purgeSession
+    invariants:
+      - Restore preserves session identity and contents; pending cleanup permits only explicit deletion retry.
+      - Permanent removal refuses accepted work and never removes project files, worktrees or independent children.
+      - Native membership and purge intent belong to the Host task index; ACP membership belongs to its Host snapshot.
   - id: capability.conversation-runtime
     kind: capability
     label: Conversation and session runtime
@@ -1051,3 +1070,19 @@ edges:
     type: emits-model-selection-for
     rank: must-inspect
     condition: Applied runtime model selection is projected through ModelSelected events.
+
+  - from: capability.conversation-archive
+    to: persistence.task-index
+    type: persists-through
+    rank: must-inspect
+    condition: Native archive membership and durable purge intent are written before Agent cleanup.
+  - from: capability.conversation-archive
+    to: capability.conversation-runtime
+    type: requires-idle-owner
+    rank: must-inspect
+    condition: Permanent cleanup shares command admission and cold activation ownership.
+  - from: capability.conversation-archive
+    to: capability.acp-agent-sessions
+    type: requires-host-snapshot
+    rank: must-inspect
+    condition: ACP archive and conditional removal use the scoped Host snapshot and queue gate.

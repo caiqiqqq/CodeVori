@@ -3,7 +3,7 @@ import type { IWorkTaskService } from "@zcode/services";
 import type { WorkTaskScope } from "@zcode/shared";
 
 export type WorktreeHistoryConversationTarget =
-  | { kind: "api"; workspacePath: string; taskId: string }
+  | { kind: "api"; workspacePath: string; workspaceIdentity?: string; taskId: string }
   | { kind: "acp"; session: AcpSidebarSession };
 
 export type WorktreeSettingsConversationTarget =
@@ -16,6 +16,7 @@ export async function resolveWorktreeSettingsConversation(
   target: WorktreeHistoryConversationTarget,
 ): Promise<WorktreeSettingsConversationTarget> {
   if (!service) return target;
+  if (target.kind === "api" && target.workspaceIdentity) return target;
   if (target.kind === "acp" && (target.session.workspaceIdentity || target.session.remoteSessionId))
     return target;
   const path = target.kind === "api" ? target.workspacePath : target.session.workspacePath;

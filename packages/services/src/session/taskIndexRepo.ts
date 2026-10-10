@@ -38,6 +38,7 @@ import type {
 import { createServiceLogger } from "#src/logger/serviceLogger.js";
 import { getTasksIndexDatabasePath } from "#src/paths.js";
 import { runTasksDatabaseMigrations } from "#src/session/tasksDatabase/migrations.js";
+import { purgeArchivedTaskRecord } from "./archivedTaskPurge.js";
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
@@ -1313,6 +1314,11 @@ export class TaskIndexRepo {
       try {
         const existing = this.getTaskRow(params.meta);
         const existingMeta = existing ? rowToMeta(existing) : null;
+        // 删除进度和最小 tombstone 属于本仓库，迟到 snapshot 不得补回已清理内容。
+        if (existing?.deleted === 1 || existingMeta?.deletionState) {
+          if (initializeGroupedAtTop) database.exec("COMMIT");
+          return { meta: existingMeta!, initializedGroupedOrder: false };
+        }
         const titleOverridden = params.titleOverridden ?? existing?.title_overridden === 1;
         // snapshot 来源的 updatedAt 是 runtime sessionStore 里的"最后一次结构变更"时间，
         // 不一定包含 session.titleUpdated / turn.completed 这些事件触发的 Date.now() 增量。
@@ -1501,6 +1507,10 @@ export class TaskIndexRepo {
           throw new Error(`task index 中不存在 task: ${params.taskId}`);
         }
         const current = rowToMeta(row);
+        if (current.deletionState) {
+          database.exec("COMMIT");
+          return { meta: current, cleared: false };
+        }
         if (current.unreadAt !== params.expectedUnreadAt) {
           database.exec("COMMIT");
           return { meta: current, cleared: false };
@@ -1527,6 +1537,42 @@ export class TaskIndexRepo {
         throw error;
       }
     });
+  }
+
+  async purgeArchivedTask(
+    params: { workspacePath: string; workspaceIdentity?: string; taskId: string },
+    purge: () => Promise<"deleted" | "busy">,
+  ): Promise<ZCodeTaskMeta | null> {
+    await this.ensureReady();
+    return this.enqueueWrite(params, () =>
+      purgeArchivedTaskRecord(
+        this.getDatabase(),
+        workspaceKey(params),
+        params.taskId,
+        () => {
+          const row = this.getTaskRow(params);
+          return row ? { ...row, meta: rowToMeta(row) } : null;
+        },
+        () => this.deleteTaskGroupingReferencesReady(workspaceKey(params), params.taskId),
+        purge,
+      ),
+    );
+  }
+
+  /** Discover persistent archive scopes independently of open Renderer tabs. */
+  async listArchivedWorkspaces(): Promise<
+    Array<{ workspacePath: string; workspaceIdentity?: string }>
+  > {
+    await this.ensureReady();
+    return (
+      this.getDatabase()
+        .prepare(`SELECT DISTINCT workspace_key,workspace_path,workspace_identity
+      FROM tasks WHERE archived=1 AND deleted=0`)
+        .all() as unknown as TaskIndexRow[]
+    ).map((row) => ({
+      workspacePath: row.workspace_path,
+      workspaceIdentity: resolveTaskIndexRowWorkspaceIdentity(row),
+    }));
   }
 
   async deleteArchivedTask(params: {
@@ -1586,6 +1632,7 @@ export class TaskIndexRepo {
           throw new Error(`task index 中不存在 task: ${params.taskId}`);
         }
         const current = rowToMeta(row);
+        if (current.deletionState) throw new Error("conversation deletion pending; retry deletion");
         // 毫秒时间戳可能让同一 task 的两个逻辑未读得到相同版本，
         // 且清除 unreadAt 后只看当前值会再次复用旧版本。必须在 SQLite 写锁内
         // 基于不会随清除重置的持久 watermark 分配严格递增 marker。
@@ -1645,6 +1692,8 @@ export class TaskIndexRepo {
         return null;
       }
       const current = rowToMeta(row);
+      // 删除 intent 已提交后，迟到 Agent patch 不能再改正文索引或清理进度。
+      if (current.deletionState) return current;
       const canAcceptAgentTitle = row.title_overridden !== 1;
       const nextMeta: ZCodeTaskMeta = {
         ...current,
@@ -2550,6 +2599,19 @@ export class TaskIndexRepo {
       workspaceScopes: params.workspaceScopes,
       provider: params.provider,
     });
+  }
+
+  async getConversationLifecycle(params: {
+    workspacePath: string;
+    workspaceIdentity?: string;
+    taskId: string;
+  }): Promise<"active" | "archived" | "pending" | "deleted" | "unknown"> {
+    await this.ensureReady();
+    const row = this.getTaskRow(params);
+    if (!row) return "unknown";
+    if (row.deleted) return "deleted";
+    if (rowToMeta(row).deletionState) return "pending";
+    return row.archived ? "archived" : "active";
   }
 
   async getTaskMeta(params: {

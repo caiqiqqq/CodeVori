@@ -1,4 +1,6 @@
 import { querySessionDebug } from "./session-debug.js";
+import { SessionLifecycleGate } from "./session-lifecycle-gate.js";
+import { purgeSession } from "./session-purge.js";
 import {
   zcodePluginsCancelOperationParamsSchema,
   zcodeProtocolMethods,
@@ -244,6 +246,7 @@ export class ZCodeProtocolAgentServer {
     };
     this.logger = createProtocolLogger(resolvedDeps);
     this.context = {
+      sessionLifecycleGate: new SessionLifecycleGate(),
       assertServing: () => this.runtimeResources.assertServing(),
       deps: resolvedDeps,
       logger: this.logger,
@@ -603,6 +606,8 @@ export class ZCodeProtocolAgentServer {
         return await setMode(this.context, request.params);
       case zcodeProtocolMethods.sessionClose:
         return await closeSession(this.context, request.params);
+      case zcodeProtocolMethods.sessionPurge:
+        return await purgeSession(this.context, request.params);
       case zcodeProtocolMethods.workspaceReadPresentation:
         return await readWorkspacePresentation(this.context, request.params);
       case zcodeProtocolMethods.workspaceHookTrustGrant: {

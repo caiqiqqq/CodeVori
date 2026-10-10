@@ -2594,6 +2594,11 @@ export class ConversationV4Gateway {
   hasResidencyBlockingCommands(sessionId: string): boolean {
     return this.getQueueLength(sessionId) > 0 || this.inbox.hasPinnedSessionState(sessionId);
   }
+  /** Purge waits for cold READY, then excludes concurrent V4 input admission. */
+  async withSessionMaintenance<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+    await this.readyFlights.get(sessionId);
+    return this.inbox.withSessionGate(sessionId, operation);
+  }
 
   getQueueHead(sessionId: string): {
     autoDrain: boolean;
@@ -2690,6 +2695,15 @@ export class ConversationV4Gateway {
     });
   }
 
+  /** Permanent removal clears accepted-command caches and cold index rows as well as runtime state. */
+  purgeSessionState(sessionId: string, workspaceId: string): void {
+    this.cleanupSessionRuntime(sessionId, {
+      clearCommandInbox: true,
+      notifyIndexRemoved: true,
+      workspaceId,
+    });
+  }
+
   /**
    * Resident 容量去激活：与 disposeSession 相同的内存运行态清理，但**不**从 sessions-index
    * 移除会话（不发 session.removed）——去激活是纯内存优化，侧边栏列表项必须原样
@@ -2731,7 +2745,7 @@ export class ConversationV4Gateway {
 
   private cleanupSessionRuntime(
     sessionId: string,
-    options: { clearCommandInbox: boolean; notifyIndexRemoved: boolean },
+    options: { clearCommandInbox: boolean; notifyIndexRemoved: boolean; workspaceId?: string },
   ): void {
     if (options.clearCommandInbox) {
       // 清掉 in-flight/live 命令会破坏幂等与 FIFO。resident facts 已在回收前
@@ -2752,7 +2766,8 @@ export class ConversationV4Gateway {
     if (options.notifyIndexRemoved) {
       // 先取 workspaceId（会话 record 还在时），把 session.removed 推给列表订阅者。
       try {
-        const workspaceId = this.host.getSessionWorkspaceId?.(sessionId) ?? null;
+        const workspaceId =
+          options.workspaceId ?? this.host.getSessionWorkspaceId?.(sessionId) ?? null;
         if (workspaceId !== null) {
           const indexPublisher = this.indexPublishers.get(workspaceId);
           // 无订阅者时也必须先更新 projection，避免已有 publisher 在下次

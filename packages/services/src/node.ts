@@ -2135,6 +2135,15 @@ export function createLocalServices(options: {
           resolveOffPeakTaskService: () => offPeakTaskServiceForAgent,
         };
   let agentDelegationService: AgentDelegationService | undefined;
+  const workTaskRepo = new WorkTaskRepo(join(getZCodeDataRootDir(), "work-tasks.sqlite"));
+  const hasActiveWorkTaskConversation = async (
+    scope: WorkTaskScope,
+    kind: "api" | "acp",
+    id: string,
+  ) => {
+    await workTaskRepo.ready();
+    return workTaskRepo.hasActiveConversation(scope, { kind, id });
+  };
   let delegationMcp: ReturnType<typeof createDelegationMcp> | undefined;
   const liveDelegationParents = new Map<string, string>();
   const liveParentKey = (workspace: WorkTaskScope, sessionId: string) =>
@@ -2170,6 +2179,9 @@ export function createLocalServices(options: {
           envelope.commandId,
         );
     },
+    canPurgeConversation: async (workspace, sessionId) =>
+      !(await hasActiveWorkTaskConversation(workspace, "api", sessionId)) &&
+      !(await agentDelegationService?.hasPendingChildren({ ...workspace, kind: "api", sessionId })),
     ...(agentAccountProviderConfigSource
       ? { accountProviderConfigSource: agentAccountProviderConfigSource }
       : {}),
@@ -2414,6 +2426,9 @@ export function createLocalServices(options: {
       onStop: async (session) => {
         await agentDelegationService?.pauseParent(acpDelegationParent(session));
       },
+      canPurge: async (session) =>
+        !(await hasActiveWorkTaskConversation(session, "acp", session.id)) &&
+        !(await agentDelegationService?.hasPendingChildren(acpDelegationParent(session))),
       onResultInput: async (session, commandId) => {
         await agentDelegationService?.beforeParentCommand(
           acpDelegationParent(session),
@@ -2661,7 +2676,7 @@ export function createLocalServices(options: {
   };
   agentDelegationService.startScheduler();
   const workTaskService = new WorkTaskService({
-    repo: new WorkTaskRepo(join(getZCodeDataRootDir(), "work-tasks.sqlite")),
+    repo: workTaskRepo,
     attachments: workTaskAttachments,
     execute: (task, context) => workTaskExecution.execute(task, context),
     merge: createWorkTaskMerge(workTaskExecutionDependencies),

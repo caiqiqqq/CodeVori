@@ -1422,6 +1422,18 @@ export async function activateSessionForResume(
   params: ZCodeSessionResumeParams,
   options: { reusePersistedMessages?: boolean } = {},
 ): Promise<ActivatedSessionForResume> {
+  const activate = () => activateSessionForResumeUnlocked(context, params, options);
+  // 修复原因：恢复持久内容与 purge 必须共用生命周期栅栏，避免旧读取在删除后重新登记 runtime。
+  return context.sessionLifecycleGate
+    ? context.sessionLifecycleGate.run(params.sessionId, activate)
+    : activate();
+}
+
+async function activateSessionForResumeUnlocked(
+  context: ZCodeProtocolAgentServerContext,
+  params: ZCodeSessionResumeParams,
+  options: { reusePersistedMessages?: boolean } = {},
+): Promise<ActivatedSessionForResume> {
   const resumeStartedAt = Date.now();
   const activeBeforeWait = context.sessions.has(params.sessionId);
   context.logger?.debug("ZCode Protocol session resume started", {

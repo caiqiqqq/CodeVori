@@ -72,6 +72,24 @@ async function flush(f: Awaited<ReturnType<typeof fixture>>) {
   await f.service.tick();
   await new Promise((resolve) => setImmediate(resolve));
 }
+test("archive removal guard observes queued descendants without canceling or delivering them", async () => {
+  const f = await fixture();
+  try {
+    assert.equal(await f.service.hasPendingChildren(parent), false);
+    await f.service.delegate(draft());
+    assert.equal(await f.service.hasPendingChildren(parent), true);
+    assert.equal(
+      await f.service.hasPendingChildren({ ...parent, workspaceIdentity: "remote:other" }),
+      false,
+    );
+    assert.deepEqual(f.delivered, []);
+    assert.equal((await f.service.list(parent))[0]?.status, "queued");
+    await f.service.cancelAll(parent);
+    assert.equal(await f.service.hasPendingChildren(parent), false);
+  } finally {
+    await f.dispose();
+  }
+});
 test("durable admission, two lanes, dependencies, follow-up and immutable results", async () => {
   const f = await fixture();
   try {

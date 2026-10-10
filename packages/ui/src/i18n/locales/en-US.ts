@@ -1,6 +1,10 @@
 /** English translations */
 import { PRODUCT_NAME } from "@zcode/shared";
 const enUS: Record<string, string> = {
+  "chat.visualization.title": "Interactive preview",
+  "chat.visualization.loading": "Loading preview…",
+  "chat.visualization.failed": "Preview unavailable. Check the workspace connection and HTML file.",
+  "chat.visualization.retry": "Retry",
   "settings.quickMessages.title": "Quick messages",
   "settings.quickMessages.description": "Manage reusable message snippets. Drag to reorder.",
   "settings.quickMessages.search": "Search by title or content",
@@ -992,9 +996,9 @@ const enUS: Record<string, string> = {
   "confirmDialog.taskDeleteTitle": "Delete this task?",
   "confirmDialog.taskDeleteDescription":
     "Task “{taskTitle}” will be removed from this workspace, and the current record cannot be restored.",
-  "confirmDialog.archivedTaskDeleteTitle": "Delete this archived task?",
+  "confirmDialog.archivedTaskDeleteTitle": "Permanently delete this conversation?",
   "confirmDialog.archivedTaskDeleteDescription":
-    "Tasks will be removed from the task list and Archive.",
+    "Permanently deletes this conversation and ZCode-owned contents and attachments. Project files and worktrees are preserved.",
   "taskList.deleteAllArchived": "Delete all archived tasks",
   "taskList.archivedActions": "Archive actions",
   "taskList.archivedTaskCount": "{count} archived tasks",
@@ -2091,7 +2095,7 @@ const enUS: Record<string, string> = {
   "workspace.wslUncPrompt.openWsl": "Open WSL connection",
   "workspace.wslUncPrompt.continuePath": "Continue with path",
   "workspaceSidebar.workspaces": "Tasks",
-  "workspaceSidebar.archivedTasks": "Archived",
+  "workspaceSidebar.archivedTasks": "Archived conversations",
   "workspaceSidebar.taskViewOptions": "Filter and sort",
   "workspaceSidebar.organize": "View",
   "workspaceSidebar.organizeGrouped": "Group",
@@ -2130,7 +2134,6 @@ const enUS: Record<string, string> = {
   "workspaceSidebar.hideSidebar": "Toggle sidebar",
   "workspaceSidebar.toggleSidebar": "Toggle sidebar",
   "workspaceSidebar.resizeSidebar": "Resize sidebar",
-  "workspaceSidebar.toggleArchivedTasks": "Archived",
   "workspaceSidebar.showFileTree": "Show files",
   "workspaceSidebar.sshConnectionTitle": "SSH connection",
   "workspaceSidebar.sshConnectionAlias": "Alias",
@@ -2327,7 +2330,7 @@ const enUS: Record<string, string> = {
   "taskList.newThread": "New task",
   "taskList.forkedUntitled": "New task",
   "taskList.noTasks": "No tasks yet",
-  "taskList.noArchivedTasks": "No archived tasks",
+  "taskList.noArchivedTasks": "No archived conversations",
   "taskList.loading": "Loading tasks...",
   "taskList.syncingRemoteWorkspaces": "Loading remote tasks...",
   "taskList.showMore": "Show more",
@@ -2342,7 +2345,7 @@ const enUS: Record<string, string> = {
   "taskList.archiveLocal": "Archive local task",
   "taskList.archiveRemote": "Archive remote task",
   "taskList.archiveFailed": "Could not archive task",
-  "taskList.unarchive": "Unarchive task",
+  "taskList.unarchive": "Restore conversation",
   "taskList.renamePlaceholder": "Task name",
   "taskList.renameFailed": "Could not rename task",
   "taskList.pinFailed": "Could not update pinned state",
@@ -2423,7 +2426,15 @@ const enUS: Record<string, string> = {
   "acpTrace.status.unknown": "Unknown status",
   "taskList.acpRestoreFailed": "Could not restore Agent session",
   "taskList.acpDeleteFailed": "Could not delete Agent session",
-  "taskList.acpDeleteDescription": `This Agent session will be removed from ${PRODUCT_NAME} and cannot be restored here.`,
+  "taskList.deletePermanently": "Delete permanently",
+  "taskList.archiveDeleteSkipped":
+    "The conversation was restored or is still busy. Refresh and try again.",
+  "taskList.archiveDeleteFailed": "Cleanup is incomplete. Retry permanent deletion.",
+  "taskList.archiveReadOnly": "Archived conversation. Restore it to continue.",
+  "taskList.archiveDeletionPending":
+    "Cleanup is incomplete. Retry permanent deletion from Archived.",
+  "taskList.acpDeleteDescription":
+    "Permanently deletes the ZCode-owned conversation and attachments. Agent-owned history and project files are preserved.",
   "taskList.archivedNativeTaskCount": `{count} archived ${PRODUCT_NAME} tasks (manage Agent sessions individually)`,
   "taskList.deleteAllArchivedNative": `Delete all archived ${PRODUCT_NAME} tasks`,
   "taskList.deleteAllArchivedNativeMenu": `Delete all archived ${PRODUCT_NAME} tasks…`,

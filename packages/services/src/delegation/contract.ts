@@ -20,6 +20,8 @@ import { createServiceDescriptor } from "../descriptors.js";
 export interface IAgentDelegationService {
   targets(): Promise<DelegationAgent[]>;
   list(parent: DelegationParent): Promise<DelegationTask[]>;
+  /** Read-only removal guard; queued/running descendants must be handled explicitly first. */
+  hasPendingChildren(parent: DelegationParent): Promise<boolean>;
   delegate(input: DelegationCreate): Promise<DelegationTask>;
   followUp(input: DelegationFollowUp): Promise<DelegationTask>;
   retry(input: DelegationTarget): Promise<DelegationTask>;

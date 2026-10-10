@@ -1,6 +1,7 @@
 /* oxlint-disable eslint(max-lines) -- 迁移期需要在一个门面里集中维护旧 task projection 到 ZCode session 的协议适配。 */
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
+import { purgeLegacyConversationFiles } from "../session/purgeLegacyConversationFiles.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -1068,6 +1069,15 @@ export function createZCodeTaskServiceAdapter(
     taskIndexSyncer.emitWorkspaceTaskListChanged(params, taskMeta, reason);
   }
 
+  async function purgeConversationContents(target: TaskTarget): Promise<"deleted" | "busy"> {
+    const status = await options.zcodeAgentService.purgeSession({
+      ...target,
+      sessionId: target.taskId,
+    });
+    if (status === "deleted") await purgeLegacyConversationFiles(target);
+    return status;
+  }
+
   function emitWorkspaceConfig(
     params: ZCodeAgentWorkspaceTarget,
     settings: ZCodeSessionSettingsState,
@@ -1145,6 +1155,8 @@ export function createZCodeTaskServiceAdapter(
     params: TaskTargetWithMcpServers,
   ): Promise<ZCodeSessionStateSnapshot> {
     rememberTaskTarget(params);
+    if ((await taskIndexRepo.getTaskMeta(params))?.deletionState)
+      throw new Error("conversation deletion pending; retry deletion");
     const thoughtLevel = params.thoughtLevel?.trim();
     const mcpServers = await resolveProductMcpServers(params.mcpServers);
     return options.zcodeAgentService.resumeSession({
@@ -1403,6 +1415,7 @@ export function createZCodeTaskServiceAdapter(
         patch,
       });
     } catch (error) {
+      if ((await taskIndexRepo.getTaskMeta(params))?.deletionState) throw error;
       // 旧 ZCode session 可能还没有轻量 task index 行。
       // 状态动作只在点开具体 task 后发生，此处允许按需读取当前 task seed index，
       // 但侧边栏全量列表查询仍只读 sqlite，不会启动所有 workspace agent。
@@ -2454,6 +2467,8 @@ export function createZCodeTaskServiceAdapter(
       return tasks.map(rememberIndexedTaskMeta);
     },
 
+    listArchivedWorkspaces: () => taskIndexRepo.listArchivedWorkspaces(),
+
     async archiveStaleTasks(params): Promise<ZCodeTaskMeta[]> {
       // stale archive API 和设置页自动归档保持一致，清理全部历史 provider。
       const archivedTasks = await taskIndexRepo.archiveStaleTasks({
@@ -2863,7 +2878,21 @@ export function createZCodeTaskServiceAdapter(
     },
 
     async deleteArchivedTask(params): Promise<boolean> {
-      const meta = await taskIndexRepo.deleteArchivedTask(params);
+      let meta: ZCodeTaskMeta | null;
+      try {
+        meta = await taskIndexRepo.purgeArchivedTask(params, async () => {
+          emitWorkspaceTaskListChanged(
+            params,
+            (await taskIndexRepo.getTaskMeta(params)) ?? undefined,
+            "task_meta_changed",
+          );
+          return purgeConversationContents(params);
+        });
+      } catch (error) {
+        emitWorkspaceTaskListChanged(params, undefined, "task_meta_changed");
+        throw error;
+      }
+      if (!meta) emitWorkspaceTaskListChanged(params, undefined, "task_meta_changed");
       if (!meta) return false;
       // 先持久化成功再写 overlay；否则失败项会被内存 deleted 标记提前隐藏。
       setOverlay(params, { deleted: true });
@@ -2888,7 +2917,9 @@ export function createZCodeTaskServiceAdapter(
         };
         try {
           // 保留逐项事务与归档 guard：一项失败不能回滚其它成功项，也不能提前隐藏失败项。
-          const meta = await taskIndexRepo.deleteArchivedTask(target);
+          const meta = await taskIndexRepo.purgeArchivedTask(target, () =>
+            purgeConversationContents(target),
+          );
           if (!meta) {
             result.skippedTaskIds.push(taskId);
             continue;
@@ -2900,7 +2931,11 @@ export function createZCodeTaskServiceAdapter(
           logger.warn(undefined, "[ArchivedTaskDeletion] 批次目标删除失败", { ...target, error });
         }
       }
-      if (result.deletedTaskIds.length > 0) {
+      if (
+        result.deletedTaskIds.length > 0 ||
+        result.failedTaskIds.length > 0 ||
+        result.skippedTaskIds.length > 0
+      ) {
         // 根因：循环调用单条接口会逐项广播，驱动 Host 与 UI 各自全量重读。
         // 批次完成只发一次 workspace 事件，仍使所有观察端换代 deleted membership，防止任务复活。
         emitWorkspaceTaskListChanged(params, undefined, "task_deleted");
@@ -3027,15 +3062,15 @@ export function createZCodeTaskServiceAdapter(
     },
 
     async archiveTask(params): Promise<ZCodeTaskMeta> {
-      setOverlay(params, { archived: true });
       const meta = await updateIndexedTaskState(params, { archived: true });
+      setOverlay(params, { archived: true });
       emitWorkspaceTaskListChanged(params, meta, "task_archived");
       return meta;
     },
 
     async unarchiveTask(params): Promise<ZCodeTaskMeta> {
-      setOverlay(params, { archived: false });
       const meta = await updateIndexedTaskState(params, { archived: false });
+      setOverlay(params, { archived: false });
       emitWorkspaceTaskListChanged(params, meta, "task_unarchived");
       return meta;
     },

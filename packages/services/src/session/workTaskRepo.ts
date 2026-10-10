@@ -1,5 +1,6 @@
 import {
   openWorkTaskDatabase,
+  hasActiveWorkTaskConversation,
   listWorkTaskConversations,
   recordWorkTaskChange,
   writeWorkTask,
@@ -93,6 +94,9 @@ export class WorkTaskRepo {
   }
   conversationTasks(): WorkTask[] {
     return listWorkTaskConversations(this.database());
+  }
+  hasActiveConversation(scope: WorkTaskScope, session: NonNullable<WorkTask["session"]>): boolean {
+    return hasActiveWorkTaskConversation(this.database(), scope, session);
   }
   claimConversation(
     task: WorkTask,
