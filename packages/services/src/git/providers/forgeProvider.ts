@@ -17,9 +17,12 @@ import type {
   ForgeImageRequest,
   ForgeImagePreview,
   ForgeIssueOptions,
+  ForgeImageUploadRequest,
+  ForgeImageUploadResult,
 } from "@zcode/shared";
 
 export interface ForgeProviderAdapter {
+  uploadImage?(request: ForgeImageUploadRequest): Promise<ForgeImageUploadResult>;
   listItems(request: ForgeListQuery): Promise<ForgeItemList>;
   getItem(request: ForgeItemRequest): Promise<ForgeItemDetail>;
   getItemExtras?(request: ForgeItemRequest): Promise<ForgeItemExtras>;
