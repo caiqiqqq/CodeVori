@@ -24,6 +24,14 @@ import { projectLegacyCompaction, projectTypedCompaction } from "./acpCompaction
 import { projectAcpSessionFailure } from "./acpSessionFailures.js";
 import { AcpTerminals } from "./acpTerminals.js";
 import { connectAcpClientTransport } from "./acpClientTransport.js";
+import { OperationDiagnostics } from "@zcode/rpc";
+import { createServiceLogger } from "../logger/serviceLogger.js";
+
+const diagnosticLogger = createServiceLogger("acp-connection");
+const diagnostics = new OperationDiagnostics(
+  (record) => diagnosticLogger.info(undefined, "[diagnostics]", record),
+  { scope: "acp-connection" },
+);
 
 const START_TIMEOUT_MS = 20_000;
 const MAX_INITIAL_USAGE_SESSIONS = 16;
@@ -36,7 +44,14 @@ export class AcpSessionLoadError extends Error {
   }
 }
 
-export const connectAcpAgent: AcpConnectionFactory = async (input) => {
+export const connectAcpAgent: AcpConnectionFactory = (input) =>
+  diagnostics.run(`acp.connect.${input.agent}`, (timing) => connectWithDiagnostics(input, timing));
+
+async function connectWithDiagnostics(
+  input: Parameters<AcpConnectionFactory>[0],
+  timing: Pick<ReturnType<OperationDiagnostics["start"]>, "phase">,
+): Promise<AcpConnectionPort> {
+  timing.phase("spawn");
   const launch = input.launch ?? {
     command: acpAgentDefinition(input.agent).command,
     args: [...acpAgentDefinition(input.agent).args],
@@ -63,6 +78,12 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       reject(error);
     });
     child.once("exit", (code, signal) => {
+      diagnostics.event(`acp.exit.${input.agent}.${signal ?? "exit"}`, {
+        pid: child.pid ?? null,
+        exitCode: code,
+        requested: closed,
+        signaled: signal !== null,
+      });
       exitReason = `ACP Agent 已退出 (${signal ?? code ?? "unknown"})`;
       reject(new Error(exitReason));
     });
@@ -245,6 +266,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
       exited,
       timeout,
       (async () => {
+        timing.phase("initialize");
         const initialized = await connection.request("initialize", {
           protocolVersion: PROTOCOL_VERSION,
           clientCapabilities: {
@@ -260,6 +282,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         }
         agentInfo = initialized.agentInfo;
         promptCapabilities = initialized.agentCapabilities?.promptCapabilities;
+        timing.phase("mcp-projection");
         const mcpServers = await projectAcpMcpServers(
           input.mcpServers ?? [],
           initialized.agentCapabilities?.mcpCapabilities,
@@ -295,6 +318,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
         for (const server of pluginServers) provisionedMcpNames.add(server.name);
         receivingInitialUsage = true;
         if (sessionId) {
+          timing.phase("session-load");
           if (!initialized.agentCapabilities?.loadSession) {
             // 修复原因：升级后的适配器可能不再声明 loadSession；空会话仍可安全接替，
             // 有聊天内容时 Host 会保留历史并报告原错误。
@@ -315,6 +339,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
           configOptions = projectAcpConfigOptions(loaded.configOptions);
           modeState = projectAcpModeState(loaded.modes);
         } else {
+          timing.phase("session-new");
           const created = await connection.request("session/new", {
             cwd: input.workspacePath,
             mcpServers,
@@ -339,6 +364,7 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
             env: launch.env,
           })
         : Promise.resolve(null);
+    timing.phase("native-usage");
     let nativeUsage = await readNativeUsage();
     return {
       sessionId: activeSessionId,
@@ -392,4 +418,4 @@ export const connectAcpAgent: AcpConnectionFactory = async (input) => {
   } finally {
     if (startTimer) clearTimeout(startTimer);
   }
-};
+}
