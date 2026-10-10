@@ -2,6 +2,9 @@ import { join } from "node:path";
 
 export const DEFAULT_GIT_DISCOVERY_TIMEOUT_MS = 3_000;
 export const DEFAULT_GIT_COMMAND_TIMEOUT_MS = 15_000;
+// 修复依据：生产计时显示工作树目录删除会超过 15s；中断会留下部分目录及 Git 登记。
+// 独立预算仅用于非 force 删除，不放宽查询超时，也不提前报告归档成功。
+export const DEFAULT_GIT_WORKTREE_REMOVE_TIMEOUT_MS = 2 * 60_000;
 // `git push` 可能会被仓库的 pre-push hook 阻塞较长时间（例如执行 `pnpm test`）。
 // 继续沿用普通 Git 命令的 15s 超时会把显式 push 误判成失败，因此单独放宽 push 超时。
 export const DEFAULT_GIT_PUSH_TIMEOUT_MS = 10 * 60_000;

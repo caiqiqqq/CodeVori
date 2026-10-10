@@ -246,6 +246,14 @@ export const workTaskSchema = workTaskScopeSchema
       .strict()
       .optional(),
     worktree: workTaskWorktreeSchema.optional(),
+    worktreeCleanup: z
+      .object({
+        id: z.string().uuid(),
+        phase: z.enum(["running", "failed"]),
+        error: z.string().optional(),
+      })
+      .strict()
+      .optional(),
     merge: workTaskMergeSchema.optional(),
     failureReason: z.string().optional(),
     completion: z.enum(["accepted_without_merge", "merged"]).optional(),

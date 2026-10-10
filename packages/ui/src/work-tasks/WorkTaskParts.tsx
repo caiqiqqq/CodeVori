@@ -29,13 +29,20 @@ export function WorkTaskIconButton({
 }
 export function WorkTaskStatus({ task }: { task: WorkTask }) {
   const t = useWorkTaskMessages();
-  const active = WORK_TASK_ACTIVE_STATUSES.includes(task.status);
+  const cleaning = task.worktreeCleanup?.phase === "running";
+  const cleanupFailed = task.worktreeCleanup?.phase === "failed";
+  const active = cleaning || WORK_TASK_ACTIVE_STATUSES.includes(task.status);
   return (
     <span
       data-work-task-status={task.status}
+      data-worktree-cleanup={task.worktreeCleanup?.phase}
+      role={task.worktreeCleanup ? "status" : undefined}
+      title={task.worktreeCleanup?.error ? t(`error.${task.worktreeCleanup.error}`) : undefined}
       className={cn(
         "inline-flex max-w-full shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-ui-xs",
-        task.status === "failed" || (task.merge?.phase === "failed" && task.status !== "done")
+        cleanupFailed ||
+          task.status === "failed" ||
+          (task.merge?.phase === "failed" && task.status !== "done")
           ? "bg-destructive/10 text-destructive"
           : task.status === "awaiting_input"
             ? "bg-interaction-confirmation-surface text-interaction-confirmation-foreground"
@@ -47,9 +54,11 @@ export function WorkTaskStatus({ task }: { task: WorkTask }) {
       {active && task.status !== "awaiting_input" ? (
         <LoaderCircle className="size-3 shrink-0 animate-spin" />
       ) : null}
-      {task.merge && (task.status !== "done" || task.completion === "merged")
-        ? t(`mergePhase.${task.merge.phase}`)
-        : t(`status.${task.status}`)}
+      {task.worktreeCleanup
+        ? t(`cleanup.${task.worktreeCleanup.phase}`)
+        : task.merge && (task.status !== "done" || task.completion === "merged")
+          ? t(`mergePhase.${task.merge.phase}`)
+          : t(`status.${task.status}`)}
     </span>
   );
 }

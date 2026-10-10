@@ -11,6 +11,64 @@ import { createGitCommandProvider } from "../src/git/providers/gitCommandProvide
 
 const exec = promisify(execFile);
 
+for (const durationMs of [16_000, 121_000]) {
+  test(`directory removal with ${durationMs}ms elapsed honors its budget and runtime barrier`, async () => {
+    const f = await fixture();
+    const commands = createGitCommandProvider();
+    let held = false;
+    let removed = false;
+    const service = createGitService({
+      repo: createGitCliRepo({
+        commandProvider: {
+          resolveGitBinary: () => commands.resolveGitBinary(),
+          run: async (input) => {
+            if (input.args[0] !== "worktree" || input.args[1] !== "remove") {
+              assert.equal(input.timeoutMs, 15_000);
+              return commands.run(input);
+            }
+            assert.equal(held, true);
+            // 模拟真实日志中超过 15 秒的磁盘删除，不让回归测试实际等待慢磁盘。
+            if ((input.timeoutMs ?? 15_000) < durationMs) {
+              const result = await commands.run({ ...input, args: ["--version"] });
+              return { ...result, durationMs: input.timeoutMs!, exitCode: null, timedOut: true };
+            }
+            const result = await commands.run(input);
+            removed = result.exitCode === 0;
+            return { ...result, durationMs };
+          },
+        },
+      }),
+      prepareWorktreeRemoval: async () => {
+        held = true;
+        return {
+          dispose: () => {
+            held = false;
+          },
+        };
+      },
+    });
+    try {
+      assert.deepEqual(
+        await service.removeManagedWorktree({
+          worktreeRootPath: f.root,
+          worktreePath: f.target,
+          projectPath: f.project,
+          expectedBranchName: "worktree/abcd",
+        }),
+        durationMs === 16_000 ? { ok: true } : { ok: false, issue: "command-failed" },
+      );
+      assert.equal(removed, durationMs === 16_000);
+      assert.equal(held, false);
+      if (removed) await assert.rejects(stat(f.target), { code: "ENOENT" });
+      else await stat(join(f.target, "file.txt"));
+      await exec("git", ["-C", f.project, "show-ref", "--verify", "refs/heads/worktree/abcd"]);
+      await stat(join(f.outside, "file.txt"));
+    } finally {
+      await rm(f.directory, { recursive: true, force: true });
+    }
+  });
+}
+
 for (const outcome of ["success", "invalid-target", "command-failed", "exception"] as const) {
   test(`runtime startup barrier stays held through Git removal and releases on ${outcome}`, async () => {
     const f = await fixture();

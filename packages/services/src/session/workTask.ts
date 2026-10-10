@@ -47,6 +47,7 @@ export interface IWorkTaskService {
   cancel(input: WorkTaskTarget): Promise<WorkTask>;
   complete(input: WorkTaskComplete): Promise<WorkTask>;
   merge(input: WorkTaskMergeRequest): Promise<WorkTask>;
+  /** removeWorktree returns durable admission; list/events carry cleanup outcome. */
   archive(input: WorkTaskArchive): Promise<WorkTask>;
   /** @deprecated Compatibility setting only; does not limit task execution. */
   setConcurrency(input: WorkTaskScope & { concurrency: number }): Promise<void>;
