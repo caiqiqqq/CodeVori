@@ -336,6 +336,148 @@ const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII=",
   "base64",
 );
+
+test("Enterprise modern and legacy images use the bound token only at exact configured endpoints", async () => {
+  const base = "https://enterprise.example.invalid:8443/git";
+  for (const path of [
+    "/user-attachments/assets/12345678-1234-1234-1234-123456789abc",
+    "/files/42/screen%20shot.png",
+  ]) {
+    const f = fixture(
+      `${base}/team/project.git`,
+      [account("github", base)],
+      [new Response(png, { headers: { "content-type": "image/png" } })],
+    );
+    assert.equal(
+      (await f.service.readForgeImage({ ...(await f.target()), url: base + path })).dataBase64,
+      png.toString("base64"),
+    );
+    assert.equal(f.state.calls[0]!.url.href, base + path);
+    assert.equal(
+      new Headers(f.state.calls[0]!.init.headers).get("Authorization"),
+      "Bearer synthetic-forge-token",
+    );
+    assert.equal(f.state.calls[0]!.init.redirect, "manual");
+    assert.equal(f.state.calls[0]!.init.credentials, "omit");
+  }
+});
+
+test("Gitea/Forgejo UUID links normalize to the token-enabled download endpoint", async () => {
+  const uuid = "12345678-1234-1234-1234-123456789abc";
+  for (const base of [
+    "https://gitea.example.invalid/git",
+    "https://forgejo.example.invalid:8443/forge",
+    "http://forge.example.invalid:3000/git",
+  ]) {
+    for (const path of [
+      `/attachments/${uuid}`,
+      `/team/project/attachments/${uuid}`,
+      `/team/project/issues/7/attachments/${uuid}`,
+    ]) {
+      const f = fixture(
+        `${base}/team/project.git`,
+        [account("gitea", base)],
+        [new Response(png, { headers: { "content-type": "image/png" } })],
+      );
+      assert.equal(
+        (await f.service.readForgeImage({ ...(await f.target()), url: base + path })).dataBase64,
+        png.toString("base64"),
+      );
+      assert.equal(
+        f.state.calls.length,
+        1,
+        "The issue asset metadata API is not an image download",
+      );
+      assert.equal(f.state.calls[0]!.url.href, `${base}/attachments/${uuid}`);
+      assert.equal(
+        new Headers(f.state.calls[0]!.init.headers).get("Authorization"),
+        "token synthetic-forge-token",
+      );
+      assert.equal(f.state.calls[0]!.init.redirect, "manual");
+      assert.equal(f.state.calls[0]!.init.credentials, "omit");
+    }
+  }
+});
+
+test("Self-hosted private media rejects untrusted paths and stale repository/account before HTTP", async () => {
+  const uuid = "12345678-1234-1234-1234-123456789abc";
+  for (const provider of ["github", "gitea"] as const) {
+    const base = "https://forge.example.invalid:8443/git";
+    const path =
+      provider === "github" ? `/user-attachments/assets/${uuid}` : `/attachments/${uuid}`;
+    const url = base + path;
+    const f = fixture(`${base}/team/project.git`, [account(provider, base)]);
+    const request = { ...(await f.target()), url };
+    for (const source of [
+      url.replace("https:", "http:"),
+      url.replace(":8443", ""),
+      url.replace("/git", ""),
+      `${url}?token=x`,
+      `${url}#x`,
+      `${base}/login`,
+      `${base}/other/project/attachments/${uuid}`,
+      url.replace("forge.example.invalid:8443/git", "github.com"),
+      `${base}/files/42/%2fsecret.png`,
+      `${base}/attachments/not-a-uuid`,
+    ]) {
+      await assert.rejects(
+        f.service.readForgeImage({ ...request, url: source }),
+        /FORGE_INVALID_MEDIA/,
+      );
+    }
+    f.state.accounts = [];
+    await assert.rejects(f.service.readForgeImage(request), /FORGE_MISSING_ACCOUNT/);
+    f.state.accounts = [account(provider, base)];
+    f.state.remote = `${base}/other/project.git`;
+    await assert.rejects(f.service.readForgeImage(request), /FORGE_TARGET_CHANGED/);
+    assert.equal(f.state.calls.length, 0);
+  }
+});
+
+test("Self-hosted media sanitizes failures and refuses login/object-storage redirects", async () => {
+  const uuid = "12345678-1234-1234-1234-123456789abc";
+  for (const provider of ["github", "gitea"] as const) {
+    const base = "https://forge.example.invalid/git";
+    const url =
+      base + (provider === "github" ? `/user-attachments/assets/${uuid}` : `/attachments/${uuid}`);
+    for (const [reply, error] of [
+      [new Response("private", { status: 401 }), "FORGE_AUTHENTICATION"],
+      [new Response("private", { status: 403 }), "FORGE_FORBIDDEN"],
+      [new Response("private", { status: 404 }), "FORGE_NOT_FOUND"],
+      [new Response("private", { status: 429 }), "FORGE_RATE_LIMIT"],
+      [new Error("sensitive network details"), "FORGE_NETWORK"],
+      [
+        new Response("<html>sign in</html>", { headers: { "content-type": "text/html" } }),
+        "FORGE_RESPONSE",
+      ],
+      [
+        new Response("bad signature", { headers: { "content-type": "image/png" } }),
+        "FORGE_RESPONSE",
+      ],
+      [
+        new Response(new Uint8Array(12 * 1024 * 1024 + 1), {
+          headers: { "content-type": "image/png" },
+        }),
+        "FORGE_RESPONSE",
+      ],
+      ...[
+        `${base}/login`,
+        "/login",
+        "https://storage.example.invalid/image.png?signature=synthetic",
+      ].map((location) => [
+        new Response(null, { status: 302, headers: { location } }),
+        "FORGE_INVALID_MEDIA",
+      ]),
+    ] as const) {
+      const f = fixture(`${base}/team/project.git`, [account(provider, base)], [reply]);
+      await assert.rejects(
+        f.service.readForgeImage({ ...(await f.target()), url }),
+        (failure: unknown) => failure instanceof Error && failure.message === error,
+      );
+      assert.equal(f.state.calls.length, 1);
+    }
+  }
+});
 test("GitHub private attachments use the selected account and drop credentials at storage", async () => {
   const url = "https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc";
   const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);

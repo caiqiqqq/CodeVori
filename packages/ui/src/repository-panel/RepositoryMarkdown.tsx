@@ -8,6 +8,7 @@ import { ImagePreviewDialog } from "@/components/ai-elements/image-preview-dialo
 import { useRepositoryImage } from "@/hooks/useRepositoryImage.js";
 import {
   isGithubAttachmentImage,
+  isGiteaAttachmentImage,
   isGitlabUploadImage,
   resolveForgeContentUrl,
 } from "@/lib/forgeContent.js";
@@ -36,8 +37,11 @@ function RepositoryImage({
 }) {
   const t = useRepositoryMessages();
   const privateUpload = isGitlabUploadImage(context.repository, source);
-  // GitHub 私有附件也需要绑定 Host 的账号读取，直接交给 img 会得到匿名 404。
-  const hostRead = privateUpload || isGithubAttachmentImage(context.repository, source);
+  // 各平台私有附件必须由绑定 Host 的账号读取；匿名 img 会返回 404 或登录页。
+  const hostRead =
+    privateUpload ||
+    isGithubAttachmentImage(context.repository, source) ||
+    isGiteaAttachmentImage(context.repository, source);
   const media = useRepositoryImage(
     context.request,
     context.gitService,

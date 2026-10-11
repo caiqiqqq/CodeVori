@@ -1,5 +1,89 @@
 # Repository Panel
 
+## Repository Markdown parser isolation
+
+- Relative image and link resolution uses the current content context for every
+  supported forge: GitHub.com, GitHub Enterprise, GitLab (including nested groups
+  and server base paths), and Gitea/Forgejo. Do not reuse a previous repository,
+  item, account or Host's resolver after switching, including same-provider and
+  same-URL targets on different Hosts. Generic Git has no issue/media adapter.
+- Streamdown caches processors by plugin name and serialized options, rather
+  than function identity. Use a stable plugin with an explicit content-context
+  epoch in its options. The existing Markdown context identity owns this epoch;
+  it is transient, contains no credentials, and is also the render remount key.
+  Parser reuse cannot retain an older resolver. Do not fix this by recognizing
+  a hardcoded GitHub URL after it has already been rewritten incorrectly.
+- Parse raw HTML before rewriting its img/src and a/href targets; then run the
+  existing sanitizer and URL hardening. Markdown and HTML use the same resolver.
+  Preserve safe external absolute URLs and reject executable/local URLs.
+- Address resolution does not grant attachment authorization. Retain the bound
+  Host's media adapters and their exact target/path guards. GitHub Enterprise
+  and Gitea/Forgejo attachment reads use the same bound Host/account path as
+  GitHub.com and GitLab. A shared pure classifier owns the UI/Host URL contract;
+  the Host revalidates the actual repository/account before every read.
+  Do not send credentials to arbitrary same-origin URLs or claim support for
+  every custom server's SSO/object-storage configuration from forge discovery.
+  Pre-create upload capability remains provider-specific and unchanged.
+
+### Self-hosted attachment transport
+
+- Derive the server base path from the verified repository URL and encoded
+  owner/repository name. Require the configured HTTP(S) origin, port and base
+  path, with no URL credentials, query or fragment. Preserve HTTPS-only
+  GitHub.com attachment rules. Renderer receives only bounded raster bytes.
+- GitHub Enterprise accepts `/user-attachments/assets/<UUID>` under the server
+  base and legacy `/files/<numeric-id>/<filename>` (one safe filename segment).
+  Only these endpoints receive the selected account's Bearer token. Reject
+  Enterprise-to-GitHub.com and other servers' attachment addresses.
+- Gitea/Forgejo accepts `/attachments/<UUID>` under the server base and the
+  current repository's `/attachments/<UUID>` or
+  `/issues/<positive-index>/attachments/<UUID>` links. Normalize these UUIDs
+  to the server's token-enabled `/attachments/<UUID>` download route; its
+  permission check decides access. Issue attachment API responses are metadata,
+  not image bytes. Use `Authorization: token` only at this canonical route.
+- Self-hosted adapters do not follow redirects: custom SSO/login and external
+  object-storage redirects require an explicit future server contract. Keep
+  retry/original-page actions and report failure without anonymous fallback or
+  forwarding credentials. Existing GitHub.com signed-storage allowlist and
+  GitLab isolated web login remain unchanged. All adapters retain the 15s timeout,
+  12 MiB limit, raster MIME/signature validation and sanitized error codes.
+
+```text
+repository image -> shared endpoint classifier -> existing useRepositoryImage
+  -> selected Host -> target/account revalidation -> same classifier
+  -> provider token at canonical endpoint -> bounded raster -> hook-owned blob
+scope change -> cancel projection/revoke blob -> discard stale Host reply
+desktop + mobile -> same selected Host/service (no new session or stream state)
+```
+
+Acceptance: direct modern/legacy Enterprise and Gitea/Forgejo UUID downloads;
+configured base paths, ports and HTTP(S) origins; credentials only at the exact
+endpoint; reject foreign repository/server/base paths, encoded separators,
+queries, fragments and changed targets before HTTP; reject login/storage
+redirects, wrong MIME/signature, oversized bodies and network/auth failures.
+Exercise real renderer Host reads, retry/zoom and stale Host/account switching
+on desktop/mobile in both themes. Tests use synthetic servers; actual custom
+server token/SSO behavior requires deployment-specific verification.
+
+```text
+current content context -> existing identity epoch -> parser plugin options
+  -> raw HTML -> current URL resolver -> sanitizer/hardening
+  -> repository image classification
+     -> supported private attachment -> bound Host validation -> raster -> blob
+     -> other web image -> credential-free image render
+scope change -> new epoch/parser + existing hook cancellation/blob revocation
+desktop and mobile -> same resolver + same selected Host (no stream changes)
+```
+
+Acceptance: render GitHub.com, Enterprise, two GitLab projects, Gitea and Forgejo
+in one process in both orders, with base paths/ports and identical source text.
+Verify Markdown/HTML images and links, project-relative GitLab uploads, absolute
+external URLs and blocked local/script URLs. Synthetic browser E2E exercises
+the real repository renderer across provider/Host/account/item switches and
+new-issue-style web contexts; assert image pixels, exact Host read URL/target,
+stale-response rejection and no token-bearing anonymous/foreign requests at
+desktop/mobile widths in both themes. Existing image/login tests stay valid.
+
 ## Forge state filter and task progress
 
 - The list dropdown filters only the forge item's open/closed/all state. Label
