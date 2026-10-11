@@ -1,3 +1,4 @@
+import { normalizeProxyOnlyDomains } from "@zcode/shared";
 import type { AppSettings } from "@zcode/shared";
 
 export function normalizeSettingsPatch(patch: Partial<AppSettings>): Partial<AppSettings> {
@@ -44,6 +45,13 @@ export function normalizeSettingsPatch(patch: Partial<AppSettings>): Partial<App
     // RPC 会吞掉 undefined，这里把空串归一成 undefined，避免旧代理继续留在 setting.json。
     const trimmedHttpProxy = normalizedPatch.httpProxy.trim();
     normalizedPatch.httpProxy = trimmedHttpProxy.length > 0 ? trimmedHttpProxy : undefined;
+  }
+
+  if ("httpProxyOnlyDomains" in normalizedPatch) {
+    // 清空时必须删除持久化字段；RPC 的 undefined 会被丢弃，所以 UI 传空串。
+    normalizedPatch.httpProxyOnlyDomains = normalizeProxyOnlyDomains(
+      normalizedPatch.httpProxyOnlyDomains,
+    );
   }
 
   if (

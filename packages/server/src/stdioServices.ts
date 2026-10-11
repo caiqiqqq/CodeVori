@@ -3,6 +3,7 @@ import {
   parseServiceAuthorityMode,
   ZCODE_REMOTE_HTTP_PROXY_ENV_KEY,
   ZCODE_REMOTE_NO_PROXY_ENV_KEY,
+  ZCODE_REMOTE_PROXY_ONLY_DOMAINS_ENV_KEY,
   ZCODE_REMOTE_RUNTIME_NETWORK_AUTHORITY_ENV_KEY,
 } from "@zcode/shared";
 
@@ -15,6 +16,7 @@ interface CreateStdioServicesOptions {
 interface RemoteAgentNetworkOptions {
   httpProxy?: string;
   noProxy?: string;
+  onlyDomains?: string;
 }
 
 function resolveRemoteAgentNetworkFromEnv(
@@ -26,6 +28,7 @@ function resolveRemoteAgentNetworkFromEnv(
   return {
     httpProxy: env[ZCODE_REMOTE_HTTP_PROXY_ENV_KEY]?.trim() || undefined,
     noProxy: env[ZCODE_REMOTE_NO_PROXY_ENV_KEY]?.trim() || undefined,
+    onlyDomains: env[ZCODE_REMOTE_PROXY_ONLY_DOMAINS_ENV_KEY]?.trim() || undefined,
   };
 }
 

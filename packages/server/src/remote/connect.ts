@@ -9,6 +9,7 @@ import {
   formatLogPrefix,
   ZCODE_REMOTE_HTTP_PROXY_ENV_KEY,
   ZCODE_REMOTE_NO_PROXY_ENV_KEY,
+  ZCODE_REMOTE_PROXY_ONLY_DOMAINS_ENV_KEY,
   ZCODE_REMOTE_RUNTIME_NETWORK_AUTHORITY_ENV_KEY,
 } from "@zcode/shared";
 import type { IRemoteBackend } from "./backend.js";
@@ -42,6 +43,7 @@ export interface ConnectOptions extends DeployOptions {
 export interface RemoteRuntimeNetworkOptions {
   httpProxy?: string;
   noProxy?: string;
+  onlyDomains?: string;
   /** 只允许 Host 设置权威值覆盖远端自身的旧设置。 */
   authoritative?: boolean;
 }
@@ -380,6 +382,11 @@ function buildRemoteServerCommand(
     if (remoteRuntimeNetwork.httpProxy !== undefined) {
       envParts.push(
         `${ZCODE_REMOTE_HTTP_PROXY_ENV_KEY}=${quotePosixShellArg(remoteRuntimeNetwork.httpProxy)}`,
+      );
+    }
+    if (remoteRuntimeNetwork.onlyDomains !== undefined) {
+      envParts.push(
+        `${ZCODE_REMOTE_PROXY_ONLY_DOMAINS_ENV_KEY}=${quotePosixShellArg(remoteRuntimeNetwork.onlyDomains)}`,
       );
     }
     if (remoteRuntimeNetwork.noProxy !== undefined) {

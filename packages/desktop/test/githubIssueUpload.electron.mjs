@@ -18,6 +18,7 @@ try {
     import {createHash} from 'node:crypto';
     import {app,BrowserWindow,session} from 'electron';
     import {executeGithubImageUpload} from ${JSON.stringify(new URL("../src/main/electronGithubImageUpload.ts", import.meta.url).pathname)};
+    import {applyDesktopChromiumNetworkPolicies} from ${JSON.stringify(new URL("../src/main/desktopNetworkPolicy.ts", import.meta.url).pathname)};
     app.setPath('userData',${JSON.stringify(directory)});
     app.on('window-all-closed',()=>{});
     const deadline=setTimeout(()=>{console.error('Native test timed out');app.exit(1)},20000);
@@ -26,13 +27,17 @@ try {
     const url='https://github.com/user-attachments/assets/4c88bcca-98b9-4aaa-9c0c-2f869f0c1b01';
     const key=createHash('sha256').update(JSON.stringify([context.serverUrl,context.accountId,context.username])).digest('hex');
     const profile=session.fromPartition('persist:github-issue-upload-'+key);
+    await applyDesktopChromiumNetworkPolicies(session,{httpProxy:'http://127.0.0.1:17890',httpProxyOnlyDomains:'github.com'},{info(){},warn(){}});
+    let policyCalls=0;const setProxy=profile.setProxy.bind(profile);profile.setProxy=(config)=>{policyCalls++;return setProxy(config)};
     let username='tester',hasInput=true;
-    await profile.protocol.handle('https',()=>new Response('<!doctype html><meta name="user-login" content="'+username+'"><textarea aria-label="Markdown value"></textarea>'+(hasInput?'<input type="file"><script>document.querySelector("input").addEventListener("change",()=>{document.querySelector("textarea").value="![image]('+url+')"})</script>':''),{headers:{'Content-Type':'text/html'}}));
+    await profile.protocol.handle('https',()=>{assert.equal(policyCalls,1,'Proxy policy must complete before navigation');return new Response('<!doctype html><meta name="user-login" content="'+username+'"><textarea aria-label="Markdown value"></textarea>'+(hasInput?'<input type="file"><script>document.querySelector("input").addEventListener("change",()=>{document.querySelector("textarea").value="![image]('+url+')"})</script>':''),{headers:{'Content-Type':'text/html'}})});
     app.on('browser-window-created',(_event,window)=>window.hide());
     const parent=new BrowserWindow({show:false});const keeper=new BrowserWindow({show:false});
     const run=(signal=new AbortController().signal)=>executeGithubImageUpload({win:parent,context,signal});
     try {
       assert.deepEqual(await run(),{url});
+      assert.equal(await profile.resolveProxy('https://github.com'),'PROXY 127.0.0.1:17890');
+      assert.equal(await profile.resolveProxy('https://other.test'),'DIRECT');
       assert.equal(BrowserWindow.getAllWindows().length,2,'Successful upload closes only its native window');
       await profile.cookies.set({url:'https://github.com',name:'synthetic-session',value:'wrong-account'});
       username='different-user';
@@ -46,6 +51,13 @@ try {
       const parentClosed=assert.rejects(run(),/FORGE_MEDIA_AUTHENTICATION_CANCELLED/);
       setTimeout(()=>parent.destroy(),100);await parentClosed;
       assert.equal(BrowserWindow.getAllWindows().length,1,'Parent disposal closes the upload window');
+      const setupParent=new BrowserWindow({show:false});setupParent.on('close',event=>event.preventDefault());
+      const setupContext={...context,accountId:'5c88bcca-98b9-4aaa-9c0c-2f869f0c1b01'};
+      const setupKey=createHash('sha256').update(JSON.stringify([setupContext.serverUrl,setupContext.accountId,setupContext.username])).digest('hex');
+      const setupProfile=session.fromPartition('persist:github-issue-upload-'+setupKey);
+      let release;setupProfile.setProxy=()=>new Promise(resolve=>{release=resolve});
+      const setupClosed=assert.rejects(executeGithubImageUpload({win:setupParent,context:setupContext,signal:new AbortController().signal}),/FORGE_MEDIA_AUTHENTICATION_CANCELLED/);
+      setupParent.close();release();await setupClosed;assert.equal(BrowserWindow.getAllWindows().length,2,'A prevented parent close during network setup must not create an upload child');setupParent.destroy();
       console.log('Native GitHub image upload Electron tests passed');clearTimeout(deadline);if(!parent.isDestroyed())parent.destroy();keeper.destroy();app.exit(0);
     }catch(error){console.error(error);clearTimeout(deadline);app.exit(1)}
     }).catch(error=>{console.error(error);app.exit(1)});

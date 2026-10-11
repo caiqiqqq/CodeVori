@@ -446,6 +446,9 @@ panel remount / page restart -> local preference -> same navigation/read paths
   Login/cancel/account mismatch and upload failures preserve the client draft.
   On account mismatch, clear only this feature's isolated native session so the
   next explicit retry can sign in correctly; never touch the user's browser profile.
+- Native account windows apply the existing Desktop HTTP proxy/domain-selection
+  policy before navigation. Network settings are shared while cookies stay
+  isolated; these windows keep strict TLS verification. See `network-proxy.md`.
 - The native upload transport is a port behind Host, not UI or task state in Main.
   Extend the strict existing Host native-media protocol with typed upload request
   and result variants. Tokens/cookies stay on Host/Main; native replies contain

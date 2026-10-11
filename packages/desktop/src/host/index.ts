@@ -1627,6 +1627,7 @@ async function resolveDesktopRemoteRuntimeNetwork(
       authoritative: true,
       httpProxy: settings.httpProxy,
       noProxy: settings.httpProxyNoProxy,
+      onlyDomains: settings.httpProxyOnlyDomains,
     };
   } catch {
     // 设置读取失败时保留原有远程连接行为，不让网络增强把 WSL 工作区直接阻断。
@@ -2839,6 +2840,7 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
           return {
             httpProxy: settings.httpProxy,
             noProxy: settings.httpProxyNoProxy,
+            onlyDomains: settings.httpProxyOnlyDomains,
             caCertPath: settings.httpProxyCaCertPath,
           };
         });

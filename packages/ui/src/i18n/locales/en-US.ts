@@ -2963,6 +2963,14 @@ const enUS: Record<string, string> = {
     "Route model, MCP, command-tool, and app renderer egress traffic through this proxy; system environment variables are not read. Leave blank and that traffic connects directly, while the embedded browser follows your system proxy settings. Restart the app to take effect.",
   "settings.httpProxyPlaceholder":
     "Blank means the embedded browser follows the system proxy, e.g. http://127.0.0.1:7890",
+  "settings.httpProxyOnlyDomains": "Only these domains use the proxy",
+  "settings.httpProxyOnlyDomainsDescription":
+    "Only matching domains use the HTTP proxy; other addresses connect directly. Leave empty to proxy all targets. Use exact hostnames or *.domain (subdomains only), separated by commas. No proxy rules take precedence. Restart the app to apply.",
+  "settings.httpProxyOnlyDomainsPlaceholder":
+    "e.g. github.com,*.github.com,*.githubusercontent.com",
+  "settings.httpProxyOnlyDomainsInvalid":
+    "Enter valid hostnames or *.domain, up to 64 rules. Do not include a scheme, port or path.",
+  "settings.httpProxyOnlyDomainsSaveFailed": "Could not save proxy domains. Please retry.",
   "settings.httpProxyNoProxy": "No proxy",
   "settings.httpProxyNoProxyDescription":
     "Requests matching these hosts connect directly instead of using the HTTP proxy. Separate rules with commas. Restart the app to take effect.",

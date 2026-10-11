@@ -1,11 +1,13 @@
+import { normalizeProxyOnlyDomains, parseProxyBypassRules } from "@zcode/shared";
 import { X509Certificate } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import type { ProxyConfig, Session } from "electron";
-import { EMBEDDED_BROWSER_PARTITION } from "./browserDataManager.js";
+import { EMBEDDED_BROWSER_PARTITION } from "./browserSessionPartition.js";
 
-interface DesktopNetworkPolicySettings {
+export interface DesktopNetworkPolicySettings {
   httpProxy?: string;
   httpProxyNoProxy?: string;
+  httpProxyOnlyDomains?: string;
   httpProxyCaCertPath?: string;
   embeddedBrowserAllowInsecureCertificates?: boolean;
 }
@@ -48,11 +50,37 @@ const USE_CHROMIUM_DEFAULT_VERIFICATION = -3;
 const ACCEPT_CERTIFICATE = 0;
 const MAX_CERTIFICATE_CHAIN_DEPTH = 16;
 
+let startupNetworkSettings: DesktopNetworkPolicySettings = {};
+let startupNetworkLogger: DesktopNetworkPolicyLogger = { info() {}, warn() {} };
+const nativeSessionPolicies = new WeakMap<Session, Promise<void>>();
+
+export function getDesktopNetworkPolicySettings(): Readonly<DesktopNetworkPolicySettings> {
+  return startupNetworkSettings;
+}
+
+export async function applyDesktopBrowserSessionNetworkPolicy(target: Session): Promise<void> {
+  let pending = nativeSessionPolicies.get(target);
+  if (!pending) {
+    // 隔离登录 partition 过去没有接入代理策略；并发图片复用初始化，避免 closeAllConnections 中断另一张上传。
+    pending = applyDesktopSessionNetworkPolicy(
+      target,
+      startupNetworkSettings,
+      startupNetworkLogger,
+      { fallbackProxyMode: "system" },
+    );
+    nativeSessionPolicies.set(target, pending);
+    void pending.catch(() => nativeSessionPolicies.delete(target));
+  }
+  await pending;
+}
+
 export async function applyDesktopChromiumNetworkPolicies(
   sessionProvider: DesktopSessionProvider,
   settings: DesktopNetworkPolicySettings,
   logger: DesktopNetworkPolicyLogger,
 ): Promise<void> {
+  startupNetworkSettings = { ...settings };
+  startupNetworkLogger = logger;
   const targets = [
     {
       name: "default-session",
@@ -99,6 +127,7 @@ async function applyDesktopSessionNetworkPolicy(
     settings.httpProxy,
     settings.httpProxyNoProxy,
     options.fallbackProxyMode,
+    settings.httpProxyOnlyDomains,
   );
   await targetSession.setProxy(proxyConfig);
   await targetSession.closeAllConnections();
@@ -106,13 +135,13 @@ async function applyDesktopSessionNetworkPolicy(
   // 全放行比自定义 CA 更宽松，两者同时配置时按前者生效，避免出现「开了开关仍被拒」的困惑。
   const verifyProc = options.allowInsecureCertificates
     ? createInsecureCertificateVerifyProc()
-    : createCustomCaCertificateVerifyProcFromFile(settings.httpProxyCaCertPath, logger);
+    : await createCustomCaCertificateVerifyProcFromFile(settings.httpProxyCaCertPath, logger);
   targetSession.setCertificateVerifyProc(verifyProc);
 
   const bypassState = proxyConfig.proxyBypassRules ? "enabled" : "disabled";
   const customCaState = verifyProc ? "enabled" : "disabled";
   logger.info(
-    `[desktop-network] renderer proxy mode=${proxyConfig.mode ?? "fixed_servers"} bypass=${bypassState} customCa=${customCaState} insecureCerts=${options.allowInsecureCertificates ? "allowed" : "rejected"}`,
+    `[desktop-network] session proxy mode=${proxyConfig.mode ?? "fixed_servers"} bypass=${bypassState} customCa=${customCaState} insecureCerts=${options.allowInsecureCertificates ? "allowed" : "rejected"}`,
   );
 }
 
@@ -132,12 +161,29 @@ function buildElectronProxyConfig(
   httpProxy: string | undefined,
   noProxy?: string | undefined,
   fallbackMode: ProxyFallbackMode = "direct",
+  onlyDomains?: string,
 ): ProxyConfig {
   const proxyRules = normalizeProxyRules(httpProxy);
   if (!proxyRules) {
     // 留空不带 proxyBypassRules：bypass 规则只对 fixed_servers 有意义，
     // `system` 模式下的例外列表由 OS 自己维护（如 macOS 的「忽略这些主机」）。
     return { mode: fallbackMode };
+  }
+  const domains = normalizeProxyOnlyDomains(onlyDomains);
+  if (domains) {
+    const proxy = new URL(httpProxy!.includes("://") ? httpProxy! : `http://${httpProxy}`);
+    const scheme = { "http:": "PROXY", "https:": "HTTPS", "socks5:": "SOCKS5", "socks4:": "SOCKS" }[
+      proxy.protocol
+    ];
+    if (!scheme || !proxy.hostname) throw new Error("Invalid Chromium proxy URL");
+    const port =
+      proxy.port ||
+      (proxy.protocol === "https:" ? "443" : proxy.protocol.startsWith("socks") ? "1080" : "80");
+    const script = buildSelectiveProxyPac(domains, noProxy, `${scheme} ${proxy.hostname}:${port}`);
+    return {
+      mode: "pac_script",
+      pacScript: `data:application/x-ns-proxy-autoconfig;base64,${Buffer.from(script).toString("base64")}`,
+    };
   }
   const proxyConfig: ProxyConfig = {
     mode: "fixed_servers",
@@ -150,17 +196,43 @@ function buildElectronProxyConfig(
   return proxyConfig;
 }
 
-function createCustomCaCertificateVerifyProcFromFile(
+export function buildSelectiveProxyPac(
+  domains: string,
+  noProxy: string | undefined,
+  proxy: string,
+): string {
+  const rules = normalizeProxyOnlyDomains(domains)!.split(",");
+  const bypass = parseProxyBypassRules(noProxy);
+  return `function FindProxyForURL(url, host) {
+    host = host.toLowerCase().replace(/\\.$/, "").replace(/^\\[|\\]$/g, "");
+    var authority = url.match(/^[a-z]+:\\/\\/([^/]+)/i);
+    var portMatch = authority && authority[1].match(/:(\\d+)$/);
+    var port = portMatch ? portMatch[1] : (/^https:/i.test(url) ? "443" : "80");
+    var bypass = ${JSON.stringify(bypass)};
+    for (var i = 0; i < bypass.length; i++) {
+      var b = bypass[i];
+      if (b.host === "*" || ((!b.port || b.port === port) && (host === b.host || host.slice(-(b.host.length + 1)) === "." + b.host))) return "DIRECT";
+    }
+    var domains = ${JSON.stringify(rules)};
+    for (var j = 0; j < domains.length; j++) {
+      var rule = domains[j];
+      if (rule.slice(0,2) === "*." ? host.slice(-(rule.length - 1)) === rule.slice(1) : host === rule) return ${JSON.stringify(proxy)};
+    }
+    return "DIRECT";
+  }`;
+}
+
+async function createCustomCaCertificateVerifyProcFromFile(
   caCertPath: string | undefined,
   logger: Pick<DesktopNetworkPolicyLogger, "warn">,
-): CertificateVerifyProc | null {
+): Promise<CertificateVerifyProc | null> {
   const trimmed = caCertPath?.trim();
   if (!trimmed) {
     return null;
   }
 
   try {
-    const trustedFingerprints = readCustomCaFingerprintsFromPem(readFileSync(trimmed, "utf8"));
+    const trustedFingerprints = readCustomCaFingerprintsFromPem(await readFile(trimmed, "utf8"));
     if (trustedFingerprints.size === 0) {
       logger.warn(`[desktop-network] custom CA file contains no certificates: ${trimmed}`);
       return null;

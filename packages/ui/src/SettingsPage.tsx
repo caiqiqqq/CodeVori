@@ -18,6 +18,7 @@ import type {
   ZCodeInteractionBehavior,
 } from "@zcode/shared";
 import {
+  normalizeProxyOnlyDomains,
   BUILTIN_MODEL_PROVIDER_IDS,
   TID_SETTINGS_BACK_BUTTON,
   TID_SETTINGS_PAGE,
@@ -693,6 +694,7 @@ export function SettingsPage({
     IntegratedTerminalShellOption[]
   >([]);
   const [httpProxy, setHttpProxy] = useState("");
+  const [httpProxyOnlyDomains, setHttpProxyOnlyDomains] = useState("");
   const [httpProxyNoProxy, setHttpProxyNoProxy] = useState("");
   const [httpProxyCaCertPath, setHttpProxyCaCertPath] = useState("");
   const [embeddedBrowserAllowInsecureCertificates, setEmbeddedBrowserAllowInsecureCertificates] =
@@ -777,6 +779,7 @@ export function SettingsPage({
         setTerminalFontFamily(settings.terminalFontFamily ?? "");
         setIntegratedTerminalShell(settings.integratedTerminalShell ?? { mode: "auto" });
         setHttpProxy(settings.httpProxy ?? "");
+        setHttpProxyOnlyDomains(settings.httpProxyOnlyDomains ?? "");
         setHttpProxyNoProxy(settings.httpProxyNoProxy ?? "");
         setHttpProxyCaCertPath(settings.httpProxyCaCertPath ?? "");
         setEmbeddedBrowserAllowInsecureCertificates(
@@ -966,6 +969,25 @@ export function SettingsPage({
         },
       });
       setHttpProxy(normalizedProxy);
+      toast(intl.formatMessage({ id: "settings.httpProxySavedHint" }));
+    },
+    [services.settingService, intl],
+  );
+  const handleHttpProxyOnlyDomainsChange = useCallback(
+    async (domains: string) => {
+      const normalized = normalizeProxyOnlyDomains(domains) ?? "";
+      await runSettingsActionAsync({
+        featureId: "settings.network",
+        action: "save_proxy_domains",
+        trigger: "button",
+        operation: () => services.settingService.update({ httpProxyOnlyDomains: normalized }),
+        completed: {
+          resultSource: "setting_service",
+          configured: normalized.length > 0,
+          requiresRestart: true,
+        },
+      });
+      setHttpProxyOnlyDomains(normalized);
       toast(intl.formatMessage({ id: "settings.httpProxySavedHint" }));
     },
     [services.settingService, intl],
@@ -1653,6 +1675,7 @@ export function SettingsPage({
                             integratedTerminalShellOptions={integratedTerminalShellOptions}
                             nativeSearchEnhancementsEnabled={nativeSearchEnhancementsEnabled}
                             httpProxy={httpProxy}
+                            httpProxyOnlyDomains={httpProxyOnlyDomains}
                             httpProxyNoProxy={httpProxyNoProxy}
                             httpProxyCaCertPath={httpProxyCaCertPath}
                             defaultHomeDir={defaultHomeDir}
@@ -1714,6 +1737,7 @@ export function SettingsPage({
                               handleModelIoFullRetentionEnabledChange
                             }
                             onHttpProxyChange={handleHttpProxyChange}
+                            onHttpProxyOnlyDomainsChange={handleHttpProxyOnlyDomainsChange}
                             onHttpProxyNoProxyChange={handleHttpProxyNoProxyChange}
                             onHttpProxyCaCertPathChange={handleHttpProxyCaCertPathChange}
                             onTaskAutoArchiveEnabledChange={handleTaskAutoArchiveEnabledChange}

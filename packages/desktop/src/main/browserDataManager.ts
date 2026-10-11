@@ -1,3 +1,4 @@
+import { EMBEDDED_BROWSER_PARTITION } from "./browserSessionPartition.js";
 import { stat } from "node:fs/promises";
 import { session as electronSession } from "electron";
 import type {
@@ -27,7 +28,7 @@ import {
 import type { LinuxChromePasswordStore } from "./chromeInstallationCandidates.js";
 import type { WindowsChromeAppBoundKeyReader } from "./windowsChromeAppBoundKey.js";
 
-export const EMBEDDED_BROWSER_PARTITION = "persist:zcode-embedded-browser";
+export { EMBEDDED_BROWSER_PARTITION } from "./browserSessionPartition.js";
 const CACHE_STORAGE_TYPES: Electron.ClearStorageDataOptions["storages"] = [
   "shadercache",
   "serviceworkers",
