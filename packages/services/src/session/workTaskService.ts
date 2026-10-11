@@ -33,6 +33,7 @@ import {
   type WorkTaskArchive,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
+import { assertWorkTaskLocal } from "./workTask.js";
 import type { IWorkTaskService, WorkTaskConversationEvent } from "./workTask.js";
 import { WorkTaskForgeCoordinator } from "./workTaskForgeCoordinator.js";
 import { archiveWorkTask, type WorkTaskCleanupRun } from "./workTaskArchive.js";
@@ -54,6 +55,7 @@ export class WorkTaskService implements IWorkTaskService {
   private readonly observations = new Map<string, { key: string; subscription: IDisposable }>();
   private readonly forge: WorkTaskForgeCoordinator;
   readonly generateResult: IWorkTaskService["generateResult"];
+  readonly getResultSource: IWorkTaskService["getResultSource"];
   readonly cancelResult: IWorkTaskService["cancelResult"];
   readonly complete: IWorkTaskService["complete"];
   private readonly cleaning = new Map<string, WorkTaskCleanupRun>();
@@ -69,6 +71,7 @@ export class WorkTaskService implements IWorkTaskService {
     const ready = () => this.ready();
     this.forge = new WorkTaskForgeCoordinator(options, this.owner, changed, closed, ready);
     this.generateResult = this.forge.result.generate.bind(this.forge.result);
+    this.getResultSource = this.forge.result.source.bind(this.forge.result);
     this.cancelResult = this.forge.result.cancel.bind(this.forge.result);
     this.complete = this.forge.complete.bind(this.forge);
   }
@@ -90,10 +93,6 @@ export class WorkTaskService implements IWorkTaskService {
       }
     });
     await this.initialized;
-  }
-  private assertLocal(scope: WorkTaskScope) {
-    if (this.options.allowExecution === false || scope.workspaceIdentity || scope.remoteSessionId)
-      throw new Error("work-task.remote-unsupported");
   }
   private assertNotCleaning(target: WorkTaskTarget) {
     if (this.options.repo.get(target, target.id).worktreeCleanup?.phase === "running")
@@ -219,7 +218,7 @@ export class WorkTaskService implements IWorkTaskService {
   private async execute(run: Run) {
     let error: string | undefined;
     try {
-      this.assertLocal(run.task);
+      assertWorkTaskLocal(run.task, this.options.allowExecution);
       const execute = isWorkTaskMerging(run.task)
         ? this.options.merge?.execute.bind(this.options.merge)
         : this.options.execute;
@@ -270,7 +269,7 @@ export class WorkTaskService implements IWorkTaskService {
     return task;
   }
   private attachmentStore(scope: WorkTaskScope) {
-    this.assertLocal(scope);
+    assertWorkTaskLocal(scope, this.options.allowExecution);
     if (this.closed) throw new Error("work-task.host-closed");
     if (!this.options.attachments) throw new Error("work-task.attachments-unsupported");
     return this.options.attachments;
@@ -301,7 +300,7 @@ export class WorkTaskService implements IWorkTaskService {
   }
   async start(input: WorkTaskStart) {
     const parsed = workTaskStartSchema.parse(input);
-    this.assertLocal(parsed);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
     await this.ready();
     const task = this.options.repo.enqueue(parsed, parsed.id, parsed.feedback);
     this.publish();
@@ -310,7 +309,7 @@ export class WorkTaskService implements IWorkTaskService {
   }
   async startAll(input: WorkTaskScope) {
     const scope = workTaskScopeSchema.strict().parse(input);
-    this.assertLocal(scope);
+    assertWorkTaskLocal(scope, this.options.allowExecution);
     await this.ready();
     this.options.repo.enqueueAll(scope);
     this.publish();
@@ -328,7 +327,7 @@ export class WorkTaskService implements IWorkTaskService {
   }
   async merge(input: WorkTaskMergeRequest) {
     const parsed = workTaskMergeRequestSchema.parse(input);
-    this.assertLocal(parsed);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
     await this.ready();
     if (!this.options.merge) throw new Error("work-task.merge-unsupported");
     const current = this.options.repo.get(parsed, parsed.id);
@@ -343,7 +342,7 @@ export class WorkTaskService implements IWorkTaskService {
   }
   async archive(input: WorkTaskArchive) {
     const parsed = workTaskArchiveSchema.parse(input);
-    if (parsed.removeWorktree) this.assertLocal(parsed);
+    if (parsed.removeWorktree) assertWorkTaskLocal(parsed, this.options.allowExecution);
     await this.ready();
     const task = archiveWorkTask(this.options.repo, parsed, {
       active: this.cleaning,

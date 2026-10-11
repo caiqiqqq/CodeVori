@@ -104,13 +104,20 @@ const zhCN: Record<string, string> = {
   "workTasks.error.work-task.result-invalid-output": "模型未返回可用的摘要，请重试。",
   "workTasks.error.work-task.result-generation-failed": "摘要生成失败，请重试；原评论已保留。",
   "workTasks.aiFill": "AI 填写",
+  "workTasks.aiSource": "生成来源：{source}",
+  "workTasks.aiSourceHint": "使用关联对话当前的智能体和模型。",
+  "workTasks.error.work-task.result-agent-unsupported":
+    "此智能体尚不支持隔离的摘要生成；不会切换到其他模型。",
+  "workTasks.error.work-task.result-auth-unsupported":
+    "当前智能体的认证方式尚不支持隔离摘要；不会切换账号或模型。",
   "workTasks.aiFilling": "正在生成",
   "workTasks.aiCancel": "取消生成",
   "workTasks.aiReplaceHint": "替换已编辑的评论内容？",
   "workTasks.aiReplace": "替换并生成",
   "workTasks.changeRecordsHint": "确认完成后自动附上真实提交及修改记录。",
   "workTasks.originalTaskCompleteMerging": "原任务已执行完成，正在处理合并到 {branch}。",
-  "workTasks.error.work-task.result-model-unavailable": "没有可用的 API 摘要模型，请先配置模型。",
+  "workTasks.error.work-task.result-model-unavailable":
+    "关联对话的模型配置不可用，请先在对话中选择可用模型。",
   "workTasks.error.work-task.result-unsupported": "当前 Host 不支持 AI 填写。",
   "workTasks.error.work-task.result-busy": "结果摘要正在生成，请稍后重试。",
   "workTasks.error.work-task.result-canceled": "摘要生成已取消。",

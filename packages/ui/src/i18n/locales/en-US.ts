@@ -115,6 +115,12 @@ const enUS: Record<string, string> = {
   "workTasks.error.work-task.result-generation-failed":
     "Draft generation failed. Try again; your comment is preserved.",
   "workTasks.aiFill": "Fill with AI",
+  "workTasks.aiSource": "Generation source: {source}",
+  "workTasks.aiSourceHint": "Uses the linked conversation’s current agent and model.",
+  "workTasks.error.work-task.result-agent-unsupported":
+    "This agent does not yet support isolated summaries. No other model will be used.",
+  "workTasks.error.work-task.result-auth-unsupported":
+    "This agent’s authentication does not yet support isolated summaries. No other account or model will be used.",
   "workTasks.aiFilling": "Generating",
   "workTasks.aiCancel": "Cancel generation",
   "workTasks.aiReplaceHint": "Replace your edited comment?",
@@ -124,7 +130,7 @@ const enUS: Record<string, string> = {
   "workTasks.originalTaskCompleteMerging":
     "Task execution has finished; processing the merge into {branch}.",
   "workTasks.error.work-task.result-model-unavailable":
-    "No API summary model is available. Configure a model first.",
+    "The linked conversation’s model is unavailable. Select an available model in that conversation.",
   "workTasks.error.work-task.result-unsupported": "This Host does not support AI result drafts.",
   "workTasks.error.work-task.result-busy": "A result draft is already being generated.",
   "workTasks.error.work-task.result-canceled": "Draft generation was canceled.",

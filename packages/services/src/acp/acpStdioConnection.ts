@@ -26,6 +26,7 @@ import { AcpTerminals } from "./acpTerminals.js";
 import { connectAcpClientTransport } from "./acpClientTransport.js";
 import { OperationDiagnostics } from "@zcode/rpc";
 import { createServiceLogger } from "../logger/serviceLogger.js";
+import { acpTextConnectionPolicy } from "./acpTextConnectionPolicy.js";
 
 const diagnosticLogger = createServiceLogger("acp-connection");
 const diagnostics = new OperationDiagnostics(
@@ -51,6 +52,7 @@ async function connectWithDiagnostics(
   input: Parameters<AcpConnectionFactory>[0],
   timing: Pick<ReturnType<OperationDiagnostics["start"]>, "phase">,
 ): Promise<AcpConnectionPort> {
+  const textPolicy = acpTextConnectionPolicy(input);
   timing.phase("spawn");
   const launch = input.launch ?? {
     command: acpAgentDefinition(input.agent).command,
@@ -131,6 +133,7 @@ async function connectWithDiagnostics(
   };
   const client: Client = {
     async createTerminal(request) {
+      if (input.textOnly) throw new Error("Auxiliary generation has no terminal capability");
       if (closed || !receivingLiveUpdates || request.sessionId !== sessionId)
         throw new Error("ACP terminal session is not active");
       return terminals.create(request);
@@ -232,7 +235,7 @@ async function connectWithDiagnostics(
       if (mapped) await input.onUpdate(mapped);
     },
     async requestPermission(request) {
-      if (!receivingLiveUpdates || request.sessionId !== sessionId) {
+      if (input.textOnly || !receivingLiveUpdates || request.sessionId !== sessionId) {
         return { outcome: { outcome: "cancelled" } };
       }
       // 部分适配器只在授权请求中给出工具信息；先交给同一 Host owner，避免丢失参数和关联行。
@@ -270,7 +273,7 @@ async function connectWithDiagnostics(
         const initialized = await connection.request("initialize", {
           protocolVersion: PROTOCOL_VERSION,
           clientCapabilities: {
-            terminal: true,
+            terminal: textPolicy.terminal,
             ...(input.onElicitation ? { elicitation: { form: {} } } : {}),
             session: { compaction: {}, configOptions: { boolean: {} } },
             _meta: { jetbrains: { air: { version: 1, capabilities: ["sessionFailure"] } } },
@@ -343,6 +346,7 @@ async function connectWithDiagnostics(
           const created = await connection.request("session/new", {
             cwd: input.workspacePath,
             mcpServers,
+            ...textPolicy.sessionMeta,
           });
           sessionId = created.sessionId;
           configOptions = projectAcpConfigOptions(created.configOptions);

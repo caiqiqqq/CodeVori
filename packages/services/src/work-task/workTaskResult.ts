@@ -3,18 +3,18 @@ import {
   type WorkTask,
   type WorkTaskResultRequest,
   type WorkTaskChangeRecord,
-  type ZCodeWorkspaceGenerateTextParams,
+  type WorkTaskResultSource,
 } from "@zcode/shared";
 import type { WorkTaskResultPort } from "../session/contract.js";
 import type { IGitService } from "../git/git.js";
 import type { IAcpService } from "../acp/acpService.js";
+import { acpTextSource, acpTextConfigFingerprint } from "../acp/acpTextSource.js";
 import type { IZCodeAgentService } from "../zcode-agent/zcodeAgent.js";
 
 interface Dependencies {
   git: IGitService;
   acp: IAcpService;
   agent: IZCodeAgentService;
-  currentModel(): Promise<ZCodeWorkspaceGenerateTextParams["selection"] | null>;
 }
 const unknown = (): WorkTaskChangeRecord => ({
   state: "unknown",
@@ -66,7 +66,8 @@ export function createWorkTaskResult(deps: Dependencies): WorkTaskResultPort {
   };
   const conversation = async (task: WorkTask) => {
     const path = workTaskExecutionPath(task);
-    if (!task.session || !path) return [];
+    if (!task.session || !path || task.workspaceIdentity || task.remoteSessionId)
+      throw new Error("work-task.result-source-changed");
     // 持久化绑定也须核对 kind 与 identity，不能把同路径的远端或另一类会话纳入摘要。
     if (task.session.kind !== task.execution.kind)
       throw new Error("work-task.result-source-changed");
@@ -81,17 +82,23 @@ export function createWorkTaskResult(deps: Dependencies): WorkTaskResultPort {
         snapshot.agent !== task.execution.agent
       )
         throw new Error("work-task.result-source-changed");
-      return snapshot.entries
-        .filter((e) => e.kind === "user" || e.kind === "assistant" || e.kind === "tool")
-        .slice(-24)
-        .map((e) =>
-          e.kind === "tool"
-            ? {
-                role: "tool",
-                text: `${e.title}: ${e.status}\n${e.output ?? e.content ?? ""}`.slice(0, 1000),
-              }
-            : { role: e.kind, text: e.text.slice(0, 1000) },
-        );
+      const source: WorkTaskResultSource = { kind: "acp", ...acpTextSource(snapshot) };
+      return {
+        source,
+        revision: snapshot.revision,
+        fingerprint: acpTextConfigFingerprint(snapshot),
+        messages: snapshot.entries
+          .filter((e) => e.kind === "user" || e.kind === "assistant" || e.kind === "tool")
+          .slice(-24)
+          .map((e) =>
+            e.kind === "tool"
+              ? {
+                  role: "tool",
+                  text: `${e.title}: ${e.status}\n${e.output ?? e.content ?? ""}`.slice(0, 1000),
+                }
+              : { role: e.kind, text: e.text.slice(0, 1000) },
+          ),
+      };
     }
     const snapshot = await deps.agent.readSession({
       workspacePath: path,
@@ -106,24 +113,39 @@ export function createWorkTaskResult(deps: Dependencies): WorkTaskResultPort {
       snapshot.session.workspace.remoteSessionId
     )
       throw new Error("work-task.result-source-changed");
-    return snapshot.messages.slice(-24).map((message) => ({
-      role: message.info.role,
-      text: message.parts
-        .filter((p) => p.type === "text")
-        .map((p) => p.text)
-        .join("\n")
-        .slice(0, 1000),
-    }));
+    const model = snapshot.settings.model.current;
+    if (!model) throw new Error("work-task.result-model-unavailable");
+    const reasoningLevel = snapshot.settings.thoughtLevel.enabled
+      ? snapshot.settings.thoughtLevel.current
+      : undefined;
+    const selection = {
+      ...model,
+      ...(reasoningLevel ? { options: { ...model.options, reasoningLevel } } : {}),
+    };
+    const source: WorkTaskResultSource = { kind: "api", selection };
+    return {
+      source,
+      revision: undefined,
+      fingerprint: JSON.stringify(selection),
+      messages: snapshot.messages.slice(-24).map((message) => ({
+        role: message.info.role,
+        text: message.parts
+          .filter((p) => p.type === "text")
+          .map((p) => p.text)
+          .join("\n")
+          .slice(0, 1000),
+      })),
+    };
   };
   return {
+    async source(task) {
+      return (await conversation(task)).source;
+    },
     async records(task, targetBranch) {
       return (await evidence(task, targetBranch)).record;
     },
     async generate(task, input: WorkTaskResultRequest, signal) {
-      const selection =
-        task.execution.kind === "api" ? task.execution.modelSelection : await deps.currentModel();
-      if (!selection) throw new Error("work-task.result-model-unavailable");
-      const [messages, changes] = await Promise.all([
+      const [context, changes] = await Promise.all([
         conversation(task),
         evidence(task).catch(() => ({ record: unknown(), patch: "" })),
       ]);
@@ -136,28 +158,65 @@ export function createWorkTaskResult(deps: Dependencies): WorkTaskResultPort {
         JSON.stringify({
           title: task.title,
           instructions: task.prompt.slice(0, 4000),
-          messages,
+          messages: context.messages,
           changes: changes.record,
           diff: changes.patch,
         }).slice(0, 40_000),
       ].join("\n\n");
-      let result;
+      let text: string;
       try {
-        result = await deps.agent.generateWorkspaceText({
-          workspacePath: task.workspacePath,
-          selection,
-          prompt,
-          querySource: "work_task_result_comment",
-          maxOutputTokens: 2000,
-          tools: [],
-          signal,
-        });
-      } catch {
-        throw new Error(
-          signal.aborted ? "work-task.result-canceled" : "work-task.result-generation-failed",
-        );
+        if (context.source.kind === "acp") {
+          const target = {
+            workspacePath: workTaskExecutionPath(task)!,
+            id: task.session!.id,
+            requestId: input.requestId,
+          };
+          const cancel = () => {
+            void deps.acp.cancelGenerateText(target).catch(() => {});
+          };
+          signal.addEventListener("abort", cancel, { once: true });
+          try {
+            if (signal.aborted) throw new Error("work-task.result-canceled");
+            const result = await deps.acp.generateText({
+              ...target,
+              expectedRevision: context.revision!,
+              prompt,
+            });
+            text = result.text;
+            if (
+              JSON.stringify(result.source) !==
+              JSON.stringify({
+                agent: context.source.agent,
+                modelId: context.source.modelId,
+                modelName: context.source.modelName,
+              })
+            )
+              throw new Error("work-task.result-source-changed");
+          } finally {
+            signal.removeEventListener("abort", cancel);
+          }
+        } else {
+          const result = await deps.agent.generateWorkspaceText({
+            workspacePath: workTaskExecutionPath(task)!,
+            selection: context.source.selection,
+            prompt,
+            querySource: "work_task_result_comment",
+            maxOutputTokens: 2000,
+            tools: [],
+            signal,
+          });
+          text = result.text;
+        }
+      } catch (error) {
+        if (signal.aborted) throw new Error("work-task.result-canceled");
+        if (error instanceof Error && error.message.startsWith("work-task.result-")) throw error;
+        throw new Error("work-task.result-generation-failed");
       }
-      return result.text.trim();
+      if (signal.aborted) throw new Error("work-task.result-canceled");
+      // 生成期间在原对话换模型，旧配置生成的草稿不能覆盖当前选择。
+      if ((await conversation(task)).fingerprint !== context.fingerprint)
+        throw new Error("work-task.result-source-changed");
+      return { text: text.trim(), source: context.source };
     },
   };
 }

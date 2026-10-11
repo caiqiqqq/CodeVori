@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { WorkTask, WorkTaskResultCancel } from "@zcode/shared";
+import type { WorkTask, WorkTaskResultCancel, WorkTaskResultSource } from "@zcode/shared";
 import { useWorkspaceServicesResolution } from "./useWorkspaceServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { workTaskErrorMessage } from "@/lib/workTaskBoard.js";
@@ -13,6 +13,7 @@ export function useWorkTaskResultDraft(task: WorkTask) {
     true,
   );
   const service = services.workTaskService;
+  const sessionId = task.session?.id;
   const { locale } = useZCodeIntl();
   const owner = useMemo(
     () => ({}),
@@ -25,6 +26,7 @@ export function useWorkTaskResultDraft(task: WorkTask) {
       task.workspacePath,
       task.workspaceIdentity,
       task.remoteSessionId,
+      sessionId,
     ],
   );
   const current = useRef(owner);
@@ -35,6 +37,43 @@ export function useWorkTaskResultDraft(task: WorkTask) {
     loading: false,
     error: null,
   });
+  const [source, setSource] = useState<{
+    owner: object;
+    value: WorkTaskResultSource | null;
+    error: string | null;
+  }>({ owner, value: null, error: null });
+  const sourceReadVersion = useRef(0);
+  useEffect(() => {
+    if (!service || !rpcReady || !sessionId || task.workspaceIdentity || task.remoteSessionId)
+      return;
+    let active = true;
+    const version = ++sourceReadVersion.current;
+    void service
+      .getResultSource({ workspacePath: task.workspacePath, id: task.id, runSeq: task.runSeq })
+      .then(
+        (value) => {
+          if (active && version === sourceReadVersion.current)
+            setSource({ owner, value, error: null });
+        },
+        (error: unknown) => {
+          if (active && version === sourceReadVersion.current)
+            setSource({ owner, value: null, error: workTaskErrorMessage(error) });
+        },
+      );
+    return () => {
+      active = false;
+    };
+  }, [
+    owner,
+    service,
+    rpcReady,
+    task.id,
+    task.runSeq,
+    task.workspacePath,
+    task.workspaceIdentity,
+    task.remoteSessionId,
+    sessionId,
+  ]);
   const cancel = () => {
     const request = pending.current;
     if (!request || request.owner !== owner) return;
@@ -52,8 +91,11 @@ export function useWorkTaskResultDraft(task: WorkTask) {
     [owner, service],
   );
   return {
+    source: source.owner === owner ? source.value : null,
     loading: state.owner === owner && state.loading,
-    error: state.owner === owner ? state.error : null,
+    error:
+      (state.owner === owner ? state.error : null) ??
+      (source.owner === owner ? source.error : null),
     cancel,
     async generate(mode: "merge" | "accept"): Promise<string | null> {
       if (
@@ -71,6 +113,8 @@ export function useWorkTaskResultDraft(task: WorkTask) {
         requestId: crypto.randomUUID(),
       };
       pending.current = { owner, request };
+      // 初始来源读取若晚于生成结果返回，不得覆盖实际采用的模型。
+      sourceReadVersion.current++;
       setState({ owner, loading: true, error: null });
       try {
         const result = await service.generateResult({ ...request, mode, locale });
@@ -78,6 +122,7 @@ export function useWorkTaskResultDraft(task: WorkTask) {
         if (current.current !== owner || pending.current?.request.requestId !== request.requestId)
           return null;
         setState({ owner, loading: false, error: null });
+        setSource({ owner, value: result.source, error: null });
         return result.text;
       } catch (error) {
         if (current.current === owner && pending.current?.request.requestId === request.requestId)

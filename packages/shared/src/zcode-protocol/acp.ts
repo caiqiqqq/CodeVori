@@ -616,6 +616,37 @@ export const acpSessionSchema = acpWorkspaceSchema.extend({
 });
 export type AcpSession = z.infer<typeof acpSessionSchema>;
 
+/** Auxiliary generation never admits input to the source conversation. */
+export const acpTextSourceSchema = z
+  .object({
+    agent: acpAgentSchema,
+    modelId: z.string().trim().min(1).max(512),
+    modelName: z.string().trim().min(1).max(512),
+  })
+  .strict();
+export type AcpTextSource = z.infer<typeof acpTextSourceSchema>;
+export const acpGenerateTextSchema = acpWorkspaceSchema
+  .extend({
+    id: z.string().min(1),
+    requestId: z.string().uuid(),
+    expectedRevision: z.number().int().nonnegative(),
+    prompt: z.string().trim().min(1).max(48_000),
+  })
+  .strict();
+export type AcpGenerateText = z.infer<typeof acpGenerateTextSchema>;
+export const acpCancelGenerateTextSchema = acpGenerateTextSchema.omit({
+  prompt: true,
+  expectedRevision: true,
+});
+export type AcpCancelGenerateText = z.infer<typeof acpCancelGenerateTextSchema>;
+export const acpGeneratedTextSchema = z
+  .object({
+    text: z.string().trim().min(1).max(12_000),
+    source: acpTextSourceSchema,
+  })
+  .strict();
+export type AcpGeneratedText = z.infer<typeof acpGeneratedTextSchema>;
+
 /** Host diagnostic facts; details are referenced by immutable snapshot row indexes, never logged. */
 export const acpDiagnosticEventSchema = z.object({
   timestamp: z.number().int().nonnegative(),

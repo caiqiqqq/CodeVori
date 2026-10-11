@@ -27,6 +27,8 @@ import {
   type WorkTaskResultRequest,
   type WorkTaskResultCancel,
   type WorkTaskResultDraft,
+  type WorkTaskResultSource,
+  type WorkTaskResultSourceRequest,
   type WorkTaskChangeRecord,
 } from "@zcode/shared";
 import type {
@@ -38,6 +40,7 @@ import type { Event, IDisposable } from "@zcode/rpc";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IWorkTaskService {
+  getResultSource(input: WorkTaskResultSourceRequest): Promise<WorkTaskResultSource>;
   generateResult(input: WorkTaskResultRequest): Promise<WorkTaskResultDraft>;
   cancelResult(input: WorkTaskResultCancel): Promise<void>;
   attachmentImport(input: WorkTaskAttachmentImport): Promise<WorkTaskAttachment>;
@@ -61,6 +64,12 @@ export interface IWorkTaskService {
   onDynamicChanged(input: WorkTaskScope): Event<void>;
 }
 export const IWorkTaskService = createServiceDescriptor<IWorkTaskService>(ServiceChannels.WorkTask);
+
+/** 任务执行和辅助摘要共享同一个本地 Host 准入边界。 */
+export function assertWorkTaskLocal(scope: WorkTaskScope, allowExecution?: boolean) {
+  if (allowExecution === false || scope.workspaceIdentity || scope.remoteSessionId)
+    throw new Error("work-task.remote-unsupported");
+}
 
 export interface WorkTaskExecutionUpdate {
   status?: "running" | "awaiting_input";
@@ -107,6 +116,11 @@ export interface WorkTaskForgePort {
 
 /** Host-injected read-only evidence and text generation; never sends task conversation input. */
 export interface WorkTaskResultPort {
-  generate(task: WorkTask, input: WorkTaskResultRequest, signal: AbortSignal): Promise<string>;
+  source(task: WorkTask): Promise<WorkTaskResultSource>;
+  generate(
+    task: WorkTask,
+    input: WorkTaskResultRequest,
+    signal: AbortSignal,
+  ): Promise<WorkTaskResultDraft>;
   records(task: WorkTask, targetBranch?: string): Promise<WorkTaskChangeRecord>;
 }

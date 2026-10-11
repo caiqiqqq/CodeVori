@@ -13,6 +13,17 @@ export async function generateEditableResult(
   return service.generateResult(request);
 }
 
+export async function readResultGenerationSource(
+  service: IWorkTaskService,
+  request: WorkTaskResultRequest,
+) {
+  return service.getResultSource({
+    workspacePath: request.workspacePath,
+    id: request.id,
+    runSeq: request.runSeq,
+  });
+}
+
 export async function archiveCompletedTaskAndRemoveWorktree(
   service: IWorkTaskService,
   workspacePath: string,
