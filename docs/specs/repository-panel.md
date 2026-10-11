@@ -528,8 +528,24 @@ panel remount / page restart -> local preference -> same navigation/read paths
   cookies, hardcoded upload-policy endpoints, token-to-cookie conversion, or
   third-party image hosting. Missing/changed webpage controls fail explicitly.
   Login/cancel/account mismatch and upload failures preserve the client draft.
-  On account mismatch, clear only this feature's isolated native session so the
-  next explicit retry can sign in correctly; never touch the user's browser profile.
+  GitHub identity has three distinct states: a missing identity marker is not yet
+  confirmed (observe marker insertion/content changes); an explicitly empty marker
+  means sign-in is needed; only a nonempty different username is account mismatch.
+  An unresolved marker at the existing page-readiness deadline reports sign-in
+  needed, never account mismatch. Verified identity with unavailable upload
+  controls still reports upload unavailable. Never attach bytes before identity
+  matches. Authentication pages receive no upload script or image bytes.
+  Before any file is attached, the native upload owner may recover once by opening
+  GitHub `/login` with a return target of the same repository's `/issues/new` in
+  the same native window (title identifies the expected GitHub username).
+  On confirmed mismatch, clear only this feature's isolated session before this
+  sign-in recovery; unknown/unsigned identity must not clear storage. A second
+  auth/mismatch failure is returned to the retained draft; no login loop or
+  automatic retry of an upload that may have already written an attachment.
+  GitLab's partition and the user's browser profile are never touched.
+  Exhausted GitHub sign-in recovery has its own localized draft error asking
+  the user to retry GitHub sign-in; do not label it account mismatch or a
+  generic server response error.
 - Native account windows apply the existing Desktop HTTP proxy/domain-selection
   policy before navigation. Network settings are shared while cookies stay
   isolated; these windows keep strict TLS verification. See `network-proxy.md`.
@@ -552,7 +568,18 @@ choose/paste/drop -> UI draft(file + request ID) -> Host validate/admit
   -> GitLab multipart / GitHub native account window -> validated attachment URL
   -> Host receipt -> same live draft appends Markdown -> user create -> existing createForgeIssue
 reconnect -> identical request ID -> same Host receipt; new draft -> old response ignored
+GitHub page -> identity pending/signed out -> native login (once) -> same target
+            -> confirmed wrong user -> clear only GitHub upload partition -> login (once)
+            -> matching user + controls ready -> attach exactly once -> receipt
 ```
+
+Acceptance: missing/empty/delayed identity marker never reports mismatch or
+dispatches files; content attribute hydration resumes the same script; a known
+different user is rejected before attachment; real Electron synthetic login
+navigation returns to the same repository, keeps GitLab cookies untouched,
+recovers once in the same window, and preserves cancellation/parent-close and
+the no-website-create guards. Exhausted recovery/unknown upload results fail
+without another file dispatch.
 
 Acceptance: service tests cover multipart, invalid bytes/URL, target changes,
 duplicate request admission and unsupported Hosts. Native protocol and synthetic

@@ -458,6 +458,8 @@ const enUS: Record<string, string> = {
     "The body including image links exceeds 65000 characters. Shorten it before creating",
   "repositoryPanel.error.MEDIA_IDENTITY_CHANGED":
     "The web account does not match the repository account. Sign in with the bound account",
+  "repositoryPanel.error.MEDIA_AUTHENTICATION":
+    "GitHub sign-in could not be confirmed. Retry and sign in with this repository's bound GitHub account in the sign-in window",
   "repositoryPanel.error.MEDIA_AUTHENTICATION_CANCELLED":
     "Image upload or sign-in was cancelled. Your draft is retained",
   "repositoryPanel.noSelection": "None",

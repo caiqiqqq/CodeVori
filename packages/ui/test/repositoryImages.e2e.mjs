@@ -36,7 +36,7 @@ try {
     for(const host of ['A','B']) services[host]={
       async getForgeIssueOptions(){return {labels:{items:[],error:null},assignees:{items:[],error:null},milestones:{items:[],error:null}}},
       async getForgeImageUploadCapability(){return {supported:state.supported,requiresWebLogin:true,reason:state.supported?undefined:'web-login-unavailable'}},
-      async uploadForgeImage(request:any){state.calls.push({host,...request});if(state.fail){state.fail=false;throw new Error('FORGE_NETWORK')}const url='https://github.com/user-attachments/assets/'+request.requestId;return state.delay?new Promise(resolve=>state.pending.push(()=>resolve({url}))):{url}},
+      async uploadForgeImage(request:any){state.calls.push({host,...request});if(state.fail){const failure=state.fail;state.fail=false;throw new Error(typeof failure==='string'?failure:'FORGE_NETWORK')}const url='https://github.com/user-attachments/assets/'+request.requestId;return state.delay?new Promise(resolve=>state.pending.push(()=>resolve({url}))):{url}},
     };
     const broadcast:any={send(){},onMessage(){return {dispose(){}}}};
     function Fixture(){
@@ -99,10 +99,41 @@ try {
   assert.equal((await body.inputValue()).includes("user-attachments"), false);
 
   await page.evaluate(() => {
-    window.__images.fail = true;
+    window.__images.fail = "FORGE_MEDIA_AUTHENTICATION";
   });
   await choose("retry.png");
   await dialog.getByRole("alert").waitFor();
+  const authError =
+    "尚未确认 GitHub 登录身份，请重试并在登录窗口使用当前仓库绑定的 GitHub 账号登录";
+  await dialog.getByText(authError, { exact: true }).waitFor();
+  assert.equal(
+    await dialog
+      .getByText("网页登录账号与仓库绑定账号不一致，请使用对应账号登录", { exact: true })
+      .count(),
+    0,
+  );
+  for (const width of [1120, 375]) {
+    await page.setViewportSize({ width, height: 850 });
+    for (const theme of ["zai-light", "zai-dark"]) {
+      await page.evaluate((value) => window.__images.setTheme(value), theme);
+      await page.waitForFunction(
+        (value) => document.documentElement.classList.contains(`theme-${value}`),
+        theme,
+      );
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        await Promise.all(
+          document
+            .getAnimations()
+            .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+            .map((animation) => animation.finished.catch(() => {})),
+        );
+      });
+      assert.equal(await dialog.getByText(authError, { exact: true }).isVisible(), true);
+      assert.ok(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1));
+      await page.screenshot({ path: join(artifacts, `github-sign-in-${theme}-${width}.png`) });
+    }
+  }
   assert.equal(await create.isDisabled(), true);
   const failedId = await page.evaluate(() => window.__images.calls.at(-1).requestId);
   await dialog.getByRole("button", { name: "重试", exact: true }).click();

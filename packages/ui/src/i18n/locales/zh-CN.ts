@@ -403,6 +403,8 @@ const zhCN: Record<string, string> = {
   "repositoryPanel.error.BODY_TOO_LONG": "正文含图片链接超过 65000 字符，请缩短后再创建",
   "repositoryPanel.error.MEDIA_IDENTITY_CHANGED":
     "网页登录账号与仓库绑定账号不一致，请使用对应账号登录",
+  "repositoryPanel.error.MEDIA_AUTHENTICATION":
+    "尚未确认 GitHub 登录身份，请重试并在登录窗口使用当前仓库绑定的 GitHub 账号登录",
   "repositoryPanel.error.MEDIA_AUTHENTICATION_CANCELLED": "图片上传或登录已取消，草稿已保留",
   "repositoryPanel.noSelection": "未选择",
   "repositoryPanel.selectOptions": "选择{field}",
