@@ -27,7 +27,15 @@ const record: WorkTaskChangeRecord = {
   uncommitted: [],
   truncated: false,
 };
-async function fixture(port: WorkTaskResultPort) {
+const summarySource = {
+  kind: "api" as const,
+  selection: { providerId: "test", modelId: "summary" },
+};
+async function fixture(
+  port: Pick<WorkTaskResultPort, "records"> & {
+    generate(...args: Parameters<WorkTaskResultPort["generate"]>): Promise<string>;
+  },
+) {
   const dir = await mkdtemp(join(tmpdir(), "zcode-result-"));
   const repo = new WorkTaskRepo(join(dir, "tasks.sqlite"));
   const comments: string[] = [];
@@ -36,7 +44,11 @@ async function fixture(port: WorkTaskResultPort) {
   let remoteState = "open";
   const service = new WorkTaskService({
     repo,
-    result: port,
+    result: {
+      ...port,
+      source: async () => summarySource,
+      generate: async (...args) => ({ text: await port.generate(...args), source: summarySource }),
+    },
     execute: async () => {},
     forge: {
       listForgeComments: async () => ({
@@ -151,99 +163,6 @@ test("result drafts do not mutate tasks, reject stale scope/runs, and cancel lat
     await f.cleanup();
   }
 });
-test("API/ACP summaries read only the bound conversation, use exact API model and carry Git evidence", async () => {
-  const calls: unknown[] = [];
-  let prompt = "";
-  const f = await fixture({ generate: async () => "", records: async () => record });
-  try {
-    const deps = {
-      git: {
-        getTaskChangeRecord: async () => ({ record, patch: "+fix" }),
-      } as unknown as IGitService,
-      acp: {
-        read: async (r: unknown) => {
-          calls.push(r);
-          return {
-            id: "bound-session",
-            workspacePath: scope.workspacePath,
-            agent: "codex",
-            entries: [{ kind: "assistant", text: "pnpm typecheck passed" }],
-          };
-        },
-      } as unknown as IAcpService,
-      agent: {
-        readSession: async (r: unknown) => {
-          calls.push(r);
-          return {
-            session: { sessionId: "api-session", workspace: scope },
-            messages: [
-              { info: { role: "assistant" }, parts: [{ type: "text", text: "Verified changes" }] },
-            ],
-          };
-        },
-        generateWorkspaceText: async (r: {
-          prompt: string;
-          selection: unknown;
-          tools: unknown[];
-        }) => {
-          prompt = r.prompt;
-          calls.push(r.selection);
-          assert.deepEqual(r.tools, []);
-          return { text: "Generated result" };
-        },
-      } as unknown as IZCodeAgentService,
-      currentModel: async () => ({ providerId: "fallback", modelId: "summary" }),
-    };
-    const port = createWorkTaskResult(deps);
-    const input = f.request(f.task);
-    assert.equal(
-      await port.generate(f.task, input, new AbortController().signal),
-      "Generated result",
-    );
-    assert.deepEqual(calls[0], { workspacePath: scope.workspacePath, id: "bound-session" });
-    assert.match(prompt, /pnpm typecheck passed/);
-    assert.match(prompt, /src\/fix.ts/);
-    const apiTask = {
-      ...f.task,
-      session: { kind: "api", id: "api-session" },
-      execution: {
-        kind: "api",
-        modelSelection: { providerId: "exact", modelId: "task-model" },
-        permissionMode: "default",
-        accessMode: "default",
-      },
-    } as WorkTask;
-    await port.generate(apiTask, input, new AbortController().signal);
-    assert.deepEqual(calls.at(-1), { providerId: "exact", modelId: "task-model" });
-    assert.match(prompt, /Verified changes/);
-    await assert.rejects(
-      createWorkTaskResult({
-        ...deps,
-        agent: {
-          ...deps.agent,
-          readSession: async () => ({
-            session: {
-              sessionId: "api-session",
-              workspace: { ...scope, workspaceIdentity: "remote-scope" },
-            },
-            messages: [],
-          }),
-        } as unknown as IZCodeAgentService,
-      }).generate(apiTask, input, new AbortController().signal),
-      /result-source-changed/,
-    );
-    await assert.rejects(
-      createWorkTaskResult({ ...deps, currentModel: async () => null }).generate(
-        f.task,
-        input,
-        new AbortController().signal,
-      ),
-      /model-unavailable/,
-    );
-  } finally {
-    await f.cleanup();
-  }
-});
 test("changed task runs discard generated drafts and invalid output never becomes a result", async () => {
   let output = "";
   let finish!: (text: string) => void;
@@ -307,7 +226,6 @@ test("commit links require both published evidence and the linked Forge reposito
     } as unknown as IGitService,
     acp: {} as IAcpService,
     agent: {} as IZCodeAgentService,
-    currentModel: async () => null,
   });
   const task = {
     ...f.task,

@@ -37,10 +37,16 @@ import {
   type AppUsageRequest,
   type AcpWorkflowControl,
   type AcpWorkflowArtifactQuery,
+  type AcpGenerateText,
+  type AcpCancelGenerateText,
+  type AcpGeneratedText,
 } from "@zcode/shared";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IAcpService {
+  /** Isolated auxiliary run using the source conversation's current model; no source admission. */
+  generateText(input: AcpGenerateText): Promise<AcpGeneratedText>;
+  cancelGenerateText(input: AcpCancelGenerateText): Promise<void>;
   /** Current target Host's usable plugin references; no secrets or plugin runtime state escape. */
   listPlugins(workspace: AcpWorkspace & { id?: string }): Promise<AcpPlugin[]>;
   /** Local diagnostics by default; settings may explicitly check or refresh remote releases. */

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { forgeItemRequestSchema } from "./forge.js";
 import { modelSelectionSchema } from "./model-selection.js";
 import { workTaskChangeRecordSchema } from "./work-task-result.js";
-import { acpAgentSchema } from "./zcode-protocol/acp.js";
+import { acpAgentSchema, acpTextSourceSchema } from "./zcode-protocol/acp.js";
 import { attachmentRefSchema } from "./zcode-protocol-v4/attachment-ref.js";
 import { PROTOCOL_V4_LIMITS } from "./zcode-protocol-v4/core.js";
 import {
@@ -299,8 +299,17 @@ export const workTaskResultCancelSchema = workTaskResultRequestSchema.omit({
   locale: true,
 });
 export type WorkTaskResultCancel = z.infer<typeof workTaskResultCancelSchema>;
+export const workTaskResultSourceRequestSchema = workTaskResultCancelSchema.omit({
+  requestId: true,
+});
+export type WorkTaskResultSourceRequest = z.infer<typeof workTaskResultSourceRequestSchema>;
+export const workTaskResultSourceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("api"), selection: modelSelectionSchema }).strict(),
+  acpTextSourceSchema.extend({ kind: z.literal("acp") }).strict(),
+]);
+export type WorkTaskResultSource = z.infer<typeof workTaskResultSourceSchema>;
 export const workTaskResultDraftSchema = z
-  .object({ text: z.string().trim().min(1).max(12_000) })
+  .object({ text: z.string().trim().min(1).max(12_000), source: workTaskResultSourceSchema })
   .strict();
 export type WorkTaskResultDraft = z.infer<typeof workTaskResultDraftSchema>;
 export const workTaskCompleteSchema = workTaskTargetSchema

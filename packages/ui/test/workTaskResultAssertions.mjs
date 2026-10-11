@@ -51,6 +51,15 @@ export async function exerciseWorkTaskResult(page, artifacts) {
     await panel.getByTestId("work-task-board").waitFor();
     const task = await seed(kind);
     await open(task);
+    await dialog
+      .getByTestId("work-task-ai-source")
+      .getByText(
+        kind === "api"
+          ? "生成来源：API · conversation-provider / conversation-model"
+          : "生成来源：Codex ACP · Conversation Codex Model",
+        { exact: true },
+      )
+      .waitFor();
     await dialog.getByTestId("work-task-completion-accept").click();
     assert.equal(await dialog.getByTestId("work-task-forge-close").isVisible(), true);
     await fill().click();
@@ -81,7 +90,9 @@ export async function exerciseWorkTaskResult(page, artifacts) {
       window.__tasks.failResult = true;
     });
     await dialog.getByText("替换并生成", { exact: true }).click();
-    await dialog.getByText("没有可用的 API 摘要模型，请先配置模型。", { exact: true }).waitFor();
+    await dialog
+      .getByText("关联对话的模型配置不可用，请先在对话中选择可用模型。", { exact: true })
+      .waitFor();
     assert.equal(await comment().inputValue(), "我的验收结果");
     await fill().click();
     await dialog.getByText("替换并生成", { exact: true }).click();
@@ -133,6 +144,32 @@ export async function exerciseWorkTaskResult(page, artifacts) {
     assert.match(complete.forge.comment, /处理结果/);
     assert.equal(complete.forge.closeIssue, true);
   }
+  await page.reload();
+  await panel.getByTestId("work-task-board").waitFor();
+  const sourceTask = await seed("api");
+  await page.evaluate(() => {
+    window.__tasks.delaySource = true;
+  });
+  await open(sourceTask);
+  await page.waitForFunction(() => window.__tasks.pendingSources.length >= 1);
+  await page.evaluate((id) => {
+    window.__tasks.sourceOverrides[id] = {
+      kind: "api",
+      selection: { providerId: "updated-provider", modelId: "updated-dialog-model" },
+    };
+  }, sourceTask.id);
+  await fill().click();
+  await dialog
+    .getByTestId("work-task-ai-source")
+    .getByText("生成来源：API · updated-provider / updated-dialog-model", { exact: true })
+    .waitFor();
+  await page.evaluate(async () => {
+    while (window.__tasks.pendingSources.length) window.__tasks.finishSource();
+    window.__tasks.delaySource = false;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  assert.match(await dialog.getByTestId("work-task-ai-source").innerText(), /updated-dialog-model/);
+  await dialog.getByRole("button", { name: "取消", exact: true }).click();
   await page.reload();
   await panel.getByTestId("work-task-board").waitFor();
   const task = await seed("api");

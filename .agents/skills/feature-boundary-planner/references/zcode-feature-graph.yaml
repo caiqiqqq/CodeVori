@@ -421,6 +421,7 @@ nodes:
       - ACP explicitly named skills use the current settings owner; API and ZCode keep the native runtime catalog.
       - ACP tool details belong to the existing session snapshot; diagnostics contain only bounded correlated metadata and continue after log rotation.
       - Trace subscriptions use the target workspace identity and do not create, authenticate or reconnect an Agent.
+      - Auxiliary summaries use a separate text run with the source conversation model; Codex uses an ephemeral read-only native CLI and Claude disables tools at creation. Source sessions, queues, modes and task admission are untouched; unsupported adapters fail without API fallback.
       - Reported ACP thoughts and full plans belong to Host snapshots; transcript replay does not duplicate them.
       - ACP session-scoped form elicitation shares the Host blocking queue with tool permissions; answers are validated before adapter receipt and are not persisted.
   - id: surface.acp-conversation
@@ -563,6 +564,8 @@ nodes:
         symbol: WorkTaskResultCoordinator
       - file: packages/services/src/work-task/workTaskResult.ts
         symbol: createWorkTaskResult
+      - file: packages/services/src/acp/acpTextGeneration.ts
+        symbol: AcpTextGeneration
       - file: packages/ui/src/work-tasks/WorkTasksPanel.tsx
         symbol: WorkTasksBoard
       - file: packages/ui/src/app-shell/AnimatedSidePanePanel.tsx
@@ -571,6 +574,7 @@ nodes:
       - Merge controls project into the existing Git review tab while retaining the branch draft in the board subtree; no additional task subscription is created.
       - Closing the side pane or review tab preserves the branch and conversation drafts; changing task resets the branch draft.
       - Header and task-row acceptance share one task-id-scoped board confirmation with an explicit merge or ordinary complete choice; details do not own another dialog. Ordinary complete never writes Git or replaces a conversation.
+      - Result drafts resolve the bound conversation current agent/model, show the source, and fence late results when task run or conversation configuration changes.
       - The acceptance dialog and review pane reuse the scoped merge-target draft and branch selector. Read-only worktree checks recommend a mode; the Host still admits the original merge/complete commands and owns durable results.
   - id: service.work-task-merge
     kind: service
