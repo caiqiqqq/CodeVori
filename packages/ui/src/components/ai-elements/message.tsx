@@ -69,6 +69,7 @@ import {
   type MarkdownImageProps,
 } from "@/components/ai-elements/markdown-image.js";
 import { STREAMDOWN_CONTROLS } from "@/components/ai-elements/streamdown-controls.js";
+import { createWebContentRehypePlugins } from "@/components/ai-elements/web-content-targets.js";
 import { resolveMessageLinkOpenTarget } from "@/embeddedBrowserHelpers.js";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import { persistLastSelectedEditorId, readLastSelectedEditorId } from "@/lib/editorPreference.js";
@@ -836,21 +837,6 @@ const messageRehypePlugins: PluggableList = [
   ...Object.values(defaultRehypePlugins),
 ];
 
-function webContentTargetsRehypePlugin(context: NonNullable<MessageResponseProps["webContent"]>) {
-  return () => (tree: HastElementNode) => {
-    const visitNode = (node: HastElementNode) => {
-      const property = node.tagName === "a" ? "href" : node.tagName === "img" ? "src" : null;
-      if (node.type === "element" && property && typeof node.properties?.[property] === "string") {
-        const resolved = context.resolveUrl(node.properties[property]);
-        if (resolved) node.properties[property] = resolved;
-        else delete node.properties[property];
-      }
-      node.children?.forEach(visitNode);
-    };
-    visitNode(tree);
-  };
-}
-
 function WebContentParagraph({ node, ...props }: ComponentProps<"p"> & { node?: HastElementNode }) {
   const hasImage = (entry: HastElementNode): boolean =>
     entry.tagName === "img" || Boolean(entry.children?.some(hasImage));
@@ -1386,7 +1372,7 @@ const MessageMarkdownResponse = memo(
     const rehypePlugins = useMemo<PluggableList>(
       () =>
         webContent
-          ? [webContentTargetsRehypePlugin(webContent), ...Object.values(defaultRehypePlugins)]
+          ? createWebContentRehypePlugins(webContent, getMarkdownContextEpoch(webContent))
           : messageRehypePlugins,
       [webContent],
     );

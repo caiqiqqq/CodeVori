@@ -1,4 +1,4 @@
-import type { ForgeItemDetail, ForgeMergeMethod } from "@zcode/shared";
+import type { ForgeItemDetail, ForgeMergeMethod, ForgeImagePreview } from "@zcode/shared";
 import { formatPatch, parsePatch } from "diff";
 import { readForgeIssueOptions, forgeIssueAttributes } from "./forgeIssueOptions.js";
 import type { ForgeProviderAdapter } from "./forgeProvider.js";
@@ -21,9 +21,14 @@ import {
 export function createGiteaForgeProvider(
   api: ForgeApiClient,
   repository: string,
+  readImage?: (url: string) => Promise<ForgeImagePreview>,
 ): ForgeProviderAdapter {
   const repo = `repos/${repository.split("/").map(encodeURIComponent).join("/")}`;
   return {
+    async readImage(request) {
+      if (!readImage) throw new Error("FORGE_MEDIA_UNAVAILABLE");
+      return readImage(request.url);
+    },
     async listItems(request) {
       const response = await api(`${repo}/issues`, {
         type: request.kind === "issue" ? "issues" : "pulls",

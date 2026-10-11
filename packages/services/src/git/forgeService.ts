@@ -34,6 +34,7 @@ import {
 } from "./providers/forgeRemote.js";
 import { createGithubForgeProvider } from "./providers/githubForgeProvider.js";
 import { readGithubAttachmentImage } from "./providers/githubForgeMedia.js";
+import { readGiteaAttachmentImage } from "./providers/giteaForgeMedia.js";
 import { createGitlabForgeProvider } from "./providers/gitlabForgeProvider.js";
 import { createGiteaForgeProvider } from "./providers/giteaForgeProvider.js";
 
@@ -153,7 +154,7 @@ export function createForgeService(options?: {
       resolved.repository.provider === "github"
         ? createGithubForgeProvider(api, resolved.repository.name, (url) =>
             readGithubAttachmentImage(
-              resolved.repository.url,
+              resolved.repository,
               url,
               account.secret,
               options?.fetcher ?? fetch,
@@ -190,7 +191,14 @@ export function createForgeService(options?: {
                 await options.webMedia.authenticate(await mediaContext(url));
               },
             })
-          : createGiteaForgeProvider(api, resolved.repository.name);
+          : createGiteaForgeProvider(api, resolved.repository.name, (url) =>
+              readGiteaAttachmentImage(
+                resolved.repository,
+                url,
+                account.secret,
+                options?.fetcher ?? fetch,
+              ),
+            );
     return {
       info: {
         ...info,

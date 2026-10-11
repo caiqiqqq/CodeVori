@@ -273,6 +273,7 @@ export * from "./runtime-tool-runtime.js";
 export * from "./git.js";
 export * from "./versionControl.js";
 export * from "./forge.js";
+export { forgeAttachmentDownloadUrl } from "./forgeAttachment.js";
 export * from "./bots.js";
 export * from "./assistant-message-parts.js";
 export * from "./zcodePersistedMessageMerge.js";

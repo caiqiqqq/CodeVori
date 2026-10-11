@@ -50,7 +50,7 @@ try {
     const extras={participants:[user],participantsHasMore:false,linkedItems:[{number:8,title:'关联的修复任务',state:'open',url:project+'/-/issues/8'}],linkedItemsHasMore:false,labels:[label]};
     const services:any={};
     for(const host of ['A','B']) services[host]={gitService:{
-      async getForgeRepository(r:any){state.calls.push({host,op:'discover',...r});return {status:'ready',remoteNames:['origin'],remoteName:'origin',repository:{key:host,name:'team/sub/project',provider:state.github?'github':'gitlab',url:state.github?'https://github.com/team/project':project,accountId:host,accountUsername:'tester'}}},
+      async getForgeRepository(r:any){state.calls.push({host,op:'discover',...r});return {status:'ready',remoteNames:['origin'],remoteName:'origin',repository:{key:host,name:state.github?'team/project':'team/sub/project',provider:state.github?'github':'gitlab',url:state.github?'https://github.com/team/project':project,accountId:host,accountUsername:'tester'}}},
       async listForgeItems(r:any){state.calls.push({host,op:'list',...r});return {items:[item(host,r)],page:r.page,pageSize:20,hasMore:r.page===1,total:21,reachableTotal:21,incomplete:false}},
       async listForgeLabels(){return [label]},
       async getForgeItem(r:any){state.calls.push({host,op:'item',...r});return item(host,r)},

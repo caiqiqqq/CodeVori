@@ -4,6 +4,7 @@ import {
   resolveForgeContentUrl,
   isGitlabUploadImage,
   isGithubAttachmentImage,
+  isGiteaAttachmentImage,
 } from "../src/lib/forgeContent.js";
 const repository = {
   key: "synthetic",
@@ -18,6 +19,7 @@ test("GitHub.com attachments use Host reads only for the exact attachment origin
   const github = {
     ...repository,
     provider: "github" as const,
+    name: "team/project",
     url: "https://github.com/team/project",
   };
   const source = "https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc";
@@ -40,6 +42,67 @@ test("GitHub.com attachments use Host reads only for the exact attachment origin
     ),
     false,
   );
+});
+test("Enterprise attachments preserve the configured server base and never borrow GitHub.com", () => {
+  const enterprise = {
+    ...repository,
+    provider: "github" as const,
+    name: "team/project",
+    url: "https://enterprise.example.invalid:8443/git/team/project",
+  };
+  const base = "https://enterprise.example.invalid:8443/git";
+  assert.equal(
+    isGithubAttachmentImage(
+      enterprise,
+      `${base}/user-attachments/assets/12345678-1234-1234-1234-123456789abc`,
+    ),
+    true,
+  );
+  assert.equal(isGithubAttachmentImage(enterprise, `${base}/files/12/screen%20shot.png`), true);
+  for (const source of [
+    `${base}/files/12/%2fsecret.png`,
+    `${base}/files/12/%5csecret.png`,
+    `${base}/files/12/%00.png`,
+    `${base}/files/12/a.png?token=x`,
+    `${base}/files/12/a.png#x`,
+    `${base}/files/12/a/b.png`,
+    "https://enterprise.example.invalid:8443/files/12/a.png",
+    "https://enterprise.example.invalid/git/files/12/a.png",
+    "https://github.com/files/12/a.png",
+    `${base}/login`,
+  ])
+    assert.equal(isGithubAttachmentImage(enterprise, source), false, source);
+});
+test("Gitea and Forgejo attachments accept only UUID routes on the configured server/current repository", () => {
+  const forge = {
+    ...repository,
+    provider: "gitea" as const,
+    name: "team/project",
+    url: "http://forge.example.invalid:3000/git/team/project",
+  };
+  const base = "http://forge.example.invalid:3000/git";
+  const uuid = "12345678-1234-1234-1234-123456789abc";
+  for (const path of [
+    `/attachments/${uuid}`,
+    `/team/project/attachments/${uuid}`,
+    `/team/project/issues/7/attachments/${uuid}`,
+  ]) {
+    assert.equal(isGiteaAttachmentImage(forge, base + path), true);
+  }
+  for (const source of [
+    `${base}/other/project/attachments/${uuid}`,
+    `${base}/team/project/issues/0/attachments/${uuid}`,
+    `${base}/attachments/${uuid}?token=x`,
+    `${base}/attachments/${uuid}#x`,
+    `${base}/attachments/${uuid}/image.png`,
+    `${base}/attachments/not-a-uuid`,
+    `http://forge.example.invalid:3000/attachments/${uuid}`,
+    `http://forge.example.invalid/git/attachments/${uuid}`,
+    `https://forge.example.invalid:3000/git/attachments/${uuid}`,
+    `http://user:pass@forge.example.invalid:3000/git/attachments/${uuid}`,
+  ])
+    assert.equal(isGiteaAttachmentImage(forge, source), false, source);
+  assert.equal(isGiteaAttachmentImage(repository, `${base}/attachments/${uuid}`), false);
 });
 test("GitLab upload links resolve against the project including nested groups and base paths", () => {
   for (const path of ["/uploads/abc/image.png", "uploads/abc/image.png"]) {
