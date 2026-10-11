@@ -3,7 +3,12 @@ import { test } from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { workTaskCompleteSchema, workTaskUpdateSchema, type WorkTaskMerge } from "@zcode/shared";
+import {
+  PRODUCT_NAME,
+  workTaskCompleteSchema,
+  workTaskUpdateSchema,
+  type WorkTaskMerge,
+} from "@zcode/shared";
 import { WorkTaskRepo } from "../src/session/workTaskRepo.js";
 import { WorkTaskService } from "../src/session/workTaskService.js";
 import type { WorkTaskForgePort } from "../src/session/workTask.js";
@@ -202,6 +207,10 @@ test("complete persists receipts; close failure retries after restart without re
     const done = await b.service.complete({ ...scope, id: task.id });
     assert.equal(done.forgeWriteback?.closeState, "done");
     assert.equal(f.comments.length, 1);
+    assert.equal(f.comments[0]!.split("\n")[0], `${PRODUCT_NAME} task \`${task.id}\` completed.`);
+    assert.ok(
+      f.comments[0]!.includes(`<!-- zcode-task:${task.id}:${failed.forgeWriteback!.id} -->`),
+    );
     assert.match(f.comments[0]!, /Verified fix/);
     await b.service.complete({ ...scope, id: task.id });
     assert.equal(f.calls.filter((c) => c === "close").length, 2);
@@ -260,6 +269,7 @@ test("plain completion and PR comments never close an issue implicitly; protocol
       forge: { closeIssue: false, comment: "PR result accepted" },
     });
     assert.equal(f.comments.length, 1);
+    assert.equal(f.comments[0]!.split("\n")[0], `${PRODUCT_NAME} task \`${pr.id}\` completed.`);
     assert.equal(f.calls.includes("close"), false);
   } finally {
     await f.clean();
@@ -317,6 +327,7 @@ test("merge writes back only after successful done, using the settled merge run 
     assert.equal(done.completion, "merged");
     assert.equal(done.forgeWriteback?.runSeq, done.runSeq);
     assert.equal(done.forgeWriteback?.closeState, "done");
+    assert.equal(f.comments[0]!.split("\n")[0], `${PRODUCT_NAME} task \`${task.id}\` completed.`);
     assert.match(f.comments[0]!, /Merged locally into main; not pushed/);
     assert.match(f.comments[0]!, /result-commit/);
   } finally {

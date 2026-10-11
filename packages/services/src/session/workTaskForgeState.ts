@@ -1,4 +1,5 @@
 import {
+  PRODUCT_NAME,
   isWorkTaskMerging,
   isWorkTaskForgePending,
   uuidv7,
@@ -35,7 +36,8 @@ export function workTaskForgeComment(task: WorkTask): string {
     task.completion === "merged"
       ? `Merged locally into ${task.merge?.targetBranch ?? ""}; not pushed. Commit: ${task.merge?.resultCommit ?? ""}.`
       : "Accepted without merging; not committed or pushed by this action.";
-  return `ZCode task \`${task.id}\` completed.\n${outcome}\n\n${request.comment}\n\n${formatWorkTaskRecords(request.records)}\n\n${workTaskForgeMarker(task)}`;
+  // 评论展示复用统一品牌名，避免旧名称残留；隐藏幂等标记仍兼容历史回执。
+  return `${PRODUCT_NAME} task \`${task.id}\` completed.\n${outcome}\n\n${request.comment}\n\n${formatWorkTaskRecords(request.records)}\n\n${workTaskForgeMarker(task)}`;
 }
 function formatWorkTaskRecords(records?: WorkTaskChangeRecord): string {
   if (!records || records.state === "unknown")
