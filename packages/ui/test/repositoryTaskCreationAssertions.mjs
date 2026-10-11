@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { selectWorkTaskExecution } from "./workTaskExecutionConfigAssertions.mjs";
+import { assertRepositoryStateFilter } from "./repositoryStateFilterAssertions.mjs";
 import { assertRepositoryTaskStatusColors } from "./repositoryTaskStatusAssertions.mjs";
 
 export async function exerciseRepositoryTaskCreation(page, panel, artifacts) {
@@ -291,6 +292,7 @@ export async function exerciseRepositoryTaskCreation(page, panel, artifacts) {
     window.__forge.remount();
   });
   await handle().waitFor();
+  await assertRepositoryStateFilter(page, panel, artifacts);
 }
 
 export const repositoryTaskServicesFixture = `

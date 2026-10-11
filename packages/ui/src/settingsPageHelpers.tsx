@@ -1,3 +1,4 @@
+import { ProxyDomainSettings } from "@/settings/ProxyDomainSettings.js";
 /* oxlint-disable eslint(max-lines) -- settings helper 聚合多个设置分组；终端、网络与自动归档多侧能力暂时超过行数限制。 */
 import type {
   IntegratedTerminalShellOption,
@@ -63,6 +64,7 @@ export function GeneralSectionContent({
   integratedTerminalShellOptions = [],
   nativeSearchEnhancementsEnabled,
   httpProxy = "",
+  httpProxyOnlyDomains = "",
   httpProxyNoProxy = "",
   httpProxyCaCertPath = "",
   defaultHomeDir,
@@ -89,6 +91,7 @@ export function GeneralSectionContent({
   onIntegratedTerminalShellChange = async () => {},
   onNativeSearchEnhancementsEnabledChange,
   onHttpProxyChange = async () => {},
+  onHttpProxyOnlyDomainsChange = async () => {},
   onHttpProxyNoProxyChange = async () => {},
   onHttpProxyCaCertPathChange = async () => {},
   onTaskAutoArchiveEnabledChange,
@@ -124,6 +127,7 @@ export function GeneralSectionContent({
   integratedTerminalShellOptions?: IntegratedTerminalShellOption[];
   nativeSearchEnhancementsEnabled: boolean;
   httpProxy?: string;
+  httpProxyOnlyDomains?: string;
   httpProxyNoProxy?: string;
   httpProxyCaCertPath?: string;
   defaultHomeDir: string;
@@ -151,6 +155,7 @@ export function GeneralSectionContent({
   onIntegratedTerminalShellChange?: (selection: IntegratedTerminalShellSelection) => Promise<void>;
   onNativeSearchEnhancementsEnabledChange: (enabled: boolean) => Promise<void>;
   onHttpProxyChange?: (httpProxy: string) => Promise<void>;
+  onHttpProxyOnlyDomainsChange?: (domains: string) => Promise<void>;
   onHttpProxyNoProxyChange?: (noProxy: string) => Promise<void>;
   onHttpProxyCaCertPathChange?: (caCertPath: string) => Promise<void>;
   onTaskAutoArchiveEnabledChange: (enabled: boolean) => Promise<void>;
@@ -478,6 +483,7 @@ export function GeneralSectionContent({
             />
           }
         />
+        <ProxyDomainSettings value={httpProxyOnlyDomains} onSave={onHttpProxyOnlyDomainsChange} />
         {/* No Proxy 与 HTTP 代理共同决定同一出口策略，必须贴在代理地址下面。*/}
         <SettingsRow
           label={intl.formatMessage({ id: "settings.httpProxyNoProxy" })}

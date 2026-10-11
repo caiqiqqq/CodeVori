@@ -342,7 +342,8 @@ const zhCN: Record<string, string> = {
   "repositoryPanel.search": "搜索标题和描述",
   "repositoryPanel.searchAction": "搜索",
   "repositoryPanel.clearSearch": "清除搜索",
-  "repositoryPanel.stateFilter": "状态",
+  "repositoryPanel.stateFilter": "议题状态",
+  "repositoryPanel.requestStateFilter": "请求状态",
   "repositoryPanel.state.open": "开启中",
   "repositoryPanel.state.closed": "已关闭",
   "repositoryPanel.state.merged": "已合并",
@@ -2736,6 +2737,14 @@ const zhCN: Record<string, string> = {
   "settings.httpProxyPlaceholder": "留空则内置浏览器跟随系统代理，例如 http://127.0.0.1:7890",
   // 中文词条曾在批量文案调整中被误改为英文，导致中文设置页混入未翻译标签。
   // 文案原因：「代理例外」含义模糊，沿用 Windows 系统代理的标准表述「不使用代理的地址」。
+  "settings.httpProxyOnlyDomains": "仅这些域名使用代理",
+  "settings.httpProxyOnlyDomainsDescription":
+    "填写后仅匹配的域名走 HTTP 代理，其他地址直连；留空则全部使用代理。支持精确域名和 *.域名（仅子域名），多个规则用英文逗号分隔。不使用代理的地址优先。重启应用后生效。",
+  "settings.httpProxyOnlyDomainsPlaceholder":
+    "例如 github.com,*.github.com,*.githubusercontent.com",
+  "settings.httpProxyOnlyDomainsInvalid":
+    "请输入有效域名或 *.域名，最多 64 条；不要填写协议、端口或路径。",
+  "settings.httpProxyOnlyDomainsSaveFailed": "代理域名保存失败，请重试。",
   "settings.httpProxyNoProxy": "不使用代理的地址",
   "settings.httpProxyNoProxyDescription":
     "匹配这些主机的请求将直连，不经过 HTTP 代理。多个规则用英文逗号分隔。修改后需重启应用生效。",
