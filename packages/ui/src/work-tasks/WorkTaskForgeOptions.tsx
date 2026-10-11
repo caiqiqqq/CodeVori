@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { LoaderCircle, Sparkles } from "lucide-react";
-import type { WorkTask, WorkTaskForgeOptions } from "@zcode/shared";
+import { ACP_AGENT_CATALOG, type WorkTask, type WorkTaskForgeOptions } from "@zcode/shared";
 import { Checkbox } from "@/components/ui/checkbox.js";
 import { Textarea } from "@/components/ui/textarea.js";
 import { Button } from "@/components/ui/button.js";
@@ -62,6 +62,13 @@ export function WorkTaskForgeOptionsFields({
 }) {
   const t = useWorkTaskMessages();
   if (!task.source) return null;
+  const source = options.ai.source;
+  const sourceLabel =
+    source?.kind === "api"
+      ? `API · ${source.selection.providerId} / ${source.selection.modelId}`
+      : source
+        ? `${ACP_AGENT_CATALOG.find((agent) => agent.id === source.agent)?.name ?? source.agent} · ${source.modelName}`
+        : null;
   return (
     <div className="flex min-w-0 flex-col gap-3 text-ui-sm" data-testid="work-task-forge-options">
       <p className="break-all text-foreground-subtle">
@@ -115,6 +122,9 @@ export function WorkTaskForgeOptionsFields({
               {t(options.ai.loading ? "aiFilling" : "aiFill")}
             </Button>
           </div>
+          <p className="break-all text-foreground-subtle" data-testid="work-task-ai-source">
+            {sourceLabel ? t("aiSource", { source: sourceLabel }) : t("aiSourceHint")}
+          </p>
           {options.ai.loading ? (
             <Button
               type="button"

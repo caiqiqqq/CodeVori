@@ -2681,8 +2681,6 @@ export function createLocalServices(options: {
     forge: gitService,
     result: createWorkTaskResult({
       ...workTaskExecutionDependencies,
-      currentModel: async () =>
-        (await providerRuntime.modelSelection.getView()).preferredSelection ?? null,
     }),
     attachments: workTaskAttachments,
     execute: (task, context) => workTaskExecution.execute(task, context),

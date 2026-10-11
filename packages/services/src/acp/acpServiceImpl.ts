@@ -110,6 +110,7 @@ import {
   type AcpCompactionUpdate,
 } from "./acpCompaction.js";
 import { failureFromAcpError, recordAcpSessionFailure } from "./acpSessionFailures.js";
+import { AcpTextGeneration } from "./acpTextGeneration.js";
 import type { AcpSessionFailure } from "@zcode/shared";
 
 export type AcpUpdate =
@@ -155,6 +156,8 @@ export type AcpConnectionFactory = (input: {
   mcpServers?: NativeMcpServerRecord[];
   workflowServers?: NativeMcpServerRecord[];
   pluginServers?: ZCodePluginsAcpCapabilitiesResult["servers"];
+  /** Isolated Claude text request; no built-in tools, settings or Host terminal access. */
+  textOnly?: boolean;
   onUpdate: (update: AcpUpdate) => Promise<void>;
   onPermission: (request: AcpPermission) => Promise<string | null>;
   onElicitation?: (
@@ -295,6 +298,12 @@ export function createAcpService(
   const emitter = new Emitter<AcpSessionChanged>();
   const traceEmitter = new Emitter<AcpExecutionTraceChanged>();
   let disposed = false;
+  const textGeneration = new AcpTextGeneration({
+    read: (input) => service.read(input),
+    connect,
+    manager: agentManager,
+    customConnect: !!options.connect && !options.agentManager,
+  });
   const usageHistoryReader = createCodexUsageHistoryReader();
   let usageHistoryRead: Promise<Map<string, CodexUsageHistory>> | null = null;
 
@@ -2002,6 +2011,8 @@ export function createAcpService(
   };
 
   const service: IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } = {
+    generateText: (input) => textGeneration.generate(input),
+    cancelGenerateText: (input) => textGeneration.cancel(input),
     async listPlugins(input): Promise<AcpPlugin[]> {
       const target = acpWorkspaceSchema.parse(input);
       const session = input.id ? await scoped({ ...target, id: input.id }) : null;
@@ -2771,6 +2782,7 @@ export function createAcpService(
     },
     disposeAll() {
       disposed = true;
+      textGeneration.dispose();
       usageHistoryReader.dispose();
       for (const admission of promptAdmissions.values())
         admission.reject(new Error("ACP service closed before admission"));
@@ -2793,6 +2805,7 @@ export function createAcpService(
       );
       const inFlight = [...connecting.values()];
       this.disposeAll();
+      await textGeneration.settle();
       await Promise.allSettled(inFlight);
       await Promise.allSettled(closed);
       // 排队复制属于同一 admission 栅栏；关闭 Host 也必须等未接受附件完成清理。
