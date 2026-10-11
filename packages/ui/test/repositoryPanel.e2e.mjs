@@ -36,7 +36,7 @@ try {
     import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
     import {StoreProvider} from '../../../ui/src/store/StoreProvider.tsx';
     import {TabStoreProvider,useTabStore} from '../../../ui/src/store/TabStoreProvider.tsx';
-    import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
+    import {ZCodeIntlProvider,useZCodeIntl} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
     import {consumeInitialSettingsSection} from '../../../ui/src/lib/settingsNavigation.ts';
     ${repositoryTask.importsFixture}
@@ -59,7 +59,7 @@ try {
       async detectGit(){return {installed:true,path:'/synthetic/git',version:'git version 2.50.0'}},
       async addGitAccount(r:any){state.calls.push({host,op:'add-account',provider:r.provider,serverUrl:r.serverUrl});if(r.secret==='invalid')throw new Error('VERSION_CONTROL_authentication');snapshots[host].accounts.push({id:crypto.randomUUID(),provider:r.provider,serverUrl:r.serverUrl,username:r.provider+'-tester',scopes:[],avatarUrl:null,isDefault:false,createdAt:'2026-01-01T00:00:00Z'});return clone(snapshots[host])},
       async getForgeRepository(r:any){state.calls.push({host,op:'discover',...r});const remoteName=r.remoteName||state.forcedRemote||'origin';const matched=snapshots[host].accounts.find((a:any)=>a.provider==='gitlab'&&a.serverUrl==='https://forge.example.invalid');const status=state.accountDiscovery?(matched?'ready':snapshots[host].accounts.length?'account-mismatch':'unsupported'):state.status;const provider=state.accountDiscovery?(matched?.provider??null):(state.provider||'github');const result={status,remoteNames:['origin','private'],remoteName,host:'forge.example.invalid',provider,repository:status==='ready'?{key:host+remoteName,name:'team/'+host.toLowerCase(),url:'https://forge.example.invalid/team/'+host,provider,accountId:matched?.id??host,accountUsername:'tester'}:null};if(state.delayDiscovery){state.delayDiscovery=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return result},
-      async listForgeItems(r:any){state.calls.push({host,op:'list',...r});const result={items:[{...baseItem(host,r),state:state.lagSearch?'open':states[host]}],page:r.page,pageSize:20,hasMore:r.page===1,total:21,reachableTotal:21,incomplete:false};if(state.delayList){state.delayList=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return clone(result)},
+      async listForgeItems(r:any){state.calls.push({host,op:'list',...r});const items=state.filterItems?state.filterItems.filter((item:any)=>item.kind===r.kind&&(r.state==='all'||(r.state==='closed'?item.state!=='open':item.state==='open'))).map((item:any)=>({...baseItem(host,r),...item})):[{...baseItem(host,r),state:state.lagSearch?'open':states[host]}];const result={items,page:r.page,pageSize:20,hasMore:state.filterItems?false:r.page===1,total:state.filterItems?items.length:21,reachableTotal:state.filterItems?items.length:21,incomplete:false};if(state.delayList){state.delayList=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return clone(result)},
       async listForgeLabels(){return [label]},
       async getForgeImageUploadCapability(){return {supported:true,requiresWebLogin:false}},
       async getForgeIssueOptions(r:any){state.calls.push({host,op:'options',...r});const result={labels:{items:[label,{key:'enhancement',name:'enhancement',color:'#a2eeef'}],error:null},assignees:{items:[{key:'alice',username:'alice',avatarUrl:null}],error:state.failOptions?'FORGE_FORBIDDEN':null},milestones:{items:[{key:'3',title:'Release'}],error:null}};if(state.delayOptions){state.delayOptions=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return clone(result)},
@@ -77,7 +77,7 @@ try {
     state.resetIssue=()=>{state.lagSearch=false;states.A='open';commentRows.A=[comment]};
     const broadcast:any={send(){},onMessage(){return {dispose(){}}}};
     const platform:any={openExternal:(url:string)=>state.calls.push({op:'external',url})};
-    function Fixture(){const [host,setHost]=useState('A');const [version,setVersion]=useState(0);state.changeRemote=()=>{state.forcedRemote='private';setVersion(v=>v+1)};const settingsVisible=useTabStore(s=>s.activeTabId==='__settings__');const openSettings=useTabStore(s=>s.openSettingsTab);const closeTab=useTabStore(s=>s.closeTab);state.switchHost=setHost;state.remount=()=>{state.forcedRemote=undefined;setVersion(v=>v+1)};state.settings=consumeInitialSettingsSection;state.openSettings=openSettings;
+    function Fixture(){const {setLocale}=useZCodeIntl();state.setLocale=setLocale;const [host,setHost]=useState('A');const [version,setVersion]=useState(0);state.changeRemote=()=>{state.forcedRemote='private';setVersion(v=>v+1)};const settingsVisible=useTabStore(s=>s.activeTabId==='__settings__');const openSettings=useTabStore(s=>s.openSettingsTab);const closeTab=useTabStore(s=>s.closeTab);state.switchHost=setHost;state.remount=()=>{state.forcedRemote=undefined;setVersion(v=>v+1)};state.settings=consumeInitialSettingsSection;state.openSettings=openSettings;
       return <ServiceProvider services={hosts[host]}><div className='h-dvh bg-background text-foreground'><div hidden={settingsVisible} className='h-full'><RepositoryPanel key={version} active={!settingsVisible} workspacePath={state.taskRemote?'/synthetic/A':'/synthetic/'+host} workspaceIdentity={state.remote?'synthetic-disconnected-workspace':state.taskRemote?'synthetic-task-identity':undefined} remoteSessionId={state.taskRemote?'task-remote':undefined} theme='zai-light'/></div>{settingsVisible?<div className='h-full overflow-auto p-4'><button onClick={()=>closeTab('__settings__')}>返回仓库</button><VersionControlSection/></div>:null}</div></ServiceProvider>}
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><StoreProvider broadcastService={broadcast}><TabStoreProvider><Fixture/></TabStoreProvider></StoreProvider></TooltipProvider></ZCodeIntlProvider></PlatformProvider>);
   `,
@@ -118,7 +118,7 @@ try {
   await page.waitForFunction(() =>
     window.__forge.calls.some((c) => c.op === "list" && c.labels.includes("bug")),
   );
-  await panel.getByRole("combobox", { name: "状态", exact: true }).click();
+  await panel.getByRole("combobox", { name: "议题状态", exact: true }).click();
   await page.getByRole("option", { name: "全部", exact: true }).click();
   await page.waitForFunction(() =>
     window.__forge.calls.some((c) => c.op === "list" && c.state === "all" && c.page === 1),
