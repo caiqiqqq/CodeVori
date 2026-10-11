@@ -29,9 +29,19 @@ try {
     const profile=session.fromPartition('persist:github-issue-upload-'+key);
     await applyDesktopChromiumNetworkPolicies(session,{httpProxy:'http://127.0.0.1:17890',httpProxyOnlyDomains:'github.com'},{info(){},warn(){}});
     let policyCalls=0;const setProxy=profile.setProxy.bind(profile);profile.setProxy=(config)=>{policyCalls++;return setProxy(config)};
-    let username='tester',hasInput=true;
-    await profile.protocol.handle('https',()=>{assert.equal(policyCalls,1,'Proxy policy must complete before navigation');return new Response('<!doctype html><meta name="user-login" content="'+username+'"><textarea aria-label="Markdown value"></textarea>'+(hasInput?'<input type="file"><script>document.querySelector("input").addEventListener("change",()=>{document.querySelector("textarea").value="![image]('+url+')"})</script>':''),{headers:{'Content-Type':'text/html'}})});
-    app.on('browser-window-created',(_event,window)=>window.hide());
+    let username='tester',hasInput=true,loginUsername,loginReads=0,holdLogin=false,uploadReads=0;
+    await profile.protocol.handle('https',(request)=>{
+      assert.equal(policyCalls,1,'Proxy policy must complete before navigation');
+      const target=new URL(request.url);
+      if(target.pathname==='/login'){
+        loginReads++;assert.equal(target.searchParams.get('return_to'),context.repositoryUrl+'/issues/new');
+        if(loginUsername!==undefined)username=loginUsername;
+        return new Response('<!doctype html><h1>GitHub login</h1>'+(holdLogin?'':'<script>location.replace('+JSON.stringify(target.searchParams.get('return_to'))+')</script>'),{headers:{'Content-Type':'text/html'}});
+      }
+      uploadReads++;
+      return new Response('<!doctype html><meta name="user-login" content="'+username+'"><textarea aria-label="Markdown value"></textarea>'+(hasInput?'<input type="file"><script>document.querySelector("input").addEventListener("change",()=>{document.querySelector("textarea").value="![image]('+url+')"})</script>':''),{headers:{'Content-Type':'text/html'}});
+    });
+    let createdWindows=0;app.on('browser-window-created',(_event,window)=>{createdWindows++;window.hide()});
     const parent=new BrowserWindow({show:false});const keeper=new BrowserWindow({show:false});
     const run=(signal=new AbortController().signal)=>executeGithubImageUpload({win:parent,context,signal});
     try {
@@ -42,7 +52,32 @@ try {
       await profile.cookies.set({url:'https://github.com',name:'synthetic-session',value:'wrong-account'});
       username='different-user';
       await assert.rejects(run(),/FORGE_MEDIA_IDENTITY_CHANGED/);
-      assert.equal((await profile.cookies.get({name:'synthetic-session'})).length,0,'Wrong isolated session is cleared for an explicit retry');
+      assert.equal(loginReads,1,'Known wrong account receives one login recovery before failing');
+      assert.equal((await profile.cookies.get({name:'synthetic-session'})).length,0,'Wrong isolated session is cleared only for recovery');
+      const gitlabProfile=session.fromPartition('persist:gitlab-media-synthetic-other-platform');
+      await gitlabProfile.cookies.set({url:'https://gitlab.example.invalid',name:'synthetic-gitlab',value:'retain'});
+      username='other-user';loginUsername='tester';
+      const windowsBefore=BrowserWindow.getAllWindows().length;
+      const createdBefore=createdWindows,readsBefore=uploadReads;
+      assert.deepEqual(await run(),{url});
+      assert.equal(createdWindows,createdBefore+1,'Login recovery must not create another window');
+      assert.equal(uploadReads,readsBefore+2,'One return to the same repository after login');
+      assert.equal(loginReads,2);assert.equal(BrowserWindow.getAllWindows().length,windowsBefore,'Recovery reuses/closes one upload window');
+      assert.equal((await gitlabProfile.cookies.get({name:'synthetic-gitlab'})).length,1,'GitHub sign-in never clears GitLab cookies');
+      await profile.cookies.set({url:'https://github.com',name:'synthetic-session',value:'preserve-on-unsigned'});
+      username='';loginUsername='tester';
+      assert.deepEqual(await run(),{url});assert.equal(loginReads,3);
+      assert.equal((await profile.cookies.get({name:'synthetic-session'})).length,1,'Signed-out identity does not clear storage');
+      username='';loginUsername='';
+      await assert.rejects(run(),/FORGE_MEDIA_AUTHENTICATION/);assert.equal(loginReads,4,'No authentication loop');
+      username='';loginUsername=undefined;holdLogin=true;
+      const loginController=new AbortController();const loginCancelled=assert.rejects(run(loginController.signal),/FORGE_MEDIA_AUTHENTICATION_CANCELLED/);
+      while(loginReads<5)await new Promise(resolve=>setTimeout(resolve,5));
+      const loginWindow=BrowserWindow.getAllWindows().find(window=>window!==parent&&window!==keeper);
+      assert.equal(loginWindow.getTitle(),'GitHub · tester');
+      assert.equal(await loginWindow.webContents.executeJavaScript('typeof context'), 'undefined','No upload context is injected on the login page');
+      loginController.abort();await loginCancelled;holdLogin=false;
+      assert.equal(BrowserWindow.getAllWindows().length,2);
       username='tester';hasInput=false;
       const controller=new AbortController();const cancelled=assert.rejects(run(controller.signal),/FORGE_MEDIA_AUTHENTICATION_CANCELLED/);
       setTimeout(()=>controller.abort(),100);await cancelled;

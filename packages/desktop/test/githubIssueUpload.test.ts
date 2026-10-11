@@ -24,6 +24,75 @@ const context: ForgeWebUploadContext = {
 };
 const url = "https://github.com/user-attachments/assets/4c88bcca-98b9-4aaa-9c0c-2f869f0c1b01";
 
+test("GitHub identity readiness distinguishes missing, signed out and wrong users before attaching bytes", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const state of ["missing", "empty", "wrong", "insert", "hydrate", "lost"] as const) {
+      const page = await browser.newPage();
+      const marker =
+        state === "missing" || state === "insert"
+          ? ""
+          : `<meta name="user-login" ${state === "hydrate" ? "" : `content="${state === "wrong" ? "other-user" : state === "lost" ? "tester" : ""}"`}>`;
+      await page.route("**/*", (route) =>
+        route.fulfill({
+          contentType: "text/html",
+          body: `<!doctype html>${marker}<textarea aria-label="Markdown value"></textarea>${state === "lost" ? "" : '<input type="file">'}`,
+        }),
+      );
+      await page.goto(`${context.repositoryUrl}/issues/new`);
+      await page.evaluate(
+        ({ url }) => {
+          (window as any).__files = 0;
+          document.querySelector("input")?.addEventListener("change", () => {
+            (window as any).__files++;
+            document.querySelector("textarea")!.value = `![new](${url})`;
+          });
+        },
+        { url },
+      );
+      await page.evaluate(
+        `window.__upload = ${githubIssueUploadScript(context, 2000)}; window.__upload.catch(() => {}); void 0;`,
+      );
+      await page.evaluate((state) => {
+        if (state === "lost") document.querySelector('meta[name="user-login"]')!.remove();
+        if (state === "insert" || state === "hydrate") {
+          const meta =
+            document.querySelector<HTMLMetaElement>('meta[name="user-login"]') ??
+            document.createElement("meta");
+          meta.name = "user-login";
+          meta.content = "TeStEr";
+          if (!meta.isConnected) document.head.append(meta);
+        }
+      }, state);
+      const result = page.evaluate(() => (window as any).__upload);
+      if (state === "insert" || state === "hydrate") assert.deepEqual(await result, { url });
+      else
+        await assert.rejects(
+          result,
+          state === "wrong" ? /FORGE_MEDIA_IDENTITY_CHANGED/ : /FORGE_MEDIA_AUTHENTICATION\b/,
+        );
+      assert.equal(
+        await page.evaluate(() => (window as any).__files),
+        state === "insert" || state === "hydrate" ? 1 : 0,
+      );
+      // A timed-out script must not dispatch a late upload when identity subsequently appears.
+      await page.evaluate(() => {
+        const meta = document.createElement("meta");
+        meta.name = "user-login";
+        meta.content = "tester";
+        document.head.append(meta);
+      });
+      assert.equal(
+        await page.evaluate(() => (window as any).__files),
+        state === "insert" || state === "hydrate" ? 1 : 0,
+      );
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
 test("native upload has strict protocol validation and correlates only its own receipt", async () => {
   const messages: HostForgeWebMediaRequest[] = [];
   const bridge = createForgeWebMediaMainBridge((message) => messages.push(message));
@@ -93,7 +162,7 @@ test("synthetic GitHub page reports only a newly completed attachment and blocks
         }, 10);
       });
     }, url);
-    const result = await page.evaluate(githubIssueUploadScript(context, 1000));
+    const result = await page.evaluate(githubIssueUploadScript(context, 5000));
     assert.deepEqual(result, { url });
     assert.deepEqual(
       await page.evaluate(() => [

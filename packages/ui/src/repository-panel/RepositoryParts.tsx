@@ -74,6 +74,7 @@ const errorKeys = new Set([
   "UPLOAD_BUSY",
   "BODY_TOO_LONG",
   "MEDIA_IDENTITY_CHANGED",
+  "MEDIA_AUTHENTICATION",
   "MEDIA_AUTHENTICATION_CANCELLED",
 ]);
 export function RepositoryError({ error, retry }: { error: string; retry?: () => void }) {

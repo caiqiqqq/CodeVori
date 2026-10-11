@@ -61,10 +61,15 @@ export async function executeGithubImageUpload(params: {
     },
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // 登录页标题会覆盖窗口标题；始终保留预期 GitHub 账号，避免用户误以为应登录 GitLab 账号。
+  window.on("page-title-updated", (event) => event.preventDefault());
   const pageUrl = `${repoUrl.href}/issues/new`;
+  const loginUrl = new URL("https://github.com/login");
+  loginUrl.searchParams.set("return_to", pageUrl);
   return new Promise((resolve, reject) => {
     let settled = false,
-      executing = false;
+      executing = false,
+      loginRecoveryUsed = false;
     const finish = (value?: ForgeImageUploadResult, error?: unknown) => {
       if (settled) return;
       settled = true;
@@ -113,15 +118,30 @@ export async function executeGithubImageUpload(params: {
           else finish(uploaded.data);
         },
         async (error: unknown) => {
+          if (settled) return;
           const message =
             error instanceof Error ? error.message.match(/FORGE_[A-Z_]+/)?.[0] : undefined;
-          // 错误账号的隔离登录态不能让每次重试都立即失败；仅清理本功能的账号 partition，下一次显式重试重新登录。
-          if (message === "FORGE_MEDIA_IDENTITY_CHANGED") {
-            try {
-              await profile.clearStorageData({ storages: ["cookies", "localstorage"] });
-            } catch {
-              /* 保留明确的账号不匹配错误。 */
+          // 身份错误发生在附件派发前：同一窗口最多恢复登录一次，不重试已开始的上传。
+          if (
+            !loginRecoveryUsed &&
+            (message === "FORGE_MEDIA_AUTHENTICATION" || message === "FORGE_MEDIA_IDENTITY_CHANGED")
+          ) {
+            loginRecoveryUsed = true;
+            if (message === "FORGE_MEDIA_IDENTITY_CHANGED") {
+              try {
+                // 只有确认账号不同才清理本功能 GitHub partition；身份未知不能清理，GitLab 登录态也不受影响。
+                await profile.clearStorageData({ storages: ["cookies", "localstorage"] });
+              } catch {
+                finish(undefined, new Error(message));
+                return;
+              }
             }
+            if (settled) return;
+            executing = false;
+            void window
+              .loadURL(loginUrl.href)
+              .catch(() => finish(undefined, new Error("FORGE_NETWORK")));
+            return;
           }
           finish(undefined, new Error(message ?? "FORGE_UPLOAD_UNCERTAIN"));
         },

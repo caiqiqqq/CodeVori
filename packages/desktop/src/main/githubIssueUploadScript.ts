@@ -8,7 +8,7 @@ export function githubIssueUploadScript(
   return `(() => {
     const context = ${JSON.stringify(context)};
     return new Promise((resolve, reject) => {
-      let finished = false, attached = false, restoreValue = () => {};
+      let finished = false, attached = false, identityConfirmed = false, restoreValue = () => {};
       const cleanups = [];
       const finish = (value, error) => {
         if (finished) return;
@@ -16,17 +16,25 @@ export function githubIssueUploadScript(
         for (const cleanup of cleanups) cleanup();
         error ? reject(new Error(error)) : resolve(value);
       };
-      const deadline = setTimeout(() => finish(null, attached ? 'FORGE_UPLOAD_UNCERTAIN' : 'FORGE_UPLOAD_UNAVAILABLE'), ${timeoutMs});
+      const deadline = setTimeout(() => finish(null, attached ? 'FORGE_UPLOAD_UNCERTAIN' : identityConfirmed ? 'FORGE_UPLOAD_UNAVAILABLE' : 'FORGE_MEDIA_AUTHENTICATION'), ${timeoutMs});
       const observer = new MutationObserver(() => { if (!attached) attach(); });
       const attach = () => {
         if (attached || finished) return;
         if (location.href !== context.repositoryUrl.replace(/\\/$/, '') + '/issues/new') {
           finish(null, 'FORGE_INVALID_MEDIA'); return;
         }
-        const username = document.querySelector('meta[name="user-login"]')?.content;
-        if (!username || username.toLowerCase() !== context.username.toLowerCase()) {
+        identityConfirmed = false;
+        const marker = document.querySelector('meta[name="user-login"]');
+        // 页面身份标记可能尚未插入或水合；没有读取到用户名不能等同于登录了错误账号。
+        if (!marker || !marker.hasAttribute('content')) return;
+        const username = marker.content.trim();
+        if (!username) {
+          finish(null, 'FORGE_MEDIA_AUTHENTICATION'); return;
+        }
+        if (username.toLowerCase() !== context.username.toLowerCase()) {
           finish(null, 'FORGE_MEDIA_IDENTITY_CHANGED'); return;
         }
+        identityConfirmed = true;
         const textarea = document.querySelector('textarea[aria-label="Markdown value"]');
         const inputs = document.querySelectorAll('input[type="file"]');
         if (!textarea || inputs.length !== 1) return;
@@ -67,7 +75,7 @@ export function githubIssueUploadScript(
         input.files = transfer.files;
         input.dispatchEvent(new Event('change', {bubbles: true}));
       };
-      observer.observe(document.documentElement, {childList: true, subtree: true});
+      observer.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter: ['content', 'name']});
       attach();
     });
   })()`;
