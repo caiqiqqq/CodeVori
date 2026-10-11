@@ -1,3 +1,4 @@
+import { normalizeProxyOnlyDomains } from "./proxyDomains.js";
 /* oxlint-disable eslint(max-lines) -- AppSettings schema 聚合历史迁移、默认值和 patch 校验，拆分会削弱设置迁移的单一入口。 */
 import { z } from "zod";
 import type { AppSettings } from "./protocol.js";
@@ -431,6 +432,15 @@ function migrateLegacyWorkspaceSession(value: unknown): unknown {
   return migrated;
 }
 
+const proxyOnlyDomainsSchema = z.string().transform((value, context) => {
+  try {
+    return normalizeProxyOnlyDomains(value);
+  } catch {
+    context.addIssue({ code: "custom", message: "Invalid proxy domains" });
+    return z.NEVER;
+  }
+});
+
 const appSettingsObjectSchema = z.object({
   quickMessages: quickMessagesSchema.default([]),
   recentProjects: z.array(z.string()).default([]),
@@ -442,6 +452,7 @@ const appSettingsObjectSchema = z.object({
   terminalFontFamily: nonEmptyStringSchema.optional(),
   integratedTerminalShell: integratedTerminalShellSelectionSchema.optional(),
   httpProxy: nonEmptyStringSchema.optional(),
+  httpProxyOnlyDomains: proxyOnlyDomainsSchema.optional(),
   httpProxyNoProxy: nonEmptyStringSchema.optional(),
   httpProxyCaCertPath: nonEmptyStringSchema.optional(),
   embeddedBrowserAllowInsecureCertificates: z.boolean().default(false),
@@ -516,6 +527,7 @@ export const appSettingsPatchSchema = z.object({
   terminalFontFamily: nonEmptyStringSchema.optional(),
   integratedTerminalShell: integratedTerminalShellSelectionSchema.optional(),
   httpProxy: nonEmptyStringSchema.optional(),
+  httpProxyOnlyDomains: proxyOnlyDomainsSchema.optional(),
   httpProxyNoProxy: nonEmptyStringSchema.optional(),
   httpProxyCaCertPath: nonEmptyStringSchema.optional(),
   embeddedBrowserAllowInsecureCertificates: z.boolean().optional(),

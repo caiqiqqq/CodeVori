@@ -1359,6 +1359,7 @@ export function createLocalServices(options: {
   remoteAgentNetwork?: {
     httpProxy?: string;
     noProxy?: string;
+    onlyDomains?: string;
   };
   /** 所属 Environment 的 ZCode Built-in Provider Config 物理路径。 */
   zcodeBuiltinProviderConfigFilePath: string;
@@ -1458,6 +1459,7 @@ export function createLocalServices(options: {
       return {
         httpProxy: settings.httpProxy,
         noProxy: settings.httpProxyNoProxy,
+        onlyDomains: settings.httpProxyOnlyDomains,
         caCertPath: settings.httpProxyCaCertPath,
       };
     });
@@ -2250,6 +2252,7 @@ export function createLocalServices(options: {
           : {
               httpProxy: settings.httpProxy,
               noProxy: settings.httpProxyNoProxy,
+              onlyDomains: settings.httpProxyOnlyDomains,
             };
       // 与 helper 创建同一个门控（isCuaEnabledForContext：dev/internal 特性 OR 官方插件 enablement），
       // 避免 dev mode 下 helper 建了但 resolveSpawnEnv 漏注入 broker env 的割裂。
@@ -2320,7 +2323,10 @@ export function createLocalServices(options: {
       await providerConfigRuntime.start();
       return {
         ...buildAgentRuntimeEnv({
-          httpProxy: agentNetwork.httpProxy,
+          httpProxy: await hostApiNetworkTransport.getSubprocessProxyUrl({
+            ...agentNetwork,
+            caCertPath: settings.httpProxyCaCertPath,
+          }),
           noProxy: agentNetwork.noProxy,
           caCertPath: settings.httpProxyCaCertPath,
         }),

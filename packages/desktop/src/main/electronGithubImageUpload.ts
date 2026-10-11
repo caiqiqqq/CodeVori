@@ -1,3 +1,4 @@
+import { applyDesktopBrowserSessionNetworkPolicy } from "./desktopNetworkPolicy.js";
 import { createHash } from "node:crypto";
 import { BrowserWindow, session } from "electron";
 import {
@@ -33,6 +34,20 @@ export async function executeGithubImageUpload(params: {
     .update(JSON.stringify([context.serverUrl, context.accountId, context.username]))
     .digest("hex");
   const profile = session.fromPartition(`persist:github-issue-upload-${key}`);
+  let parentClosed = false;
+  const closedDuringSetup = () => {
+    parentClosed = true;
+  };
+  params.win.once("close", closedDuringSetup);
+  params.win.once("closed", closedDuringSetup);
+  try {
+    await applyDesktopBrowserSessionNetworkPolicy(profile);
+  } finally {
+    params.win.removeListener("close", closedDuringSetup);
+    params.win.removeListener("closed", closedDuringSetup);
+  }
+  if (parentClosed || params.signal.aborted || params.win.isDestroyed())
+    throw new Error("FORGE_MEDIA_AUTHENTICATION_CANCELLED");
   const window = new BrowserWindow({
     parent: params.win,
     title: `GitHub · ${context.username}`,
