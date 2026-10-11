@@ -21,6 +21,7 @@ import {
   useWorkTaskMessages,
 } from "./WorkTaskParts.js";
 import { WorkTaskAttachments } from "./WorkTaskAttachments.js";
+import { WorkTaskSourceLink } from "./WorkTaskSourceLink.js";
 
 export function WorkTaskDetail({
   task,
@@ -39,7 +40,7 @@ export function WorkTaskDetail({
   const events = useWorkTaskEvents(task);
   const [feedback, setFeedback] = useState("");
   const active = WORK_TASK_ACTIVE_STATUSES.includes(task.status) || task.status === "queued";
-  const disabled = panel.busy || task.stopPending;
+  const disabled = panel.busy || task.stopPending || task.worktreeCleanup?.phase === "running";
   const startable = ["todo", "failed", "canceled"].includes(task.status) && !task.archived;
   return (
     <Dialog
@@ -64,8 +65,16 @@ export function WorkTaskDetail({
           </span>
         </div>
         <p className="whitespace-pre-wrap break-all text-ui-base">{task.prompt}</p>
+        {task.merge && !["merged", "failed", "canceled"].includes(task.merge.phase) ? (
+          <p
+            className="break-all text-ui-sm text-foreground-subtle"
+            data-testid="work-task-merge-hint"
+          >
+            {t("originalTaskCompleteMerging", { branch: task.merge.targetBranch })}
+          </p>
+        ) : null}
         <WorkTaskAttachments scope={task} saved={task.attachments} />
-        <WorkTaskError error={task.failureReason ?? null} />
+        <WorkTaskError error={task.worktreeCleanup?.error ?? task.failureReason ?? null} />
         {task.worktree ? (
           <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 border-t border-border pt-3 text-ui-sm">
             {task.sourceBranch ? (
@@ -147,9 +156,7 @@ export function WorkTaskDetail({
             className="flex flex-col gap-2 border-t border-border pt-3 text-ui-sm"
             data-testid="work-task-source"
           >
-            <p className="break-all">
-              {t("linkedItem")}: #{task.source.number} · {task.source.title}
-            </p>
+            <WorkTaskSourceLink task={task} />
             {task.forgeWriteback ? (
               <>
                 <p>

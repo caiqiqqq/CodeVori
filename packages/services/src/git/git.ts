@@ -1,4 +1,6 @@
 import type {
+  GitTaskChangeRecordRequest,
+  GitTaskChangeRecordResult,
   ForgeImageUploadRequest,
   ForgeImageUploadResult,
   ForgeImageUploadCapability,
@@ -74,6 +76,7 @@ import { ServiceChannels } from "@zcode/shared";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IGitService {
+  getTaskChangeRecord(input: GitTaskChangeRecordRequest): Promise<GitTaskChangeRecordResult>;
   getForgeImageUploadCapability(params: ForgeTargetRequest): Promise<ForgeImageUploadCapability>;
   uploadForgeImage(params: ForgeImageUploadRequest): Promise<ForgeImageUploadResult>;
   getForgeRepository(params: ForgeRepositoryRequest): Promise<ForgeRepositoryInfo>;

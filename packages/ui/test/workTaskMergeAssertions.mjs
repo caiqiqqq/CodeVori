@@ -292,7 +292,7 @@ export async function exerciseWorkTaskBranchesAndMerge(page, artifacts) {
       );
     }
     await merge.getByTestId("work-task-merge").click();
-    await merge.getByText("合并排队中", { exact: true }).waitFor();
+    await merge.getByText("等待合并", { exact: true }).waitFor();
     assert.equal(await merge.getByTestId("work-task-merge").count(), 0);
     await page.evaluate((id) => window.__tasks.advanceMerge(id, "resolving"), task.id);
     await merge.getByText("合并处理中", { exact: true }).waitFor();
@@ -354,7 +354,7 @@ export async function exerciseWorkTaskBranchesAndMerge(page, artifacts) {
         longBranch,
       );
       await merge.getByTestId("work-task-merge").click();
-      await merge.getByText("合并排队中", { exact: true }).waitFor();
+      await merge.getByText("等待合并", { exact: true }).waitFor();
       await content.getByRole("button", { name: "任务操作", exact: true }).click();
       await page.getByRole("menuitem", { name: "取消执行", exact: true }).click();
       await page.getByRole("menu").waitFor({ state: "detached" });

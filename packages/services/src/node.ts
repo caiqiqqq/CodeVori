@@ -320,6 +320,7 @@ import {
 import { WorkTaskAttachmentStore } from "./session/workTaskAttachmentStore.js";
 import { createWorkTaskExecution } from "./work-task/workTaskExecution.js";
 import { createWorkTaskMerge } from "./work-task/workTaskMerge.js";
+import { createWorkTaskResult } from "./work-task/workTaskResult.js";
 import { createWorkTaskConversation } from "./work-task/workTaskConversation.js";
 import { createAcpService } from "./acp/acpServiceImpl.js";
 import { IZCodeAgentService } from "./zcode-agent/zcodeAgent.js";
@@ -2684,6 +2685,9 @@ export function createLocalServices(options: {
   const workTaskService = new WorkTaskService({
     repo: workTaskRepo,
     forge: gitService,
+    result: createWorkTaskResult({
+      ...workTaskExecutionDependencies,
+    }),
     attachments: workTaskAttachments,
     execute: (task, context) => workTaskExecution.execute(task, context),
     merge: createWorkTaskMerge(workTaskExecutionDependencies),

@@ -1,3 +1,5 @@
+import { exerciseWorkTaskResult } from "./workTaskResultAssertions.mjs";
+import { exerciseWorkTaskSource } from "./workTaskSourceAssertions.mjs";
 import { exerciseWorkTaskForge } from "./workTaskForgeAssertions.mjs";
 import { exerciseWorkTaskAcceptance } from "./workTaskAcceptanceAssertions.mjs";
 import { chromium } from "playwright-core";
@@ -42,6 +44,8 @@ export {
   exerciseWorkTaskCompletion,
 };
 export const workTaskScenarios = {
+  source: exerciseWorkTaskSource,
+  "ai-result": exerciseWorkTaskResult,
   acceptance: exerciseWorkTaskAcceptance,
   "forge-completion": exerciseWorkTaskForge,
   "execution-config": exerciseWorkTaskExecutionConfig,

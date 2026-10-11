@@ -41,6 +41,12 @@ export function columnForWorkTaskStatus(status: WorkTaskStatus): WorkTaskColumn 
       return "done";
   }
 }
+export function columnForWorkTask(task: Pick<WorkTask, "status" | "merge">): WorkTaskColumn {
+  // 合并排队属于交付处理中，不应把已执行完成的任务重新显示到待办。
+  return task.status === "queued" && isWorkTaskMerging(task)
+    ? "inProgress"
+    : columnForWorkTaskStatus(task.status);
+}
 export function filterWorkTasks(
   tasks: readonly WorkTask[],
   filters: {
@@ -56,7 +62,7 @@ export function filterWorkTasks(
       (task) =>
         (filters.showCanceled || task.status !== "canceled") &&
         (filters.includeArchived || !task.archived) &&
-        (!filters.column || columnForWorkTaskStatus(task.status) === filters.column) &&
+        (!filters.column || columnForWorkTask(task) === filters.column) &&
         (!search || `${task.title}\n${task.prompt}`.toLocaleLowerCase().includes(search)),
     )
     .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
@@ -71,7 +77,7 @@ export function groupWorkTasksByColumn(
     attention: [],
     done: [],
   };
-  for (const task of tasks) columns[columnForWorkTaskStatus(task.status)].push(task);
+  for (const task of tasks) columns[columnForWorkTask(task)].push(task);
   return columns;
 }
 

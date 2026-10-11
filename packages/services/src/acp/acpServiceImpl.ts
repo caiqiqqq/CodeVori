@@ -67,6 +67,7 @@ import {
   acpWorkflowArtifactQuerySchema,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
+import { OperationDiagnostics } from "@zcode/rpc";
 import { getZCodeDataRootDir } from "../paths.js";
 import type { IMcpSyncService } from "../mcp-sync/mcpSync.js";
 import type { ISkillsService } from "../skills/skills.js";
@@ -109,6 +110,7 @@ import {
   type AcpCompactionUpdate,
 } from "./acpCompaction.js";
 import { failureFromAcpError, recordAcpSessionFailure } from "./acpSessionFailures.js";
+import { AcpTextGeneration } from "./acpTextGeneration.js";
 import type { AcpSessionFailure } from "@zcode/shared";
 
 export type AcpUpdate =
@@ -154,6 +156,8 @@ export type AcpConnectionFactory = (input: {
   mcpServers?: NativeMcpServerRecord[];
   workflowServers?: NativeMcpServerRecord[];
   pluginServers?: ZCodePluginsAcpCapabilitiesResult["servers"];
+  /** Isolated Claude text request; no built-in tools, settings or Host terminal access. */
+  textOnly?: boolean;
   onUpdate: (update: AcpUpdate) => Promise<void>;
   onPermission: (request: AcpPermission) => Promise<string | null>;
   onElicitation?: (
@@ -164,6 +168,10 @@ export type AcpConnectionFactory = (input: {
 }) => Promise<AcpConnectionPort>;
 
 const logger = createServiceLogger("acp-sessions");
+const performanceDiagnostics = new OperationDiagnostics(
+  (record) => logger.info(undefined, "[diagnostics]", record),
+  { scope: "acp-host" },
+);
 const workspaceKey = (workspace: AcpWorkspace): string =>
   workspace.workspaceIdentity?.trim() || workspace.workspacePath;
 const failureMessage = (error: unknown): string =>
@@ -290,6 +298,12 @@ export function createAcpService(
   const emitter = new Emitter<AcpSessionChanged>();
   const traceEmitter = new Emitter<AcpExecutionTraceChanged>();
   let disposed = false;
+  const textGeneration = new AcpTextGeneration({
+    read: (input) => service.read(input),
+    connect,
+    manager: agentManager,
+    customConnect: !!options.connect && !options.agentManager,
+  });
   const usageHistoryReader = createCodexUsageHistoryReader();
   let usageHistoryRead: Promise<Map<string, CodexUsageHistory>> | null = null;
 
@@ -851,19 +865,33 @@ export function createAcpService(
     // 启动禁用的 Agent。每次新连接都向同一个 Host 设置所有者重新解析，复用连接不重启。
     const connectionTask = (async () => {
       const [mcpSettings, launch, plugins] = await Promise.all([
-        options.mcpSyncService?.loadMcpFromUserDirectory({ workspacePath: session.workspacePath }),
+        performanceDiagnostics.run(`acp.attach.mcp-settings.${session.agent}`, async () =>
+          options.mcpSyncService?.loadMcpFromUserDirectory({
+            workspacePath: session.workspacePath,
+          }),
+        ),
         options.connect && !options.agentManager
           ? undefined
-          : agentManager.resolveLaunch(session.agent),
-        options.pluginSource?.getAcpPluginCapabilities({
-          workspacePath: session.workspacePath,
-          ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
-          ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
-        }),
+          : performanceDiagnostics.run(`acp.attach.launch.${session.agent}`, () =>
+              agentManager.resolveLaunch(session.agent),
+            ),
+        performanceDiagnostics.run(`acp.attach.plugins.${session.agent}`, async () =>
+          options.pluginSource?.getAcpPluginCapabilities({
+            workspacePath: session.workspacePath,
+            ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
+            ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
+          }),
+        ),
       ]);
-      const workflowRegistration = await workflowHost.register(session);
+      const workflowRegistration = await performanceDiagnostics.run(
+        `acp.attach.workflow.${session.agent}`,
+        () => workflowHost.register(session),
+      );
       workflowRegistrations.set(session.id, workflowRegistration);
-      const delegationRegistration = await options.delegation?.register(session);
+      const delegationRegistration = await performanceDiagnostics.run(
+        `acp.attach.delegation.${session.agent}`,
+        async () => options.delegation?.register(session),
+      );
       if (delegationRegistration) delegationRegistrations.set(session.id, delegationRegistration);
       return connect({
         agent: session.agent,
@@ -1983,6 +2011,8 @@ export function createAcpService(
   };
 
   const service: IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } = {
+    generateText: (input) => textGeneration.generate(input),
+    cancelGenerateText: (input) => textGeneration.cancel(input),
     async listPlugins(input): Promise<AcpPlugin[]> {
       const target = acpWorkspaceSchema.parse(input);
       const session = input.id ? await scoped({ ...target, id: input.id }) : null;
@@ -2752,6 +2782,7 @@ export function createAcpService(
     },
     disposeAll() {
       disposed = true;
+      textGeneration.dispose();
       usageHistoryReader.dispose();
       for (const admission of promptAdmissions.values())
         admission.reject(new Error("ACP service closed before admission"));
@@ -2774,6 +2805,7 @@ export function createAcpService(
       );
       const inFlight = [...connecting.values()];
       this.disposeAll();
+      await textGeneration.settle();
       await Promise.allSettled(inFlight);
       await Promise.allSettled(closed);
       // 排队复制属于同一 admission 栅栏；关闭 Host 也必须等未接受附件完成清理。

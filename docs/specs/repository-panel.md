@@ -1,5 +1,57 @@
 # Repository Panel
 
+## Forge state filter and task progress
+
+- The list dropdown filters only the forge item's open/closed/all state. Label
+  the visible trigger and accessible control as Issue state or Request state;
+  linked work-task progress is an independent presentation and never an input
+  to this query. Do not infer issue closure from done, or completion from closed.
+- Open issues may be processed; closed issues may have no task, or a pending,
+  running, review or failed task. Changing the forge filter preserves task
+  snapshots and progress. Do not introduce another task filter implicitly.
+- Existing confirmed-close reconciliation still uses direct forge facts,
+  keeping search-index lag and later reopening behavior unchanged. Desktop and
+  mobile read the same scoped Host projections without new state or commands.
+
+```text
+Issue/Request state control -> scoped Forge list query -> matching item rows
+Host task snapshot/events -> linked progress per matching row (read only)
+Confirmed-close receipt -> direct Forge read -> authoritative item state
+```
+
+Acceptance: synthetic browser E2E verifies open + done, closed + todo/running,
+unlinked open/closed, task-only status changes, all-state queries and merged
+PRs. Preserve provider pagination and zero implicit task/forge writes; verify
+visible labels and layout at desktop/320px in both themes.
+
+## Linked task status colors (issue #62)
+
+- The highlighted statuses in issue #62 are linked work-task progress, separate
+  from the forge item's open/closed icon. Reuse the existing Host-owned task
+  snapshot and status projection; no new state, persistence or command path.
+- One repository task-status presentation owns the color mapping for list and
+  detail controls. Todo/canceled use `foreground-subtle`; processing (queued,
+  preparing, running or merge applying) uses `warning`; awaiting input uses
+  `interaction-confirmation-foreground`; review uses `icon-blue`; done uses
+  `success`; failed uses `destructive`. Done with unsettled forge writeback
+  retains “processed, sync pending” and uses `warning`, ahead of done green.
+- The status text and the list control's icon share the same color, including
+  hover and disabled busy states. Keep localized status text, keyboard access,
+  task navigation, retry/reprocess availability and forge state unchanged.
+- Colors are a pure render-time projection of the current task snapshot. They
+  must update immediately when the existing task event refreshes the shared
+  list, for desktop continuous and mobile replayable surfaces alike.
+
+```text
+Host task owner -> existing scoped task event/snapshot -> shared UI task list
+  -> repository status projection -> list icon/text + detail status text
+```
+
+Acceptance: synthetic browser E2E covers every task status, applying merge,
+pending/failed/settled forge writeback, live status changes and task navigation;
+list/detail computed colors match semantic tokens in Zai light/dark at desktop
+and 320px widths. No real forge/model writes.
+
 ## Issue task lifecycle and writeback
 
 - Host WorkTaskService/SQLite owns the durable source association: validated repository
@@ -248,6 +300,30 @@ panel remount / page restart -> local preference -> same navigation/read paths
   action, explaining the account mismatch instead of leaving an unrecoverable
   generic image error.
   Public external images may render without forge credentials and a referrer.
+- GitHub.com issue/PR descriptions and comments read
+  `https://github.com/user-attachments/assets/<UUID>` through the same bound
+  Host IGitService and selected GitHub account. Anonymous reads of private
+  attachments may return 404; do not treat these URLs as public images.
+  Revalidate repository/account before reading. Only this exact HTTPS origin
+  and attachment path may receive the account token; reject credentials,
+  query/fragment, arbitrary paths, local URLs and Enterprise-to-GitHub reads.
+  Follow at most one manually inspected HTTPS redirect to the exact GitHub
+  image storage hosts `github-production-user-asset-6210df.s3.amazonaws.com`
+  or `private-user-images.githubusercontent.com`, without account credentials
+  or cookies. Signed storage URLs stay inside Host and never enter RPC/logs.
+  Reuse the 12 MiB raster MIME/signature limits, temporary image URL lifecycle,
+  retry/original-page actions and existing zoom dialog. Authentication failures
+  do not invoke GitLab web sign-in or fall back to anonymous requests.
+  No new persistence, accepted state, Main bridge or stream protocol is needed.
+  Owner/event order: repository UI -> bound Host target/account validation ->
+  allowlisted attachment read -> credential-free storage read -> bounded raster
+  bytes -> hook-owned temporary URL -> existing preview; scope change/unmount
+  discards late replies and revokes URLs, on desktop and mobile Web alike.
+  Acceptance: service tests cover token destination, redirect rejection,
+  auth/network failures, malformed/oversize payloads and stale target rejection;
+  UI E2E covers actual image pixels/aspect ratio, failed-read retry, click zoom,
+  comments and stale Host replies at 1280/375px in both themes. Existing GitLab
+  sign-in and chat Markdown behavior must continue to pass.
 - Users may create an issue, publish a comment, close/reopen an item and merge a
   ready change request. Closing/reopening and merging require confirmation;
   no remote mutation runs automatically. Merge reads the latest head/state and

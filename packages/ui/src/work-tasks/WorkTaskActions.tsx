@@ -48,7 +48,7 @@ export function WorkTaskActions({
   const [confirmCleanup, setConfirmCleanup] = useState(false);
   const active = WORK_TASK_ACTIVE_STATUSES.includes(task.status) || task.status === "queued";
   const startable = ["todo", "failed", "canceled"].includes(task.status) && !task.archived;
-  const disabled = panel.busy || task.stopPending;
+  const disabled = panel.busy || task.stopPending || task.worktreeCleanup?.phase === "running";
   const actions: { label: string; Icon: LucideIcon; disabled?: boolean; run(): void }[] = [];
   if (canReviewWorkTaskCompletion(task))
     actions.push({
@@ -102,7 +102,9 @@ export function WorkTaskActions({
     task.useWorktree !== false
   )
     actions.push({
-      label: t("archiveAndRemoveWorktree"),
+      label: t(
+        task.worktreeCleanup?.phase === "failed" ? "retryCleanup" : "archiveAndRemoveWorktree",
+      ),
       Icon: Trash2,
       disabled: disabled || !panel.executable,
       run: () => setConfirmCleanup(true),

@@ -33,6 +33,7 @@ import {
   selectForgeAccount,
 } from "./providers/forgeRemote.js";
 import { createGithubForgeProvider } from "./providers/githubForgeProvider.js";
+import { readGithubAttachmentImage } from "./providers/githubForgeMedia.js";
 import { createGitlabForgeProvider } from "./providers/gitlabForgeProvider.js";
 import { createGiteaForgeProvider } from "./providers/giteaForgeProvider.js";
 
@@ -150,7 +151,14 @@ export function createForgeService(options?: {
     };
     const adapter =
       resolved.repository.provider === "github"
-        ? createGithubForgeProvider(api, resolved.repository.name)
+        ? createGithubForgeProvider(api, resolved.repository.name, (url) =>
+            readGithubAttachmentImage(
+              resolved.repository.url,
+              url,
+              account.secret,
+              options?.fetcher ?? fetch,
+            ),
+          )
         : resolved.repository.provider === "gitlab"
           ? createGitlabForgeProvider(api, resolved.repository.name, resolved.repository.url, {
               async readLegacy(url) {

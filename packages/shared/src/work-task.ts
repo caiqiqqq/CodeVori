@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { forgeItemRequestSchema } from "./forge.js";
 import { modelSelectionSchema } from "./model-selection.js";
-import { acpAgentSchema } from "./zcode-protocol/acp.js";
+import { workTaskChangeRecordSchema } from "./work-task-result.js";
+import { acpAgentSchema, acpTextSourceSchema } from "./zcode-protocol/acp.js";
 import { attachmentRefSchema } from "./zcode-protocol-v4/attachment-ref.js";
 import { PROTOCOL_V4_LIMITS } from "./zcode-protocol-v4/core.js";
 import {
@@ -206,6 +207,8 @@ export const workTaskForgeWritebackSchema = workTaskForgeOptionsSchema
     error: z.string().max(256).optional(),
     owner: z.string().uuid().optional(),
     leaseUntil: z.number().optional(),
+    records: workTaskChangeRecordSchema.optional(),
+    recordsFinalized: z.boolean().optional(),
   })
   .strict();
 export type WorkTaskForgeWriteback = z.infer<typeof workTaskForgeWritebackSchema>;
@@ -246,6 +249,14 @@ export const workTaskSchema = workTaskScopeSchema
       .strict()
       .optional(),
     worktree: workTaskWorktreeSchema.optional(),
+    worktreeCleanup: z
+      .object({
+        id: z.string().uuid(),
+        phase: z.enum(["running", "failed"]),
+        error: z.string().optional(),
+      })
+      .strict()
+      .optional(),
     merge: workTaskMergeSchema.optional(),
     failureReason: z.string().optional(),
     completion: z.enum(["accepted_without_merge", "merged"]).optional(),
@@ -274,6 +285,33 @@ export function workTaskExecutionPath(task: WorkTask): string | undefined {
 }
 export const workTaskTargetSchema = workTaskScopeSchema.extend({ id: z.string().min(1) }).strict();
 export type WorkTaskTarget = z.infer<typeof workTaskTargetSchema>;
+export const workTaskResultRequestSchema = workTaskTargetSchema
+  .extend({
+    requestId: z.string().uuid(),
+    runSeq: z.number().int().nonnegative(),
+    mode: z.enum(["merge", "accept"]),
+    locale: z.enum(["zh-CN", "en-US"]),
+  })
+  .strict();
+export type WorkTaskResultRequest = z.infer<typeof workTaskResultRequestSchema>;
+export const workTaskResultCancelSchema = workTaskResultRequestSchema.omit({
+  mode: true,
+  locale: true,
+});
+export type WorkTaskResultCancel = z.infer<typeof workTaskResultCancelSchema>;
+export const workTaskResultSourceRequestSchema = workTaskResultCancelSchema.omit({
+  requestId: true,
+});
+export type WorkTaskResultSourceRequest = z.infer<typeof workTaskResultSourceRequestSchema>;
+export const workTaskResultSourceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("api"), selection: modelSelectionSchema }).strict(),
+  acpTextSourceSchema.extend({ kind: z.literal("acp") }).strict(),
+]);
+export type WorkTaskResultSource = z.infer<typeof workTaskResultSourceSchema>;
+export const workTaskResultDraftSchema = z
+  .object({ text: z.string().trim().min(1).max(12_000), source: workTaskResultSourceSchema })
+  .strict();
+export type WorkTaskResultDraft = z.infer<typeof workTaskResultDraftSchema>;
 export const workTaskCompleteSchema = workTaskTargetSchema
   .extend({
     forge: workTaskForgeOptionsSchema.optional(),

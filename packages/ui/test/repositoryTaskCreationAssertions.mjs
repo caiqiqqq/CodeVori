@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { selectWorkTaskExecution } from "./workTaskExecutionConfigAssertions.mjs";
+import { assertRepositoryStateFilter } from "./repositoryStateFilterAssertions.mjs";
+import { assertRepositoryTaskStatusColors } from "./repositoryTaskStatusAssertions.mjs";
 
 export async function exerciseRepositoryTaskCreation(page, panel, artifacts) {
   const handle = () => panel.getByTestId("repository-item-handle").first();
@@ -83,6 +85,7 @@ export async function exerciseRepositoryTaskCreation(page, panel, artifacts) {
   assert.equal(api.source.repositoryKey, "Aorigin");
   await page.evaluate(() => window.__forge.remount());
   await panel.getByRole("button", { name: "已加入待办", exact: true }).waitFor();
+  await assertRepositoryTaskStatusColors(page, panel, artifacts);
   for (const [status, label] of [
     ["running", "处理中"],
     ["review", "待验收"],
@@ -289,6 +292,7 @@ export async function exerciseRepositoryTaskCreation(page, panel, artifacts) {
     window.__forge.remount();
   });
   await handle().waitFor();
+  await assertRepositoryStateFilter(page, panel, artifacts);
 }
 
 export const repositoryTaskServicesFixture = `

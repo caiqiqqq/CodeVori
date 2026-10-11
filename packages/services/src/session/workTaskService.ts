@@ -1,7 +1,7 @@
+import { WorkTaskEvents } from "./workTaskEvents.js";
 import { randomUUID } from "node:crypto";
-import { Emitter, type Event, type IDisposable } from "@zcode/rpc";
+import { type Event, type IDisposable } from "@zcode/rpc";
 import {
-  resolveWorkspaceKey,
   workTaskExecutionPath,
   workTaskMergeRequestSchema,
   isWorkTaskMerging,
@@ -12,7 +12,6 @@ import {
   workTaskScopeSchema,
   workTaskStartSchema,
   workTaskTargetSchema,
-  workTaskCompleteSchema,
   workTaskUpdateSchema,
   workTaskAttachmentImportSchema,
   workTaskAttachmentBeginSchema,
@@ -29,15 +28,15 @@ import {
   type WorkTaskScope,
   type WorkTaskStart,
   type WorkTaskTarget,
-  type WorkTaskComplete,
   type WorkTaskUpdate,
   type WorkTaskMergeRequest,
   type WorkTaskArchive,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
+import { assertWorkTaskLocal } from "./workTask.js";
 import type { IWorkTaskService, WorkTaskConversationEvent } from "./workTask.js";
 import { WorkTaskForgeCoordinator } from "./workTaskForgeCoordinator.js";
-import { archiveWorkTask } from "./workTaskArchive.js";
+import { archiveWorkTask, type WorkTaskCleanupRun } from "./workTaskArchive.js";
 import type { WorkTaskServiceOptions } from "./workTaskServiceOptions.js";
 
 interface Run {
@@ -52,11 +51,14 @@ const logger = createServiceLogger("work-tasks");
 export class WorkTaskService implements IWorkTaskService {
   private readonly owner = randomUUID();
   private readonly runs = new Map<string, Run>();
-  private readonly events = new Map<string, Emitter<void>>();
+  private readonly events = new WorkTaskEvents();
   private readonly observations = new Map<string, { key: string; subscription: IDisposable }>();
   private readonly forge: WorkTaskForgeCoordinator;
-  private readonly cleaning = new Set<string>();
-  private revisions = new Map<string, number>();
+  readonly generateResult: IWorkTaskService["generateResult"];
+  readonly getResultSource: IWorkTaskService["getResultSource"];
+  readonly cancelResult: IWorkTaskService["cancelResult"];
+  readonly complete: IWorkTaskService["complete"];
+  private readonly cleaning = new Map<string, WorkTaskCleanupRun>();
   private initialized: Promise<void> | null = null;
   private ticking: Promise<void> | null = null;
   private wakeRequested = false;
@@ -66,7 +68,12 @@ export class WorkTaskService implements IWorkTaskService {
   constructor(private readonly options: WorkTaskServiceOptions) {
     const changed = () => this.publish();
     const closed = () => this.closed;
-    this.forge = new WorkTaskForgeCoordinator(options, this.owner, changed, closed);
+    const ready = () => this.ready();
+    this.forge = new WorkTaskForgeCoordinator(options, this.owner, changed, closed, ready);
+    this.generateResult = this.forge.result.generate.bind(this.forge.result);
+    this.getResultSource = this.forge.result.source.bind(this.forge.result);
+    this.cancelResult = this.forge.result.cancel.bind(this.forge.result);
+    this.complete = this.forge.complete.bind(this.forge);
   }
 
   startScheduler() {
@@ -87,22 +94,14 @@ export class WorkTaskService implements IWorkTaskService {
     });
     await this.initialized;
   }
-  private assertLocal(scope: WorkTaskScope) {
-    if (this.options.allowExecution === false || scope.workspaceIdentity || scope.remoteSessionId)
-      throw new Error("work-task.remote-unsupported");
+  private assertNotCleaning(target: WorkTaskTarget) {
+    if (this.options.repo.get(target, target.id).worktreeCleanup?.phase === "running")
+      throw new Error("work-task.cleanup-in-progress");
   }
   private publish() {
-    const next = this.options.repo.revisions();
-    let changed = false;
-    for (const [key, revision] of next) {
-      if (this.revisions.get(key) !== revision) {
-        changed = true;
-        this.events.get(key)?.fire();
-      }
-    }
-    this.revisions = next;
-    if (changed) this.syncObservations();
+    if (this.events.publish(this.options.repo.revisions())) this.syncObservations();
   }
+
   private syncObservations() {
     if (this.closed || this.options.allowExecution === false || !this.options.conversation) return;
     const tasks = this.options.repo.conversationTasks();
@@ -203,6 +202,8 @@ export class WorkTaskService implements IWorkTaskService {
     for (const run of this.runs.values()) {
       if (!this.options.repo.renew(run.task, this.owner, now, LEASE_MS)) run.abort.abort();
     }
+    for (const run of this.cleaning.values())
+      this.options.repo.renew(run.task, this.owner, now, LEASE_MS);
     this.options.repo.recoverExpired(now);
     let task: WorkTask | null;
     while (!this.closed && (task = this.options.repo.claimNext(this.owner, now, LEASE_MS))) {
@@ -217,7 +218,7 @@ export class WorkTaskService implements IWorkTaskService {
   private async execute(run: Run) {
     let error: string | undefined;
     try {
-      this.assertLocal(run.task);
+      assertWorkTaskLocal(run.task, this.options.allowExecution);
       const execute = isWorkTaskMerging(run.task)
         ? this.options.merge?.execute.bind(this.options.merge)
         : this.options.execute;
@@ -268,7 +269,7 @@ export class WorkTaskService implements IWorkTaskService {
     return task;
   }
   private attachmentStore(scope: WorkTaskScope) {
-    this.assertLocal(scope);
+    assertWorkTaskLocal(scope, this.options.allowExecution);
     if (this.closed) throw new Error("work-task.host-closed");
     if (!this.options.attachments) throw new Error("work-task.attachments-unsupported");
     return this.options.attachments;
@@ -299,7 +300,7 @@ export class WorkTaskService implements IWorkTaskService {
   }
   async start(input: WorkTaskStart) {
     const parsed = workTaskStartSchema.parse(input);
-    this.assertLocal(parsed);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
     await this.ready();
     const task = this.options.repo.enqueue(parsed, parsed.id, parsed.feedback);
     this.publish();
@@ -308,7 +309,7 @@ export class WorkTaskService implements IWorkTaskService {
   }
   async startAll(input: WorkTaskScope) {
     const scope = workTaskScopeSchema.strict().parse(input);
-    this.assertLocal(scope);
+    assertWorkTaskLocal(scope, this.options.allowExecution);
     await this.ready();
     this.options.repo.enqueueAll(scope);
     this.publish();
@@ -317,40 +318,46 @@ export class WorkTaskService implements IWorkTaskService {
   async cancel(input: WorkTaskTarget) {
     const parsed = workTaskTargetSchema.parse(input);
     await this.ready();
+    this.assertNotCleaning(parsed);
     const task = this.options.repo.cancel(parsed, parsed.id);
     this.runs.get(task.id)?.abort.abort();
     this.publish();
     this.wake();
     return task;
   }
-  async complete(input: WorkTaskComplete) {
-    const parsed = workTaskCompleteSchema.parse(input);
-    await this.ready();
-    return this.forge.complete(parsed);
-  }
   async merge(input: WorkTaskMergeRequest) {
     const parsed = workTaskMergeRequestSchema.parse(input);
-    this.assertLocal(parsed);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
     await this.ready();
     if (!this.options.merge) throw new Error("work-task.merge-unsupported");
     const current = this.options.repo.get(parsed, parsed.id);
     const { projectPath } = await this.options.merge.validate(current, parsed.targetBranch);
-    if (this.closed) throw new Error("work-task.host-closed");
-    const task = this.options.repo.enqueueMerge(parsed, projectPath);
+    const records = await this.forge.result.capture(current, parsed.forge, parsed.targetBranch);
+    // 合入主线的后台清理：证据读取后仍须核对清理事实，不能绕过完成/合并准入。
+    this.assertNotCleaning(parsed);
+    const task = this.options.repo.enqueueMerge(parsed, projectPath, records);
     this.publish();
     this.wake();
     return task;
   }
   async archive(input: WorkTaskArchive) {
     const parsed = workTaskArchiveSchema.parse(input);
-    if (parsed.removeWorktree) this.assertLocal(parsed);
+    if (parsed.removeWorktree) assertWorkTaskLocal(parsed, this.options.allowExecution);
     await this.ready();
-    const task = await archiveWorkTask(this.options.repo, parsed, {
+    const task = archiveWorkTask(this.options.repo, parsed, {
       active: this.cleaning,
+      owner: this.owner,
+      leaseMs: LEASE_MS,
+      publish: () => this.publish(),
       remove: this.options.removeWorktree,
       isClosed: () => this.closed,
     });
     this.publish();
+    this.cleaning
+      .get(task.id)
+      ?.promise.catch((error) =>
+        logger.error(undefined, "Worktree cleanup persistence failed", { error: String(error) }),
+      );
     return task;
   }
   async setConcurrency(input: WorkTaskScope & { concurrency: number }) {
@@ -367,17 +374,13 @@ export class WorkTaskService implements IWorkTaskService {
   }
   onDynamicChanged(input: WorkTaskScope): Event<void> {
     const scope = workTaskScopeSchema.strict().parse(input);
-    const key = resolveWorkspaceKey(scope);
-    let emitter = this.events.get(key);
-    if (!emitter) {
-      emitter = new Emitter<void>();
-      this.events.set(key, emitter);
-    }
-    return emitter.event;
+    return this.events.subscribe(scope);
   }
+
   disposeAll() {
     if (this.closed) return;
     this.closed = true;
+    this.forge.result.dispose();
     for (const observation of this.observations.values()) observation.subscription.dispose();
     this.observations.clear();
     if (this.timer) clearInterval(this.timer);
@@ -388,14 +391,14 @@ export class WorkTaskService implements IWorkTaskService {
     await this.initialized?.catch(() => {});
     await this.ticking;
     if (this.initialized) {
+      await Promise.allSettled([...this.cleaning.values()].map((run) => run.promise));
       this.options.repo.interruptOwned(this.owner);
       for (const run of this.runs.values()) run.abort.abort();
       await Promise.all([...this.runs.values()].map((run) => run.promise));
       await this.forge.drain();
       this.options.repo.close();
     }
-    for (const event of this.events.values()) event.dispose();
-    this.events.clear();
+    this.events.dispose();
   }
   async disposeAllAndWait() {
     this.disposeAll();

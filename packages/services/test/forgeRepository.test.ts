@@ -336,6 +336,137 @@ const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII=",
   "base64",
 );
+test("GitHub private attachments use the selected account and drop credentials at storage", async () => {
+  const url = "https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc";
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const storage =
+    "https://github-production-user-asset-6210df.s3.amazonaws.com/123/image.png?signature=synthetic";
+  const f = fixture(
+    "https://github.com/team/project.git",
+    [account("github", "https://github.com")],
+    [
+      new Response(null, { status: 302, headers: { location: storage } }),
+      new Response(png, { headers: { "content-type": "image/png" } }),
+    ],
+  );
+  const preview = await f.service.readForgeImage({ ...(await f.target()), url });
+  assert.equal(preview.dataBase64, png.toString("base64"));
+  assert.deepEqual(
+    f.state.calls.map((call) => call.url.href),
+    [url, storage],
+  );
+  assert.equal(
+    new Headers(f.state.calls[0]!.init.headers).get("Authorization"),
+    "Bearer synthetic-forge-token",
+  );
+  assert.equal(new Headers(f.state.calls[1]!.init.headers).has("Authorization"), false);
+  assert.equal(new Headers(f.state.calls[1]!.init.headers).has("Cookie"), false);
+  assert.ok(
+    f.state.calls.every(
+      (call) => call.init.redirect === "manual" && call.init.credentials === "omit",
+    ),
+  );
+  assert.doesNotMatch(JSON.stringify(preview), /synthetic-forge-token|signature|amazonaws/);
+});
+
+test("GitHub rejects untrusted attachments and changed targets before HTTP", async () => {
+  const url = "https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc";
+  const f = fixture("https://github.com/team/project.git", [
+    account("github", "https://github.com"),
+  ]);
+  const target = await f.target();
+  for (const source of [
+    url.replace("https:", "http:"),
+    url.replace("github.com", "github.com.example.invalid"),
+    url.replace("github.com", "user:pass@github.com"),
+    `${url}?token=x`,
+    `${url}#x`,
+    "https://github.com/login",
+    "https://github.com/user-attachments/assets/invalid",
+    "file:///tmp/image.png",
+  ])
+    await assert.rejects(
+      f.service.readForgeImage({ ...target, url: source }),
+      /FORGE_INVALID_MEDIA/,
+    );
+  assert.equal(f.state.calls.length, 0);
+  f.state.remote = "https://github.com/other/project.git";
+  await assert.rejects(f.service.readForgeImage({ ...target, url }), /FORGE_TARGET_CHANGED/);
+  assert.equal(f.state.calls.length, 0);
+  const enterprise = fixture("https://enterprise.example.invalid/team/project.git", [
+    account("github", "https://enterprise.example.invalid"),
+  ]);
+  await assert.rejects(
+    enterprise.service.readForgeImage({ ...(await enterprise.target()), url }),
+    /FORGE_INVALID_MEDIA/,
+  );
+  assert.equal(enterprise.state.calls.length, 0);
+});
+
+test("GitHub never forwards tokens to redirects or falls back after failed image reads", async () => {
+  const url = "https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc";
+  for (const location of [
+    "https://attacker.example.invalid/image.png",
+    "http://private-user-images.githubusercontent.com/image.png",
+    "https://user:pass@private-user-images.githubusercontent.com/image.png",
+    "https://github-production-user-asset-6210df.s3.amazonaws.com.example.invalid/image.png",
+    "https://other-bucket.s3.amazonaws.com/image.png",
+    "/login",
+    "file:///tmp/image.png",
+  ]) {
+    const f = fixture(
+      "https://github.com/team/project.git",
+      [account("github", "https://github.com")],
+      [new Response(null, { status: 302, headers: { location } })],
+    );
+    await assert.rejects(
+      f.service.readForgeImage({ ...(await f.target()), url }),
+      /FORGE_INVALID_MEDIA/,
+    );
+    assert.equal(f.state.calls.length, 1);
+  }
+  for (const reply of [
+    new Error("synthetic network failure"),
+    ...[401, 403, 404, 429].map((status) => new Response(null, { status })),
+    new Response("<svg></svg>", { headers: { "content-type": "image/svg+xml" } }),
+    new Response("<html>bad</html>", { headers: { "content-type": "image/png" } }),
+    new Response(new Uint8Array(12 * 1024 * 1024 + 1), {
+      headers: { "content-type": "image/png" },
+    }),
+  ]) {
+    const f = fixture(
+      "https://github.com/team/project.git",
+      [account("github", "https://github.com")],
+      [reply],
+    );
+    await assert.rejects(
+      f.service.readForgeImage({ ...(await f.target()), url }),
+      /FORGE_(NETWORK|AUTHENTICATION|FORBIDDEN|NOT_FOUND|RATE_LIMIT|RESPONSE)/,
+    );
+    assert.equal(f.state.calls.length, 1);
+  }
+  const f = fixture(
+    "https://github.com/team/project.git",
+    [account("github", "https://github.com")],
+    [
+      new Response(null, {
+        status: 302,
+        headers: {
+          location:
+            "https://private-user-images.githubusercontent.com/image.png?signature=synthetic",
+        },
+      }),
+      new Response(null, {
+        status: 302,
+        headers: { location: "https://attacker.example.invalid/image.png" },
+      }),
+    ],
+  );
+  await assert.rejects(f.service.readForgeImage({ ...(await f.target()), url }));
+  assert.equal(f.state.calls.length, 2);
+  assert.equal(new Headers(f.state.calls[1]!.init.headers).has("Authorization"), false);
+});
+
 test("GitLab private upload images use the bound account API without exposing credentials", async () => {
   const f = fixture(
     "https://forge.example.invalid/git/team/sub/project.git",

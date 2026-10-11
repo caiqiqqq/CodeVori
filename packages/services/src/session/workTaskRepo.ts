@@ -1,4 +1,10 @@
 import {
+  beginWorktreeCleanup,
+  finishWorktreeCleanup,
+  canRenewWorkTaskLease,
+  interruptWorkTaskOwners,
+} from "./workTaskCleanupPersistence.js";
+import {
   openWorkTaskDatabase,
   hasActiveWorkTaskConversation,
   listWorkTaskConversations,
@@ -13,7 +19,7 @@ import {
   workTaskRunPrompt,
   assertWorkTaskWorkspaceEditable,
 } from "./workTaskConversationState.js";
-import { finishWorkTaskRun, interruptWorkTaskRun } from "./workTaskRunState.js";
+import { finishWorkTaskRun } from "./workTaskRunState.js";
 import { claimWorkTaskForge, writeWorkTaskForge } from "./workTaskForgePersistence.js";
 import {
   assertWorkTaskSourceAvailable,
@@ -21,6 +27,7 @@ import {
   completeWorkTaskForge,
 } from "./workTaskForgeState.js";
 import { createWorkTaskDraft } from "./workTaskDraft.js";
+import { admitWorkTaskMerge } from "./workTaskMergeAdmission.js";
 import { isDeepStrictEqual } from "node:util";
 import {
   WORK_TASK_ACTIVE_STATUSES,
@@ -36,6 +43,7 @@ import {
   type WorkTaskScope,
   type WorkTaskUpdate,
   type WorkTaskMerge,
+  type WorkTaskChangeRecord,
   type WorkTaskMergeRequest,
 } from "@zcode/shared";
 import type { WorkTaskConversationEvent, WorkTaskExecutionUpdate } from "./workTask.js";
@@ -191,29 +199,16 @@ export class WorkTaskRepo {
   enqueue(scope: WorkTaskScope, id: string, feedback?: string): WorkTask {
     return this.transaction(() => this.enqueueInside(scope, id, feedback));
   }
-  enqueueMerge(input: WorkTaskMergeRequest, projectPath: string): WorkTask {
+  enqueueMerge(
+    input: WorkTaskMergeRequest,
+    projectPath: string,
+    records?: WorkTaskChangeRecord,
+  ): WorkTask {
     return this.transaction(() => {
       const { id, targetBranch } = input;
       const row = this.row(input, id);
       const task = decode(row);
-      if (row.owner && task.merge && ["applying", "merged"].includes(task.merge.phase))
-        throw new Error("work-task.merge-applying");
-      if (isWorkTaskMerging(task)) {
-        if (task.merge?.targetBranch !== targetBranch)
-          throw new Error("work-task.merge-in-progress");
-        return task;
-      }
-      if (task.completion === "merged" && task.merge?.targetBranch === targetBranch) return task;
-      if (
-        task.status !== "review" ||
-        task.archived ||
-        task.stopPending ||
-        row.owner ||
-        !task.worktree
-      )
-        throw new Error("work-task.not-reviewable");
-      if (task.worktree.branchName === targetBranch)
-        throw new Error("work-task.merge-invalid-target");
+      if (!admitWorkTaskMerge(task, !!row.owner, targetBranch)) return task;
       appendWorkTaskQueue(this.database(), id);
       const merge: WorkTaskMerge = { id: uuidv7(), projectPath, targetBranch, phase: "queued" };
       return this.write(
@@ -221,7 +216,11 @@ export class WorkTaskRepo {
           ...task,
           merge,
           status: "queued",
-          forgeWriteback: prepareWorkTaskForge({ ...task, runSeq: task.runSeq + 1 }, input.forge),
+          forgeWriteback: prepareWorkTaskForge(
+            { ...task, merge, runSeq: task.runSeq + 1 },
+            input.forge,
+            records,
+          ),
           failureReason: undefined,
           updatedAt: Date.now(),
         },
@@ -313,9 +312,14 @@ export class WorkTaskRepo {
       );
     });
   }
-  complete(scope: WorkTaskScope, id: string, forge?: WorkTaskForgeOptions): WorkTask {
+  complete(
+    scope: WorkTaskScope,
+    id: string,
+    forge?: WorkTaskForgeOptions,
+    records?: WorkTaskChangeRecord,
+  ): WorkTask {
     return this.transaction(() => {
-      const task = completeWorkTaskForge(this.get(scope, id), forge);
+      const task = completeWorkTaskForge(this.get(scope, id), forge, records);
       return this.write(task, "accepted");
     });
   }
@@ -338,6 +342,8 @@ export class WorkTaskRepo {
   archive(scope: WorkTaskScope, id: string, archived: boolean): WorkTask {
     return this.transaction(() => {
       const task = this.get(scope, id);
+      if (task.worktreeCleanup?.phase === "running")
+        throw new Error("work-task.cleanup-in-progress");
       if (
         task.stopPending ||
         task.status === "queued" ||
@@ -350,6 +356,14 @@ export class WorkTaskRepo {
       );
     });
   }
+  beginWorktreeCleanup(scope: WorkTaskScope, id: string, owner: string, leaseMs: number): WorkTask {
+    return this.transaction(() =>
+      beginWorktreeCleanup(this.database(), this.get(scope, id), owner, leaseMs),
+    );
+  }
+  finishWorktreeCleanup(task: WorkTask, owner: string, error?: string): boolean {
+    return this.transaction(() => finishWorktreeCleanup(this.database(), task, owner, error));
+  }
   /** Preserve legacy settings without imposing a project execution limit. */
   setConcurrency(scope: WorkTaskScope, concurrency: number) {
     this.database()
@@ -361,41 +375,17 @@ export class WorkTaskRepo {
   renew(task: WorkTask, owner: string, now: number, leaseMs: number): boolean {
     const row = this.row(task, task.id);
     const current = decode(row);
-    if (
-      row.owner !== owner ||
-      current.runSeq !== task.runSeq ||
-      !WORK_TASK_ACTIVE_STATUSES.includes(current.status) ||
-      (row.lease_until ?? 0) <= now
-    )
-      return false;
+    if (!canRenewWorkTaskLease(row, current, task, owner, now)) return false;
     this.database()
       .prepare("UPDATE work_tasks SET lease_until=? WHERE id=? AND owner=? AND lease_until>?")
       .run(now + leaseMs, task.id, owner, now);
     return true;
   }
   recoverExpired(now: number) {
-    this.transaction(() => {
-      const rows = this.database()
-        .prepare(
-          "SELECT data,owner,lease_until FROM work_tasks WHERE owner IS NOT NULL AND lease_until<=?",
-        )
-        .all(now) as unknown as Row[];
-      for (const row of rows) {
-        const task = decode(row);
-        this.write(interruptWorkTaskRun(task, now, false), "host-interrupted", null);
-      }
-    });
+    this.transaction(() => interruptWorkTaskOwners(this.database(), now));
   }
   interruptOwned(owner: string) {
-    this.transaction(() => {
-      const rows = this.database()
-        .prepare("SELECT data,owner,lease_until FROM work_tasks WHERE owner=?")
-        .all(owner) as unknown as Row[];
-      for (const row of rows) {
-        const task = decode(row);
-        this.write(interruptWorkTaskRun(task, Date.now(), true), "host-stopping");
-      }
-    });
+    this.transaction(() => interruptWorkTaskOwners(this.database(), Date.now(), owner));
   }
   events(scope: WorkTaskScope, id: string): WorkTaskEvent[] {
     this.row(scope, id);

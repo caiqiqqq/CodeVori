@@ -6,6 +6,13 @@ import type { AcpAgent, AcpPromptInput, AcpSession, AcpWorkspace } from "@zcode/
 import { selectAcpSession } from "@/v4/composer/acpModelSelection.js";
 import { ACP_HOST_UPGRADE_REQUIRED, waitForAcpPromptAdmission } from "@/v4/acpPromptAdmission.js";
 import { visibleAcpQueueSubmission, type AcpQueueSubmission } from "@/v4/acpQueueProjection.js";
+import { OperationDiagnostics } from "@zcode/rpc";
+import { logger } from "@/logger.js";
+
+const diagnostics = new OperationDiagnostics(
+  (record) => logger.lifecycle.warn("[diagnostics]", record),
+  { scope: "renderer-acp" },
+);
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -228,8 +235,8 @@ export function useAcpConversation(
       closeArchivedSelection(change.session);
     });
     // Bug 原因：远端 list 与实时通知并发；先订阅，再按 revision 合并快照。
-    void service
-      .list(target)
+    void diagnostics
+      .run("acp.list", () => service.list(target))
       .then((items) => {
         if (!live || targetKeyRef.current !== targetKey) return;
         const byId = new Map(
@@ -346,13 +353,15 @@ export function useAcpConversation(
       createRequestIds.current.set(key, requestId);
       void run(
         async () => {
-          const session = await service.create({
-            ...target,
-            agent: nextAgent,
-            requestId,
-            deferPersistence: true,
-            usePermissionPreference: true,
-          });
+          const session = await diagnostics.run("acp.create", () =>
+            service.create({
+              ...target,
+              agent: nextAgent,
+              requestId,
+              deferPersistence: true,
+              usePermissionPreference: true,
+            }),
+          );
           if (
             targetKeyRef.current !== targetKey ||
             agentRef.current !== nextAgent ||
@@ -433,8 +442,8 @@ export function useAcpConversation(
       const request = {};
       refreshRequests.current.set(session.id, request);
       changeBusy(session.agent, 1, session.id);
-      void service
-        .refresh({ ...target, id: session.id })
+      void diagnostics
+        .run("acp.refresh", () => service.refresh({ ...target, id: session.id }))
         .then((next) => {
           if (
             targetKeyRef.current !== targetKey ||

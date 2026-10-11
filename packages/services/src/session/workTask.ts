@@ -24,6 +24,12 @@ import {
   type WorkTaskAttachmentChunk,
   type WorkTaskAttachmentTarget,
   type WorkTaskArchive,
+  type WorkTaskResultRequest,
+  type WorkTaskResultCancel,
+  type WorkTaskResultDraft,
+  type WorkTaskResultSource,
+  type WorkTaskResultSourceRequest,
+  type WorkTaskChangeRecord,
 } from "@zcode/shared";
 import type {
   V4AttachmentBeginResult,
@@ -34,6 +40,9 @@ import type { Event, IDisposable } from "@zcode/rpc";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IWorkTaskService {
+  getResultSource(input: WorkTaskResultSourceRequest): Promise<WorkTaskResultSource>;
+  generateResult(input: WorkTaskResultRequest): Promise<WorkTaskResultDraft>;
+  cancelResult(input: WorkTaskResultCancel): Promise<void>;
   attachmentImport(input: WorkTaskAttachmentImport): Promise<WorkTaskAttachment>;
   attachmentBegin(input: WorkTaskAttachmentBegin): Promise<V4AttachmentBeginResult>;
   attachmentChunk(input: WorkTaskAttachmentChunk): Promise<V4AttachmentChunkResult>;
@@ -47,6 +56,7 @@ export interface IWorkTaskService {
   cancel(input: WorkTaskTarget): Promise<WorkTask>;
   complete(input: WorkTaskComplete): Promise<WorkTask>;
   merge(input: WorkTaskMergeRequest): Promise<WorkTask>;
+  /** removeWorktree returns durable admission; list/events carry cleanup outcome. */
   archive(input: WorkTaskArchive): Promise<WorkTask>;
   /** @deprecated Compatibility setting only; does not limit task execution. */
   setConcurrency(input: WorkTaskScope & { concurrency: number }): Promise<void>;
@@ -54,6 +64,12 @@ export interface IWorkTaskService {
   onDynamicChanged(input: WorkTaskScope): Event<void>;
 }
 export const IWorkTaskService = createServiceDescriptor<IWorkTaskService>(ServiceChannels.WorkTask);
+
+/** 任务执行和辅助摘要共享同一个本地 Host 准入边界。 */
+export function assertWorkTaskLocal(scope: WorkTaskScope, allowExecution?: boolean) {
+  if (allowExecution === false || scope.workspaceIdentity || scope.remoteSessionId)
+    throw new Error("work-task.remote-unsupported");
+}
 
 export interface WorkTaskExecutionUpdate {
   status?: "running" | "awaiting_input";
@@ -96,4 +112,15 @@ export interface WorkTaskForgePort {
   listForgeComments(input: ForgePageRequest): Promise<ForgePage<ForgeComment>>;
   createForgeComment(input: ForgeCommentRequest): Promise<void>;
   setForgeItemState(input: ForgeStateRequest): Promise<void>;
+}
+
+/** Host-injected read-only evidence and text generation; never sends task conversation input. */
+export interface WorkTaskResultPort {
+  source(task: WorkTask): Promise<WorkTaskResultSource>;
+  generate(
+    task: WorkTask,
+    input: WorkTaskResultRequest,
+    signal: AbortSignal,
+  ): Promise<WorkTaskResultDraft>;
+  records(task: WorkTask, targetBranch?: string): Promise<WorkTaskChangeRecord>;
 }
