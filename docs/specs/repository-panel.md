@@ -1,5 +1,29 @@
 # Repository Panel
 
+## Forge state filter and task progress
+
+- The list dropdown filters only the forge item's open/closed/all state. Label
+  the visible trigger and accessible control as Issue state or Request state;
+  linked work-task progress is an independent presentation and never an input
+  to this query. Do not infer issue closure from done, or completion from closed.
+- Open issues may be processed; closed issues may have no task, or a pending,
+  running, review or failed task. Changing the forge filter preserves task
+  snapshots and progress. Do not introduce another task filter implicitly.
+- Existing confirmed-close reconciliation still uses direct forge facts,
+  keeping search-index lag and later reopening behavior unchanged. Desktop and
+  mobile read the same scoped Host projections without new state or commands.
+
+```text
+Issue/Request state control -> scoped Forge list query -> matching item rows
+Host task snapshot/events -> linked progress per matching row (read only)
+Confirmed-close receipt -> direct Forge read -> authoritative item state
+```
+
+Acceptance: synthetic browser E2E verifies open + done, closed + todo/running,
+unlinked open/closed, task-only status changes, all-state queries and merged
+PRs. Preserve provider pagination and zero implicit task/forge writes; verify
+visible labels and layout at desktop/320px in both themes.
+
 ## Linked task status colors (issue #62)
 
 - The highlighted statuses in issue #62 are linked work-task progress, separate

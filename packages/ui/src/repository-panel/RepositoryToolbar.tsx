@@ -43,6 +43,8 @@ export function RepositoryToolbar({
 }) {
   const t = useRepositoryMessages();
   const [searchDraft, setSearchDraft] = useState(filters.search);
+  // 这里筛选远端条目的开闭状态；显式标明对象，避免与行尾的任务处理进度混淆。
+  const stateLabel = t(filters.kind === "issue" ? "stateFilter" : "requestStateFilter");
   return (
     <div className="flex flex-col gap-3 border-b border-border pb-3">
       <Tabs
@@ -98,7 +100,8 @@ export function RepositoryToolbar({
           value={filters.state}
           onValueChange={(state) => onChange({ state: state as RepositoryFilters["state"] })}
         >
-          <SelectTrigger size="lg" aria-label={t("stateFilter")}>
+          <SelectTrigger size="lg" aria-label={stateLabel}>
+            <span className="text-foreground-subtle">{stateLabel}</span>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
