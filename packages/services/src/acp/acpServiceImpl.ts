@@ -18,6 +18,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { Emitter } from "@zcode/rpc";
+import { AcpStreamDiagnostics } from "./acpStreamDiagnostics.js";
 import type { ContentBlock, PromptCapabilities } from "@agentclientprotocol/sdk";
 import {
   acpAgentAvailabilityListSchema,
@@ -226,6 +227,7 @@ export function createAcpService(
       directory: options.directory ? join(options.directory, "agent-settings") : undefined,
     });
   const sessions = new Map<string, AcpSession>();
+  const streamDiagnostics = new AcpStreamDiagnostics();
   const connections = new Map<string, AcpConnectionPort>();
   const connecting = new Map<string, Promise<AcpConnectionPort>>();
   const loading = new Map<string, Promise<AcpSession>>();
@@ -430,7 +432,9 @@ export function createAcpService(
   };
   const save = async (session: AcpSession): Promise<void> => {
     if (removed.has(session.id)) return;
+    const snapshotStartedAt = Date.now();
     const snapshot = acpSessionSchema.parse(structuredClone(session));
+    const receipt = streamDiagnostics.capture(session.id, snapshot.revision);
     if (snapshot.provisional) {
       // 修复原因：Codeg 会预连接取得 Agent 选项，但空草稿不能先进入持久会话历史。
       if (!disposed) emitter.fire({ kind: "updated", session: snapshot });
@@ -445,8 +449,22 @@ export function createAcpService(
         try {
           await writeFile(temporary, JSON.stringify(snapshot), { mode: 0o600 });
           await rename(temporary, file(snapshot.id));
-          if (!disposed && !removed.has(session.id))
-            emitter.fire({ kind: "updated", session: snapshot });
+          if (!disposed && !removed.has(session.id)) {
+            // 取证依据：只有原子替换成功后的通知才代表可显示事实；诊断不进入磁盘会话。
+            const trace = streamDiagnostics.broadcast(
+              session.id,
+              snapshot.revision,
+              receipt,
+              snapshotStartedAt,
+              Date.now(),
+              snapshot.status !== "running",
+            );
+            emitter.fire({
+              kind: "updated",
+              session: snapshot,
+              ...(trace ? { streamDiagnostics: trace } : {}),
+            });
+          }
         } finally {
           await rm(temporary, { force: true });
         }
@@ -1021,6 +1039,32 @@ export function createAcpService(
                 }
                 if (index >= 0) session.entries[index] = tool;
                 else session.entries.push(tool);
+              }
+              if (
+                (update.kind === "text" ||
+                  update.kind === "thought" ||
+                  update.kind === "compaction_summary") &&
+                update.text
+              ) {
+                // 只观察已通过 generation/command 门禁的分片；下一 revision 由 mutate 唯一递增。
+                const entryIndex =
+                  update.kind === "compaction_summary"
+                    ? session.entries.findIndex(
+                        (entry) =>
+                          entry.kind === "compaction" &&
+                          entry.id === `compaction:${commandId}:${update.id}` &&
+                          entry.status === "running",
+                      )
+                    : session.entries.length - 1;
+                if (entryIndex >= 0)
+                  streamDiagnostics.received(session.id, {
+                    receivedRevision: session.revision + 1,
+                    receivedAt,
+                    kind: update.kind,
+                    chunkChars: update.text.length,
+                    entryIndex,
+                    entryCount: session.entries.length,
+                  });
               }
             },
             update.kind === "text" ||
@@ -1999,6 +2043,7 @@ export function createAcpService(
       sessions.delete(session.id);
       streamingWrites.delete(session.id);
       scheduledSnapshotRevisions.delete(session.id);
+      streamDiagnostics.remove(session.id);
       emitter.fire({
         kind: "removed",
         id: session.id,
@@ -2782,6 +2827,7 @@ export function createAcpService(
     },
     disposeAll() {
       disposed = true;
+      streamDiagnostics.clear();
       textGeneration.dispose();
       usageHistoryReader.dispose();
       for (const admission of promptAdmissions.values())

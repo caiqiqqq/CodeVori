@@ -107,6 +107,7 @@ export {
   summarizeDiagnosticError,
   type OperationDiagnostic,
 } from "./operation-diagnostics.js";
+export { StreamDiagnostics, type StreamDiagnostic } from "./stream-diagnostics.js";
 
 export {
   type NetworkTransportKind,

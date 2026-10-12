@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import type { AcpSession } from "@zcode/shared";
+import { acpSessionChangedSchema, type AcpSession, type AcpSessionChanged } from "@zcode/shared";
 import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
 import { connectAcpAgent } from "../src/acp/acpStdioConnection.js";
 
@@ -58,8 +58,12 @@ async function fixture() {
   const turn = service.prompt({ ...target, commandId: "stream-turn", text: "synthetic request" });
   await started.promise;
   const changes: AcpSession[] = [];
+  const events: AcpSessionChanged[] = [];
   const subscription = service.onDynamicSessionChanged(workspace)((change) => {
-    if (change.kind === "updated") changes.push(change.session);
+    if (change.kind === "updated") {
+      changes.push(change.session);
+      events.push(change);
+    }
   });
   const disk = async () =>
     JSON.parse(await readFile(join(directory, `${session.id}.json`), "utf8")) as AcpSession;
@@ -72,6 +76,7 @@ async function fixture() {
     turn,
     finish,
     changes,
+    events,
     disk,
     async cleanup() {
       subscription.dispose();
@@ -106,6 +111,40 @@ test("a long ACP transcript coalesces a burst without losing characters or durab
     const completed = await f.turn;
     assert.equal(completed.status, "idle");
     assert.deepEqual((await f.disk()).entries, completed.entries);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("live diagnostics correlate persisted snapshots without entering history or changing replay", async () => {
+  const f = await fixture();
+  try {
+    await f.update({
+      kind: "text",
+      text: "private token=secret /private/path",
+      messageId: "private-message-id",
+    });
+    const event = f.events.at(-1)!;
+    assert.equal(event.kind, "updated");
+    if (event.kind !== "updated") return;
+    const trace = event.streamDiagnostics!;
+    assert.equal(trace.kind, "text");
+    assert.equal(trace.receivedRevision, event.session.revision);
+    assert.ok(
+      trace.receivedAt <= trace.snapshotStartedAt && trace.snapshotStartedAt <= trace.broadcastAt,
+    );
+    assert.deepEqual(acpSessionChangedSchema.parse(event), event);
+    assert.equal(JSON.stringify(trace).includes("private"), false);
+    assert.equal("streamDiagnostics" in (await f.disk()), false);
+    assert.equal("streamDiagnostics" in (await f.service.list(workspace))[0]!, false);
+    const legacy = { kind: "updated", session: event.session };
+    assert.deepEqual(acpSessionChangedSchema.parse(legacy), legacy);
+    f.finish.resolve();
+    const completed = await f.turn;
+    const last = f.events.at(-1)!;
+    assert.ok(last.kind === "updated" && last.streamDiagnostics);
+    assert.equal(last.kind === "updated" && last.session.revision, completed.revision);
+    assert.deepEqual(await f.disk(), completed);
   } finally {
     await f.cleanup();
   }

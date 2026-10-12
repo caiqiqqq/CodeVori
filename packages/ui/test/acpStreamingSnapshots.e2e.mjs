@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
 import { createAcpService } from "../../services/src/acp/acpServiceImpl.ts";
 
@@ -52,7 +53,7 @@ try {
   const session = await service.create({ ...workspace, agent: "codex" });
   const snapshots = [];
   const subscription = service.onDynamicSessionChanged(workspace)((change) => {
-    if (change.kind === "updated") snapshots.push(change.session);
+    if (change.kind === "updated") snapshots.push(change);
   });
   const turn = service.prompt({
     ...workspace,
@@ -61,8 +62,10 @@ try {
     text: "测试流式输出",
   });
   await ready;
+  const initial = await service.read({ ...workspace, id: session.id });
   await update({ kind: "text", text: "我" });
   const first = snapshots.at(-1);
+  await delay(1050); // 真实采样间隔；不改变生产分片调度。
   const batch = "正在持续输出，第一批文字已完整显示。";
   await Promise.all([...batch].map((text) => update({ kind: "text", text })));
   const live = snapshots.at(-1);
@@ -70,10 +73,12 @@ try {
   await Promise.all([...tail].map((text) => update({ kind: "text", text })));
   finish();
   const completed = await turn;
+  const terminal = snapshots.at(-1);
   const replay = JSON.parse(await readFile(join(directory, `${session.id}.json`), "utf8"));
   assert.deepEqual(replay, completed);
   subscription.dispose();
-  const data = { first, live, replay };
+  assert.ok(first.streamDiagnostics && live.streamDiagnostics && terminal.streamDiagnostics);
+  const data = { initial, first, live, terminal, replay };
   await Promise.all([
     writeFile(
       html,
@@ -82,10 +87,11 @@ try {
     writeFile(
       moduleFile,
       `
-      import React, {useState} from 'react';
+      import React, {useEffect,useState} from 'react';
       import {createRoot} from 'react-dom/client';
       import {ConversationTimeline} from '../../../ui/src/v4/ConversationTimeline.tsx';
       import {buildAcpConversationRows} from '../../../ui/src/v4/acpConversationRows.ts';
+      import {useAcpConversation} from '../../../ui/src/v4/useAcpConversation.ts';
       import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
       import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
       import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
@@ -95,14 +101,26 @@ try {
       import '../../../ui/src/styles.css';
       const data=${JSON.stringify(data)};
       const platform={isMacOS:false,isWindows:false,isLinux:false,isWeb:true};
+      const listeners=new Set(); let current=data.initial;
+      window.__streamLogs=[]; window.__throwSink=false;
+      window.zcode={log:(_level,args)=>{if(window.__throwSink)throw new Error('sink unavailable');
+        if(args[0]==='[diagnostics]'&&args[1]?.scope==='renderer-acp-stream')window.__streamLogs.push(args[1]);}};
+      const service={list:async()=>[current],refresh:async()=>current,
+        create:async()=>{throw new Error('unexpected create')},remove:async()=>{},
+        onDynamicSessionChanged:()=>listener=>{listeners.add(listener);return{dispose(){listeners.delete(listener)}}}};
+      const emit=change=>{current=change.session;listeners.forEach(listener=>listener(change))};
       function Fixture(){
-        const [snapshot,setSnapshot]=useState(data.first);
+        const view=useAcpConversation(service as never,{workspacePath:'/synthetic/browser',workspaceIdentity:'browser:stream'},'codex');
+        useEffect(()=>view.selectById('codex',data.initial.id),[]);
+        const snapshot=view.selected;
         const [epoch,setEpoch]=useState(0);
-        window.__stream={live:()=>setSnapshot(data.live),finish:()=>setSnapshot(data.replay),
-          replay:()=>{setSnapshot(structuredClone(data.replay));setEpoch(e=>e+1)}};
+        window.__stream={first:()=>emit(data.first),live:()=>emit(data.live),finish:()=>emit(data.terminal),
+          stale:()=>emit(data.first),
+          failSink:()=>{window.__throwSink=true;emit({...data.terminal,session:{...data.replay,revision:data.replay.revision+1}})},
+          replay:()=>{emit({kind:'updated',session:structuredClone(data.replay)});setEpoch(e=>e+1)}};
         const rows=buildAcpConversationRows(snapshot);
-        return <div className="h-screen flex flex-col bg-background text-foreground" data-ready="true"
-          data-status={snapshot.status} data-revision={snapshot.revision}>
+        return <div className="h-screen flex flex-col bg-background text-foreground" data-ready={view.ready}
+          data-status={snapshot?.status} data-revision={snapshot?.revision}>
           <ConversationTimeline key={epoch} sessionKey={'stream-'+epoch} rows={rows} totalCount={rows.length}
             hideTurnNavigator workDurationAvailable={false} rowContext={{workspacePath:'/synthetic/browser',
               theme:'zai-light',codePreviewSettings:DEFAULT_CODE_PREVIEW_SETTINGS,logEpoch:'stream-'+epoch}} />
@@ -118,11 +136,21 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`);
+    await page.waitForFunction(() => document.querySelector('[data-ready="true"]'));
+    assert.equal(
+      await page.evaluate(() => window.__streamLogs.length),
+      0,
+      "list/refresh must not fabricate live timings",
+    );
+    await page.evaluate(() => window.__stream.first());
     const assistant = page
       .locator('[data-conversation-selectable="true"]')
       .filter({ hasText: /^我/ });
     await assistant.waitFor();
     assert.equal(await assistant.innerText(), "我");
+    await page.waitForFunction(() =>
+      window.__streamLogs.some((r) => r.stage === "frame-opportunity"),
+    );
     const firstRevision = await page.locator('[data-ready="true"]').getAttribute("data-revision");
     await page.evaluate(() => window.__stream.live());
     await page.waitForFunction(
@@ -137,15 +165,56 @@ try {
       Number(await page.locator('[data-ready="true"]').getAttribute("data-revision")) >
         Number(firstRevision),
     );
+    await page.waitForFunction(
+      (revision) =>
+        window.__streamLogs.some((r) => r.stage === "frame-opportunity" && r.revision === revision),
+      live.session.revision,
+    );
     await page.evaluate(() => window.__stream.finish());
     await page.waitForFunction(
       () => document.querySelector('[data-ready="true"]')?.getAttribute("data-status") === "idle",
     );
     assert.equal(await assistant.innerText(), "我" + batch + tail);
+    await page.waitForFunction(
+      (revision) =>
+        window.__streamLogs.some((r) => r.stage === "frame-opportunity" && r.revision === revision),
+      terminal.session.revision,
+    );
+    const observed = await page.evaluate(() => window.__streamLogs);
+    for (const event of [first, live, terminal]) {
+      const stages = observed.filter(
+        (r) => r.sessionId === session.id && r.revision === event.session.revision,
+      );
+      assert.deepEqual(
+        stages.map((r) => r.stage),
+        ["ui-received", "ui-commit", "frame-opportunity"],
+      );
+      assert.ok(stages.every((r) => r.facts.receivedAt === event.streamDiagnostics.receivedAt));
+    }
+    await page.evaluate(() => window.__stream.stale());
     await page.evaluate(() => window.__stream.replay());
     await assistant.waitFor();
     assert.equal(await assistant.innerText(), "我" + batch + tail);
     assert.equal(await assistant.count(), 1, "replay must not duplicate assistant output");
+    assert.equal(
+      await page.evaluate(() => window.__streamLogs.length),
+      observed.length,
+      "stale/replay observations must not be treated as live",
+    );
+    assert.equal(JSON.stringify(observed).includes("测试流式输出"), false);
+    assert.equal(JSON.stringify(observed).includes("/synthetic/browser"), false);
+    await page.evaluate(() => window.__stream.failSink());
+    await page.waitForFunction(
+      (revision) =>
+        Number(document.querySelector('[data-ready="true"]')?.getAttribute("data-revision")) ===
+        revision,
+      replay.revision + 1,
+    );
+    assert.equal(
+      await assistant.innerText(),
+      "我" + batch + tail,
+      "sink failure cannot block accepted text",
+    );
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
       false,
@@ -155,7 +224,7 @@ try {
     await page.close();
   }
   console.log(
-    `PASS: Host persisted first/burst/terminal snapshots, desktop live updates and mobile-width replay at 1280/375px. Screenshots: ${directory}`,
+    `PASS: Host + real hook/timeline correlated receive/commit/frame, stale/replay and throwing sink at 1280/375px. Screenshots: ${directory}`,
   );
 } finally {
   finish();

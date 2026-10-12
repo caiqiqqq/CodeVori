@@ -743,8 +743,27 @@ export const acpSessionSearchItemSchema = acpWorkspaceSchema
 export type AcpSessionSearchItem = z.infer<typeof acpSessionSearchItemSchema>;
 export const acpSessionSearchResultSchema = z.array(acpSessionSearchItemSchema).max(80);
 
+/** 仅实时通知的取证元数据，不进入 AcpSession 或持久化历史。 */
+export const acpStreamDiagnosticSchema = z
+  .object({
+    receivedRevision: z.number().int().nonnegative(),
+    receivedAt: z.number().finite().nonnegative(),
+    snapshotStartedAt: z.number().finite().nonnegative(),
+    broadcastAt: z.number().finite().nonnegative(),
+    kind: z.enum(["text", "thought", "compaction_summary"]),
+    chunkChars: z.number().int().nonnegative(),
+    entryIndex: z.number().int().nonnegative(),
+    entryCount: z.number().int().nonnegative(),
+  })
+  .strict();
+export type AcpStreamDiagnostic = z.infer<typeof acpStreamDiagnosticSchema>;
+
 export const acpSessionChangedSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("updated"), session: acpSessionSchema }),
+  z.object({
+    kind: z.literal("updated"),
+    session: acpSessionSchema,
+    streamDiagnostics: acpStreamDiagnosticSchema.optional(),
+  }),
   z.object({
     kind: z.literal("removed"),
     id: z.string(),
