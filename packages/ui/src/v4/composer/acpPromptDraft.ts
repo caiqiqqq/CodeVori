@@ -1,4 +1,5 @@
 import type { AcpPromptAttachment } from "@zcode/shared";
+import { buildFileMentionMarkdown } from "../../mentions/mentionMarkdown.js";
 import type { ComposerAttachmentUploadItem } from "@/store/composerAttachmentUploadStore.js";
 
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
@@ -70,4 +71,61 @@ export async function acpAttachmentsFromComposer(
       return { ...common, dataBase64: await fileBase64(attachment.file) };
     }),
   );
+}
+
+/** 恢复已接受的文件引用为 editor mentions，保留原正文中的位置，避免每次撤回重复追加链接。 */
+export function acpQueuedEditorState(text: string, workspaceFiles: readonly string[]): string {
+  const textNode = (text: string) => ({
+    type: "text",
+    version: 1,
+    text,
+    format: 0,
+    detail: 0,
+    mode: "normal",
+    style: "",
+  });
+  const normalize = (path: string) => path.replace(/^\.\//, "").replace(/\/$/, "");
+  const remaining = new Set(workspaceFiles);
+  const mention = (path: string, label: string, markdown: string) => ({
+    ...textNode(label),
+    type: "prompt-mention",
+    mode: "token",
+    category: "files",
+    mentionId: `file:${path}`,
+    value: path,
+    markdown,
+  });
+  const paragraphs = text.split("\n\n").map((line) => {
+    const children: Record<string, unknown>[] = [];
+    let cursor = 0;
+    for (const match of line.matchAll(
+      /\[((?:\\.|[^\\\]])*)\]\((?:<((?:\\.|[^>])*?)>|((?:\\.|[^)])*))\)/g,
+    )) {
+      const destination = (match[2] ?? match[3] ?? "").replace(/\\(.)/g, "$1");
+      const path = workspaceFiles.find((path) => normalize(path) === normalize(destination));
+      if (!path) continue;
+      if (match.index > cursor) children.push(textNode(line.slice(cursor, match.index)));
+      children.push(mention(path, match[1]!.replace(/\\(.)/g, "$1"), match[0]));
+      remaining.delete(path);
+      cursor = match.index + match[0].length;
+    }
+    if (cursor < line.length) children.push(textNode(line.slice(cursor)));
+    return { type: "paragraph", version: 1, format: "", indent: 0, direction: null, children };
+  });
+  // 内部提交可带正文中不存在的引用；仍恢复为可见、可删除的 mention，不保留隐藏的引用状态。
+  for (const path of remaining) {
+    const children = paragraphs.at(-1)!.children;
+    if (children.length) children.push(textNode(" "));
+    children.push(mention(path, path, buildFileMentionMarkdown(path, path)));
+  }
+  return JSON.stringify({
+    root: {
+      type: "root",
+      version: 1,
+      format: "",
+      indent: 0,
+      direction: null,
+      children: paragraphs,
+    },
+  });
 }
