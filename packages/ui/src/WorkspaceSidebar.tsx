@@ -364,13 +364,16 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     workspaceIdentity: selectedWorkspaceIdentity,
     activeTaskId,
     activeAcpSessionId,
-  } = useSidebarConversationSelection({
-    workspacePath,
-    workspaceIdentity,
-    remoteSessionId: workspaceRemoteSessionId,
-    activeTaskId: primaryAcpSessionId ? null : primaryTaskId,
-    activeAcpSessionId: primaryAcpSessionId ?? null,
-  });
+  } = useSidebarConversationSelection(
+    {
+      workspacePath,
+      workspaceIdentity,
+      remoteSessionId: workspaceRemoteSessionId,
+      activeTaskId: primaryAcpSessionId ? null : primaryTaskId,
+      activeAcpSessionId: primaryAcpSessionId ?? null,
+    },
+    !workTasksActive,
+  );
   const activeWorkspaceKey = buildTaskWorkspaceKey(
     selectedWorkspacePath,
     selectedWorkspaceIdentity,

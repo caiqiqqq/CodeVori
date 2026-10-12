@@ -34,6 +34,43 @@ test("ordinary main conversation falls back to Shell and ACP never leaks into na
   assert.equal(resolveSidebarConversationSelection(shellAcp, null, INITIAL_PANE_LAYOUT), shellAcp);
 });
 
+test("work tasks suppress main, temporary and grouped selection without mutating bindings", () => {
+  const shellAcp = { ...primary, activeTaskId: null, activeAcpSessionId: "acp-a" };
+  const temporary = splitPaneAtSide(INITIAL_PANE_LAYOUT, V4_PRIMARY_PANE_ID, "right", acp);
+  const store = useWorkbenchGroupStore.getState();
+  store.resetWorkbenchGroups();
+  try {
+    store.promotePaneLayoutToGroup(
+      { workspaceScope: primary, sessionId: primary.activeTaskId },
+      temporary,
+    );
+    const state = useWorkbenchGroupStore.getState();
+    const group = state.groups[state.activeGroupId!];
+    for (const [shell, activeGroup, layout] of [
+      [primary, null, INITIAL_PANE_LAYOUT],
+      [shellAcp, null, INITIAL_PANE_LAYOUT],
+      [primary, null, temporary],
+      [primary, group, INITIAL_PANE_LAYOUT],
+    ] as const) {
+      const before = structuredClone({ shell, activeGroup, layout });
+      const chatSelection = resolveSidebarConversationSelection(shell, activeGroup, layout);
+      assert.deepEqual(resolveSidebarConversationSelection(shell, activeGroup, layout, false), {
+        ...shell,
+        activeTaskId: null,
+        activeAcpSessionId: null,
+      });
+      assert.deepEqual({ shell, activeGroup, layout }, before);
+      assert.deepEqual(
+        resolveSidebarConversationSelection(shell, activeGroup, layout, true),
+        chatSelection,
+        "Returning to chat restores the existing typed, identity-scoped selection",
+      );
+    }
+  } finally {
+    store.resetWorkbenchGroups();
+  }
+});
+
 test("temporary focus follows typed cross-project bindings and survives closing the main pane", () => {
   const two = splitPaneAtSide(INITIAL_PANE_LAYOUT, V4_PRIMARY_PANE_ID, "right", acp);
   const three = splitPaneAtSide(two, "pane-1", "down", native);

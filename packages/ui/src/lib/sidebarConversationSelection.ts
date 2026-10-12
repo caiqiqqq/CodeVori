@@ -17,9 +17,12 @@ export function resolveSidebarConversationSelection(
   primary: SidebarConversationSelection,
   group: WorkbenchGroup | null,
   layout: PaneLayoutSnapshot,
+  conversationSelectionEnabled = true,
 ): SidebarConversationSelection {
-  const focusedPaneId = effectiveFocusedPaneId(group ?? layout);
   const empty = { ...primary, activeTaskId: null, activeAcpSessionId: null };
+  // 待办页遮住普通会话但保留布局绑定，旧主会话/分屏焦点不能继续代表当前页面。
+  if (!conversationSelectionEnabled) return empty;
+  const focusedPaneId = effectiveFocusedPaneId(group ?? layout);
   if (!group && focusedPaneId === V4_PRIMARY_PANE_ID) {
     const sessionId = primary.activeAcpSessionId ?? primary.activeTaskId;
     const kind = primary.activeAcpSessionId ? "acp" : "native";

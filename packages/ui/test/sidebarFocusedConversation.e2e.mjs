@@ -44,6 +44,7 @@ try {
     const state={calls:[],readCalls:[],selections:[],theme:applyTheme};window.__focus=state;
     const noop=()=>{},subscribe=()=>()=>({dispose(){}}),acpListeners=new Set();
     const services={
+      workTaskService:{list:async()=>({tasks:[],concurrency:1}),onDynamicChanged:subscribe},
       settingService:{get:async()=>({}),onDynamicChanged:subscribe},
       gitService:{getWorkspaceRepositoryInfo:async({workspacePath})=>({workspacePath,kind:workspacePath===tree?'linked-worktree':'main-tree',repoRoot:workspacePath===tree?b:workspacePath,...(workspacePath===tree?{mainWorktreePath:b}:{})})},
       zcodeTaskService:{onDynamicWorkspaceEvent:subscribe,listTasks:async scope=>[ordinaryApi,api].filter(t=>t.workspacePath===scope.workspacePath),listPinnedTaskIds:async()=>[],listPinnedTasks:async()=>[],listArchivedTasks:async()=>[],listDeletedTaskIds:async()=>[]},
@@ -53,16 +54,19 @@ try {
     connectProviderSettingsSnapshot({getView:async()=>({revision:1,providers:[],providerTemplates:[],providerOrder:[]}),onDidChange:()=>({dispose(){}})});
     persistSidebarTaskPreferences({organizeBy:'project',sortBy:'updated'});
     function Fixture(){
-      const tabStore=useTabStoreApi(),[ready,setReady]=useState(false),[primary,setPrimary]=useState(acp[0]),[mode,setMode]=useState('project');
+      const tabStore=useTabStoreApi(),[ready,setReady]=useState(false),[primary,setPrimary]=useState(acp[0]),[mode,setMode]=useState('project'),[workTasksActive,setWorkTasksActive]=useState(false);
       useEffect(()=>{tabStore.setState({tabs,activeTabId:'a',activeWorkspacePath:a,expandedWorkspacePaths:new Set(tabs.map(t=>t.workspacePath))});setReady(true)},[]);
       const binding=buildPrimaryWorkbenchSessionBinding({workspacePath:primary?.workspacePath??a},null,primary?{id:primary.id,agent:primary.agent}:null);
       const select=session=>{
+        setWorkTasksActive(false);
         state.selections.push(session.id);
         if(!selectWorkbenchSession(binding,{workspacePath:session.workspacePath,sessionId:session.id,kind:'acp',agent:session.agent})){tabStore.getState().activateTabByPath(session.workspacePath);setPrimary(session)};
       };
       state.split=()=>placeWorkbenchSessionInSplit(binding,{workspacePath:b,sessionId:'b',kind:'acp',agent:'codex'},{mode:'context-menu',side:'right'});
       state.closeMain=()=>{const store=useWorkbenchGroupStore.getState();store.closePane(store.activeGroupId,V4_PRIMARY_PANE_ID)};
       state.groupFocus=id=>{const store=useWorkbenchGroupStore.getState();store.focusPane(store.activeGroupId,id)};
+      state.layoutSnapshot=()=>{const {root,panes,focusedPaneId}=usePaneLayoutStore.getState();return {root,panes,focusedPaneId}};
+      state.groupSnapshot=()=>{const {groups,activeGroupId}=useWorkbenchGroupStore.getState();return {groups,activeGroupId}};
       state.draft=()=>{useWorkbenchGroupStore.getState().deactivateActiveGroup();usePaneLayoutStore.getState().resetToPrimaryPane();setPrimary(null)};
       state.temporary=()=>{useWorkbenchGroupStore.getState().deactivateActiveGroup();usePaneLayoutStore.getState().splitPaneWithBinding(V4_PRIMARY_PANE_ID,'right',{workspaceScope:{workspacePath:b},sessionId:'b',kind:'acp',agent:'codex'})};
       state.primaryDraft=()=>usePaneLayoutStore.getState().focusPane(V4_PRIMARY_PANE_ID);
@@ -74,7 +78,8 @@ try {
       state.mode=next=>{setMode(next);persistSidebarTaskPreferences({organizeBy:next==='timeline'?'chronological':'project',sortBy:'updated'})};
       return ready?<main data-testid='sidebar-focus-fixture' className='h-dvh bg-sidebar text-foreground' style={{width:'min(320px,100vw)'}}>
         <WorkspaceSidebar key={mode} workspacePath={primary?.workspacePath??a} activeAcpSessionId={primary?.id??null} theme='zai-dark' isDesktop={false}
-          onSelectAcpSession={select} onSelectTask={(path,id)=>{state.selections.push('native:'+id);selectWorkbenchSession(binding,{workspacePath:path,sessionId:id})}}
+          workTasksActive={workTasksActive} onOpenWorkTasks={()=>setWorkTasksActive(true)}
+          onSelectAcpSession={select} onSelectTask={(path,id)=>{setWorkTasksActive(false);state.selections.push('native:'+id);selectWorkbenchSession(binding,{workspacePath:path,sessionId:id})}}
           onStartDraftInWorkspace={noop} onCreateTask={state.draft} onCreateConversationTask={state.draft}
           onOpenFolderFromWorkspaceMenu={noop} onOpenCommandCenter={noop} onConnectRemote={noop} onSelectRemoteProject={noop}
           onCancelRemoteProject={noop} onReconnectRemoteWorkspace={noop} reconnectingRemoteWorkspaceKeys={[]} remoteWorkspaceErrorByWorkspaceKey={{}}/>
@@ -99,7 +104,6 @@ try {
         ["WorkspaceFileTree.tsx", "WorkspaceFileTree"],
         ["WorkspaceSidebarFooter.tsx", "WorkspaceSidebarFooter"],
         ["settings/RemoteSyncDialogs.tsx", "RemoteSyncDialogs"],
-        ["work-tasks/WorkTasksSidebarButton.tsx", "WorkTasksSidebarButton"],
       ]) {
         await page.route(`**/packages/ui/src/${path}*`, (route) =>
           route.fulfill({
@@ -153,7 +157,47 @@ try {
           throw new Error(errors.join("\n") || error.message);
         });
       await selected("a");
+      const workTasks = fixture.getByTestId("work-tasks-sidebar-open");
+      const enterWorkTasks = async () => {
+        const bindings = await page.evaluate(() =>
+          JSON.stringify({
+            layout: window.__focus.layoutSnapshot(),
+            groups: window.__focus.groupSnapshot(),
+          }),
+        );
+        await workTasks.click();
+        await page.waitForFunction(() =>
+          [...document.querySelectorAll(".sidebar-conversation-row")].every(
+            (row) =>
+              row.getAttribute("data-selected") !== "true" &&
+              getComputedStyle(row).boxShadow === "none" &&
+              getComputedStyle(row, "::before").content === "none" &&
+              row.getAnimations().length === 0,
+          ),
+        );
+        assert.equal(await workTasks.getAttribute("aria-pressed"), "true");
+        assert.equal(
+          await fixture.locator('.sidebar-conversation-row[aria-current="page"]').count(),
+          0,
+        );
+        assert.equal(
+          await page.evaluate(() =>
+            JSON.stringify({
+              layout: window.__focus.layoutSnapshot(),
+              groups: window.__focus.groupSnapshot(),
+            }),
+          ),
+          bindings,
+          "Opening work tasks must preserve conversation bindings",
+        );
+      };
+      await enterWorkTasks();
+      await row("a").click();
+      await selected("a");
       await page.evaluate(() => window.__focus.split());
+      await selected("b");
+      await enterWorkTasks();
+      await row("b").click();
       await selected("b");
       await page.evaluate(() => window.__focus.groupFocus("workspace-main"));
       await selected("a");
@@ -171,6 +215,10 @@ try {
       await selected("tasks");
       await page.evaluate(() => window.__focus.mode("timeline"));
       await selected("tasks");
+      await enterWorkTasks();
+      await fixture.screenshot({ path: join(output, `${theme}-${width}-work-tasks.png`) });
+      await row("tasks").click();
+      await selected("tasks");
       await page.evaluate(() => window.__focus.mode("project"));
       await selected("tasks");
       await page.evaluate(() => window.__focus.draft());
@@ -180,16 +228,24 @@ try {
       );
       await page.evaluate(() => window.__focus.temporary());
       await selected("b");
+      await enterWorkTasks();
+      await row("b").click();
+      await selected("b");
       const unpinnedTop = (await row("b").boundingBox()).y;
       await page.evaluate(() => window.__focus.pin(true));
       await selected("b");
       assert.equal(await row("b").count(), 1);
+      await enterWorkTasks();
+      await row("b").click();
+      await selected("b");
       assert.ok(
         (await row("b").boundingBox()).y < unpinnedTop,
         "Pinned selection follows the row into the pinned section",
       );
       await page.evaluate(() => window.__focus.pin(false));
       await selected("b");
+      // 点击临时窗格会由真实导航提升成 group；以下旧场景重新建立临时布局 owner。
+      await page.evaluate(() => window.__focus.temporary());
       await page.evaluate(() => window.__focus.native());
       await page
         .waitForFunction(() => {
@@ -224,6 +280,14 @@ try {
       });
       assert.equal(await ordinaryNative.getAttribute("aria-current"), "page");
       assert.equal(await row("a").getAttribute("data-selected"), "false");
+      await enterWorkTasks();
+      await ordinaryNative.click();
+      await page.waitForFunction(() =>
+        document
+          .querySelector('.sidebar-conversation-row[data-selected="true"]')
+          ?.textContent.includes("普通项目 API 会话"),
+      );
+      await page.evaluate(() => window.__focus.temporary());
       for (const action of ["readonly", "unvalidated", "primaryDraft"]) {
         await page.evaluate((action) => window.__focus[action](), action);
         await page.waitForFunction(
