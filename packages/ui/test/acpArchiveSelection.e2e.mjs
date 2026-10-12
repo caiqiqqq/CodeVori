@@ -22,10 +22,10 @@ try {
       `
       import React, {useEffect, useState} from 'react';
       import {createRoot} from 'react-dom/client';
-      import {useAcpConversation} from '../../../ui/src/v4/useAcpConversation.ts';
+      import {useAcpConversation} from '../../../ui/test/acpProjectionFixture.tsx';
       import {WorkspaceAcpTaskItem} from '../../../ui/src/WorkspaceAcpTaskItem.tsx';
       import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
-      import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
+      import {ServiceProvider} from '../../../ui/test/acpProjectionFixture.tsx';
       import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
       import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
       import {useZCodeSessionStore} from '../../../ui/src/store/zcodeSessionStore.ts';

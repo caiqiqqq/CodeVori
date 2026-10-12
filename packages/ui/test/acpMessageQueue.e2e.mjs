@@ -26,7 +26,7 @@ try {
       import {SessionPane} from '../../../ui/src/v4/SessionPane.tsx';
       import {V4ConversationContext} from '../../../ui/src/v4/V4ConversationContext.tsx';
       import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
-      import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
+      import {ServiceProvider} from '../../../ui/test/acpProjectionFixture.tsx';
       import {TabStoreProvider} from '../../../ui/src/store/TabStoreProvider.tsx';
       import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
       import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';

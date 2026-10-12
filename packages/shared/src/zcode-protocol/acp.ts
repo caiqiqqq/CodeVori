@@ -699,6 +699,10 @@ export type AcpSessionRowUpdate = z.infer<typeof acpSessionRowUpdateSchema>;
 export function acpSessionActivity(
   session: Pick<AcpSession, "entries" | "legacySavedAt"> & Partial<Pick<AcpSession, "queue">>,
 ) {
+  if ("history" in session) {
+    const history = session.history as { createdAt: number; updatedAt: number };
+    return { createdAt: history.createdAt, updatedAt: history.updatedAt };
+  }
   const times = session.entries
     .map((entry) => entry.createdAt)
     .filter((value): value is number => typeof value === "number")
@@ -736,7 +740,15 @@ export const acpSessionSearchItemSchema = acpWorkspaceSchema
     createdAt: z.number(),
     updatedAt: z.number(),
     matches: z
-      .array(z.object({ entryId: z.string(), snippet: z.string().max(220) }).strict())
+      .array(
+        z
+          .object({
+            entryId: z.string(),
+            snippet: z.string().max(220),
+            rowId: z.number().int().positive().optional(),
+          })
+          .strict(),
+      )
       .max(5),
   })
   .strict();

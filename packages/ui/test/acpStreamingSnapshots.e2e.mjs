@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
+import { summarizeAcpSession } from "@zcode/shared";
 import { createAcpService } from "../../services/src/acp/acpServiceImpl.ts";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
@@ -63,22 +64,61 @@ try {
   });
   await ready;
   const initial = await service.read({ ...workspace, id: session.id });
+  const conversationEvents = [];
+  const conversationSubscription = service.onDynamicConversationChanged({
+    ...workspace,
+    id: session.id,
+    subscriptionId: "captured",
+  })((change) => conversationEvents.push(change));
+  const initialFrames = await service.readConversation({
+    ...workspace,
+    id: session.id,
+    subscriptionId: "captured",
+  });
+  const capture = async () => ({
+    live: conversationEvents.splice(0),
+    snapshot: await service.readConversation({
+      ...workspace,
+      id: session.id,
+      subscriptionId: "captured",
+    }),
+  });
   await update({ kind: "text", text: "我" });
   const first = snapshots.at(-1);
+  const firstFrames = await capture();
   await delay(1050); // 真实采样间隔；不改变生产分片调度。
   const batch = "正在持续输出，第一批文字已完整显示。";
   await Promise.all([...batch].map((text) => update({ kind: "text", text })));
   const live = snapshots.at(-1);
+  const liveFrames = await capture();
   const tail = "第二批文字与停止前的尾段也全部保留。";
   await Promise.all([...tail].map((text) => update({ kind: "text", text })));
   finish();
   const completed = await turn;
   const terminal = snapshots.at(-1);
+  const terminalFrames = await capture();
   const replay = JSON.parse(await readFile(join(directory, `${session.id}.json`), "utf8"));
   assert.deepEqual(replay, completed);
   subscription.dispose();
   assert.ok(first.streamDiagnostics && live.streamDiagnostics && terminal.streamDiagnostics);
-  const data = { initial, first, live, terminal, replay };
+  conversationSubscription.dispose();
+  const data = {
+    initial,
+    first,
+    live,
+    terminal,
+    replay,
+    initialFrames,
+    firstFrames,
+    liveFrames,
+    terminalFrames,
+    summaries: {
+      initial: summarizeAcpSession(initial),
+      first: summarizeAcpSession(first.session),
+      live: summarizeAcpSession(live.session),
+      terminal: summarizeAcpSession(terminal.session),
+    },
+  };
   await Promise.all([
     writeFile(
       html,
@@ -90,7 +130,7 @@ try {
       import React, {useEffect,useState} from 'react';
       import {createRoot} from 'react-dom/client';
       import {ConversationTimeline} from '../../../ui/src/v4/ConversationTimeline.tsx';
-      import {buildAcpConversationRows} from '../../../ui/src/v4/acpConversationRows.ts';
+
       import {useAcpConversation} from '../../../ui/src/v4/useAcpConversation.ts';
       import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
       import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
@@ -101,24 +141,30 @@ try {
       import '../../../ui/src/styles.css';
       const data=${JSON.stringify(data)};
       const platform={isMacOS:false,isWindows:false,isLinux:false,isWeb:true};
-      const listeners=new Set(); let current=data.initial;
+      const listeners=new Set(); const bodyListeners=new Map(); let current=data.initial; let currentFrames=data.initialFrames;
+      const mapped=(change,id)=>{const copy=structuredClone(change);copy.wire.subscriptionId=id;if(copy.wire.kind==='complete')copy.wire.frame.subscriptionId=id;return copy};
       window.__streamLogs=[]; window.__throwSink=false;
       window.zcode={log:(_level,args)=>{if(window.__throwSink)throw new Error('sink unavailable');
         if(args[0]==='[diagnostics]'&&args[1]?.scope==='renderer-acp-stream')window.__streamLogs.push(args[1]);}};
-      const service={list:async()=>[current],refresh:async()=>current,
+      const service={listSummaries:async()=>[data.summaries.initial],refresh:async()=>current,
+        readConversation:async input=>currentFrames.map(change=>mapped(change,input.subscriptionId)),
+        conversationRowsRange:async()=>({rows:[],atSeq:0,atRevision:0,atLogEpoch:'unused',hasMore:false}),
+        onDynamicConversationChanged:input=>listener=>{bodyListeners.set(input.subscriptionId,listener);return{dispose(){bodyListeners.delete(input.subscriptionId)}}},
         create:async()=>{throw new Error('unexpected create')},remove:async()=>{},
-        onDynamicSessionChanged:()=>listener=>{listeners.add(listener);return{dispose(){listeners.delete(listener)}}}};
-      const emit=change=>{current=change.session;listeners.forEach(listener=>listener(change))};
+        onDynamicSessionSummaryChanged:()=>listener=>{listeners.add(listener);return{dispose(){listeners.delete(listener)}}}};
+      const emit=(change,frames,summary)=>{current=change.session;currentFrames=frames.snapshot;
+        listeners.forEach(listener=>listener({kind:'updated',session:summary}));
+        for(const [id,listener] of bodyListeners)frames.live.forEach(change=>listener(mapped(change,id)))};
       function Fixture(){
         const view=useAcpConversation(service as never,{workspacePath:'/synthetic/browser',workspaceIdentity:'browser:stream'},'codex');
         useEffect(()=>view.selectById('codex',data.initial.id),[]);
         const snapshot=view.selected;
         const [epoch,setEpoch]=useState(0);
-        window.__stream={first:()=>emit(data.first),live:()=>emit(data.live),finish:()=>emit(data.terminal),
-          stale:()=>emit(data.first),
-          failSink:()=>{window.__throwSink=true;emit({...data.terminal,session:{...data.replay,revision:data.replay.revision+1}})},
-          replay:()=>{emit({kind:'updated',session:structuredClone(data.replay)});setEpoch(e=>e+1)}};
-        const rows=buildAcpConversationRows(snapshot);
+        window.__stream={first:()=>emit(data.first,data.firstFrames,data.summaries.first),live:()=>emit(data.live,data.liveFrames,data.summaries.live),finish:()=>emit(data.terminal,data.terminalFrames,data.summaries.terminal),
+          stale:()=>emit(data.first,data.firstFrames,data.summaries.first),
+          failSink:()=>{window.__throwSink=true;const frames=structuredClone(data.terminalFrames);frames.live=frames.snapshot.map(change=>{change.session.revision=data.replay.revision+1;change.wire.deliveryKind='online';change.wire.frame.toSeq=data.replay.revision+1;change.wire.frame.payload.snapshot.seq=data.replay.revision+1;change.wire.frame.payload.snapshot.revision=data.replay.revision+1;return change});emit({...data.terminal,session:{...data.replay,revision:data.replay.revision+1}},frames,{...data.summaries.terminal,revision:data.replay.revision+1})},
+          replay:()=>{emit({kind:'updated',session:structuredClone(data.replay)},{...data.terminalFrames,live:[]},data.summaries.terminal);setEpoch(e=>e+1)}};
+        const rows=view.rows;
         return <div className="h-screen flex flex-col bg-background text-foreground" data-ready={view.ready}
           data-status={snapshot?.status} data-revision={snapshot?.revision}>
           <ConversationTimeline key={epoch} sessionKey={'stream-'+epoch} rows={rows} totalCount={rows.length}

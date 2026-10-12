@@ -6,7 +6,11 @@
 import { ConversationProjectionStore } from "@/v4/conversationProjectionStore.js";
 import { shouldExposeE2EStoreBridge } from "@/lib/e2eStoreBridge.js";
 import type { SessionOpenKind } from "@/lib/sessionOpenArmsTelemetry.js";
-import { conversationTopic, type ConversationTransport } from "@/v4/transport.js";
+import {
+  conversationTopic,
+  type ConversationTransport,
+  type ConversationProjectionTransport,
+} from "@/v4/transport.js";
 import { logger } from "@/logger.js";
 import type { CommandsQueryParams, CommandsQueryResult } from "@zcode/shared/zcode-protocol-v4";
 
@@ -22,7 +26,8 @@ export interface SessionLease {
 }
 
 interface SessionDataLayerOptions {
-  transport: ConversationTransport;
+  transport: ConversationProjectionTransport &
+    Partial<Pick<ConversationTransport, "queryCommands">>;
   /** 引用归零后延迟退订窗口（ms），默认 30s。 */
   keepWarmMs?: number;
 }
@@ -49,7 +54,7 @@ function monotonicNow(): number {
 }
 
 export class SessionDataLayer {
-  private readonly transport: ConversationTransport;
+  private readonly transport: SessionDataLayerOptions["transport"];
   private readonly keepWarmMs: number;
   private readonly entries = new Map<string, SessionEntry>();
   private readonly offFrame: () => void;
@@ -124,6 +129,10 @@ export class SessionDataLayer {
 
   /** renderer pending-command registry 的只读对账入口；仍复用本 layer 的同一 host connection。 */
   queryCommands(params: CommandsQueryParams): Promise<CommandsQueryResult> {
+    if (!this.transport.queryCommands)
+      return Promise.reject(
+        new Error("Command reconciliation is unavailable on this projection transport"),
+      );
     return this.transport.queryCommands(params);
   }
 

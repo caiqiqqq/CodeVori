@@ -75,22 +75,24 @@ export function useAcpSidebarSessions(
       };
       // 修复原因：先订阅再 list，首发 admission 与历史读取并发时按 revision 合并，
       // 删除事件也不能被迟到的旧 list 快照重新列回侧栏。
-      const subscription = services.acpService.onDynamicSessionChanged(workspace)((change) => {
-        if (!live) return;
-        if (change.kind === "removed") {
-          removed.add(change.id);
-          snapshots.delete(change.id);
-        } else {
-          // 同一 Host id 不会被重用；删除后的迟到 revision 不能复活侧栏记录。
-          if (removed.has(change.session.id)) return;
-          const previous = snapshots.get(change.session.id);
-          if (!previous || previous.revision <= change.session.revision)
-            snapshots.set(change.session.id, change.session);
-        }
-        publish();
-      });
+      const subscription = services.acpService.onDynamicSessionSummaryChanged(workspace)(
+        (change) => {
+          if (!live) return;
+          if (change.kind === "removed") {
+            removed.add(change.id);
+            snapshots.delete(change.id);
+          } else {
+            // 同一 Host id 不会被重用；删除后的迟到 revision 不能复活侧栏记录。
+            if (removed.has(change.session.id)) return;
+            const previous = snapshots.get(change.session.id);
+            if (!previous || previous.revision <= change.session.revision)
+              snapshots.set(change.session.id, change.session);
+          }
+          publish();
+        },
+      );
       void services.acpService
-        .list(workspace)
+        .listSummaries(workspace)
         .then((items) => {
           if (!live) return;
           for (const item of items) {

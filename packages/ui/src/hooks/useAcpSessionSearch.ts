@@ -92,7 +92,7 @@ export function useAcpSessionSearch(workspaceTabs: WorkspaceTabState[], query: s
         }
       };
       // 修复原因：事件先让在途请求失效；旧正文/删除前的结果不能晚到并覆盖新事实。
-      const subscription = service.onDynamicSessionChanged(workspace)((change) => {
+      const subscription = service.onDynamicSessionSummaryChanged(workspace)((change) => {
         serial += 1;
         if (!live) return;
         if (change.kind === "removed")

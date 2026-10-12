@@ -147,7 +147,7 @@ try {
     moduleFile,
     `
     import React,{useEffect} from 'react';import {createRoot} from 'react-dom/client';
-    import {useAcpConversation} from '../../../ui/src/v4/useAcpConversation.ts';
+    import {useAcpConversation} from '../../../ui/test/acpProjectionFixture.tsx';
     import {AcpConversationStatus} from '../../../ui/src/v4/AcpConversationContent.tsx';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     import '../../../ui/src/styles.css';

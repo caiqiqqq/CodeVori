@@ -25,7 +25,7 @@ try {
     import {useWorktreeSettingsConversation} from '../../../ui/src/hooks/useWorktreeSettingsConversation.ts';
     import {useTabStoreApi} from '../../../ui/src/store/TabStoreProvider.tsx';
     import {requestWorktreeSettingsConversation} from '../../../ui/src/lib/worktreeSettingsNavigation.ts';
-    import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
+    import {ServiceProvider} from '../../../ui/test/acpProjectionFixture.tsx';
     import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
     import {TabStoreProvider} from '../../../ui/src/store/TabStoreProvider.tsx';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';

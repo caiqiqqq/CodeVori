@@ -16,7 +16,9 @@ const CLOSED_STATE: ConversationStoreState = {
 };
 
 /** 订阅 per-session projection store（useSyncExternalStore，row 级 selector 在组件内再做）。 */
-export function useConversationProjection(lease: SessionLease | null): ConversationStoreState {
+export function useConversationProjection(
+  lease: Pick<SessionLease, "store"> | null,
+): ConversationStoreState {
   const store = lease?.store ?? null;
   return useSyncExternalStore(
     (listener) => store?.subscribe(listener) ?? (() => {}),
