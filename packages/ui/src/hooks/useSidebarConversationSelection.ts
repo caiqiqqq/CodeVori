@@ -7,7 +7,10 @@ import {
 } from "@/lib/sidebarConversationSelection.js";
 
 /** 订阅现有 owner 的稳定引用，不复制当前会话、持久化字段或 Host 状态。 */
-export function useSidebarConversationSelection(primary: SidebarConversationSelection) {
+export function useSidebarConversationSelection(
+  primary: SidebarConversationSelection,
+  conversationSelectionEnabled = true,
+) {
   const group = useWorkbenchGroupStore((state) =>
     state.activeGroupId ? (state.groups[state.activeGroupId] ?? null) : null,
   );
@@ -22,6 +25,7 @@ export function useSidebarConversationSelection(primary: SidebarConversationSele
         { workspacePath, workspaceIdentity, remoteSessionId, activeTaskId, activeAcpSessionId },
         group,
         { root, panes, focusedPaneId },
+        conversationSelectionEnabled,
       ),
     [
       workspacePath,
@@ -33,6 +37,7 @@ export function useSidebarConversationSelection(primary: SidebarConversationSele
       root,
       panes,
       focusedPaneId,
+      conversationSelectionEnabled,
     ],
   );
 }
