@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { GitRepositorySummary } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
+import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import {
   Command,
   CommandEmpty,
@@ -187,42 +188,44 @@ export function GitBranchSwitcher({
         className={cn("flex items-center px-1 pt-2", className)}
       >
         <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              type="button"
-              data-testid={worktreeSelected ? "worktree-draft-selected" : undefined}
-              variant="ghost"
-              size={"default"}
-              disabled={mutationPending || worktreeCreating}
-              aria-label={intl.formatMessage({
-                id: "git.branchSwitcher.trigger.ariaLabel",
-              })}
-              className={cn(
-                "min-w-0 rounded-full text-ui-base/relaxed",
-                "max-w-full pl-3 pr-2",
-                triggerClassName,
-              )}
-            >
-              <GitBranchIcon
-                data-branch-switcher-primary-icon="true"
-                className="size-4 text-foreground-subtle"
-              />
-              <>
-                <span className="min-w-0 max-w-25 truncate text-left">{triggerLabel}</span>
-                {loadingBranches || mutationPending || worktreeCreating ? (
-                  <LoaderIcon
-                    data-branch-switcher-trailing-icon="true"
-                    className="size-3.5 animate-spin text-foreground-subtle"
-                  />
-                ) : (
-                  <ChevronDownIcon
-                    data-branch-switcher-trailing-icon="true"
-                    className="size-3.5 text-foreground-subtle"
-                  />
+          <ControlHintTooltip title={triggerLabel} className="break-all">
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                data-testid={worktreeSelected ? "worktree-draft-selected" : undefined}
+                variant="ghost"
+                size={"default"}
+                disabled={mutationPending || worktreeCreating}
+                aria-label={intl.formatMessage({
+                  id: "git.branchSwitcher.trigger.ariaLabel",
+                })}
+                className={cn(
+                  "min-w-0 rounded-full text-ui-base/relaxed",
+                  "max-w-full pl-3 pr-2",
+                  triggerClassName,
                 )}
-              </>
-            </Button>
-          </PopoverTrigger>
+              >
+                <GitBranchIcon
+                  data-branch-switcher-primary-icon="true"
+                  className="size-4 text-foreground-subtle"
+                />
+                <>
+                  <span className="min-w-0 max-w-25 truncate text-left">{triggerLabel}</span>
+                  {loadingBranches || mutationPending || worktreeCreating ? (
+                    <LoaderIcon
+                      data-branch-switcher-trailing-icon="true"
+                      className="size-3.5 animate-spin text-foreground-subtle"
+                    />
+                  ) : (
+                    <ChevronDownIcon
+                      data-branch-switcher-trailing-icon="true"
+                      className="size-3.5 text-foreground-subtle"
+                    />
+                  )}
+                </>
+              </Button>
+            </PopoverTrigger>
+          </ControlHintTooltip>
           <PopoverContent
             align="start"
             side={popoverSide}
@@ -282,14 +285,23 @@ export function GitBranchSwitcher({
                   {(branchesResult?.branches ?? []).map((branch) => {
                     const isCurrent =
                       !worktreeSelected && branch.name === displayedCurrentBranchName;
+                    // 当前分支可继续选择（no-op）；其他工作树占用只读取 Git 事实，不能强制检出。
+                    const occupiedWorktreePath =
+                      branch.name !== displayedCurrentBranchName ? branch.worktreePath : null;
                     return (
                       <CommandItem
                         key={branch.name}
                         value={branch.name}
                         data-checked={isCurrent ? "true" : undefined}
                         data-branch-current={isCurrent ? "true" : undefined}
-                        disabled={mutationPending || worktreeCreating}
-                        className={cn("items-start gap-3 rounded-lg px-3 py-2 text-ui-base")}
+                        disabled={
+                          mutationPending || worktreeCreating || Boolean(occupiedWorktreePath)
+                        }
+                        className={cn(
+                          "items-start gap-3 rounded-lg px-3 py-2 text-ui-base",
+                          // cmdk 禁用选择仍生效；允许指针悬停，以便读取被占用分支的完整名称。
+                          occupiedWorktreePath && "data-[disabled=true]:pointer-events-auto",
+                        )}
                         onSelect={() => {
                           onWorktreeSelectedChange?.(false);
                           void switchBranch(branch.name);
@@ -297,12 +309,22 @@ export function GitBranchSwitcher({
                       >
                         <GitBranchIcon className="mt-0.5 size-4 text-foreground-subtle" />
                         <div className="min-w-0 flex-1 flex flex-col gap-1 text-left">
-                          <div className="truncate text-ui-base font-medium text-foreground">
+                          {/* 原生 title 不受菜单的浮层层级遮挡；手机没有 hover，直接展示完整名称。 */}
+                          <div
+                            title={branch.name}
+                            className="truncate pointer-coarse:whitespace-normal pointer-coarse:break-all text-ui-base font-medium text-foreground"
+                          >
                             {branch.name}
                           </div>
                           {isCurrent && currentBranchDirtyLabel ? (
                             <p className="pt-0.5 text-ui-base text-foreground-subtle">
                               {currentBranchDirtyLabel}
+                            </p>
+                          ) : null}
+                          {occupiedWorktreePath ? (
+                            <p className="text-ui-sm text-foreground-subtle">
+                              {intl.formatMessage({ id: "git.branchSwitcher.occupied" })}
+                              <span className="block break-all">{occupiedWorktreePath}</span>
                             </p>
                           ) : null}
                         </div>

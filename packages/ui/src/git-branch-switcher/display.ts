@@ -100,7 +100,9 @@ export function resolveGitBranchIssueMessageId(
     case "operation-in-progress":
       return "git.branchSwitcher.error.operationInProgress";
     case "branch-in-other-worktree":
-      return "git.branchSwitcher.error.branchInOtherWorktree";
+      return issue.paths?.length
+        ? "git.branchSwitcher.error.branchInOtherWorktreeAtPath"
+        : "git.branchSwitcher.error.branchInOtherWorktree";
     default:
       return null;
   }

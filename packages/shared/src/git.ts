@@ -277,6 +277,8 @@ export interface GitBranchComparison {
 export interface GitLocalBranch {
   name: string;
   isCurrent: boolean;
+  /** Git 登记的检出目录；可选以兼容尚未升级的 Host。 */
+  worktreePath?: string | null;
   upstreamName: string | null;
   commitHash: string | null;
   commitTimestampMs: number | null;
