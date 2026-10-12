@@ -2034,6 +2034,36 @@ body {
   }
 }
 
+/* 原先灰色选中底色与 hover 太接近；复用待办卡片的强调色，并用内边线和
+   不占位的短标记区分当前会话，避免选择时移动标题与右侧操作。 */
+.sidebar-conversation-row {
+  position: relative;
+}
+
+.sidebar-conversation-row[data-selected="true"] {
+  background-color: var(--color-accent);
+  /* 全局 focus 规则会强制清除 shadow；当前会话的边线在点击聚焦后仍须保留。 */
+  box-shadow: inset 0 0 0 1px var(--color-icon-blue) !important;
+}
+
+.sidebar-conversation-row[data-selected="true"]::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  width: 4px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background-color: var(--color-icon-blue);
+  pointer-events: none;
+}
+
+.sidebar-conversation-row:focus-visible {
+  /* 仅为会话行恢复主题内键盘焦点，覆盖全局去除系统焦点轮廓的规则。 */
+  outline: 2px solid var(--color-icon-blue) !important;
+  outline-offset: 2px;
+}
+
 /* Mention 图标不进入 TextNode DOM，避免首部 img/svg 截断 Lexical 原生选区映射。 */
 .prompt-mention::before {
   content: "";
