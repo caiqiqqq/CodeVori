@@ -97,6 +97,7 @@ interface ComposerAttachmentsApi {
   clearAttachments: (attachmentIds?: readonly string[]) => void;
   /** 把已由 session 接管的 queue refs 原样恢复为 ready chips；不触发 upload/adopt。 */
   restoreSessionOwnedAttachments: (attachments: readonly AttachmentRef[]) => boolean;
+  restoreFiles: (files: File[]) => void;
   /** 只返回已 ready ref；任一附件未就绪时返回 null 作 submit 二次门禁。 */
   prepareForSend: () => Promise<AttachmentRef[] | null>;
   /** sendText accepted 后才移交远端暂存内容，发送失败时仍由草稿持有。 */
@@ -1206,6 +1207,8 @@ export function useComposerAttachments(
       retryAttachment,
       clearAttachments,
       restoreSessionOwnedAttachments,
+      // 撤回附件已从当前 Host 冻结副本读入 File，复用同一 composer 附件写入路径。
+      restoreFiles: addAttachmentFiles,
       prepareForSend,
       adoptSentAttachments,
       setAttachmentError,
@@ -1217,6 +1220,7 @@ export function useComposerAttachments(
       composerDragKind,
       clearAttachments,
       restoreSessionOwnedAttachments,
+      addAttachmentFiles,
       handleAttachmentInputChange,
       handleDragLeaveComposer,
       handleDragOverComposer,

@@ -2,7 +2,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { IAcpService } from "@zcode/services";
-import type { AcpAgent, AcpPromptInput, AcpSession, AcpWorkspace } from "@zcode/shared";
+import type {
+  AcpAgent,
+  AcpPromptInput,
+  AcpQueueItem,
+  AcpSession,
+  AcpWorkspace,
+} from "@zcode/shared";
 import { selectAcpSession } from "@/v4/composer/acpModelSelection.js";
 import { ACP_HOST_UPGRADE_REQUIRED, waitForAcpPromptAdmission } from "@/v4/acpPromptAdmission.js";
 import { visibleAcpQueueSubmission, type AcpQueueSubmission } from "@/v4/acpQueueProjection.js";
@@ -645,6 +651,7 @@ export function useAcpConversation(
             item.id === snapshot.id && item.revision <= snapshot.revision ? snapshot : item,
           ),
         );
+        return snapshot;
       } catch (cause) {
         if (targetKeyRef.current === targetKey && selectedRef.current?.id === selected.id)
           setErrorState({ agent: selected.agent, message: messageOf(cause) });
@@ -656,17 +663,21 @@ export function useAcpConversation(
   const queueActions = useMemo(
     () => ({
       deleteItem: (queueItemId: string) =>
-        queueAction((input) => service.deleteQueueItem({ ...input, queueItemId })),
-      editItem: (queueItemId: string, text: string) =>
-        queueAction((input) => service.editQueueItem({ ...input, queueItemId, text })),
+        queueAction((input) => service.deleteQueueItem({ ...input, queueItemId })).then(() => {}),
+      withdrawItem: (expectedItem: AcpQueueItem) =>
+        queueAction((input) =>
+          service.deleteQueueItem({ ...input, queueItemId: expectedItem.commandId, expectedItem }),
+        ),
       moveItem: (queueItemId: string, beforeQueueItemId: string | null) =>
         queueAction((input) =>
           service.reorderQueueItem({ ...input, queueItemId, beforeQueueItemId }),
-        ),
+        ).then(() => {}),
       sendNow: (queueItemId: string) =>
-        queueAction((input) => service.sendQueuedNow({ ...input, queueItemId })),
+        queueAction((input) => service.sendQueuedNow({ ...input, queueItemId })).then(() => {}),
       resume: () =>
-        queueAction((input) => service.setQueueAutoDrain({ ...input, autoDrain: true })),
+        queueAction((input) => service.setQueueAutoDrain({ ...input, autoDrain: true })).then(
+          () => {},
+        ),
     }),
     [queueAction, service],
   );

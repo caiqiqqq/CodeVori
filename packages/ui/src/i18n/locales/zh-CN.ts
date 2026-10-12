@@ -4853,7 +4853,6 @@ const zhCN: Record<string, string> = {
   // compact 队列项曾单独显示“立即执行”，与同一队列中的即时动作文案不一致。
   "chat.queue.runNow": "立即",
   "chat.queue.edit": "编辑",
-  "acp.queue.editDescription": "修改排队消息的正文，保留附件和文件引用。",
   "chat.queue.editDraftConflict": "请先发送或清空当前草稿，再编辑队列消息。",
   "chat.queue.editRestoreFailed": "未能把队列消息退回输入框，请重试。",
   "chat.queue.operationStale": "队列状态已变化，正在刷新，请确认后重试。",

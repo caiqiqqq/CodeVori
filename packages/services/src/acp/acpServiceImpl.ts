@@ -30,6 +30,7 @@ import {
   acpPromptInputSchema,
   acpPromptSubmissionSchema,
   acpQueueItemInputSchema,
+  acpQueueItemSchema,
   acpQueueEditInputSchema,
   acpQueueReorderInputSchema,
   acpQueueAutoDrainInputSchema,
@@ -2213,9 +2214,13 @@ export function createAcpService(
       const params = acpAttachmentReadInputSchema.parse(input);
       const session = await scoped(params);
       if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
-      const attachment = session.entries
-        .flatMap((entry) => (entry.kind === "user" ? (entry.attachments ?? []) : []))
-        .find((item) => item.ref === params.ref);
+      // 修复依据：撤回编辑要先取得冻结副本；只扩大到同会话的已接受队列，不允许任意 ref。
+      const attachment = [
+        ...session.entries.flatMap((entry) =>
+          entry.kind === "user" ? (entry.attachments ?? []) : [],
+        ),
+        ...session.queue.items.flatMap((item) => item.attachments),
+      ].find((item) => item.ref === params.ref);
       if (!attachment) throw new Error("ACP attachment does not belong to this session");
       return acpAttachmentReadResultSchema.parse(
         await attachmentStore.read(session.id, attachment, params.offset, params.limit),
@@ -2471,6 +2476,12 @@ export function createAcpService(
         ensureOpen(session);
         if (session.queue.discardedCommandIds?.includes(parsed.queueItemId)) return;
         const item = editableQueueItem(session, parsed.queueItemId);
+        // 撤回读取附件期间其他端可能编辑正文；在同一 gate 内比较内容，不能误删新版本。
+        if (
+          parsed.expectedItem &&
+          JSON.stringify(acpQueueItemSchema.parse(item)) !== JSON.stringify(parsed.expectedItem)
+        )
+          throw new Error("ACP queue item changed before withdrawal");
         await changeQueue(session, () => {
           session.queue.items = session.queue.items.filter((candidate) => candidate !== item);
           (session.queue.discardedCommandIds ??= []).push(item.commandId);

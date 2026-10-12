@@ -346,6 +346,8 @@ export const acpQueueItemInputSchema = acpWorkspaceSchema
   .extend({
     id: z.string().uuid(),
     queueItemId: z.string().trim().min(1),
+    /** 撤回编辑的内容前置条件；流式 revision 变化不应拒绝未变化的队列项。 */
+    expectedItem: acpQueueItemSchema.optional(),
   })
   .strict();
 export type AcpQueueItemInput = z.infer<typeof acpQueueItemInputSchema>;

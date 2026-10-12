@@ -33,7 +33,7 @@ try {
       import '../../../ui/src/styles.css';
       const workspacePath='/synthetic/queue';
       const listeners=new Set(); const events=[];
-      let holdNext=false, held=null, dropAcceptance=false;
+      let holdNext=false, held=null, dropAcceptance=false, deleteMode='normal', heldDelete=null, lastInput=null;
       let snapshot={id:crypto.randomUUID(),agent:'codex',workspacePath,acpSessionId:'native-fixture',
         title:'queue fixture',revision:1,status:'running',entries:[{id:'user:first',kind:'user',text:'first task'}],
         configOptions:[],modeState:null,contextUsage:null,usageTurns:[],goal:null,pendingPermission:null,error:null,
@@ -46,13 +46,14 @@ try {
         listAvailableAgents:async()=>[{agent:'codex',available:true}],listAgentConfigs:async()=>[],
         listPlugins:async()=>[], onDynamicAgentConfigsChanged:()=>()=>({dispose(){}}),
         onDynamicSessionChanged:()=>listener=>{listeners.add(listener);return {dispose:()=>listeners.delete(listener)}} ,
-        submitPrompt:async input=>{events.push('prompt:'+input.text);if(holdNext){holdNext=false;await new Promise((resolve,reject)=>held={input,resolve,reject});}if(!snapshot.queue.items.some(item=>item.commandId===input.commandId))snapshot.queue.items.push({commandId:input.commandId,text:input.text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});if(dropAcceptance){dropAcceptance=false;snapshot.revision++;return copy()}return publish()},
+        submitPrompt:async input=>{lastInput=input;events.push('prompt:'+input.text);if(holdNext){holdNext=false;await new Promise((resolve,reject)=>held={input,resolve,reject});}if(!snapshot.queue.items.some(item=>item.commandId===input.commandId))snapshot.queue.items.push({commandId:input.commandId,text:input.text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});if(dropAcceptance){dropAcceptance=false;snapshot.revision++;return copy()}return publish()},
         editQueueItem:async ({queueItemId,text})=>{requireItem(queueItemId).text=text;events.push('edit');return publish()},
-        deleteQueueItem:async ({queueItemId})=>{requireItem(queueItemId);snapshot.queue.items=snapshot.queue.items.filter(item=>item.commandId!==queueItemId);events.push('delete');return publish()},
+        deleteQueueItem:async ({queueItemId,expectedItem})=>{if(deleteMode==='fail'){events.push('delete-failed');deleteMode='normal';throw Error('synthetic delete rejected')}if(deleteMode==='hold'){deleteMode='normal';await new Promise(resolve=>heldDelete=resolve)}const item=requireItem(queueItemId);if(expectedItem&&(item.text!==expectedItem.text||item.state!==expectedItem.state||item.createdAt!==expectedItem.createdAt))throw Error('changed');(snapshot.queue.discardedCommandIds??=[]).push(queueItemId);snapshot.queue.items=snapshot.queue.items.filter(item=>item.commandId!==queueItemId);events.push('delete');return publish()},
         reorderQueueItem:async ({queueItemId,beforeQueueItemId})=>{const item=requireItem(queueItemId);snapshot.queue.items=snapshot.queue.items.filter(candidate=>candidate!==item);const index=beforeQueueItemId?snapshot.queue.items.findIndex(item=>item.commandId===beforeQueueItemId):snapshot.queue.items.length;snapshot.queue.items.splice(index,0,item);events.push('move');return publish()},
         sendQueuedNow:async ({queueItemId})=>{const item=requireItem(queueItemId);snapshot.queue.items=snapshot.queue.items.filter(candidate=>candidate!==item);snapshot.entries.push({id:'user:'+queueItemId,kind:'user',text:item.text});events.push('sendNow');return publish()},
         setQueueAutoDrain:async ({autoDrain})=>{snapshot.queue.autoDrain=autoDrain;delete snapshot.queue.pauseReason;events.push('resume');return publish()},
         stop:async()=>{snapshot.status='idle';snapshot.queue.autoDrain=false;snapshot.queue.pauseReason='stopped';events.push('stop');return publish()},
+        readAttachment:async()=>({dataBase64:btoa('frozen bytes'),mediaType:'text/plain',totalBytes:12,nextOffset:null}),
         remove:async()=>{},
       };
       const forbidden=()=>{throw new Error('unexpected native/model operation')};
@@ -64,7 +65,7 @@ try {
       const platform={isMacOS:false,isWindows:false,isLinux:false,isWeb:true};
       function Fixture(){
         const [epoch,setEpoch]=useState(0);
-        window.__queue={events,read:copy,hold:()=>holdNext=true,release:()=>{held?.resolve();held=null},reject:()=>{held?.reject(Error('synthetic admission failed'));held=null},acceptBeforeAck:()=>{const input=held.input;snapshot.queue.items.push({commandId:input.commandId,text:input.text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});publish()},dropAcceptance:()=>dropAcceptance=true,replay:()=>{publish();setEpoch(n=>n+1)},pause:()=>{snapshot.queue.autoDrain=false;snapshot.queue.pauseReason='error';publish()}};
+        window.__queue={events,read:copy,lastInput:()=>lastInput,deleteMode:value=>deleteMode=value,deleting:()=>Boolean(heldDelete),releaseDelete:()=>{heldDelete?.();heldDelete=null},seedFile:()=>{snapshot.queue.items.push({commandId:'file-edit',text:'inspect [source.txt](./src/source.txt)',attachments:[{ref:'acp-attachment:00000000-0000-4000-8000-000000000000/0',fileName:'note.txt',mime:'text/plain',bytes:12}],workspaceFiles:['src/source.txt'],state:'queued',createdAt:Date.now()});publish()},hold:()=>holdNext=true,release:()=>{held?.resolve();held=null},reject:()=>{held?.reject(Error('synthetic admission failed'));held=null},acceptBeforeAck:()=>{const input=held.input;snapshot.queue.items.push({commandId:input.commandId,text:input.text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});publish()},dropAcceptance:()=>dropAcceptance=true,replay:()=>{publish();setEpoch(n=>n+1)},pause:()=>{snapshot.queue.autoDrain=false;snapshot.queue.pauseReason='error';publish()}};
         return <main className="h-screen bg-background text-foreground p-2" data-fixture-ready="true">
           <SessionPane key={epoch} paneId="queue-fixture" workspacePath={workspacePath} sessionId={null} focused
             acpBoundSessionId={snapshot.id} acpOpenRequest={{requestId:epoch+1,session:copy()}} />
@@ -152,15 +153,48 @@ try {
     const queue = page.locator('[data-testid="v4-queue"]');
     await page.waitForFunction(() => window.__queue.read().queue.items.length === 3);
     await queue.waitFor();
-    const ids = await page.evaluate(() =>
+    let ids = await page.evaluate(() =>
       window.__queue.read().queue.items.map((item) => item.commandId),
     );
+    // Existing drafts win; failed withdrawal leaves the queue unchanged.
+    await input.fill("keep this draft");
     await page.locator(`[data-testid="v4-queue-item-edit-${ids[0]}"]`).click();
-    await page.locator('[data-testid="acp-queue-edit-text"]').fill("edited follow-up");
-    await page.locator('[data-testid="acp-queue-edit-save"]').click();
+    assert.equal(await input.textContent(), "keep this draft");
+    assert.equal(await page.evaluate(() => window.__queue.read().queue.items.length), 3);
+    await input.press("ControlOrMeta+A");
+    await input.press("Backspace");
     await page.waitForFunction(
-      () => window.__queue.read().queue.items[0].text === "edited follow-up",
+      () => document.querySelector('[data-testid="v4-composer-input"]')?.textContent === "",
     );
+    await page.evaluate(() => window.__queue.deleteMode("fail"));
+    await page.locator(`[data-testid="v4-queue-item-edit-${ids[0]}"]`).click();
+    await page.getByText("未能把队列消息退回输入框，请重试。", { exact: true }).waitFor();
+    assert.equal(await input.textContent(), "");
+    assert.equal(await page.evaluate(() => window.__queue.read().queue.items.length), 3);
+    await page.evaluate(() => window.__queue.deleteMode("hold"));
+    await page.locator(`[data-testid="v4-queue-item-edit-${ids[0]}"]`).click();
+    await page.waitForFunction(() => window.__queue.deleting());
+    assert.equal(await input.textContent(), "");
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="v4-composer-input"]')
+          ?.getAttribute("contenteditable") === "false",
+    );
+    await page.evaluate(() => window.__queue.releaseDelete());
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-testid="v4-composer-input"]')?.textContent ===
+        "second follow-up",
+    );
+    assert.equal(await page.locator('[role="dialog"]').count(), 0);
+    assert.equal(await page.evaluate(() => window.__queue.read().queue.items.length), 2);
+    await send("edited follow-up");
+    const replacement = await page.evaluate(
+      () => window.__queue.read().queue.items.at(-1).commandId,
+    );
+    assert.notEqual(replacement, ids[0]);
+    ids = [ids[1], replacement, ids[2]];
     await page.locator(`[data-testid="v4-queue-item-delete-${ids[2]}"]`).click();
     await page.waitForFunction(() => window.__queue.read().queue.items.length === 2);
     const from = await page
@@ -179,6 +213,7 @@ try {
       ids[1],
     );
     assert.equal(await page.evaluate(() => window.__queue.read().queue.items.length), 2);
+    await input.click(); // Finish the drag's click-suppression cycle before the next command.
     await page.locator('[data-testid="v4-stop"]').click();
     await page.locator('[data-testid="v4-queue-paused-banner"]').waitFor();
     await page.locator('[data-testid="v4-queue-resume"]').click();
@@ -194,6 +229,25 @@ try {
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
       false,
+    );
+    await page.evaluate(() => window.__queue.seedFile());
+    await page.getByTestId("v4-queue-item-edit-file-edit").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector('[data-testid="v4-composer-input"]')
+        ?.textContent?.includes("source.txt"),
+    );
+    await page.locator('[data-testid^="v4-attachment-"]').first().waitFor();
+    await page.getByTestId("v4-composer-send").click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="v4-composer-input"]')?.textContent === "",
+    );
+    const restoredInput = await page.evaluate(() => window.__queue.lastInput());
+    assert.equal(restoredInput.text, "inspect [source.txt](./src/source.txt)");
+    assert.deepEqual(restoredInput.workspaceFiles, ["src/source.txt"]);
+    assert.equal(
+      Buffer.from(restoredInput.attachments[0].dataBase64, "base64").toString(),
+      "frozen bytes",
     );
     for (const theme of ["light", "dark"]) {
       await page.evaluate((theme) => {
@@ -211,7 +265,7 @@ try {
     await page.close();
   }
   console.log(
-    `PASS: immediate pending feedback, failure/retry, live-before-ACK, silent ACK, newer drafts, running composer admission, edit/delete/drag/send-now/resume and replay at 1280/375px in both themes. Screenshots: ${artifacts}`,
+    `PASS: API-style withdrawal, draft conflicts, rejection/delayed ACK, frozen file and mention restoration, immediate pending feedback, failure/retry, live-before-ACK, silent ACK, newer drafts, running composer admission, edit/delete/drag/send-now/resume and replay at 1280/375px in both themes. Screenshots: ${artifacts}`,
   );
 } finally {
   await browser?.close();
