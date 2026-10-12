@@ -107,7 +107,7 @@ try {
     `
     import React, {useState} from 'react';
     import {createRoot} from 'react-dom/client';
-    import {useAcpConversation} from '../../../ui/src/v4/useAcpConversation.ts';
+    import {useAcpConversation} from '../../../ui/test/acpProjectionFixture.tsx';
     import {AcpComposerConfigControls} from '../../../ui/src/v4/composer/AcpComposerConfigControls.tsx';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';

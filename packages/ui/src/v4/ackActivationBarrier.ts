@@ -19,7 +19,7 @@ function encodedBytes(value: unknown): number {
 
 interface AckActivationBarrier<T extends { topic: string; subscriptionId: string }> {
   begin(topic: string): object;
-  bind(token: object, subscriptionId: string): void;
+  bind(token: object, subscriptionId: string, initialFrames?: readonly T[]): void;
   cancel(token: object): void;
   activate(
     subscriptionId: string,
@@ -64,14 +64,22 @@ export function createAckActivationBarrier<T extends { topic: string; subscripti
       pendingByTopic.set(topic, group);
       return pending;
     },
-    bind(token, subscriptionId) {
+    bind(token, subscriptionId, initialFrames = []) {
       const pending = token as PendingFrameSubscription<T>;
+      const bytes = initialFrames.reduce((total, frame) => total + encodedBytes(frame), 0);
+      if (
+        pending.frames.length + initialFrames.length > MAX_STAGED_FRAMES ||
+        pending.stagedBytes + bytes > MAX_STAGED_BYTES
+      )
+        pending.overflowReason = STAGING_OVERFLOW_REASON;
       if (pending.overflowReason) {
         const reason = pending.overflowReason;
         removePending(pending);
         throw new Error(reason);
       }
       pending.subscriptionId = subscriptionId;
+      pending.frames.unshift(...initialFrames);
+      pending.stagedBytes += bytes;
       pendingBySubscriptionId.set(subscriptionId, pending);
     },
     cancel(token) {

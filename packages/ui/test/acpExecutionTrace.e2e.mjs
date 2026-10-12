@@ -26,7 +26,7 @@ try {
       import {createRoot} from 'react-dom/client';
       import {AcpExecutionTracePane} from '../../../ui/src/AcpExecutionTracePane.tsx';
       import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
-      import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
+      import {ServiceProvider,withAcpProjectionFixture} from '../../../ui/test/acpProjectionFixture.tsx';
       import {TabStoreProvider} from '../../../ui/src/store/TabStoreProvider.tsx';
       import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
       import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
@@ -67,6 +67,7 @@ try {
           onDynamicSessionChanged:subscribe(sessionListeners,'subscribe-session'),onDynamicExecutionTraceChanged:subscribe(traceListeners,'subscribe-trace'),
           create:forbidden,refresh:forbidden,prompt:forbidden,authenticate:forbidden,
         }};
+        withAcpProjectionFixture(services.acpService as never);
         const publish=(id)=>{const session=sessions.get(id);for(const listener of sessionListeners) listener({kind:'updated',session:structuredClone(session)})};
         const publishEvent=(id,value)=>{traces.set(id,[...(traces.get(id)||[]),value]);for(const listener of traceListeners) listener({...scope,workspacePath,id,event:value})};
         return {services,sessions,traces,sessionListeners,traceListeners,holds,releases,publish,publishEvent,
@@ -130,11 +131,11 @@ try {
     await page.evaluate(() => window.__acpTrace.calls.slice(0, 4).map((call) => call.kind)),
     ["subscribe-session", "subscribe-trace", "read", "trace"],
   );
-  // The initial RPC captured revision 1, but revision 2/stream facts reach the pane first.
+  // Metadata/log invalidation starts a coalesced detail read; the old blocked read cannot replace its newer revision.
   await page.evaluate(() => window.__acpTrace.local.append(window.__acpTrace.firstId));
+  await page.evaluate(() => window.__acpTrace.local.release(window.__acpTrace.firstId));
   await count(3);
   await shown("实时提问");
-  await page.evaluate(() => window.__acpTrace.local.release(window.__acpTrace.firstId));
   await shown("自动更新");
   await count(3);
   await page.evaluate(() => window.__acpTrace.local.complete(window.__acpTrace.firstId));

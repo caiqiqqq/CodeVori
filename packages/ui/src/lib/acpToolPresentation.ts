@@ -2,7 +2,8 @@ import type { AcpEntry } from "@zcode/shared";
 import { isShellToolCallAwaitingCommand } from "@/lib/exploreToolCall.js";
 
 /** ACP 标签只用于展示，不能获得同名 CLI 工具的运行时能力。 */
-export const ACP_DISPLAY_TOOL_NAME = "ACP external tool";
+import { ACP_DISPLAY_TOOL_NAME } from "@zcode/shared";
+export { ACP_DISPLAY_TOOL_NAME } from "@zcode/shared";
 export type AcpToolEntry = Extract<AcpEntry, { kind: "tool" }>;
 
 export function readAcpToolEntry(value: unknown): AcpToolEntry | undefined {

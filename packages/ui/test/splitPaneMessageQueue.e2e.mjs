@@ -23,7 +23,7 @@ try {
       import {SessionPane} from '../../../ui/src/v4/SessionPane.tsx';
       import {V4ConversationContext} from '../../../ui/src/v4/V4ConversationContext.tsx';
       import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
-      import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
+      import {ServiceProvider,withAcpProjectionFixture} from '../../../ui/test/acpProjectionFixture.tsx';
       import {TabStoreProvider} from '../../../ui/src/store/TabStoreProvider.tsx';
       import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
       import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
@@ -49,7 +49,8 @@ sendQueuedNow:async({id,queueItemId})=>{const row=requireItem(id,queueItemId);sn
 setQueueAutoDrain:async({id,autoDrain})=>{snapshots[id].queue.autoDrain=autoDrain;return publish(id)},stop:async({id})=>{snapshots[id].status='idle';snapshots[id].queue.autoDrain=false;return publish(id)},remove:async()=>{},
 };
 const [clientProtocol,serverProtocol]=createQueuePair();
-const server=new ChannelServer(serverProtocol,'fixture');server.registerChannel('acp',ProxyChannel.fromService(hostService));
+// 合成 Host 在 RPC 注册前适配新契约；客户端 Proxy 的方法存在性不代表远端支持。
+const server=new ChannelServer(serverProtocol,'fixture');server.registerChannel('acp',ProxyChannel.fromService(withAcpProjectionFixture(hostService)));
 const client=new ChannelClient(clientProtocol);const acpService=ProxyChannel.toService(client.getChannel('acp'));
 const forbidden=()=>{throw new Error('unexpected native/model operation')};
 const native={layer:{acquire:forbidden},sendCommand:forbidden,attachmentPut:forbidden,onRuntimeRestart:()=>()=>{},onRuntimeLifecycle:()=>()=>{}};
@@ -228,7 +229,14 @@ return <main className='h-screen w-screen flex bg-background text-foreground' da
       "late ACK must preserve newer input in its own scope",
     );
     // A delayed withdrawal ACK cannot restore A into C, including replayable attachments.
-    await input(1).fill("");
+    // Lexical 草稿通过真实键盘删除提交变更，避免 fill 只改 DOM 后直接触发撤回。
+    await input(1).press("ControlOrMeta+A");
+    await input(1).press("Backspace");
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-lane="1"] [data-testid="v4-composer-input"]')?.textContent ===
+        "",
+    );
     await page.evaluate(() => window.__splitQ.holdDelete());
     await lane(1).getByTestId("v4-queue-item-edit-q-B").click();
     await page.waitForFunction(() => window.__splitQ.deleting());

@@ -17,7 +17,7 @@ try {
     import React from 'react';
     import {createRoot} from 'react-dom/client';
     import {acpSessionSchema} from '@zcode/shared';
-    import {useAcpConversation} from '../../../ui/src/v4/useAcpConversation.ts';
+    import {useAcpConversation} from '../../../ui/test/acpProjectionFixture.tsx';
     import {startRendererPerformanceDiagnostics} from '../../../ui/src/lib/rendererPerformanceDiagnostics.ts';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {ScopedErrorBoundary} from '../../../ui/src/ErrorBoundary.tsx';

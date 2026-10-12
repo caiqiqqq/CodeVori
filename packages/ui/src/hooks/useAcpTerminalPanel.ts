@@ -1,11 +1,16 @@
 import { useCallback, useState } from "react";
 import type { IAcpService } from "@zcode/services";
 import type { AcpSession } from "@zcode/shared";
-import type { BackgroundWorkSummary } from "@zcode/shared/zcode-protocol-v4";
+import type { BackgroundWorkSummary, ConversationRow } from "@zcode/shared/zcode-protocol-v4";
+import { readAcpToolEntry } from "@/lib/acpToolPresentation.js";
 import { logger } from "@/logger.js";
 
 /** Only local selection lives here; process/output facts stay in the Host snapshot. */
-export function useAcpTerminalPanel(service: IAcpService, session: AcpSession | null) {
+export function useAcpTerminalPanel(
+  service: IAcpService,
+  session: AcpSession | null,
+  rows?: readonly ConversationRow[],
+) {
   const [selection, setSelection] = useState<{ scope: string; workId: string } | null>(null);
   const [failure, setFailure] = useState<{ scope: string; message: string } | null>(null);
   const scope = JSON.stringify([
@@ -48,9 +53,15 @@ export function useAcpTerminalPanel(service: IAcpService, session: AcpSession | 
   const terminal = workId?.startsWith("acp-terminal:")
     ? session?.terminals?.find((t) => `acp-terminal:${t.terminalId}` === workId)
     : undefined;
-  const tool = workId?.startsWith("acp-tool:")
-    ? session?.entries.find((e) => e.kind === "tool" && `acp-tool:${e.id}` === workId)
-    : undefined;
+  const toolRow = rows?.find(
+    (row) => row.kind === "toolCall" && `acp-tool:${row.toolCallId}` === workId,
+  );
+  const projectedTool = toolRow?.kind === "toolCall" ? readAcpToolEntry(toolRow.input) : undefined;
+  const tool =
+    projectedTool ??
+    (workId?.startsWith("acp-tool:")
+      ? session?.entries.find((e) => e.kind === "tool" && `acp-tool:${e.id}` === workId)
+      : undefined);
   return {
     open,
     close,
