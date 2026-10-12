@@ -21,6 +21,7 @@ import {
   GitFork,
   Hash,
   ListFilter,
+  LoaderCircle,
   Maximize2,
   MessageCircleCheck,
   MessageCirclePlus,
@@ -399,19 +400,17 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     () => partitionWorkspaceTabsByPurpose(workspaceTabs),
     [workspaceTabs],
   );
-  const {
-    groups: projectGroups,
-    resolvedGroups: resolvedProjectGroups,
-    loading: projectGroupsLoading,
-  } = useWorktreeProjectGroupsResolution(projectWorkspaceTabs);
+  // Git 归属未确认时原始 groups 会把工作树当作独立项目，导致启动/新增时闪现。
+  // 复用 hook 的已确认投影，解析新路径期间保留原项目及对话列表实例。
+  const { resolvedGroups: projectGroups, loading: projectGroupsLoading } =
+    useWorktreeProjectGroupsResolution(projectWorkspaceTabs);
   const topLevelProjectTabs = useMemo(
     () => projectGroups.map((group) => group.tab),
     [projectGroups],
   );
   const workTaskProjects = useMemo(
-    () =>
-      resolvedProjectGroups.filter((group) => !group.isLinkedWorktree).map((group) => group.tab),
-    [resolvedProjectGroups],
+    () => projectGroups.filter((group) => !group.isLinkedWorktree).map((group) => group.tab),
+    [projectGroups],
   );
   const worktreeWorkspaceKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -1530,9 +1529,17 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                               }
                             >
                               {topLevelProjectTabs.length === 0 ? (
-                                <div className="px-3 py-2 text-ui-base text-foreground-subtle">
+                                <div
+                                  role={projectGroupsLoading ? "status" : undefined}
+                                  className="flex items-center gap-2 px-3 py-2 text-ui-base text-foreground-subtle"
+                                >
+                                  {projectGroupsLoading ? (
+                                    <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                                  ) : null}
                                   {intl.formatMessage({
-                                    id: "workspaceSidebar.noProjects",
+                                    id: projectGroupsLoading
+                                      ? "common.loading"
+                                      : "workspaceSidebar.noProjects",
                                   })}
                                 </div>
                               ) : (
