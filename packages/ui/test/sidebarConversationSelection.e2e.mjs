@@ -141,10 +141,12 @@ try {
         });
       const assertSelected = async (item) => {
         await page.waitForFunction(
-          ({ element, accent }) =>
+          // 背景与边线有独立 CSS 过渡；等两者完成后再断言，避免读取中间帧。
+          ({ element, accent, blue }) =>
             element.dataset.selected === "true" &&
-            getComputedStyle(element).backgroundColor === accent,
-          { element: await item.elementHandle(), accent: tokens.accent },
+            getComputedStyle(element).backgroundColor === accent &&
+            getComputedStyle(element).boxShadow === `${blue} 0px 0px 0px 1px inset`,
+          { element: await item.elementHandle(), accent: tokens.accent, blue: tokens.blue },
         );
         assert.equal(await item.getAttribute("data-selected"), "true");
         assert.equal(await item.getAttribute("aria-current"), "page");

@@ -147,6 +147,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   onSelectTask,
   onSelectAcpSession,
   activeAcpSessionId,
+  selectedNativeTaskId,
   onStartDraftInWorkspace,
   taskItems,
   taskListLoading,
@@ -179,6 +180,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   ) => void;
   onSelectAcpSession?: (session: AcpSidebarSession) => void;
   activeAcpSessionId?: string | null;
+  selectedNativeTaskId: string | null;
   onStartDraftInWorkspace: (targetWorkspacePath: string, targetWorkspaceIdentity?: string) => void;
   taskItems: ZCodeTaskMeta[];
   taskListLoading: boolean;
@@ -207,7 +209,6 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   const workspaceZCodeState = useZCodeSessionStore((state) =>
     selectWorkspaceZCodeState(state, tab.workspacePath, tab.workspaceIdentity),
   );
-  const activeTaskId = workspaceZCodeState.activeTaskId;
   const removeTaskState = useZCodeSessionStore((state) => state.removeTaskState);
   const upsertOptimisticTaskListItem = useZCodeSessionStore(
     (state) => state.upsertOptimisticTaskListItem,
@@ -1184,7 +1185,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
               activeAcpSessionId={isActiveWorkspace ? activeAcpSessionId : null}
               onSelectAcpSession={onSelectAcpSession}
               pinnedTasks={EMPTY_PINNED_TASKS}
-              activeTaskId={isActiveWorkspace ? activeTaskId : null}
+              activeTaskId={isActiveWorkspace ? selectedNativeTaskId : null}
               onSelectTask={handleSelectTask}
               showCreateButton={false}
               showFooter={false}
