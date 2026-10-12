@@ -24,7 +24,7 @@ try {
     import {createRoot} from 'react-dom/client';
     import {WorkspaceSidebar} from '../../../ui/src/WorkspaceSidebar.tsx';
     import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
-    import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
+    import {ServiceProvider} from '../../../ui/test/acpProjectionFixture.tsx';
     import {StoreProvider} from '../../../ui/src/store/StoreProvider.tsx';
     import {TabStoreProvider,useTabStoreApi} from '../../../ui/src/store/TabStoreProvider.tsx';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';

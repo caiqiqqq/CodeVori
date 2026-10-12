@@ -41,3 +41,21 @@ test("ACP converts Web File bytes and target-Host paths without ZCode artifact r
     /not ready/,
   );
 });
+
+test("queue edit restores file mentions in place without duplicating text or treating unrelated links as references", async () => {
+  const { acpQueuedEditorState } = await import("../src/v4/composer/acpPromptDraft.ts");
+  const text =
+    "inspect [main.ts](./src/main.ts) and [site](https://example.com)\n\nthen [a\\]b](<./a b.ts>)";
+  const encoded = acpQueuedEditorState(text, ["src/main.ts", "a b.ts"]);
+  assert.deepEqual(acpWorkspaceFilesFromEditor(encoded), ["src/main.ts", "a b.ts"]);
+  const state = JSON.parse(encoded);
+  const markdown = state.root.children
+    .map((p: { children: Array<{ markdown?: string; text: string }> }) =>
+      p.children.map((n) => n.markdown ?? n.text).join(""),
+    )
+    .join("\n\n");
+  assert.equal(markdown, text);
+  assert.deepEqual(acpWorkspaceFilesFromEditor(acpQueuedEditorState("", ["src/main.ts"])), [
+    "src/main.ts",
+  ]);
+});

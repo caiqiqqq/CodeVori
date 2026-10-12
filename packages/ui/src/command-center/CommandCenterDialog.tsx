@@ -617,6 +617,7 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
             kind: "acp",
             acpSessionId: conversation.item.id,
             entryId: row.entryId,
+            rowId: row.rowId,
           });
       } else {
         onSearchResultHighlightRequest?.({ ...request, taskId: conversation.item.taskId });

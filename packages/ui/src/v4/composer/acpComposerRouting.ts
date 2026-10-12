@@ -16,6 +16,7 @@ export function hasAcpConversationContent(
   return Boolean(
     session &&
     (session.entries.length > 0 ||
+      ("history" in session && (session.history as { entryCount: number }).entryCount > 0) ||
       session.pendingPermission ||
       session.pendingElicitation ||
       session.queue?.items.length),

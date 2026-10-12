@@ -23,13 +23,13 @@ try {
       import {SessionPane} from '../../../ui/src/v4/SessionPane.tsx';
       import {V4ConversationContext} from '../../../ui/src/v4/V4ConversationContext.tsx';
       import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
-      import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
+      import {ServiceProvider,withAcpProjectionFixture} from '../../../ui/test/acpProjectionFixture.tsx';
       import {TabStoreProvider} from '../../../ui/src/store/TabStoreProvider.tsx';
       import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
       import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
       import '../../../ui/src/styles.css';
 const workspacePath='/synthetic/queue-split';const remoteSessionId=new URLSearchParams(location.search).get('delivery')==='replayable'?'fixture-attachment':undefined;
-const listeners=new Set();const events=[];let heldPrompt=null;let holdA=false;let finishCreate;let dropNextAcceptance=false;
+const listeners=new Set();const events=[];let heldPrompt=null;let holdA=false;let finishCreate;let dropNextAcceptance=false;let heldDelete=null;let holdDelete=false;
 const item=(id,text)=>({commandId:id,text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});
 const make=(id)=>({id,agent:'codex',workspacePath,remoteSessionId,acpSessionId:'native-'+id,title:'Conversation '+id,revision:1,status:'running',entries:[{id:'user:first-'+id,kind:'user',text:'First '+id}],configOptions:[],modeState:null,contextUsage:null,usageTurns:[],goal:null,pendingPermission:null,error:null,queue:{items:[item('q-'+id,'queued only in '+id)],autoDrain:true}});
 const snapshots=Object.fromEntries(['A','B','C'].map(id=>[id,make(id)]));
@@ -43,13 +43,14 @@ onDynamicAgentConfigsChanged:()=>()=>({dispose(){}}),onDynamicSessionChanged:()=
 prompt:async()=>{throw Error('composer must not wait for whole-turn prompt')},
 submitPrompt:async input=>{events.push({op:'prompt',id:input.id,text:input.text});if(holdA&&input.id==='A'){holdA=false;await new Promise(resolve=>heldPrompt=resolve);}snapshots[input.id].queue.items.push(item(input.commandId,input.text));if(dropNextAcceptance){dropNextAcceptance=false;snapshots[input.id].revision++;return copy(input.id)}return publish(input.id)},
 editQueueItem:async({id,queueItemId,text})=>{requireItem(id,queueItemId).text=text;return publish(id)},
-deleteQueueItem:async({id,queueItemId})=>{requireItem(id,queueItemId);snapshots[id].queue.items=snapshots[id].queue.items.filter(row=>row.commandId!==queueItemId);events.push({op:'delete',id,queueItemId});return publish(id)},
+deleteQueueItem:async({id,queueItemId})=>{if(holdDelete){holdDelete=false;await new Promise(resolve=>heldDelete=resolve)}requireItem(id,queueItemId);(snapshots[id].queue.discardedCommandIds??=[]).push(queueItemId);snapshots[id].queue.items=snapshots[id].queue.items.filter(row=>row.commandId!==queueItemId);events.push({op:'delete',id,queueItemId});return publish(id)},
 reorderQueueItem:async({id,queueItemId,beforeQueueItemId})=>{const row=requireItem(id,queueItemId);const rows=snapshots[id].queue.items.filter(r=>r!==row);rows.splice(beforeQueueItemId?rows.findIndex(r=>r.commandId===beforeQueueItemId):rows.length,0,row);snapshots[id].queue.items=rows;return publish(id)},
 sendQueuedNow:async({id,queueItemId})=>{const row=requireItem(id,queueItemId);snapshots[id].queue.items=snapshots[id].queue.items.filter(r=>r!==row);return publish(id)},
 setQueueAutoDrain:async({id,autoDrain})=>{snapshots[id].queue.autoDrain=autoDrain;return publish(id)},stop:async({id})=>{snapshots[id].status='idle';snapshots[id].queue.autoDrain=false;return publish(id)},remove:async()=>{},
 };
 const [clientProtocol,serverProtocol]=createQueuePair();
-const server=new ChannelServer(serverProtocol,'fixture');server.registerChannel('acp',ProxyChannel.fromService(hostService));
+// 合成 Host 在 RPC 注册前适配新契约；客户端 Proxy 的方法存在性不代表远端支持。
+const server=new ChannelServer(serverProtocol,'fixture');server.registerChannel('acp',ProxyChannel.fromService(withAcpProjectionFixture(hostService)));
 const client=new ChannelClient(clientProtocol);const acpService=ProxyChannel.toService(client.getChannel('acp'));
 const forbidden=()=>{throw new Error('unexpected native/model operation')};
 const native={layer:{acquire:forbidden},sendCommand:forbidden,attachmentPut:forbidden,onRuntimeRestart:()=>()=>{},onRuntimeLifecycle:()=>()=>{}};
@@ -57,7 +58,7 @@ const services={settingService:{get:async()=>({})},clientConfigService:{getSnaps
 const platform={isMacOS:false,isWindows:false,isLinux:false,isWeb:true};
 function Fixture(){
 const [ids,setIds]=useState(['A','B']);const [epochs,setEpochs]=useState([0,0]);const [focus,setFocus]=useState(0);const [identities,setIdentities]=useState([undefined,undefined]);
-window.__splitQ={snapshots,events,dropAcceptance:()=>dropNextAcceptance=true,newDraft:()=>{setIds(prev=>prev.map((id,i)=>i===0?null:id));setEpochs(prev=>prev.map((n,i)=>i===0?n+1:n))},connect:()=>finishCreate?.(),identity:(index,value)=>{snapshots[ids[index]].workspaceIdentity=value;setIdentities(prev=>prev.map((old,i)=>i===index?value:old))},holdA:()=>holdA=true,releaseA:()=>{heldPrompt?.();heldPrompt=null},switch:(index,id)=>setIds(prev=>prev.map((old,i)=>i===index?id:old)),remount:index=>setEpochs(prev=>prev.map((n,i)=>i===index?n+1:n)),publish};
+window.__splitQ={snapshots,events,holdDelete:()=>holdDelete=true,deleting:()=>Boolean(heldDelete),releaseDelete:()=>{heldDelete?.();heldDelete=null},dropAcceptance:()=>dropNextAcceptance=true,newDraft:()=>{setIds(prev=>prev.map((id,i)=>i===0?null:id));setEpochs(prev=>prev.map((n,i)=>i===0?n+1:n))},connect:()=>finishCreate?.(),identity:(index,value)=>{snapshots[ids[index]].workspaceIdentity=value;setIdentities(prev=>prev.map((old,i)=>i===index?value:old))},holdA:()=>holdA=true,releaseA:()=>{heldPrompt?.();heldPrompt=null},switch:(index,id)=>setIds(prev=>prev.map((old,i)=>i===index?id:old)),remount:index=>setEpochs(prev=>prev.map((n,i)=>i===index?n+1:n)),publish};
 return <main className='h-screen w-screen flex bg-background text-foreground' data-fixture-ready='true'>{ids.map((id,index)=><section key={index} data-lane={index} className='h-full min-w-0 w-1/2' onPointerDownCapture={()=>setFocus(index)}><SessionPane key={epochs[index]} paneId={'lane-'+index} workspacePath={workspacePath} workspaceIdentity={identities[index]} remoteSessionId={remoteSessionId} sessionId={null} focused={focus===index} acpBoundSessionId={id} acpOpenRequest={id?{requestId:epochs[index]+1,session:copy(id)}:null}/></section>)}</main>;
 }
       createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform as never}><TabStoreProvider><ServiceProvider services={services as never}><ZCodeIntlProvider initialLocale="zh-CN"><TooltipProvider><V4ConversationContext.Provider value={native as never}><Fixture/></V4ConversationContext.Provider></TooltipProvider></ZCodeIntlProvider></ServiceProvider></TabStoreProvider></PlatformProvider>);
@@ -226,6 +227,33 @@ return <main className='h-screen w-screen flex bg-background text-foreground' da
       await input(0).textContent(),
       "A typed after submission",
       "late ACK must preserve newer input in its own scope",
+    );
+    // A delayed withdrawal ACK cannot restore A into C, including replayable attachments.
+    // Lexical 草稿通过真实键盘删除提交变更，避免 fill 只改 DOM 后直接触发撤回。
+    await input(1).press("ControlOrMeta+A");
+    await input(1).press("Backspace");
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-lane="1"] [data-testid="v4-composer-input"]')?.textContent ===
+        "",
+    );
+    await page.evaluate(() => window.__splitQ.holdDelete());
+    await lane(1).getByTestId("v4-queue-item-edit-q-B").click();
+    await page.waitForFunction(() => window.__splitQ.deleting());
+    await page.evaluate(() => window.__splitQ.switch(1, "C"));
+    await lane(1).getByTestId("v4-queue-item-q-C").waitFor();
+    await input(1).fill("C draft during B withdrawal");
+    await page.evaluate(() => window.__splitQ.releaseDelete());
+    await page.waitForFunction(
+      () => !window.__splitQ.snapshots.B.queue.items.some((item) => item.commandId === "q-B"),
+    );
+    assert.equal(await input(1).textContent(), "C draft during B withdrawal");
+    // Returning to B must not revive its superseded restore operation.
+    await page.evaluate(() => window.__splitQ.switch(1, "B"));
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-lane="1"] [data-testid="v4-composer-input"]')?.textContent ===
+        "",
     );
     // 25 items in a half-height pane must scroll inside the queue, keeping input visible.
     await page.evaluate(() => {

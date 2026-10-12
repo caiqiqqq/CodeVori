@@ -1,5 +1,6 @@
 import {
   acpSessionActivity,
+  acpEntryRowId,
   isAcpHistorySession,
   acpSessionSearchResultSchema,
   type AcpSession,
@@ -17,7 +18,7 @@ export function searchAcpSessions(
     if (!isAcpHistorySession(session) || session.archived) continue;
     const matches: AcpSessionSearchItem["matches"] = [];
     if (query) {
-      for (const entry of session.entries) {
+      for (const [entryIndex, entry] of session.entries.entries()) {
         // 修复原因：ACP 不进入原生 tasks-index；仅搜索可见聊天正文，不能把工具日志或配置混入搜索。
         if (entry.kind !== "user" && entry.kind !== "assistant") continue;
         const index = entry.text.toLocaleLowerCase().indexOf(query);
@@ -26,6 +27,7 @@ export function searchAcpSessions(
         const end = Math.min(entry.text.length, start + 180);
         matches.push({
           entryId: entry.id,
+          rowId: acpEntryRowId(entryIndex),
           snippet: `${start > 0 ? "..." : ""}${entry.text.slice(start, end).replace(/\s+/g, " ")}${end < entry.text.length ? "..." : ""}`,
         });
         if (matches.length === 5) break;

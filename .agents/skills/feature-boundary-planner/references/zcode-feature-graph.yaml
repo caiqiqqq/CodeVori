@@ -444,6 +444,8 @@ nodes:
         symbol: buildAcpModelSelectGroup
       - file: packages/ui/src/v4/acpPromptAdmission.ts
         symbol: waitForAcpPromptAdmission
+      - file: packages/ui/src/v4/useAcpQueueEditing.ts
+        symbol: useAcpQueueEditing
       - file: packages/ui/src/WorkspaceTimelineTasksSection.tsx
         symbol: WorkspaceTimelineTasksSection
       - file: packages/ui/src/TaskList.tsx
@@ -460,6 +462,7 @@ nodes:
         symbol: AcpExecutionTracePane
     invariants:
       - Cross-workspace split placement captures the visible ACP identity before native shell navigation; group/layout stores retain pane bindings and drafts.
+      - ACP queue editing withdraws through Host admission before restoring the current composer, matching API editing; frozen attachments are read before conditional deletion and late ACKs cannot restore a different target.
       - Selecting a grouped ACP session focuses its existing pane; temporary secondary selection clears native navigation without starting a new draft or resetting layout.
       - Cross-workspace panes read Git status through scoped hooks; review requests activate the matching workspace before opening the existing Git pane without replacing session bindings.
   - id: capability.work-tasks

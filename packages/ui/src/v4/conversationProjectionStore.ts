@@ -21,7 +21,7 @@ import {
 } from "@zcode/shared/zcode-protocol-v4";
 import { logger } from "@/logger.js";
 import type { ConversationTurnNavigatorHydrationResult } from "@/v4/conversationTurnNavigatorHelpers.js";
-import type { ConversationTransport } from "@/v4/transport.js";
+import type { ConversationProjectionTransport } from "@/v4/transport.js";
 import { uiMemoryDiagnosticsRegistry } from "@/lib/memoryDiagnostics.js";
 
 /**
@@ -333,7 +333,7 @@ export class ConversationProjectionStore {
 
   constructor(
     readonly topic: string,
-    private readonly transport: ConversationTransport,
+    private readonly transport: ConversationProjectionTransport,
   ) {
     liveProjectionStores.add(this);
     this.offAssemblyFault = transport.onAssemblyFault((fault) => {

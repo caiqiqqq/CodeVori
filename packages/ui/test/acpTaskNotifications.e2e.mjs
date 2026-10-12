@@ -20,7 +20,7 @@ try {
     moduleFile,
     `import React, {useState} from 'react';
     import {createRoot} from 'react-dom/client';
-    import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
+    import {ServiceProvider} from '../../../ui/test/acpProjectionFixture.tsx';
     import {useAcpTaskNotifications} from '../../../ui/src/hooks/useAcpTaskNotifications.ts';
     import {createZCodeStore} from '../../../ui/src/store/index.ts';
     import {playTaskNotificationSound} from '../../../ui/src/lib/taskNotificationSound.ts';

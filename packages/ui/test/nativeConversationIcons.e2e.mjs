@@ -28,7 +28,7 @@ try {
     import {WorkspaceArchivedTasksFlatSection} from '../../../ui/src/WorkspaceArchivedTasksFlatSection.tsx';
     import {attachTaskListRowActivity} from '../../../ui/src/v4/taskListRowActivity.ts';
     import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
-    import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
+    import {ServiceProvider} from '../../../ui/test/acpProjectionFixture.tsx';
     import {TabStoreProvider} from '../../../ui/src/store/TabStoreProvider.tsx';
     import {StoreProvider,useZCodeStore} from '../../../ui/src/store/StoreProvider.tsx';
     import {connectProviderSettingsSnapshot} from '../../../ui/src/lib/providerSettingsSnapshot.ts';

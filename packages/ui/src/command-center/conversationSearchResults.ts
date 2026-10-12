@@ -13,6 +13,7 @@ export interface ConversationSearchRow {
   searchSnippet?: string;
   snippetIndex?: number;
   entryId?: string;
+  rowId?: number;
 }
 
 function conversationKey(conversation: SearchConversation): string {
@@ -102,6 +103,7 @@ export function buildConversationSearchRows(params: {
         conversation,
         searchSnippet: match.snippet,
         entryId: match.entryId,
+        rowId: match.rowId,
       }));
     return [{ key, conversation }];
   });

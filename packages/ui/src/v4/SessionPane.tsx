@@ -138,8 +138,8 @@ import { resolveWorkbenchConversationTabPresentation } from "@/v4/workbenchConve
 import { AcpConversationStatus, AcpHomeStatus } from "@/v4/AcpConversationContent.js";
 import { AgentDelegationPanel } from "@/delegation/AgentDelegationPanel.js";
 import { useAgentDelegation } from "@/hooks/useAgentDelegation.js";
-import { acpEntryRowId, buildAcpConversationRows } from "@/v4/acpConversationRows.js";
 import { useAcpConversation } from "@/v4/useAcpConversation.js";
+import { useAcpQueueEditing } from "@/v4/useAcpQueueEditing.js";
 import { useConversationArchive } from "@/hooks/useConversationArchive.js";
 import { AcpConversationQueuePanel } from "@/v4/AcpConversationQueuePanel.js";
 import { useAcpAttachmentReader } from "@/hooks/useAcpAttachmentReader.js";
@@ -650,6 +650,7 @@ export function SessionPane({
   const acpTerminalPanel = useAcpTerminalPanel(
     acpService,
     acpAgent ? acpConversation.selected : null,
+    acpConversation.rows,
   );
   const delegationParent = useMemo<DelegationParent>(
     () => ({
@@ -789,23 +790,27 @@ export function SessionPane({
     workspacePath,
   ]);
   const acpHasConversationContent = hasAcpConversationContent(acpConversation.selected);
-  const acpRows = useMemo(
-    () => buildAcpConversationRows(acpConversation.selected),
-    [acpConversation.selected],
-  );
+  const acpRows = acpConversation.rows;
   const activeSearchResultHighlightRequest = useMemo(() => {
     if (searchResultHighlightRequest?.kind !== "acp") return searchResultHighlightRequest;
     if (acpConversation.selected?.id !== searchResultHighlightRequest.acpSessionId) return null;
-    const entryIndex = acpConversation.selected.entries.findIndex(
-      (entry) => entry.id === searchResultHighlightRequest.entryId,
-    );
-    return entryIndex < 0
-      ? searchResultHighlightRequest
-      : {
-          ...searchResultHighlightRequest,
-          rowId: acpEntryRowId(entryIndex),
-        };
+    return searchResultHighlightRequest;
   }, [acpConversation.selected, searchResultHighlightRequest]);
+  useEffect(() => {
+    const request = activeSearchResultHighlightRequest;
+    if (
+      request?.kind === "acp" &&
+      request.rowId !== undefined &&
+      !acpRows.some((row) => row.rowId === request.rowId) &&
+      acpConversation.canLoadOlder
+    )
+      void acpConversation.loadAllOlder();
+  }, [
+    activeSearchResultHighlightRequest,
+    acpRows,
+    acpConversation.canLoadOlder,
+    acpConversation.loadAllOlder,
+  ]);
   const { intl, locale } = useZCodeIntl();
   const slashCommands = useSlashCommands(workspacePath, workspaceIdentity);
   const baseWorkspaceServices = useBaseWorkspaceServices();
@@ -1498,6 +1503,16 @@ export function SessionPane({
           ? `acp:${acpBoundSessionId}`
           : `acp-draft:${paneId}:${acpAgent}`
       : undefined;
+  const acpQueueEditing = useAcpQueueEditing({
+    service: acpService,
+    workspace: { workspacePath, workspaceIdentity, remoteSessionId: remoteSessionId ?? undefined },
+    session:
+      acpAgent && acpConversation.selected?.agent === acpAgent ? acpConversation.selected : null,
+    scopeId: composerScopeId,
+    draftState: composerDraftStateRef,
+    restore: setComposerRestoreRequest,
+    withdraw: acpConversation.queueActions.withdrawItem,
+  });
   const composerDraftSourceScopeId =
     acpAgent &&
     acpConversation.selected?.provisional &&
@@ -3399,9 +3414,10 @@ export function SessionPane({
   const handleComposerRestoreApplied = useCallback(
     (requestId: number) => {
       setComposerRestoreRequest((current) => (current?.requestId === requestId ? null : current));
+      acpQueueEditing.applied(requestId);
       clearQueueEditOperation();
     },
-    [clearQueueEditOperation],
+    [clearQueueEditOperation, acpQueueEditing.applied],
   );
 
   const handleFork = useCallback(
@@ -4299,8 +4315,16 @@ export function SessionPane({
     [acpConversation.selected, acpAgent],
   );
   const acpStatusPanel = useMemo(
-    () => projectAcpStatusPanel(acpConversation.selected),
-    [acpConversation.selected],
+    () => ({
+      ...projectAcpStatusPanel(acpConversation.selected),
+      ...(acpConversation.snapshot
+        ? {
+            plan: acpConversation.snapshot.plan,
+            backgroundWorks: acpConversation.snapshot.backgroundWorks,
+          }
+        : {}),
+    }),
+    [acpConversation.selected, acpConversation.snapshot],
   );
   // 修复原因：ACP 与 API 共用面板，但事实来源必须随当前目标切换，不能复用后台 API 快照。
   const statusPanelFacts = useMemo(
@@ -4860,11 +4884,12 @@ export function SessionPane({
       onExternalTextInsertApplied={handleExternalTextInsertApplied}
       autoFocusEnabled={focused && !acpAgent}
       disabled={
-        !acpAgent &&
-        (connecting ||
-          draftRuntimeRebuilding ||
-          queueEditActiveForCurrentComposer ||
-          quotaBanner.state.blocksSubmit)
+        Boolean(acpAgent && acpQueueEditing.pendingId) ||
+        (!acpAgent &&
+          (connecting ||
+            draftRuntimeRebuilding ||
+            queueEditActiveForCurrentComposer ||
+            quotaBanner.state.blocksSubmit))
       }
       acpAgent={acpAgent}
       acpSessionId={acpConversation.selected?.id ?? null}
@@ -5031,6 +5056,8 @@ export function SessionPane({
           queue={acpConversation.selected.queue}
           pendingSubmission={acpConversation.queueSubmission}
           actions={acpConversation.queueActions}
+          onEditItem={acpQueueEditing.edit}
+          pendingEditQueueItemId={acpQueueEditing.pendingId}
         />
       ) : null}
       {!acpAgent && sessionId && snapshot?.sessionId === sessionId ? (
@@ -5304,7 +5331,9 @@ export function SessionPane({
                 acpAgent ? [] : timelineSnapshot ? pendingGuideProjection?.pendingGuides : []
               }
               apiRetry={acpAgent ? null : (timelineSnapshot?.control.apiRetry ?? null)}
-              totalCount={acpAgent ? acpRows.length : (timelineSnapshot?.rows.totalCount ?? 0)}
+              totalCount={
+                acpAgent ? acpConversation.totalCount : (timelineSnapshot?.rows.totalCount ?? 0)
+              }
               sessionKey={
                 acpAgent
                   ? (acpConversation.selected?.id ?? `acp:${acpAgent}`)
@@ -5320,11 +5349,27 @@ export function SessionPane({
                   : undefined
               }
               onEdit={!acpAgent && editActionsEnabled ? handleEdit : undefined}
-              canLoadOlder={!acpAgent && timelineSnapshot ? hasOlderRows(timelineSnapshot) : false}
-              loadingOlder={!acpAgent && timelineSnapshot ? state.loadingOlder : false}
-              onLoadOlder={acpAgent ? undefined : handleLoadOlder}
-              onLoadAllOlder={acpAgent ? undefined : handleLoadAllOlder}
-              turnNavigatorDirectoryRevision={state.turnNavigatorDirectoryRevision}
+              canLoadOlder={
+                acpAgent
+                  ? acpConversation.canLoadOlder
+                  : timelineSnapshot
+                    ? hasOlderRows(timelineSnapshot)
+                    : false
+              }
+              loadingOlder={
+                acpAgent
+                  ? acpConversation.loadingOlder
+                  : timelineSnapshot
+                    ? state.loadingOlder
+                    : false
+              }
+              onLoadOlder={acpAgent ? acpConversation.loadOlder : handleLoadOlder}
+              onLoadAllOlder={acpAgent ? acpConversation.loadAllOlder : handleLoadAllOlder}
+              turnNavigatorDirectoryRevision={
+                acpAgent
+                  ? acpConversation.turnNavigatorDirectoryRevision
+                  : state.turnNavigatorDirectoryRevision
+              }
               bottomDock={conversationBottomDock}
               // 修复原因：ACP 已投影为 realUser 行，不能再按 Agent 类型隐藏共用轮次导航。
               hideTurnNavigator={shareActive && shareInSelectionStage}

@@ -19,6 +19,15 @@ import {
 import { join } from "node:path";
 import { Emitter } from "@zcode/rpc";
 import { AcpStreamDiagnostics } from "./acpStreamDiagnostics.js";
+import { AcpConversationProjection } from "./acpConversationProjection.js";
+import {
+  acpConversationTargetSchema,
+  acpConversationReadSchema,
+  acpConversationRowsRangeSchema,
+  summarizeAcpSession,
+  type AcpSessionSummary,
+} from "@zcode/shared";
+import type { ConversationDelta } from "@zcode/shared/zcode-protocol-v4";
 import type { ContentBlock, PromptCapabilities } from "@agentclientprotocol/sdk";
 import {
   acpAgentAvailabilityListSchema,
@@ -30,6 +39,7 @@ import {
   acpPromptInputSchema,
   acpPromptSubmissionSchema,
   acpQueueItemInputSchema,
+  acpQueueItemSchema,
   acpQueueEditInputSchema,
   acpQueueReorderInputSchema,
   acpQueueAutoDrainInputSchema,
@@ -298,6 +308,32 @@ export function createAcpService(
   const workflowNotifying = new Set<string>();
   const notificationTasks = new Set<Promise<void>>();
   const emitter = new Emitter<AcpSessionChanged>();
+  const projectionEpoch = randomUUID();
+  const projections = new Map<
+    string,
+    {
+      users: number;
+      projection?: AcpConversationProjection;
+      session?: AcpSessionSummary;
+      fromSeq: number;
+      deltas: ConversationDelta[];
+    }
+  >();
+  const project = (session: AcpSession, streaming = false) => {
+    const cached = projections.get(session.id) ?? { users: 0, fromSeq: 0, deltas: [] };
+    if (!cached.projection) {
+      cached.projection = new AcpConversationProjection(session, projectionEpoch);
+      cached.session = summarizeAcpSession(session);
+    } else if (session.revision > cached.projection.tail().seq) {
+      cached.fromSeq = cached.projection.tail().seq;
+      cached.deltas = cached.projection.update(session, streaming);
+      cached.session = summarizeAcpSession(session);
+    }
+    return cached as typeof cached & {
+      projection: AcpConversationProjection;
+      session: AcpSessionSummary;
+    };
+  };
   const traceEmitter = new Emitter<AcpExecutionTraceChanged>();
   let disposed = false;
   const textGeneration = new AcpTextGeneration({
@@ -430,14 +466,17 @@ export function createAcpService(
     );
     return next;
   };
-  const save = async (session: AcpSession): Promise<void> => {
+  const save = async (session: AcpSession, streaming = false): Promise<void> => {
     if (removed.has(session.id)) return;
     const snapshotStartedAt = Date.now();
     const snapshot = acpSessionSchema.parse(structuredClone(session));
     const receipt = streamDiagnostics.capture(session.id, snapshot.revision);
     if (snapshot.provisional) {
       // 修复原因：Codeg 会预连接取得 Agent 选项，但空草稿不能先进入持久会话历史。
-      if (!disposed) emitter.fire({ kind: "updated", session: snapshot });
+      if (!disposed) {
+        if (projections.has(snapshot.id)) project(snapshot, streaming);
+        emitter.fire({ kind: "updated", session: snapshot });
+      }
       return;
     }
     const previous = writes.get(session.id) ?? Promise.resolve();
@@ -459,6 +498,7 @@ export function createAcpService(
               Date.now(),
               snapshot.status !== "running",
             );
+            if (projections.has(snapshot.id)) project(snapshot, streaming);
             emitter.fire({
               kind: "updated",
               session: snapshot,
@@ -485,7 +525,7 @@ export function createAcpService(
         // 工具/权限/终态可能已保存更高 revision；复用其持久化屏障，不能重复广播或回填旧轮。
         if ((scheduledSnapshotRevisions.get(session.id) ?? -1) >= session.revision)
           return writes.get(session.id);
-        return save(session);
+        return save(session, true);
       });
     streamingWrites.set(session.id, next);
     return next;
@@ -586,6 +626,19 @@ export function createAcpService(
       throw new Error("ACP session does not belong to this workspace");
     }
     return session;
+  };
+  const readProjection = async (input: AcpWorkspace & { id: string }) => {
+    const owner = await scoped(input);
+    const cached = projections.get(owner.id);
+    if (removed.has(owner.id) || disposed) throw new Error("ACP session closed");
+    if (cached?.projection && cached.session)
+      return { projection: cached.projection, session: cached.session };
+    // 修复依据：owner 在等待 IO 时仍可接收分片，首次读取只能以原子保存事实建立水位。
+    const snapshot = owner.provisional
+      ? structuredClone(owner)
+      : acpSessionSchema.parse(JSON.parse(await readFile(file(owner.id), "utf8")));
+    if (removed.has(owner.id) || disposed) throw new Error("ACP session closed");
+    return project(snapshot);
   };
   const settleInteractions = (id: string, receivedAt = Date.now()): void => {
     const request = interactionQueues.get(id)?.[0];
@@ -2132,6 +2185,65 @@ export function createAcpService(
     async list(workspace) {
       return (await listScopedSessions(workspace)).map((value) => structuredClone(value));
     },
+    async listSummaries(workspace) {
+      return (await listScopedSessions(workspace)).map((value) =>
+        structuredClone(summarizeAcpSession(value)),
+      );
+    },
+    onDynamicSessionSummaryChanged(workspace) {
+      return (listener) =>
+        service.onDynamicSessionChanged(workspace)((change) => {
+          listener(
+            change.kind === "removed"
+              ? change
+              : {
+                  kind: "updated",
+                  session:
+                    projections.get(change.session.id)?.session ??
+                    summarizeAcpSession(change.session),
+                },
+          );
+        });
+    },
+    async readConversation(input) {
+      const params = acpConversationReadSchema.parse(input);
+      const value = await readProjection(params);
+      return value.projection
+        .frame(params.subscriptionId, params.recovery ? "recovery" : "initial")
+        .map((wire) => ({ session: value.session, wire }));
+    },
+    async conversationRowsRange(input) {
+      const params = acpConversationRowsRangeSchema.parse(input);
+      return (await readProjection(params)).projection.rowsRange(params.beforeRowId, params.limit);
+    },
+    onDynamicConversationChanged(input) {
+      const params = acpConversationTargetSchema.parse(input);
+      return (listener) => {
+        const cached = projections.get(params.id) ?? { users: 0, fromSeq: 0, deltas: [] };
+        cached.users++;
+        projections.set(params.id, cached);
+        const subscription = service.onDynamicSessionChanged(params)((change) => {
+          if (change.kind !== "updated" || change.session.id !== params.id) return;
+          const value = project(change.session);
+          const update = value.deltas.length
+            ? { fromSeq: value.fromSeq, deltas: value.deltas }
+            : undefined;
+          for (const wire of value.projection.frame(params.subscriptionId, "online", update))
+            listener({
+              session: value.session,
+              wire,
+              ...(change.streamDiagnostics ? { streamDiagnostics: change.streamDiagnostics } : {}),
+            });
+        });
+        return {
+          dispose() {
+            subscription.dispose();
+            if (--cached.users === 0 && projections.get(params.id) === cached)
+              projections.delete(params.id);
+          },
+        };
+      };
+    },
     async listArchivedWorkspaces() {
       const scopes = new Map<string, AcpWorkspace>();
       for (const session of await listAllSessions())
@@ -2213,9 +2325,13 @@ export function createAcpService(
       const params = acpAttachmentReadInputSchema.parse(input);
       const session = await scoped(params);
       if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
-      const attachment = session.entries
-        .flatMap((entry) => (entry.kind === "user" ? (entry.attachments ?? []) : []))
-        .find((item) => item.ref === params.ref);
+      // 修复依据：撤回编辑要先取得冻结副本；只扩大到同会话的已接受队列，不允许任意 ref。
+      const attachment = [
+        ...session.entries.flatMap((entry) =>
+          entry.kind === "user" ? (entry.attachments ?? []) : [],
+        ),
+        ...session.queue.items.flatMap((item) => item.attachments),
+      ].find((item) => item.ref === params.ref);
       if (!attachment) throw new Error("ACP attachment does not belong to this session");
       return acpAttachmentReadResultSchema.parse(
         await attachmentStore.read(session.id, attachment, params.offset, params.limit),
@@ -2471,6 +2587,12 @@ export function createAcpService(
         ensureOpen(session);
         if (session.queue.discardedCommandIds?.includes(parsed.queueItemId)) return;
         const item = editableQueueItem(session, parsed.queueItemId);
+        // 撤回读取附件期间其他端可能编辑正文；在同一 gate 内比较内容，不能误删新版本。
+        if (
+          parsed.expectedItem &&
+          JSON.stringify(acpQueueItemSchema.parse(item)) !== JSON.stringify(parsed.expectedItem)
+        )
+          throw new Error("ACP queue item changed before withdrawal");
         await changeQueue(session, () => {
           session.queue.items = session.queue.items.filter((candidate) => candidate !== item);
           (session.queue.discardedCommandIds ??= []).push(item.commandId);
@@ -2828,6 +2950,7 @@ export function createAcpService(
     disposeAll() {
       disposed = true;
       streamDiagnostics.clear();
+      projections.clear();
       textGeneration.dispose();
       usageHistoryReader.dispose();
       for (const admission of promptAdmissions.values())

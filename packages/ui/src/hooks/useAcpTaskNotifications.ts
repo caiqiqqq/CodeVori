@@ -73,7 +73,7 @@ export function useAcpTaskNotifications({
         logger.warn("[acp-task-notification] 触发平台通知失败", { error });
       }
     };
-    const subscription = acpService.onDynamicSessionChanged(workspace)((change) => {
+    const subscription = acpService.onDynamicSessionSummaryChanged(workspace)((change) => {
       if (!isCurrent()) return;
       if (change.kind === "updated") {
         observe(change.session, false);
@@ -89,7 +89,7 @@ export function useAcpTaskNotifications({
       if (session) requestWorktreeSettingsConversation({ kind: "acp", session });
     });
     // 先订阅再读取，迟到的 list 不覆盖实时 revision，也不会复活已删除会话。
-    void acpService.list(workspace).then(
+    void acpService.listSummaries(workspace).then(
       (sessions) => sessions.forEach((session) => observe(session, true)),
       (error) => {
         if (isCurrent()) logger.warn("[acp-task-notification] 读取通知基线失败", { error });
