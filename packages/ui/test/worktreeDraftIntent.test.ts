@@ -7,7 +7,11 @@ import {
 } from "../src/v4/composer/worktreeDraftIntent.js";
 
 test("worktree draft mode belongs to the selected workspace and new-task generation", () => {
-  const selection = { workspaceKey: "/repo", draftFocusVersion: 2 };
+  const selection = {
+    workspaceKey: "/repo",
+    draftFocusVersion: 2,
+    sourceBranchName: "feature/source",
+  };
   assert.equal(isWorktreeDraftSelectionActive(selection, "/repo", 2, null), true);
   assert.equal(isWorktreeDraftSelectionActive(selection, "/repo", 3, null), false);
   assert.equal(isWorktreeDraftSelectionActive(selection, "/other", 2, null), false);

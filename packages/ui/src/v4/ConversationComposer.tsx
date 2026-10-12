@@ -1307,6 +1307,8 @@ function ConversationComposerImpl({
               "operation-in-progress": "git.branchSwitcher.error.operationInProgress",
               "branch-in-other-worktree": "git.branchSwitcher.error.branchInOtherWorktree",
               "not-repository": "git.branchSwitcher.worktree.error.notRepository",
+              "target-branch-not-found":
+                "git.branchSwitcher.worktree.error.sourceBranchUnavailable",
               "command-timeout": "git.branchSwitcher.worktree.error.timeout",
             };
             toast(

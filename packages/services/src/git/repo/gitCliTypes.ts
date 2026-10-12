@@ -101,6 +101,7 @@ export interface GitCliRepo {
   createAutomaticWorktree(
     workspacePath: string,
     worktreeRootPath: string,
+    startPoint?: string,
   ): Promise<GitCreateWorktreeResult>;
   listManagedWorktrees(worktreeRootPath: string): Promise<GitManagedWorktreeProject[]>;
   removeManagedWorktree(

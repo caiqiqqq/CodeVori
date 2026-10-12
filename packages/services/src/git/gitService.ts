@@ -238,7 +238,42 @@ export function createGitService(options?: {
     },
 
     async createAutomaticWorktree(params) {
-      return await repo.createAutomaticWorktree(params.workspacePath, params.worktreeRootPath);
+      let startPoint: string | undefined;
+      if (params.sourceBranchName !== undefined) {
+        try {
+          // 复用严格本地分支解析：占用分支也可派生；冻结提交后重试不跟随来源移动。
+          const source = await this.resolveLocalBranch({
+            workspacePath: params.workspacePath,
+            branchName: params.sourceBranchName,
+          });
+          startPoint = source.commitHash;
+        } catch (error: unknown) {
+          const detail = error instanceof Error ? error.message : String(error);
+          return {
+            ok: false,
+            branchName: null,
+            worktreePath: params.worktreeRootPath,
+            didCreate: false,
+            issues: [
+              {
+                code: /timed out/i.test(detail)
+                  ? "command-timeout"
+                  : detail === "work-task.branch-not-found" ||
+                      detail.includes("git check-ref-format")
+                    ? "target-branch-not-found"
+                    : "unknown",
+                message: "Could not resolve the selected local source branch.",
+                detail,
+              },
+            ],
+          };
+        }
+      }
+      return await repo.createAutomaticWorktree(
+        params.workspacePath,
+        params.worktreeRootPath,
+        startPoint,
+      );
     },
 
     async listManagedWorktrees(params) {

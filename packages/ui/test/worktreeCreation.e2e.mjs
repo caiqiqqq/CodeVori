@@ -57,6 +57,9 @@ try {
   assert.equal(await branchTrigger.count(), 1, "Open a local Git workspace before this scenario");
   await branchTrigger.click();
   await page.getByRole("button", { name: /^(新建工作树|New worktree)$/ }).click();
+  await page.getByText(/^(选择工作树来源分支|Select source branch for the worktree)$/).waitFor();
+  assert.equal(await page.getByTestId("worktree-draft-selected").count(), 0);
+  await page.locator('[data-slot="command-item"][aria-disabled="false"]').first().click();
   assert.equal(
     await page.getByRole("dialog", { name: /^(创建工作树|Create worktree)$/ }).count(),
     0,

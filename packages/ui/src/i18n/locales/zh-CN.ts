@@ -1701,6 +1701,11 @@ const zhCN: Record<string, string> = {
   "git.branchSwitcher.createDialog.confirm": "创建并切换",
   "git.branchSwitcher.worktreeAction": "新建工作树",
   "git.branchSwitcher.worktreeCancel": "取消新建工作树",
+  "git.branchSwitcher.worktreeSourceTitle": "选择工作树来源分支",
+  "git.branchSwitcher.worktreeSourceHelper": "新工作树将从所选分支派生，当前工作区保持不变。",
+  "git.branchSwitcher.worktreeSelectedSource": "新建工作树 · {branchName}",
+  "git.branchSwitcher.worktree.error.sourceBranchUnavailable":
+    "来源分支已不存在或无效，请重新选择本地分支。",
   "git.branchSwitcher.worktree.error.contextUnsupported":
     "当前草稿包含附件或旧工作区的引用，请移除后再在新工作树中发送。",
   "git.branchSwitcher.worktree.error.saveFailed":

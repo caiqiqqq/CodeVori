@@ -1872,6 +1872,12 @@ const enUS: Record<string, string> = {
   "git.branchSwitcher.createDialog.confirm": "Create and switch",
   "git.branchSwitcher.worktreeAction": "New worktree",
   "git.branchSwitcher.worktreeCancel": "Cancel new worktree",
+  "git.branchSwitcher.worktreeSourceTitle": "Select source branch for the worktree",
+  "git.branchSwitcher.worktreeSourceHelper":
+    "The new worktree will start from the selected branch. Your current workspace stays unchanged.",
+  "git.branchSwitcher.worktreeSelectedSource": "New worktree · {branchName}",
+  "git.branchSwitcher.worktree.error.sourceBranchUnavailable":
+    "The source branch is missing or invalid. Select a local branch again.",
   "git.branchSwitcher.worktree.error.contextUnsupported":
     "This draft has attachments or references from the original workspace. Remove them before sending in a new worktree.",
   "git.branchSwitcher.worktree.error.saveFailed":

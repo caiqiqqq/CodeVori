@@ -7,6 +7,7 @@ Issue #89：长分支名被截断，悬停无法读取；目标分支已被另�
 - 触发器保留紧凑截断布局，鼠标悬停和键盘聚焦时通过共享 tooltip 展示完整名称，长中英文名称在视口内换行。桌面分支行通过原生 `title` 展示完整名称，避免低于菜单层级的自定义 tooltip 被菜单遮挡；粗指针手机环境直接换行显示完整名称。选项保留完整的无障碍名称与 cmdk 键盘导航。
 - Git 是分支检出位置的唯一事实来源。`IGitService.getLocalBranches` 的 `GitLocalBranch` 新增可选 `worktreePath`，由已有 `for-each-ref` 查询的 `%(worktreepath)` 生成；未被检出的分支为 `null`。记录边界使用 NUL，目录中的换行不得被解析成另一条分支。旧 Host 不返回字段时仍允许正常尝试切换，由 Git 校验。
 - 当前分支仍可选择，沿用 no-op 语义。其他分支有检出路径时禁用选择，显示本地化占用说明与完整路径（窄屏可换行）；悬停仍可读完整名称，鼠标、Enter、Tab 均不发切换请求。
+- 上述禁用仅适用于普通分支切换；“新建工作树”的来源选择可以读取被占用分支来派生新的独立分支，详见 `git-worktrees.md`。来源选择不调用 `switchBranch`。
 - UI 不强制检出、不删除/解锁工作树，也不自动导航或创建会话。释放占用后重新打开菜单，重新读取 Git 事实。
 - 菜单快照不作为最终授权：选择后原生 `git switch --no-guess` 仍负责安全校验。兼容 `is already used by worktree at` 和 `is already checked out at` 两种错误，将其归一为既有 `branch-in-other-worktree`，提取检出路径并展示本地化的分支名和目录；不得进入提交辅助流程或刷新成切换成功。
 - 分支列表及切换事实仍由 Git 服务持有，hook 只持有现有 UI 投影和请求状态。公开接口仅新增可选读字段，无持久化迁移；本地/远程均沿用当前 ServiceProvider 路由，不改变 workspace identity、attachment、owner/lease 或 Desktop continuous / mobile replayable 链路。
