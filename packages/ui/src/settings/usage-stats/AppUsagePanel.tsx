@@ -184,7 +184,7 @@ export function AppUsagePanel() {
               id: "settings.usage.appUsageLoadingDescription",
             })}
           >
-            <AppUsageDailyModelTrendChart snapshot={chartSnapshot} />
+            <AppUsageDailyModelTrendChart key={`${source}:${range}`} snapshot={chartSnapshot} />
           </UsageChartLoadBoundary>
           <UsageChartLoadBoundary
             scope="settings.usage.app-model-pie-chart"
