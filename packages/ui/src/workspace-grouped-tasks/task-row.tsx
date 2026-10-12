@@ -153,14 +153,16 @@ function GroupedTaskRowComponent({
     <div
       role={dragOverlay ? undefined : "button"}
       tabIndex={dragOverlay ? undefined : 0}
+      data-selected={!dragOverlay && isActive}
+      aria-current={!dragOverlay && isActive ? "page" : undefined}
       data-mobile-active-task={!dragOverlay && isMobileActive ? "true" : undefined}
       className={cn(
-        "group/task-row",
+        "sidebar-conversation-row group/task-row",
         TASK_GROUP_ROW_CLASS,
         dragOverlay
           ? "pointer-events-none cursor-grabbing border border-border bg-background shadow-lg opacity-100"
           : "cursor-pointer",
-        isActive ? "bg-selected" : canShowHoverActions && "hover:bg-surface-hover",
+        !isActive && canShowHoverActions && "hover:bg-surface-hover",
         dragging && "opacity-0",
       )}
     >
@@ -352,12 +354,14 @@ function GroupedTaskRowComponent({
         }
       }}
       data-grouped-task-key={groupedTaskDomKey}
+      data-selected={isActive}
+      aria-current={isActive ? "page" : undefined}
       data-mobile-active-task={isMobileActive ? "true" : undefined}
       className={cn(
-        "group/task-row",
+        "sidebar-conversation-row group/task-row",
         TASK_GROUP_ROW_CLASS,
         "cursor-pointer",
-        isActive ? "bg-selected" : "hover:bg-surface-hover",
+        !isActive && "hover:bg-surface-hover",
         dragging && "opacity-0",
       )}
     >

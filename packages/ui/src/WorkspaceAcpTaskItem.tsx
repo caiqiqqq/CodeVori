@@ -193,6 +193,7 @@ export function WorkspaceAcpTaskItem({
                 : undefined
             }
             aria-current={active ? "page" : undefined}
+            data-selected={active}
             tabIndex={0}
             onClick={select}
             onMouseEnter={() => setHoverActionsVisible(true)}
@@ -218,9 +219,9 @@ export function WorkspaceAcpTaskItem({
               }
             }}
             className={cn(
-              "group/acp-task flex cursor-pointer items-center gap-2 rounded-lg pl-2.5 pr-1 py-1 text-ui-base transition-colors",
+              "sidebar-conversation-row group/acp-task flex cursor-pointer items-center gap-2 rounded-lg pl-2.5 pr-1 py-1 text-ui-base transition-colors",
               variant === "timeline" && "items-start py-1.5",
-              active ? "bg-selected" : "hover:bg-surface-hover",
+              !active && "hover:bg-surface-hover",
             )}
           >
             <div
