@@ -137,7 +137,11 @@ export function useGitBranchSwitcher({
           intl.formatMessage(
             { id: messageId },
             {
-              branchName: issue.detail ?? result.branchName ?? "",
+              // 工作树占用的 detail 是原始 stderr，不能把它当分支名再次展示。
+              branchName:
+                issue.code === "branch-in-other-worktree"
+                  ? (result.branchName ?? "")
+                  : (issue.detail ?? result.branchName ?? ""),
               paths: formatGitBranchIssuePathList(locale, visiblePaths),
               extraPaths,
             },

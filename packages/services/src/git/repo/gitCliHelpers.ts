@@ -150,11 +150,20 @@ export function parseGitBranchMutationIssues(
     ];
   }
 
-  if (normalizedDetail.includes("is already used by worktree at")) {
+  // 不同 Git 版本分别使用 used by worktree / checked out 文案；截图中的后一种
+  // 过去落入 unknown，UI 直接显示英文 stderr。保持 Git 的安全拒绝并提取真实占用目录。
+  if (
+    normalizedDetail.includes("is already used by worktree at") ||
+    normalizedDetail.includes("is already checked out at")
+  ) {
+    const worktreePath = detail?.match(
+      /(?:is already used by worktree at|is already checked out at) '(.+)'(?:\r?\n|$)/i,
+    )?.[1];
     return [
       {
         code: "branch-in-other-worktree",
         message: "Branch is already checked out in another worktree.",
+        ...(worktreePath ? { paths: [worktreePath] } : {}),
         detail,
       },
     ];
