@@ -5,6 +5,7 @@ import type { V4ComposerDraft } from "@/v4/composer/composerDraftStore.js";
 export interface WorktreeDraftSelection {
   workspaceKey: string;
   draftFocusVersion: number;
+  sourceBranchName: string;
 }
 
 export interface WorktreeAutoSendRequest {
@@ -18,7 +19,7 @@ export interface WorktreeAutoSendRequest {
 
 export interface WorktreeDraftIntent {
   selected: boolean;
-  select: (selected: boolean) => void;
+  select: (selected: boolean, sourceBranchName?: string) => void;
   createWorktree: () => Promise<GitCreateWorktreeResult>;
   autoSend: WorktreeAutoSendRequest | null;
   openCreatedWorktree: (

@@ -206,6 +206,8 @@ export interface GitApplyTaskMergeRequest extends GitFinalizeTaskMergeRequest {
 
 export interface GitCreateAutomaticWorktreeRequest extends GitRepositoryRequest {
   worktreeRootPath: string;
+  /** 指定本地来源分支；未传时保持旧调用基于当前 HEAD 的行为。 */
+  sourceBranchName?: string;
 }
 
 export interface GitWorktreeCreateIssue {
@@ -277,6 +279,8 @@ export interface GitBranchComparison {
 export interface GitLocalBranch {
   name: string;
   isCurrent: boolean;
+  /** Git 登记的检出目录；可选以兼容尚未升级的 Host。 */
+  worktreePath?: string | null;
   upstreamName: string | null;
   commitHash: string | null;
   commitTimestampMs: number | null;

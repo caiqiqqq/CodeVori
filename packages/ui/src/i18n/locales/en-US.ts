@@ -1872,6 +1872,12 @@ const enUS: Record<string, string> = {
   "git.branchSwitcher.createDialog.confirm": "Create and switch",
   "git.branchSwitcher.worktreeAction": "New worktree",
   "git.branchSwitcher.worktreeCancel": "Cancel new worktree",
+  "git.branchSwitcher.worktreeSourceTitle": "Select source branch for the worktree",
+  "git.branchSwitcher.worktreeSourceHelper":
+    "The new worktree will start from the selected branch. Your current workspace stays unchanged.",
+  "git.branchSwitcher.worktreeSelectedSource": "New worktree · {branchName}",
+  "git.branchSwitcher.worktree.error.sourceBranchUnavailable":
+    "The source branch is missing or invalid. Select a local branch again.",
   "git.branchSwitcher.worktree.error.contextUnsupported":
     "This draft has attachments or references from the original workspace. Remove them before sending in a new worktree.",
   "git.branchSwitcher.worktree.error.saveFailed":
@@ -1932,6 +1938,9 @@ const enUS: Record<string, string> = {
     "Another Git operation is still in progress. Finish it before switching branches.",
   "git.branchSwitcher.error.branchInOtherWorktree":
     "That branch is already checked out in another worktree.",
+  "git.branchSwitcher.error.branchInOtherWorktreeAtPath":
+    "Branch {branchName} is already checked out in another worktree: {paths}. Use it there, or switch that worktree to another branch first.",
+  "git.branchSwitcher.occupied": "Checked out in another worktree",
   "git.branchSwitcher.error.unknown": "Switching branches failed. Please try again.",
   "git.branchSwitcher.error.requestFailed": "Branch operation failed: {error}",
   "gitGraph.title": "Git Graph",
@@ -5211,8 +5220,6 @@ const enUS: Record<string, string> = {
   "chat.queue.sendNow": "Steer",
   "chat.queue.runNow": "Run now",
   "chat.queue.edit": "Edit",
-  "acp.queue.editDescription":
-    "Edit the queued message while keeping its attachments and file references.",
   "chat.queue.editDraftConflict":
     "Send or clear the current draft before editing a queued message.",
   "chat.queue.editRestoreFailed": "Couldn't return the queued message to the composer. Try again.",

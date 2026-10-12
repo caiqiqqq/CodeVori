@@ -376,12 +376,13 @@ function toWorktreeCreateSuccess(
 }
 
 function parseBranchRefRecords(stdout: string, currentBranchName: string | null): GitLocalBranch[] {
+  // worktreePath 可以包含换行；记录末尾的 NUL 才是安全边界，不能凭换行新增分支。
   return stdout
-    .replace(/\r\n/g, "\n")
-    .split("\n")
+    .replaceAll("\0\r\n", "\0\n")
+    .split("\0\n")
     .filter((line) => line.length > 0)
     .map((line): GitLocalBranch | null => {
-      const [name, upstreamName, commitHash, commitTimestamp] = line.split("\0");
+      const [name, upstreamName, commitHash, commitTimestamp, worktreePath] = line.split("\0");
       if (!name) {
         return null;
       }
@@ -390,6 +391,7 @@ function parseBranchRefRecords(stdout: string, currentBranchName: string | null)
       return {
         name,
         isCurrent: name === currentBranchName,
+        worktreePath: worktreePath || null,
         upstreamName: upstreamName || null,
         commitHash: commitHash || null,
         commitTimestampMs: Number.isNaN(timestampSeconds) ? null : timestampSeconds * 1000,
@@ -1029,7 +1031,8 @@ export function createGitCliRepo(options?: {
         args: [
           "for-each-ref",
           "refs/heads",
-          "--format=%(refname:short)%00%(upstream:short)%00%(objectname)%00%(committerdate:unix)",
+          // Git 直接提供检出目录，避免菜单把其他工作树已占用的分支当作可切换目标。
+          "--format=%(refname:short)%00%(upstream:short)%00%(objectname)%00%(committerdate:unix)%00%(worktreepath)%00",
         ],
         timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
         maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
@@ -1425,6 +1428,7 @@ export function createGitCliRepo(options?: {
     async createAutomaticWorktree(
       workspacePath: string,
       worktreeRootPath: string,
+      startPoint?: string,
     ): Promise<GitCreateWorktreeResult> {
       const root = worktreeRootPath.trim();
       const resolution = await this.resolveRepository(workspacePath);
@@ -1482,6 +1486,7 @@ export function createGitCliRepo(options?: {
           workspacePath,
           `worktree/${id}`,
           join(idDirectory, basename(resolution.repoRoot)),
+          startPoint,
         );
         if (result.ok) {
           return result;

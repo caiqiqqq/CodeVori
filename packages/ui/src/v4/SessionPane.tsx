@@ -137,6 +137,7 @@ import { AcpConversationStatus, AcpHomeStatus } from "@/v4/AcpConversationConten
 import { AgentDelegationPanel } from "@/delegation/AgentDelegationPanel.js";
 import { useAgentDelegation } from "@/hooks/useAgentDelegation.js";
 import { useAcpConversation } from "@/v4/useAcpConversation.js";
+import { useAcpQueueEditing } from "@/v4/useAcpQueueEditing.js";
 import { useConversationArchive } from "@/hooks/useConversationArchive.js";
 import { AcpConversationQueuePanel } from "@/v4/AcpConversationQueuePanel.js";
 import { useAcpAttachmentReader } from "@/hooks/useAcpAttachmentReader.js";
@@ -1500,6 +1501,16 @@ export function SessionPane({
           ? `acp:${acpBoundSessionId}`
           : `acp-draft:${paneId}:${acpAgent}`
       : undefined;
+  const acpQueueEditing = useAcpQueueEditing({
+    service: acpService,
+    workspace: { workspacePath, workspaceIdentity, remoteSessionId: remoteSessionId ?? undefined },
+    session:
+      acpAgent && acpConversation.selected?.agent === acpAgent ? acpConversation.selected : null,
+    scopeId: composerScopeId,
+    draftState: composerDraftStateRef,
+    restore: setComposerRestoreRequest,
+    withdraw: acpConversation.queueActions.withdrawItem,
+  });
   const composerDraftSourceScopeId =
     acpAgent &&
     acpConversation.selected?.provisional &&
@@ -3391,9 +3402,10 @@ export function SessionPane({
   const handleComposerRestoreApplied = useCallback(
     (requestId: number) => {
       setComposerRestoreRequest((current) => (current?.requestId === requestId ? null : current));
+      acpQueueEditing.applied(requestId);
       clearQueueEditOperation();
     },
-    [clearQueueEditOperation],
+    [clearQueueEditOperation, acpQueueEditing.applied],
   );
 
   const handleFork = useCallback(
@@ -4860,11 +4872,12 @@ export function SessionPane({
       onExternalTextInsertApplied={handleExternalTextInsertApplied}
       autoFocusEnabled={focused && !acpAgent}
       disabled={
-        !acpAgent &&
-        (connecting ||
-          draftRuntimeRebuilding ||
-          queueEditActiveForCurrentComposer ||
-          quotaBanner.state.blocksSubmit)
+        Boolean(acpAgent && acpQueueEditing.pendingId) ||
+        (!acpAgent &&
+          (connecting ||
+            draftRuntimeRebuilding ||
+            queueEditActiveForCurrentComposer ||
+            quotaBanner.state.blocksSubmit))
       }
       acpAgent={acpAgent}
       acpSessionId={acpConversation.selected?.id ?? null}
@@ -5031,6 +5044,8 @@ export function SessionPane({
           queue={acpConversation.selected.queue}
           pendingSubmission={acpConversation.queueSubmission}
           actions={acpConversation.queueActions}
+          onEditItem={acpQueueEditing.edit}
+          pendingEditQueueItemId={acpQueueEditing.pendingId}
         />
       ) : null}
       {!acpAgent && sessionId && snapshot?.sessionId === sessionId ? (

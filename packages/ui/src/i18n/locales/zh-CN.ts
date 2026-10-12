@@ -1701,6 +1701,11 @@ const zhCN: Record<string, string> = {
   "git.branchSwitcher.createDialog.confirm": "创建并切换",
   "git.branchSwitcher.worktreeAction": "新建工作树",
   "git.branchSwitcher.worktreeCancel": "取消新建工作树",
+  "git.branchSwitcher.worktreeSourceTitle": "选择工作树来源分支",
+  "git.branchSwitcher.worktreeSourceHelper": "新工作树将从所选分支派生，当前工作区保持不变。",
+  "git.branchSwitcher.worktreeSelectedSource": "新建工作树 · {branchName}",
+  "git.branchSwitcher.worktree.error.sourceBranchUnavailable":
+    "来源分支已不存在或无效，请重新选择本地分支。",
   "git.branchSwitcher.worktree.error.contextUnsupported":
     "当前草稿包含附件或旧工作区的引用，请移除后再在新工作树中发送。",
   "git.branchSwitcher.worktree.error.saveFailed":
@@ -1749,6 +1754,9 @@ const zhCN: Record<string, string> = {
     "当前仓库还有进行中的 Git 操作，完成后再切换分支。",
   "git.branchSwitcher.error.branchInOtherWorktree":
     "目标分支已在其他 worktree 中被检出，当前工作区无法直接切换。",
+  "git.branchSwitcher.error.branchInOtherWorktreeAtPath":
+    "分支 {branchName} 已在其他工作树中检出：{paths}。请在该目录使用此分支，或先在那里切换到其他分支。",
+  "git.branchSwitcher.occupied": "已在其他工作树中检出",
   "git.branchSwitcher.error.unknown": "切换分支失败，请稍后重试。",
   "git.branchSwitcher.error.requestFailed": "分支操作失败：{error}",
   "gitGraph.title": "Git 图谱",
@@ -4845,7 +4853,6 @@ const zhCN: Record<string, string> = {
   // compact 队列项曾单独显示“立即执行”，与同一队列中的即时动作文案不一致。
   "chat.queue.runNow": "立即",
   "chat.queue.edit": "编辑",
-  "acp.queue.editDescription": "修改排队消息的正文，保留附件和文件引用。",
   "chat.queue.editDraftConflict": "请先发送或清空当前草稿，再编辑队列消息。",
   "chat.queue.editRestoreFailed": "未能把队列消息退回输入框，请重试。",
   "chat.queue.operationStale": "队列状态已变化，正在刷新，请确认后重试。",

@@ -50,3 +50,9 @@ ACP revision 可因原有写入合并跳号，V4 `fromSeq/toSeq` 表示前后已
 - 根目录 `pnpm typecheck` 通过；`pnpm lint` 为 0 错误、74 项已有警告；`pnpm architecture:check --changed` 为当前/基线/新增 0。修改模块为 shared、services、ui、zcode-cli，均使用公开入口；Host owner、写入顺序及原 admission 保持不变。
 - 额外运行 CLI bootstrap 的单包 `typecheck` 未完成：本地缺失 `@zcode/contracts`、`@zcode/core`、`@zcode/adapters` 等内部包的构建产物，产生模块解析和连带类型错误。该结果与根目录类型检查分开报告。
 - 未打包、安装、提交、推送或合并。仍需更新运行版本后结合实际会话日志确认用户遇到的延迟改善；本地合成验证不证明上游生成时间或真实手机网络延迟消失。
+
+## 合入主分支复核（2026-10-12）
+
+合入新增的 ACP 队列撤回编辑时保留完整 durable ACK 返回，UI 仍只保存摘要。分屏 Channel RPC 的合成 Host 必须在注册 channel 前适配新投影契约；不能在客户端代理上补旧接口，因为代理不能判断远端是否实现事件。该适配仅用于测试，不增加生产 fallback。
+
+合入最新 private/main 后，根目录 typecheck、Lint（0 错误、74 项已有警告）与架构检查（0 违规）通过；针对交叉部分的 UI 测试 32/32、Host 测试 38/38 通过。队列撤回编辑、分屏队列和实际 Host 流式时间线 E2E 均通过。分屏测试清空 Lexical 草稿改用键盘删除并观察空文本，保证撤回前编辑器已处理输入事件。
