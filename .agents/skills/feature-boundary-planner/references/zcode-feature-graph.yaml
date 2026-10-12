@@ -624,6 +624,28 @@ nodes:
     invariants:
       - Save worktree and session bindings before prompt; execute saved task configuration, not the current composer selection.
       - Native admission waits for an authoritative snapshot and refuses busy sessions; stop targets only an observed foreground execution.
+  - id: boundary.composer-worktree
+    kind: delivery-boundary
+    label: New conversation worktree source selection and first-send handoff
+    aliases: [新建工作树来源分支, 派生工作树, composer worktree source]
+    codeSeeds:
+      - file: packages/ui/src/GitBranchSwitcher.tsx
+        symbol: GitBranchSwitcher
+      - file: packages/ui/src/app-shell/WorkspaceShellLayout.tsx
+        symbol: WorkspaceShellLayout
+      - file: packages/ui/src/hooks/useWorktreeDraftSelection.ts
+        symbol: useWorktreeDraftSelection
+      - file: packages/ui/src/v4/composer/worktreeDraftIntent.tsx
+        symbol: WorktreeDraftSelection
+      - file: packages/ui/src/v4/ConversationComposer.tsx
+        symbol: ConversationComposer
+      - file: packages/services/src/git/repo/gitCliRepo.ts
+        symbol: createGitCliRepo
+    invariants:
+      - Source selection only edits the workspace and draft-generation scoped intent; never switch the original branch or create before send.
+      - A source checked out elsewhere is valid for derivation; resolve the local branch at send and freeze its commit across allocation retries.
+      - Missing explicit sources never fall back to HEAD; legacy requests without the optional field retain HEAD semantics.
+      - Transfer the original draft to the exact new local workspace and reuse the existing one-shot API or ACP send path.
   - id: boundary.work-task-worktree
     kind: delivery-boundary
     label: Work task isolated worktree and conversation binding

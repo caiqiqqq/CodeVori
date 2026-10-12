@@ -33,10 +33,8 @@ import {
 import { usePaneSessionPersistence } from "@/v4/usePaneSessionPersistence.js";
 import { requestV4ComposerDraftWorkspaceTransfer } from "@/v4/composer/composerDraftWorkspaceTransfer.js";
 import {
-  isWorktreeDraftSelectionActive,
   WorktreeDraftIntentContext,
   type WorktreeAutoSendRequest,
-  type WorktreeDraftSelection,
 } from "@/v4/composer/worktreeDraftIntent.js";
 import {
   persistV4ComposerDraft,
@@ -44,7 +42,7 @@ import {
   type V4ComposerDraft,
 } from "@/v4/composer/composerDraftStore.js";
 import type { AcpAgent } from "@zcode/shared";
-import { resolveWorktreeRootPath } from "@/lib/worktree.js";
+import { useWorktreeDraftSelection } from "@/hooks/useWorktreeDraftSelection.js";
 import { useWorktreeSettingsConversation } from "@/hooks/useWorktreeSettingsConversation.js";
 import { ChatEmptyWorkspacePreviewMenu } from "@/ChatEmptyState.js";
 import { DesktopTopOverlay } from "@/DesktopTopOverlay.js";
@@ -1250,58 +1248,20 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     },
     [handleStartDraftInWorkspace, showChatMainView],
   );
-  const [worktreeSelection, setWorktreeSelection] = useState<WorktreeDraftSelection | null>(null);
-  const [worktreeCreating, setWorktreeCreating] = useState(false);
+  const {
+    selected: worktreeSelected,
+    sourceBranchName: worktreeSourceBranchName,
+    creating: worktreeCreating,
+    select: selectWorktreeDraft,
+    createWorktree: createWorktreeForDraft,
+  } = useWorktreeDraftSelection({
+    workspacePath: workspaceAbsPath,
+    workspaceIdentity,
+    draftFocusVersion: workspaceShellZCodeState.draftFocusVersion,
+    sessionId: activeTaskId,
+  });
   const [worktreeAutoSend, setWorktreeAutoSend] = useState<WorktreeAutoSendRequest | null>(null);
   const worktreeRequestIdRef = useRef(0);
-  const worktreeSelected = isWorktreeDraftSelectionActive(
-    worktreeSelection,
-    workspaceKey,
-    workspaceShellZCodeState.draftFocusVersion,
-    activeTaskId,
-  );
-  const selectWorktreeDraft = useCallback(
-    (selected: boolean) => {
-      if (worktreeCreating) return;
-      setWorktreeSelection(
-        selected
-          ? { workspaceKey, draftFocusVersion: workspaceShellZCodeState.draftFocusVersion }
-          : null,
-      );
-    },
-    [worktreeCreating, workspaceKey, workspaceShellZCodeState.draftFocusVersion],
-  );
-  const createWorktreeForDraft = useCallback(async () => {
-    if (!worktreeSelected || worktreeCreating || workspaceIdentity || activeTaskId !== null) {
-      throw new Error("stale-worktree-selection");
-    }
-    setWorktreeCreating(true);
-    try {
-      const [settings, systemInfo] = await Promise.all([
-        services.settingService.get(),
-        services.systemService.info(),
-      ]);
-      const worktreeRootPath = resolveWorktreeRootPath({
-        configuredRoot: settings.worktreeRootDirectory,
-        homeDirectory: systemInfo.homedir,
-        workspacePath: workspaceAbsPath,
-      });
-      if (!worktreeRootPath) throw new Error("invalid-worktree-root");
-      return await services.gitService.createAutomaticWorktree({
-        workspacePath: workspaceAbsPath,
-        worktreeRootPath,
-      });
-    } finally {
-      setWorktreeCreating(false);
-    }
-  }, [
-    worktreeSelected,
-    worktreeCreating,
-    workspaceIdentity,
-    activeTaskId,
-    services,
-    workspaceAbsPath,
-  ]);
   const openCreatedWorktree = useCallback(
     (
       path: string,
@@ -1310,7 +1270,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       trigger: WorktreeAutoSendRequest["trigger"],
     ) => {
       // Git add 已完成；即使后续草稿落盘失败，也不能让下一次点击再创建一棵工作树。
-      setWorktreeSelection(null);
+      selectWorktreeDraft(false);
       if (!persistV4ComposerDraft(path, undefined, V4_DRAFT_SCOPE_ROOT, draft)) {
         throw new Error("worktree-draft-save-failed");
       }
@@ -1338,7 +1298,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
         throw error;
       }
     },
-    [handleStartDraftInWorkspaceInChat, tabStoreApi],
+    [handleStartDraftInWorkspaceInChat, tabStoreApi, selectWorktreeDraft],
   );
   const consumeWorktreeAutoSend = useCallback((requestId: number) => {
     setWorktreeAutoSend((current) => (current?.requestId === requestId ? null : current));
@@ -1583,6 +1543,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
             onRefreshGit={handleRefreshGit}
             allowWorktreeCreation={!workspaceIdentity}
             worktreeSelected={worktreeSelected}
+            worktreeSourceBranchName={worktreeSourceBranchName}
             worktreeCreating={worktreeCreating}
             onWorktreeSelectedChange={selectWorktreeDraft}
             className="px-0 pt-0"
@@ -1609,6 +1570,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       worktreeSelected,
       selectWorktreeDraft,
       handleSelectConversationWorkspace,
+      worktreeSourceBranchName,
+      worktreeCreating,
       handleStartDraftInWorkspaceInChat,
       isWindowsDesktop,
       onCancelRemoteProject,
