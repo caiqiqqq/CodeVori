@@ -53,7 +53,16 @@ export function useGitBranchSwitcher({
   const [switchAssistState, setSwitchAssistState] = useState<GitBranchSwitchAssistState | null>(
     null,
   );
-  const [branchesResult, setBranchesResult] = useState<GitLocalBranchListResult | null>(null);
+  const [branchSnapshot, setBranchesResult] = useState<GitLocalBranchListResult | null>(null);
+  const branchOwner = useRef<{ workspacePath: string; gitService: typeof gitService } | null>(null);
+  const scopeRef = useRef({ workspacePath, gitService });
+  scopeRef.current = { workspacePath, gitService };
+  const branchReadVersion = useRef(0);
+  const branchesResult =
+    branchOwner.current?.workspacePath === workspacePath &&
+    branchOwner.current.gitService === gitService
+      ? branchSnapshot
+      : null;
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [mutationPending, setMutationPending] = useState(false);
 
@@ -65,12 +74,21 @@ export function useGitBranchSwitcher({
   }, []);
 
   const loadBranches = useCallback(async () => {
+    const version = ++branchReadVersion.current;
+    const isCurrent = () =>
+      scopeRef.current.workspacePath === workspacePath &&
+      scopeRef.current.gitService === gitService &&
+      branchReadVersion.current === version;
     setLoadingBranches(true);
 
     try {
       const nextResult = await gitService.getLocalBranches({ workspacePath });
+      // 来源选择不能使用上一个目录/Host 的迟到列表，否则会把旧分支写入新草稿。
+      if (!isCurrent()) return;
+      branchOwner.current = { workspacePath, gitService };
       setBranchesResult(nextResult);
     } catch (error: unknown) {
+      if (!isCurrent()) return;
       const message = getErrorMessage(error);
       logger.warn("[GitBranchSwitcher] 读取本地分支失败", {
         workspacePath,
@@ -80,7 +98,7 @@ export function useGitBranchSwitcher({
         intl.formatMessage({ id: "git.branchSwitcher.error.requestFailed" }, { error: message }),
       );
     } finally {
-      setLoadingBranches(false);
+      if (isCurrent()) setLoadingBranches(false);
     }
   }, [gitService, intl, workspacePath]);
 
@@ -89,8 +107,10 @@ export function useGitBranchSwitcher({
     setCreateDialogOpen(false);
     setCreateBranchName("");
     setBranchesResult(null);
+    branchOwner.current = null;
+    branchReadVersion.current++;
     resetSwitchAssistState();
-  }, [resetSwitchAssistState, workspacePath]);
+  }, [resetSwitchAssistState, workspacePath, gitService]);
 
   const openRef = useRef(open);
   openRef.current = open;

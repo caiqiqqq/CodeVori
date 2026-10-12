@@ -1428,6 +1428,7 @@ export function createGitCliRepo(options?: {
     async createAutomaticWorktree(
       workspacePath: string,
       worktreeRootPath: string,
+      startPoint?: string,
     ): Promise<GitCreateWorktreeResult> {
       const root = worktreeRootPath.trim();
       const resolution = await this.resolveRepository(workspacePath);
@@ -1485,6 +1486,7 @@ export function createGitCliRepo(options?: {
           workspacePath,
           `worktree/${id}`,
           join(idDirectory, basename(resolution.repoRoot)),
+          startPoint,
         );
         if (result.ok) {
           return result;
