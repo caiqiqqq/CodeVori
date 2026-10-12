@@ -1,5 +1,5 @@
 /* oxlint-disable eslint(max-lines) -- ACP 面板的连接、草稿和已提交会话投影共用同一个生命周期。 */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { IAcpService } from "@zcode/services";
 import type { AcpAgent, AcpPromptInput, AcpSession, AcpWorkspace } from "@zcode/shared";
@@ -8,6 +8,7 @@ import { ACP_HOST_UPGRADE_REQUIRED, waitForAcpPromptAdmission } from "@/v4/acpPr
 import { visibleAcpQueueSubmission, type AcpQueueSubmission } from "@/v4/acpQueueProjection.js";
 import { OperationDiagnostics } from "@zcode/rpc";
 import { logger } from "@/logger.js";
+import { AcpStreamObserver } from "@/lib/acpStreamObserver.js";
 
 const diagnostics = new OperationDiagnostics(
   (record) => logger.lifecycle.warn("[diagnostics]", record),
@@ -86,6 +87,7 @@ export function useAcpConversation(
   );
   const targetKeyRef = useRef(targetKey);
   targetKeyRef.current = targetKey;
+  const streamObserver = useMemo(() => new AcpStreamObserver(), [service, targetKey]);
   const workspaceKey = JSON.stringify([workspaceIdentity?.trim() || workspacePath, workspacePath]);
   const selectedWorkspaceKeyRef = useRef(workspaceKey);
   const loaded = loadedTargetKey === targetKey;
@@ -108,6 +110,20 @@ export function useAcpConversation(
   sessionsRef.current = sessions;
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
+  useLayoutEffect(
+    () =>
+      streamObserver.commit(
+        selected,
+        () =>
+          targetKeyRef.current === targetKey &&
+          selectedRef.current?.id === selected?.id &&
+          agentRef.current === selected?.agent &&
+          (!selected ||
+            !selectedIdsRef.current[selected.agent] ||
+            selectedIdsRef.current[selected.agent] === selected.id),
+      ),
+    [streamObserver, selected, targetKey],
+  );
   const archivedOpenIds = useRef(new Map<AcpAgent, string>());
   const onArchivedRef = useRef(onArchived);
   onArchivedRef.current = onArchived;
@@ -227,6 +243,9 @@ export function useAcpConversation(
       }
       removed.delete(change.session.id);
       updated.set(change.session.id, change.session);
+      // 取证只关联当前选中会话；旧 Host/目标/revision 已由上方原有守卫排除。
+      if (selectedRef.current?.id === change.session.id)
+        streamObserver.received(change.session, change.streamDiagnostics);
       setSessions((previous) => {
         const current = previous.find((item) => item.id === change.session.id);
         if (current && current.revision > change.session.revision) return previous;
@@ -271,6 +290,7 @@ export function useAcpConversation(
     service,
     target,
     targetKey,
+    streamObserver,
     workspaceIdentity,
     workspaceKey,
     workspacePath,
