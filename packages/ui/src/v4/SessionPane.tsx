@@ -99,9 +99,11 @@ import {
   createComposerSubmissionConfig,
   type ComposerSubmissionConfig,
 } from "@/v4/composer/composerSubmissionConfig.js";
+import { V4_DRAFT_SCOPE_ROOT } from "@/v4/composer/composerDraftStore.js";
 import { useDraftSessionPrewarm } from "@/v4/composer/useDraftSessionPrewarm.js";
 import {
   isWorktreeAutoSendTarget,
+  shouldInheritWorktreeAutoSendDraft,
   useWorktreeDraftIntent,
 } from "@/v4/composer/worktreeDraftIntent.js";
 import { projectSessionConfigToTaskConfigOptions } from "@/v4/composer/sessionConfigTaskCache.js";
@@ -1501,8 +1503,18 @@ export function SessionPane({
     acpConversation.selected?.provisional &&
     !acpBoundSessionId &&
     !pendingAcpTabOpenRequest
-      ? `acp-draft:${paneId}:${acpAgent}`
-      : undefined;
+      ? // root 已移入 ACP 临时草稿后，预连接继续沿用既有临时 scope 移交，不能再次读取已消费 root。
+        `acp-draft:${paneId}:${acpAgent}`
+      : shouldInheritWorktreeAutoSendDraft(
+            worktreeAutoSend,
+            workspacePath,
+            workspaceIdentity,
+            sessionId,
+            acpAgent,
+            !acpBoundSessionId && !pendingAcpTabOpenRequest && !acpConversation.selected,
+          )
+        ? V4_DRAFT_SCOPE_ROOT
+        : undefined;
   const {
     composerDraft,
     modelSelectionRead,

@@ -820,6 +820,15 @@ function ConversationComposerImpl({
     workspaceIdentity,
     scopeId: draftScopeId,
   });
+  const worktreeSourceRef = useRef({ workspacePath, workspaceIdentity, scopeId: draftScopeId });
+  if (
+    worktreeSourceRef.current.workspacePath !== workspacePath ||
+    worktreeSourceRef.current.workspaceIdentity !== workspaceIdentity ||
+    worktreeSourceRef.current.scopeId !== draftScopeId
+  ) {
+    // 导航 render 先于草稿恢复 effect；用来源代次立即阻断迟到创建，包括离开后返回。
+    worktreeSourceRef.current = { workspacePath, workspaceIdentity, scopeId: draftScopeId };
+  }
   const ownerDraftRef = useRef({
     draft: composerDraft,
     workspacePath,
@@ -1268,6 +1277,7 @@ function ConversationComposerImpl({
           return;
         }
         const submittedRevision = contentRevisionRef.current;
+        const submittedSource = worktreeSourceRef.current;
         const submittedDraftVersion = useZCodeSessionStore
           .getState()
           .getWorkspaceState(workspacePath, workspaceIdentity).draftFocusVersion;
@@ -1305,8 +1315,8 @@ function ConversationComposerImpl({
           }
           // Git 已创建成功；旧草稿若在等待期间切换/编辑，迟到结果只能保存，不能抢走当前焦点或自动发送。
           if (
-            draftTargetRef.current.workspacePath !== workspacePath ||
-            draftTargetRef.current.scopeId !== V4_DRAFT_SCOPE_ROOT ||
+            // ACP 有独立草稿/预连接 scope；应比较发送时实际来源，不能要求普通 root。
+            worktreeSourceRef.current !== submittedSource ||
             useZCodeSessionStore.getState().getWorkspaceState(workspacePath, workspaceIdentity)
               .draftFocusVersion !== submittedDraftVersion ||
             contentRevisionRef.current !== submittedRevision

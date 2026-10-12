@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 import type { AcpAgent, GitCreateWorktreeResult } from "@zcode/shared";
-import type { V4ComposerDraft } from "@/v4/composer/composerDraftStore.js";
+import type { V4ComposerDraft } from "./composerDraftStore.js";
 
 export interface WorktreeDraftSelection {
   workspaceKey: string;
@@ -70,4 +70,21 @@ export function hasUntransferableWorktreeContext(context: {
   mentions: number;
 }): boolean {
   return context.attachments > 0 || context.contexts > 0 || context.mentions > 0;
+}
+
+export function shouldInheritWorktreeAutoSendDraft(
+  request: WorktreeAutoSendRequest | null,
+  workspacePath: string,
+  workspaceIdentity: string | undefined,
+  sessionId: string | null,
+  agent: AcpAgent | null,
+  isNewAcpDraft: boolean,
+): boolean {
+  // ACP 独立 scope 只继承准确目标的一次性工作树草稿，不能让历史会话读 root。
+  return Boolean(
+    isNewAcpDraft &&
+    agent &&
+    request?.agent === agent &&
+    isWorktreeAutoSendTarget(request, workspacePath, workspaceIdentity, sessionId),
+  );
 }
