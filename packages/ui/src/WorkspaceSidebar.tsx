@@ -75,6 +75,7 @@ import { NewTaskButtonGroup } from "@/NewTaskButtonGroup.js";
 import { selectWorkspaceZCodeState, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { useTabStore } from "@/store/TabStoreProvider.js";
+import { useSidebarConversationSelection } from "@/hooks/useSidebarConversationSelection.js";
 import { isWorkspaceReadOnly, isWorkspaceTab, type WorkspaceTabState } from "@/store/tabStore.js";
 import { useWorkspaceTaskLists } from "@/hooks/useWorkspaceTaskLists.js";
 import { useWorktreeProjectGroupsResolution } from "@/hooks/useWorktreeProjectGroups.js";
@@ -221,7 +222,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   activePreviewPath,
   onSelectTask,
   onSelectAcpSession,
-  activeAcpSessionId,
+  activeAcpSessionId: primaryAcpSessionId,
   onStartDraftInWorkspace,
   onOpenCodeViewer,
   onOpenBrowserUrl,
@@ -353,7 +354,26 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
 
     return activeTab.workspaceIdentity;
   });
-  const activeWorkspaceKey = buildTaskWorkspaceKey(workspacePath, workspaceIdentity);
+  const primaryTaskId = useZCodeSessionStore(
+    (state) => selectWorkspaceZCodeState(state, workspacePath, workspaceIdentity).activeTaskId,
+  );
+  // 主窗格投影不覆盖 secondary/group 的焦点；展示 scope 与文件操作 scope 分开。
+  const {
+    workspacePath: selectedWorkspacePath,
+    workspaceIdentity: selectedWorkspaceIdentity,
+    activeTaskId,
+    activeAcpSessionId,
+  } = useSidebarConversationSelection({
+    workspacePath,
+    workspaceIdentity,
+    remoteSessionId: workspaceRemoteSessionId,
+    activeTaskId: primaryAcpSessionId ? null : primaryTaskId,
+    activeAcpSessionId: primaryAcpSessionId ?? null,
+  });
+  const activeWorkspaceKey = buildTaskWorkspaceKey(
+    selectedWorkspacePath,
+    selectedWorkspaceIdentity,
+  );
   const workspaceReadOnly = useTabStore((state) =>
     isWorkspaceReadOnly(state, workspacePath, workspaceIdentity),
   );
@@ -684,8 +704,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   const localeMenuValue = localePreference === "system" ? "system" : localePreference;
   const workspaceTaskLists = useWorkspaceTaskLists({
     workspaceTabs: projectWorkspaceTabs,
-    activeWorkspacePath: workspacePath,
-    activeWorkspaceIdentity: workspaceIdentity,
+    activeWorkspacePath: selectedWorkspacePath,
+    activeWorkspaceIdentity: selectedWorkspaceIdentity,
     sortBy: taskSortBy,
     visibleLimitByWorkspaceKey: workspaceTaskVisibleLimitByKey,
     defaultVisibleLimit: WORKSPACE_TASK_PAGE_SIZE,
@@ -810,13 +830,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   const handleOpenAutomationsMain = useCallback(() => {
     onOpenAutomations?.();
   }, [onOpenAutomations]);
-  const activeTaskId = useZCodeSessionStore(
-    (state) =>
-      // Web 远程控制从全局 task 入口进入远端 workspace 时，会先按
-      // workspaceIdentity 写入 activeTaskId；如果侧栏仍然只读 path-only 桶，
-      // 当前任务高亮会丢失，也会把后续选择误判成未激活。
-      selectWorkspaceZCodeState(state, workspacePath, workspaceIdentity).activeTaskId,
-  );
 
   useEffect(() => {
     const scrollNode = workspaceScrollRef.current;
@@ -1397,8 +1410,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
               {shouldShowPinnedTasks ? (
                 <WorkspacePinnedTasksSection
                   workspaceTabs={workspaceTabs}
-                  activeWorkspacePath={workspacePath}
-                  activeWorkspaceIdentity={workspaceIdentity}
+                  activeWorkspacePath={selectedWorkspacePath}
+                  activeWorkspaceIdentity={selectedWorkspaceIdentity}
                   activeTaskId={activeTaskId}
                   activeAcpSessionId={activeAcpSessionId}
                   taskSortBy={taskSortBy}
@@ -1415,8 +1428,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                 {taskViewMode === "grouped" ? (
                   <WorkspaceGroupedTasksSection
                     workspaceTabs={workspaceTabs}
-                    activeWorkspacePath={workspacePath}
-                    activeWorkspaceIdentity={workspaceIdentity}
+                    activeWorkspacePath={selectedWorkspacePath}
+                    activeWorkspaceIdentity={selectedWorkspaceIdentity}
                     activeTaskId={activeTaskId}
                     onSelectTask={onSelectTask}
                     onCreateTask={onCreateTask}
@@ -1435,8 +1448,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                 ) : taskViewMode === "timeline" ? (
                   <WorkspaceTimelineTasksSection
                     workspaceTabs={workspaceTabs}
-                    activeWorkspacePath={workspacePath}
-                    activeWorkspaceIdentity={workspaceIdentity}
+                    activeWorkspacePath={selectedWorkspacePath}
+                    activeWorkspaceIdentity={selectedWorkspaceIdentity}
                     activeTaskId={activeTaskId}
                     activeAcpSessionId={activeAcpSessionId}
                     taskSortBy={taskSortBy}
@@ -1581,6 +1594,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                               onSelectTask={onSelectTask}
                                               onSelectAcpSession={onSelectAcpSession}
                                               activeAcpSessionId={activeAcpSessionId}
+                                              selectedNativeTaskId={activeTaskId}
                                               onStartDraftInWorkspace={onStartDraftInWorkspace}
                                               taskItems={
                                                 taskGroup?.items ?? EMPTY_WORKSPACE_TASK_ITEMS
@@ -1615,8 +1629,10 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                                   >
                                                     <WorkspaceTimelineTasksSection
                                                       workspaceTabs={projectTabs}
-                                                      activeWorkspacePath={workspacePath}
-                                                      activeWorkspaceIdentity={workspaceIdentity}
+                                                      activeWorkspacePath={selectedWorkspacePath}
+                                                      activeWorkspaceIdentity={
+                                                        selectedWorkspaceIdentity
+                                                      }
                                                       activeTaskId={activeTaskId}
                                                       activeAcpSessionId={activeAcpSessionId}
                                                       taskSortBy={taskSortBy}
@@ -1696,8 +1712,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                             >
                               <WorkspaceTimelineTasksSection
                                 workspaceTabs={conversationWorkspaceTabs}
-                                activeWorkspacePath={workspacePath}
-                                activeWorkspaceIdentity={workspaceIdentity}
+                                activeWorkspacePath={selectedWorkspacePath}
+                                activeWorkspaceIdentity={selectedWorkspaceIdentity}
                                 activeTaskId={activeTaskId}
                                 activeAcpSessionId={activeAcpSessionId}
                                 taskSortBy={taskSortBy}
@@ -1735,7 +1751,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
             workspacePath={workspacePath}
             workspaceIdentity={workspaceIdentity}
             workspaceRemoteSessionId={workspaceRemoteSessionId}
-            activeTaskId={activeTaskId}
+            activeTaskId={primaryTaskId}
             isDesktop={isDesktop}
           />
         </div>

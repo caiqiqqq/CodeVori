@@ -16,6 +16,32 @@ API 与 ACP 当前行均提供 `aria-current="page"`。父项目展开不等于�
 蓝色边线/标记；鼠标选择、Enter/Space 切换选中、悬停/聚焦与右侧操作不移动内容。
 截图使用模拟会话数据，禁止为展示效果改动真实用户历史。归档/置顶继续走原有路径。
 
+### 当前窗格与跨项目选中投影
+
+会话当前项由可见布局的焦点绑定决定：激活 workbench group 时读取该 group 的焦点
+绑定，否则读取临时 pane layout 的焦点绑定；只有焦点是未绑定的主窗格时，才读取
+Shell 原有 native task / ACP 主会话投影。关闭主窗格后剩余 pane 不改名或提升，
+即使仅剩一个 secondary pane，也从它的绑定得到当前项。主窗格为草稿、焦点 pane
+尚无 session、只读子会话或恢复绑定尚未验证时，不高亮任何会话，不回退到旧主会话。
+
+投影包含真实 workspacePath、workspaceIdentity、remoteSessionId、会话类型和 ID；
+identity key 仍是 `workspaceIdentity?.trim() || workspacePath`。native 与 ACP 的 ID
+分别投影，不能将 ACP ID 写进 native store。普通项目、工作树合并列表、时间线、
+置顶和任务区读取同一投影；同路径不同 Host、同 ID 不同类型不能同时高亮。操作目标、
+文件树、命令 cwd、Host 连接和现有选择命令仍用原有路由，投影不驱动业务写入。
+
+```text
+会话点击 / 窗格焦点 / 关闭窗格 → 既有 group 或 pane layout owner
+                                  → 只读当前绑定 → 侧栏统一选中投影
+主窗格且无显式绑定 → Shell 当前会话 ───────┘
+Desktop / 普通 Web：读取 renderer-local 布局；手机 replayable：沿用单主窗格当前会话
+```
+
+补充验收：真实布局 owner 的跨项目 native/ACP 切换、同路径不同 identity、分组焦点、
+关闭主窗格剩单窗格、草稿与只读/待验证恢复、返回主窗格及新建草稿重置。渲染 E2E 必须
+从 owner 变更得到选中投影，而非直接给行组件伪造 `active=true`；同时验证浅深主题、
+375px、普通项目与工作树合并/时间线/置顶列表，原 owner 无额外 session 创建或 RPC。
+
 ## 时间显示
 
 侧栏中 API/ZCode 与 ACP 的会话行均不显示标题后的相对时间，包括项目与工作树合并列表、分组列表及拖动预览、时间线、置顶区和归档列表。移除时间文案及其空占位，不新增设置开关。时间线原有日期分组标题保持现有规则。

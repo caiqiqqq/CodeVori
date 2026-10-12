@@ -23,6 +23,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   onSelectTask,
   onSelectAcpSession,
   activeAcpSessionId,
+  selectedNativeTaskId,
   onStartDraftInWorkspace,
   taskItems,
   taskListLoading,
@@ -52,6 +53,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   ) => void;
   onSelectAcpSession?: (session: AcpSidebarSession) => void;
   activeAcpSessionId?: string | null;
+  selectedNativeTaskId: string | null;
   onStartDraftInWorkspace: (targetWorkspacePath: string, targetWorkspaceIdentity?: string) => void;
   taskItems: ZCodeTaskMeta[];
   taskListLoading: boolean;
@@ -125,6 +127,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
       onSelectTask={onSelectTask}
       onSelectAcpSession={onSelectAcpSession}
       activeAcpSessionId={activeAcpSessionId}
+      selectedNativeTaskId={selectedNativeTaskId}
       onStartDraftInWorkspace={onStartDraftInWorkspace}
       taskItems={taskItems}
       taskListLoading={taskListLoading}
