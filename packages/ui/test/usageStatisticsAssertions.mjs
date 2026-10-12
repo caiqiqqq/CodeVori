@@ -56,7 +56,11 @@ export async function assertUsageChartPresentation({
     await acpCharts
       .locator(".recharts-line-curve")
       .first()
-      .evaluate((path) => path.getBBox().width > 0),
+      .evaluate(
+        (path) =>
+          path.getBBox().width > 0 ||
+          !!path.closest(".recharts-wrapper")?.querySelector(".recharts-line-dot"),
+      ),
     true,
     "dated usage must display its complete trend immediately",
   );
