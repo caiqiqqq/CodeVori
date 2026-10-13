@@ -35,10 +35,17 @@ export function githubIssueUploadScript(
           finish(null, 'FORGE_MEDIA_IDENTITY_CHANGED'); return;
         }
         identityConfirmed = true;
-        const textarea = document.querySelector('textarea[aria-label="Markdown value"]');
-        const inputs = document.querySelectorAll('input[type="file"]');
-        if (!textarea || inputs.length !== 1) return;
-        const input = inputs[0];
+        // GitHub 新版用描述标签关联编辑器，附件 input 只在点选时临时创建，不能等待全页唯一 input。
+        const editors = Array.from(document.querySelectorAll('textarea')).filter(editor => {
+          if (editor.disabled || editor.readOnly || !editor.getClientRects().length) return false;
+          if (editor.getAttribute('aria-label') === 'Markdown value') return true;
+          return (editor.getAttribute('aria-labelledby') || '').split(/\\s+/).some(id =>
+            document.getElementById(id)?.textContent.trim() === 'Add a description');
+        });
+        if (editors.length !== 1) return;
+        const textarea = editors[0];
+        const inputs = (textarea.closest('file-attachment') || textarea.closest('form') || textarea.parentElement).querySelectorAll('input[type="file"]');
+        const input = textarea.getAttribute('aria-label') === 'Markdown value' && inputs.length === 1 && !inputs[0].disabled ? inputs[0] : null;
         const urls = value => Array.from(value.matchAll(new RegExp('https://github[.]com/user-attachments/assets/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}', 'ig')), m => m[0]);
         const previous = new Set(urls(textarea.value));
         const check = () => {
@@ -72,10 +79,16 @@ export function githubIssueUploadScript(
         const bytes = Uint8Array.from(atob(context.image.dataBase64), char => char.charCodeAt(0));
         const transfer = new DataTransfer();
         transfer.items.add(new File([bytes], context.image.filename, {type: context.image.mediaType}));
-        input.files = transfer.files;
-        input.dispatchEvent(new Event('change', {bubbles: true}));
+        if (input) {
+          input.files = transfer.files;
+          input.dispatchEvent(new Event('change', {bubbles: true}));
+        } else {
+          // 复用网页本身的 paste 上传处理器；未消费事件就显式失败，不再派发或猜测上传接口。
+          const consumed = !textarea.dispatchEvent(new ClipboardEvent('paste', {clipboardData: transfer, bubbles: true, cancelable: true}));
+          if (!consumed) finish(null, 'FORGE_UPLOAD_UNAVAILABLE');
+        }
       };
-      observer.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter: ['content', 'name']});
+      observer.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter: ['content', 'name', 'aria-label', 'aria-labelledby', 'disabled', 'readonly', 'hidden', 'style', 'class'], characterData: true});
       attach();
     });
   })()`;
