@@ -53,3 +53,49 @@ Node 24.14.0 下，补齐 dynamic-workflow 和 dynamic-workflow-runtime 的忽�
 `pnpm architecture:check --changed` 为 0 violations；改动源码与测试格式检查通过。
 额外 Desktop Main 全量类型检查未通过：86 项诊断与 HEAD 完全一致，
 上传脚本没有诊断。检查生成的无关源码旁产物已恢复/移除。
+
+## 合并后仍报错：React 上传处理器就绪时序
+
+用户反馈已安装版本仍返回 `FORGE_UPLOAD_UNAVAILABLE`。只读核对安装包
+包含上一轮的 ClipboardEvent 修复，进程启动时间晚于安装包修改时间。
+在真实 GitHub 新议题页面只读检查 DOM：英文 `Add a description`，
+正文为可见、启用的 `textarea[aria-label="Markdown value"]`，挂载后存在
+React `onPaste`。因此不能把这次报错归因于中文标签或直接认定为 CodeMirror；
+此前基于中文标签猜测的改动已撤回。
+
+已确认另一个时序缺陷：Main 在 `did-finish-load` 执行脚本，脚本把可见的
+SSR textarea 当作上传已就绪，直接派发文件粘贴。页面 load 不保证 React
+已水合，未挂载处理器时事件不被消费，立刻返回 upload unavailable。
+之前的合成页面在脚本执行前同步注册监听器，没有覆盖这条路径。
+
+当前 GitHub `react-core-38c3e823b8b765d2.js` 的 `LUx` 根节点实现，在
+React `useEffect` 的 onCommit 完成后，经 requestAnimationFrame 和
+requestIdleCallback 给 `react-app`/`react-partial` 添加 `loaded` class。
+这提供了实际挂载完成信号，无需固定等待秒数或带文件探测后重试。
+实现只在正文所属 React root 就绪后重新校验账号、解析当前编辑器并一次派发；
+旧版非 React 编辑器保留原行为，原超时/取消/禁止网页创建边界不变。
+
+```text
+Main did-finish-load → 脚本观察 SSR DOM（不派发文件）
+  → GitHub React commit effects → root.loaded
+  → 校验账号与当前正文 → 一次 paste → 网页上传 → 新 URL → Host receipt
+```
+
+新增真实 React hydrateRoot/受控 textarea 测试：旧代码在 SSR 阶段提前派发
+一次文件事件，两项新测试都失败；修复后 7 项浏览器测试通过。Electron
+合成 HTTPS 用例将监听器挂载延迟到 load 之后，验证同一原生窗口等待 loaded
+再上传成功。还覆盖始终未就绪、超时后迟到就绪、等待中账号变化、
+就绪但无处理器和只派发一次。
+
+这是已复现的代码缺陷，尚未取得用户报错那次原生窗口的完整运行时记录，
+不能断言它是唯一原因，也不能把合成上传当成真实 GitHub 上传成功。
+官方公开 REST/OpenAPI、GraphQL schema 和 Octokit 当前生成方法中均无
+议题图片附件上传接口；仓库 Contents 和 Release asset 上传属于其他行为。
+官方接口定义参考：
+<https://github.com/github/rest-api-description/blob/main/descriptions/api.github.com/api.github.com.json>、
+<https://docs.github.com/public/fpt/schema.docs.graphql>、
+<https://github.com/octokit/plugin-rest-endpoint-methods.js/blob/main/src/generated/method-types.ts>。
+
+本轮本地验证：7/7 浏览器测试、原生 Electron 合成测试、桌面/手机双主题
+图片 E2E 均通过；`pnpm typecheck` 通过，上传脚本独立 strict 类型检查通过；
+`pnpm lint` 为 0 errors / 74 warnings；架构检查 0 violations，改动格式检查通过。

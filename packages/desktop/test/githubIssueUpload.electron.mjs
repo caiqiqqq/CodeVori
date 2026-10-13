@@ -29,7 +29,7 @@ try {
     const profile=session.fromPartition('persist:github-issue-upload-'+key);
     await applyDesktopChromiumNetworkPolicies(session,{httpProxy:'http://127.0.0.1:17890',httpProxyOnlyDomains:'github.com'},{info(){},warn(){}});
     let policyCalls=0;const setProxy=profile.setProxy.bind(profile);profile.setProxy=(config)=>{policyCalls++;return setProxy(config)};
-    let username='tester',hasInput=true,currentEditor=false,loginUsername,loginReads=0,holdLogin=false,uploadReads=0;
+    let username='tester',hasInput=true,currentEditor=false,delayedReact=false,loginUsername,loginReads=0,holdLogin=false,uploadReads=0;
     await profile.protocol.handle('https',(request)=>{
       assert.equal(policyCalls,1,'Proxy policy must complete before navigation');
       const target=new URL(request.url);
@@ -39,6 +39,7 @@ try {
         return new Response('<!doctype html><h1>GitHub login</h1>'+(holdLogin?'':'<script>location.replace('+JSON.stringify(target.searchParams.get('return_to'))+')</script>'),{headers:{'Content-Type':'text/html'}});
       }
       uploadReads++;
+      if(delayedReact&&hasInput)return new Response('<!doctype html><meta name="user-login" content="'+username+'"><react-app><fieldset><legend>Add a description</legend><textarea aria-label="Markdown value"></textarea></fieldset></react-app><script>window.__dispatches=0;document.addEventListener("paste",()=>window.__dispatches++,true);window.addEventListener("load",()=>setTimeout(()=>{if(window.__dispatches)throw Error("Image dispatched before hydration");document.querySelector("textarea").addEventListener("paste",event=>{event.preventDefault();if(++window.__pastes!==1)throw Error("Repeated paste");document.querySelector("textarea").value="![image]('+url+')"});window.__pastes=0;document.querySelector("react-app").classList.add("loaded")},100))</script>',{headers:{'Content-Type':'text/html'}});
       if(currentEditor&&hasInput)return new Response('<!doctype html><meta name="user-login" content="'+username+'"><label id="description">Add a description</label><textarea aria-labelledby="description"></textarea><script>document.querySelector("textarea").addEventListener("paste",event=>{event.preventDefault();document.querySelector("textarea").value="![image]('+url+')"})</script>',{headers:{'Content-Type':'text/html'}});
       return new Response('<!doctype html><meta name="user-login" content="'+username+'"><textarea aria-label="Markdown value" '+(hasInput?'':'disabled')+'></textarea>'+(hasInput?'<input type="file"><script>document.querySelector("input").addEventListener("change",()=>{document.querySelector("textarea").value="![image]('+url+')"})</script>':''),{headers:{'Content-Type':'text/html'}});
     });
@@ -48,6 +49,7 @@ try {
     try {
       assert.deepEqual(await run(),{url});
       currentEditor=true;assert.deepEqual(await run(),{url});
+      delayedReact=true;assert.deepEqual(await run(),{url});delayedReact=false;
       assert.equal(await profile.resolveProxy('https://github.com'),'PROXY 127.0.0.1:17890');
       assert.equal(await profile.resolveProxy('https://other.test'),'DIRECT');
       assert.equal(BrowserWindow.getAllWindows().length,2,'Successful upload closes only its native window');
