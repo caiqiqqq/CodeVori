@@ -223,6 +223,20 @@ export const appUsageDailyModelUsageSchema = z.object({
   models: z.array(appUsageDailyModelItemSchema),
 });
 
+export const appUsageHourlyModelUsageSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  hours: z
+    .array(
+      z.object({
+        hour: z.number().int().min(0).max(23),
+        models: z.array(appUsageDailyModelItemSchema),
+      }),
+    )
+    .length(24)
+    .refine((hours) => hours.every((item, index) => item.hour === index)),
+});
+export type AppUsageHourlyModelUsage = z.infer<typeof appUsageHourlyModelUsageSchema>;
+
 export const appUsageModelUsageSchema = z.object({
   modelId: z.string().nullable(),
   totalTokens: z.number(),
@@ -251,6 +265,7 @@ export const acpAppUsageAgentSchema = z.object({
   outputTokens: z.number().int().nonnegative(),
   models: z.array(acpModelTokenUsageSchema).default([]),
   dailyUsage: z.array(appUsageDailyModelUsageSchema).optional(),
+  hourlyUsage: appUsageHourlyModelUsageSchema.optional(),
 });
 export type AcpAppUsageAgent = z.infer<typeof acpAppUsageAgentSchema>;
 
@@ -262,6 +277,8 @@ export const appUsageSnapshotSchema = z.object({
   summary: appUsageSummarySchema,
   heatmap: appUsageHeatmapSchema,
   dailyModelUsage: z.array(appUsageDailyModelUsageSchema),
+  /** 缺省为旧数据源不支持；不能从每日总量反推小时消耗。 */
+  hourlyModelUsage: appUsageHourlyModelUsageSchema.optional(),
   models: z.array(appUsageModelUsageSchema),
   tools: z.array(appUsageToolUsageSchema),
   /** Enriched by the target Host's usage service; absent from the CLI's native-only response. */

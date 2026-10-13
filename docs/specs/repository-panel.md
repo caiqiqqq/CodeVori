@@ -558,6 +558,15 @@ panel remount / page restart -> local preference -> same navigation/read paths
   capability unavailable. Gitea pre-creation image upload is explicitly unsupported
   until a compatible server API is implemented. UI shows the reason and an
   existing repository webpage link; do not silently create an issue to attach files.
+- GitHub's current Markdown editor creates its file picker dynamically rather
+  than keeping a file input in the page. After identity verification, resolve
+  exactly one enabled description editor by its Markdown accessible name or
+  `Add a description` label. Do not select arbitrary textareas/file inputs.
+  For this editor, dispatch the image once through the webpage's paste handler
+  when there is no unique legacy file input. A consumed paste is admission;
+  an unconsumed paste fails explicitly, with no second dispatch or login retry.
+  Continue observing only this editor's newly completed attachment URL; reject
+  ambiguous editors, preserve the upload deadline and creation guards.
 - Desktop and mobile remote use the same scoped Host command/receipt; existing
   desktop-continuous and web-remote-replayable transports remain unchanged. On
   project/Host/account switch or dialog disposal, late replies cannot affect a
@@ -589,6 +598,13 @@ paste/drop, retained concurrent text edits, failure/retry/removal, creation gate
 late replies after switching, settings retention, mobile and both themes.
 Synthetic tests are not proof of a real GitHub/GitLab upload; report live-provider
 validation separately.
+
+Issue #105 acceptance: a labelled description editor without a mounted file
+input uploads via paste after matching identity; unrelated file inputs do not
+block that path or receive bytes. Cover missing/late identity, delayed editor
+hydration, existing template URLs, one dispatch, unconsumed paste, ambiguous
+editors, disabled controls, timeout cleanup and no website issue creation.
+Run native Electron coverage and the existing desktop/mobile draft-image E2E.
 
 - The description editor has a visible input border and surface at rest, with
   a focus treatment inside the same boundary. Attribute multi-select triggers
