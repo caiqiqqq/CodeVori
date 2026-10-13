@@ -20,6 +20,7 @@ import {
   type WorkspaceExpansionState,
 } from "@/lib/workspaceExpansionPreference.js";
 import { isSameWorkspaceTab } from "@/store/tabWorkspaceIdentity.js";
+import { getWorkspaceDefaultLabel, getWorkspaceDisplayLabel } from "@/lib/workspaceAlias.js";
 
 export const SETTINGS_TAB_ID = "__settings__" satisfies TabId;
 
@@ -133,18 +134,13 @@ export interface TabStoreState {
   restoreTabs: (tabs: Array<string | RestorableWorkspaceTab>, activeIndex: number) => void;
   /** 启动首帧后补齐持久化标签页；保留当前 active identity 和用户在此期间新增的标签页。 */
   completeTabRestore: (tabs: Array<string | RestorableWorkspaceTab>) => void;
+  /** 按设置服务的别名快照刷新当前窗口 workspace 的显示投影。 */
+  applyWorkspaceAliases: (aliases: Record<string, string>) => void;
 }
 
 // ============================================================================
 // 工具函数
 // ============================================================================
-
-/** 从路径提取文件夹名作为标签显示名 */
-function labelFromPath(path: string): string {
-  // 兼容 Windows 反斜杠和 Unix 正斜杠
-  const segments = path.replace(/\\/g, "/").split("/").filter(Boolean);
-  return segments[segments.length - 1] ?? path;
-}
 
 function createWorkspaceTab(
   workspacePath: string,
@@ -154,7 +150,7 @@ function createWorkspaceTab(
     id: createUuid(),
     kind: "workspace",
     workspacePath,
-    label: labelFromPath(workspacePath),
+    label: getWorkspaceDefaultLabel(workspacePath),
     availability: options?.availability,
     remoteSessionId: options?.remoteSessionId,
     remoteTarget: options?.remoteTarget,
@@ -654,6 +650,20 @@ export function createTabStore(storage: StorageLike | null | undefined = undefin
             expansionState,
           ),
         };
+      });
+    },
+
+    applyWorkspaceAliases: (aliases) => {
+      set((state) => {
+        let changed = false;
+        const tabs = state.tabs.map((tab) => {
+          if (!isWorkspaceTab(tab)) return tab;
+          const label = getWorkspaceDisplayLabel(tab.workspacePath, tab.workspaceIdentity, aliases);
+          if (tab.label === label) return tab;
+          changed = true;
+          return { ...tab, label };
+        });
+        return changed ? { tabs } : state;
       });
     },
   }));
