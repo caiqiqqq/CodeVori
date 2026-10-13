@@ -118,6 +118,7 @@ try {
       );
       assert.equal(await trend.locator(".recharts-active-dot circle").count(), 1);
       const tooltipText = await trend.locator(".recharts-tooltip-wrapper").innerText();
+      assert.match(tooltipText, /10月12日/, "single active daily model must retain the date title");
       assert.equal(tooltipText.includes("GLM-5.3"), false);
       assert.equal(tooltipText.includes("Codex ACP · gpt"), true);
       const requests = await page.evaluate(() => window.__usageRequests);

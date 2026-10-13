@@ -315,6 +315,15 @@ export function createSettingServiceWithMigrations(): {
         const merged = appSettingsSchema.parse({
           ...current,
           ...validatedPatch,
+          // 别名必须在已有 Host 串行写队列内按 key 合并，避免并发改不同项目时整表互相覆盖。
+          workspaceAliases: validatedPatch.workspaceAliases
+            ? Object.fromEntries(
+                Object.entries({
+                  ...current.workspaceAliases,
+                  ...validatedPatch.workspaceAliases,
+                }).filter(([, alias]) => alias !== ""),
+              )
+            : current.workspaceAliases,
         });
 
         // 打开工作区后会几乎同时写 recentProjects 和 lastWorkspaceSession。

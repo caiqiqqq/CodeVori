@@ -22,6 +22,7 @@ import {
   InfoIcon,
   ListTree,
   LoaderCircle,
+  Pencil,
   RefreshCwIcon,
   MessageCirclePlus,
   XIcon,
@@ -98,6 +99,8 @@ import {
 import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { toast } from "@/components/ui/toast.js";
 import { shouldStartWorkspaceDraftOnExpand } from "@/WorkspaceSidebar/workspaceSidebarSelection.js";
+import { WorkspaceRenameDialog } from "@/WorkspaceRenameDialog.js";
+import { resolveWorkspaceKey, workspaceAliasSchema } from "@zcode/shared";
 
 export type SortableBindings = Pick<ReturnType<typeof useSortable>, "attributes" | "listeners">;
 
@@ -164,6 +167,8 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   itemStyle,
   sortableBindings,
   isDragging = false,
+  workspaceAliases,
+  onRenameWorkspace,
   projectTaskList,
 }: {
   tab: WorkspaceTabState;
@@ -203,6 +208,8 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   itemStyle?: CSSProperties;
   sortableBindings?: SortableBindings;
   isDragging?: boolean;
+  workspaceAliases: Readonly<Record<string, string>>;
+  onRenameWorkspace: (tab: WorkspaceTabState, alias: string) => Promise<void>;
   projectTaskList?: ReactNode;
 }) {
   const { intl } = useZCodeIntl();
@@ -313,6 +320,12 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   const [workspaceRowHovered, setWorkspaceRowHovered] = useState(false);
   const [workspaceRowFocusWithin, setWorkspaceRowFocusWithin] = useState(false);
   const [workspaceActionMenuOpen, setWorkspaceActionMenuOpen] = useState(false);
+  const [workspaceRenameOpen, setWorkspaceRenameOpen] = useState(false);
+  const [workspaceRenameDraft, setWorkspaceRenameDraft] = useState("");
+  const [workspaceRenameSaving, setWorkspaceRenameSaving] = useState(false);
+  const workspaceRenameSavingRef = useRef(false);
+  const workspaceRenameInputRef = useRef<HTMLInputElement | null>(null);
+  const workspaceAliasKey = resolveWorkspaceKey(tab);
   const [isHoverNone] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -332,6 +345,49 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!workspaceRenameOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      workspaceRenameInputRef.current?.focus();
+      workspaceRenameInputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [workspaceRenameOpen]);
+
+  const handleOpenWorkspaceRename = useCallback(() => {
+    setWorkspaceRenameDraft(workspaceAliases[workspaceAliasKey] ?? tab.label);
+    setWorkspaceRenameOpen(true);
+  }, [tab.label, workspaceAliasKey, workspaceAliases]);
+
+  const handleSubmitWorkspaceRename = useCallback(async () => {
+    if (workspaceRenameSavingRef.current) return;
+    const normalizedAlias = workspaceRenameDraft.trim();
+    if (normalizedAlias && !workspaceAliasSchema.safeParse(normalizedAlias).success) {
+      toast(intl.formatMessage({ id: "workspaceSidebar.renameInvalid" }), {
+        variant: "warning",
+      });
+      return;
+    }
+
+    workspaceRenameSavingRef.current = true;
+    setWorkspaceRenameSaving(true);
+    try {
+      await onRenameWorkspace(tab, normalizedAlias);
+      setWorkspaceRenameOpen(false);
+    } catch (error) {
+      logger.error("[WorkspaceSidebarItem] 保存项目别名失败", {
+        workspaceKey: workspaceAliasKey,
+        error,
+      });
+      toast(intl.formatMessage({ id: "workspaceSidebar.renameFailed" }), {
+        variant: "warning",
+      });
+    } finally {
+      workspaceRenameSavingRef.current = false;
+      setWorkspaceRenameSaving(false);
+    }
+  }, [intl, onRenameWorkspace, tab, workspaceAliasKey, workspaceRenameDraft]);
 
   const handleWorkspaceOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -843,6 +899,21 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
 
   return (
     <li ref={itemRef} style={itemStyle} className="space-y-2">
+      <WorkspaceRenameDialog
+        open={workspaceRenameOpen}
+        value={workspaceRenameDraft}
+        inputRef={workspaceRenameInputRef}
+        intl={intl}
+        saving={workspaceRenameSaving}
+        onOpenChange={(open) => {
+          if (!open) setWorkspaceRenameOpen(false);
+        }}
+        onChange={setWorkspaceRenameDraft}
+        onCancel={() => setWorkspaceRenameOpen(false)}
+        onConfirm={() => {
+          void handleSubmitWorkspaceRename();
+        }}
+      />
       <Collapsible
         className="flex flex-col gap-1"
         open={isExpanded && !isDisconnectedRemoteWorkspace}
@@ -978,6 +1049,15 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
                           </DropdownMenuTrigger>
                         </ControlHintTooltip>
                         <DropdownMenuContent align="end" onClick={handleActionMenuClick}>
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              setWorkspaceActionMenuOpen(false);
+                              handleOpenWorkspaceRename();
+                            }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            {intl.formatMessage({ id: "workspaceSidebar.rename" })}
+                          </DropdownMenuItem>
                           <RemoteSyncMenuItems
                             canSyncSkills={showRemoteSkillSyncAction}
                             canSyncMcp={showRemoteSkillSyncAction}

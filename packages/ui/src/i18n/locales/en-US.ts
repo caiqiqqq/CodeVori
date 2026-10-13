@@ -1,45 +1,6 @@
 /** English translations */
 import { PRODUCT_NAME } from "@zcode/shared";
 const enUS: Record<string, string> = {
-  "chat.linkedProjects.error.invalidPath":
-    "Enter an absolute project path or use the directory picker.",
-  "chat.linkedProjects.trigger": "Linked projects",
-  "chat.linkedProjects.title": "Linked projects",
-  "chat.linkedProjects.description":
-    "Develop multiple projects in one conversation. Linked projects use new worktrees by default.",
-  "chat.linkedProjects.preparing": "Preparing projects…",
-  "chat.linkedProjects.primary": "Current project",
-  "chat.linkedProjects.primaryHint":
-    "This project uses this directory. Use the existing new-worktree option for isolated development.",
-  "chat.linkedProjects.remove": "Remove {name}",
-  "chat.linkedProjects.executionPath": "Directory used in this conversation",
-  "chat.linkedProjects.baseBranch": "Base branch",
-  "chat.linkedProjects.branchLabel": "Base branch for {name}",
-  "chat.linkedProjects.useWorktree": "Develop in a new worktree",
-  "chat.linkedProjects.worktreeHint":
-    "Created on first send and reused thereafter. No automatic commits or merges.",
-  "chat.linkedProjects.directHint":
-    "Use the selected directory and its current branch. Changes stay in this directory.",
-  "chat.linkedProjects.chooseOpen": "Choose an open project",
-  "chat.linkedProjects.pathPlaceholder": "Enter an absolute project path",
-  "chat.linkedProjects.pathLabel": "Project path",
-  "chat.linkedProjects.browse": "Choose project directory",
-  "chat.linkedProjects.add": "Add",
-  "chat.linkedProjects.done": "Done",
-  "chat.linkedProjects.error.notRepository":
-    "Cannot read the Git repository for {name}. Check its directory.",
-  "chat.linkedProjects.error.bindingChanged":
-    "The worktree for {name} was moved, deleted or switched to another branch. Remove and link it again.",
-  "chat.linkedProjects.error.createFailed":
-    "Could not create a worktree for {name}. Prepared projects are retained; retry.",
-  "chat.linkedProjects.error.branchChanged":
-    "The current branch for {name} differs from the selected branch. Link it again or use a new worktree.",
-  "chat.linkedProjects.error.stale": "The conversation or draft changed. This send was stopped.",
-  "chat.linkedProjects.error.requestFailed":
-    "Linked project operation failed. Check the directory, branch and disk, then retry.",
-  "chat.linkedProjects.error.duplicate":
-    "This repository is already the current project or linked. Choose another repository.",
-
   "chat.visualization.title": "Interactive preview",
   "chat.visualization.loading": "Loading preview…",
   "chat.visualization.failed": "Preview unavailable. Check the workspace connection and HTML file.",
@@ -566,6 +527,8 @@ const enUS: Record<string, string> = {
   "repositoryPanel.process": "Handle",
   "repositoryPanel.reprocess": "Process again",
   "repositoryPanel.taskCreated": "Added to To-do",
+  "repositoryPanel.error.TASK_IMAGE_READ":
+    "Could not read issue screenshots. Retry Handle; images requiring sign-in can be authorized in the issue details first.",
   "repositoryPanel.error.TASK_SAVE":
     "Could not create the to-do task. Retry saving your current draft.",
   "repositoryPanel.error.TASK_UNSUPPORTED":
@@ -2290,6 +2253,13 @@ const enUS: Record<string, string> = {
   "workspaceSidebar.searchArchivedTasksPlaceholder": "Search archived tasks...",
   "workspaceSidebar.closeTaskSearch": "Close task search",
   "workspaceSidebar.remove": "Remove",
+  "workspaceSidebar.rename": "Rename project",
+  "workspaceSidebar.renameDescription":
+    "Aliases are display names. Leave empty to restore the folder name.",
+  "workspaceSidebar.renamePlaceholder": "Project alias (leave empty to use folder name)",
+  "workspaceSidebar.renameInvalid":
+    "Aliases can be at most 200 characters and cannot contain path separators or control characters",
+  "workspaceSidebar.renameFailed": "Could not save project alias",
   "workspaceSidebar.removeRunningWorkspace.title": "Remove a running project?",
   "workspaceSidebar.removeRunningWorkspace.description":
     "This project still has a running chat or Agent. Removing it will stop and release the related runtime state, but task history will not be deleted.",
