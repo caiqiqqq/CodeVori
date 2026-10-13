@@ -1,4 +1,5 @@
 import type { AppUsageQueryResult } from "@zcode/contracts";
+import { createAppUsageHourlyAccumulator } from "@zcode/shared";
 import type {
   AppUsageHeatmap,
   AppUsageHeatmapCell,
@@ -206,6 +207,10 @@ export function buildAppUsageSnapshot(
     avgDurationMs: t.avgDurationMs,
   }));
 
+  const hourly = createAppUsageHourlyAccumulator(opts.timeZone, opts.until);
+  for (const record of result.recentModelUsage ?? [])
+    hourly.add(record.startedAt, [{ modelId: record.modelId, totalTokens: record.totalTokens }]);
+
   return {
     range: opts.range,
     generatedAt: opts.generatedAt,
@@ -235,6 +240,7 @@ export function buildAppUsageSnapshot(
     },
     heatmap,
     dailyModelUsage,
+    ...(result.recentModelUsage ? { hourlyModelUsage: hourly.usage } : {}),
     models,
     tools,
   };
