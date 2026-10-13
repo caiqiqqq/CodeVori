@@ -238,7 +238,11 @@ export function createGitService(options?: {
     },
 
     async createAutomaticWorktree(params) {
-      return await repo.createAutomaticWorktree(params.workspacePath, params.worktreeRootPath);
+      return await repo.createAutomaticWorktree(
+        params.workspacePath,
+        params.worktreeRootPath,
+        params.startPoint,
+      );
     },
 
     async listManagedWorktrees(params) {

@@ -1,5 +1,6 @@
 import type { AcpEntry, AcpSession } from "@zcode/shared";
 import type { ConversationRow, ToolCallRow } from "@zcode/shared/zcode-protocol-v4";
+import { parsePromptLinkedRepositories } from "@/lib/linkedRepositoryContext.js";
 import { ACP_DISPLAY_TOOL_NAME } from "@/lib/acpToolPresentation.js";
 
 /** 展示用工具身份与 ZCode CLI 工具名隔离，避免 Read/Task 等误入原生能力卡。 */
@@ -33,10 +34,11 @@ function toolStatus(status: string, turnStatus: AcpSession["status"]): ToolCallR
 
 function displayText(entry: Extract<AcpEntry, { kind: "user" }>): string {
   // 已保存的图片/文件交给共用附件组件；尾部工作区文件提示与旧会话名称仍保留。
+  const text = parsePromptLinkedRepositories(entry.text).visibleContent;
   const remainingNames = entry.attachmentNames?.slice(entry.attachments?.length ?? 0);
-  if (!remainingNames?.length) return entry.text;
+  if (!remainingNames?.length) return text;
   const names = remainingNames.map((name) => `📎 ${name}`).join("\n");
-  return entry.text ? `${entry.text}\n\n${names}` : names;
+  return text ? `${text}\n\n${names}` : names;
 }
 
 /** footer 只展示时间线尚未表达的操作错误，不修改 Host 保存的诊断。 */

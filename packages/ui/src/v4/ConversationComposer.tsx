@@ -160,6 +160,10 @@ import {
   isWorktreeAutoSendTarget,
   useWorktreeDraftIntent,
 } from "@/v4/composer/worktreeDraftIntent.js";
+import { useLinkedRepositories } from "@/hooks/useLinkedRepositories.js";
+import { LinkedRepositoriesControl } from "@/v4/composer/LinkedRepositoriesControl.js";
+import { buildPromptWithLinkedRepositories } from "@/lib/linkedRepositoryContext.js";
+import { LinkedRepositoryError } from "@/lib/linkedRepositoryPreparation.js";
 import { useComposerAttachments } from "@/v4/composer/useComposerAttachments.js";
 import type { ConversationDropTargetController } from "@/v4/composer/conversationDropTarget.js";
 import { CodeCommentAttachmentChip } from "@/v4/composer/CodeCommentAttachmentChip.js";
@@ -826,6 +830,14 @@ function ConversationComposerImpl({
     workspaceIdentity,
     scopeId: draftScopeId,
   });
+  const linkedProjects = useLinkedRepositories({
+    workspacePath,
+    workspaceIdentity,
+    scopeId: draftScopeId,
+    draft: composerDraft,
+    onChange: replaceComposerDraft,
+  });
+  const showLinkedProjects = !workspaceIdentity?.trim() && !remoteSessionId && !disabled;
   const draftPersistTimerRef = useRef<number | null>(null);
   const suppressDraftPersistRef = useRef(false);
 
@@ -1215,14 +1227,16 @@ function ConversationComposerImpl({
   // guide 是 CLI 已授权的 busy 输入路由，是否最终 steer 或回退 queue 由命令层裁决。
   const routingAllowsSend = draftMode || (snapshot !== null && mode !== "reject");
   const attachmentsReady = !attachmentsApi.hasUnreadyAttachments;
-  const canSend = acpAgent
-    ? !disabled && !pending && acpReady && (hasText || hasAttachments) && attachmentsReady
-    : !disabled &&
-      !pending &&
-      hasDraftToSubmit &&
-      routingAllowsSend &&
-      attachmentsReady &&
-      submissionReady;
+  const canSend =
+    !linkedProjects.busy &&
+    (acpAgent
+      ? !disabled && !pending && acpReady && (hasText || hasAttachments) && attachmentsReady
+      : !disabled &&
+        !pending &&
+        hasDraftToSubmit &&
+        routingAllowsSend &&
+        attachmentsReady &&
+        submissionReady);
   // 旧 UI 状态机：streaming + 空草稿 → Stop；有草稿 → 发送键（入队）。
   const showStopControl = canStop && !hasDraftToSubmit;
 
@@ -1238,6 +1252,7 @@ function ConversationComposerImpl({
       requestedDelivery?: "startNow" | "queue" | "guide",
     ) => {
       const trimmed = textRef.current.trim();
+      if (linkedProjects.busy) return;
       if (draftMode && sessionId === null && worktreeDraftIntent?.selected) {
         if (!canSend || pendingRef.current) return;
         const submittedDraft = snapshotDraftOfEditor();
@@ -1281,6 +1296,14 @@ function ConversationComposerImpl({
         pendingRef.current = true;
         setPending(true);
         try {
+          fullDraft.linkedRepositories = await linkedProjects.prepare(
+            () =>
+              submissionRef.current === submission &&
+              contentRevisionRef.current === submittedRevision &&
+              useZCodeSessionStore.getState().getWorkspaceState(workspacePath, workspaceIdentity)
+                .draftFocusVersion === submittedDraftVersion,
+            trimmed,
+          );
           const result = await worktreeDraftIntent.createWorktree();
           if (!result.ok) {
             const issue = result.issues[0];
@@ -1359,6 +1382,7 @@ function ConversationComposerImpl({
             logger.warn("[v4-composer] 工作树已创建但无法打开新草稿", error);
           }
         } catch (error) {
+          if (error instanceof LinkedRepositoryError) return;
           logger.warn("[v4-composer] 创建工作树失败", error);
           if (error instanceof Error && error.message === "stale-worktree-selection") return;
           if (error instanceof Error && error.message === "invalid-worktree-root") {
@@ -1412,13 +1436,29 @@ function ConversationComposerImpl({
         pendingRef.current = true;
         setPending(true);
         try {
+          const preparedProjects = await linkedProjects.prepare(
+            () =>
+              submissionRef.current === submission &&
+              contentRevisionRef.current === submittedRevision &&
+              acpTargetRef.current.agent === target.agent &&
+              acpTargetRef.current.sessionId === target.sessionId,
+            trimmed,
+          );
           const attachments = await acpAttachmentsFromComposer(
             attachmentsApi.attachments,
             Boolean(remoteSessionId || workspaceIdentity?.trim()),
           );
+          if (
+            preparedProjects.length &&
+            (submissionRef.current !== submission ||
+              contentRevisionRef.current !== submittedRevision ||
+              acpTargetRef.current.agent !== target.agent ||
+              acpTargetRef.current.sessionId !== target.sessionId)
+          )
+            throw new LinkedRepositoryError("stale", "");
           const workspaceFiles = acpWorkspaceFilesFromEditor(submittedDraft.editorStateJson);
           const admittedSessionId = await onSendAcpText({
-            text: trimmed,
+            text: buildPromptWithLinkedRepositories(trimmed, preparedProjects),
             attachments,
             workspaceFiles,
           });
@@ -1442,7 +1482,7 @@ function ConversationComposerImpl({
           await attachmentsApi.adoptSentAttachments(submittedAttachmentIds);
           attachmentsApi.clearAttachments(submittedAttachmentIds);
         } catch (error) {
-          if (submissionRef.current === submission)
+          if (submissionRef.current === submission && !(error instanceof LinkedRepositoryError))
             toast(
               error instanceof Error && error.message === ACP_HOST_UPGRADE_REQUIRED
                 ? intl.formatMessage({ id: "acp.hostUpgradeRequired" })
@@ -1602,12 +1642,21 @@ function ConversationComposerImpl({
         if (submissionRef.current === submissionToken) setPromptHistory(currentPromptHistory);
       };
       try {
+        const submittedRevision = contentRevisionRef.current;
+        const preparedProjects = await linkedProjects.prepare(
+          () =>
+            submissionRef.current === submissionToken &&
+            contentRevisionRef.current === submittedRevision,
+          trimmed,
+        );
         // 二次门禁：只消费预传完成的 ref，不在点击发送时回落上传。
         const readyAttachmentRefs = await attachmentsApi.prepareForSend();
         if (submissionRef.current !== submissionToken) {
           sendAction.noop();
           return;
         }
+        if (preparedProjects.length && contentRevisionRef.current !== submittedRevision)
+          throw new LinkedRepositoryError("stale", "");
         if (readyAttachmentRefs === null) {
           if (telemetrySeed.localTtft)
             getLocalTtftObserver()?.exclude(telemetrySeed.localTtft, "rejected");
@@ -1628,12 +1677,15 @@ function ConversationComposerImpl({
         // 里没有任何东西解析它），唯一作用是驱动一个已被产品裁掉的 chip，代价却是把一个
         // share URL 塞进发给模型的正文。模型侧内容由隐藏的 shared_context 消息经
         // inputIntent.sharedContextRefs 注入，与正文无关。
-        const promptText = serializeComposerPromptContexts(trimmed, {
-          codeComments: currentCodeCommentContexts,
-          conversationSelections: currentConversationSelections,
-          webElements: currentWebElementContexts,
-          pptxElements: currentPptxElementReferences,
-        });
+        const promptText = buildPromptWithLinkedRepositories(
+          serializeComposerPromptContexts(trimmed, {
+            codeComments: currentCodeCommentContexts,
+            conversationSelections: currentConversationSelections,
+            webElements: currentWebElementContexts,
+            pptxElements: currentPptxElementReferences,
+          }),
+          preparedProjects,
+        );
         const contextAttachmentCount =
           countComposerPromptContexts({
             codeComments: currentCodeCommentContexts,
@@ -1773,6 +1825,8 @@ function ConversationComposerImpl({
     },
     [
       attachmentsApi,
+      linkedProjects.prepare,
+      linkedProjects.busy,
       worktreeDraftIntent,
       canSend,
       draftMode,
@@ -2650,16 +2704,24 @@ function ConversationComposerImpl({
       <div
         className={cn(
           "chat-composer-input-surface w-full",
-          contextHeader && "rounded-2xl bg-surface shadow-xl/5",
+          (contextHeader || showLinkedProjects) && "rounded-2xl bg-surface shadow-xl/5",
         )}
       >
-        {contextHeader ? (
+        {contextHeader || showLinkedProjects ? (
           // 旧 ChatViewComposer contextHeaderContent 同款包装（workspace 菜单 + Git 分支）。
           <div
             data-v4-composer-context-header="true"
             className="p-1.5 flex min-w-0 flex-wrap items-center gap-0"
           >
             {contextHeader}
+            {showLinkedProjects ? (
+              <LinkedRepositoriesControl
+                key={configPickerScopeKey}
+                workspacePath={workspacePath}
+                controller={linkedProjects}
+                disabled={pending || acpRunning || canStop}
+              />
+            ) : null}
           </div>
         ) : null}
         {conversationSelectionLimitReason ? (
