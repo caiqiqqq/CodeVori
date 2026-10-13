@@ -115,9 +115,7 @@ function buildDailyModelChartData({
       : snapshot.dailyModelUsage;
   for (const day of buckets) {
     const label = granularity === "hourly" ? `${day.date}:00` : formatDay(locale, day.date);
-    const tooltipLabel =
-      granularity === "hourly" ? `${snapshot.hourlyModelUsage?.date} ${label}` : label;
-    const row = rows.get(day.date) ?? createEmptyChartRow(label, tooltipLabel, modelKeys);
+    const row = rows.get(day.date) ?? createEmptyChartRow(label, label, modelKeys);
 
     for (const model of day.models) {
       const key = modelKeyById.get(model.modelId ?? "__unknown__");
@@ -296,7 +294,8 @@ export function AppUsageDailyModelTrendChart({
   const tooltipContent = useMemo(
     () => (
       <DailyModelChartTooltipContent
-        indicator="line"
+        // 单模型 line 将时间嵌入被 formatter 替换的默认行；dot 让时间标题独立渲染。
+        indicator="dot"
         labelFormatter={formatTooltipLabel}
         formatter={formatTooltipItem}
       />
