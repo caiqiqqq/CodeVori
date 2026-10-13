@@ -567,6 +567,15 @@ panel remount / page restart -> local preference -> same navigation/read paths
   an unconsumed paste fails explicitly, with no second dispatch or login retry.
   Continue observing only this editor's newly completed attachment URL; reject
   ambiguous editors, preserve the upload deadline and creation guards.
+- A visible server-rendered editor is not upload readiness. When the description
+  belongs to a GitHub `react-app` or `react-partial`, wait for that root's `loaded`
+  class, which GitHub sets after the React commit effects. Observe this readiness
+  transition within the existing deadline, revalidate identity and resolve the
+  current editor before attaching bytes. Do not use a fixed hydration delay or
+  send a file-bearing paste to probe readiness. Legacy editors outside React
+  roots keep their existing path. A root that never becomes ready reports upload
+  unavailable without dispatch; after dispatch, timeout remains uncertain and
+  no hydration transition may trigger another dispatch.
 - Desktop and mobile remote use the same scoped Host command/receipt; existing
   desktop-continuous and web-remote-replayable transports remain unchanged. On
   project/Host/account switch or dialog disposal, late replies cannot affect a
@@ -580,6 +589,8 @@ reconnect -> identical request ID -> same Host receipt; new draft -> old respons
 GitHub page -> identity pending/signed out -> native login (once) -> same target
             -> confirmed wrong user -> clear only GitHub upload partition -> login (once)
             -> matching user + controls ready -> attach exactly once -> receipt
+GitHub SSR editor -> React commit effects -> root.loaded -> recheck identity/editor
+                 -> one file-bearing event -> webpage upload -> receipt
 ```
 
 Acceptance: missing/empty/delayed identity marker never reports mismatch or
@@ -605,6 +616,11 @@ block that path or receive bytes. Cover missing/late identity, delayed editor
 hydration, existing template URLs, one dispatch, unconsumed paste, ambiguous
 editors, disabled controls, timeout cleanup and no website issue creation.
 Run native Electron coverage and the existing desktop/mobile draft-image E2E.
+Also cover a visible SSR textarea at document load before real React hydration,
+React controlled-value completion, root readiness without editor replacement,
+never-ready/late-ready roots, identity changes while waiting and no file-bearing
+events before readiness. Native Electron coverage must exercise deferred
+readiness after `did-finish-load`, rather than only synchronous page listeners.
 
 - The description editor has a visible input border and surface at rest, with
   a focus treatment inside the same boundary. Attribute multi-select triggers

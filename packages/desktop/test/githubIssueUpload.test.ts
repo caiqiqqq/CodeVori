@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { chromium } from "playwright-core";
+import { build } from "esbuild";
 import { githubIssueUploadScript } from "../src/main/githubIssueUploadScript.js";
 import { createForgeWebMediaMainBridge } from "../src/host/forgeWebMediaMainBridge.js";
 import {
@@ -23,6 +24,130 @@ const context: ForgeWebUploadContext = {
   },
 };
 const url = "https://github.com/user-attachments/assets/4c88bcca-98b9-4aaa-9c0c-2f869f0c1b01";
+
+test("visible GitHub SSR editor waits for real React hydration before the single paste", async () => {
+  const fixture = await build({
+    stdin: {
+      resolveDir: import.meta.dirname,
+      contents: `
+        import {createElement as h, useEffect, useRef, useState} from 'react';
+        import {hydrateRoot} from 'react-dom/client';
+        const root = document.querySelector('react-app');
+        function Editor() {
+          const [value, setValue] = useState('');
+          const mounted = useRef(false);
+          useEffect(() => {
+            mounted.current = true;
+            const frame = requestAnimationFrame(() => requestIdleCallback(() => root.classList.add('loaded')));
+            return () => { mounted.current = false; cancelAnimationFrame(frame); };
+          }, []);
+          return h('form', null, h('fieldset', null,
+            h('legend', null, 'Add a description'),
+            h('textarea', { 'aria-label': 'Markdown value', value, onChange: event => setValue(event.target.value),
+              onPaste: event => {
+                if (!mounted.current || !event.clipboardData.files.length) return;
+                event.preventDefault(); window.__pastes++;
+                const file = event.clipboardData.files[0];
+                window.__received = [file.name, file.type, file.size];
+                setValue('![image](' + window.__url + ')');
+              }
+            }), h('button', {type: 'submit'}, 'Create')));
+        }
+        window.__hydrate = () => hydrateRoot(root, h(Editor));
+      `,
+    },
+    bundle: true,
+    write: false,
+    platform: "browser",
+    define: { "process.env.NODE_ENV": '"production"' },
+  });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route("**/*", (route) =>
+      route.fulfill({
+        contentType: "text/html; charset=utf-8",
+        body: '<!doctype html><meta name="user-login" content="tester"><react-app app-name="issue-create" data-ssr="true"><form><fieldset><legend>Add a description</legend><textarea aria-label="Markdown value"></textarea><button type="submit">Create</button></fieldset></form></react-app>',
+      }),
+    );
+    await page.goto(`${context.repositoryUrl}/issues/new`);
+    await page.evaluate((url) => {
+      (window as any).__url = url;
+      (window as any).__pastes = 0;
+      (window as any).__dispatches = 0;
+      (window as any).__ssrEditor = document.querySelector("textarea");
+      document.addEventListener("paste", () => (window as any).__dispatches++, true);
+    }, url);
+    await page.addScriptTag({ content: fixture.outputFiles[0]!.text });
+    await page.evaluate(
+      `window.__upload = ${githubIssueUploadScript(context, 2000)}; window.__upload.catch(() => {}); void 0;`,
+    );
+    assert.equal(
+      await page.evaluate(() => (window as any).__dispatches),
+      0,
+      "visible SSR markup must receive no image bytes",
+    );
+    await page.evaluate(() => (window as any).__hydrate());
+    assert.deepEqual(await page.evaluate(() => (window as any).__upload), { url });
+    assert.deepEqual(
+      await page.evaluate(() => [
+        (window as any).__pastes,
+        (window as any).__dispatches,
+        (window as any).__received,
+        document.querySelector("textarea") === (window as any).__ssrEditor,
+      ]),
+      [1, 1, ["screenshot.png", "image/png", 8], true],
+    );
+    await page.evaluate(() => document.querySelector("react-app")!.classList.add("another-render"));
+    assert.equal(await page.evaluate(() => (window as any).__dispatches), 1);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("React root readiness rechecks identity and expires without a late paste", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const state of ["never-ready", "identity-changed", "loaded-without-handler"] as const) {
+      const page = await browser.newPage();
+      await page.route("**/*", (route) =>
+        route.fulfill({
+          contentType: "text/html",
+          body: '<!doctype html><meta name="user-login" content="tester"><react-app><textarea aria-label="Markdown value"></textarea></react-app>',
+        }),
+      );
+      await page.goto(`${context.repositoryUrl}/issues/new`);
+      await page.evaluate(() => {
+        (window as any).__dispatches = 0;
+        document.addEventListener("paste", () => (window as any).__dispatches++, true);
+      });
+      await page.evaluate(
+        `window.__upload = ${githubIssueUploadScript(context, 200)}; window.__upload.catch(() => {}); void 0;`,
+      );
+      assert.equal(await page.evaluate(() => (window as any).__dispatches), 0);
+      if (state !== "never-ready")
+        await page.evaluate((state) => {
+          if (state === "identity-changed")
+            document
+              .querySelector('meta[name="user-login"]')!
+              .setAttribute("content", "other-user");
+          document.querySelector("react-app")!.classList.add("loaded");
+        }, state);
+      await assert.rejects(
+        page.evaluate(() => (window as any).__upload),
+        state === "identity-changed" ? /FORGE_MEDIA_IDENTITY_CHANGED/ : /FORGE_UPLOAD_UNAVAILABLE/,
+      );
+      await page.evaluate(() => document.querySelector("react-app")!.classList.add("loaded"));
+      assert.equal(
+        await page.evaluate(() => (window as any).__dispatches),
+        state === "loaded-without-handler" ? 1 : 0,
+      );
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
 
 test("current GitHub editor uploads through paste without a mounted file picker", async () => {
   const browser = await chromium.launch({ headless: true });
