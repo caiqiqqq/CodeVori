@@ -1,37 +1,6 @@
 /** 中文翻译 */
 import { PRODUCT_NAME } from "@zcode/shared";
 const zhCN: Record<string, string> = {
-  "chat.linkedProjects.error.invalidPath": "请输入项目的绝对路径，或使用目录选择按钮。",
-  "chat.linkedProjects.trigger": "关联项目",
-  "chat.linkedProjects.title": "关联项目",
-  "chat.linkedProjects.description": "在同一个对话中开发多个项目。关联项目默认使用新的工作树。",
-  "chat.linkedProjects.preparing": "正在准备项目…",
-  "chat.linkedProjects.primary": "当前项目",
-  "chat.linkedProjects.primaryHint": "当前项目沿用此目录；要隔离开发，可使用已有的新工作树入口。",
-  "chat.linkedProjects.remove": "移除 {name}",
-  "chat.linkedProjects.executionPath": "本对话使用的目录",
-  "chat.linkedProjects.baseBranch": "基准分支",
-  "chat.linkedProjects.branchLabel": "{name} 的基准分支",
-  "chat.linkedProjects.useWorktree": "在新工作树中开发",
-  "chat.linkedProjects.worktreeHint": "首次发送时创建工作树，后续继续使用。不会自动提交或合并。",
-  "chat.linkedProjects.directHint": "直接使用所选目录和当前分支，其中的修改会保留在此目录。",
-  "chat.linkedProjects.chooseOpen": "选择已打开的项目",
-  "chat.linkedProjects.pathPlaceholder": "输入项目的绝对路径",
-  "chat.linkedProjects.pathLabel": "项目路径",
-  "chat.linkedProjects.browse": "选择项目目录",
-  "chat.linkedProjects.add": "添加",
-  "chat.linkedProjects.done": "完成",
-  "chat.linkedProjects.error.notRepository": "无法读取 {name} 的 Git 仓库，请检查目录。",
-  "chat.linkedProjects.error.bindingChanged":
-    "{name} 的工作树已移动、删除或切换分支。请移除后重新关联。",
-  "chat.linkedProjects.error.createFailed":
-    "无法创建 {name} 的工作树；已准备的项目会保留，请重试。",
-  "chat.linkedProjects.error.branchChanged":
-    "{name} 当前分支与所选分支不同，请重新关联或使用新工作树。",
-  "chat.linkedProjects.error.stale": "对话或草稿已变化，本次发送已停止。",
-  "chat.linkedProjects.error.requestFailed": "关联项目操作失败，请检查目录、分支和磁盘后重试。",
-  "chat.linkedProjects.error.duplicate": "此仓库已是当前项目或已关联，请选择其他仓库。",
-
   "chat.visualization.title": "交互预览",
   "chat.visualization.loading": "正在加载预览…",
   "chat.visualization.failed": "无法加载预览，请检查工作区连接及 HTML 文件。",
