@@ -287,7 +287,8 @@ test("interrupted comment is reconciled before close; absent marker needs explic
     const accepted = await a.service.complete({ ...scope, id: task.id });
     assert.equal(accepted.status, "done");
     await eventually(
-      async () => (await a.service.list(scope)).tasks[0]?.forgeWriteback?.commentState === "uncertain",
+      async () =>
+        (await a.service.list(scope)).tasks[0]?.forgeWriteback?.commentState === "uncertain",
     );
     assert.equal(f.comments.length, 0);
     await a.service.complete({ ...scope, id: task.id, resendComment: true });
