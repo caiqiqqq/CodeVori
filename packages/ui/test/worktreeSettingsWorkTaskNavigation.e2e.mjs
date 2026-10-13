@@ -42,6 +42,10 @@ try {
       acpService:{async list(){return [{id:'session-acp',agent:'codex',title:'Bound ACP',workspacePath:tree,status:'idle',entries:[{id:'user',kind:'user',text:'Instructions',createdAt:1}]}]}},
       workTaskService:{async list(r:any){state.calls.push({op:'list',...r});if(state.fail){state.fail=false;throw new Error('Synthetic read failure')}const result={tasks:r.workspacePath===project?structuredClone(tasks):[],concurrency:1};if(state.defer){state.defer=false;return new Promise(resolve=>state.pending.push(()=>resolve(result)))}return result},onDynamicChanged:()=>()=>({dispose(){}})},
     };
+    // 当前完成弹窗会只读查询结果来源；补齐合成 Host 契约，避免导航回归被缺失接口打断。
+    services.workTaskService.getResultSource=async(r:any)=>r.id==='work-acp'
+      ? {kind:'acp',agent:'codex',modelId:'test'}
+      : {kind:'api',selection:{providerId:'api',modelId:'test'}};
     const forbidden=(op:string)=>()=>{state.calls.push({op});throw new Error('Navigation issued a business write')};
     for(const op of ['create','update','start','cancel','complete','archive','merge'])services.workTaskService[op]=forbidden(op);
     for(const op of ['create','prompt','connect','refresh','setConfigOption'])services.acpService[op]=forbidden('acp-'+op);
@@ -49,6 +53,7 @@ try {
       const tabs=useTabStoreApi();state.tabs=tabs;state.navigation=workTaskNavigationStore;
       const tabState=useTabStore(s=>s);const visible=tabState.activeTabId!=='settings';
       const [view,setView]=useState<any>('work-tasks');const [rootPath,setRoot]=useState('/synthetic/trees');state.setRoot=setRoot;
+      useEffect(()=>{state.appliedRoot=rootPath},[rootPath]);
       const exit=useCallback(()=>setView('chat'),[]);
       const {preserveNextSettingsExit}=useWorkspaceMainViewSettingsExit({isWorkspaceVisible:visible,workspaceMainView:view,onExitSettings:exit});
       const openTasks=useCallback(()=>{preserveNextSettingsExit();state.calls.push({op:'open-work-tasks'});setView('work-tasks')},[preserveNextSettingsExit]);
@@ -138,6 +143,10 @@ try {
         leave === "root" ? window.__tasks.setRoot("/synthetic/new-root") : window.__tasks.show(),
       leave,
     );
+    // 先等目录切换/卸载真正提交，再释放旧读取；否则测试的是 React 尚未生效的旧页面。
+    if (leave === "root")
+      await page.waitForFunction(() => window.__tasks.appliedRoot === "/synthetic/new-root");
+    else await history.waitFor({ state: "detached" });
     await page.evaluate(() => window.__tasks.pending.shift()());
     assert.equal(
       await page.evaluate(

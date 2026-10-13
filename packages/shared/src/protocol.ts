@@ -246,6 +246,8 @@ export interface AppSettings {
   /** 当前 App/Host 不再显示提交前体验套餐推荐；不改变任何入口的模型选择。 */
   startPlanRecommendationDismissed?: boolean;
   recentProjects: string[]; // 最近项目列表，最多保留 10 个
+  /** workspace 显示别名；键为 workspaceIdentity?.trim() || workspacePath。 */
+  workspaceAliases?: Record<string, string>;
   locale: Locale; // 界面语言
   /**
    * 用户覆盖的快捷键绑定（命令 ID → 绑定串数组，格式见 shortcutCommands.ts）。

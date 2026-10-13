@@ -24,6 +24,140 @@ const context: ForgeWebUploadContext = {
 };
 const url = "https://github.com/user-attachments/assets/4c88bcca-98b9-4aaa-9c0c-2f869f0c1b01";
 
+test("current GitHub editor uploads through paste without a mounted file picker", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const inputs of [0, 1, 2]) {
+      const page = await browser.newPage();
+      await page.route("**/*", (route) =>
+        route.fulfill({
+          contentType: "text/html",
+          body: `<!doctype html><meta name="user-login" content="tester"><form><label id="description">Add a description</label><textarea aria-labelledby="description"></textarea>${'<input type="file">'.repeat(inputs)}<button type="submit">Create</button><button type="button" id="create-react">Create via React</button></form>`,
+        }),
+      );
+      await page.goto(`${context.repositoryUrl}/issues/new`);
+      await page.evaluate((url) => {
+        const textarea = document.querySelector("textarea")!;
+        textarea.value = `![old](${url.replace("4c88", "5c88")})`;
+        (window as any).__pastes = 0;
+        (window as any).__inputChanges = 0;
+        for (const input of document.querySelectorAll("input"))
+          input.addEventListener("change", () => (window as any).__inputChanges++);
+        textarea.addEventListener("paste", (event) => {
+          event.preventDefault();
+          (window as any).__pastes++;
+          const file = event.clipboardData!.files[0]!;
+          (window as any).__received = { name: file.name, type: file.type, size: file.size };
+          const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+          (window as any).__clickBlocked = !document
+            .querySelector("#create-react")!
+            .dispatchEvent(click);
+          const submit = new Event("submit", { bubbles: true, cancelable: true });
+          (window as any).__submitBlocked = !document.querySelector("form")!.dispatchEvent(submit);
+          setTimeout(() => {
+            textarea.value += `\n![new](${url})`;
+          }, 10);
+        });
+      }, url);
+      assert.deepEqual(await page.evaluate(githubIssueUploadScript(context, 500)), { url });
+      assert.deepEqual(
+        await page.evaluate(() => [
+          (window as any).__pastes,
+          (window as any).__inputChanges,
+          (window as any).__received,
+          (window as any).__clickBlocked,
+          (window as any).__submitBlocked,
+        ]),
+        [1, 0, { name: "screenshot.png", type: "image/png", size: 8 }, true, true],
+      );
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test("paste admission waits for identity/editor readiness and never retries rejected or expired uploads", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const state of [
+      "missing",
+      "wrong",
+      "ambiguous",
+      "disabled",
+      "unhandled",
+      "delayed",
+      "timeout",
+    ] as const) {
+      const page = await browser.newPage();
+      const username = state === "wrong" ? "other-user" : "tester";
+      await page.route("**/*", (route) =>
+        route.fulfill({
+          contentType: "text/html",
+          body: `<!doctype html>${state === "missing" || state === "delayed" ? "" : `<meta name="user-login" content="${username}">`}<label id="description">${state === "delayed" ? "Loading" : "Add a description"}</label><textarea aria-labelledby="description" ${state === "disabled" || state === "delayed" ? "disabled" : ""}></textarea>${state === "ambiguous" ? '<textarea aria-labelledby="description"></textarea>' : ""}`,
+        }),
+      );
+      await page.goto(`${context.repositoryUrl}/issues/new`);
+      await page.evaluate(
+        ({ state, url }) => {
+          (window as any).__pastes = 0;
+          if (state !== "unhandled")
+            document.querySelector("textarea")!.addEventListener("paste", (event) => {
+              event.preventDefault();
+              (window as any).__pastes++;
+              if (state !== "timeout") document.querySelector("textarea")!.value = `![new](${url})`;
+            });
+        },
+        { state, url },
+      );
+      await page.evaluate(
+        `window.__upload = ${githubIssueUploadScript(context, 200)}; window.__upload.catch(() => {}); void 0;`,
+      );
+      if (state === "delayed")
+        await page.evaluate(() => {
+          const meta = document.createElement("meta");
+          meta.name = "user-login";
+          meta.content = "tester";
+          document.head.append(meta);
+          document.querySelector("label")!.firstChild!.textContent = "Add a description";
+          document.querySelector("textarea")!.disabled = false;
+        });
+      const result = page.evaluate(() => (window as any).__upload);
+      if (state === "delayed") assert.deepEqual(await result, { url });
+      else
+        await assert.rejects(
+          result,
+          state === "missing"
+            ? /FORGE_MEDIA_AUTHENTICATION/
+            : state === "wrong"
+              ? /FORGE_MEDIA_IDENTITY_CHANGED/
+              : state === "timeout"
+                ? /FORGE_UPLOAD_UNCERTAIN/
+                : /FORGE_UPLOAD_UNAVAILABLE/,
+        );
+      const expectedPastes = state === "delayed" || state === "timeout" ? 1 : 0;
+      assert.equal(await page.evaluate(() => (window as any).__pastes), expectedPastes);
+      await page.evaluate(() => {
+        const meta =
+          document.querySelector('meta[name="user-login"]') ?? document.createElement("meta");
+        meta.setAttribute("name", "user-login");
+        meta.setAttribute("content", "tester");
+        document.head.append(meta);
+        for (const editor of document.querySelectorAll("textarea")) editor.disabled = false;
+        document.querySelector("textarea")!.value = "restored";
+      });
+      assert.equal(await page.evaluate(() => (window as any).__pastes), expectedPastes);
+      assert.equal(
+        await page.evaluate(() => Object.hasOwn(document.querySelector("textarea")!, "value")),
+        false,
+      );
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
 test("GitHub identity readiness distinguishes missing, signed out and wrong users before attaching bytes", async () => {
   const browser = await chromium.launch({ headless: true });
   try {
@@ -36,7 +170,7 @@ test("GitHub identity readiness distinguishes missing, signed out and wrong user
       await page.route("**/*", (route) =>
         route.fulfill({
           contentType: "text/html",
-          body: `<!doctype html>${marker}<textarea aria-label="Markdown value"></textarea>${state === "lost" ? "" : '<input type="file">'}`,
+          body: `<!doctype html>${marker}<textarea aria-label="Markdown value" ${state === "lost" ? "disabled" : ""}></textarea>${state === "lost" ? "" : '<input type="file">'}`,
         }),
       );
       await page.goto(`${context.repositoryUrl}/issues/new`);

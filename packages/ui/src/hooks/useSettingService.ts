@@ -6,6 +6,10 @@ import { APP_RUNTIME_PREFERENCES_CHANGED_BROADCAST_CHANNEL, type AppSettings } f
 import type { ISettingService, IServiceAccessor } from "@zcode/services";
 import { useServices } from "./useServices.js";
 import { usePlatform } from "./usePlatform.js";
+import { logger } from "@/logger.js";
+
+// 广播只通知重读所属设置服务，不携带别名事实，避免跨 Host 的迟到快照覆盖当前环境。
+export const WORKSPACE_ALIASES_CHANGED_CHANNEL = "settings:workspaceAliasesChanged";
 
 type SettingsSnapshot = {
   settings: AppSettings | null;
@@ -144,6 +148,12 @@ export function useSettings(servicesOverride?: IServiceAccessor) {
       await settingService.update(patch);
       platform.syncAppSettings?.(patch);
       await refresh();
+      if (patch.workspaceAliases !== undefined) {
+        // 持久化已经完成；通知失败不能伪装成保存失败，当前窗口仍保留已确认投影。
+        await broadcastService
+          .send({ channel: WORKSPACE_ALIASES_CHANGED_CHANNEL, payload: null })
+          .catch((error: unknown) => logger.warn("[settings] 项目别名刷新通知失败", { error }));
+      }
       if (
         typeof patch.askUserQuestionAutoResolutionEnabled === "boolean" ||
         typeof patch.modelIoFullRetentionEnabled === "boolean"

@@ -180,8 +180,6 @@ const enUS: Record<string, string> = {
   "workTasks.confirmComplete": "Accept this task's result?",
   "workTasks.confirmCompleteBody":
     "This marks the task as done and keeps its branch, worktree and conversation. It does not commit or merge code.",
-  "workTasks.feedback": "Feedback",
-  "workTasks.followUp": "Continue editing",
   "workTasks.openConversation": "Open conversation",
   "workTasks.handleInput": "Handle conversation request",
   "workTasks.archive": "Archive",
@@ -317,6 +315,7 @@ const enUS: Record<string, string> = {
   "workTasks.event.edited": "Task edited",
   "workTasks.event.queued": "Task queued",
   "workTasks.event.claimed": "Execution started",
+  "workTasks.event.conversation-continued": "Conversation continued",
   "workTasks.event.settled": "Execution ended",
   "workTasks.event.stopped": "Execution stopped",
   "workTasks.event.canceled": "Execution canceled",
@@ -528,6 +527,8 @@ const enUS: Record<string, string> = {
   "repositoryPanel.process": "Handle",
   "repositoryPanel.reprocess": "Process again",
   "repositoryPanel.taskCreated": "Added to To-do",
+  "repositoryPanel.error.TASK_IMAGE_READ":
+    "Could not read issue screenshots. Retry Handle; images requiring sign-in can be authorized in the issue details first.",
   "repositoryPanel.error.TASK_SAVE":
     "Could not create the to-do task. Retry saving your current draft.",
   "repositoryPanel.error.TASK_UNSUPPORTED":
@@ -2252,6 +2253,13 @@ const enUS: Record<string, string> = {
   "workspaceSidebar.searchArchivedTasksPlaceholder": "Search archived tasks...",
   "workspaceSidebar.closeTaskSearch": "Close task search",
   "workspaceSidebar.remove": "Remove",
+  "workspaceSidebar.rename": "Rename project",
+  "workspaceSidebar.renameDescription":
+    "Aliases are display names. Leave empty to restore the folder name.",
+  "workspaceSidebar.renamePlaceholder": "Project alias (leave empty to use folder name)",
+  "workspaceSidebar.renameInvalid":
+    "Aliases can be at most 200 characters and cannot contain path separators or control characters",
+  "workspaceSidebar.renameFailed": "Could not save project alias",
   "workspaceSidebar.removeRunningWorkspace.title": "Remove a running project?",
   "workspaceSidebar.removeRunningWorkspace.description":
     "This project still has a running chat or Agent. Removing it will stop and release the related runtime state, but task history will not be deleted.",

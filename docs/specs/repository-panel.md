@@ -558,6 +558,15 @@ panel remount / page restart -> local preference -> same navigation/read paths
   capability unavailable. Gitea pre-creation image upload is explicitly unsupported
   until a compatible server API is implemented. UI shows the reason and an
   existing repository webpage link; do not silently create an issue to attach files.
+- GitHub's current Markdown editor creates its file picker dynamically rather
+  than keeping a file input in the page. After identity verification, resolve
+  exactly one enabled description editor by its Markdown accessible name or
+  `Add a description` label. Do not select arbitrary textareas/file inputs.
+  For this editor, dispatch the image once through the webpage's paste handler
+  when there is no unique legacy file input. A consumed paste is admission;
+  an unconsumed paste fails explicitly, with no second dispatch or login retry.
+  Continue observing only this editor's newly completed attachment URL; reject
+  ambiguous editors, preserve the upload deadline and creation guards.
 - Desktop and mobile remote use the same scoped Host command/receipt; existing
   desktop-continuous and web-remote-replayable transports remain unchanged. On
   project/Host/account switch or dialog disposal, late replies cannot affect a
@@ -589,6 +598,13 @@ paste/drop, retained concurrent text edits, failure/retry/removal, creation gate
 late replies after switching, settings retention, mobile and both themes.
 Synthetic tests are not proof of a real GitHub/GitLab upload; report live-provider
 validation separately.
+
+Issue #105 acceptance: a labelled description editor without a mounted file
+input uploads via paste after matching identity; unrelated file inputs do not
+block that path or receive bytes. Cover missing/late identity, delayed editor
+hydration, existing template URLs, one dispatch, unconsumed paste, ambiguous
+editors, disabled controls, timeout cleanup and no website issue creation.
+Run native Electron coverage and the existing desktop/mobile draft-image E2E.
 
 - The description editor has a visible input border and surface at rest, with
   a focus treatment inside the same boundary. Attribute multi-select triggers
@@ -716,6 +732,45 @@ covered/previous generation reply -> ignored (no credential or queue replay)
   forge is authoritative, with no extra durable task queue or credential store.
 
 ## Validation
+
+### Issue screenshot handoff (issue #112)
+
+- Preparing a local issue/request task reads the full body through the selected
+  Host, extracts rendered Markdown (including references) and HTML image sources,
+  resolves them with the existing Forge URL rules and deduplicates supported
+  GitHub/GitLab/Gitea attachments. Code examples and ordinary links are not images.
+  Attach the first eight supported images in body order. The quoted prompt retains
+  its existing 20,000-character bound and canonical item link for remaining content,
+  including unsupported external images and excess images.
+- The existing GitService `readForgeImage` owns authenticated, bounded raster reads.
+  UI does not fetch arbitrary URLs, credentials or local paths. Check the current
+  owner before/after each sequential read; stale project/remote/account/Host replies
+  cannot open an editor or continue reading another image.
+- Downloaded Files belong only to the prepared draft. The existing task composer
+  owns preview/removal and object URL cleanup. Nothing uploads or creates a task
+  before explicit Save. Save uses the existing task attachment transaction and
+  WorkTaskService persistence; API/ACP execution uses existing prompt assets.
+  Cancel drops draft files, and save failures preserve selected images and edits.
+- A failed supported-image read opens no partial draft or task, shows a localized
+  screenshot-read error, and permits explicit retry via Handle. Empty/no-image
+  bodies keep the current flow. Existing remote-task attachment restrictions stay
+  in force: remote scope never falls back to a local Host or filesystem.
+
+```text
+Handle -> selected Host full item -> rendered image sources -> same Host raster reads
+  -> owner check -> draft Files -> task composer preview/remove
+  -> explicit Save -> existing attachment transaction -> Host task persistence
+  -> explicit Start -> existing API/ACP prompt assets + conversation projection
+scope change/cancel -> discard old draft/reply; no task/Agent/Forge write
+desktop continuous / mobile replayable -> existing task owner and projection unchanged
+```
+
+Acceptance: parser/browser checks cover Markdown/reference/HTML images, duplicate
+sources, relative GitLab paths, code blocks, unsafe/external URLs and the eight-image
+limit. Synthetic UI E2E covers thumbnail pixels, preview/removal, API and ACP saved
+attachments/bytes, cancellation with zero upload, failure/retry, stale image reads
+across Host switches, no local fallback for remote scopes, and narrow/light/dark
+layouts. Existing task execution and pending-image tests validate downstream assets.
 
 - Unit: project/remote restoration after store recreation, trimmed identity/path
   fallback, same-path isolation, reconnect stability, compare-and-clear for

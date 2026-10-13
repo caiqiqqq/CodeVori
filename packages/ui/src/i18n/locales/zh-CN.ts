@@ -161,8 +161,6 @@ const zhCN: Record<string, string> = {
   "workTasks.confirmComplete": "确认接受任务结果？",
   "workTasks.confirmCompleteBody":
     "确认后任务将标记为完成，分支、工作树和会话会保留，不会自动提交或合并代码。",
-  "workTasks.feedback": "修改意见",
-  "workTasks.followUp": "继续修改",
   "workTasks.openConversation": "打开会话",
   "workTasks.handleInput": "处理会话中的请求",
   "workTasks.archive": "归档",
@@ -281,6 +279,8 @@ const zhCN: Record<string, string> = {
   "workTasks.event.edited": "修改任务",
   "workTasks.event.queued": "任务入队",
   "workTasks.event.claimed": "开始执行",
+  // Host 认领原任务会话的新轮时产生该事件，补齐文案避免详情显示原始翻译 key。
+  "workTasks.event.conversation-continued": "继续对话",
   "workTasks.event.settled": "执行结束",
   "workTasks.event.stopped": "执行已停止",
   "workTasks.event.canceled": "取消执行",
@@ -471,6 +471,8 @@ const zhCN: Record<string, string> = {
   "repositoryPanel.reprocess": "重新处理",
   "repositoryPanel.taskCreated": "已加入待办",
   "repositoryPanel.error.TASK_SAVE": "待办任务创建失败，请保留当前输入并重试保存。",
+  "repositoryPanel.error.TASK_IMAGE_READ":
+    "议题截图读取失败，请重试处理；需要登录的图片可先在议题详情中登录。",
   "repositoryPanel.error.TASK_UNSUPPORTED": "当前项目的 Host 不支持待办任务，请先更新 Host。",
   "repositoryPanel.error.NO_EXECUTION": "所选模型或智能体已不可用，请重新选择后保存。",
   "repositoryPanel.closeIssue": "关闭议题",
@@ -2059,6 +2061,11 @@ const zhCN: Record<string, string> = {
   "workspaceSidebar.searchArchivedTasksPlaceholder": "搜索归档任务...",
   "workspaceSidebar.closeTaskSearch": "关闭任务搜索",
   "workspaceSidebar.remove": "移除",
+  "workspaceSidebar.rename": "重命名项目",
+  "workspaceSidebar.renameDescription": "别名仅用于显示。清空后恢复目录名称。",
+  "workspaceSidebar.renamePlaceholder": "项目别名（留空恢复目录名称）",
+  "workspaceSidebar.renameInvalid": "别名最多 200 个字符，不能包含路径分隔符或控制字符",
+  "workspaceSidebar.renameFailed": "保存项目别名失败",
   "workspaceSidebar.removeRunningWorkspace.title": "移除运行中的项目？",
   "workspaceSidebar.removeRunningWorkspace.description":
     "该项目还有运行中的对话或 Agent。移除项目会停止并释放相关运行状态，历史任务不会被删除。",
