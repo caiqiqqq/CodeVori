@@ -99,3 +99,47 @@ Main did-finish-load → 脚本观察 SSR DOM（不派发文件）
 本轮本地验证：7/7 浏览器测试、原生 Electron 合成测试、桌面/手机双主题
 图片 E2E 均通过；`pnpm typecheck` 通过，上传脚本独立 strict 类型检查通过；
 `pnpm lint` 为 0 errors / 74 warnings；架构检查 0 violations，改动格式检查通过。
+
+## 后续 macOS 原生崩溃：自动补全弹窗
+
+用户提供的 macOS ARM64 崩溃报告为 Main 线程 `EXC_BAD_ACCESS / SIGSEGV`，
+访问地址 `0xe0`。已安装构建的 `buildCommitId` 为 `f14fdab5`，包含上一轮
+React 水合修复；运行时仍是 Electron 41.0.3。
+
+使用 Electron 41.0.3 官方 darwin-arm64 symbols，模块 UUID 与报告完全匹配：
+`4C4C4456-5555-3144-A1D7-2F9FC95F5CF0`。报告中的近邻 V8/Node 导出符号
+不能作为真实函数名；按模块相对地址解析得到：
+
+| 模块相对地址 | 真实调用点                                                         |
+| ------------ | ------------------------------------------------------------------ |
+| `0x4ddc`     | `base::internal::WeakReference::IsValid()`                         |
+| `0x2beb3e0`  | `electron::AutofillPopupView::Show()`，`autofill_popup_view.cc:71` |
+| `0x2b20d34`  | `electron::AutofillPopup::CreateView()`，`autofill_popup.cc:200`   |
+| `0x2aca760`  | `electron::AutofillDriver::ShowAutofillPopup()`                    |
+
+41.0.3 的 `Show()` 在检查父 widget 是否关闭前就调用
+`parent_widget_->IsVisible()`。上游 [PR #51321](https://github.com/electron/electron/pull/51321)
+补上关闭 widget、缺失 native view、失效 popup view 的生命周期检查，
+与报告的原生调用路径对应。该证据确认崩溃位于自动补全弹窗；现有应用日志
+不足以确认当时哪个窗口关闭操作触发了它，也不支持把它归因于图片解码。
+
+修复采用同一大版本的 Electron 41.10.7，包含上述原生修复及空建议列表
+修复 #52320，同步锁文件。检查发现 electron-builder 原先另外写死 41.0.3，
+新增回归先验证其与新版依赖不一致，再改为读取已安装的 Electron 版本，
+避免开发验证通过而发行包仍使用旧运行时。应用上传协议、账号隔离、Host receipt、一次派发
+和无自动重试规则保持既有实现，不通过任意延迟或改写用户输入避开弹窗。
+
+新增隔离 profile 的真实 Electron 回归，使用本地 HTML 和上游同样的
+Tab/字符/Down/Enter 操作验证建议选择，再执行 24 次输入期间的子窗口销毁
+和父窗口关闭。41.10.7 上通过；这不是旧运行时崩溃的确定性重现，也不是
+真实 GitHub 附件上传成功的证明。升级源码不会改变已安装应用中的运行时，
+需要新打包版本才能让用户端获得修复。
+
+本轮验证：41.10.7 上原生自动补全选择/24 次关闭、GitHub 合成上传/登录恢复/
+水合等待/取消、GitLab 原生媒体/登录/取消测试均通过；7/7 浏览器上传测试通过。
+`pnpm typecheck` 通过；`pnpm lint` 为 0 errors / 74 warnings；
+`pnpm architecture:check --changed` 为 0 violations；改动文件格式检查通过。
+发行版本一致性、品牌/开发图标测试通过，41.10.7 原生 PTY 命令执行 smoke
+通过。额外运行现有 computer-use 打包测试时，原生签名配置两项通过，
+staged plugin 检查因本地缺少 bundled-agents 中的 `dist/mcp/server.js`
+构建产物失败；不能据此宣称完整发行包已验证，本轮未制作或安装新发行包。
