@@ -10,6 +10,7 @@ import {
   type WorkTaskScope,
 } from "@zcode/shared";
 import { buildForgeAgentPrompt } from "@/lib/forgePanel.js";
+import { prepareForgeTaskImages } from "@/lib/forgeTaskImages.js";
 import { isWorkTaskExecutionAvailable } from "@/store/workTaskExecutionPreferenceStore.js";
 import { useWorkspaceServicesResolution } from "./useWorkspaceServices.js";
 import { useWorkTasks } from "./useWorkTasks.js";
@@ -73,9 +74,13 @@ export function useRepositoryTask(scope: WorkTaskScope, target: ForgeTargetReque
   const [prepared, setPrepared] = useState<{
     owner: object;
     key: string;
-    initialDraft: Pick<WorkTaskCreate, "title" | "prompt">;
+    initialDraft: Pick<WorkTaskCreate, "title" | "prompt"> & { attachmentFiles: File[] };
     source: WorkTaskSource;
   } | null>(null);
+  useLayoutEffect(() => {
+    // 截图 File 只属于原目标；切换 Host/项目时释放旧草稿，不能仅隐藏后长期保留。
+    setPrepared((previous) => (previous?.owner === owner ? previous : null));
+  }, [owner]);
   const draft = prepared?.owner === owner ? prepared : null;
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -90,6 +95,13 @@ export function useRepositoryTask(scope: WorkTaskScope, target: ForgeTargetReque
         number: item.number,
       });
       if (!detail.url) throw new Error("FORGE_INVALID_ITEM");
+      const attachmentFiles = await prepareForgeTaskImages(
+        repository,
+        detail,
+        target,
+        gitService,
+        () => ownerRef.current === owner,
+      );
       return {
         owner,
         key: itemKey(item),
@@ -105,6 +117,7 @@ export function useRepositoryTask(scope: WorkTaskScope, target: ForgeTargetReque
         initialDraft: {
           title: detail.title.trim().slice(0, 200),
           prompt: buildForgeAgentPrompt(repository, detail),
+          attachmentFiles,
         },
       };
     });

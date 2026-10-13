@@ -45,7 +45,7 @@ interface Props {
   projectOptions?: readonly WorkspaceTabState[];
   onProjectChange?(key: string): void;
   task: WorkTask | null;
-  initialDraft?: Pick<WorkTaskCreate, "title" | "prompt">;
+  initialDraft?: Pick<WorkTaskCreate, "title" | "prompt"> & { attachmentFiles?: File[] };
   busy: boolean;
   error: string | null;
   startAfterSave?: boolean;
@@ -78,7 +78,7 @@ export function WorkTaskEditor({
   const submission = useWorkTaskEditorSave(externalBusy);
   const { busy } = submission;
   const inputApiRef = useRef<LexicalChatInputHandle | null>(null);
-  const assets = useWorkTaskPromptAssets(scope, task, busy);
+  const assets = useWorkTaskPromptAssets(scope, task, busy, initialDraft?.attachmentFiles);
   const [draftExecution, setDraftExecution] = useState<WorkTaskExecution | null>(
     task?.execution ?? null,
   );

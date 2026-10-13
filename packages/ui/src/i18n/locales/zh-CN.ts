@@ -471,6 +471,8 @@ const zhCN: Record<string, string> = {
   "repositoryPanel.reprocess": "重新处理",
   "repositoryPanel.taskCreated": "已加入待办",
   "repositoryPanel.error.TASK_SAVE": "待办任务创建失败，请保留当前输入并重试保存。",
+  "repositoryPanel.error.TASK_IMAGE_READ":
+    "议题截图读取失败，请重试处理；需要登录的图片可先在议题详情中登录。",
   "repositoryPanel.error.TASK_UNSUPPORTED": "当前项目的 Host 不支持待办任务，请先更新 Host。",
   "repositoryPanel.error.NO_EXECUTION": "所选模型或智能体已不可用，请重新选择后保存。",
   "repositoryPanel.closeIssue": "关闭议题",

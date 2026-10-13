@@ -717,6 +717,45 @@ covered/previous generation reply -> ignored (no credential or queue replay)
 
 ## Validation
 
+### Issue screenshot handoff (issue #112)
+
+- Preparing a local issue/request task reads the full body through the selected
+  Host, extracts rendered Markdown (including references) and HTML image sources,
+  resolves them with the existing Forge URL rules and deduplicates supported
+  GitHub/GitLab/Gitea attachments. Code examples and ordinary links are not images.
+  Attach the first eight supported images in body order. The quoted prompt retains
+  its existing 20,000-character bound and canonical item link for remaining content,
+  including unsupported external images and excess images.
+- The existing GitService `readForgeImage` owns authenticated, bounded raster reads.
+  UI does not fetch arbitrary URLs, credentials or local paths. Check the current
+  owner before/after each sequential read; stale project/remote/account/Host replies
+  cannot open an editor or continue reading another image.
+- Downloaded Files belong only to the prepared draft. The existing task composer
+  owns preview/removal and object URL cleanup. Nothing uploads or creates a task
+  before explicit Save. Save uses the existing task attachment transaction and
+  WorkTaskService persistence; API/ACP execution uses existing prompt assets.
+  Cancel drops draft files, and save failures preserve selected images and edits.
+- A failed supported-image read opens no partial draft or task, shows a localized
+  screenshot-read error, and permits explicit retry via Handle. Empty/no-image
+  bodies keep the current flow. Existing remote-task attachment restrictions stay
+  in force: remote scope never falls back to a local Host or filesystem.
+
+```text
+Handle -> selected Host full item -> rendered image sources -> same Host raster reads
+  -> owner check -> draft Files -> task composer preview/remove
+  -> explicit Save -> existing attachment transaction -> Host task persistence
+  -> explicit Start -> existing API/ACP prompt assets + conversation projection
+scope change/cancel -> discard old draft/reply; no task/Agent/Forge write
+desktop continuous / mobile replayable -> existing task owner and projection unchanged
+```
+
+Acceptance: parser/browser checks cover Markdown/reference/HTML images, duplicate
+sources, relative GitLab paths, code blocks, unsafe/external URLs and the eight-image
+limit. Synthetic UI E2E covers thumbnail pixels, preview/removal, API and ACP saved
+attachments/bytes, cancellation with zero upload, failure/retry, stale image reads
+across Host switches, no local fallback for remote scopes, and narrow/light/dark
+layouts. Existing task execution and pending-image tests validate downstream assets.
+
 - Unit: project/remote restoration after store recreation, trimmed identity/path
   fallback, same-path isolation, reconnect stability, compare-and-clear for
   removed remotes, malformed and blocked storage.

@@ -528,6 +528,8 @@ const enUS: Record<string, string> = {
   "repositoryPanel.process": "Handle",
   "repositoryPanel.reprocess": "Process again",
   "repositoryPanel.taskCreated": "Added to To-do",
+  "repositoryPanel.error.TASK_IMAGE_READ":
+    "Could not read issue screenshots. Retry Handle; images requiring sign-in can be authorized in the issue details first.",
   "repositoryPanel.error.TASK_SAVE":
     "Could not create the to-do task. Retry saving your current draft.",
   "repositoryPanel.error.TASK_UNSUPPORTED":
