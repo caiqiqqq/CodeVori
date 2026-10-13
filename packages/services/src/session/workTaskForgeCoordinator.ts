@@ -43,19 +43,29 @@ export class WorkTaskForgeCoordinator {
     // 后台清理期间沿用主线的准入限制，完成及回写统一由当前任务事实决定。
     if (task.worktreeCleanup?.phase === "running") throw new Error("work-task.cleanup-in-progress");
     if (task.status !== "done") {
-      const records = await this.result.capture(task, input.forge);
-      task = this.options.repo.complete(input, input.id, input.forge, records);
+      // 任务先落盘为 done；评论所需的 Git 证据由下方异步回写在最终状态上读取并冻结。
+      task = this.options.repo.complete(input, input.id, input.forge);
     } else if (!task.forgeWriteback) throw new Error("work-task.not-reviewable");
     this.publish();
-    return isWorkTaskForgePending(task)
-      ? this.writeback(task, input.resendComment)
-      : Promise.resolve(task);
+    if (isWorkTaskForgePending(task)) {
+      const receipt = task.forgeWriteback!;
+      // 另一 Host 已持有未过期回写租约时，仍需同步拒绝重复受理；真正的网络步骤随后异步执行。
+      if (receipt.owner && (receipt.leaseUntil ?? 0) > Date.now())
+        throw new Error("work-task.forge-busy");
+      this.scheduleWriteback(task, input.resendComment);
+    }
+    // 修复依据：本地完成事实已在上面事务提交；远端评论/关闭可能长时间等待，不能让确认命令把 UI
+    // 或其它任务锁在网络请求上。回写失败由持久化收据承载，沿用显式重试路径。
+    return task;
   }
   onSettled(task: WorkTask) {
     if (!this.closed() && task.status === "done" && isWorkTaskForgePending(task))
-      void this.writeback(task).catch(() => {
-        /* 已持久化失败，等待显式重试。 */
-      });
+      this.scheduleWriteback(task);
+  }
+  private scheduleWriteback(task: WorkTask, resendComment = false) {
+    void this.writeback(task, resendComment).catch(() => {
+      /* 已持久化失败，等待显式重试。 */
+    });
   }
   private writeback(task: WorkTask, resendComment = false): Promise<WorkTask> {
     if (!this.options.forge) return Promise.reject(new Error("work-task.forge-unsupported"));
