@@ -108,7 +108,10 @@ export function WorkspaceAcpTaskItem({
     cancelArchiveConfirm();
     onSelect();
     if (session.unreadAt) {
-      void updateRow({ kind: "unread", unread: false }, "taskList.markAsUnreadFailed");
+      void updateRow(
+        { kind: "unread", unread: false, expectedUnreadAt: session.unreadAt },
+        "taskList.markAsUnreadFailed",
+      );
     }
   }
 
