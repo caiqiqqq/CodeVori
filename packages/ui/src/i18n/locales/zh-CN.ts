@@ -161,8 +161,6 @@ const zhCN: Record<string, string> = {
   "workTasks.confirmComplete": "确认接受任务结果？",
   "workTasks.confirmCompleteBody":
     "确认后任务将标记为完成，分支、工作树和会话会保留，不会自动提交或合并代码。",
-  "workTasks.feedback": "修改意见",
-  "workTasks.followUp": "继续修改",
   "workTasks.openConversation": "打开会话",
   "workTasks.handleInput": "处理会话中的请求",
   "workTasks.archive": "归档",
@@ -281,6 +279,8 @@ const zhCN: Record<string, string> = {
   "workTasks.event.edited": "修改任务",
   "workTasks.event.queued": "任务入队",
   "workTasks.event.claimed": "开始执行",
+  // Host 认领原任务会话的新轮时产生该事件，补齐文案避免详情显示原始翻译 key。
+  "workTasks.event.conversation-continued": "继续对话",
   "workTasks.event.settled": "执行结束",
   "workTasks.event.stopped": "执行已停止",
   "workTasks.event.canceled": "取消执行",

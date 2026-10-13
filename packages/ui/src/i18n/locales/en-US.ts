@@ -180,8 +180,6 @@ const enUS: Record<string, string> = {
   "workTasks.confirmComplete": "Accept this task's result?",
   "workTasks.confirmCompleteBody":
     "This marks the task as done and keeps its branch, worktree and conversation. It does not commit or merge code.",
-  "workTasks.feedback": "Feedback",
-  "workTasks.followUp": "Continue editing",
   "workTasks.openConversation": "Open conversation",
   "workTasks.handleInput": "Handle conversation request",
   "workTasks.archive": "Archive",
@@ -317,6 +315,7 @@ const enUS: Record<string, string> = {
   "workTasks.event.edited": "Task edited",
   "workTasks.event.queued": "Task queued",
   "workTasks.event.claimed": "Execution started",
+  "workTasks.event.conversation-continued": "Conversation continued",
   "workTasks.event.settled": "Execution ended",
   "workTasks.event.stopped": "Execution stopped",
   "workTasks.event.canceled": "Execution canceled",

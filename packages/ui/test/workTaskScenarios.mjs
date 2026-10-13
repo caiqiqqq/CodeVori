@@ -22,6 +22,7 @@ import { exerciseWorkTaskComposer } from "./workTaskComposerAssertions.mjs";
 import { exerciseWorkTaskSelectionVisibility } from "./workTaskSelectionVisibilityAssertions.mjs";
 import { exerciseWorkTaskSidebarWidth } from "./workTaskSidebarWidthAssertions.mjs";
 import { exerciseWorkTaskExecutionConfig } from "./workTaskExecutionConfigAssertions.mjs";
+import { exerciseWorkTaskDetail } from "./workTaskDetailAssertions.mjs";
 
 export function launchWorkTaskBrowser() {
   return chromium.launch({
@@ -44,6 +45,7 @@ export {
   exerciseWorkTaskCompletion,
 };
 export const workTaskScenarios = {
+  detail: exerciseWorkTaskDetail,
   source: exerciseWorkTaskSource,
   "ai-result": exerciseWorkTaskResult,
   acceptance: exerciseWorkTaskAcceptance,

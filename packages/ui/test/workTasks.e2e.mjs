@@ -102,7 +102,7 @@ try {
       async archive(r:any){state.calls.push({op:'archive',...r});const task=get(r);if(state.failCleanupAdmission){state.failCleanupAdmission=false;throw new Error('work-task.not-cleanable')}if(task.worktreeCleanup?.phase==='running')throw new Error('work-task.cleanup-in-progress');if(r.removeWorktree){task.worktreeCleanup={id:crypto.randomUUID(),phase:'running'};const fail=state.failCleanup;state.failCleanup=false;const finish=()=>{if(fail)task.worktreeCleanup={...task.worktreeCleanup,phase:'failed',error:'work-task.worktree-remove-dirty-worktree'};else{task.archived=true;task.worktreeCleanup=undefined}changed()};if(state.delayCleanup){state.delayCleanup=false;state.pendingCleanups.push(finish)}else queueMicrotask(finish);changed();return clone(task)}task.archived=r.archived;changed();return clone(task)},
 
       async setConcurrency(r:any){state.calls.push({op:'concurrency',...r});state.concurrency=r.concurrency;changed()},
-      async getEvents(){return [{sequence:1,taskId:'task',runSeq:1,at:0,type:'created'}]},
+      async getEvents(r:any){return clone(state.events??[{sequence:1,taskId:r.id,runSeq:1,at:0,type:'created'}])},
       onDynamicChanged:()=> (listener:()=>void)=>{listeners.add(listener);return {dispose:()=>listeners.delete(listener)}},
     };
     state.seed=(draft:any)=>{const now=Date.now();const task={workspacePath:'/synthetic/project',execution:{kind:'api',modelSelection:clone(modelView.preferredSelection),mode:'build'},id:'task-'+state.tasks.length,status:'todo',archived:false,stopPending:false,runSeq:0,runText:draft.prompt,commandId:'command',sessionRequestId:'request',createdAt:now,updatedAt:now,...draft};state.tasks.push(task);changed();return clone(task)};
@@ -319,17 +319,8 @@ try {
     await card("task-0").locator('[data-work-task-status="running"]').waitFor();
     await page.evaluate(() => window.__tasks.status("task-1", "review"));
     await openDetails("task-1", "Implement an ACP task");
-    await detail.getByTestId("work-task-feedback").fill("Add the missing test");
-    await detail.getByTestId("work-task-follow-up").click();
-    await detail.locator('[data-work-task-status="running"]').waitFor();
-    assert.equal(
-      await page.evaluate(
-        () =>
-          window.__tasks.calls.find((c) => c.op === "start" && c.id === "task-1" && c.feedback)
-            .feedback,
-      ),
-      "Add the missing test",
-    );
+    assert.equal(await detail.getByTestId("work-task-feedback").count(), 0);
+    assert.equal(await detail.getByTestId("work-task-follow-up").count(), 0);
     assert.equal(await page.evaluate(() => window.__tasks.tasks[1].session.id), "session-task-1");
     await page.evaluate(() => window.__tasks.status("task-1", "review"));
     assert.equal(await detail.getByTestId("work-task-complete").count(), 0);
@@ -396,7 +387,7 @@ try {
     await exerciseWorkTaskConcurrentExecution(page, artifacts);
     assert.deepEqual(errors, []);
     process.stdout.write(
-      `PASS: compact single-line API/ACP tasks, long titles and 24-task scrolling in both responsive themes, agent tooltips and icon selection, compact toolbar with new task/start all only, API + ACP create/edit and scoped batch start, disabled controls without a project or pending tasks, removed filters/static hints, preserved header/four board sections, API/ACP conversation headers without a main-view jump and preserved inline detail actions, default archive/cancel hiding and saved concurrency, shared chat/composer and zero preview commands, full-row/keyboard selection and menu isolation, preparing/binding/failure events, project boundary, draft retention and mutation error feedback, pointer/keyboard resize and layout restore, start/cancel/retry, permission jump, feedback, explicit completion, archive, event refresh/project read race and responsive themes, scoped API/ACP execution preferences after cancel/reopen/reload and history-edit isolation, API/ACP edit-save restart with retained bindings and new instructions, continuous busy and duplicate-submit rejection, save/start failure retention, cancel and non-executable save-only boundaries, API/ACP continued-conversation status updates in board/header without closing/remounting or resending. Screenshots: ${artifacts}\n`,
+      `PASS: compact single-line API/ACP tasks, long titles and 24-task scrolling in both responsive themes, agent tooltips and icon selection, compact toolbar with new task/start all only, API + ACP create/edit and scoped batch start, disabled controls without a project or pending tasks, removed filters/static hints, preserved header/four board sections, API/ACP conversation headers without a main-view jump and preserved inline detail actions, default archive/cancel hiding and saved concurrency, shared chat/composer and zero preview commands, full-row/keyboard selection and menu isolation, preparing/binding/failure events, project boundary, draft retention and mutation error feedback, pointer/keyboard resize and layout restore, start/cancel/retry, permission jump, details without feedback, explicit completion, archive, event refresh/project read race and responsive themes, scoped API/ACP execution preferences after cancel/reopen/reload and history-edit isolation, API/ACP edit-save restart with retained bindings and new instructions, continuous busy and duplicate-submit rejection, save/start failure retention, cancel and non-executable save-only boundaries, API/ACP continued-conversation status updates in board/header without closing/remounting or resending. Screenshots: ${artifacts}\n`,
     );
   }
 } catch (error) {

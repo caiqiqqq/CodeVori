@@ -1,18 +1,8 @@
-import { useState } from "react";
-import {
-  Archive,
-  ArchiveRestore,
-  MessageSquare,
-  Pencil,
-  Play,
-  RotateCcw,
-  Square,
-} from "lucide-react";
+import { Archive, ArchiveRestore, MessageSquare, Pencil, Play, Square } from "lucide-react";
 import { isWorkTaskForgePending, WORK_TASK_ACTIVE_STATUSES, type WorkTask } from "@zcode/shared";
 import { useWorkTaskEvents } from "@/hooks/useWorkTaskEvents.js";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import { Button } from "@/components/ui/button.js";
-import { Textarea } from "@/components/ui/textarea.js";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
 import {
   WorkTaskAgent,
@@ -38,7 +28,6 @@ export function WorkTaskDetail({
 }) {
   const t = useWorkTaskMessages();
   const events = useWorkTaskEvents(task);
-  const [feedback, setFeedback] = useState("");
   const active = WORK_TASK_ACTIVE_STATUSES.includes(task.status) || task.status === "queued";
   const disabled = panel.busy || task.stopPending || task.worktreeCleanup?.phase === "running";
   const startable = ["todo", "failed", "canceled"].includes(task.status) && !task.archived;
@@ -181,39 +170,6 @@ export function WorkTaskDetail({
               </>
             ) : null}
           </section>
-        ) : null}
-        {task.status === "review" && !task.archived ? (
-          <form
-            className="flex flex-col gap-2 border-t border-border pt-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void panel.start(task.id, feedback.trim()).then((ok) => {
-                if (ok) setFeedback("");
-              });
-            }}
-          >
-            <label className="text-ui-sm text-foreground-subtle" htmlFor="work-task-feedback">
-              {t("feedback")}
-            </label>
-            <Textarea
-              id="work-task-feedback"
-              data-testid="work-task-feedback"
-              className="h-24 field-sizing-fixed border-input-border bg-input text-foreground"
-              value={feedback}
-              onChange={(event) => setFeedback(event.target.value)}
-              disabled={disabled}
-            />
-            <Button
-              className="self-end"
-              size="sm"
-              type="submit"
-              disabled={disabled || !feedback.trim() || !panel.executable}
-              data-testid="work-task-follow-up"
-            >
-              <RotateCcw className="size-4" />
-              {t("followUp")}
-            </Button>
-          </form>
         ) : null}
         <WorkTaskError error={panel.error} />
         {events.length ? (
