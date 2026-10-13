@@ -164,3 +164,13 @@ feature graph 当前 `boundary.work-task-worktree` 描述单仓库工作任务�
 - 首次完整类型检查失败来自未构建的 `@zcode/dynamic-workflow` / `@zcode/dynamic-workflow-runtime` 声明产物；源码在 workspace 内，按包脚本构建这两个依赖后，`pnpm typecheck` 完整重跑通过（退出码 0）。
 - 交互预览在 `/tmp/zcode-linked-projects-preview`，复用实际 Composer/面板源码和桌面 Vite 配置，服务使用演示数据，不创建真实仓库、不发模型请求；截图由 Playwright 实际渲染并检查。预览入口 `http://127.0.0.1:5175/`。
 - 第一版仅本地目录提示引导，不提供任意 Shell/ACP 写入拦截，不同步跨设备配置，不提供统一 Git 交付或原子多仓库提交；未声称真实模型执行与打包安装验收。没有提交、推送、合并或关闭 issue。
+
+
+## 2026-10-13 同步主分支的兼容规则
+
+- 自动工作树保留主分支的 `sourceBranchName` 解析入口，并兼容关联项目已冻结的 `startPoint`；明确来源分支时优先解析来源，不退回 HEAD。
+- ACP 行投影已由主分支迁移到 shared，保留唯一共享投影。将关联项目尾块的纯构造/解析函数一同放到 shared，UI 经原有入口复用；共享投影展示 user row 时隐藏尾块，保持增量快照与历史一致。
+- 同步后重跑类型检查、Lint、架构、指定基准/来源分支 Git 测试，以及关联项目与 Composer 提交 scope 的交互回归。
+
+
+同步主分支后的验证：`pnpm typecheck` 通过；`pnpm verify:pre-push` 通过（Lint 74 warnings / 0 errors，架构 baseline/current/new 均 0）；格式检查及 diff check 通过。指定的关联项目/草稿/来源分支/服务投影测试 17/17 通过，UI ACP 投影测试使用 `--tsconfig packages/ui/tsconfig.json` 后 5/5 通过（首次根配置运行无法解析 UI 路径别名）。关联项目 UI 深浅主题/桌面窄屏 4 组通过，Draft owner 回归通过，Composer submission scope 4 组通过（首次并行冷启动页面加载超时，独立重跑通过）。验证使用临时 Git 与模拟 Agent admission，未进行真实模型写入或安装包验证。

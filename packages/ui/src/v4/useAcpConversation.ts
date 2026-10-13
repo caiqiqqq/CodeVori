@@ -1,13 +1,29 @@
 /* oxlint-disable eslint(max-lines) -- ACP 面板的连接、草稿和已提交会话投影共用同一个生命周期。 */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { IAcpService } from "@zcode/services";
-import type { AcpAgent, AcpPromptInput, AcpSession, AcpWorkspace } from "@zcode/shared";
+import {
+  summarizeAcpSession,
+  type AcpAgent,
+  type AcpPromptInput,
+  type AcpQueueItem,
+  type AcpSession,
+  type AcpWorkspace,
+  type AcpConversationChange,
+} from "@zcode/shared";
+import {
+  ConversationProjectionStore,
+  hasOlderRows,
+  shouldAutoLoadIncompleteLeadingTurn,
+} from "@/v4/conversationProjectionStore.js";
+import { acquireAcpConversationProjection } from "@/v4/acpConversationDataLayer.js";
+import { useConversationProjection } from "@/v4/useConversationProjection.js";
 import { selectAcpSession } from "@/v4/composer/acpModelSelection.js";
 import { ACP_HOST_UPGRADE_REQUIRED, waitForAcpPromptAdmission } from "@/v4/acpPromptAdmission.js";
 import { visibleAcpQueueSubmission, type AcpQueueSubmission } from "@/v4/acpQueueProjection.js";
 import { OperationDiagnostics } from "@zcode/rpc";
 import { logger } from "@/logger.js";
+import { AcpStreamObserver } from "@/lib/acpStreamObserver.js";
 
 const diagnostics = new OperationDiagnostics(
   (record) => logger.lifecycle.warn("[diagnostics]", record),
@@ -15,7 +31,12 @@ const diagnostics = new OperationDiagnostics(
 );
 
 function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  const detail = error instanceof Error ? error.message : String(error);
+  return /(?:Method not found: |is not a function).*?(?:listSummaries|onDynamicSessionSummaryChanged)|(?:listSummaries|onDynamicSessionSummaryChanged).*?is not a function/.test(
+    detail,
+  )
+    ? ACP_HOST_UPGRADE_REQUIRED
+    : detail;
 }
 
 /** Host owns accepted ACP turns and history; the hook keeps only the pane's target and draft-side projection. */
@@ -86,6 +107,11 @@ export function useAcpConversation(
   );
   const targetKeyRef = useRef(targetKey);
   targetKeyRef.current = targetKey;
+  const streamObserver = useMemo(() => new AcpStreamObserver(), [service, targetKey]);
+  const [projectionLease, setProjectionLease] = useState<{
+    key: string;
+    store: ConversationProjectionStore;
+  } | null>(null);
   const workspaceKey = JSON.stringify([workspaceIdentity?.trim() || workspacePath, workspacePath]);
   const selectedWorkspaceKeyRef = useRef(workspaceKey);
   const loaded = loadedTargetKey === targetKey;
@@ -108,6 +134,67 @@ export function useAcpConversation(
   sessionsRef.current = sessions;
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
+  const projectionKey = selected && agent ? `${targetKey}:${selected.id}` : null;
+  const projection = useConversationProjection(
+    projectionLease?.key === projectionKey ? projectionLease : null,
+  );
+  useEffect(() => {
+    if (!projectionKey || !selected) return;
+    let live = true;
+    const id = selected.id;
+    let store: ConversationProjectionStore;
+    const observe = (change: AcpConversationChange) => {
+      if (!live || targetKeyRef.current !== targetKey || selectedRef.current?.id !== id) return;
+      if (store.getState().snapshot?.seq !== change.session.revision) return;
+      if (
+        (sessionsRef.current.find((item) => item.id === id)?.revision ?? -1) >
+        change.session.revision
+      )
+        return;
+      if (change.wire.deliveryKind === "online")
+        streamObserver.received(change.session, change.streamDiagnostics);
+      setSessions((previous) =>
+        previous.map((item) =>
+          item.id === id && item.revision <= change.session.revision ? change.session : item,
+        ),
+      );
+    };
+    const lease = acquireAcpConversationProjection(service, target, id, observe);
+    store = lease.store;
+    setProjectionLease({ key: projectionKey, store });
+    return () => {
+      live = false;
+      lease.release();
+    };
+    // 会话的高频 revision 不创建新 store；生命周期只绑定精确目标和会话。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectionKey, service, target, targetKey, streamObserver]);
+  const incompleteCursorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      projectionLease?.key !== projectionKey ||
+      !shouldAutoLoadIncompleteLeadingTurn(projection.snapshot, projection.loadingOlder)
+    )
+      return;
+    const cursor = `${projectionKey}:${projection.subscriptionId}:${projection.snapshot?.rows.window[0]?.rowId}`;
+    if (incompleteCursorRef.current === cursor) return;
+    incompleteCursorRef.current = cursor;
+    void projectionLease?.store.loadOlder();
+  }, [projection, projectionKey, projectionLease]);
+  useLayoutEffect(
+    () =>
+      streamObserver.commit(
+        selected,
+        () =>
+          targetKeyRef.current === targetKey &&
+          selectedRef.current?.id === selected?.id &&
+          agentRef.current === selected?.agent &&
+          (!selected ||
+            !selectedIdsRef.current[selected.agent] ||
+            selectedIdsRef.current[selected.agent] === selected.id),
+      ),
+    [streamObserver, selected, targetKey],
+  );
   const archivedOpenIds = useRef(new Map<AcpAgent, string>());
   const onArchivedRef = useRef(onArchived);
   onArchivedRef.current = onArchived;
@@ -171,75 +258,83 @@ export function useAcpConversation(
     refreshed.current.clear();
     refreshRequests.current.clear();
     readyIds.current.clear();
-    const subscription = service.onDynamicSessionChanged(target)((change) => {
-      if (!live || targetKeyRef.current !== targetKey) return;
-      if (change.kind === "removed") {
-        ownedDraftIds.current.delete(change.id);
-        for (const [draftAgent, draftId] of retainedDraftIds.current) {
-          if (draftId === change.id) retainedDraftIds.current.delete(draftAgent);
+    let subscription: { dispose(): void };
+    try {
+      subscription = service.onDynamicSessionSummaryChanged(target)((change) => {
+        if (!live || targetKeyRef.current !== targetKey) return;
+        if (change.kind === "removed") {
+          ownedDraftIds.current.delete(change.id);
+          for (const [draftAgent, draftId] of retainedDraftIds.current) {
+            if (draftId === change.id) retainedDraftIds.current.delete(draftAgent);
+          }
+          readyIds.current.delete(change.id);
+          removed.add(change.id);
+          updated.delete(change.id);
+          setSessions((previous) => previous.filter((item) => item.id !== change.id));
+          setSelectedIds((previous) => {
+            const selectedAgent = Object.keys(previous).find(
+              (agent) => previous[agent as AcpAgent] === change.id,
+            ) as AcpAgent | undefined;
+            return selectedAgent ? { ...previous, [selectedAgent]: undefined } : previous;
+          });
+          return;
         }
-        readyIds.current.delete(change.id);
-        removed.add(change.id);
-        updated.delete(change.id);
-        setSessions((previous) => previous.filter((item) => item.id !== change.id));
-        setSelectedIds((previous) => {
-          const selectedAgent = Object.keys(previous).find(
-            (agent) => previous[agent as AcpAgent] === change.id,
-          ) as AcpAgent | undefined;
-          return selectedAgent ? { ...previous, [selectedAgent]: undefined } : previous;
+        if (
+          change.session.workspacePath !== workspacePath ||
+          (change.session.workspaceIdentity?.trim() || change.session.workspacePath) !==
+            (workspaceIdentity?.trim() || workspacePath)
+        )
+          return;
+        const current = sessionsRef.current.find((item) => item.id === change.session.id);
+        const newer = updated.get(change.session.id);
+        // 修复原因：归档关闭也必须遵守 snapshot revision，旧通知不能关闭较新的会话选择。
+        if (
+          (current && current.revision > change.session.revision) ||
+          (newer && newer.revision > change.session.revision)
+        )
+          return;
+        // 修复原因：预连接草稿是当前面板的私有选择，其他窗口不能通过 Host 广播看到它。
+        if (change.session.provisional && !ownedDraftIds.current.has(change.session.id)) return;
+        if (!change.session.provisional) {
+          ownedDraftIds.current.delete(change.session.id);
+          // 修复原因：首条消息提交后会话已持久化，不再占用临时连接的两个保留名额。
+          for (const [draftAgent, draftId] of retainedDraftIds.current) {
+            if (draftId === change.session.id) retainedDraftIds.current.delete(draftAgent);
+          }
+        }
+        if (change.session.supersededBy) {
+          // 修复原因：Host 接替旧空会话后旧快照仍保留在磁盘，实时事件不能把它重新列回页面。
+          removed.add(change.session.id);
+          updated.delete(change.session.id);
+          setSessions((previous) => previous.filter((item) => item.id !== change.session.id));
+          setSelectedIds((previous) =>
+            previous[change.session.agent] === change.session.id
+              ? { ...previous, [change.session.agent]: change.session.supersededBy }
+              : previous,
+          );
+          return;
+        }
+        removed.delete(change.session.id);
+        updated.set(change.session.id, change.session);
+        setSessions((previous) => {
+          const current = previous.find((item) => item.id === change.session.id);
+          if (current && current.revision > change.session.revision) return previous;
+          return [change.session, ...previous.filter((item) => item.id !== change.session.id)];
         });
-        return;
-      }
-      if (
-        change.session.workspacePath !== workspacePath ||
-        (change.session.workspaceIdentity?.trim() || change.session.workspacePath) !==
-          (workspaceIdentity?.trim() || workspacePath)
-      )
-        return;
-      const current = sessionsRef.current.find((item) => item.id === change.session.id);
-      const newer = updated.get(change.session.id);
-      // 修复原因：归档关闭也必须遵守 snapshot revision，旧通知不能关闭较新的会话选择。
-      if (
-        (current && current.revision > change.session.revision) ||
-        (newer && newer.revision > change.session.revision)
-      )
-        return;
-      // 修复原因：预连接草稿是当前面板的私有选择，其他窗口不能通过 Host 广播看到它。
-      if (change.session.provisional && !ownedDraftIds.current.has(change.session.id)) return;
-      if (!change.session.provisional) {
-        ownedDraftIds.current.delete(change.session.id);
-        // 修复原因：首条消息提交后会话已持久化，不再占用临时连接的两个保留名额。
-        for (const [draftAgent, draftId] of retainedDraftIds.current) {
-          if (draftId === change.session.id) retainedDraftIds.current.delete(draftAgent);
-        }
-      }
-      if (change.session.supersededBy) {
-        // 修复原因：Host 接替旧空会话后旧快照仍保留在磁盘，实时事件不能把它重新列回页面。
-        removed.add(change.session.id);
-        updated.delete(change.session.id);
-        setSessions((previous) => previous.filter((item) => item.id !== change.session.id));
-        setSelectedIds((previous) =>
-          previous[change.session.agent] === change.session.id
-            ? { ...previous, [change.session.agent]: change.session.supersededBy }
-            : previous,
-        );
-        return;
-      }
-      removed.delete(change.session.id);
-      updated.set(change.session.id, change.session);
-      setSessions((previous) => {
-        const current = previous.find((item) => item.id === change.session.id);
-        if (current && current.revision > change.session.revision) return previous;
-        return [change.session, ...previous.filter((item) => item.id !== change.session.id)];
+        closeArchivedSelection(change.session);
       });
-      closeArchivedSelection(change.session);
-    });
+    } catch (cause) {
+      setErrorState({ agent: null, message: messageOf(cause) });
+      return () => {
+        live = false;
+      };
+    }
     // Bug 原因：远端 list 与实时通知并发；先订阅，再按 revision 合并快照。
     void diagnostics
-      .run("acp.list", () => service.list(target))
+      .run("acp.list", () => service.listSummaries(target))
       .then((items) => {
         if (!live || targetKeyRef.current !== targetKey) return;
-        const byId = new Map(
+        const byId = new Map<string, AcpSession>(
           items.filter((item) => !removed.has(item.id)).map((item) => [item.id, item]),
         );
         for (const item of updated.values()) {
@@ -271,6 +366,7 @@ export function useAcpConversation(
     service,
     target,
     targetKey,
+    streamObserver,
     workspaceIdentity,
     workspaceKey,
     workspacePath,
@@ -379,7 +475,7 @@ export function useAcpConversation(
           }
           readyIds.current.add(session.id);
           setSessions((previous) => [
-            session,
+            summarizeAcpSession(session),
             ...previous.filter((item) => item.id !== session.id),
           ]);
           setSelectedIds((previous) => ({ ...previous, [nextAgent]: session.id }));
@@ -456,7 +552,8 @@ export function useAcpConversation(
           setSessions((previous) => {
             const current = previous.find((item) => item.id === next.id);
             if (next.id === session.id && !current) return previous;
-            const merged = current && current.revision > next.revision ? current : next;
+            const merged =
+              current && current.revision > next.revision ? current : summarizeAcpSession(next);
             return [
               merged,
               ...previous.filter((item) => item.id !== next.id && item.id !== session.id),
@@ -582,7 +679,9 @@ export function useAcpConversation(
         if (targetKeyRef.current === targetKey && selectedRef.current?.id === session.id)
           setSessions((previous) =>
             previous.map((item) =>
-              item.id === accepted.id && item.revision <= accepted.revision ? accepted : item,
+              item.id === accepted.id && item.revision <= accepted.revision
+                ? summarizeAcpSession(accepted)
+                : item,
             ),
           );
         if (retries.current.get(key)?.commandId === commandId) retries.current.delete(key);
@@ -622,9 +721,12 @@ export function useAcpConversation(
         if (targetKeyRef.current !== targetKey || selectedRef.current?.id !== selected.id) return;
         setSessions((previous) =>
           previous.map((item) =>
-            item.id === snapshot.id && item.revision <= snapshot.revision ? snapshot : item,
+            item.id === snapshot.id && item.revision <= snapshot.revision
+              ? summarizeAcpSession(snapshot)
+              : item,
           ),
         );
+        return snapshot;
       } catch (cause) {
         if (targetKeyRef.current === targetKey && selectedRef.current?.id === selected.id)
           setErrorState({ agent: selected.agent, message: messageOf(cause) });
@@ -636,17 +738,21 @@ export function useAcpConversation(
   const queueActions = useMemo(
     () => ({
       deleteItem: (queueItemId: string) =>
-        queueAction((input) => service.deleteQueueItem({ ...input, queueItemId })),
-      editItem: (queueItemId: string, text: string) =>
-        queueAction((input) => service.editQueueItem({ ...input, queueItemId, text })),
+        queueAction((input) => service.deleteQueueItem({ ...input, queueItemId })).then(() => {}),
+      withdrawItem: (expectedItem: AcpQueueItem) =>
+        queueAction((input) =>
+          service.deleteQueueItem({ ...input, queueItemId: expectedItem.commandId, expectedItem }),
+        ),
       moveItem: (queueItemId: string, beforeQueueItemId: string | null) =>
         queueAction((input) =>
           service.reorderQueueItem({ ...input, queueItemId, beforeQueueItemId }),
-        ),
+        ).then(() => {}),
       sendNow: (queueItemId: string) =>
-        queueAction((input) => service.sendQueuedNow({ ...input, queueItemId })),
+        queueAction((input) => service.sendQueuedNow({ ...input, queueItemId })).then(() => {}),
       resume: () =>
-        queueAction((input) => service.setQueueAutoDrain({ ...input, autoDrain: true })),
+        queueAction((input) => service.setQueueAutoDrain({ ...input, autoDrain: true })).then(
+          () => {},
+        ),
     }),
     [queueAction, service],
   );
@@ -801,13 +907,39 @@ export function useAcpConversation(
 
   const sendingInput =
     agent && selected ? sendingInputs.get(`${targetKey}:${agent}:${selected.id}`) : null;
+  const loadOlder = useCallback(
+    () =>
+      projectionLease?.key === projectionKey
+        ? projectionLease.store.loadOlder()
+        : Promise.resolve(),
+    [projectionKey, projectionLease],
+  );
+  const loadAllOlder = useCallback(
+    () =>
+      projectionLease?.key === projectionKey
+        ? projectionLease.store.loadAllOlder()
+        : Promise.resolve({ status: "stale" as const, logEpoch: "acp" }),
+    [projectionKey, projectionLease],
+  );
+  const displayError = error ?? projection.lastError;
   return {
     selected,
+    rows: projection.snapshot?.rows.window ?? [],
+    snapshot: projection.snapshot,
+    totalCount: projection.snapshot?.rows.totalCount ?? 0,
+    canLoadOlder: hasOlderRows(projection.snapshot),
+    loadingOlder: projection.loadingOlder,
+    turnNavigatorDirectoryRevision: projection.turnNavigatorDirectoryRevision,
+    loadOlder,
+    loadAllOlder,
     loaded,
     ready: Boolean(
       selected && previousAgentRef.current === agent && readyIds.current.has(selected.id),
     ),
-    error,
+    error:
+      displayError === ACP_HOST_UPGRADE_REQUIRED
+        ? intl.formatMessage({ id: "acp.hostUpgradeRequired" })
+        : displayError,
     busy,
     sending: Boolean(sendingInput),
     queueSubmission:

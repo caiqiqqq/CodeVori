@@ -17,7 +17,7 @@ try {
     import React,{useEffect} from 'react';
     import {createRoot} from 'react-dom/client';
     import {acpSessionSchema} from '@zcode/shared';
-    import {useAcpConversation} from '../../../ui/src/v4/useAcpConversation.ts';
+    import {useAcpConversation} from '../../../ui/test/acpProjectionFixture.tsx';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     const workspacePath='/synthetic/latency';
     const sessions=new Map(['A','B'].map(id=>[id,acpSessionSchema.parse({

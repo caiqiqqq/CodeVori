@@ -286,6 +286,7 @@ export * from "./permission-request-preview.js";
 export * from "./settings-sync.js";
 export * from "./uuid.js";
 export * from "./usage-stats.js";
+export * from "./app-usage-hourly.js";
 export * from "./acp-usage.js";
 export * from "./coding-plan-subscription.js";
 export * from "./forceUpdate.js";
@@ -319,8 +320,13 @@ export * from "./work-task.js";
 export * from "./work-task-result.js";
 export * from "./worktree.js";
 export * from "./linked-repositories.js";
+export * from "./linked-repository-context.js";
 export { isAbsoluteFilePath, joinFilePath } from "./file-path.js";
 export * from "./agent-delegation.js";
 export { PRODUCT_NAME, PRODUCT_MARK_PATH, PRODUCT_MARK_VIEW_BOX } from "./product-brand.mjs";
 
 export * from "./proxyDomains.js";
+
+export * from "./acp-conversation-rows.js";
+export * from "./acp-conversation.js";
+export * from "./acp-status-panel.js";

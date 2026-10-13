@@ -346,6 +346,8 @@ export const acpQueueItemInputSchema = acpWorkspaceSchema
   .extend({
     id: z.string().uuid(),
     queueItemId: z.string().trim().min(1),
+    /** 撤回编辑的内容前置条件；流式 revision 变化不应拒绝未变化的队列项。 */
+    expectedItem: acpQueueItemSchema.optional(),
   })
   .strict();
 export type AcpQueueItemInput = z.infer<typeof acpQueueItemInputSchema>;
@@ -699,6 +701,10 @@ export type AcpSessionRowUpdate = z.infer<typeof acpSessionRowUpdateSchema>;
 export function acpSessionActivity(
   session: Pick<AcpSession, "entries" | "legacySavedAt"> & Partial<Pick<AcpSession, "queue">>,
 ) {
+  if ("history" in session) {
+    const history = session.history as { createdAt: number; updatedAt: number };
+    return { createdAt: history.createdAt, updatedAt: history.updatedAt };
+  }
   const times = session.entries
     .map((entry) => entry.createdAt)
     .filter((value): value is number => typeof value === "number")
@@ -736,15 +742,42 @@ export const acpSessionSearchItemSchema = acpWorkspaceSchema
     createdAt: z.number(),
     updatedAt: z.number(),
     matches: z
-      .array(z.object({ entryId: z.string(), snippet: z.string().max(220) }).strict())
+      .array(
+        z
+          .object({
+            entryId: z.string(),
+            snippet: z.string().max(220),
+            rowId: z.number().int().positive().optional(),
+          })
+          .strict(),
+      )
       .max(5),
   })
   .strict();
 export type AcpSessionSearchItem = z.infer<typeof acpSessionSearchItemSchema>;
 export const acpSessionSearchResultSchema = z.array(acpSessionSearchItemSchema).max(80);
 
+/** 仅实时通知的取证元数据，不进入 AcpSession 或持久化历史。 */
+export const acpStreamDiagnosticSchema = z
+  .object({
+    receivedRevision: z.number().int().nonnegative(),
+    receivedAt: z.number().finite().nonnegative(),
+    snapshotStartedAt: z.number().finite().nonnegative(),
+    broadcastAt: z.number().finite().nonnegative(),
+    kind: z.enum(["text", "thought", "compaction_summary"]),
+    chunkChars: z.number().int().nonnegative(),
+    entryIndex: z.number().int().nonnegative(),
+    entryCount: z.number().int().nonnegative(),
+  })
+  .strict();
+export type AcpStreamDiagnostic = z.infer<typeof acpStreamDiagnosticSchema>;
+
 export const acpSessionChangedSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("updated"), session: acpSessionSchema }),
+  z.object({
+    kind: z.literal("updated"),
+    session: acpSessionSchema,
+    streamDiagnostics: acpStreamDiagnosticSchema.optional(),
+  }),
   z.object({
     kind: z.literal("removed"),
     id: z.string(),

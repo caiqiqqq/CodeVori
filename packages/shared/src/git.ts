@@ -208,6 +208,8 @@ export interface GitCreateAutomaticWorktreeRequest extends GitRepositoryRequest 
   worktreeRootPath: string;
   /** 已解析的关联项目基准；缺省仍从当前 HEAD 创建。 */
   startPoint?: string;
+  /** 指定本地来源分支；传入时优先于 startPoint。 */
+  sourceBranchName?: string;
 }
 
 export interface GitWorktreeCreateIssue {
@@ -279,6 +281,8 @@ export interface GitBranchComparison {
 export interface GitLocalBranch {
   name: string;
   isCurrent: boolean;
+  /** Git 登记的检出目录；可选以兼容尚未升级的 Host。 */
+  worktreePath?: string | null;
   upstreamName: string | null;
   commitHash: string | null;
   commitTimestampMs: number | null;

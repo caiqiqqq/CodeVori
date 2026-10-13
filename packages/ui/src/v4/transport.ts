@@ -152,6 +152,21 @@ export interface ConversationTransport {
   onRuntimeLifecycle?(listener: (state: "available" | "unavailable") => void): () => void;
 }
 
+/** 只读投影端口；ACP 复用 store，无需伪造 API command/artifact 能力。 */
+export type ConversationProjectionTransport = Pick<
+  ConversationTransport,
+  | "subscribe"
+  | "activate"
+  | "resync"
+  | "unsubscribe"
+  | "rowsRange"
+  | "plans"
+  | "onFrame"
+  | "onAssemblyFault"
+  | "onRuntimeRestart"
+  | "onRuntimeLifecycle"
+>;
+
 export interface ConversationAttachmentReadParams {
   sessionId: string;
   ref: string;

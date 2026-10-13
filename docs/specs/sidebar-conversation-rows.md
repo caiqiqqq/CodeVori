@@ -42,6 +42,31 @@ Desktop / 普通 Web：读取 renderer-local 布局；手机 replayable：沿用
 从 owner 变更得到选中投影，而非直接给行组件伪造 `active=true`；同时验证浅深主题、
 375px、普通项目与工作树合并/时间线/置顶列表，原 owner 无额外 session 创建或 RPC。
 
+### 待办页面与外层会话选择（issue #85）
+
+进入待办页面时，外层侧栏的 API/ZCode 和 ACP 会话均取消当前项高亮与
+`aria-current="page"`，包括普通项目、工作树、置顶、时间线及原生分组列表。
+即使后台保留主会话或激活的分屏 group/secondary 绑定，也不将它们投影成当前页面。
+待办页自身的任务卡片和会话选择继续由 `workTaskNavigationStore` 持有。
+
+主视图继续由 Shell 的既有 `workspaceMainView` 持有，侧栏读取现有
+`workTasksActive`，同步控制只读会话选择投影，不通过 effect 清空 session、布局或
+持久化导航。再次点击外层会话（含原先选中的同一会话）沿用原有导航切回聊天，
+此时才恢复真实当前窗格的高亮；置顶、归档等行内操作不激活外层会话。
+本次不改变其它主视图的选择语义，不增加协议、Host 写入或数据迁移。
+
+```text
+打开待办 → Shell workspaceMainView=work-tasks → workTasksActive=true
+       → 侧栏只读投影：两个会话 ID 均为空（原会话/分屏绑定保留）
+点击外层会话 → 原有选择命令 + Shell 切回 chat → 投影恢复当前窗格
+Desktop / Web / 手机：同一 UI 投影；连续流与 replayable 恢复链路不变
+```
+
+验收：先补充投影单测与真实侧栏 E2E，验证 native/ACP 主会话、激活分屏组和
+临时 secondary 在待办页面均无外层当前项；点击同一会话或其它会话后恢复唯一当前项。
+覆盖项目/时间线/置顶列表、桌面/375px 和 Zai 浅深主题，并确认布局绑定、任务导航
+与 Host 状态没有额外写入。
+
 ## 时间显示
 
 侧栏中 API/ZCode 与 ACP 的会话行均不显示标题后的相对时间，包括项目与工作树合并列表、分组列表及拖动预览、时间线、置顶区和归档列表。移除时间文案及其空占位，不新增设置开关。时间线原有日期分组标题保持现有规则。

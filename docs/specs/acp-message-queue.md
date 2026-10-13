@@ -6,7 +6,9 @@
 - 空闲且无队列时沿用普通 prompt；运行中或已有队列时新输入追加队尾，不能越过已暂停的旧项。不同 Agent、Host、workspace identity、路径及 session 的队列互不借用。
 - 运行中或已有队列时，提交开始立即在队列面板显示正文摘要与“正在添加”状态，不等待 Host 校验、复制附件或落盘。该行只是当前 pane 的 pending overlay，不计入已接受数量，不允许编辑、删除、排序、立即发送或恢复。
 - Host 的同 commandId 队列项、user row 或删除凭证出现后，pending 行立即让位于权威投影；ACK 返回后结束 pending。失败移除 pending 行、保留草稿和原幂等键。等待期间的新输入、其他分屏、切换 Agent/workspace/session 不被旧回包影响；没有 timer、提前成功确认或自动重放。
-- 复用现有队列面板，支持删除、拖动排序、直接编辑排队正文、立即发送和恢复。ACP 编辑在对话框中保存正文，保留附件及工作区引用；不会把远端附件转换为本地草稿。正在提升的项不可修改。
+- 复用现有队列面板，支持删除、拖动排序、撤回编辑、立即发送和恢复。ACP 编辑以 API 为准：输入框为空且无发送操作时，先撤回权威队列项，再把正文、附件及工作区引用恢复到当前 composer；修改后显式发送，作为新 command 追加队尾。正在提升的项不可修改，不再使用正文编辑弹窗。
+- 撤回前通过当前 Host 的受限附件读取接口准备全部文件内容；读取失败不删除队列项。删除携带原队列项作为并发前置条件，由 Host 在同一 admission gate 内检查，避免其他端编辑或提升后误删新内容。删除 ACK 成功后才能恢复；失败保留原队列，未知结果不自动重放。
+- 撤回期间锁定当前 composer 和目标行；workspace identity/path、remoteSessionId、Agent 或 session 切换后的迟到结果不能写入新目标。正文、附件及文件引用沿用既有草稿 owner，不新增 accepted queue。撤回的附件由浏览器 File 保存，重新提交走既有 ACP 附件校验和复制；Host 原副本在删除成功后清理。
 - 正常完成后在同一连接空闲时按 FIFO 自动发送。停止、Agent 错误/主动取消/拒绝/限额、进程断开及 Host 重启暂停剩余队列；恢复是显式操作，busy 时只武装自动发送。立即发送取消当前轮并等待旧连接关闭，再发送指定项；其他项保持此前的暂停/自动状态。
 - 图片和普通附件在排队 admission 前校验并复制到已有 attachment store；快照仅保存 refs、名称、MIME、大小。工作区文件沿用资源引用，执行时重新验证。能力/IO 校验失败不入队、不清空草稿。排队最多 100 项。
 
@@ -16,7 +18,7 @@
 - Composer 以 `submitPrompt` 返回的匹配会话/commandId 快照为接受凭证，实时事件只更新投影。通知丢失时也立即结束发送等待、清理本次冻结的草稿和附件；之后输入的内容、其它分屏及其它 workspace 不被清理。准备中重复提交复用同一接受 Promise；停止、移除、进程退出和 Host 关闭结束尚未接受的等待。
 - 接受前校验或落盘失败保留草稿；接受后 Agent 的错误属于当前轮。接受 ACK 丢失时读取同一 Host 权威快照对账，结果未知保留草稿与原 commandId，不自动重放。旧 Host 缺少 `submitPrompt` 时提示升级并保留草稿，不回退到等待整轮的旧接口。
 
-- `createAcpService` 是 accepted queue、dispatch reservation、revision 和取消栅栏的唯一 Host owner。每 session 串行短 admission/队列操作；长 Agent prompt 不持锁。Renderer 仅持编辑表单/未提交草稿，读取 `AcpSession.queue`。
+- `createAcpService` 是 accepted queue、dispatch reservation、revision 和取消栅栏的唯一 Host owner。每 session 串行短 admission/队列操作；长 Agent prompt 不持锁。Renderer 仅持撤回操作状态/未提交草稿，读取 `AcpSession.queue`。
 - `useAcpConversation` 只拥有发送中的临时展示描述，按 Host attachment、workspace identity/path、Agent、session 隔离；它不修改 `AcpSession.queue`。共享队列面板把 pending 状态放在同一个有限高度列表中。输入框仍在持久接受确认后清理。
 - shared 新增有默认空队列的 ACP schema；旧 JSON 和旧远端快照可以读取。`IAcpService.submitPrompt` 是 Composer 提交入口，与内部 `prompt` 共用唯一 admission；commandId 同时用于排队和 user entry 幂等。
 - 同一 Host RPC 新增 delete/edit/reorder/sendQueuedNow/setQueueAutoDrain 接口，严格解析参数，并核验 workspace identity/path/session。删除和编辑失败不得伪造成功。reserved 项保持可见直到已发送 user row 与出队在同一次快照提交中落盘。
@@ -75,3 +77,31 @@ sequenceDiagram
 - 3 组 E2E 通过：ACP 队列操作、分屏/continuous/replayable 与长列表 pending 可见性、API 共享队列操作反馈；亮暗主题截图留在隔离临时目录。synthetic Host 不调用真实 Agent，不访问用户历史。
 - Node 24.14.0、pnpm 10.33.2。首次 typecheck 因未生成 dynamic-workflow 依赖产物失败，执行两个包现有 build 后根 typecheck 通过。Lint 0 errors、72 个现有 warnings；changed architecture current/baseline/new 均为 0，改动格式与 diff 检查通过。
 - 未打包、替换已安装应用、提交或推送。
+
+## issue #93 核实与验收（2026-10-12）
+
+- GitHub issue 正文已实时核实。现有 `submitPrompt` 已在持久接受后返回，Agent 整轮不占 queue gate；当前没有实际应用的发送耗时或链路日志，不能认定“等半天”已复现。API composer 发送时只消费预传完成的附件 ref，ACP composer 在发送后才读取/编码 File，再由 Host 校验/复制；ACP 队列接受还保存并返回完整会话快照。这些已确认的路径差异没有真实耗时样本，完整快照落盘和传输也是接受前的待测环节；不以提前清草稿或虚假成功规避持久接受边界。
+- Host 测试覆盖运行中的接受不等待 Agent、附件撤回读取权限、跨会话拒绝、并发编辑/提升拒绝和删除后不可读。
+- 真实 composer E2E 覆盖撤回 ACK 前不恢复、失败不覆盖草稿、已有草稿拒绝、正文修改重发、附件与工作区引用，以及切换目标后迟到结果不恢复；保留现有 admission/ACK 丢失及 Desktop continuous / Mobile replayable 回归。
+
+```mermaid
+sequenceDiagram
+  participant UI as 当前 pane 草稿 owner
+  participant Host as ACP queue 唯一 owner
+  UI->>Host: 受限读取原项附件（当前 workspace/session）
+  UI->>Host: deleteQueueItem(expectedItem)
+  Host->>Host: admission gate 检查 queued 与内容一致
+  Host->>Host: 持久删除及幂等凭证，清理原副本
+  Host-->>UI: 同一 revision 的 snapshot / ACK
+  UI->>UI: 同目标才恢复正文、File、文件 mentions
+  Note over UI,Host: Desktop continuous 与 Mobile replayable 使用同一 owner；不自动重发
+```
+
+### 本次本地验证
+
+- Node 24.14.0 / pnpm 10.33.2。队列、发送接受确认、草稿转换、投影与 API 操作反馈 40/40 测试通过；扩展附件/reader/ACP service 回归 31/32 通过。
+- 唯一失败为 `acpService.test.ts` 中 `ACP goal persists while prompt blocks and attachment bytes never enter the snapshot`：期待对象未包含当前实现保存的 `endedAt`。用未修改的 HEAD service 实现隔离重跑同一测试，复现相同失败；未修改该任务外的旧断言。
+- 三组 E2E 通过：ACP 队列操作（含草稿冲突、删除拒绝、手动释放 ACK、冻结附件与文件 mention 撤回重发）、分屏/continuous/replayable（含切换会话后的迟到撤回 ACK）、API 操作反馈。1280/375px、亮暗主题截图已检查；synthetic Host 不调用真实 Agent。
+- 根 `pnpm typecheck` 通过；`pnpm lint` 0 errors / 74 warnings；changed architecture current/baseline/new 均为 0。功能图 YAML、55 个唯一节点、92 条关系端点及全部 seed 路径校验通过。
+- 变更沿用 shared/services/ui，生产源码净增 171 行：Host 唯一持有 accepted queue；UI 只有原草稿与临时撤回操作，文件读取仍通过当前 Host 的受限接口。`expectedItem` 是删除接口的可选并发前置条件，旧调用保持兼容；新 UI 与同版本 Host 配套，旧 Host 拒绝时不删除或恢复草稿。
+- 未验证真实问题会话的耗时、未重新打包或替换已安装应用、未提交或推送。

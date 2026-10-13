@@ -323,34 +323,42 @@ function applyExternalTextInsertRequestToComposer({
 export interface ComposerRestoreRequest {
   requestId: number;
   sessionId: string;
+  /** ACP 复用现有草稿 owner，不能与 API 同名 session 共享恢复目标。 */
+  scopeId?: string;
   workspaceKey: string;
   inputKind: "sendText" | "sendGoalCommand";
   text: string;
   attachments: readonly AttachmentRef[];
+  files?: File[];
+  editorStateJson?: string;
   config?: Pick<V4ComposerDraft, "mode" | "planEnabled" | "modelSelection">;
 }
 
 function applyComposerRestoreRequestToComposer({
   appliedRequestId,
   currentSessionId,
+  currentScopeId,
   currentWorkspaceKey,
   hasDraftContent,
   inputApi,
   request,
   requestFocus,
   restoreSessionOwnedAttachments,
+  restoreFiles,
   restoreDraftConfig,
   scheduleDraftPersist,
   updateText,
 }: {
   appliedRequestId: number | null;
   currentSessionId: string | null;
+  currentScopeId: string;
   currentWorkspaceKey: string;
   hasDraftContent: boolean;
-  inputApi: Pick<LexicalChatInputHandle, "setText"> | null;
+  inputApi: Pick<LexicalChatInputHandle, "setText" | "setEditorStateJson"> | null;
   request: ComposerRestoreRequest | null | undefined;
   requestFocus: () => void;
   restoreSessionOwnedAttachments: (attachments: readonly AttachmentRef[]) => boolean;
+  restoreFiles: (files: File[]) => void;
   restoreDraftConfig?: (config: NonNullable<ComposerRestoreRequest["config"]>) => void;
   scheduleDraftPersist: () => void;
   updateText: (text: string) => void;
@@ -359,7 +367,9 @@ function applyComposerRestoreRequestToComposer({
     return appliedRequestId;
   }
   if (
-    request.sessionId !== currentSessionId ||
+    (request.scopeId
+      ? request.scopeId !== currentScopeId
+      : request.sessionId !== currentSessionId) ||
     request.workspaceKey !== currentWorkspaceKey ||
     hasDraftContent ||
     !inputApi
@@ -369,7 +379,9 @@ function applyComposerRestoreRequestToComposer({
   if (!restoreSessionOwnedAttachments(request.attachments)) {
     return appliedRequestId;
   }
-  inputApi.setText(request.text);
+  if (request.editorStateJson) inputApi.setEditorStateJson(request.editorStateJson);
+  else inputApi.setText(request.text);
+  if (request.files?.length) restoreFiles(request.files);
   updateText(request.text);
   if (request.config) restoreDraftConfig?.(request.config);
   scheduleDraftPersist();
@@ -824,6 +836,15 @@ function ConversationComposerImpl({
     workspaceIdentity,
     scopeId: draftScopeId,
   });
+  const worktreeSourceRef = useRef({ workspacePath, workspaceIdentity, scopeId: draftScopeId });
+  if (
+    worktreeSourceRef.current.workspacePath !== workspacePath ||
+    worktreeSourceRef.current.workspaceIdentity !== workspaceIdentity ||
+    worktreeSourceRef.current.scopeId !== draftScopeId
+  ) {
+    // 导航 render 先于草稿恢复 effect；用来源代次立即阻断迟到创建，包括离开后返回。
+    worktreeSourceRef.current = { workspacePath, workspaceIdentity, scopeId: draftScopeId };
+  }
   const ownerDraftRef = useRef({
     draft: composerDraft,
     workspacePath,
@@ -957,6 +978,7 @@ function ConversationComposerImpl({
       const nextAppliedRequestId = applyComposerRestoreRequestToComposer({
         appliedRequestId: appliedComposerRestoreRequestRef.current,
         currentSessionId: sessionId,
+        currentScopeId: draftScopeId,
         currentWorkspaceKey: workspaceKey,
         hasDraftContent:
           textRef.current.length > 0 ||
@@ -969,6 +991,7 @@ function ConversationComposerImpl({
         request: composerRestoreRequest,
         requestFocus: requestComposerFocus,
         restoreSessionOwnedAttachments: attachmentsApi.restoreSessionOwnedAttachments,
+        restoreFiles: attachmentsApi.restoreFiles,
         // 撤回项携带独立 Submission 配置；沿用草稿 owner，一次恢复且保留已处理授权标记。
         restoreDraftConfig: (config) =>
           replaceComposerDraft({
@@ -995,6 +1018,7 @@ function ConversationComposerImpl({
   }, [
     attachmentsApi.attachments.length,
     attachmentsApi.restoreSessionOwnedAttachments,
+    attachmentsApi.restoreFiles,
     codeCommentContexts.length,
     composerRestoreRequest,
     conversationSelectionReferences.length,
@@ -1003,6 +1027,7 @@ function ConversationComposerImpl({
     requestComposerFocus,
     scheduleDraftPersist,
     sessionId,
+    draftScopeId,
     updateText,
     webElementContexts.length,
     pptxElementReferences.length,
@@ -1283,6 +1308,7 @@ function ConversationComposerImpl({
           return;
         }
         const submittedRevision = contentRevisionRef.current;
+        const submittedSource = worktreeSourceRef.current;
         const submittedDraftVersion = useZCodeSessionStore
           .getState()
           .getWorkspaceState(workspacePath, workspaceIdentity).draftFocusVersion;
@@ -1314,6 +1340,8 @@ function ConversationComposerImpl({
               "operation-in-progress": "git.branchSwitcher.error.operationInProgress",
               "branch-in-other-worktree": "git.branchSwitcher.error.branchInOtherWorktree",
               "not-repository": "git.branchSwitcher.worktree.error.notRepository",
+              "target-branch-not-found":
+                "git.branchSwitcher.worktree.error.sourceBranchUnavailable",
               "command-timeout": "git.branchSwitcher.worktree.error.timeout",
             };
             toast(
@@ -1326,8 +1354,8 @@ function ConversationComposerImpl({
           }
           // Git 已创建成功；旧草稿若在等待期间切换/编辑，迟到结果只能保存，不能抢走当前焦点或自动发送。
           if (
-            draftTargetRef.current.workspacePath !== workspacePath ||
-            draftTargetRef.current.scopeId !== V4_DRAFT_SCOPE_ROOT ||
+            // ACP 有独立草稿/预连接 scope；应比较发送时实际来源，不能要求普通 root。
+            worktreeSourceRef.current !== submittedSource ||
             useZCodeSessionStore.getState().getWorkspaceState(workspacePath, workspaceIdentity)
               .draftFocusVersion !== submittedDraftVersion ||
             contentRevisionRef.current !== submittedRevision

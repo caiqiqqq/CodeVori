@@ -839,3 +839,59 @@ test("ACP exit pauses queue and removal cannot resurrect it from late replies", 
     await f.dispose();
   }
 });
+
+test("queue withdrawal reads frozen bytes only in scope and refuses changed contents", async () => {
+  const f = await fixture();
+  try {
+    const first = f.prompt("withdraw-first");
+    await waitFor(() => f.calls.length === 1);
+    const snapshot = await f.service.submitPrompt({
+      ...f.target,
+      commandId: "withdraw-file",
+      text: "withdraw original",
+      attachments: [
+        {
+          fileName: "note.txt",
+          mimeType: "text/plain",
+          dataBase64: Buffer.from("frozen bytes").toString("base64"),
+        },
+      ],
+    });
+    const item = snapshot.queue.items[0]!;
+    const read = { ...f.target, ref: item.attachments[0]!.ref, offset: 0, limit: 128 };
+    assert.equal(
+      Buffer.from((await f.service.readAttachment(read)).dataBase64, "base64").toString(),
+      "frozen bytes",
+    );
+    await assert.rejects(
+      f.service.readAttachment({ ...read, workspaceIdentity: "other-workspace" }),
+    );
+    const other = await f.service.create({ ...workspace, agent: "codex" });
+    await assert.rejects(f.service.readAttachment({ ...read, id: other.id }));
+    await f.service.editQueueItem({
+      ...f.target,
+      queueItemId: item.commandId,
+      text: "changed on another client",
+    });
+    await assert.rejects(
+      f.service.deleteQueueItem({ ...f.target, queueItemId: item.commandId, expectedItem: item }),
+      /changed/,
+    );
+    const current = (await f.read()).queue.items[0]!;
+    assert.equal(current.text, "changed on another client");
+    const removed = await f.service.deleteQueueItem({
+      ...f.target,
+      queueItemId: current.commandId,
+      expectedItem: current,
+    });
+    assert.equal(removed.queue.items.length, 0);
+    assert.ok(removed.queue.discardedCommandIds?.includes(current.commandId));
+    await assert.rejects(f.service.readAttachment(read));
+    // An ambiguous retry of the old submission must not recreate the withdrawn input.
+    assert.equal((await f.prompt(current.commandId)).queue.items.length, 0);
+    f.turns[0]!.resolve();
+    await first;
+  } finally {
+    await f.dispose();
+  }
+});

@@ -27,6 +27,7 @@ import { modelSelectionSchema } from "../model-selection.js";
 import { completeModelPropertiesDataSchema } from "../model-config.js";
 import { accountProviderUnavailableReasonSchema } from "../account-provider-state.js";
 import { modelExecutionSchema } from "../model-execution.js";
+// usage/stats 的小时投影与桌面/远程 Host 共享同一兼容 snapshot schema。
 import { APP_USAGE_RANGES, appUsageSnapshotSchema } from "../usage-stats.js";
 import { zcodeAutomationBotDeliveryTargetSchema } from "../bots.js";
 // browser-use 命令/结果契约单一来源：agent 构造、协议校验和 main executor 共用同一 schema。
@@ -3769,6 +3770,7 @@ export * from "../localTtft.js";
 
 // 桌面本地 TTFT 的严格事实合同；检查点不能替代实际内容帧。
 export { localTtftFactsSchema } from "../localTtft.js";
+// ACP updated 通知包含可选、非持久化的 streamDiagnostics；schema 与类型从同一入口导出。
 export * from "./acp.js";
 export * from "./acpPlugin.js";
 export * from "./acpWorkflow.js";

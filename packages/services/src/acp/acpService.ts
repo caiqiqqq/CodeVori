@@ -42,6 +42,15 @@ import {
   type AcpGeneratedText,
 } from "@zcode/shared";
 import { createServiceDescriptor } from "../descriptors.js";
+import type {
+  AcpConversationChange,
+  AcpConversationRead,
+  AcpConversationRowsRange,
+  AcpConversationTarget,
+  AcpSessionSummary,
+  AcpSessionSummaryChanged,
+} from "@zcode/shared";
+import type { V4ConversationRowsRangeResult } from "@zcode/shared/zcode-protocol-v4";
 
 export interface IAcpService {
   /** Isolated auxiliary run using the source conversation's current model; no source admission. */
@@ -66,6 +75,13 @@ export interface IAcpService {
   manageAgent(input: AcpAgentManagement): Promise<AcpAgentInfo>;
   onDynamicAgentOperation(operationId: string): Event<AcpAgentOperationEvent>;
   list(workspace: AcpWorkspace): Promise<AcpSession[]>;
+  /** UI metadata only; never ships the conversation history. */
+  listSummaries(workspace: AcpWorkspace): Promise<AcpSessionSummary[]>;
+  onDynamicSessionSummaryChanged(workspace: AcpWorkspace): Event<AcpSessionSummaryChanged>;
+  /** Durable V4 tail snapshot / cursor page; no Agent connection or command admission. */
+  readConversation(input: AcpConversationRead): Promise<AcpConversationChange[]>;
+  conversationRowsRange(input: AcpConversationRowsRange): Promise<V4ConversationRowsRangeResult>;
+  onDynamicConversationChanged(input: AcpConversationTarget): Event<AcpConversationChange>;
   /** Persisted archive scopes on this Host only; no Agent connections. */
   listArchivedWorkspaces(): Promise<AcpWorkspace[]>;
   /** Refuse active prompts/workflows, then disconnect idle adapters while preserving durable history. */

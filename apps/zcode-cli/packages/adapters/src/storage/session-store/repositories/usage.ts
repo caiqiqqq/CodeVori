@@ -13,6 +13,7 @@ import type {
   TurnUsageRecord,
 } from "@zcode/contracts";
 import { encodeJson } from "../json.js";
+import { queryRecentModelUsage } from "./usage-hourly.js";
 
 const USAGE_RETENTION_DAYS = 30;
 const USAGE_RETENTION_MS = USAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
@@ -554,6 +555,7 @@ export async function queryAppUsage(
       avgTimeToFirstTokenMs:
         totals.avgTimeToFirstTokenMs == null ? null : Number(totals.avgTimeToFirstTokenMs),
     },
+    recentModelUsage: queryRecentModelUsage(db, input),
     turnTotals: {
       totalSessions: Number(turnTotals.totalSessions ?? 0),
       totalTurns: Number(turnTotals.totalTurns ?? 0),

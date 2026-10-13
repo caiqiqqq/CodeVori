@@ -21,7 +21,7 @@ try {
       import React, { useState } from "react";
       import { createRoot } from "react-dom/client";
       import { ZCodeIntlProvider } from "../../../ui/src/i18n/IntlProvider.tsx";
-      import { useAcpConversation } from "../../../ui/src/v4/useAcpConversation.ts";
+      import { useAcpConversation } from "../../../ui/test/acpProjectionFixture.tsx";
       const store = new Map();
       const listeners = new Set();
       const events = [];

@@ -47,10 +47,10 @@ export function useAcpExecutionTrace(
     publish(true);
     const updateSession = (value: AcpSession) => {
       const parsed = acpSessionSchema.parse(value);
-      if (!removed && (!session || parsed.revision > session.revision)) session = parsed;
+      if (!removed && (!session || parsed.revision >= session.revision)) session = parsed;
     };
     // 先订阅再并行读取；初始 RPC 迟到时合并实时事实，不能覆盖新 revision 或新轨迹。
-    const snapshotSubscription = services.acpService.onDynamicSessionChanged(workspace)(
+    const snapshotSubscription = services.acpService.onDynamicSessionSummaryChanged(workspace)(
       (change) => {
         if (
           disposed ||
@@ -62,15 +62,36 @@ export function useAcpExecutionTrace(
           removed = true;
           session = null;
           events = [];
-        } else updateSession(change.session);
-        publish(false, removed);
+          publish(false, true);
+        }
       },
     );
+    let detailRead: Promise<void> | null = null;
+    let detailDirty = false;
+    const refreshDetails = () => {
+      detailDirty = true;
+      if (detailRead) return;
+      // 轨迹窗口的详情按低频生命周期/工具日志失效，不按每个正文分片重读全文。
+      detailRead = (async () => {
+        while (detailDirty && !disposed && !removed) {
+          detailDirty = false;
+          updateSession(await services.acpService.read({ ...workspace, id }));
+          publish();
+        }
+      })()
+        .catch(() => {
+          if (!disposed) publish(false, true);
+        })
+        .finally(() => {
+          detailRead = null;
+        });
+    };
     const traceSubscription = services.acpService.onDynamicExecutionTraceChanged(workspace)(
       (change) => {
         if (disposed || removed || change.id !== id) return;
         events = mergeAcpTraceEvents(events, [acpDiagnosticEventSchema.parse(change.event)]);
         publish();
+        refreshDetails();
       },
     );
     void Promise.all([
