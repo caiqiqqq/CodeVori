@@ -14,6 +14,8 @@ import {
   type SessionsIndexScope,
 } from "@/v4/sessionsIndexRegistry.js";
 import type { SessionsIndexStoreStatus } from "@/v4/sessionsIndexStore.js";
+import { getWorkTaskReadModel } from "./workTaskReadModel.js";
+import { isWorkTaskNotificationSession } from "@/lib/workTaskNotifications.js";
 
 type FormatMessage = IntlInstance["formatMessage"];
 type TaskNotificationPlatform = Pick<IPlatformService, "showTaskNotification">;
@@ -94,10 +96,25 @@ export function useWorkspaceTerminalTaskNotifications({
   platform,
   formatMessage,
 }: WorkspaceTerminalTaskNotificationsParams): void {
-  const { zcodeAgentService } = useServices();
+  const { zcodeAgentService, workTaskService } = useServices();
   const workspaceIdentity = trimOptional(rawWorkspaceIdentity);
   const endpointKey = trimOptional(rawEndpointKey);
   const workspaceKey = workspaceIdentity ?? workspacePath;
+  const workTasks = useMemo(
+    () =>
+      workTaskService
+        ? getWorkTaskReadModel(
+            workTaskService,
+            {
+              workspacePath,
+              workspaceIdentity,
+              remoteSessionId: endpointKey,
+            },
+            false,
+          )
+        : null,
+    [workTaskService, workspacePath, workspaceIdentity, endpointKey],
+  );
   const signature = useMemo(
     () =>
       buildWorkspaceNotificationSignature({
@@ -181,14 +198,23 @@ export function useWorkspaceTerminalTaskNotifications({
 
     const payloads = collectTerminalTaskNotificationPayloads({
       previousBySessionId,
-      sessions: indexState.sessions,
+      // 修复依据：待办的终态由 task 投影通知；同目录原生会话不能再重复发送一次。
+      sessions: indexState.sessions.filter(
+        (session) =>
+          !isWorkTaskNotificationSession(
+            workTasks?.getSnapshot().data?.tasks ?? [],
+            "api",
+            session.sessionId,
+            workspacePath,
+          ),
+      ),
       formatMessage,
     });
     for (const payload of payloads) {
       showTaskNotification(platform, payload);
     }
     previousBySessionIdRef.current = nextBySessionId;
-  }, [enabled, formatMessage, indexState, platform, signature]);
+  }, [enabled, formatMessage, indexState, platform, signature, workTasks, workspacePath]);
 }
 
 /**

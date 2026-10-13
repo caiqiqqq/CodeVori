@@ -4,11 +4,12 @@ import type { IPlatformService, WorkTaskScope } from "@zcode/shared";
 import type { IntlInstance } from "@/i18n/index.js";
 import { logger } from "@/logger.js";
 import {
-  getWorkTaskWaitingNotification,
+  getWorkTaskAttentionNotification,
   toWorkTaskNotificationFact,
   type WorkTaskNotificationFact,
 } from "@/lib/workTaskNotifications.js";
 import { requestWorktreeSettingsConversation } from "@/lib/worktreeSettingsNavigation.js";
+import { columnForWorkTaskStatus } from "@/lib/workTaskBoard.js";
 import { getWorkTaskReadModel } from "./workTaskReadModel.js";
 
 /** 后台待办不会挂载交互弹窗；等待通知必须观察原 Host task 投影，而非当前选中对话。 */
@@ -39,8 +40,8 @@ export function useWorkTaskNotifications({
   const payloadFor = useEffectEvent(
     (
       previous: WorkTaskNotificationFact | undefined,
-      task: Parameters<typeof getWorkTaskWaitingNotification>[1],
-    ) => getWorkTaskWaitingNotification(previous, task, scope, formatMessage),
+      task: Parameters<typeof getWorkTaskAttentionNotification>[1],
+    ) => getWorkTaskAttentionNotification(previous, task, scope, formatMessage),
   );
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export function useWorkTaskNotifications({
         if (
           !fact ||
           fact.runSeq !== target.runSeq ||
-          fact.status !== "awaiting_input" ||
+          columnForWorkTaskStatus(fact.status) !== "attention" ||
           fact.archived ||
           fact.stopPending
         )
