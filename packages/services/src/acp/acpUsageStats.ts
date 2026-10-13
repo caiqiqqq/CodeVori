@@ -1,5 +1,6 @@
 import {
   acpUsageReportSchema,
+  createAppUsageHourlyAccumulator,
   type AcpAppUsageAgent,
   type AcpUsageReport,
   type AcpSession,
@@ -69,6 +70,10 @@ export function summarizeAcpUsage(
     day: "2-digit",
   });
   const groups = new Map<AcpSession["agent"], AcpAppUsageAgent>();
+  const hourlyByAgent = new Map<
+    AcpSession["agent"],
+    ReturnType<typeof createAppUsageHourlyAccumulator>
+  >();
   const seenNative = new Set<string>();
   for (const session of sessions) {
     if (session.provisional) continue;
@@ -76,6 +81,9 @@ export function summarizeAcpUsage(
     const history = session.agent === "codex" ? histories.get(nativeKey) : undefined;
     if (history && seenNative.has(nativeKey)) continue;
     if (history) seenNative.add(nativeKey);
+    const hourly =
+      hourlyByAgent.get(session.agent) ?? createAppUsageHourlyAccumulator(request.timeZone, until);
+    hourlyByAgent.set(session.agent, hourly);
     const group = groups.get(session.agent) ?? {
       agent: session.agent,
       sessions: 0,
@@ -87,6 +95,7 @@ export function summarizeAcpUsage(
       outputTokens: 0,
       models: [],
       dailyUsage: [],
+      hourlyUsage: hourly.usage,
     };
     const entries = session.entries.filter(
       (entry) => entry.kind === "user" && entry.id.startsWith("user:"),
@@ -104,6 +113,7 @@ export function summarizeAcpUsage(
           record.modelId ? [{ ...record.usage, modelId: record.modelId }] : [],
           record.timestamp,
           formatter,
+          hourly,
         );
       }
     }
@@ -145,7 +155,7 @@ export function summarizeAcpUsage(
         const fact = facts.get(commandId);
         if (fact) {
           group.measuredTurns++;
-          addUsage(group, fact, fact.models, entry.createdAt ?? null, formatter);
+          addUsage(group, fact, fact.models, entry.createdAt ?? null, formatter, hourly);
         } else group.unknownTurns++;
       }
     }
@@ -163,6 +173,7 @@ function addUsage(
   models: AcpAppUsageAgent["models"],
   timestamp: number | null,
   formatter: Intl.DateTimeFormat,
+  hourly: ReturnType<typeof createAppUsageHourlyAccumulator>,
 ): void {
   group.totalTokens += usage.totalTokens;
   group.inputTokens += usage.inputTokens;
@@ -180,6 +191,11 @@ function addUsage(
       }
     }
   }
+  const unknown = usage.totalTokens - models.reduce((sum, model) => sum + model.totalTokens, 0);
+  hourly.add(
+    timestamp,
+    unknown > 0 ? [...models, { modelId: null, totalTokens: unknown }] : models,
+  );
   if (timestamp === null) return;
   const parts = formatter.formatToParts(timestamp);
   const part = (type: string) => parts.find((item) => item.type === type)?.value;
@@ -197,7 +213,6 @@ function addUsage(
     else day!.models.push({ modelId, totalTokens });
   };
   for (const model of models) addModel(model.modelId, model.totalTokens);
-  const unknown = usage.totalTokens - models.reduce((sum, model) => sum + model.totalTokens, 0);
   if (unknown > 0) addModel(null, unknown);
 }
 
