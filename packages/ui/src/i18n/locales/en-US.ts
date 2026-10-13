@@ -2292,6 +2292,13 @@ const enUS: Record<string, string> = {
   "workspaceSidebar.searchArchivedTasksPlaceholder": "Search archived tasks...",
   "workspaceSidebar.closeTaskSearch": "Close task search",
   "workspaceSidebar.remove": "Remove",
+  "workspaceSidebar.rename": "Rename project",
+  "workspaceSidebar.renameDescription":
+    "Aliases are display names. Leave empty to restore the folder name.",
+  "workspaceSidebar.renamePlaceholder": "Project alias (leave empty to use folder name)",
+  "workspaceSidebar.renameInvalid":
+    "Aliases can be at most 200 characters and cannot contain path separators or control characters",
+  "workspaceSidebar.renameFailed": "Could not save project alias",
   "workspaceSidebar.removeRunningWorkspace.title": "Remove a running project?",
   "workspaceSidebar.removeRunningWorkspace.description":
     "This project still has a running chat or Agent. Removing it will stop and release the related runtime state, but task history will not be deleted.",
