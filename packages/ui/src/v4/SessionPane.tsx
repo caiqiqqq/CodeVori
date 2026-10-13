@@ -141,6 +141,7 @@ import { useAgentDelegation } from "@/hooks/useAgentDelegation.js";
 import { useAcpConversation } from "@/v4/useAcpConversation.js";
 import { useAcpQueueEditing } from "@/v4/useAcpQueueEditing.js";
 import { useConversationArchive } from "@/hooks/useConversationArchive.js";
+import { useAcpTaskReadAcknowledgement } from "@/hooks/useAcpTaskReadAcknowledgement.js";
 import { AcpConversationQueuePanel } from "@/v4/AcpConversationQueuePanel.js";
 import { useAcpAttachmentReader } from "@/hooks/useAcpAttachmentReader.js";
 import { useAcpComposerConfigPreview } from "@/v4/composer/useAcpComposerConfigPreview.js";
@@ -630,6 +631,21 @@ export function SessionPane({
     },
     acpAgent,
     handleAcpSessionArchived,
+  );
+  useAcpTaskReadAcknowledgement(
+    acpConversation.selected
+      ? {
+          id: acpConversation.selected.id,
+          status: acpConversation.selected.status,
+          unreadAt: acpConversation.selected.unreadAt,
+          workspacePath,
+          workspaceIdentity,
+          remoteSessionId: remoteSessionId ?? undefined,
+        }
+      : null,
+    acpService,
+    Boolean(acpAgent) && focused && telemetryVisible,
+    readOnly,
   );
   const nativeArchive = useConversationArchive(
     workspacePath,

@@ -14,10 +14,40 @@ sessions-index：实时 activity phase ───┴→ deriveTaskLeadingIndicato
                                        → 错误 > 未读 > 实时运行 > 无角标
 ```
 
-本节记录现有展示规则，回归测试覆盖完成未读、完成已读、错误优先和终态 activity
-水合后的投影。未读的生成、持久化与导航清除继续由既有服务和 hook 负责；不新增
-写入路径。本节不定义 ACP 自动未读或待办看板 WorkTask 的完成未读状态，也不能
-仅凭这些投影测试确认 issue #104 已解决；该议题的截图指向仍待核实。
+回归测试覆盖完成未读、完成已读、错误优先和终态 activity 水合后的投影。
+原生会话的未读生成、持久化与导航清除继续由既有服务和 hook 负责。
+
+## ACP 对话结束后的未读（issue #104）
+
+左侧项目、工作树、置顶和时间线列表中的 ACP 对话，在后台结束一轮后显示既有蓝色
+未读角标。未读与 `idle` / `interrupted` 独立，不新增会话状态枚举或待办看板状态。
+当前查看的对话结束后保持已读；点击未读对话后清除角标。手动标记未读仍可用。
+
+ACP Host 是 `unreadAt` 的唯一持久化所有者。在真实 `running → idle/interrupted`
+迁移的同一次 mutate 中生成新时间，然后原子保存终态和未读，再广播 summary。
+草稿、已归档/被接替会话、显式停止和 Host 重启恢复不生成完成未读；普通配置、
+流式分片和重复终态不更新未读。新一轮终态更新旧未读时间，便于条件清除区分结果。
+
+侧栏读取所属 Host 的 summary。当前可见焦点窗格进入对话或从运行变为终态时，经现有
+`updateRow(unread=false)` 清除观察到的 `unreadAt`；携带可选 `expectedUnreadAt`，
+Host 在同一 queue gate 内比较后清除；点击侧栏行也复用该条件清除。侧栏折叠不影响
+可见窗格确认已读。旧请求不能清掉更新的未读。旧调用方不带
+条件时保留原行为。行的 scope 包含 workspace identity（本地路径 fallback）、
+真实路径、attachment、服务实例和 ACP ID；不写入原生 task store，不伪造 UI 未读。
+失败保留 Host 投影并记录日志；切换 scope 后迟到响应不覆盖新对话。
+
+```text
+ACP Agent 终态 → Host mutate(status + unreadAt) → 原子保存 → summary 广播
+                                                          ├→ 后台行：蓝色未读角标
+                                                          └→ 当前行：条件清除命令
+点击后台行 → 既有导航 + 条件清除命令 → Host queue gate 比较 → 保存 → summary
+桌面：continuous 接收；手机：replayable 恢复 summary 中同一 unreadAt，不重造未读
+```
+
+验收：Host 测试验证成功/失败终态、去重、重启恢复、显式停止、跨 identity 拒绝和
+旧条件清除与新轮结束竞争。生产侧栏 hook 与行组件的 E2E 覆盖后台完成→角标、
+点击→已读、当前项完成→已读、手动未读、迟到 snapshot、同路径不同 Host，以及
+桌面/375px、浅深主题。效果图使用合成数据，不修改真实用户历史。
 
 ## 当前会话选中反馈
 
