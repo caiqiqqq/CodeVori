@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   workTaskCreateSchema,
   resolveWorkspaceKey,
@@ -28,6 +36,7 @@ export function useWorkTaskPromptAssets(
   scope: WorkTaskScope,
   task: WorkTask | null,
   disabled: boolean,
+  initialFiles?: File[],
 ) {
   const resolution = useTaskServices(scope);
   const [scopeId] = useState(() => `work-task-editor:${crypto.randomUUID()}`);
@@ -43,6 +52,15 @@ export function useWorkTaskPromptAssets(
   useEffect(() => {
     if (initialAttachments?.length) composer.restoreSessionOwnedAttachments(initialAttachments);
   }, [initialAttachments, composer.restoreSessionOwnedAttachments]);
+  const [initialDraftFiles] = useState(() => initialFiles);
+  const restoreInitialFiles = useEffectEvent(() => {
+    if (initialDraftFiles?.length) composer.restoreFiles(initialDraftFiles);
+  });
+  useEffect(() => {
+    // 初始截图只随编辑器挂载恢复，删除、保存重试和执行器切换不能重新添加。
+    // StrictMode 会先清理原 composer scope，再重跑此初始化以恢复资源。
+    restoreInitialFiles();
+  }, [initialDraftFiles]);
   const prepare = useCallback(
     async (kind: "api" | "acp", signal: AbortSignal) => {
       if (!composer.attachments.length) return [];
