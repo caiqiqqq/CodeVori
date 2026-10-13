@@ -70,6 +70,7 @@ export function WorkTaskSessionView({
         {...paneOptions}
         {...scopedStatusPanel}
         readOnly={readOnly}
+        interactionNotificationsEnabled={false}
         paneId="work-task-conversation"
         workspacePath={binding.workspacePath}
         sessionId={binding.kind === "api" ? binding.sessionId : null}

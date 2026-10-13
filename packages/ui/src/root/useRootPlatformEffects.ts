@@ -6,6 +6,7 @@ import { isWorkspaceTab, type TabStoreState, type WindowTabState } from "@/store
 import { useTabStore } from "@/store/TabStoreProvider.js";
 import { logger } from "@/logger.js";
 import { ACP_TASK_NOTIFICATION_PREFIX } from "@/lib/taskNotificationOrchestrator.js";
+import { WORK_TASK_NOTIFICATION_PREFIX } from "@/lib/workTaskNotifications.js";
 import { seedImportedSessionDraft } from "@/v4/composer/newTaskDraft.js";
 import { dismissToast, toast, updateToast } from "@/components/ui/toast.js";
 import { matchesPrimaryShortcut } from "@/lib/keyboardShortcuts.js";
@@ -205,7 +206,11 @@ export function useRootPlatformEffects({
       : () => {};
     const disposeNotificationClick = platform.onTaskNotificationClick((taskId: string) => {
       // ACP 通知由 workspace 通知 hook 复用现有会话导航，不能把 Host 会话 id 写入 native task 选择。
-      if (taskId.startsWith(ACP_TASK_NOTIFICATION_PREFIX)) return;
+      if (
+        taskId.startsWith(ACP_TASK_NOTIFICATION_PREFIX) ||
+        taskId.startsWith(WORK_TASK_NOTIFICATION_PREFIX)
+      )
+        return;
       logger.info("[Root] onTaskNotificationClick:", taskId);
       // 遍历所有 workspace 找到 taskId 所属的 workspace，然后激活对应 tab 并切换任务
       const workspaces = useZCodeSessionStore.getState().workspaces;
