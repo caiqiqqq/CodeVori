@@ -691,7 +691,14 @@ export const acpSessionRowUpdateSchema = acpWorkspaceSchema
       z.object({ kind: z.literal("pin"), pinned: z.boolean() }).strict(),
       z.object({ kind: z.literal("archive"), archived: z.boolean() }).strict(),
       z.object({ kind: z.literal("rename"), title: z.string().max(200) }).strict(),
-      z.object({ kind: z.literal("unread"), unread: z.boolean() }).strict(),
+      z
+        .object({
+          kind: z.literal("unread"),
+          unread: z.boolean(),
+          /** 只清除用户实际看到的结果，迟到请求不能清掉下一轮完成标记。 */
+          expectedUnreadAt: z.number().int().positive().optional(),
+        })
+        .strict(),
     ]),
   })
   .strict();

@@ -536,7 +536,19 @@ export function createAcpService(
     streaming = false,
   ): Promise<void> => {
     if (session.deletionState) throw new Error("conversation deletion pending; retry deletion");
+    const wasRunning = session.status === "running";
     change();
+    // 修复依据：ACP 以前只有菜单写 unreadAt，后台回合结束没有未读事实可供侧栏投影。
+    // 终态与未读在同一快照保存；停止/草稿/归档不产生完成未读，重复终态不重复标记。
+    if (
+      wasRunning &&
+      session.status !== "running" &&
+      !stopping.has(session.id) &&
+      !session.archived &&
+      isAcpHistorySession(session)
+    ) {
+      session.unreadAt = Math.max(Date.now(), (session.unreadAt ?? 0) + 1);
+    }
     if (!session.error) delete session.errorCommandId;
     if (session.status !== "running") {
       finishAcpThoughts(
@@ -2396,7 +2408,10 @@ export function createAcpService(
             await mutate(session, () => {
               session.unreadAt = Date.now();
             });
-        } else if (session.unreadAt !== null) {
+        } else if (
+          session.unreadAt !== null &&
+          (action.expectedUnreadAt === undefined || action.expectedUnreadAt === session.unreadAt)
+        ) {
           await mutate(session, () => {
             session.unreadAt = null;
           });
