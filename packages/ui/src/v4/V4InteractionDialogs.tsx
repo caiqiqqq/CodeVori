@@ -27,6 +27,7 @@ import { V4UserInputDialog } from "@/v4/V4UserInputDialog.js";
 import { useV4Conversation } from "@/v4/V4ConversationContext.js";
 
 interface V4InteractionDialogsProps {
+  notificationsEnabled?: boolean;
   sessionId: string;
   workspacePath: string;
   workspaceIdentity?: string;
@@ -90,6 +91,7 @@ function createInteractionAutoResolutionIntentTracker(): InteractionAutoResoluti
  * ChatView 删除后若无此组件，带 tool 权限的会话会永久阻塞。
  */
 export function V4InteractionDialogs({
+  notificationsEnabled = true,
   sessionId,
   workspacePath,
   workspaceIdentity,
@@ -133,7 +135,7 @@ export function V4InteractionDialogs({
   });
   usePendingInteractionTaskNotifications({
     snapshot: currentSnapshot,
-    enabled: notificationEnabled,
+    enabled: notificationEnabled && notificationsEnabled,
     platform,
     formatMessage: intl.formatMessage,
   });

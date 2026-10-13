@@ -308,6 +308,8 @@ import {
 
 export interface SessionPaneProps {
   paneId: string;
+  /** 待办宿主已按任务状态统一提醒时，关闭当前会话的重复交互通知。 */
+  interactionNotificationsEnabled?: boolean;
   conversationTabContainer?: HTMLElement | null;
   sessionId: string | null;
   /** 低基数打开入口，由 pane 宿主提供；缺省仅用于兼容旧调用。 */
@@ -520,6 +522,7 @@ function shouldRestoreQueuedComposerFromAck(status: CommandAck["status"]): boole
  */
 export function SessionPane({
   paneId,
+  interactionNotificationsEnabled = true,
   conversationTabContainer,
   sessionId,
   openTrigger,
@@ -5085,6 +5088,7 @@ export function SessionPane({
           remoteSessionId={remoteSessionId ?? undefined}
           provider={provider}
           snapshot={snapshot}
+          notificationsEnabled={interactionNotificationsEnabled}
         />
       ) : null}
       {composerNode}
