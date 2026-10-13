@@ -155,16 +155,27 @@ try {
           .locator(".recharts-tooltip-wrapper")
           .getByText("Codex ACP · large-model", { exact: true })
           .waitFor();
-        assert.match(
-          await chart.locator(".recharts-tooltip-wrapper").innerText(),
-          /2026-10-13 08:00/,
-        );
+        assert.match(await chart.locator(".recharts-tooltip-wrapper").innerText(), /^08:00 - /);
         const requests = await page.evaluate(() => window.__requests);
         await large.focus();
         await page.keyboard.press("Space");
         assert.equal(await large.getAttribute("aria-pressed"), "false");
         assert.equal(await chart.locator(".recharts-line-dot").count(), 2);
         assert.equal(await page.evaluate(() => window.__requests), requests);
+        // 隐藏其它模型后单序列 tooltip 仍必须显示日期与小时。
+        const singlePoint = await chart.locator(".recharts-line-dot").first().boundingBox();
+        await page.mouse.move(
+          singlePoint.x + singlePoint.width / 2,
+          singlePoint.y + singlePoint.height / 2,
+        );
+        await chart
+          .locator(".recharts-tooltip-wrapper")
+          .getByText("small-model", { exact: true })
+          .waitFor();
+        assert.match(await chart.locator(".recharts-tooltip-wrapper").innerText(), /^08:00 - /);
+        await chart.screenshot({
+          path: join(artifacts, `single-hourly-${width}-${theme}-${locale}.png`),
+        });
         await chart.getByRole("button", { name: "small-model", exact: true }).click();
         assert.equal(await chart.locator(".recharts-line").count(), 0);
         await large.click();
@@ -178,6 +189,16 @@ try {
         );
         await sources.getByRole("tab", { name: "Codex ACP", exact: true }).click();
         assert.equal(await chart.getByRole("button").count(), 1);
+        // 独立 ACP 来源本身只有一个模型，复现用户截图中的缺时间场景。
+        await chart.locator(".recharts-line-dot").first().waitFor();
+        // 来源切换后点坐标可能相同，需要先移开再 hover 新挂载的图表。
+        await page.mouse.move(0, 0);
+        await chart.locator(".recharts-line-dot").first().hover();
+        await chart
+          .locator(".recharts-tooltip-wrapper")
+          .getByText("Codex ACP · large-model", { exact: true })
+          .waitFor();
+        assert.match(await chart.locator(".recharts-tooltip-wrapper").innerText(), /^08:00 - /);
         await page
           .getByRole("tab", { name: locale === "zh-CN" ? "近 30 日" : "Last 30 days", exact: true })
           .click();
