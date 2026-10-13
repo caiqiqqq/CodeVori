@@ -206,7 +206,9 @@ export interface GitApplyTaskMergeRequest extends GitFinalizeTaskMergeRequest {
 
 export interface GitCreateAutomaticWorktreeRequest extends GitRepositoryRequest {
   worktreeRootPath: string;
-  /** 指定本地来源分支；未传时保持旧调用基于当前 HEAD 的行为。 */
+  /** 已解析的关联项目基准；缺省仍从当前 HEAD 创建。 */
+  startPoint?: string;
+  /** 指定本地来源分支；传入时优先于 startPoint。 */
   sourceBranchName?: string;
 }
 

@@ -1,5 +1,24 @@
 # 侧栏会话行
 
+## 原生会话完成与未读的组合
+
+原生 API/ZCode 会话的完成状态与未读字段独立：`status=completed` 且存在数值型
+`unreadAt` 时，沿用现有未读角标；没有 `unreadAt` 的已完成会话不显示状态角标。
+sessions-index 的 `completedSuccess` 或 `completedInterrupted` 不应遮蔽已持久化的
+未读标记。实时错误优先显示错误角标；没有 activity 时，持久化 `status=error`
+也优先于未读。activity 已存在时，实时 phase 优先于遗留的持久化 error 状态。
+
+```text
+TaskIndexRepo：status / unreadAt ───────┐
+sessions-index：实时 activity phase ───┴→ deriveTaskLeadingIndicator
+                                       → 错误 > 未读 > 实时运行 > 无角标
+```
+
+本节记录现有展示规则，回归测试覆盖完成未读、完成已读、错误优先和终态 activity
+水合后的投影。未读的生成、持久化与导航清除继续由既有服务和 hook 负责；不新增
+写入路径。本节不定义 ACP 自动未读或待办看板 WorkTask 的完成未读状态，也不能
+仅凭这些投影测试确认 issue #104 已解决；该议题的截图指向仍待核实。
+
 ## 当前会话选中反馈
 
 侧栏 API/ZCode 与 ACP 会话的当前行参考待办任务卡片：使用 `icon-blue` 蓝色内边线、
