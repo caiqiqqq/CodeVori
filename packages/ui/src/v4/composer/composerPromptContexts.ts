@@ -3,7 +3,6 @@ import {
   parsePromptCodeComments,
   type CodeCommentComposerAttachment,
 } from "@/lib/codeCommentContext.js";
-import { parsePromptLinkedRepositories } from "@/lib/linkedRepositoryContext.js";
 import {
   buildPromptWithConversationSelections,
   parsePromptConversationSelections,
@@ -67,8 +66,7 @@ export function parseComposerPromptContexts(
   webElements: WebElementContextComposerAttachment[];
   pptxElements: PptxElementReference[];
 } {
-  const linked = parsePromptLinkedRepositories(content);
-  const pptx = parsePromptPptxElementReferences(linked.visibleContent);
+  const pptx = parsePromptPptxElementReferences(content);
   const web = parsePromptWebElementContexts(pptx.visibleContent, workspace);
   const code = parsePromptCodeComments(web.visibleContent, workspace);
   const selections = parsePromptConversationSelections(code.visibleContent);

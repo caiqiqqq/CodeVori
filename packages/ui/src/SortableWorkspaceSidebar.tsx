@@ -37,6 +37,8 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   reconnectingRemoteWorkspaceLogsByWorkspaceKey,
   onReconnectRemoteWorkspace,
   onOpenFileTree,
+  workspaceAliases,
+  onRenameWorkspace,
   projectTaskList,
 }: {
   tab: WorkspaceTabState;
@@ -72,6 +74,8 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
     workspaceIdentity?: string;
     workspaceRemoteSessionId?: string;
   }) => void;
+  workspaceAliases: Readonly<Record<string, string>>;
+  onRenameWorkspace: (tab: WorkspaceTabState, alias: string) => Promise<void>;
   projectTaskList?: ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -140,6 +144,8 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
       reconnectingRemoteWorkspaceLogsByWorkspaceKey={reconnectingRemoteWorkspaceLogsByWorkspaceKey}
       onReconnectRemoteWorkspace={onReconnectRemoteWorkspace}
       onOpenFileTree={onOpenFileTree}
+      workspaceAliases={workspaceAliases}
+      onRenameWorkspace={onRenameWorkspace}
       itemRef={setNodeRef}
       itemStyle={style}
       sortableBindings={sortableBindings}

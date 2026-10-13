@@ -73,9 +73,10 @@ import { RootStartupLoading } from "@/root/RootStartupLoading.js";
 import { resolveProviderAvailabilityState } from "@/lib/modelProviderAvailability.js";
 import { useProviderAvailabilityLoginEntryGuard } from "@/root/useProviderAvailabilityLoginEntryGuard.js";
 import { ensureProviderFamilyDomainMigration } from "@/lib/providerFamilyDomainMigration.js";
-import { useSettings } from "@/hooks/useSettingService.js";
+import { useSettings, WORKSPACE_ALIASES_CHANGED_CHANNEL } from "@/hooks/useSettingService.js";
 import { CLOSE_ACTIVE_CONTEXT_REQUEST_EVENT } from "@/lib/closeActiveContext.js";
 import { AssistantCodeCommentFeatureProvider } from "@/AssistantCodeCommentFeatureProvider.js";
+import { WorkTaskNotifications } from "@/work-tasks/WorkTaskNotifications.js";
 import {
   disposeConversationTelemetrySupervisors,
   reconcileConversationTelemetryWorkspaceScopes,
@@ -251,6 +252,10 @@ function RootInner({
 
   useEffect(() => {
     const disposable = services.broadcastService.onMessage((message) => {
+      if (message.channel === WORKSPACE_ALIASES_CHANGED_CHANNEL) {
+        void refreshAppSettings();
+        return;
+      }
       if (message.channel === APP_RUNTIME_PREFERENCES_CHANGED_BROADCAST_CHANNEL) {
         const parsed = appRuntimePreferencesChangedBroadcastPayloadSchema.safeParse(
           message.payload,
@@ -382,6 +387,10 @@ function RootInner({
   const addTab = useTabStore((state) => state.addTab);
   const activateTabByPath = useTabStore((state) => state.activateTabByPath);
   const tabStoreApi = useTabStoreApi();
+  useEffect(() => {
+    if (!appSettings) return;
+    tabStoreApi.getState().applyWorkspaceAliases(appSettings.workspaceAliases ?? {});
+  }, [appSettings, tabStoreApi, tabs]);
   const refreshProviderState = useRootProviderStateRefresh(services);
   useRootProviderSettingsSnapshot(services);
   useEffect(() => {
@@ -1004,6 +1013,7 @@ function RootInner({
 
   return (
     <RootShell>
+      <WorkTaskNotifications projects={windowWorkspaceTabs} />
       {rootModelSelectionErrorNode}
       {remoteConnectionDialog}
       {directoryBrowserDialog}

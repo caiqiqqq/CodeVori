@@ -143,6 +143,7 @@ test("hourly chart uses today's models and visible point peak rather than lifeti
   assert.equal(view.chartData.length, 24);
   assert.equal(view.topModels[0]?.totalTokens, 20);
   assert.equal(view.chartData[12]?.label, "12:00");
+  assert.equal(view.chartData[12]?.tooltipLabel, "12:00");
   assert.equal(view.chartData[12]?.total, 10);
   assert.equal(view.maxTokens, 10);
   assert.equal(view.chartData[0]?.model1, null);

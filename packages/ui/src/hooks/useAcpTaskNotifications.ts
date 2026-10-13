@@ -11,6 +11,8 @@ import {
   type AcpTaskNotificationState,
 } from "@/lib/taskNotificationOrchestrator.js";
 import { requestWorktreeSettingsConversation } from "@/lib/worktreeSettingsNavigation.js";
+import { getWorkTaskReadModel } from "./workTaskReadModel.js";
+import { isWorkTaskNotificationSession } from "@/lib/workTaskNotifications.js";
 
 /** ACP 完成事实独立于 API sessions-index，通知必须在 workspace 壳观察，不能绑定选中面板。 */
 export function useAcpTaskNotifications({
@@ -30,13 +32,20 @@ export function useAcpTaskNotifications({
   platform: Pick<IPlatformService, "showTaskNotification" | "onTaskNotificationClick"> | null;
   formatMessage: IntlInstance["formatMessage"];
 }): void {
-  const { acpService } = useServices();
+  const { acpService, workTaskService } = useServices();
   const workspaceIdentity = rawIdentity?.trim() || undefined;
   const workspace = useMemo(
     () => ({ workspacePath, workspaceIdentity, remoteSessionId }),
     [workspacePath, workspaceIdentity, remoteSessionId],
   );
-  const owner = useMemo(() => ({}), [workspace, acpService, enabled, rpcReady, platform]);
+  const workTasks = useMemo(
+    () => (workTaskService ? getWorkTaskReadModel(workTaskService, workspace, false) : null),
+    [workTaskService, workspace],
+  );
+  const owner = useMemo(
+    () => ({}),
+    [workspace, acpService, enabled, rpcReady, platform, workTasks],
+  );
   const currentOwner = useRef(owner);
   currentOwner.current = owner;
   const payloadFor = useEffectEvent(
@@ -65,6 +74,16 @@ export function useAcpTaskNotifications({
       // 修复原因：初始/恢复快照只建立观察基线；系统通知只能来自已观察运行轮的实时终态边沿。
       const payload = baseline ? null : payloadFor(previous, next);
       if (!payload) return;
+      // 修复依据：直接分支待办与普通会话同目录，终态提醒由窗口级待办观察器统一负责。
+      if (
+        isWorkTaskNotificationSession(
+          workTasks?.getSnapshot().data?.tasks ?? [],
+          "acp",
+          session.id,
+          workspacePath,
+        )
+      )
+        return;
       const row = projectAcpSidebarSessions([session], workspace)[0];
       if (row) targets.set(session.id, row);
       try {
@@ -100,5 +119,15 @@ export function useAcpTaskNotifications({
       subscription.dispose();
       disposeClick();
     };
-  }, [acpService, enabled, owner, platform, rpcReady, workspace, workspaceIdentity, workspacePath]);
+  }, [
+    acpService,
+    enabled,
+    owner,
+    platform,
+    rpcReady,
+    workspace,
+    workspaceIdentity,
+    workspacePath,
+    workTasks,
+  ]);
 }

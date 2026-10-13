@@ -441,9 +441,28 @@ const proxyOnlyDomainsSchema = z.string().transform((value, context) => {
   }
 });
 
+export const workspaceAliasSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .refine(
+    (value) =>
+      !Array.from(value).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127),
+    {
+      message: "Workspace alias cannot contain control characters",
+    },
+  )
+  .refine((value) => !/[\\/]/u.test(value), {
+    message: "Workspace alias cannot contain path separators",
+  });
+
+const workspaceAliasesSchema = z.record(z.string().trim().min(1).max(4096), workspaceAliasSchema);
+
 const appSettingsObjectSchema = z.object({
   quickMessages: quickMessagesSchema.default([]),
   recentProjects: z.array(z.string()).default([]),
+  workspaceAliases: workspaceAliasesSchema.default({}),
   locale: localeSchema.default("zh-CN"),
   // 快捷键用户覆盖（语义校验在 ui/src/shortcuts 生效表阶段容错，schema 只管形状）
   shortcutBindings: z.record(z.string(), z.array(z.string())).optional(),
@@ -520,6 +539,10 @@ export const appSettingsSchema = z.preprocess(
 export const appSettingsPatchSchema = z.object({
   quickMessages: quickMessagesSchema.optional(),
   recentProjects: z.array(z.string()).optional(),
+  // 别名补丁按 key 合并；空字符串是删除当前 key 的命令，不进入持久化快照。
+  workspaceAliases: z
+    .record(z.string().trim().min(1).max(4096), z.union([workspaceAliasSchema, z.literal("")]))
+    .optional(),
   locale: localeSchema.optional(),
   shortcutBindings: z.record(z.string(), z.array(z.string())).optional(),
   localePreference: localePreferenceSchema.optional(),

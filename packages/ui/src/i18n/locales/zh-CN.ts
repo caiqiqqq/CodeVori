@@ -1,37 +1,6 @@
 /** 中文翻译 */
 import { PRODUCT_NAME } from "@zcode/shared";
 const zhCN: Record<string, string> = {
-  "chat.linkedProjects.error.invalidPath": "请输入项目的绝对路径，或使用目录选择按钮。",
-  "chat.linkedProjects.trigger": "关联项目",
-  "chat.linkedProjects.title": "关联项目",
-  "chat.linkedProjects.description": "在同一个对话中开发多个项目。关联项目默认使用新的工作树。",
-  "chat.linkedProjects.preparing": "正在准备项目…",
-  "chat.linkedProjects.primary": "当前项目",
-  "chat.linkedProjects.primaryHint": "当前项目沿用此目录；要隔离开发，可使用已有的新工作树入口。",
-  "chat.linkedProjects.remove": "移除 {name}",
-  "chat.linkedProjects.executionPath": "本对话使用的目录",
-  "chat.linkedProjects.baseBranch": "基准分支",
-  "chat.linkedProjects.branchLabel": "{name} 的基准分支",
-  "chat.linkedProjects.useWorktree": "在新工作树中开发",
-  "chat.linkedProjects.worktreeHint": "首次发送时创建工作树，后续继续使用。不会自动提交或合并。",
-  "chat.linkedProjects.directHint": "直接使用所选目录和当前分支，其中的修改会保留在此目录。",
-  "chat.linkedProjects.chooseOpen": "选择已打开的项目",
-  "chat.linkedProjects.pathPlaceholder": "输入项目的绝对路径",
-  "chat.linkedProjects.pathLabel": "项目路径",
-  "chat.linkedProjects.browse": "选择项目目录",
-  "chat.linkedProjects.add": "添加",
-  "chat.linkedProjects.done": "完成",
-  "chat.linkedProjects.error.notRepository": "无法读取 {name} 的 Git 仓库，请检查目录。",
-  "chat.linkedProjects.error.bindingChanged":
-    "{name} 的工作树已移动、删除或切换分支。请移除后重新关联。",
-  "chat.linkedProjects.error.createFailed":
-    "无法创建 {name} 的工作树；已准备的项目会保留，请重试。",
-  "chat.linkedProjects.error.branchChanged":
-    "{name} 当前分支与所选分支不同，请重新关联或使用新工作树。",
-  "chat.linkedProjects.error.stale": "对话或草稿已变化，本次发送已停止。",
-  "chat.linkedProjects.error.requestFailed": "关联项目操作失败，请检查目录、分支和磁盘后重试。",
-  "chat.linkedProjects.error.duplicate": "此仓库已是当前项目或已关联，请选择其他仓库。",
-
   "chat.visualization.title": "交互预览",
   "chat.visualization.loading": "正在加载预览…",
   "chat.visualization.failed": "无法加载预览，请检查工作区连接及 HTML 文件。",
@@ -192,8 +161,6 @@ const zhCN: Record<string, string> = {
   "workTasks.confirmComplete": "确认接受任务结果？",
   "workTasks.confirmCompleteBody":
     "确认后任务将标记为完成，分支、工作树和会话会保留，不会自动提交或合并代码。",
-  "workTasks.feedback": "修改意见",
-  "workTasks.followUp": "继续修改",
   "workTasks.openConversation": "打开会话",
   "workTasks.handleInput": "处理会话中的请求",
   "workTasks.archive": "归档",
@@ -312,6 +279,8 @@ const zhCN: Record<string, string> = {
   "workTasks.event.edited": "修改任务",
   "workTasks.event.queued": "任务入队",
   "workTasks.event.claimed": "开始执行",
+  // Host 认领原任务会话的新轮时产生该事件，补齐文案避免详情显示原始翻译 key。
+  "workTasks.event.conversation-continued": "继续对话",
   "workTasks.event.settled": "执行结束",
   "workTasks.event.stopped": "执行已停止",
   "workTasks.event.canceled": "取消执行",
@@ -502,6 +471,8 @@ const zhCN: Record<string, string> = {
   "repositoryPanel.reprocess": "重新处理",
   "repositoryPanel.taskCreated": "已加入待办",
   "repositoryPanel.error.TASK_SAVE": "待办任务创建失败，请保留当前输入并重试保存。",
+  "repositoryPanel.error.TASK_IMAGE_READ":
+    "议题截图读取失败，请重试处理；需要登录的图片可先在议题详情中登录。",
   "repositoryPanel.error.TASK_UNSUPPORTED": "当前项目的 Host 不支持待办任务，请先更新 Host。",
   "repositoryPanel.error.NO_EXECUTION": "所选模型或智能体已不可用，请重新选择后保存。",
   "repositoryPanel.closeIssue": "关闭议题",
@@ -2090,6 +2061,11 @@ const zhCN: Record<string, string> = {
   "workspaceSidebar.searchArchivedTasksPlaceholder": "搜索归档任务...",
   "workspaceSidebar.closeTaskSearch": "关闭任务搜索",
   "workspaceSidebar.remove": "移除",
+  "workspaceSidebar.rename": "重命名项目",
+  "workspaceSidebar.renameDescription": "别名仅用于显示。清空后恢复目录名称。",
+  "workspaceSidebar.renamePlaceholder": "项目别名（留空恢复目录名称）",
+  "workspaceSidebar.renameInvalid": "别名最多 200 个字符，不能包含路径分隔符或控制字符",
+  "workspaceSidebar.renameFailed": "保存项目别名失败",
   "workspaceSidebar.removeRunningWorkspace.title": "移除运行中的项目？",
   "workspaceSidebar.removeRunningWorkspace.description":
     "该项目还有运行中的对话或 Agent。移除项目会停止并释放相关运行状态，历史任务不会被删除。",
@@ -2812,6 +2788,7 @@ const zhCN: Record<string, string> = {
   "settings.notificationSoundDescription": "通知开启后，可单独关闭任务通知提示音。",
   "notification.taskWithTitle": "任务：{title}",
   "notification.taskWaiting": "任务等待你的确认",
+  "notification.taskReview": "任务等待你的审阅",
   "notification.completed": "任务已完成",
   "notification.completedBody": "任务已完成",
   "notification.error": "任务出错",

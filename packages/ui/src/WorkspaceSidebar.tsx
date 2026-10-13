@@ -71,6 +71,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { useSettings } from "@/hooks/useSettingService.js";
+import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
+import { resolveWorkspaceKey } from "@zcode/shared";
 import { logger } from "@/logger.js";
 import { NewTaskButtonGroup } from "@/NewTaskButtonGroup.js";
 import { selectWorkspaceZCodeState, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
@@ -173,6 +176,7 @@ interface SidebarFileTreeTarget {
 // 流式 task 事件会让 sidebar 父级频繁刷新；缺任务分组时如果传新的 []
 // 会让 memo 的 workspace 行误判 taskItems 变化，穿透到 TaskList/TaskListItem 重渲染。
 const EMPTY_WORKSPACE_TASK_ITEMS: ZCodeTaskMeta[] = [];
+const EMPTY_WORKSPACE_ALIASES: Record<string, string> = {};
 // WorkspaceSidebar 是 memo 组件，默认参数里的 {} 每次调用都会创建新引用；
 // 缺省远程重连日志时必须复用同一个对象，避免浅比较被默认值打穿。
 const EMPTY_RECONNECTING_REMOTE_WORKSPACE_LOGS_BY_WORKSPACE_KEY: Record<
@@ -323,6 +327,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   onFileTreeOpenChange?: (open: boolean) => void;
 }) {
   const { intl, localePreference, setLocalePreference } = useZCodeIntl();
+  const baseServices = useBaseWorkspaceServices();
+  const { settings, update: updateSettings } = useSettings(baseServices);
   const handleTaskRowSelect = useCallback(
     (
       targetWorkspacePath: string,
@@ -397,6 +403,15 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   const reorderWorkspaceTabs = useTabStore((state) => state.reorderWorkspaceTabs);
   const expandAllWorkspaceTabs = useTabStore((state) => state.expandAllWorkspaceTabs);
   const collapseAllWorkspaceTabs = useTabStore((state) => state.collapseAllWorkspaceTabs);
+  const workspaceAliases = settings?.workspaceAliases ?? EMPTY_WORKSPACE_ALIASES;
+
+  const handleRenameWorkspace = useCallback(
+    async (tab: WorkspaceTabState, alias: string) => {
+      const key = resolveWorkspaceKey(tab);
+      await updateSettings({ workspaceAliases: { [key]: alias.trim() } });
+    },
+    [updateSettings],
+  );
 
   const workspaceTabs = useMemo(() => tabs.filter(isWorkspaceTab), [tabs]);
   const { conversationWorkspaceTabs, projectWorkspaceTabs } = useMemo(
@@ -1632,6 +1647,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                                 onReconnectRemoteWorkspace
                                               }
                                               onOpenFileTree={handleOpenWorkspaceFileTree}
+                                              workspaceAliases={workspaceAliases}
+                                              onRenameWorkspace={handleRenameWorkspace}
                                               projectTaskList={
                                                 worktrees.length > 0 || isLinkedWorktree ? (
                                                   <div

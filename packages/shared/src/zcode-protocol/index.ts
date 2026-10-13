@@ -3771,6 +3771,7 @@ export * from "../localTtft.js";
 // 桌面本地 TTFT 的严格事实合同；检查点不能替代实际内容帧。
 export { localTtftFactsSchema } from "../localTtft.js";
 // ACP updated 通知包含可选、非持久化的 streamDiagnostics；schema 与类型从同一入口导出。
+// ACP 行未读动作通过同一公开 schema 导出；expectedUnreadAt 支持终态结果的条件清除。
 export * from "./acp.js";
 export * from "./acpPlugin.js";
 export * from "./acpWorkflow.js";

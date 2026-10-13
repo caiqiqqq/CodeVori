@@ -13,6 +13,7 @@ import {
 import { assertRepositoryListLabelColors } from "./repositoryListLabelAssertions.mjs";
 import { assertIssueRememberedRemote } from "./repositorySelectionMemoryAssertions.mjs";
 import * as repositoryTask from "./repositoryTaskCreationAssertions.mjs";
+import * as taskImages from "./repositoryTaskImagesAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__repository-panel-e2e-${process.pid}`;
@@ -40,6 +41,7 @@ try {
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
     import {consumeInitialSettingsSection} from '../../../ui/src/lib/settingsNavigation.ts';
     ${repositoryTask.importsFixture}
+    ${taskImages.importsFixture}
     import '../../../ui/src/styles.css';
     const state:any={calls:[],pending:[],status:'ready',delayList:false,delayWrite:false,delayDiscovery:false,failWrite:false,remote:false,accountDiscovery:false};
     window.__forge=state;
@@ -77,6 +79,7 @@ try {
     state.resetIssue=()=>{state.lagSearch=false;states.A='open';commentRows.A=[comment]};
     const broadcast:any={send(){},onMessage(){return {dispose(){}}}};
     const platform:any={openExternal:(url:string)=>state.calls.push({op:'external',url})};
+    ${taskImages.servicesFixture}
     function Fixture(){const {setLocale}=useZCodeIntl();state.setLocale=setLocale;const [host,setHost]=useState('A');const [version,setVersion]=useState(0);state.changeRemote=()=>{state.forcedRemote='private';setVersion(v=>v+1)};const settingsVisible=useTabStore(s=>s.activeTabId==='__settings__');const openSettings=useTabStore(s=>s.openSettingsTab);const closeTab=useTabStore(s=>s.closeTab);state.switchHost=setHost;state.remount=()=>{state.forcedRemote=undefined;setVersion(v=>v+1)};state.settings=consumeInitialSettingsSection;state.openSettings=openSettings;
       return <ServiceProvider services={hosts[host]}><div className='h-dvh bg-background text-foreground'><div hidden={settingsVisible} className='h-full'><RepositoryPanel key={version} active={!settingsVisible} workspacePath={state.taskRemote?'/synthetic/A':'/synthetic/'+host} workspaceIdentity={state.remote?'synthetic-disconnected-workspace':state.taskRemote?'synthetic-task-identity':undefined} remoteSessionId={state.taskRemote?'task-remote':undefined} theme='zai-light'/></div>{settingsVisible?<div className='h-full overflow-auto p-4'><button onClick={()=>closeTab('__settings__')}>返回仓库</button><VersionControlSection/></div>:null}</div></ServiceProvider>}
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><StoreProvider broadcastService={broadcast}><TabStoreProvider><Fixture/></TabStoreProvider></StoreProvider></TooltipProvider></ZCodeIntlProvider></PlatformProvider>);
@@ -88,14 +91,11 @@ try {
   await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`);
   const panel = page.getByTestId("repository-panel");
   const row = () => panel.getByTestId("repository-item-row").first();
-  const countCalls = (...ops) =>
-    page.evaluate(
-      (ops) => window.__forge.calls.filter((call) => ops.includes(call.op)).length,
-      ops,
-    );
+  const countCalls = (...ops) => taskImages.countRepositoryCalls(page, ...ops);
   const assertListLabelColors = () => assertRepositoryListLabelColors(row);
   await row().waitFor();
   await repositoryTask.exerciseRepositoryTaskCreation(page, panel, artifacts);
+  await taskImages.exerciseRepositoryTaskImages(page, panel, artifacts);
   await assertListLabelColors();
   assert.match(await row().innerText(), /A origin issue 1/);
   await panel.getByRole("button", { name: "下一页", exact: true }).click();
