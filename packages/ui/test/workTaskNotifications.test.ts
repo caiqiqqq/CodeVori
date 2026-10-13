@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { WorkTask } from "@zcode/shared";
 import {
-  getWorkTaskWaitingNotification,
+  getWorkTaskAttentionNotification,
+  isWorkTaskNotificationSession,
   toWorkTaskNotificationFact,
   workTaskNotificationId,
 } from "../src/lib/workTaskNotifications.js";
@@ -21,10 +22,10 @@ const task = (patch: Partial<WorkTask> = {}) =>
     ...patch,
   }) as WorkTask;
 const format = (({ id }, values) => `${id}${values ? `:${values.title}` : ""}`) as Parameters<
-  typeof getWorkTaskWaitingNotification
+  typeof getWorkTaskAttentionNotification
 >[3];
 const collect = (previous: WorkTask | undefined, next: WorkTask) =>
-  getWorkTaskWaitingNotification(
+  getWorkTaskAttentionNotification(
     previous && toWorkTaskNotificationFact(previous),
     next,
     scope,
@@ -44,7 +45,31 @@ test("API and ACP waiting edges use localized copy and task-scoped routing", () 
   }
 });
 
-test("initial, repeated, stale, unknown/new runs and non-waiting states are silent", () => {
+test("review and failure notify from observed execution, including an unresolved wait", () => {
+  for (const kind of ["api", "acp"] as const) {
+    for (const previousStatus of ["preparing", "running", "queued", "awaiting_input"] as const) {
+      for (const status of ["review", "failed"] as const) {
+        const next = task({ status, updatedAt: 2, execution: { kind } as never });
+        const payload = collect(task({ status: previousStatus }), next);
+        assert.equal(payload?.status, status === "review" ? "completed" : "failed");
+        assert.equal(
+          payload?.title,
+          status === "review" ? "notification.taskReview" : "notification.error",
+        );
+        assert.equal(payload?.taskId, workTaskNotificationId(scope, "one", 1));
+        assert.equal(payload?.body, "notification.taskWithTitle:后台待办");
+        assert.equal(collect(undefined, next), null);
+        assert.equal(collect(next, task({ ...next, updatedAt: 3 })), null);
+        assert.equal(collect(task({ updatedAt: 3 }), next), null);
+        assert.equal(collect(task(), task({ ...next, runSeq: 2 })), null);
+        assert.equal(collect(task({ stopPending: true }), next), null);
+        assert.equal(collect(task(), task({ ...next, archived: true })), null);
+      }
+    }
+  }
+});
+
+test("initial, repeated, stale, unknown/new runs and inactive states are silent", () => {
   const waiting = task({ status: "awaiting_input", updatedAt: 2 });
   assert.equal(collect(undefined, waiting), null);
   assert.equal(collect(waiting, task({ ...waiting, updatedAt: 3, title: "renamed" })), null);
@@ -52,8 +77,9 @@ test("initial, repeated, stale, unknown/new runs and non-waiting states are sile
   assert.equal(collect(task(), task({ ...waiting, runSeq: 2 })), null);
   for (const status of ["todo", "review", "failed", "done", "canceled"] as const) {
     assert.equal(collect(task({ status }), waiting), null);
-    assert.equal(collect(task(), task({ status, updatedAt: 2 })), null);
   }
+  for (const status of ["todo", "done", "canceled"] as const)
+    assert.equal(collect(task(), task({ status, updatedAt: 2 })), null);
 });
 
 test("stop/archive do not notify; preparation, merge queue and repeated waits do", () => {
@@ -92,4 +118,43 @@ test("notification facts are bounded and scope identifiers isolate equal task id
     workTaskNotificationId(remote, "one", 1),
     workTaskNotificationId({ ...remote, workspacePath: "/other" }, "one", 1),
   );
+});
+
+test("only exact persisted original/merge bindings suppress ordinary session notifications", () => {
+  for (const kind of ["api", "acp"] as const) {
+    const original = task({
+      session: { kind, id: "session" },
+      useWorktree: false,
+      directBranch: "main",
+    });
+    assert.ok(isWorkTaskNotificationSession([original], kind, "session", "/project"));
+    assert.equal(isWorkTaskNotificationSession([original], kind, "ordinary", "/project"), false);
+    assert.equal(isWorkTaskNotificationSession([original], kind, "session", "/other"), false);
+    assert.equal(
+      isWorkTaskNotificationSession(
+        [original],
+        kind === "api" ? "acp" : "api",
+        "session",
+        "/project",
+      ),
+      false,
+    );
+    assert.equal(
+      isWorkTaskNotificationSession(
+        [task({ session: original.session })],
+        kind,
+        "session",
+        "/project",
+      ),
+      false,
+    );
+    const isolated = task({ session: original.session, worktree: { path: "/isolated" } as never });
+    assert.ok(isWorkTaskNotificationSession([isolated], kind, "session", "/isolated"));
+    assert.equal(isWorkTaskNotificationSession([isolated], kind, "session", "/project"), false);
+    const merge = task({
+      merge: { session: { kind, id: "merge" }, worktree: { path: "/merge" } } as never,
+    });
+    assert.ok(isWorkTaskNotificationSession([merge], kind, "merge", "/merge"));
+    assert.equal(isWorkTaskNotificationSession([merge], kind, "merge", "/project"), false);
+  }
 });

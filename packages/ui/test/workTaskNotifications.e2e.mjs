@@ -25,6 +25,7 @@ try {
     import React,{useState} from 'react';
     import {createRoot} from 'react-dom/client';
     import {WorkTaskNotifications} from '../../../ui/src/work-tasks/WorkTaskNotifications.tsx';
+    import {useAcpTaskNotifications} from '../../../ui/src/hooks/useAcpTaskNotifications.ts';
     import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
     import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
     import {StoreProvider,useZCodeStore} from '../../../ui/src/store/StoreProvider.tsx';
@@ -45,7 +46,10 @@ try {
       start(){throw Error('No business writes')},create(){throw Error('No Agent requests')},
     });
     const local=service('local'),a=service('a'),b=service('b');
-    const services:any={workTaskService:local,gitService:{async getWorkspaceRepositoryInfo({workspacePath}){return {workspacePath,kind:'main-tree',repoRoot:workspacePath,isGitAvailable:true}}}};
+    const acpListeners=new Set();let acpRevision=0;
+    const acpService={async listSummaries(){return []},onDynamicSessionSummaryChanged:()=>fn=>{acpListeners.add(fn);return {dispose(){acpListeners.delete(fn)}}}};
+    state.emitAcp=(status,id='bound')=>{const session={id,workspacePath:'/two',title:'ACP session',agent:'codex',status,revision:++acpRevision,queue:{items:[],autoDrain:true},entries:[{kind:'user',createdAt:1}],createdAt:1,updatedAt:2};for(const fn of acpListeners)fn({kind:'updated',session})};
+    const services:any={workTaskService:local,acpService,gitService:{async getWorkspaceRepositoryInfo({workspacePath}){return {workspacePath,kind:'main-tree',repoRoot:workspacePath,isGitAvailable:true}}}};
     remote.getState().registerBaseServices(services);
     state.connect=(id='a')=>{remote.getState().registerSession({sessionId:id,services:{workTaskService:id==='a'?a:b}});remote.getState().bindWorkspaceIdentity('remote:'+id,id)};
     state.disconnect=(id)=>remote.getState().unregisterSession(id);state.connect('a');state.connect('b');
@@ -62,6 +66,7 @@ try {
     const broadcast:any={send(){},onMessage(){return {dispose(){}}}};
     function Fixture(){const [tabs,setTabs]=useState(projects),[epoch,setEpoch]=useState(0);const api=useTabStoreApi();const {setLocalePreference}=useZCodeIntl();const store=useZCodeStore(s=>s);state.locale=setLocalePreference;state.setProjects=setTabs;state.remount=()=>setEpoch(x=>x+1);state.settings={getState:()=>store};state.tabState=()=>api.getState();state.selection=()=>workTaskNavigationStore.getState();state.opened=[];
       state.resetTabs=()=>api.setState({tabs:projects,activeTabId:projects[0].id});
+      useAcpTaskNotifications({workspacePath:'/two',enabled:store.notificationEnabled,rpcReady:true,platform,formatMessage:useZCodeIntl().intl.formatMessage});
       useWorktreeSettingsConversation({selectApi(){throw Error('Must open work task')},selectAcp(){throw Error('Must open work task')},openWorkTasks(scope){state.navigations.push({...scope,selection:state.selection().tasks})}});
       state.share=()=>{const r=getWorkTaskReadModel(local,{workspacePath:'/one'},false);state.unshare=r.subscribe(()=>{})};
       return <><button id='notifications' onClick={()=>store.setNotificationEnabled(!store.notificationEnabled)}>notifications</button><button id='sound' onClick={()=>store.setNotificationSoundEnabled(!store.notificationSoundEnabled)}>sound</button><span id='ready'>ready</span><WorkTaskNotifications key={epoch} projects={tabs}/></>}
@@ -243,11 +248,91 @@ try {
       ),
       false,
     );
+    // 独立工作树的完成事实必须从主项目 task 投影通知，不能依赖主项目 sessions-index。
+    await page.evaluate(() => window.__fixture.locale("zh-CN"));
+    for (const [k, kind] of [
+      ["/one", "api"],
+      ["/two", "acp"],
+    ]) {
+      for (const status of ["review", "failed"]) {
+        await emit("local", k, {
+          status: "running",
+          worktree: { path: `/isolated/${kind}` },
+          stopPending: false,
+          archived: false,
+        });
+        const start = await count();
+        await emit("local", k, { status });
+        assert.equal(await count(), start + 1, `${kind} ${status} edge`);
+        const payload = await page.evaluate(() => window.__fixture.notifications.at(-1));
+        assert.equal(payload.status, status === "review" ? "completed" : "failed");
+        assert.equal(payload.title, status === "review" ? "任务等待你的审阅" : "任务出错");
+        await page.evaluate((id) => window.__fixture.click(id), payload.taskId);
+        assert.equal(
+          await page.evaluate(() => window.__fixture.navigations.at(-1).workspacePath),
+          k,
+        );
+        await emit("local", k, { title: `${kind} ${status}` });
+        assert.equal(await count(), start + 1, "repeated attention updates stay silent");
+        await emit("local", k, { status: "done" });
+        const navCount = await page.evaluate(() => window.__fixture.navigations.length);
+        await page.evaluate((id) => window.__fixture.click(id), payload.taskId);
+        assert.equal(await page.evaluate(() => window.__fixture.navigations.length), navCount);
+      }
+    }
+    await page.evaluate(() => window.__fixture.locale("en-US"));
+    await emit("local", "/one", { status: "running" });
+    await emit("local", "/one", { status: "awaiting_input" });
+    const waitingCount = await count();
+    await emit("local", "/one", { status: "review" });
+    assert.equal(await count(), waitingCount + 1, "waiting directly to review also notifies");
+    assert.equal(
+      await page.evaluate(() => window.__fixture.notifications.at(-1).title),
+      "Task waiting for your review",
+    );
+    // 恢复/重开时已待审阅或失败的快照只建立基线。
+    await page.evaluate(() => window.__fixture.remount());
+    await settled();
+    await page.waitForTimeout(70);
+    assert.equal(await count(), waitingCount + 1);
+    // 同目录直接分支 ACP 待办先收到会话终态时，不应额外发送旧 acp: 完成通知。
+    await emit("local", "/two", {
+      status: "running",
+      workspacePath: "/two",
+      useWorktree: false,
+      directBranch: "main",
+      session: { kind: "acp", id: "bound" },
+    });
+    const directCount = await count();
+    await page.evaluate(() => {
+      window.__fixture.emitAcp("running");
+      window.__fixture.emitAcp("idle");
+    });
+    assert.equal(await count(), directCount, "bound session terminal is owned by work task");
+    await emit("local", "/two", { status: "review" });
+    assert.equal(
+      await count(),
+      directCount + 1,
+      "direct branch review emits exactly one task notice",
+    );
+    await page.evaluate(() => {
+      window.__fixture.emitAcp("running", "ordinary");
+      window.__fixture.emitAcp("idle", "ordinary");
+    });
+    assert.equal(
+      await count(),
+      directCount + 2,
+      "ordinary ACP sessions keep terminal notifications",
+    );
+    assert.equal(
+      await page.evaluate(() => window.__fixture.notifications.at(-1).taskId),
+      "acp:ordinary",
+    );
     assert.deepEqual(errors, []);
     await page.close();
   }
   process.stdout.write(
-    "PASS: desktop/320px API/ACP background and merge waits, scoped click navigation, shared reads, preferences/focus, initial/reconnect/error/reopen baselines and stale read isolation\n",
+    "PASS: desktop/320px API/ACP waits, isolated-worktree review/failure, scoped click navigation, shared reads, preferences/focus, initial/reconnect/error/reopen baselines and stale read isolation\n",
   );
 } finally {
   await browser?.close();

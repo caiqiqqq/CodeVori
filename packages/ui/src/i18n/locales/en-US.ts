@@ -3048,6 +3048,7 @@ const enUS: Record<string, string> = {
     "When notifications are enabled, you can mute the task notification sound separately.",
   "notification.taskWithTitle": "Task: {title}",
   "notification.taskWaiting": "Task waiting for your confirmation",
+  "notification.taskReview": "Task waiting for your review",
   "notification.completed": "Task completed",
   "notification.completedBody": "Task completed",
   "notification.error": "Task error occurred",
