@@ -1048,6 +1048,8 @@ export interface AppUsageQueryResult {
   tools: AppUsageToolRow[];
   days: AppUsageDayRow[];
   dayModels: AppUsageDayModelRow[];
+  /** 最近 48 小时的只读请求事实，供调用端按 IANA 时区投影今日小时；旧实现可缺省。 */
+  recentModelUsage?: Array<{ startedAt: number; modelId: string | null; totalTokens: number }>;
 }
 
 export interface TaskUsageQueryInput {

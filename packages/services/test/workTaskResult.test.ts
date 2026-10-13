@@ -31,6 +31,13 @@ const summarySource = {
   kind: "api" as const,
   selection: { providerId: "test", modelId: "summary" },
 };
+async function eventually(check: () => Promise<boolean> | boolean) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (await check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.fail("condition did not settle");
+}
 async function fixture(
   port: Pick<WorkTaskResultPort, "records"> & {
     generate(...args: Parameters<WorkTaskResultPort["generate"]>): Promise<string>;
@@ -287,6 +294,7 @@ test("ordinary completion freezes unknown change evidence when reads fail", asyn
       id: linked.id,
       forge: { closeIssue: false, comment: "Accepted" },
     });
+    await eventually(() => f.comments.length === 1);
     assert.match(f.comments[0]!, /changes could not be verified/);
     const done = f.repo.get(scope, linked.id);
     assert.equal(done.forgeWriteback?.recordsFinalized, true);
@@ -325,13 +333,16 @@ test("a failed issue close retries frozen records without reading changed Git ev
     const run = f.repo.claimNext("test", Date.now(), 30_000)!;
     f.repo.finish(run, "test");
     f.failClose();
-    await assert.rejects(
-      f.service.complete({
-        ...scope,
-        id: linked.id,
-        forge: { closeIssue: true, comment: "Confirmed result" },
-      }),
-      /FORGE_FORBIDDEN/,
+    const accepted = await f.service.complete({
+      ...scope,
+      id: linked.id,
+      forge: { closeIssue: true, comment: "Confirmed result" },
+    });
+    assert.equal(accepted.status, "done");
+    await eventually(
+      async () =>
+        (await f.service.list(scope)).tasks.find((t) => t.id === linked.id)?.forgeWriteback
+          ?.closeState === "failed",
     );
     const before = f.repo.get(scope, linked.id);
     assert.equal(before.status, "done");
@@ -345,6 +356,11 @@ test("a failed issue close retries frozen records without reading changed Git ev
       id: linked.id,
       forge: { closeIssue: false, comment: "Must not replace" },
     });
+    await eventually(
+      async () =>
+        (await f.service.list(scope)).tasks.find((t) => t.id === linked.id)?.forgeWriteback
+          ?.closeState === "done",
+    );
     assert.equal(reads, 1);
     assert.equal(f.comments.length, 1);
     assert.deepEqual(

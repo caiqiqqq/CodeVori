@@ -1,7 +1,6 @@
 import {
   isWorkTaskMerging,
   workTaskResultDraftSchema,
-  workTaskChangeRecordSchema,
   resolveWorkspaceKey,
   workTaskResultRequestSchema,
   workTaskResultCancelSchema,
@@ -11,8 +10,6 @@ import {
   type WorkTask,
   type WorkTaskResultRequest,
   type WorkTaskResultCancel,
-  type WorkTaskForgeOptions,
-  type WorkTaskChangeRecord,
 } from "@zcode/shared";
 import { assertWorkTaskLocal } from "./workTask.js";
 import type { WorkTaskServiceOptions } from "./workTaskServiceOptions.js";
@@ -103,34 +100,6 @@ export class WorkTaskResultCoordinator {
       current.stopPending
     )
       throw new Error("work-task.result-source-changed");
-  }
-  async capture(
-    task: WorkTask,
-    forge?: WorkTaskForgeOptions,
-    targetBranch?: string,
-  ): Promise<WorkTaskChangeRecord | undefined> {
-    if (!forge?.comment || !task.source) {
-      this.assertUnchanged(task);
-      return undefined;
-    }
-    let record: WorkTaskChangeRecord = {
-      state: "unknown",
-      commits: [],
-      files: [],
-      uncommitted: [],
-      truncated: false,
-    };
-    if (this.options.result) {
-      try {
-        record = workTaskChangeRecordSchema.parse(
-          await this.options.result.records(task, targetBranch),
-        );
-      } catch {
-        /* 证据读取失败必须明确未知，不能把错误变成“没有修改”。 */
-      }
-    }
-    this.assertUnchanged(task);
-    return record;
   }
   dispose() {
     for (const pending of this.pending.values()) pending.abort.abort();

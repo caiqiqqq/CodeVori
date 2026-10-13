@@ -24,15 +24,31 @@ export function useWorktreeSettingsConversation({
       listenWorktreeSettingsConversation((target) => {
         consumeWorktreeSettingsConversation(target);
         if (target.kind === "work-task") {
+          // 原因：通知携带远端 scope，path-only addTab 会错误激活本机同路径项目。
+          const state = tabs.getState();
+          let remoteTabId: string | undefined;
+          if (target.scope.workspaceIdentity || target.scope.remoteSessionId) {
+            const tab = state.tabs.find(
+              (tab) =>
+                tab.kind === "workspace" &&
+                tab.workspacePath === target.scope.workspacePath &&
+                (tab.workspaceIdentity?.trim() || tab.workspacePath) ===
+                  (target.scope.workspaceIdentity?.trim() || target.scope.workspacePath) &&
+                (!target.scope.remoteSessionId ||
+                  tab.remoteSessionId === target.scope.remoteSessionId),
+            );
+            if (!tab) return;
+            remoteTabId = tab.id;
+          }
           const navigation = workTaskNavigationStore.getState();
           navigation.selectProject(target.scope);
           navigation.selectTask(target.scope, target.id);
-          // 只打开本地主项目，避免把待办执行工作树新增为项目对话入口。
-          tabs
-            .getState()
-            .ensureWorkspaceTab(target.scope.workspacePath, { workspacePurpose: "project" });
+          if (!remoteTabId)
+            state.ensureWorkspaceTab(target.scope.workspacePath, { workspacePurpose: "project" });
+          // 保持既有顺序：先登记待办视图意图，再激活 tab，避免设置页退出覆盖目标视图。
           openWorkTasks(target.scope);
-          tabs.getState().addTab(target.scope.workspacePath);
+          if (remoteTabId) state.activateTab(remoteTabId);
+          else state.addTab(target.scope.workspacePath);
         } else {
           const workspacePath =
             target.kind === "acp" ? target.session.workspacePath : target.workspacePath;

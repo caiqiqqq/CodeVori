@@ -109,6 +109,8 @@ try {
       // Today has only a Codex point. Neither explicit zero GLM nor missing small models draw dots.
       assert.equal(await dots.nth(1).locator(".recharts-line-dot").count(), 2);
       assert.equal(await dots.nth(2).locator(".recharts-line-dot").count(), 1);
+      // 小时图位于每日图上方；先滚动到绘图区再使用页面坐标 hover。
+      await trend.scrollIntoViewIfNeeded();
       const today = await dots.first().locator(".recharts-line-dot").last().boundingBox();
       await page.mouse.move(today.x + today.width / 2, today.y + today.height / 2);
       await page.waitForFunction(
