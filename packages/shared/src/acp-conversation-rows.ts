@@ -1,5 +1,6 @@
 import type { AcpEntry, AcpSession } from "./zcode-protocol/acp.js";
 import type { ConversationRow, ToolCallRow } from "./zcode-protocol-v4/index.js";
+import { parsePromptLinkedRepositories } from "./linked-repository-context.js";
 export const ACP_DISPLAY_TOOL_NAME = "ACP external tool";
 
 /** 展示用工具身份与 ZCode CLI 工具名隔离，避免 Read/Task 等误入原生能力卡。 */
@@ -32,10 +33,12 @@ function toolStatus(status: string, turnStatus: AcpSession["status"]): ToolCallR
 
 function displayText(entry: Extract<AcpEntry, { kind: "user" }>): string {
   // 已保存的图片/文件交给共用附件组件；尾部工作区文件提示与旧会话名称仍保留。
+  // 关联项目目录是发送引导；增量投影与历史均隐藏该内部尾块。
+  const text = parsePromptLinkedRepositories(entry.text).visibleContent;
   const remainingNames = entry.attachmentNames?.slice(entry.attachments?.length ?? 0);
-  if (!remainingNames?.length) return entry.text;
+  if (!remainingNames?.length) return text;
   const names = remainingNames.map((name) => `📎 ${name}`).join("\n");
-  return entry.text ? `${entry.text}\n\n${names}` : names;
+  return text ? `${text}\n\n${names}` : names;
 }
 
 /** ACP Host 快照的只读展示投影；行 id / turn id 仅供当前时间线，不进入 CLI 协议或持久化。 */

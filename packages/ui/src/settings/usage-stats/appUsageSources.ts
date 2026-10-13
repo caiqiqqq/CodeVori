@@ -1,4 +1,8 @@
-import { acpAgentDefinition, type AppUsageSnapshot } from "@zcode/shared";
+import {
+  acpAgentDefinition,
+  createAppUsageHourlyAccumulator,
+  type AppUsageSnapshot,
+} from "@zcode/shared";
 
 /** Read-only chart projection; API metrics and ACP request facts remain separate. */
 export function projectAppUsageCharts(
@@ -13,7 +17,23 @@ export function projectAppUsageCharts(
   );
   const models = new Map<string | null, AppUsageSnapshot["models"][number]>();
   const days = new Map<string, AppUsageSnapshot["dailyModelUsage"][number]>();
+  const hourly = createAppUsageHourlyAccumulator(snapshot.timeZone, snapshot.generatedAt).usage;
+  // 旧 Host 未提供小时事实时不能把每日总量摊平；跨午夜也不能混合不同日期。
+  let hourlySupported = true;
+  const addHours = (
+    value: AppUsageSnapshot["hourlyModelUsage"],
+    label: (id: string | null) => string | null,
+  ) => {
+    if (!value || value.date !== hourly.date) {
+      hourlySupported = false;
+      return;
+    }
+    for (const hour of value.hours)
+      for (const model of hour.models)
+        hourly.hours[hour.hour]!.models.push({ ...model, modelId: label(model.modelId) });
+  };
   if (includeNative) {
+    addHours(snapshot.hourlyModelUsage, (id) => id);
     for (const model of snapshot.models) models.set(model.modelId, { ...model });
     for (const day of snapshot.dailyModelUsage)
       days.set(day.date, { ...day, models: day.models.map((model) => ({ ...model })) });
@@ -24,6 +44,7 @@ export function projectAppUsageCharts(
   for (const agent of agents) {
     const label = (id: string | null) =>
       `${acpAgentDefinition(agent.agent).name} · ${id ?? unknownModel}`;
+    addHours(agent.hourlyUsage, label);
     total += agent.totalTokens;
     input += agent.inputTokens;
     output += agent.outputTokens;
@@ -61,5 +82,6 @@ export function projectAppUsageCharts(
       .map((model) => ({ ...model, share: total > 0 ? model.totalTokens / total : 0 }))
       .sort((a, b) => b.totalTokens - a.totalTokens),
     dailyModelUsage: [...days.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    hourlyModelUsage: hourlySupported ? hourly : undefined,
   };
 }

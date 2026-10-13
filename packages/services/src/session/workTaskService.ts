@@ -332,10 +332,10 @@ export class WorkTaskService implements IWorkTaskService {
     if (!this.options.merge) throw new Error("work-task.merge-unsupported");
     const current = this.options.repo.get(parsed, parsed.id);
     const { projectPath } = await this.options.merge.validate(current, parsed.targetBranch);
-    const records = await this.forge.result.capture(current, parsed.forge, parsed.targetBranch);
-    // 合入主线的后台清理：证据读取后仍须核对清理事实，不能绕过完成/合并准入。
+    // 合入主线的后台清理：校验完成后仍须核对清理事实，不能绕过完成/合并准入。
     this.assertNotCleaning(parsed);
-    const task = this.options.repo.enqueueMerge(parsed, projectPath, records);
+    // 合并后的提交才是评论的最终证据；提前读取会被后台回写重新覆盖，且把确认按钮绑定到慢速 Git IO。
+    const task = this.options.repo.enqueueMerge(parsed, projectPath);
     this.publish();
     this.wake();
     return task;
