@@ -238,8 +238,7 @@ export function createGitService(options?: {
     },
 
     async createAutomaticWorktree(params) {
-      // 合并兼容：关联项目已冻结提交；普通草稿仍优先解析明确的来源分支。
-      let startPoint: string | undefined = params.startPoint;
+      let startPoint: string | undefined;
       if (params.sourceBranchName !== undefined) {
         try {
           // 复用严格本地分支解析：占用分支也可派生；冻结提交后重试不跟随来源移动。
