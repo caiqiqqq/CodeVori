@@ -178,6 +178,19 @@ export function AppUsagePanel() {
             />
           ) : null}
           <UsageChartLoadBoundary
+            scope="settings.usage.app-hourly-model-chart"
+            resetKeys={[snapshot.range, snapshot.generatedAt, source]}
+            loadingDescription={intl.formatMessage({
+              id: "settings.usage.appUsageLoadingDescription",
+            })}
+          >
+            <AppUsageDailyModelTrendChart
+              key={`hourly:${source}:${range}:${chartSnapshot.hourlyModelUsage?.date}`}
+              snapshot={chartSnapshot}
+              granularity="hourly"
+            />
+          </UsageChartLoadBoundary>
+          <UsageChartLoadBoundary
             scope="settings.usage.app-daily-model-chart"
             resetKeys={[snapshot.range, snapshot.generatedAt]}
             loadingDescription={intl.formatMessage({
