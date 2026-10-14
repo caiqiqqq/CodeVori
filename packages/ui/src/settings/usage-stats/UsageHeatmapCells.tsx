@@ -58,7 +58,17 @@ export function HeatmapColumn({
     return node;
   }
 
-  return <ControlHintTooltip title={column.tooltipTitle}>{node}</ControlHintTooltip>;
+  // 密集周列会落入 Radix 的浮层 hover 通道，导致提示仍保留上一列。
+  // 活动提示只有文本，关闭该通道并让浮层穿透鼠标，确保命中当前列。
+  return (
+    <ControlHintTooltip
+      title={column.tooltipTitle}
+      disableHoverableContent
+      className="usage-heatmap-tooltip pointer-events-none"
+    >
+      {node}
+    </ControlHintTooltip>
+  );
 }
 
 function HeatmapCell({ cell }: { cell: HeatmapDisplayCell }) {
@@ -75,7 +85,16 @@ function HeatmapCell({ cell }: { cell: HeatmapDisplayCell }) {
   );
 
   if (cell.tooltipTitle) {
-    return <ControlHintTooltip title={cell.tooltipTitle}>{node}</ControlHintTooltip>;
+    // 每日格子同样不能被上一格的浮层或 hover 通道遮挡（issue #125）。
+    return (
+      <ControlHintTooltip
+        title={cell.tooltipTitle}
+        disableHoverableContent
+        className="usage-heatmap-tooltip pointer-events-none"
+      >
+        {node}
+      </ControlHintTooltip>
+    );
   }
 
   return node;
