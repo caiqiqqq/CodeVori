@@ -1,5 +1,5 @@
 import { type ComponentProps, useCallback, useMemo, useState } from "react";
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import type { AppUsageSnapshot } from "@zcode/shared";
 import {
   ChartContainer,
@@ -188,8 +188,8 @@ export function buildAppUsageDailyModelChartViewModel({
     granularity,
   });
   let maxTokens = 0;
-  // 图中是独立折线而非堆叠图，使用每日总量会把多模型之和（以及未展示模型）
-  // 当作 Y 轴上限，导致实际可见曲线被压在底部；坐标范围只应跟随可见序列的单点峰值。
+  // 每个模型独立成线或柱，使用各模型总量之和会把可见序列压在底部；
+  // Y 轴范围只跟随当前可见模型在单个时间桶内的峰值。
   for (const row of chartData) {
     for (const model of visibleModelKeys) {
       maxTokens = Math.max(maxTokens, Number(row[model.key] ?? 0));
@@ -294,7 +294,7 @@ export function AppUsageDailyModelTrendChart({
   const tooltipContent = useMemo(
     () => (
       <DailyModelChartTooltipContent
-        // 单模型 line 将时间嵌入被 formatter 替换的默认行；dot 让时间标题独立渲染。
+        // 单序列会将时间嵌入被 formatter 替换的默认行；dot 让时间标题独立渲染。
         indicator="dot"
         labelFormatter={formatTooltipLabel}
         formatter={formatTooltipItem}
@@ -362,34 +362,62 @@ export function AppUsageDailyModelTrendChart({
       ) : (
         <div>
           <ChartContainer config={chartConfig} className="h-60 w-full">
-            <LineChart accessibilityLayer data={chartData} margin={APP_USAGE_TREND_CHART_MARGIN}>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis
-                dataKey="label"
-                tickLine={false}
-                axisLine={false}
-                interval={0}
-                minTickGap={0}
-                tickMargin={8}
-                tickFormatter={shouldShowAxisLabel}
-              />
-              <YAxis hide domain={[0, maxTokens]} />
-              <ChartTooltip cursor={false} content={tooltipContent} />
-              {visibleModelKeys.map((model) => (
-                <Line
-                  key={model.key}
-                  dataKey={model.key}
-                  type="monotone"
-                  stroke={`var(--color-${model.key})`}
-                  strokeWidth={2}
-                  // 正数点让仅有一天用量的小模型也可见；空值不会生成普通点或高亮点。
-                  dot={{ r: 2, fill: `var(--color-${model.key})` }}
-                  activeDot={{ r: 4 }}
-                  // 切换来源/范围时直接展示完整统计，避免绘制动画让已知曲线暂时缺段。
-                  isAnimationActive={false}
+            {granularity === "hourly" ? (
+              <BarChart accessibilityLayer data={chartData} margin={APP_USAGE_TREND_CHART_MARGIN}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  interval={0}
+                  minTickGap={0}
+                  tickMargin={8}
+                  tickFormatter={shouldShowAxisLabel}
                 />
-              ))}
-            </LineChart>
+                <YAxis hide domain={[0, maxTokens]} />
+                <ChartTooltip cursor={false} content={tooltipContent} />
+                {visibleModelKeys.map((model) => (
+                  <Bar
+                    key={model.key}
+                    dataKey={model.key}
+                    fill={`var(--color-${model.key})`}
+                    maxBarSize={16}
+                    radius={[3, 3, 0, 0]}
+                    // 小时是离散时间桶，柱状图避免折线暗示小时间的连续变化。
+                    isAnimationActive={false}
+                  />
+                ))}
+              </BarChart>
+            ) : (
+              <LineChart accessibilityLayer data={chartData} margin={APP_USAGE_TREND_CHART_MARGIN}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  interval={0}
+                  minTickGap={0}
+                  tickMargin={8}
+                  tickFormatter={shouldShowAxisLabel}
+                />
+                <YAxis hide domain={[0, maxTokens]} />
+                <ChartTooltip cursor={false} content={tooltipContent} />
+                {visibleModelKeys.map((model) => (
+                  <Line
+                    key={model.key}
+                    dataKey={model.key}
+                    type="monotone"
+                    stroke={`var(--color-${model.key})`}
+                    strokeWidth={2}
+                    // 正数点让仅有一天用量的小模型也可见；空值不会生成普通点或高亮点。
+                    dot={{ r: 2, fill: `var(--color-${model.key})` }}
+                    activeDot={{ r: 4 }}
+                    // 切换来源/范围时直接展示完整统计，避免绘制动画让已知曲线暂时缺段。
+                    isAnimationActive={false}
+                  />
+                ))}
+              </LineChart>
+            )}
           </ChartContainer>
         </div>
       )}
