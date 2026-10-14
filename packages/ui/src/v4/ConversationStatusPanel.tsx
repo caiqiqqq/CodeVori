@@ -26,6 +26,7 @@ import {
   EllipsisIcon,
   FileDiffIcon,
   GoalIcon,
+  GitBranchIcon,
   ListChecksIcon,
   Maximize2Icon,
   Minimize2Icon,
@@ -389,7 +390,7 @@ function GitStatusSection({
     return null;
   }
   const hasChanges = git.added + git.removed > 0;
-  const canOpenReview = Boolean(onOpenGitReview && gitSummary.isRepository);
+  const canOpenReview = Boolean(onOpenGitReview && gitSummary.isRepository && hasChanges);
 
   return (
     <StatusSection
@@ -1565,11 +1566,13 @@ function getCompletedPlanItem(plan: ConversationStatusPanelModel["plan"]) {
 }
 
 function StatusSummaryRow({
+  branchLabel,
   endedWorkflowRunCount,
   gitWorktreeChangeSummary,
   model,
   onVariantChange,
 }: {
+  branchLabel: string;
   /** 已结束 run 的目录计数；宿主给 0 表示目录入口不可渲染（缺会话或缺回调）。 */
   endedWorkflowRunCount: number;
   gitWorktreeChangeSummary?: { added: number; removed: number } | null;
@@ -1696,19 +1699,30 @@ function StatusSummaryRow({
     </StatusSummaryMetric>
   ) : null;
 
-  if (!summaryMetric) {
-    return null;
-  }
-
   return (
     <ControlHintTooltip title={expandLabel} sideOffset={4} side="left">
       <button
         type="button"
-        aria-label={expandLabel}
-        className="group inline-flex w-max max-w-80 cursor-pointer flex-col items-stretch text-left text-[var(--color-foreground)] transition-colors hover:bg-[var(--color-menu-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-input-border-focused)]"
+        aria-label={`${branchLabel} · ${expandLabel}`}
+        className="group inline-flex h-8 w-max max-w-80 cursor-pointer items-center text-left text-[var(--color-foreground)] transition-colors hover:bg-[var(--color-menu-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-input-border-focused)]"
         onClick={() => onVariantChange?.("panel")}
       >
-        {summaryMetric}
+        {/* 修复原因：旧胶囊只有活动摘要，干净仓库会失去会话所属分支的唯一可见入口。 */}
+        <span
+          data-testid="conversation-branch-entry"
+          title={branchLabel}
+          className="inline-flex min-w-0 max-w-36 items-center gap-1.5 pl-2 pr-2 text-ui-base"
+        >
+          <GitBranchIcon className="size-4 shrink-0" />
+          <span className="truncate">{branchLabel}</span>
+        </span>
+        {summaryMetric ? (
+          <span className="min-w-0 flex-1 overflow-hidden border-l border-[var(--color-border)] [&>div]:max-w-full [&>div]:pl-2">
+            {summaryMetric}
+          </span>
+        ) : (
+          <Maximize2Icon className="mr-2 size-3.5 shrink-0 text-[var(--color-foreground-subtle)]" />
+        )}
       </button>
     </ControlHintTooltip>
   );
@@ -1810,6 +1824,17 @@ function ConversationStatusPanelImpl({
     [miniWidth],
   );
   const canRenderGit = Boolean(model.git && gitSummary && onRefreshGit);
+  const showAutoExpanded = variant === "auto" && model.hasExpandedContent;
+  const branchLabel = !gitSummary
+    ? intl.formatMessage({ id: "chat.statusPanel.branchLoading" })
+    : !gitSummary.isGitAvailable
+      ? intl.formatMessage({ id: "chat.statusPanel.gitUnavailable" })
+      : !gitSummary.isRepository
+        ? intl.formatMessage({ id: "chat.statusPanel.notRepository" })
+        : gitSummary.headRefType === "detached"
+          ? intl.formatMessage({ id: "git.head.detached" })
+          : gitSummary.branchName?.trim() ||
+            intl.formatMessage({ id: "chat.statusPanel.branchUnknown" });
   const canRenderGoal = Boolean(model.goal || model.reportedGoal);
   const canRenderSessionPlans = Boolean(model.sessionPlans);
   const canRenderPlan = Boolean(model.plan);
@@ -1867,14 +1892,6 @@ function ConversationStatusPanelImpl({
     return () => observer.disconnect();
   }, [model]);
 
-  // `model.hasContent` 只认**活的**内容（模型手上的投影都是活状态），所以「只剩历史」的
-  // 会话会连整个胶囊一起消失——而那正是重启后打开一条旧对话的样子，run 目录的入口于是又没了。
-  // 已结束的 run 因此单独开这道门。（Agents 的已结束行有同一个洞：`endedSubagentCount` 也
-  // 没进 `hasContent`。那是既有行为，不在本轮一起翻。）
-  if (!model.hasContent && !canRenderEndedWorkflows) {
-    return null;
-  }
-
   return (
     <div
       className={cn(
@@ -1894,7 +1911,9 @@ function ConversationStatusPanelImpl({
       <aside
         aria-label={intl.formatMessage({ id: "chat.summaryPanel.title" })}
         data-testid={TID_CHAT_SUMMARY_PANEL}
-        data-state={variant === "mini" ? "collapsed" : "expanded"}
+        data-state={
+          variant === "mini" || (variant === "auto" && !showAutoExpanded) ? "collapsed" : "expanded"
+        }
         data-display-mode={variant}
         data-goal-status={model.goal?.status}
         data-goal-objective={model.goal?.objective ?? model.reportedGoal ?? undefined}
@@ -1910,7 +1929,7 @@ function ConversationStatusPanelImpl({
         style={shellStyle}
         className={cn(
           "pointer-events-auto relative overflow-hidden rounded-2xl border border-[var(--color-popover-border)] bg-[var(--color-popover)] text-[var(--color-foreground)] shadow-md transition-[border-radius,padding,background-color,box-shadow] duration-300 ease-in-out",
-          variant === "mini"
+          variant === "mini" || (variant === "auto" && !showAutoExpanded)
             ? "inline-flex max-h-8.5 w-[var(--chat-summary-panel-mini-width)] max-w-[calc(100vw-1.5rem)] flex-col"
             : variant === "panel"
               ? "flex max-h-[min(64dvh,32rem)] w-80 max-w-[calc(100vw-1.5rem)] flex-col"
@@ -1921,7 +1940,11 @@ function ConversationStatusPanelImpl({
           <div
             className={cn(
               "absolute right-3 top-3 z-10 items-center gap-1",
-              variant === "auto" ? "hidden @min-[1280px]/conversation:flex" : "flex",
+              variant === "auto"
+                ? showAutoExpanded
+                  ? "hidden @min-[1280px]/conversation:flex"
+                  : "hidden"
+                : "flex",
             )}
           >
             <DropdownMenu>
@@ -1976,7 +1999,11 @@ function ConversationStatusPanelImpl({
           <div
             className={cn(
               "min-h-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto p-2",
-              variant === "auto" ? "hidden @min-[1280px]/conversation:flex" : "flex",
+              variant === "auto"
+                ? showAutoExpanded
+                  ? "hidden @min-[1280px]/conversation:flex"
+                  : "hidden"
+                : "flex",
             )}
           >
             {canRenderGit ? (
@@ -1994,7 +2021,16 @@ function ConversationStatusPanelImpl({
                 separated={false}
                 useVerticalFloatingPanels={useVerticalFloatingPanels}
               />
-            ) : null}
+            ) : (
+              <StatusSection
+                section="environment"
+                title={intl.formatMessage({ id: "chat.statusPanel.branch" })}
+              >
+                <div className="px-2 py-1 text-ui-base text-[var(--color-foreground-subtle)]">
+                  {branchLabel}
+                </div>
+              </StatusSection>
+            )}
             {model.reportedGoal ? (
               <StatusSection
                 section="goal"
@@ -2089,7 +2125,7 @@ function ConversationStatusPanelImpl({
           aria-hidden={variant === "panel"}
           className={cn(
             "w-max max-w-80 transition-opacity duration-150",
-            variant === "mini"
+            variant === "mini" || (variant === "auto" && !showAutoExpanded)
               ? "pointer-events-auto relative visible opacity-100"
               : variant === "panel"
                 ? "pointer-events-none invisible absolute left-0 top-0 opacity-0"
@@ -2097,6 +2133,7 @@ function ConversationStatusPanelImpl({
           )}
         >
           <StatusSummaryRow
+            branchLabel={branchLabel}
             model={model}
             // 与页脚同一道门（canRenderEndedWorkflows）：缺会话或缺回调时目录打不开，
             // 胶囊也就不该报一个点了没反应的数。

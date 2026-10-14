@@ -2,16 +2,29 @@
 
 ## Rules and owners
 
-Populated ACP conversations reuse ConversationStatusPanel, its Git tools, mini/panel/
-automatic modes and the timeline's coordinated layout. Empty ACP drafts retain their
-existing greeting. Git visibility matches API: available repository with nonzero
-worktree line changes, hidden in Office mode. No always-visible clean-repo card.
+Populated ACP and API conversations reuse ConversationStatusPanel, its Git tools,
+mini/panel/automatic modes and the timeline's coordinated layout. Empty ACP drafts
+retain their existing greeting. A compact branch entry remains visible in populated
+conversations even when the repository is clean or no other panel facts are present.
+Clicking it expands the existing panel. The full Git tools section is available for
+clean repositories too; Changes remains actionable only when review is available.
+Office mode hides Git tools but keeps the branch identity entry. Unknown, unavailable,
+nonrepository and detached HEAD states have explicit labels; no branch is guessed.
+Automatic mode keeps a branch-only panel compact even on wide screens. Existing goal,
+plan, change and background summaries retain their priority alongside the branch.
 
 The workspace shell's existing Git hook owns repository reads/watch refresh. Same
 workspace panes share its summary and actions; different workspace identity/path
 panes must not consume shell Git facts or callbacks (existing Workbench boundary).
 This change does not introduce a second repository state owner or a cross-workspace
-Git review surface. Unavailable Git stays absent rather than inventing zero counts.
+Git review surface. Unavailable Git shows an explicit label rather than inventing a
+branch or zero changes. A scope switch first selects the new pane's Git projection;
+existing stale-response guards prevent the previous scope from replacing it.
+
+```text
+workspace Git owner → scoped shell/pane projection → current conversation branch entry
+                 └→ refresh/switch result → same projection → entry and Git tools
+```
 
 The selected ACP Host snapshot is the only source of ACP goal text, latest current
 turn plan and workflow facts. Plan statuses project to the existing Todo model;
@@ -89,3 +102,9 @@ web-remote-replayable snapshots ─┴→ selected pane → Terminals → output
    running terminal; disconnect cleans it. Persist/replay preserves output and Host
    restart clears stale running state. Desktop/mobile output and Stop use exact ACP
    identity and terminal IDs and update via the same Host snapshot subscription.
+9. A populated API or ACP conversation in a clean repository shows its branch in a
+   compact entry, including after a Host replay; clicking it expands the existing
+   Git section. Branch-only auto mode does not reserve the expanded wide layout.
+   Active plan/change summaries remain visible with the branch. Detached, unknown,
+   unavailable and nonrepository scopes have accurate labels without leaking the
+   previous workspace's branch. Check desktop/mobile and light/dark themes.

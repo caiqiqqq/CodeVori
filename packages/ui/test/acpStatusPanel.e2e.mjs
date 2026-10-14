@@ -60,7 +60,7 @@ try {
         const [dirty,setDirty]=useState(true);
         const [noGit,setNoGit]=useState(false);
         const [variant,setVariant]=useState(null);
-        window.__status={events,read:copy,dirty:setDirty,noGit:setNoGit,
+        window.__status={events,read:copy,dirty:setDirty,noGit:setNoGit,variant:setVariant,
           startCommands:()=>{snapshot.status='running';snapshot.entries.push(
             {id:'execute',kind:'tool',title:'npm run dev',toolKind:'execute',status:'in_progress',createdAt:Date.now(),input:'npm run dev',output:'tool ready'},
             {id:'linked',kind:'tool',title:'linked terminal',toolKind:'execute',status:'in_progress',terminalIds:['managed'],createdAt:Date.now()},
@@ -75,7 +75,7 @@ try {
         };
         return <main className="h-screen bg-background text-foreground p-2" data-fixture-ready="true" data-fixture-epoch={epoch}>
           <SessionPane key={epoch} paneId="status-fixture" workspacePath={workspacePath} sessionId={null} focused
-            gitWorktreeReviewSourceId="unstaged" gitSummary={noGit?undefined:dirtySummary} gitDirtyFileCount={dirty?2:0}
+            gitWorktreeReviewSourceId="unstaged" gitSummary={noGit?{...dirtySummary,isRepository:false}:dirtySummary} gitDirtyFileCount={dirty?2:0}
             gitWorktreeChangeSummary={dirty?{added:12,removed:3}:{added:0,removed:0}}
             onRefreshGit={()=>events.push('refresh')}
             onOpenGitReview={source=>events.push('review:'+source)}
@@ -146,12 +146,12 @@ try {
       };
       await checkTokens("120");
       const expand = async () => {
-        const button = panel.getByRole("button", { name: "展开状态" });
+        const button = panel.getByRole("button", { name: /展开状态/ });
         const mode = await panel.getAttribute("data-display-mode");
         if (mode === "mini" || (mode === "auto" && width === 375)) await button.click();
       };
       await expand();
-      await panel.getByText("fixture-main", { exact: true }).waitFor();
+      await panel.getByRole("button", { name: "切换 Git 分支" }).waitFor();
       assert.equal(await panel.locator("[data-goal-action]").count(), 0);
       await panel.locator("[data-acp-objective]").filter({ hasText: "ACP objective" }).waitFor();
       await panel.getByTitle("ACP inspect source", { exact: true }).waitFor();
@@ -184,7 +184,7 @@ try {
       await page.screenshot({ path: join(artifacts, `plan-${width}-${theme}.png`) });
       await panel.getByRole("button").filter({ hasText: "更改" }).click();
       assert.deepEqual(await page.evaluate(() => window.__status.events), ["review:unstaged"]);
-      await panel.getByRole("button").filter({ hasText: "fixture-main" }).click();
+      await panel.getByRole("button", { name: "切换 Git 分支" }).click();
       await page.getByText("fixture-other", { exact: true }).waitFor();
       assert.ok(
         (await page.evaluate(() => window.__status.events)).includes("branches:/synthetic/status"),
@@ -232,7 +232,7 @@ try {
       await page.locator('[data-fixture-epoch="1"]').waitFor();
       await checkTokens("120");
       await expand();
-      await panel.getByText("fixture-main", { exact: true }).waitFor();
+      await panel.getByRole("button", { name: "切换 Git 分支" }).waitFor();
       await panel.locator("[data-acp-objective]").waitFor();
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
@@ -248,22 +248,33 @@ try {
       await panel.locator("[data-acp-objective]").filter({ hasText: "second objective" }).waitFor();
       assert.equal(await panel.getByText("ACP objective", { exact: true }).count(), 0);
       await page.evaluate(() => window.__status.dirty(false));
-      await page.waitForFunction(
-        () =>
-          !document
-            .querySelector('[data-testid="chat-summary-panel"]')
-            ?.textContent.includes("fixture-main"),
-      );
+      await panel.getByRole("button", { name: "切换 Git 分支" }).waitFor();
       await page.evaluate(() => window.__status.goal(null));
-      await panel.waitFor({ state: "detached" });
+      await page.evaluate(() => window.__status.variant(null));
+      await panel.getByTestId("conversation-branch-entry").getByText("fixture-main").waitFor();
+      assert.equal(await panel.getAttribute("data-state"), "collapsed");
+      await page.waitForFunction(() =>
+        [...document.getAnimations()].every((animation) => animation.playState !== "running"),
+      );
+      await page.screenshot({ path: join(artifacts, `branch-clean-${width}-${theme}.png`) });
+      await panel.getByTestId("conversation-branch-entry").click();
+      assert.equal(await panel.getAttribute("data-state"), "expanded");
+      assert.equal(
+        await panel
+          .locator('[data-status-section-trigger="environment"]')
+          .getAttribute("aria-expanded"),
+        "true",
+      );
+      await panel.getByRole("button", { name: "切换 Git 分支" }).waitFor();
+      await page.waitForFunction(() =>
+        [...document.getAnimations()].every((animation) => animation.playState !== "running"),
+      );
+      await page.screenshot({ path: join(artifacts, `branch-expanded-${width}-${theme}.png`) });
       await page.evaluate(() => {
-        window.__status.dirty(true);
         window.__status.noGit(true);
       });
-      await page.waitForFunction(
-        () => !document.querySelector('[data-testid="chat-summary-panel"]'),
-      );
-      assert.equal(await panel.count(), 0);
+      await panel.getByText("无 Git 仓库").first().waitFor();
+      assert.equal(await panel.getByText("fixture-main").count(), 0);
       assert.equal(
         (await page.evaluate(() => window.__status.events)).some(
           (e) => e === "create" || e === "prompt",
