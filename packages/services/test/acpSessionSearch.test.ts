@@ -116,3 +116,34 @@ test("ACP recent/search results use activity time, cap summaries, and preserve p
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("delegated ACP sessions stay directly readable but leave history and search projections", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "acp-delegated-"));
+  const child = snapshot({ title: "子会话", archived: true });
+  const ordinary = snapshot({ title: "普通会话" });
+  const service = createAcpService({
+    directory,
+    delegatedSessionIds: async (scope) =>
+      scope.workspaceIdentity === "host-one" && scope.workspacePath === workspace.workspacePath
+        ? [child.id]
+        : [],
+  });
+  try {
+    for (const item of [child, ordinary])
+      await writeFile(join(directory, `${item.id}.json`), JSON.stringify(item));
+    assert.deepEqual(
+      (await service.listSummaries(workspace)).map((item) => item.id),
+      [ordinary.id],
+    );
+    assert.deepEqual(
+      (await service.search({ ...workspace, query: "" })).map((item) => item.id),
+      [ordinary.id],
+    );
+    assert.deepEqual(await service.listArchivedWorkspaces(), []);
+    assert.equal((await service.read({ ...workspace, id: child.id })).id, child.id);
+    assert.equal((await service.list(workspace)).length, 2);
+  } finally {
+    await service.disposeAllAndWait();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

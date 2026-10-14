@@ -267,6 +267,7 @@ try {
     const row = panel.getByTestId("delegation-task").first();
     await row.waitFor();
     assert.match(await row.textContent(), /ACP 子任务/);
+    await row.locator('[data-testid^="tool-summary-trigger-"]').click();
     assert.match(await row.textContent(), /项目不是 Git 仓库/);
     assert.ok(!(await row.textContent()).includes("work-task.not-repository"));
     await row.locator("summary").click();

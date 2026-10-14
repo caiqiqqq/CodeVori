@@ -8,6 +8,15 @@ import {
   type AcpSessionSearchItem,
 } from "@zcode/shared";
 
+/** Keep the authoritative ACP snapshot for direct reads; remove children only from ordinary projections. */
+export function excludeDelegatedAcpSessions<T extends Pick<AcpSession, "id">>(
+  sessions: readonly T[],
+  childIds: readonly string[],
+): T[] {
+  const hidden = new Set(childIds);
+  return sessions.filter((session) => !hidden.has(session.id));
+}
+
 export function searchAcpSessions(
   sessions: readonly AcpSession[],
   input: AcpSessionSearchInput,

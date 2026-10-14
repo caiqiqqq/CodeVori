@@ -31,6 +31,9 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible.js";
 import { ToolCallBlock } from "@/ToolCallBlocks.js";
+import type { DelegationTask } from "@zcode/shared";
+import { DelegationTaskRow } from "@/delegation/DelegationTaskRow.js";
+import type { useAgentDelegation } from "@/hooks/useAgentDelegation.js";
 import {
   CronCreateAutomationCard,
   isCronAutomationCardToolCall,
@@ -92,6 +95,8 @@ import { toolCallRowToLegacyNode } from "@/v4/toolCallRowAdapter.js";
 
 interface ConversationTurnGroupProps {
   unit: ConversationTurnRenderUnit;
+  delegationTasks?: readonly DelegationTask[];
+  delegationController?: ReturnType<typeof useAgentDelegation>;
   sessionKey: string;
   /** 仅由 Timeline 注入给当前 live turn；历史 turn 永远不携带运行时 retry。 */
   apiRetry?: ApiRetryState | null;
@@ -111,6 +116,23 @@ interface ConversationTurnGroupProps {
     selectedRowIds: ReadonlySet<number>;
     onToggle: (rowId: number) => void;
   };
+}
+
+function TurnDelegationTasks({
+  tasks,
+  controller,
+}: {
+  tasks?: readonly DelegationTask[];
+  controller?: ReturnType<typeof useAgentDelegation>;
+}) {
+  if (!controller || !tasks?.length) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-4" data-testid="turn-delegation-tasks">
+      {tasks.map((task) => (
+        <DelegationTaskRow key={task.id} task={task} controller={controller} />
+      ))}
+    </div>
+  );
 }
 
 interface CronAutomationTurnCard {
@@ -614,6 +636,8 @@ function AssistantHistoryStatus({
 
 function ConversationWorkSegmentFlow({
   segment,
+  delegationTasks,
+  delegationController,
   context,
   onFork,
   onRetry,
@@ -630,6 +654,8 @@ function ConversationWorkSegmentFlow({
   shareSelectionRowId,
 }: {
   segment: ConversationTurnWorkSegment;
+  delegationTasks?: readonly DelegationTask[];
+  delegationController?: ReturnType<typeof useAgentDelegation>;
   context: ConversationRowRenderContext;
   onFork?: (target: ConversationRowTarget) => void;
   onRetry?: (target: ConversationRowTarget) => void;
@@ -656,6 +682,11 @@ function ConversationWorkSegmentFlow({
   );
   let historyChunkIndex = 0;
   const open = segment.assistantHistoryDefaultOpen ? true : historyOpen;
+  // 修复原因：委派属于发起轮的工作内容；落在最终答复之后会看起来像另起一轮。
+  // 进行中的轮次尚无最终正文，先放在已有工作行之后，后续正文到来时保持轮内位置。
+  const finalReplyIndex = segment.flowItems.findIndex(
+    (item) => item.kind === "assistantText" && item.latest,
+  );
 
   return (
     <Collapsible
@@ -758,10 +789,16 @@ function ConversationWorkSegmentFlow({
         return (
           <Fragment key={itemKey}>
             {showHistoryStatus ? <AssistantHistoryStatus segment={segment} open={open} /> : null}
+            {index === finalReplyIndex ? (
+              <TurnDelegationTasks tasks={delegationTasks} controller={delegationController} />
+            ) : null}
             {content}
           </Fragment>
         );
       })}
+      {finalReplyIndex < 0 ? (
+        <TurnDelegationTasks tasks={delegationTasks} controller={delegationController} />
+      ) : null}
       {shouldShowHistoryStatus && firstAssistantFlowItemIndex < 0 ? (
         <AssistantHistoryStatus segment={segment} open={open} />
       ) : null}
@@ -771,6 +808,8 @@ function ConversationWorkSegmentFlow({
 
 function ConversationTurnFlow({
   unit,
+  delegationTasks,
+  delegationController,
   apiRetry,
   context,
   onFork,
@@ -785,6 +824,8 @@ function ConversationTurnFlow({
   shareSelectionRowId,
 }: {
   unit: ConversationTurnRenderUnit;
+  delegationTasks?: readonly DelegationTask[];
+  delegationController?: ReturnType<typeof useAgentDelegation>;
   apiRetry: ApiRetryState | null;
   context: ConversationRowRenderContext;
   onFork?: (target: ConversationRowTarget) => void;
@@ -829,6 +870,7 @@ function ConversationTurnFlow({
           stageTailIsRunning={unit.isRunning}
           assistantCodeCommentProjectionEnabled={assistantCodeCommentProjectionEnabled}
         />
+        <TurnDelegationTasks tasks={delegationTasks} controller={delegationController} />
         <TurnChatLoadingSlot apiRetry={apiRetry} eligible={showLoading} />
       </div>
     );
@@ -874,10 +916,12 @@ function ConversationTurnFlow({
   // Collapsible。accepted guide 现在由 CLI workSegments 定界，每段组件自行维护折叠状态。
   return (
     <div className="flex flex-col gap-5">
-      {workSegments.map((segment) => (
+      {workSegments.map((segment, index) => (
         <ConversationWorkSegmentFlow
           key={segment.key}
           segment={segment}
+          delegationTasks={index === workSegments.length - 1 ? delegationTasks : undefined}
+          delegationController={delegationController}
           context={context}
           onFork={onFork}
           onRetry={onRetry}
@@ -1103,6 +1147,8 @@ function ConversationBackgroundResultWork({
 
 function ConversationTurnGroupImpl({
   unit,
+  delegationTasks,
+  delegationController,
   sessionKey,
   apiRetry = null,
   context,
@@ -1378,6 +1424,8 @@ function ConversationTurnGroupImpl({
           ) : (
             <ConversationTurnFlow
               unit={unit}
+              delegationTasks={delegationTasks}
+              delegationController={delegationController}
               apiRetry={apiRetry}
               context={assistantRowContext}
               onFork={canForkLatestAssistant ? onFork : undefined}
@@ -1462,6 +1510,8 @@ function ConversationTurnGroupImpl({
       ) : (
         <ConversationTurnFlow
           unit={unit}
+          delegationTasks={delegationTasks}
+          delegationController={delegationController}
           apiRetry={apiRetry}
           context={assistantRowContext}
           onEdit={onEdit}
@@ -1473,6 +1523,9 @@ function ConversationTurnGroupImpl({
           assistantCodeCommentProjectionEnabled={assistantCodeCommentProjectionEnabled}
         />
       )}
+      {backgroundResultTitle ? (
+        <TurnDelegationTasks tasks={delegationTasks} controller={delegationController} />
+      ) : null}
       {/* Host 错误属于原轮次，不能随新轮移动到 footer，也不能被工作历史折叠隐藏。 */}
       {unit.header?.notices?.map((notice) => {
         const presentationKey = conversationNoticePresentationKey({

@@ -688,6 +688,10 @@ nodes:
     codeSeeds:
       - file: packages/ui/src/delegation/AgentDelegationPanel.tsx
         symbol: AgentDelegationPanel
+      - file: packages/ui/src/delegation/DelegationTaskRow.tsx
+        symbol: DelegationTaskRow
+      - file: packages/ui/src/delegation/delegationTurnPlacement.ts
+        symbol: partitionDelegationTasksByTurn
       - file: packages/ui/src/delegation/DelegationEditor.tsx
         symbol: DelegationEditor
       - file: packages/ui/src/hooks/useAgentDelegation.ts
@@ -700,6 +704,9 @@ nodes:
         symbol: AgentDelegationService
       - file: packages/services/src/delegation/delegationRepository.ts
         symbol: DelegationRepository
+    invariants:
+      - Child session bindings are durable across retry and scoped by workspace identity, path and execution kind.
+      - Ordinary API and ACP list/search projections exclude children; exact reads remain available through the delegation row.
   - id: boundary.agent-delegation-mcp
     kind: boundary
     label: Session capability bridge and native reverse protocol

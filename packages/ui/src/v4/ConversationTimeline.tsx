@@ -27,6 +27,10 @@ import type {
   SessionPhase,
 } from "@zcode/shared/zcode-protocol-v4";
 import { cn } from "@/components/lib/utils.js";
+import type { DelegationParent } from "@zcode/shared";
+import { AgentDelegationPanel } from "@/delegation/AgentDelegationPanel.js";
+import { partitionDelegationTasksByTurn } from "@/delegation/delegationTurnPlacement.js";
+import type { useAgentDelegation } from "@/hooks/useAgentDelegation.js";
 import { runUserAction } from "@/lib/userActionTelemetry.js";
 import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -263,6 +267,10 @@ interface ConversationTimelineProps {
   scrollMemoryKey?: string | null;
   /** 行渲染上下文（theme/codePreviewSettings/workspacePath）；宿主保证引用稳定。 */
   rowContext: ConversationRowRenderContext;
+  delegation?: {
+    parent: DelegationParent;
+    controller: ReturnType<typeof useAgentDelegation>;
+  };
   onFork?: (target: ConversationRowTarget) => void;
   onRetry?: (target: ConversationRowTarget) => void;
   onFeedbackChange?: AssistantFeedbackHandler;
@@ -361,6 +369,7 @@ function ConversationTimelineImpl({
   sessionKey,
   scrollMemoryKey = null,
   rowContext,
+  delegation,
   onFork,
   onRetry,
   onFeedbackChange,
@@ -403,7 +412,27 @@ function ConversationTimelineImpl({
   // 依赖必须是「有没有 slot」而不是 headerSlot 本身：后者是 ReactNode，宿主传的是内联 JSX，
   // 每次渲染都是新对象，会让 ResizeObserver 在流式输出期间每帧重建。
   const hasHeaderSlot = Boolean(headerSlot);
-  const hasFooterSlot = Boolean(footerSlot);
+  const [liveNowMs, setLiveNowMs] = useState(() => Date.now());
+  const renderUnits = useMemo(
+    () =>
+      buildConversationTurnRenderUnits(rows, {
+        nowMs: liveNowMs,
+        sessionPhase,
+        workDurationAvailable,
+      }),
+    [liveNowMs, rows, sessionPhase, workDurationAvailable],
+  );
+  const delegationPlacement = useMemo(
+    () => partitionDelegationTasksByTurn(renderUnits, delegation?.controller.tasks ?? []),
+    [renderUnits, delegation?.controller.tasks],
+  );
+  const hasDelegationFooter = Boolean(
+    delegation &&
+    (delegationPlacement.unmatched.length ||
+      delegation.controller.editing ||
+      delegation.controller.error),
+  );
+  const hasFooterSlot = Boolean(footerSlot || hasDelegationFooter);
   const [headerSlotHeight, setHeaderSlotHeight] = useState(0);
   const [footerSlotHeight, setFooterSlotHeight] = useState(0);
   useEffect(() => {
@@ -440,16 +469,6 @@ function ConversationTimelineImpl({
     observer.observe(element);
     return () => observer.disconnect();
   }, [hasFooterSlot]);
-  const [liveNowMs, setLiveNowMs] = useState(() => Date.now());
-  const renderUnits = useMemo(
-    () =>
-      buildConversationTurnRenderUnits(rows, {
-        nowMs: liveNowMs,
-        sessionPhase,
-        workDurationAvailable,
-      }),
-    [liveNowMs, rows, sessionPhase, workDurationAvailable],
-  );
   const { virtualizedUnits, liveUnit, liveUnitIndex } = useMemo(
     () => splitConversationTimelineLiveTail(renderUnits),
     [renderUnits],
@@ -1870,7 +1889,7 @@ function ConversationTimelineImpl({
           // V4 已自管 prepend、吸底和记忆锚点；和其它虚拟列表一致，应从内容子树禁用锚点候选。
           style={{ overflowAnchor: "none" }}
         >
-          {renderUnits.length === 0 && !headerSlot && !footerSlot ? (
+          {renderUnits.length === 0 && !headerSlot && !hasFooterSlot ? (
             <div
               className={cn(
                 centeredEmptyLayout
@@ -1936,6 +1955,8 @@ function ConversationTimelineImpl({
                     >
                       <ConversationTurnGroup
                         unit={unit}
+                        delegationTasks={delegationPlacement.byTurn.get(unit.turnId)}
+                        delegationController={delegation?.controller}
                         sessionKey={sessionKey}
                         apiRetry={null}
                         context={rowContext}
@@ -1967,6 +1988,8 @@ function ConversationTimelineImpl({
                 >
                   <ConversationTurnGroup
                     unit={liveUnit}
+                    delegationTasks={delegationPlacement.byTurn.get(liveUnit.turnId)}
+                    delegationController={delegation?.controller}
                     sessionKey={sessionKey}
                     apiRetry={apiRetry}
                     context={rowContext}
@@ -1999,7 +2022,7 @@ function ConversationTimelineImpl({
                   />
                 </div>
               ) : null}
-              {footerSlot ? (
+              {hasFooterSlot ? (
                 <div
                   ref={footerSlotRef}
                   data-v4-timeline-footer-slot="true"
@@ -2011,6 +2034,14 @@ function ConversationTimelineImpl({
                   )}
                 >
                   {footerSlot}
+                  {hasDelegationFooter && delegation ? (
+                    <AgentDelegationPanel
+                      key={`${delegation.parent.workspaceIdentity?.trim() || delegation.parent.workspacePath}:${delegation.parent.kind}:${delegation.parent.sessionId}`}
+                      parent={delegation.parent}
+                      controller={delegation.controller}
+                      tasks={delegationPlacement.unmatched}
+                    />
+                  ) : null}
                 </div>
               ) : null}
             </div>

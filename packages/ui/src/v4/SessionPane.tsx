@@ -136,7 +136,6 @@ import { ConversationHeader, type PaneWorkspaceBadge } from "@/v4/ConversationHe
 import { WorkbenchConversationTabContent } from "@/v4/WorkbenchConversationTabContent.js";
 import { resolveWorkbenchConversationTabPresentation } from "@/v4/workbenchConversationTabPresentation.js";
 import { AcpConversationStatus, AcpHomeStatus } from "@/v4/AcpConversationContent.js";
-import { AgentDelegationPanel } from "@/delegation/AgentDelegationPanel.js";
 import { useAgentDelegation } from "@/hooks/useAgentDelegation.js";
 import { useAcpConversation } from "@/v4/useAcpConversation.js";
 import { useAcpQueueEditing } from "@/v4/useAcpQueueEditing.js";
@@ -5361,6 +5360,11 @@ export function SessionPane({
               }
               scrollMemoryKey={acpAgent ? null : timelineScrollMemoryKey}
               rowContext={acpAgent ? acpRowContext : rowContext}
+              delegation={
+                !readOnly && delegationParent.sessionId
+                  ? { parent: delegationParent, controller: delegation }
+                  : undefined
+              }
               onFork={!acpAgent && forkActionsEnabled ? handleFork : undefined}
               onRetry={!acpAgent && retryActionsEnabled ? handleRetry : undefined}
               onFeedbackChange={
@@ -5428,13 +5432,6 @@ export function SessionPane({
                       agent={acpAgent}
                       conversation={acpConversation}
                       rows={acpRows}
-                    />
-                  ) : null}
-                  {!readOnly && delegationParent.sessionId ? (
-                    <AgentDelegationPanel
-                      key={`${workspaceIdentity?.trim() || workspacePath}:${delegationParent.kind}:${delegationParent.sessionId}`}
-                      parent={delegationParent}
-                      controller={delegation}
                     />
                   ) : null}
                 </>

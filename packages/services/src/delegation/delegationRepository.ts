@@ -34,9 +34,18 @@ export class DelegationRepository {
         CREATE TABLE IF NOT EXISTS delegations(id TEXT PRIMARY KEY, parent_key TEXT NOT NULL,
           request_id TEXT NOT NULL, data TEXT NOT NULL, UNIQUE(parent_key,request_id));
         CREATE INDEX IF NOT EXISTS delegations_parent ON delegations(parent_key);
+        CREATE TABLE IF NOT EXISTS delegation_child_sessions(
+          workspace_key TEXT NOT NULL, workspace_path TEXT NOT NULL,
+          kind TEXT NOT NULL, session_id TEXT NOT NULL, task_id TEXT NOT NULL,
+          PRIMARY KEY(workspace_key,workspace_path,kind,session_id));
         CREATE TABLE IF NOT EXISTS delegation_parents(key TEXT PRIMARY KEY, generation INTEGER NOT NULL, suspended INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS delegation_settings(key TEXT PRIMARY KEY, data TEXT NOT NULL);`);
       this.database = db;
+      // 修复原因：旧任务只保存当前 session；启动时把尚可恢复的绑定补进追加式归属表。
+      for (const row of db.prepare("SELECT data FROM delegations").all() as { data: string }[]) {
+        const task = delegationTaskSchema.parse(JSON.parse(row.data));
+        this.bindSession(task);
+      }
     })();
     await this.opening;
   }
@@ -91,7 +100,33 @@ export class DelegationRepository {
         "INSERT INTO delegations(id,parent_key,request_id,data) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
       )
       .run(task.id, parentKey(task.parent), task.requestId, JSON.stringify(parsed));
+    this.bindSession(parsed);
     this.cache.delete(task.id);
+  }
+  private bindSession(task: DelegationTask) {
+    if (!task.session) return;
+    const workspacePath = task.worktree?.path ?? task.parent.workspacePath;
+    this.db()
+      .prepare(
+        "INSERT OR IGNORE INTO delegation_child_sessions(workspace_key,workspace_path,kind,session_id,task_id) VALUES(?,?,?,?,?)",
+      )
+      .run(
+        // 修复原因：隔离工作树的会话按工作树路径读取，归属键必须与该读取作用域一致。
+        resolveWorkspaceKey({ workspacePath, workspaceIdentity: task.parent.workspaceIdentity }),
+        workspacePath,
+        task.session.kind,
+        task.session.id,
+        task.id,
+      );
+  }
+  childSessionIds(scope: WorkTaskScope, kind: "api" | "acp"): string[] {
+    const rows = this.db()
+      .prepare(
+        `SELECT session_id FROM delegation_child_sessions WHERE kind=?
+          AND workspace_key=? AND workspace_path=?`,
+      )
+      .all(kind, resolveWorkspaceKey(scope), scope.workspacePath) as { session_id: string }[];
+    return rows.map((row) => row.session_id);
   }
   parent(parent: DelegationParent): ParentState {
     const row = this.db()
