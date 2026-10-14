@@ -70,6 +70,8 @@ export function continueWorkTaskConversation(
     failureReason: undefined,
     completion: undefined,
     merge: undefined,
+    // 清理失败属于上一轮；真实新命令认领成功后必须同步清除，否则 UI 会遮盖新轮状态。
+    worktreeCleanup: undefined,
     updatedAt: now,
   };
 }

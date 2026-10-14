@@ -8,7 +8,6 @@ import {
   forgeRepositoryRequestSchema,
   forgeStateRequestSchema,
   forgeTargetRequestSchema,
-  forgeImageRequestSchema,
   forgeImagePreviewSchema,
   type ForgeWebMediaPort,
   type ForgeRepositoryInfo,
@@ -17,6 +16,7 @@ import {
 } from "@zcode/shared";
 import type { IGitService } from "./git.js";
 import { createForgeImageUploads } from "./forgeImageUploads.js";
+import { createForgeImageReads } from "./forgeImageReads.js";
 import { createGitCliRepo } from "./repo/gitCliRepo.js";
 import type { GitCliRepo } from "./repo/gitCliTypes.js";
 import { createVersionControlRepo, type VersionControlRepo } from "./repo/versionControlRepo.js";
@@ -225,6 +225,7 @@ export function createForgeService(options?: {
   const target = async (request: ForgeTargetRequest) => (await verifiedTarget(request)).adapter;
   return {
     ...createForgeImageUploads(verifiedTarget, options?.webMedia),
+    ...createForgeImageReads(verifiedTarget),
     async getForgeRepository(input) {
       return (await resolve(forgeRepositoryRequestSchema.parse(input))).info;
     },
@@ -240,26 +241,6 @@ export function createForgeService(options?: {
       const request = forgeItemRequestSchema.parse(input);
       const adapter = await target(request);
       return adapter.getItemExtras ? adapter.getItemExtras(request) : {};
-    },
-    async readForgeImage(input) {
-      const request = forgeImageRequestSchema.parse(input);
-      const adapter = await target(request);
-      if (!adapter.readImage) throw new Error("FORGE_MEDIA_UNAVAILABLE");
-      return adapter.readImage(request);
-    },
-    async authenticateForgeImage(input) {
-      const request = forgeImageRequestSchema.parse(input);
-      const original = await verifiedTarget(request);
-      if (!original.adapter.authenticateImage)
-        throw new Error("FORGE_MEDIA_AUTHENTICATION_UNAVAILABLE");
-      await original.adapter.authenticateImage(request);
-      const latest = await verifiedTarget(request);
-      // 登录窗口打开期间账号可能被移除或轮换；旧请求不能给新目标报告授权成功。
-      if (
-        latest.account.secret !== original.account.secret ||
-        latest.account.username !== original.account.username
-      )
-        throw new Error("FORGE_TARGET_CHANGED");
     },
     async listForgeComments(input) {
       const request = forgePageRequestSchema.parse(input);

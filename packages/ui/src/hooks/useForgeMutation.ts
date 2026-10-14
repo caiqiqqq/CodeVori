@@ -39,6 +39,12 @@ export function useForgeMutation(scope: object | null) {
   );
   return {
     run,
+    cancel: () => {
+      // 仅作废当前 UI admission，不撤销已经被 Host 接受的写入。
+      generation.current += 1;
+      admitted.current = false;
+      setState({ token, busy: false, error: null });
+    },
     busy: state.token === token && state.busy,
     error: state.token === token ? state.error : null,
   };

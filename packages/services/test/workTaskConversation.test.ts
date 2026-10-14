@@ -26,6 +26,7 @@ async function fixture(kind: "api" | "acp", failInitial = true) {
   const changes = new Emitter<WorkTaskConversationEvent>();
   const stops: WorkTaskConversationEvent[] = [];
   let executions = 0;
+  let cleanups = 0;
   let watchers = 0;
   let failStop = false;
   const conversation: WorkTaskConversationPort = {
@@ -63,6 +64,10 @@ async function fixture(kind: "api" | "acp", failInitial = true) {
           },
         });
         if (failInitial) throw new Error("Synthetic first failure");
+      },
+      removeWorktree: async () => {
+        cleanups++;
+        throw new Error("work-task.worktree-remove-dirty-worktree");
       },
       merge: {
         validate: async () => ({ projectPath: "/project" }),
@@ -112,6 +117,9 @@ async function fixture(kind: "api" | "acp", failInitial = true) {
     get executions() {
       return executions;
     },
+    get cleanups() {
+      return cleanups;
+    },
     get watchers() {
       return watchers;
     },
@@ -127,6 +135,60 @@ async function fixture(kind: "api" | "acp", failInitial = true) {
 }
 
 for (const kind of ["api", "acp"] as const) {
+  for (const completion of ["accepted_without_merge", "merged"] as const) {
+    test(`${kind} ${completion} cleanup failure resets only on a real continued run after Host restart`, async () => {
+      const f = await fixture(kind, false);
+      try {
+        if (completion === "merged") {
+          await f.service.merge({ ...f.scope, id: f.task.id, targetBranch: "main" });
+          await until(async () => (await f.read()).status === "done");
+        } else await f.service.complete({ ...f.scope, id: f.task.id });
+        await f.service.archive({
+          ...f.scope,
+          id: f.task.id,
+          archived: true,
+          removeWorktree: true,
+        });
+        await until(async () => (await f.read()).worktreeCleanup?.phase === "failed");
+        const failed = await f.read();
+        await f.service.disposeAllAndWait();
+        const restarted = f.makeService();
+        await restarted.list(f.scope);
+        await f.makeService().list(f.scope);
+        assert.deepEqual((await f.read()).worktreeCleanup, failed.worktreeCleanup);
+        f.changes.fire(f.event(failed.commandId));
+        f.changes.fire({ ...f.event(), startedAt: failed.updatedAt - 1 });
+        f.changes.fire(f.event(undefined, "review"));
+        assert.deepEqual((await f.read()).worktreeCleanup, failed.worktreeCleanup);
+        const next = f.event(undefined, completion === "merged" ? "awaiting_input" : "running");
+        f.changes.fire(next);
+        f.changes.fire(next);
+        const running = await f.read();
+        assert.equal(running.status, next.status);
+        assert.equal(running.worktreeCleanup, undefined, "old cleanup cannot mask the new run");
+        assert.equal(running.runSeq, failed.runSeq + 1, "two Hosts claim the command once");
+        assert.equal(running.completion, undefined);
+        assert.equal(running.merge, undefined);
+        assert.deepEqual(running.session, failed.session);
+        assert.deepEqual(running.worktree, failed.worktree);
+        for (const status of ["running", "awaiting_input", "review"] as const) {
+          f.changes.fire({ ...next, status });
+          assert.equal((await f.read()).status, status);
+          assert.equal((await f.read()).worktreeCleanup, undefined);
+        }
+        const again = f.event();
+        f.changes.fire(again);
+        f.changes.fire({ ...again, status: "failed", error: "New execution failure" });
+        assert.equal((await f.read()).failureReason, "New execution failure");
+        assert.equal((await f.read()).worktreeCleanup, undefined);
+        assert.equal(f.executions, 1, "observation must not replay input");
+        assert.equal(f.cleanups, 1, "continuation must not retry deletion");
+      } finally {
+        await f.cleanup();
+      }
+    });
+  }
+
   for (const completion of ["accepted_without_merge", "merged"] as const) {
     test(`${kind} ${completion} task resumes after Host restart and claims once without replay`, async () => {
       const f = await fixture(kind, false);

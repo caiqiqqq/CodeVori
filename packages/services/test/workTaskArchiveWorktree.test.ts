@@ -245,6 +245,55 @@ test("expired cleanup lease recovers without automatic deletion and ignores old 
   }
 });
 
+test("continued run excludes live cleanup and fences its late result after failure", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zcode-cleanup-continued-"));
+  const repo = new WorkTaskRepo(join(dir, "tasks.sqlite"));
+  try {
+    await repo.ready();
+    const task = repo.create({
+      ...scope,
+      title: "Continued cleanup failure",
+      prompt: "Work",
+      execution: { kind: "acp", agent: "codex", config: [] },
+    });
+    repo.enqueue(scope, task.id);
+    const run = repo.claimNext("owner", Date.now(), 30_000)!;
+    repo.updateRun(run, "owner", {
+      worktree: allocation,
+      session: { kind: "acp", id: "session" },
+    });
+    repo.finish(run, "owner");
+    const done = repo.complete(scope, task.id);
+    const cleanup = repo.beginWorktreeCleanup(scope, task.id, "owner", 30_000);
+    const event = {
+      commandId: "new-command",
+      status: "running" as const,
+      startedAt: Date.now() + 1,
+    };
+    assert.equal(repo.claimConversation(done, "owner", event, 30_000), null);
+    assert.deepEqual(repo.get(scope, task.id).worktreeCleanup, cleanup.worktreeCleanup);
+    assert.equal(repo.finishWorktreeCleanup(cleanup, "owner", "work-task.host-interrupted"), true);
+    const next = repo.claimConversation(
+      done,
+      "owner",
+      { ...event, startedAt: Date.now() + 1 },
+      30_000,
+    )!;
+    assert.equal(next.status, "running");
+    assert.equal(next.worktreeCleanup, undefined);
+    // 相同 owner 的迟到清理结果也必须被 phase/id 边界拒绝，不能提前归档新轮。
+    assert.equal(repo.finishWorktreeCleanup(cleanup, "owner"), false);
+    assert.equal(repo.get(scope, task.id).archived, false);
+    assert.equal(repo.renew(next, "owner", Date.now(), 30_000), true);
+    repo.finish(next, "owner");
+    assert.equal(repo.get(scope, task.id).status, "review");
+    assert.equal(repo.get(scope, task.id).worktreeCleanup, undefined);
+  } finally {
+    repo.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("Host shutdown drains accepted cleanup and preserves retryable interruption", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zcode-cleanup-shutdown-"));
   const repo = new WorkTaskRepo(join(dir, "tasks.sqlite"));

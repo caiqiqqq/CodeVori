@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { selectWorkTaskExecution } from "./workTaskExecutionConfigAssertions.mjs";
 import { workTaskPromptAssetsFixture } from "./workTaskPromptAssetsFixture.mjs";
+import { exerciseRepositoryTaskWaiting } from "./repositoryTaskWaitingAssertions.mjs";
 
 const pngBase64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S8AAAAASUVORK5CYII=";
@@ -143,6 +144,7 @@ export async function exerciseRepositoryTaskImages(page, panel, artifacts) {
           .length,
     );
   await reset();
+  await exerciseRepositoryTaskWaiting(page, panel, artifacts);
   const before = await writes();
   await open();
   const read = await page.evaluate(() => window.__forge.imageReads.at(-1));

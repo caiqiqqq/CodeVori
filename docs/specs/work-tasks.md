@@ -166,6 +166,18 @@ scope/owner 失效 → 丢弃迟到准入反馈；重连 → 重读任务清理�
 
 回归验收（issue #52/#53）：API/ACP 准入失败仅弹窗显示错误，取消/重开不残留；后台清理失败保留在该任务，另一任务及新建弹窗不继承。重试受理后关闭弹窗，任务显示清理中，完成才归档。看板顶部不重复展示上述错误，真正的列表读取与其他命令失败仍可见。覆盖中英文、深浅主题及桌面/320px。
 
+清理失败后的原会话继续执行（issue #124）：未归档任务在原会话开始真实新轮时，由 `WorkTaskRepo.claimConversation` 在原 owner/lease 事务中同时递增 runSeq、清除上一轮完成/合并/失败事实及 `worktreeCleanup`。清理失败属于旧清理尝试，不能覆盖新轮的运行、等待输入、待审阅或新执行失败状态；任务行、会话头部和详情不再展示旧清理错误。原会话与工作树绑定保持不变，不重发输入、不自动重试删除。只读刷新、选择、重连、旧 command、重复事件或清理仍在运行时不清除失败/清理事实。无 schema 迁移；现存失败记录在真实新轮被接受时重置，清理事件历史保留。
+
+```text
+原 API/ACP 会话真实新轮 → Host 原观察端口 → Repo claimConversation（单一事实 owner）
+  → 校验 scope/session/command/时间 + owner/lease 互斥
+  → 同事务：新 runSeq/status + 清除旧 worktreeCleanup → 持久化 + 原通知
+  → desktop continuous / mobile replayable 原重读投影 → 展示新轮状态
+旧清理结果 → cleanup id/owner/phase 校验拒绝 → 不能归档或覆盖新轮
+```
+
+验收（issue #124）：API/ACP 清理失败后继续原会话，running/awaiting_input/review/failed 均展示新轮状态且无旧清理错误；重启 Host 与两个 Host 重复观察只认领一次，绑定不变、无新增执行/输入/删除命令；旧 command、迟到清理结果及运行中清理保持互斥。服务回归使用真实 SQLite 持久化，UI E2E 覆盖任务行、会话头部、详情和重挂载后的投影，兼顾桌面/窄屏、两主题和中英文。
+
 `WorkTaskService` / SQLite 是任务事实唯一所有者；扩展原 `archive` 合约的可选 `removeWorktree`，仅允许 `archived=true` 与本地 done 任务。Host 注入清理端口，使用持久化分配（不接受 UI 路径），核对注册工作树项目及分支后复用 Git `removeManagedWorktree` 的范围、脏目录、锁定、API/ACP 活动检查及非 force 删除。仅删除任务自身工作树，不清理合并处理工作树、不删分支、不删会话、不提交或推送。删除成功后才保存归档，原分配作为历史保留；已删除且已注销的目录重试视为成功，不重建工作树。Git 删除与 SQLite 不能成为同一事务，若进程在两者间中断，任务仍可见并由用户显式重试收口。
 
 同任务清理命令在 Host 内互斥，重复请求拒绝；完成态不可被原 start/edit/merge 重新准入，清理后归档前再次读取当前任务并检查状态。UI 仅持有确认/提交临时态，通过原 scoped hook 发命令及共享读取投影刷新，不保存删除事实。沿用 identity/path/remoteSessionId 隔离，远端禁止清理且不回落本机；desktop continuous 与 mobile replayable 仍由同一 Host 的原任务通知/重读恢复投影。
