@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- repository panel E2E intentionally covers the full navigation workflow. */
 // Synthetic Hosts only. No real forge credentials, repositories or writes are used.
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -43,7 +44,7 @@ try {
     ${repositoryTask.importsFixture}
     ${taskImages.importsFixture}
     import '../../../ui/src/styles.css';
-    const state:any={calls:[],pending:[],status:'ready',delayList:false,delayWrite:false,delayDiscovery:false,failWrite:false,remote:false,accountDiscovery:false};
+    const state:any={calls:[],pending:[],status:'ready',delayList:false,delayWrite:false,delayDiscovery:false,failWrite:false,remote:false,accountDiscovery:false,createdIssue:null,postCreateListReads:0};
     window.__forge=state;
     const clone=(v:any)=>JSON.parse(JSON.stringify(v));
     const hosts:any={};
@@ -61,7 +62,7 @@ try {
       async detectGit(){return {installed:true,path:'/synthetic/git',version:'git version 2.50.0'}},
       async addGitAccount(r:any){state.calls.push({host,op:'add-account',provider:r.provider,serverUrl:r.serverUrl});if(r.secret==='invalid')throw new Error('VERSION_CONTROL_authentication');snapshots[host].accounts.push({id:crypto.randomUUID(),provider:r.provider,serverUrl:r.serverUrl,username:r.provider+'-tester',scopes:[],avatarUrl:null,isDefault:false,createdAt:'2026-01-01T00:00:00Z'});return clone(snapshots[host])},
       async getForgeRepository(r:any){state.calls.push({host,op:'discover',...r});const remoteName=r.remoteName||state.forcedRemote||'origin';const matched=snapshots[host].accounts.find((a:any)=>a.provider==='gitlab'&&a.serverUrl==='https://forge.example.invalid');const status=state.accountDiscovery?(matched?'ready':snapshots[host].accounts.length?'account-mismatch':'unsupported'):state.status;const provider=state.accountDiscovery?(matched?.provider??null):(state.provider||'github');const result={status,remoteNames:['origin','private'],remoteName,host:'forge.example.invalid',provider,repository:status==='ready'?{key:host+remoteName,name:'team/'+host.toLowerCase(),url:'https://forge.example.invalid/team/'+host,provider,accountId:matched?.id??host,accountUsername:'tester'}:null};if(state.delayDiscovery){state.delayDiscovery=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return result},
-      async listForgeItems(r:any){state.calls.push({host,op:'list',...r});const items=state.filterItems?state.filterItems.filter((item:any)=>item.kind===r.kind&&(r.state==='all'||(r.state==='closed'?item.state!=='open':item.state==='open'))).map((item:any)=>({...baseItem(host,r),...item})):[{...baseItem(host,r),state:state.lagSearch?'open':states[host]}];const result={items,page:r.page,pageSize:20,hasMore:state.filterItems?false:r.page===1,total:state.filterItems?items.length:21,reachableTotal:state.filterItems?items.length:21,incomplete:false};if(state.delayList){state.delayList=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return clone(result)},
+      async listForgeItems(r:any){state.calls.push({host,op:'list',...r});const items=state.filterItems?state.filterItems.filter((item:any)=>item.kind===r.kind&&(r.state==='all'||(r.state==='closed'?item.state!=='open':item.state==='open'))).map((item:any)=>({...baseItem(host,r),...item})):[{...baseItem(host,r),state:state.lagSearch?'open':states[host]}];if(host==='A'&&state.createdIssue&&r.kind==='issue'&&!state.filterItems){const includeCreated=state.postCreateListReads>0;state.postCreateListReads+=1;if(includeCreated)items.unshift(clone(state.createdIssue));}const result={items,page:r.page,pageSize:20,hasMore:state.filterItems?false:r.page===1,total:state.filterItems?items.length:21,reachableTotal:state.filterItems?items.length:21,incomplete:false};if(state.delayList){state.delayList=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return clone(result)},
       async listForgeLabels(){return [label]},
       async getForgeImageUploadCapability(){return {supported:true,requiresWebLogin:false}},
       async getForgeIssueOptions(r:any){state.calls.push({host,op:'options',...r});const result={labels:{items:[label,{key:'enhancement',name:'enhancement',color:'#a2eeef'}],error:null},assignees:{items:[{key:'alice',username:'alice',avatarUrl:null}],error:state.failOptions?'FORGE_FORBIDDEN':null},milestones:{items:[{key:'3',title:'Release'}],error:null}};if(state.delayOptions){state.delayOptions=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return clone(result)},
@@ -69,7 +70,7 @@ try {
       async getForgeItemExtras(){return {}},
       async listForgeComments(r:any){return {items:clone(commentRows[host]),page:r.page,pageSize:30,hasMore:false,total:commentRows[host].length}},
       async listForgeFiles(r:any){return {items:[{path:'src/very-long-project-directory/a-very-long-filename-with-many-words.ts',previousPath:null,status:'modified',additions:1,deletions:1,patch:'@@ -1 +1 @@\\n-old\\n+new',truncated:false}],page:r.page,pageSize:30,hasMore:false,total:1}},
-      async createForgeIssue(r:any){state.calls.push({host,op:'create',...r});if(state.failWrite){state.failWrite=false;throw new Error('FORGE_FORBIDDEN')}return {...baseItem(host,{kind:'issue',...r}),number:99,title:r.title,body:r.body}},
+      async createForgeIssue(r:any){state.calls.push({host,op:'create',...r});if(state.failWrite){state.failWrite=false;throw new Error('FORGE_FORBIDDEN')}const created={...baseItem(host,{kind:'issue',...r}),number:99,title:r.title,body:r.body};if(r.title==='Created issue'){state.createdIssue=created;state.postCreateListReads=0}return clone(created)},
       async createForgeComment(r:any){state.calls.push({host,op:'comment',...r});if(state.failWrite){state.failWrite=false;throw new Error('FORGE_FORBIDDEN')}if(state.delayWrite){state.delayWrite=false;await new Promise(resolve=>state.pending.push(resolve))}commentRows[host].push({...comment,id:'c'+commentRows[host].length,body:r.body})},
       async setForgeItemState(r:any){state.calls.push({host,op:'state',...r});states[host]=r.state},
       async mergeForgePullRequest(r:any){state.calls.push({host,op:'merge',...r});states[host]='merged'},
@@ -170,11 +171,16 @@ try {
   await confirm.getByRole("button", { name: "确认合并", exact: true }).click();
   await detail.getByText("已合并", { exact: true }).waitFor();
   await detail.getByRole("button", { name: "关闭详情", exact: true }).click();
+  await panel.getByRole("tab", { name: "议题", exact: true }).click();
   await panel.getByRole("button", { name: "新建议题", exact: true }).click();
   const create = page.getByTestId("repository-new-issue");
   await assertIssueDraftAndAttributes({ page, create, countCalls });
   await detail.waitFor();
   await detail.getByRole("button", { name: "关闭详情", exact: true }).click();
+  await row().getByText("Created issue", { exact: true }).waitFor();
+  await page.evaluate(() => {
+    window.__forge.createdIssue = null;
+  });
   await page.evaluate(() => {
     window.__forge.delayList = true;
   });

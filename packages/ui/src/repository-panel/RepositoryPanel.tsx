@@ -238,7 +238,11 @@ function RepositoryPanelContent({
           gitService={panel.gitService}
           theme={theme}
           active={active}
-          onClose={() => setSelection(null)}
+          onClose={() => {
+            setSelection(null);
+            // 创建后首次列表读取可能撞上托管平台的旧快照；返回列表时再读一次，避免用户必须手动点击刷新。
+            panel.refresh();
+          }}
           onChanged={panel.refresh}
           onHandle={handleItem}
           handleBusy={task.busy}
