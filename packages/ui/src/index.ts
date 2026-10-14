@@ -81,6 +81,7 @@ export {
 } from "./lib/fileDisplay.js";
 export type { FileDisplayDescriptor, FileDisplayOptions } from "./lib/fileDisplay.js";
 export { playTaskNotificationSound } from "./lib/taskNotificationSound.js";
+export { isTaskNotificationOnlyWhenUnfocused } from "./lib/taskNotificationPreferences.js";
 export {
   applyUiFontSizePx,
   loadUiFontSizePx,

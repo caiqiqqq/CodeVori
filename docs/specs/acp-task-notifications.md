@@ -1,8 +1,46 @@
 # ACP task completion notifications
 
 ACP turns use the existing task notification and notification sound preferences,
-localized copy and `IPlatformService.showTaskNotification`. There is no new setting,
-Host state, protocol event or background Agent.
+localized copy and `IPlatformService.showTaskNotification`. There is no new Host
+state, protocol event or background Agent.
+
+## Notification focus preference
+
+General settings adds “仅在窗口无焦点时通知” / “Notify only when unfocused” next to
+the task notification controls. It defaults to enabled, including for existing
+installations with no stored value. Enabled keeps the current behavior: Desktop
+suppresses a notification when any app window has focus; Web suppresses it when
+the current document has focus. Disabled allows notifications in both foreground
+and background. OS/browser notification permissions still apply.
+
+The existing UI notification preference store owns this boolean and persists it
+in localStorage alongside the notification and sound preferences. It is local to
+the client, not a Host/workspace setting. Changing it affects the next notification
+immediately, without restart, listener remount or replay of earlier notifications.
+The notification master switch disables this control while retaining its value.
+The sound preference remains independent and cannot bypass the master switch.
+
+```text
+settings toggle → UI store + localStorage (single preference owner)
+live notification edge → platform adapter reads preference at send time
+                       → Desktop IPC onlyWhenUnfocused (optional boolean)
+                       → Main checks all app windows → native notification → sound
+                       → Web checks document focus → browser notification → sound
+```
+
+`TaskNotificationPayload.onlyWhenUnfocused` carries the policy to Desktop Main;
+missing values preserve focus suppression for older callers. IPC rejects non-boolean
+values. Main owns the actual window focus check and does not persist the preference.
+All existing native/API, ACP, work-task, permission and feedback notifications use
+the same platform path. Notification deduplication, routing and replay boundaries
+are unchanged; losing focus or changing this setting never resends old events.
+
+Acceptance: test both switch positions with focused/unfocused windows, an additional
+focused app window, default/missing and invalid IPC values, reload persistence,
+master-switch disabling with value retention, and unchanged deduplication. Exercise
+the production settings row/store and Desktop adapter at desktop/mobile widths in
+both themes and languages. Synthetic IPC/browser tests do not prove native OS banner
+display, browser notification support on mobile, or audible speaker output.
 
 ## Ownership and delivery
 

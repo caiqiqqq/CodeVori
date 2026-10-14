@@ -1,5 +1,6 @@
 const TASK_NOTIFICATION_ENABLED_STORAGE_KEY = "zcode-notification-enabled";
 const TASK_NOTIFICATION_SOUND_ENABLED_STORAGE_KEY = "zcode-notification-sound-enabled";
+const TASK_NOTIFICATION_ONLY_WHEN_UNFOCUSED_STORAGE_KEY = "zcode-notification-only-when-unfocused";
 
 function readStoredBoolean(key: string, defaultValue: boolean): boolean {
   try {
@@ -30,6 +31,10 @@ export function isTaskNotificationSoundPreferenceEnabled(): boolean {
   return readStoredBoolean(TASK_NOTIFICATION_SOUND_ENABLED_STORAGE_KEY, true);
 }
 
+export function isTaskNotificationOnlyWhenUnfocused(): boolean {
+  return readStoredBoolean(TASK_NOTIFICATION_ONLY_WHEN_UNFOCUSED_STORAGE_KEY, true);
+}
+
 export function isTaskNotificationSoundEnabled(): boolean {
   // 通知声音是任务通知的子能力，之前只有一个总开关时，
   // UI 无法表达“保留桌面通知但关闭提示音”，运行时也不知道声音必须依附通知存在。
@@ -44,4 +49,8 @@ export function persistTaskNotificationEnabled(enabled: boolean): void {
 
 export function persistTaskNotificationSoundEnabled(enabled: boolean): void {
   persistStoredBoolean(TASK_NOTIFICATION_SOUND_ENABLED_STORAGE_KEY, enabled);
+}
+
+export function persistTaskNotificationOnlyWhenUnfocused(enabled: boolean): void {
+  persistStoredBoolean(TASK_NOTIFICATION_ONLY_WHEN_UNFOCUSED_STORAGE_KEY, enabled);
 }

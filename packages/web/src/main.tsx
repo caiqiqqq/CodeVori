@@ -6,6 +6,7 @@ import {
   Root,
   ZCodeIntlProvider,
   generateMobileDeviceFingerprint,
+  isTaskNotificationOnlyWhenUnfocused,
   playTaskNotificationSound,
   setStreamClientId,
   type Theme,
@@ -265,7 +266,7 @@ function createWebPlatform(): IPlatformService {
     reportTelemetryEvent: async () => {},
     reportArmsCustomEvent: () => Promise.resolve(),
     showTaskNotification: (payload) => {
-      if (document.hasFocus()) {
+      if (isTaskNotificationOnlyWhenUnfocused() && document.hasFocus()) {
         return;
       }
 

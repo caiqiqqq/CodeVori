@@ -1,4 +1,4 @@
-import { recordArmsCustomEventForE2E } from "@zcode/ui";
+import { isTaskNotificationOnlyWhenUnfocused, recordArmsCustomEventForE2E } from "@zcode/ui";
 import { DesktopCommandIds, buildLocalMediaPreviewUrl, type IPlatformService } from "@zcode/shared";
 
 import { desktopBrowserPlatformBridge } from "./desktopBrowserPlatformBridge.js";
@@ -75,7 +75,11 @@ export function createDesktopPlatform(options: {
     reportRendererHeapSample: window.zcode.reportRendererHeapSample
       ? (sample) => window.zcode.reportRendererHeapSample!(sample)
       : undefined,
-    showTaskNotification: (payload) => window.zcode.showTaskNotification(payload),
+    showTaskNotification: (payload) =>
+      window.zcode.showTaskNotification({
+        ...payload,
+        onlyWhenUnfocused: isTaskNotificationOnlyWhenUnfocused(),
+      }),
     syncWindowTabs: (paths) => window.zcode.syncWindowTabs(paths),
     syncWindowUnreadCount: (count) => window.zcode.syncWindowUnreadCount(count),
     syncActiveTaskSession: (sessionId) => window.zcode.syncActiveTaskSession(sessionId),

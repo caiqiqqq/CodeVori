@@ -43,6 +43,8 @@ export interface TaskNotificationPayload {
   requestId?: string;
   title: string;
   body: string;
+  /** 默认 true：任一应用窗口有焦点时抑制通知；false 允许前台通知。 */
+  onlyWhenUnfocused?: boolean;
 }
 
 /** Main 将一次能够定位真实 tab 的 browser-use 操作投递给其 origin renderer。 */

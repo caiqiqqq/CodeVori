@@ -2785,6 +2785,9 @@ const zhCN: Record<string, string> = {
   "settings.notification": "任务通知",
   "settings.notificationDescription": "任务完成、失败或需要确认时发送桌面通知。",
   "settings.notificationSound": "通知声音",
+  "settings.notificationOnlyWhenUnfocused": "仅在窗口无焦点时通知",
+  "settings.notificationOnlyWhenUnfocusedDescription":
+    "开启后，仅在窗口无焦点时发送通知；关闭后，窗口有焦点也会发送通知。",
   "settings.notificationSoundDescription": "通知开启后，可单独关闭任务通知提示音。",
   "notification.taskWithTitle": "任务：{title}",
   "notification.taskWaiting": "任务等待你的确认",

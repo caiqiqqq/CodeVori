@@ -355,6 +355,12 @@ export function SettingsPage({
   const setNotificationEnabled = useZCodeStore((state) => state.setNotificationEnabled);
   const notificationSoundEnabled = useZCodeStore((state) => state.notificationSoundEnabled);
   const setNotificationSoundEnabled = useZCodeStore((state) => state.setNotificationSoundEnabled);
+  const notificationOnlyWhenUnfocused = useZCodeStore(
+    (state) => state.notificationOnlyWhenUnfocused,
+  );
+  const setNotificationOnlyWhenUnfocused = useZCodeStore(
+    (state) => state.setNotificationOnlyWhenUnfocused,
+  );
   const usageProviderSettingsRead = useProviderSettingsView();
   const usageProviderSettingsView =
     usageProviderSettingsRead.state.status === "ready"
@@ -1661,6 +1667,8 @@ export function SettingsPage({
                             platform={platform}
                             notificationEnabled={notificationEnabled}
                             notificationSoundEnabled={notificationSoundEnabled}
+                            notificationOnlyWhenUnfocused={notificationOnlyWhenUnfocused}
+                            setNotificationOnlyWhenUnfocused={setNotificationOnlyWhenUnfocused}
                             closeToTrayOnWindows={closeToTrayOnWindows}
                             keepAwakeWhileRunning={sharedSettings?.keepAwakeWhileRunning ?? false}
                             desktopChromiumHardwareAccelerationEnabled={
