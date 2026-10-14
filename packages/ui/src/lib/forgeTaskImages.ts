@@ -39,9 +39,12 @@ export async function prepareForgeTaskImages(
   target: ForgeTargetRequest,
   git: IGitService,
   isCurrent: () => boolean,
+  onProgress?: (completed: number, total: number) => void,
 ): Promise<File[]> {
   const files: File[] = [];
-  for (const url of forgeTaskImageSources(repository, item)) {
+  const sources = forgeTaskImageSources(repository, item);
+  if (isCurrent()) onProgress?.(0, sources.length);
+  for (const url of sources) {
     // 修复原因：议题正文原先只进入文本；截图必须走已验证的 Host 读取与任务附件通道。
     // 切换项目后不继续旧目标的读取，也不把迟到图片带入新草稿。
     if (!isCurrent()) return [];
@@ -59,6 +62,7 @@ export async function prepareForgeTaskImages(
         type: preview.mediaType,
       }),
     );
+    onProgress?.(files.length, sources.length);
   }
   return files;
 }

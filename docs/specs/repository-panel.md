@@ -762,6 +762,24 @@ covered/previous generation reply -> ignored (no credential or queue replay)
   UI does not fetch arbitrary URLs, credentials or local paths. Check the current
   owner before/after each sequential read; stale project/remote/account/Host replies
   cannot open an editor or continue reading another image.
+- Handle immediately opens a localized preparation dialog with a semantic warning
+  spinner: reading the item, then preparing screenshots (completed/total). This is
+  transient UI progress, not a persisted task/event or Agent waiting state. Cancel
+  invalidates the current preparation/admission immediately; late reads cannot open
+  an editor, show an error or continue reading. Another explicit Handle is allowed.
+  No task is created and no screenshot is uploaded until editor Save.
+- The selected Host GitService owns one bounded raster cache shared by details and
+  task preparation. Successful reads are reused by image URL, workspace identity
+  (path fallback), path, remote, repository and account credential fingerprint.
+  Each call still validates the current target/account before lookup and after IO.
+  A fresh item read detects new URLs; unchanged images do not download again.
+  Failures are never cached; concurrent equal reads share one fetch. Removed or
+  rotated accounts and changed repositories never authorize an old cached image.
+  Successful explicit media authentication invalidates that image entry.
+- Cache is memory-only for the lifetime of that Host service, with at most 32
+  raster entries and 64 MiB of encoded content using LRU eviction. Restart,
+  eviction or a changed attachment URL causes a fresh read. No token, cookie,
+  signed redirect or object URL is persisted or returned in cache metadata.
 - Downloaded Files belong only to the prepared draft. The existing task composer
   owns preview/removal and object URL cleanup. Nothing uploads or creates a task
   before explicit Save. Save uses the existing task attachment transaction and
@@ -774,10 +792,12 @@ covered/previous generation reply -> ignored (no credential or queue replay)
 
 ```text
 Handle -> selected Host full item -> rendered image sources -> same Host raster reads
+  -> validated scoped cache hit / bounded network read -> raster cache
   -> owner check -> draft Files -> task composer preview/remove
   -> explicit Save -> existing attachment transaction -> Host task persistence
   -> explicit Start -> existing API/ACP prompt assets + conversation projection
 scope change/cancel -> discard old draft/reply; no task/Agent/Forge write
+waiting dialog -> transient phase/progress -> cancel invalidates admission/reply
 desktop continuous / mobile replayable -> existing task owner and projection unchanged
 ```
 
@@ -787,6 +807,10 @@ limit. Synthetic UI E2E covers thumbnail pixels, preview/removal, API and ACP sa
 attachments/bytes, cancellation with zero upload, failure/retry, stale image reads
 across Host switches, no local fallback for remote scopes, and narrow/light/dark
 layouts. Existing task execution and pending-image tests validate downstream assets.
+Additional Host tests cover sequential/concurrent reuse, new URLs, failed retries,
+LRU/byte limits, account rotation/removal, repository/identity isolation and changes
+during a read. E2E holds detail and image reads to assert visible progress, cancel
+and immediate retry with stale-response rejection at desktop/mobile in both themes.
 
 - Unit: project/remote restoration after store recreation, trimmed identity/path
   fallback, same-path isolation, reconnect stability, compare-and-clear for
