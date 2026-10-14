@@ -832,6 +832,7 @@ function ConversationComposerImpl({
     workspaceIdentity,
     scopeId: draftScopeId,
   });
+  const draftSourceScopeRef = useRef(composerDraftSourceScopeId);
   const worktreeSourceRef = useRef({ workspacePath, workspaceIdentity, scopeId: draftScopeId });
   if (
     worktreeSourceRef.current.workspacePath !== workspacePath ||
@@ -1025,10 +1026,22 @@ function ConversationComposerImpl({
   // scope 切换：先落旧 scope 草稿，再恢复新 scope（editorStateJson 优先，退纯文本）。
   useEffect(() => {
     const previousTarget = draftTargetRef.current;
+    const previousSourceScopeId = draftSourceScopeRef.current;
     const targetChanged =
       previousTarget.scopeId !== draftScopeId ||
       previousTarget.workspacePath !== workspacePath ||
       previousTarget.workspaceIdentity !== workspaceIdentity;
+    draftSourceScopeRef.current = composerDraftSourceScopeId;
+    if (
+      !targetChanged &&
+      previousSourceScopeId !== undefined &&
+      composerDraftSourceScopeId === undefined
+    ) {
+      // 修复原因：ACP 首发接纳会把 provisional 会话转为正式会话，并撤销已经消费的
+      // 一次性来源 scope。这是移交元数据的生命周期，不是正文变化；重复恢复会递增
+      // content revision，令随后到达的 admission ACK 误判用户编辑并保留已发送文本。
+      return;
+    }
     let transferredDraft: ReturnType<typeof snapshotDraftOfEditor> | null = null;
     if (targetChanged && !suppressDraftPersistRef.current) {
       if (draftPersistTimerRef.current !== null) {
