@@ -9,7 +9,7 @@ const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__usage-hourly-e2e-${process.pid}`;
 const html = join(root, `${name}.html`);
 const moduleFile = join(root, `${name}.tsx`);
-const artifacts = await mkdtemp(join(tmpdir(), "zcode-issue100-"));
+const artifacts = await mkdtemp(join(tmpdir(), "zcode-issue131-"));
 const hourly = (models) => ({
   date: "2026-10-13",
   hours: Array.from({ length: 24 }, (_, hour) => ({
@@ -129,9 +129,14 @@ try {
         const chart = page.getByTestId("app-usage-hourly-trend");
         const large = chart.getByRole("button", { name: "Codex ACP · large-model", exact: true });
         await large.waitFor();
-        await chart.locator(".recharts-line-dot").first().waitFor();
+        await chart.locator(".recharts-bar-rectangle").first().waitFor();
         assert.equal(await chart.getByRole("button").count(), 2);
-        assert.equal(await chart.locator(".recharts-line-dot").count(), 4);
+        assert.equal(await chart.locator(".recharts-bar-rectangle").count(), 4);
+        assert.equal(await chart.locator(".recharts-line").count(), 0);
+        const daily = page.getByTestId("app-usage-daily-trend");
+        await daily.locator(".recharts-line-dot").first().waitFor();
+        assert.equal(await daily.locator(".recharts-line").count(), 2);
+        assert.equal(await daily.locator(".recharts-bar").count(), 0);
         assert.equal(await chart.getByText("00:00", { exact: true }).count(), 1);
         assert.equal(await chart.getByText("23:00", { exact: true }).count(), 1);
         const ticks = await chart
@@ -149,7 +154,7 @@ try {
             ticks[index].left > ticks[index - 1].right,
             "hour labels must not overlap on mobile",
           );
-        const point = await chart.locator(".recharts-line-dot").first().boundingBox();
+        const point = await chart.locator(".recharts-bar-rectangle").first().boundingBox();
         await page.mouse.move(point.x + point.width / 2, point.y + point.height / 2);
         await chart
           .locator(".recharts-tooltip-wrapper")
@@ -160,10 +165,10 @@ try {
         await large.focus();
         await page.keyboard.press("Space");
         assert.equal(await large.getAttribute("aria-pressed"), "false");
-        assert.equal(await chart.locator(".recharts-line-dot").count(), 2);
+        assert.equal(await chart.locator(".recharts-bar-rectangle").count(), 2);
         assert.equal(await page.evaluate(() => window.__requests), requests);
         // 隐藏其它模型后单序列 tooltip 仍必须显示日期与小时。
-        const singlePoint = await chart.locator(".recharts-line-dot").first().boundingBox();
+        const singlePoint = await chart.locator(".recharts-bar-rectangle").first().boundingBox();
         await page.mouse.move(
           singlePoint.x + singlePoint.width / 2,
           singlePoint.y + singlePoint.height / 2,
@@ -177,9 +182,9 @@ try {
           path: join(artifacts, `single-hourly-${width}-${theme}-${locale}.png`),
         });
         await chart.getByRole("button", { name: "small-model", exact: true }).click();
-        assert.equal(await chart.locator(".recharts-line").count(), 0);
+        assert.equal(await chart.locator(".recharts-bar").count(), 0);
         await large.click();
-        await chart.locator(".recharts-line-dot").first().waitFor();
+        await chart.locator(".recharts-bar-rectangle").first().waitFor();
         const sources = page.getByTestId("app-usage-sources");
         await sources.getByRole("tab", { name: /\/ API$/ }).click();
         assert.equal(await chart.getByRole("button").count(), 1);
@@ -190,10 +195,10 @@ try {
         await sources.getByRole("tab", { name: "Codex ACP", exact: true }).click();
         assert.equal(await chart.getByRole("button").count(), 1);
         // 独立 ACP 来源本身只有一个模型，复现用户截图中的缺时间场景。
-        await chart.locator(".recharts-line-dot").first().waitFor();
+        await chart.locator(".recharts-bar-rectangle").first().waitFor();
         // 来源切换后点坐标可能相同，需要先移开再 hover 新挂载的图表。
         await page.mouse.move(0, 0);
-        await chart.locator(".recharts-line-dot").first().hover();
+        await chart.locator(".recharts-bar-rectangle").first().hover();
         await chart
           .locator(".recharts-tooltip-wrapper")
           .getByText("Codex ACP · large-model", { exact: true })
@@ -202,8 +207,8 @@ try {
         await page
           .getByRole("tab", { name: locale === "zh-CN" ? "近 30 日" : "Last 30 days", exact: true })
           .click();
-        await chart.locator(".recharts-line-dot").first().waitFor();
-        assert.equal(await chart.locator(".recharts-line-dot").count(), 2);
+        await chart.locator(".recharts-bar-rectangle").first().waitFor();
+        assert.equal(await chart.locator(".recharts-bar-rectangle").count(), 2);
         assert.equal(
           await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
           true,
@@ -216,7 +221,7 @@ try {
           .getByRole("button", { name: locale === "zh-CN" ? "刷新" : "Refresh", exact: true })
           .click();
         await chart.getByText("2026-10-14 · Asia/Shanghai", { exact: true }).waitFor();
-        assert.equal(await chart.locator(".recharts-line-dot").count(), 0);
+        assert.equal(await chart.locator(".recharts-bar-rectangle").count(), 0);
         for (const mode of ["legacy", "empty"]) {
           await page.goto(`${url}&mode=${mode}`);
           await chart
@@ -231,13 +236,13 @@ try {
               { exact: true },
             )
             .waitFor();
-          assert.equal(await chart.locator(".recharts-line-dot").count(), 0);
+          assert.equal(await chart.locator(".recharts-bar-rectangle").count(), 0);
         }
         assert.deepEqual(errors, []);
         await page.close();
       }
   process.stdout.write(
-    `issue #100: hourly tooltip/legend/source/range/refresh/legacy/empty; desktop/mobile, zh/en, light/dark OK. Artifacts: ${artifacts}\n`,
+    `issues #100/#131: hourly bars, tooltip/legend/source/range/refresh/legacy/empty; desktop/mobile, zh/en, light/dark OK. Artifacts: ${artifacts}\n`,
   );
 } finally {
   await browser?.close();
