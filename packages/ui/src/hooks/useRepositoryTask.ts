@@ -84,46 +84,66 @@ export function useRepositoryTask(scope: WorkTaskScope, target: ForgeTargetReque
   const draft = prepared?.owner === owner ? prepared : null;
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const preparingRef = useRef<object | null>(null);
+  const [preparation, setPreparation] = useState<{
+    owner: object;
+    token: object;
+    phase: "detail" | "images";
+    completed: number;
+    total: number;
+  } | null>(null);
   const itemKey = (item: ForgeItem) => `${item.kind}:${item.number}`;
   const prepare = async (repository: ForgeRepository, item: ForgeItem, again = false) => {
     if (!target || !rpcReady || draft || (isCreated(item) && !again)) return;
     const result = await mutation.run(async () => {
-      if (!workTaskService) throw new Error("FORGE_TASK_UNSUPPORTED");
-      const detail = await gitService.getForgeItem({
-        ...target,
-        kind: item.kind,
-        number: item.number,
-      });
-      if (!detail.url) throw new Error("FORGE_INVALID_ITEM");
-      const attachmentFiles = await prepareForgeTaskImages(
-        repository,
-        detail,
-        target,
-        gitService,
-        () => ownerRef.current === owner,
-      );
-      return {
-        owner,
-        key: itemKey(item),
-        source: {
-          repositoryKey: target.repositoryKey,
-          accountId: target.accountId,
-          remoteName: target.remoteName,
-          kind: detail.kind,
-          number: detail.number,
-          url: detail.url,
-          title: detail.title.slice(0, 256),
-        },
-        initialDraft: {
-          title: detail.title.trim().slice(0, 200),
-          prompt: buildForgeAgentPrompt(repository, detail),
-          attachmentFiles,
-        },
-      };
+      const token = {};
+      preparingRef.current = token;
+      const isCurrent = () => ownerRef.current === owner && preparingRef.current === token;
+      setPreparation({ owner, token, phase: "detail", completed: 0, total: 0 });
+      try {
+        if (!workTaskService) throw new Error("FORGE_TASK_UNSUPPORTED");
+        const detail = await gitService.getForgeItem({
+          ...target,
+          kind: item.kind,
+          number: item.number,
+        });
+        if (!isCurrent()) return null;
+        if (!detail.url) throw new Error("FORGE_INVALID_ITEM");
+        const attachmentFiles = await prepareForgeTaskImages(
+          repository,
+          detail,
+          target,
+          gitService,
+          isCurrent,
+          (completed, total) => setPreparation({ owner, token, phase: "images", completed, total }),
+        );
+        if (!isCurrent()) return null;
+        return {
+          owner,
+          key: itemKey(item),
+          source: {
+            repositoryKey: target.repositoryKey,
+            accountId: target.accountId,
+            remoteName: target.remoteName,
+            kind: detail.kind,
+            number: detail.number,
+            url: detail.url,
+            title: detail.title.slice(0, 256),
+          },
+          initialDraft: {
+            title: detail.title.trim().slice(0, 200),
+            prompt: buildForgeAgentPrompt(repository, detail),
+            attachmentFiles,
+          },
+        };
+      } finally {
+        if (preparingRef.current === token) preparingRef.current = null;
+        setPreparation((previous) => (previous?.token === token ? null : previous));
+      }
     });
     // 修复原因：处理入口原先直接保存默认执行器；现在先打开独立草稿供用户选择。
     // 项目/Host 切换后的迟到读取不能打开旧弹窗，也不能直接创建任务。
-    if (result && ownerRef.current === owner) setPrepared(result.value);
+    if (result?.value && ownerRef.current === owner) setPrepared(result.value);
   };
   const create = async (input: Omit<WorkTaskCreate, keyof WorkTaskScope>) => {
     if (
@@ -179,6 +199,13 @@ export function useRepositoryTask(scope: WorkTaskScope, target: ForgeTargetReque
     writebackVersion,
     closedItemsKey,
     draft,
+    preparation: preparation?.owner === owner && mutation.busy ? preparation : null,
+    cancelPreparation: () => {
+      if (preparation?.owner !== owner || !preparingRef.current) return;
+      preparingRef.current = null;
+      setPreparation(null);
+      mutation.cancel();
+    },
     close: () => {
       draftRef.current = null;
       setPrepared(null);

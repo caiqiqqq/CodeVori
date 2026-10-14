@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select.js";
 import { workTaskNavigationStore } from "@/store/workTaskNavigationStore.js";
-import { WorkTaskEditor } from "@/work-tasks/WorkTaskEditor.js";
+import { RepositoryTaskDraft } from "./RepositoryTaskPreparation.js";
 import type { Theme } from "@/useTheme.js";
 import { RepositoryToolbar, type RepositoryFilters } from "./RepositoryToolbar.js";
 import { RepositoryItemDetail } from "./RepositoryItemDetail.js";
@@ -367,16 +367,10 @@ function RepositoryPanelContent({
           ) : null}
         </>
       )}
-      {active && task.draft ? (
-        <WorkTaskEditor
-          key={task.draft.key}
+      {active ? (
+        <RepositoryTaskDraft
           scope={{ workspacePath, workspaceIdentity, remoteSessionId }}
-          task={null}
-          initialDraft={task.draft.initialDraft}
-          busy={task.busy}
-          error={task.error ? t(`error.${task.error}`) : null}
-          onClose={task.close}
-          onSave={task.create}
+          task={task}
         />
       ) : null}
       {repo && panel.target && newIssueTarget === panel.target ? (
