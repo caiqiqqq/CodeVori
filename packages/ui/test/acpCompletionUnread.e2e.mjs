@@ -108,6 +108,7 @@ try {
         deviceScaleFactor: 2,
       });
       page.setDefaultTimeout(10_000);
+      page.setDefaultNavigationTimeout(60_000);
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
       await page.goto(`${origin}/${name}.html`);
@@ -130,6 +131,29 @@ try {
       });
       await row("host:B").waitFor();
       assert.equal(await dot("host:A").count(), 1);
+      // A real summary update must change the ACP row even if only its error changes.
+      await emit("host:B", { status: "interrupted", error: null, unreadAt: 210 });
+      await dot("host:B").waitFor();
+      await emit("host:B", { error: "synthetic prompt failure" });
+      await row("host:B").locator('[data-error-indicator="true"]').waitFor();
+      assert.equal(await dot("host:B").count(), 0, "failure takes precedence over unread");
+      assert.equal(
+        await row("host:B").getAttribute("aria-label"),
+        "另一个项目的对话, Codex ACP, 失败",
+      );
+      assert.equal(await row("host:A").locator('[data-error-indicator="true"]').count(), 0);
+      const failedHeight = await row("host:B").evaluate(
+        (element) => element.getBoundingClientRect().height,
+      );
+      await emit("host:B", { status: "idle" });
+      await dot("host:B").waitFor();
+      await emit("host:B", { status: "running", error: null, unreadAt: null });
+      await row("host:B").locator('[data-acp-running-indicator="true"]').waitFor();
+      assert.equal(
+        await row("host:B").evaluate((element) => element.getBoundingClientRect().height),
+        failedHeight,
+      );
+      assert.equal(await page.evaluate(() => window.__unread.calls.length), 0);
       await page.screenshot({ path: join(output, `completed-unread-${width}-${theme}.png`) });
       await row("host:A").click();
       await dot("host:A").waitFor({ state: "detached" });

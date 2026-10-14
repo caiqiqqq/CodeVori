@@ -161,9 +161,10 @@ export function WorkspaceAcpTaskItem({
     disabled: readOnly || busy,
     onConfirm: archiveAction,
   });
-  // 会话行的品牌身份来自自己的 Host 投影，不能读取输入框当前选择；未读仍优先于运行。
-  const leadingIndicator =
-    typeof session.unreadAt === "number"
+  // 修复原因：Host 中断且有错误才是失败；失败必须盖过未读，主动停止不应显示红点。
+  const leadingIndicator = session.failed
+    ? "error"
+    : typeof session.unreadAt === "number"
       ? "unread"
       : session.status === "running"
         ? "loading"
@@ -189,7 +190,7 @@ export function WorkspaceAcpTaskItem({
             data-acp-session-id={session.id}
             data-acp-pinned={session.pinned ? "true" : undefined}
             role="button"
-            aria-label={`${session.title}, ${acpAgentDefinition(session.agent).name}`}
+            aria-label={`${session.title}, ${acpAgentDefinition(session.agent).name}${session.failed ? `, ${intl.formatMessage({ id: "taskList.status.failed" })}` : ""}`}
             aria-description={
               isWorktree
                 ? `${intl.formatMessage({ id: "taskList.worktreeConversation" })}: ${session.workspacePath}`
@@ -238,7 +239,14 @@ export function WorkspaceAcpTaskItem({
                 className="relative flex size-4 items-center justify-center transition-opacity"
               >
                 <AcpAgentIcon agent={session.agent} />
-                {leadingIndicator === "unread" ? (
+                {leadingIndicator === "error" ? (
+                  <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-card">
+                    <span
+                      data-error-indicator="true"
+                      className="size-1.5 rounded-full bg-destructive"
+                    />
+                  </span>
+                ) : leadingIndicator === "unread" ? (
                   <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-card">
                     <span
                       data-unread-indicator="true"
