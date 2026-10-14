@@ -20,7 +20,15 @@ git worktree add -b worktree/<随机标识> -- <worktreeRoot>/<随机标识>/<�
 
 ACP 的新草稿使用 `acp-draft:<pane>:<agent>` 或已预连接的 `acp:<session>`，不能要求来源 scope 为普通聊天的 `__draft__`。发送前冻结实际 workspace 身份、Composer scope 和内容代次；创建完成后对照该冻结来源，只在真实导航或内容改变时延后移交。目标目录的移交草稿先保存在 root scope；仅与一次性续发意图匹配的 ACP 目标通过既有 `composerDraftSourceScopeId` 从 root 继承，再落入 ACP 自身 scope。普通 ACP 历史会话不能读取这份 root 草稿。恢复完成并且 ACP ready 后消费意图并自动发送一次，期间无需用户打开目录或再次发送。
 
-验收补充：真实 Composer/Lexical 的普通 API、ACP 未预连接和已预连接 scope，正常首发均打开准确目标并只发送一次；连接延迟时等待 ready，正文/模式/模型不丢失。创建期间真实编辑、切 workspace 身份或切草稿 scope 时保存目标草稿并保留当前输入，不抢焦点或发送。目标 ACP 只能继承匹配的一次性移交草稿，不能影响历史会话。该场景需覆盖桌面/窄屏和深浅主题，不能仅用菜单测试替代。
+目标 ACP 接纳首发后，输入框与目标会话草稿必须立即清空。Host 将 provisional 会话更新为正式会话时，只表示一次性草稿来源已经消费；来源 scope 的撤销不是用户编辑，也不能再次把已发送正文恢复进编辑器。真实用户在接纳前修改目标输入时仍取消自动发送并保留新正文。
+
+```text
+root staging draft -> ACP 临时 scope -> ACP 正式 session scope -> Host admission
+                                                |                 -> 清空正式 scope 与输入框
+                                                `-- 来源撤销仅结束移交，不恢复已消费正文
+```
+
+验收补充：真实 Composer/Lexical 的普通 API、ACP 未预连接和已预连接 scope，正常首发均打开准确目标并只发送一次；Host 接纳后，即使同时完成 provisional 状态转换和来源 scope 撤销，输入框与正式会话草稿也为空。连接延迟时等待 ready，正文/模式/模型不丢失。创建期间真实编辑、切 workspace 身份或切草稿 scope 时保存目标草稿并保留当前输入，不抢焦点或发送。目标 ACP 只能继承匹配的一次性移交草稿，不能影响历史会话。该场景需覆盖桌面/窄屏和深浅主题，不能仅用菜单测试替代。
 
 选择与发送之间来源分支前进时使用发送时的提交；当前目录被外部切换不影响已选来源。随机名冲突重试时仍使用同一提交，不能再次跟随分支移动。来源为空、非法、已删除、只有同名标签/远端分支时返回稳定 `target-branch-not-found`，显示来源分支不可用的本地化提示，保留原草稿和来源选择，不创建工作树或会话，不静默退回 `HEAD`。`GitCreateAutomaticWorktreeRequest` 新增可选 `sourceBranchName`；未提供字段的旧调用保留当前 HEAD 的兼容语义，新 UI 必须提供所选本地分支。不改变显式 `createWorktree(startPoint)` 或待办任务的持久来源配置。
 
