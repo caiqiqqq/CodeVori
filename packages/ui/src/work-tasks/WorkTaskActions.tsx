@@ -12,7 +12,7 @@ import {
   Trash2,
   type LucideIcon,
 } from "lucide-react";
-import { WORK_TASK_ACTIVE_STATUSES, type WorkTask } from "@zcode/shared";
+import { isWorkTaskForgeSyncing, WORK_TASK_ACTIVE_STATUSES, type WorkTask } from "@zcode/shared";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import { canReviewWorkTaskCompletion } from "@/lib/workTaskBoard.js";
 import { WorkTaskIconButton, useWorkTaskMessages } from "./WorkTaskParts.js";
@@ -49,7 +49,14 @@ export function WorkTaskActions({
   const active = WORK_TASK_ACTIVE_STATUSES.includes(task.status) || task.status === "queued";
   const startable = ["todo", "failed", "canceled"].includes(task.status) && !task.archived;
   const disabled = panel.busy || task.stopPending || task.worktreeCleanup?.phase === "running";
-  const actions: { label: string; Icon: LucideIcon; disabled?: boolean; run(): void }[] = [];
+  const syncing = isWorkTaskForgeSyncing(task);
+  const actions: {
+    label: string;
+    hint?: string;
+    Icon: LucideIcon;
+    disabled?: boolean;
+    run(): void;
+  }[] = [];
   if (canReviewWorkTaskCompletion(task))
     actions.push({
       label: t(task.status === "done" ? "retryForge" : "complete"),
@@ -106,7 +113,9 @@ export function WorkTaskActions({
         task.worktreeCleanup?.phase === "failed" ? "retryCleanup" : "archiveAndRemoveWorktree",
       ),
       Icon: Trash2,
-      disabled: disabled || !panel.executable,
+      // 已完成但仍同步议题时，菜单和 Host 使用同一租约判断，避免可点却误报未完成。
+      hint: syncing ? t("cleanup.waitingForForge") : undefined,
+      disabled: disabled || !panel.executable || syncing,
       run: () => setConfirmCleanup(true),
     });
   return (
@@ -125,10 +134,17 @@ export function WorkTaskActions({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {actions.map(({ label, Icon, disabled, run }) => (
+            {actions.map(({ label, hint, Icon, disabled, run }) => (
               <DropdownMenuItem key={label} disabled={disabled} onSelect={run}>
                 <Icon className="size-4" />
-                {label}
+                {hint ? (
+                  <span className="min-w-0">
+                    {label}
+                    <span className="block max-w-64 whitespace-normal text-ui-xs">{hint}</span>
+                  </span>
+                ) : (
+                  label
+                )}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>

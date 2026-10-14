@@ -185,6 +185,8 @@ const enUS: Record<string, string> = {
   "workTasks.archive": "Archive",
   "workTasks.cleanup.running": "Cleaning up",
   "workTasks.cleanup.failed": "Cleanup failed",
+  "workTasks.cleanup.waitingForForge":
+    "The task is complete. Issue sync is in progress; retry cleanup after it finishes.",
   "workTasks.retryCleanup": "Retry cleanup",
   "workTasks.archiveAndRemoveWorktree": "Archive and delete worktree",
   "workTasks.archiveAndRemoveWorktreeBody":
