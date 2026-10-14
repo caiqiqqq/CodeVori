@@ -305,63 +305,40 @@ export function AcpAgentManagerPanel({
                         </p>
                       ) : null}
                     </>
-                  ) : id === "node" || id === "npm" ? (
-                    <>
-                      <AcpCheckFact
-                        label={id === "node" ? "Node.js" : "npm"}
-                        value={
-                          (id === "node" ? agentInfo.nodeVersion : agentInfo.npmVersion) ??
-                          label("missing")
-                        }
-                        technical
-                      />
-                      {!agentInfo.nodeVersion || !agentInfo.npmVersion ? (
-                        <p className="text-ui-sm text-foreground-subtle">
-                          {label("installToolsHint")}
-                        </p>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>
-                      <AcpCheckFact
-                        label={`${agentInfo.nativeCommand} CLI`}
-                        value={agentInfo.nativePath ?? label("missing")}
-                        technical
-                      />
-                      <p className="text-ui-sm text-foreground-subtle">
-                        {agent === "pi" ? label("piHint") : label("nativeHint")}
-                      </p>
-                    </>
-                  )}
+                  ) : null}
                 </AcpCheckRow>
               ))}
               {operationLog}
             </section>
 
-            {/* 修复原因：同级编辑器共用 agent key 会让 React 在切换时遗留并累积 Codex 表单。 */}
+            {/* 修复原因：Codex 原生配置优先于旧的 OPENAI_* 环境变量，重复编辑器会误导认证来源。 */}
             {agent === "codex" && service ? (
               <AcpCodexConfigEditor key="codex-native-config" service={service} />
             ) : null}
-            <AcpAgentEnvironmentEditor
-              key={`environment:${agent}`}
-              info={agentInfo}
-              service={service}
-              text={envText}
-              changed={envChanged}
-              busy={management.busy}
-              onChange={(text) => setEnvDrafts((previous) => ({ ...previous, [agent]: text }))}
-              onSave={async (submitted) => {
-                // 修复原因：高级文本可直接修改认证方式，保存时仍需按 Codeg 的规则去掉互斥凭据。
-                const env = parseAcpEnv(normalizeAcpAgentEnvText(agent, submitted));
-                await management.update({ agent, env });
-                // 修复原因：旧保存回执不能清空等待期间的新草稿；所有编辑入口共用这一份文本。
-                setEnvDrafts((previous) => ({
-                  ...previous,
-                  [agent]: clearAcpEnvDraftIfUnchanged(previous[agent], submitted),
-                }));
-              }}
-            />
-            <p className="text-ui-sm text-foreground-subtle">{label("restartHint")}</p>
+            {agent !== "codex" ? (
+              <AcpAgentEnvironmentEditor
+                key={`environment:${agent}`}
+                info={agentInfo}
+                service={service}
+                text={envText}
+                changed={envChanged}
+                busy={management.busy}
+                onChange={(text) => setEnvDrafts((previous) => ({ ...previous, [agent]: text }))}
+                onSave={async (submitted) => {
+                  // 修复原因：高级文本可直接修改认证方式，保存时仍需按 Codeg 的规则去掉互斥凭据。
+                  const env = parseAcpEnv(normalizeAcpAgentEnvText(agent, submitted));
+                  await management.update({ agent, env });
+                  // 修复原因：旧保存回执不能清空等待期间的新草稿；所有编辑入口共用这一份文本。
+                  setEnvDrafts((previous) => ({
+                    ...previous,
+                    [agent]: clearAcpEnvDraftIfUnchanged(previous[agent], submitted),
+                  }));
+                }}
+              />
+            ) : null}
+            {agent !== "codex" ? (
+              <p className="text-ui-sm text-foreground-subtle">{label("restartHint")}</p>
+            ) : null}
           </>
         ) : null}
         {!agentInfo ? operationLog : null}
