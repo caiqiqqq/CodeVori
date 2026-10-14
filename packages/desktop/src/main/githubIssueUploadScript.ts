@@ -44,6 +44,10 @@ export function githubIssueUploadScript(
         });
         if (editors.length !== 1) return;
         const textarea = editors[0];
+        // SSR 正文框可见不代表 paste 已挂载；GitHub 在 React commit effects 后才给根节点加 loaded。
+        // 等待该真实就绪信号，不能先带图片试派发再重试，否则可能重复写入远端附件。
+        const reactRoot = textarea.closest('react-app, react-partial');
+        if (reactRoot && !reactRoot.classList.contains('loaded')) return;
         const inputs = (textarea.closest('file-attachment') || textarea.closest('form') || textarea.parentElement).querySelectorAll('input[type="file"]');
         const input = textarea.getAttribute('aria-label') === 'Markdown value' && inputs.length === 1 && !inputs[0].disabled ? inputs[0] : null;
         const urls = value => Array.from(value.matchAll(new RegExp('https://github[.]com/user-attachments/assets/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}', 'ig')), m => m[0]);
