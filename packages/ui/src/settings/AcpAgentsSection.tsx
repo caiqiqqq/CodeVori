@@ -1,4 +1,4 @@
-import { CircleIcon } from "lucide-react";
+import { ArrowUpCircle, CircleIcon } from "lucide-react";
 import { useState } from "react";
 import type { IAcpService } from "@zcode/services";
 import type { AcpAgent } from "@zcode/shared";
@@ -12,7 +12,10 @@ import {
 import { AcpAgentManagerPanel } from "@/settings/AcpAgentManagerPanel.js";
 import { SettingsResourceHeaderActions } from "@/settings/SettingsResourceHeaderActions.js";
 import { useAcpAgentManagement } from "@/settings/useAcpAgentManagement.js";
-import { ACP_AGENT_SETTINGS_CATALOG } from "@/settings/acpAgentSettingsCatalog.js";
+import {
+  ACP_AGENT_SETTINGS_CATALOG,
+  compareAcpAdapterVersions,
+} from "@/settings/acpAgentSettingsCatalog.js";
 
 interface AcpAgentsSectionProps {
   workspacePath: string | null;
@@ -70,11 +73,26 @@ function AcpAgentsContent({
                   : info.ready
                     ? "ready"
                     : "missing";
+              // 修复原因：内置目标或失败后保留的旧目标不能冒充已确认的新发行版。
+              const hasUpdate = Boolean(
+                info?.updateCheck?.status === "checked" &&
+                compareAcpAdapterVersions(info.installedVersion, info.registryVersion) === -1,
+              );
+              const updateLabel = hasUpdate
+                ? intl.formatMessage(
+                    { id: "settings.acpAgents.listUpdateAvailable" },
+                    { version: info!.registryVersion },
+                  )
+                : null;
               return (
-                <ControlHintTooltip key={item.agent} title={item.name} side="right">
+                <ControlHintTooltip
+                  key={item.agent}
+                  title={updateLabel ? `${item.name} · ${updateLabel}` : item.name}
+                  side="right"
+                >
                   <button
                     type="button"
-                    aria-label={item.name}
+                    aria-label={updateLabel ? `${item.name}，${updateLabel}` : item.name}
                     aria-pressed={agent === item.agent}
                     data-state={agent === item.agent ? "selected" : "idle"}
                     data-testid={`settings-acp-agent-${item.agent}`}
@@ -83,6 +101,18 @@ function AcpAgentsContent({
                   >
                     <AcpAgentIcon agent={item.agent} />
                     <span className="min-w-0 flex-1 truncate max-md:sr-only">{item.name}</span>
+                    {hasUpdate ? (
+                      <span
+                        data-acp-agent-update="true"
+                        aria-hidden="true"
+                        className="flex shrink-0 items-center gap-0.5 text-ui-xs text-warning max-md:absolute max-md:top-0.5 max-md:right-0.5"
+                      >
+                        <ArrowUpCircle className="size-3.5" />
+                        <span className="max-md:sr-only">
+                          {intl.formatMessage({ id: "settings.acpAgents.listUpdate" })}
+                        </span>
+                      </span>
+                    ) : null}
                     {status ? (
                       <CircleIcon
                         data-acp-agent-status={status}

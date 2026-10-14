@@ -4268,7 +4268,6 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.arguments": "Launch arguments",
   "settings.acpAgents.unsupportedPlatform":
     "No managed release for this platform; a system command can still be used.",
-  "settings.acpAgents.piHint": "pi-acp requires pi at runtime, or set PI_ACP_PI_COMMAND.",
   "settings.acpAgents.command": "ACP command",
   "settings.acpAgents.connecting": "Connecting to workspace…",
   "settings.acpAgents.loadFailed": "Could not load ACP agent settings",
@@ -4276,6 +4275,8 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.checkUpdates": "Check for updates",
   "settings.acpAgents.checkingUpdates": "Checking adapter updates…",
   "settings.acpAgents.updateAvailable": "Update available: {version}",
+  "settings.acpAgents.listUpdate": "Update",
+  "settings.acpAgents.listUpdateAvailable": "Update available: {version}",
   "settings.acpAgents.updateCheckFailed":
     "Update check failed. The last known target is kept. Check for updates again to retry.",
   "settings.acpAgents.updateCheckUnavailable":
@@ -4289,17 +4290,11 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.collapseChecks": "Collapse all",
   "settings.acpAgents.checkAdapter": "ACP adapter",
   "settings.acpAgents.checkVersion": "Version status",
-  "settings.acpAgents.checkNode": "Node.js",
-  "settings.acpAgents.checkNpm": "npm",
-  "settings.acpAgents.checkNative": "Vendor CLI",
   "settings.acpAgents.checkPass": "PASS",
   "settings.acpAgents.checkWarn": "WARN",
   "settings.acpAgents.checkFail": "FAIL",
-  "settings.acpAgents.checkInfo": "OPTIONAL",
   "settings.acpAgents.checksHint":
     "Checks commands and install state on the target Host; it does not verify Agent sign-in.",
-  "settings.acpAgents.installToolsHint":
-    "Node.js and npm are needed for managed installation. Their absence does not mean an existing ACP session failed.",
   "settings.acpAgents.checking": "Checking runtime…",
   "settings.acpAgents.enabled": "Enable agent",
   "settings.acpAgents.disabled": "Disabled",
@@ -4314,8 +4309,6 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.unknown": "Unknown",
   "settings.acpAgents.adapterPath": "Adapter path",
   "settings.acpAgents.adapterHint": `Managed adapters live only in this Host's ${PRODUCT_NAME} data directory and do not replace system commands.`,
-  "settings.acpAgents.nativeHint":
-    "The vendor CLI and ACP adapter are separate commands. An installed codex/claude CLI does not mean its ACP adapter is installed.",
   "settings.acpAgents.diagnostics": "Runtime diagnostics",
   "settings.acpAgents.install": "Install adapter",
   "settings.acpAgents.upgrade": "Upgrade to target",
@@ -4370,8 +4363,6 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.env.project": "Google Cloud project",
   "settings.acpAgents.env.location": "Google Cloud location",
   "settings.acpAgents.env.credentialsFile": "Service account JSON path",
-  "settings.acpAgents.env.agentTools": "Let the agent handle files and commands",
-  "settings.acpAgents.env.agentToolsHint": `${PRODUCT_NAME} does not host ACP file or terminal channels; the agent applies its own sandbox and permissions.`,
   "settings.acpAgents.env.saveGemini": "Save Gemini configuration",
   "settings.acpAgents.env.geminiTitle": "Gemini authentication",
   "settings.acpAgents.env.geminiAuthDocs": "View authentication docs",

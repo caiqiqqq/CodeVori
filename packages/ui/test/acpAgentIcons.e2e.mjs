@@ -30,13 +30,22 @@ try {
       import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
       import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
       import '../../../ui/src/styles.css';
-      const state = {catalog:ACP_AGENT_CATALOG, calls:[], release:null, released:false};
+      const state = {catalog:ACP_AGENT_CATALOG, calls:[], release:null, released:false, newer:true};
       window.__iconFixture = state;
+      const infos = (checked) => ACP_AGENT_CATALOG.map(({id}, index) => ({
+        agent:id, command:'fake', args:[], distribution:'npm', platformSupported:true,
+        registryVersion:'2.0.0', installedVersion:index===0?'1.0.0':index===1?'2.0.0':index===2?'3.0.0':index===3?'unknown':'1.0.0',
+        updateCheck:{status:checked && index!==4?'checked':index===4?'error':'unchecked', source:'acp-registry', checkedAt:null},
+        enabled:index!==5, env:{}, source:'system', ready:true, managedVersion:null,
+        executablePath:'/fake/agent', nativeCommand:'', nativePath:null, nodeVersion:'24.14.0', npmVersion:'10.33.2'
+      }));
       const service = new Proxy({
+        readCodexConfig() { return Promise.resolve({version:'fixture',authMode:'custom',managedProvider:true,hasSubscriptionCredentials:false,apiUrl:'https://api.example.test/v1',apiKey:'example-not-a-secret',model:'gpt-example'}); },
+        listCodexModels() { return Promise.resolve([{slug:'gpt-example',name:'Example model'}]); },
         listAgents(options) {
           state.calls.push(options?.checkUpdates ? 'checkUpdates' : 'listAgents');
-          if(state.released) return Promise.resolve([]);
-          return new Promise(resolve => {state.release=()=>{state.released=true;resolve([])}});
+          if(state.released) return Promise.resolve(infos(Boolean(options?.checkUpdates && state.newer)));
+          return new Promise(resolve => {state.release=()=>{state.released=true;resolve(infos(false))}});
         }
       }, {get(target,key) {
         if(key in target) return target[key];
@@ -82,6 +91,7 @@ try {
       assert.equal(catalog.length, 15);
       const buttons = section.locator('[data-testid^="settings-acp-agent-"][aria-pressed]');
       assert.equal(await buttons.count(), catalog.length);
+      assert.equal(await section.locator("[data-acp-agent-update]").count(), 0);
       assert.equal(
         await buttons.locator("[data-acp-agent-icon]").count(),
         catalog.length,
@@ -156,14 +166,67 @@ try {
 
       await page.evaluate(() => window.__iconFixture.release());
       await page.waitForFunction(() => window.__iconFixture.calls.length === 2);
+      const update = (id) =>
+        page.getByTestId(`settings-acp-agent-${id}`).locator("[data-acp-agent-update]");
+      await update(catalog[0].id).waitFor();
+      assert.equal(await section.getByTestId("acp-agent-environment").count(), 1);
+      assert.equal(
+        await section.getByRole("switch", { name: "由 Agent 自行处理文件与命令" }).count(),
+        0,
+      );
+      assert.equal(await section.locator('[data-testid^="settings-acp-check-"]').count(), 2);
+      for (const id of ["node", "npm", "native"]) {
+        assert.equal(await section.getByTestId(`settings-acp-check-${id}`).count(), 0);
+      }
+      assert.equal(await update(catalog[0].id).count(), 1, "Older checked version has an update");
+      assert.equal(
+        await update(catalog[5].id).count(),
+        1,
+        "Disabled installed agent can have an update",
+      );
+      for (const index of [1, 2, 3, 4]) {
+        assert.equal(
+          await update(catalog[index].id).count(),
+          0,
+          `Agent ${index} has no confirmed update`,
+        );
+      }
+      assert.match(
+        await page.getByTestId(`settings-acp-agent-${catalog[0].id}`).getAttribute("aria-label"),
+        /2\.0\.0/,
+      );
+      await section.screenshot({ path: `/tmp/zcode-agent-updates-${width}-${theme}.png` });
+      await page.evaluate(() => {
+        window.__iconFixture.newer = false;
+      });
+      await page.getByTestId("settings-acp-agents-refresh").click();
+      await update(catalog[0].id).waitFor({ state: "detached" });
+      assert.equal(
+        await update(catalog[5].id).count(),
+        0,
+        "Refresh removes stale update indicators",
+      );
       await page.getByTestId(`settings-acp-agent-${catalog[0].id}`).focus();
       await page.keyboard.press("Space");
       await page.getByTestId(`settings-acp-agent-detail-${catalog[0].id}`).waitFor();
       await page.keyboard.press("Tab");
+      assert.equal(
+        await page.evaluate(() => document.activeElement?.getAttribute("data-testid")),
+        `settings-acp-agent-${catalog[1].id}`,
+        "Tab advances to the next agent",
+      );
       await page.keyboard.press("Enter");
+      assert.equal(
+        await page.getByTestId(`settings-acp-agent-${catalog[1].id}`).getAttribute("aria-pressed"),
+        "true",
+        `Keyboard selection failed: ${errors.join("; ")}`,
+      );
       await page.getByTestId(`settings-acp-agent-detail-${catalog[1].id}`).waitFor();
+      assert.equal(await section.getByTestId("acp-agent-environment").count(), 0);
+      assert.equal(await section.getByTestId("acp-codex-native-config").count(), 1);
       assert.deepEqual(await page.evaluate(() => window.__iconFixture.calls), [
         "listAgents",
+        "checkUpdates",
         "checkUpdates",
       ]);
       assert.ok(

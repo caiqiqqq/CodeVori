@@ -99,10 +99,11 @@ try {
           native: document.querySelectorAll('[data-testid="acp-codex-native-config"]').length,
           env: document.querySelectorAll('[data-testid="acp-agent-environment"]').length,
           ownEnv: Boolean(detail?.querySelector('#acp-env-raw-${agent}')),
+          agentTools: Boolean(detail?.querySelector('[aria-label="由 Agent 自行处理文件与命令"]')),
           versionChannel: Boolean(detail?.querySelector('[data-testid="acp-adapter-channel"]'))
         };
       })()`);
-      if (state.selected && state.detail && state.ownEnv) break;
+      if (state.selected && state.detail && state.ownEnv === (agent !== "codex")) break;
       await delay(25);
     }
     assert.deepEqual(
@@ -111,8 +112,9 @@ try {
         selected: true,
         detail: true,
         native: agent === "codex" ? 1 : 0,
-        env: 1,
-        ownEnv: true,
+        env: agent === "codex" ? 0 : 1,
+        ownEnv: agent !== "codex",
+        agentTools: false,
         versionChannel: false,
       },
       `Unexpected settings content after selecting ${agent}`,

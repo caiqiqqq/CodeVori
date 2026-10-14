@@ -3,7 +3,6 @@ import { useState } from "react";
 import type { AcpAgentInfo } from "@zcode/shared";
 import type { IAcpService } from "@zcode/services";
 import { Button } from "@/components/ui/button.js";
-import { Switch } from "@/components/ui/switch.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useAcpGeminiProviders } from "@/hooks/useAcpGeminiProviders.js";
 import { AcpGeminiProviderControls } from "@/settings/AcpGeminiProviderControls.js";
@@ -119,13 +118,6 @@ export function AcpAgentEnvironmentEditor({
           className="min-h-44 max-h-72 resize-y overflow-y-auto font-mono text-ui-base"
         />
         <p className="text-ui-sm text-foreground-subtle">{label("advancedHint")}</p>
-      </div>
-      <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface p-3">
-        <div className="min-w-0 space-y-1">
-          <p className="text-ui-sm font-medium">{label("agentTools")}</p>
-          <p className="text-ui-xs text-foreground-subtle">{label("agentToolsHint")}</p>
-        </div>
-        <Switch checked disabled aria-label={label("agentTools")} />
       </div>
       {fields.length ? (
         <h5 className="text-ui-sm font-medium">

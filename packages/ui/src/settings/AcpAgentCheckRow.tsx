@@ -29,7 +29,6 @@ const checkStatusColors: Record<AcpAgentCheckStatus, string> = {
   pass: "text-success",
   warn: "text-warning",
   fail: "text-destructive",
-  info: "text-foreground-subtle",
 };
 
 export function AcpCheckRow({

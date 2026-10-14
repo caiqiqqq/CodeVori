@@ -66,7 +66,7 @@ test("same path with another remote workspace identity cannot supply ACP routing
   assert.equal(isMatchingAcpWorkspaceTab({ workspacePath: "/work" }, "/work", undefined), true);
 });
 
-test("Agent SDK check rows distinguish adapter readiness, install tools, version gaps, and optional vendor CLI", () => {
+test("Agent SDK displays only adapter and version checks while keeping install prerequisites in Host data", () => {
   const agent: AcpAgentInfo = {
     agent: "codex",
     command: "codex-acp",
@@ -90,9 +90,6 @@ test("Agent SDK check rows distinguish adapter readiness, install tools, version
   assert.deepEqual(projectAcpAgentChecks(agent), [
     { id: "adapter", status: "pass" },
     { id: "version", status: "pass" },
-    { id: "node", status: "warn" },
-    { id: "npm", status: "pass" },
-    { id: "native", status: "info" },
   ]);
   assert.deepEqual(
     projectAcpAgentChecks({
@@ -106,9 +103,13 @@ test("Agent SDK check rows distinguish adapter readiness, install tools, version
     [
       { id: "adapter", status: "fail" },
       { id: "version", status: "fail" },
-      { id: "node", status: "pass" },
-      { id: "npm", status: "pass" },
-      { id: "native", status: "info" },
+    ],
+  );
+  assert.deepEqual(
+    projectAcpAgentChecks({ ...agent, agent: "pi", distribution: "binary", nativePath: null }),
+    [
+      { id: "adapter", status: "pass" },
+      { id: "version", status: "pass" },
     ],
   );
   assert.equal(
