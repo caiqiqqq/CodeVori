@@ -101,11 +101,14 @@ import {
   buildConversationGoalIterationSummaries,
   getConversationGoalElapsedSeconds,
 } from "@/v4/conversationGoalSummaryModel.js";
+import { resolveConversationStatusBranchLabel } from "@/v4/conversationStatusPanelBranch.js";
 
 interface ConversationStatusPanelProps {
   workspacePath: string;
   workspaceIdentity?: string;
   gitSummary?: GitRepositorySummary | null;
+  /** Git 目标 workspace 切换后的首次读取尚未完成；此时不能把空态快照当作不可用。 */
+  gitLoading?: boolean;
   gitDirtyFileCount?: number;
   gitWorktreeReviewSourceId?: GitChangeSourceId | null;
   gitWorktreeChangeSummary?: { added: number; removed: number } | null;
@@ -1732,6 +1735,7 @@ function ConversationStatusPanelImpl({
   workspacePath,
   workspaceIdentity,
   gitSummary,
+  gitLoading = false,
   gitDirtyFileCount = 0,
   gitWorktreeReviewSourceId,
   gitWorktreeChangeSummary,
@@ -1825,16 +1829,15 @@ function ConversationStatusPanelImpl({
   );
   const canRenderGit = Boolean(model.git && gitSummary && onRefreshGit);
   const showAutoExpanded = variant === "auto" && model.hasExpandedContent;
-  const branchLabel = !gitSummary
-    ? intl.formatMessage({ id: "chat.statusPanel.branchLoading" })
-    : !gitSummary.isGitAvailable
-      ? intl.formatMessage({ id: "chat.statusPanel.gitUnavailable" })
-      : !gitSummary.isRepository
-        ? intl.formatMessage({ id: "chat.statusPanel.notRepository" })
-        : gitSummary.headRefType === "detached"
-          ? intl.formatMessage({ id: "git.head.detached" })
-          : gitSummary.branchName?.trim() ||
-            intl.formatMessage({ id: "chat.statusPanel.branchUnknown" });
+  const branchLabel = resolveConversationStatusBranchLabel({
+    gitSummary,
+    gitLoading,
+    loadingLabel: intl.formatMessage({ id: "chat.statusPanel.branchLoading" }),
+    unavailableLabel: intl.formatMessage({ id: "chat.statusPanel.gitUnavailable" }),
+    notRepositoryLabel: intl.formatMessage({ id: "chat.statusPanel.notRepository" }),
+    detachedLabel: intl.formatMessage({ id: "git.head.detached" }),
+    unknownLabel: intl.formatMessage({ id: "chat.statusPanel.branchUnknown" }),
+  });
   const canRenderGoal = Boolean(model.goal || model.reportedGoal);
   const canRenderSessionPlans = Boolean(model.sessionPlans);
   const canRenderPlan = Boolean(model.plan);

@@ -367,6 +367,8 @@ export interface SessionPaneProps {
   /** 主草稿把 drop controller 提给 app shell 的标题栏；其他 pane 只在自身 surface 消费。 */
   onDropTargetControllerChange?: (controller: ConversationDropTargetController | null) => void;
   gitSummary?: GitRepositorySummary | null;
+  /** 宿主正在为当前 workspace 首次读取 Git；避免将空态 summary 展示成不可用。 */
+  gitLoading?: boolean;
   gitDirtyFileCount?: number;
   gitWorktreeReviewSourceId?: GitChangeSourceId | null;
   gitWorktreeChangeSummary?: { added: number; removed: number } | null;
@@ -5242,6 +5244,7 @@ export function SessionPane({
             workspacePath={workspacePath}
             workspaceIdentity={workspaceIdentity}
             gitSummary={gitSummary}
+            gitLoading={gitLoading}
             gitDirtyFileCount={gitDirtyFileCount}
             gitWorktreeReviewSourceId={gitWorktreeReviewSourceId}
             gitWorktreeChangeSummary={gitWorktreeChangeSummary}
