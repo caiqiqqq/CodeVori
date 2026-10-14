@@ -17,6 +17,7 @@ import {
 import {
   continueWorkTaskConversation,
   workTaskRunPrompt,
+  assertNewSessionRestart,
   assertWorkTaskWorkspaceEditable,
 } from "./workTaskConversationState.js";
 import { finishWorkTaskRun } from "./workTaskRunState.js";
@@ -170,9 +171,11 @@ export class WorkTaskRepo {
       );
     });
   }
-  private enqueueInside(scope: WorkTaskScope, id: string, feedback?: string): WorkTask {
+  private enqueueInside(scope: WorkTaskScope, id: string, feedback?: string, fresh = false) {
     const row = this.row(scope, id);
     const task = decode(row);
+    // 损坏会话恢复必须与入队同事务；先拒绝重复/并发请求，避免把已入队的新绑定再清掉。
+    if (fresh) assertNewSessionRestart(task, row.owner, feedback);
     assertWorkTaskSourceAvailable(this.list(scope, true), task.source, task.id);
     if (isWorkTaskMerging(task)) throw new Error("work-task.merge-in-progress");
     if (task.status === "queued" || WORK_TASK_ACTIVE_STATUSES.includes(task.status)) return task;
@@ -189,6 +192,7 @@ export class WorkTaskRepo {
         ...task,
         status: "queued",
         ...workTaskRunPrompt(task, feedback),
+        ...(fresh ? { session: undefined, sessionRequestId: uuidv7() } : {}),
         failureReason: undefined,
         merge: undefined,
         updatedAt: Date.now(),
@@ -196,8 +200,8 @@ export class WorkTaskRepo {
       "queued",
     );
   }
-  enqueue(scope: WorkTaskScope, id: string, feedback?: string): WorkTask {
-    return this.transaction(() => this.enqueueInside(scope, id, feedback));
+  enqueue(scope: WorkTaskScope, id: string, feedback?: string, newSession = false): WorkTask {
+    return this.transaction(() => this.enqueueInside(scope, id, feedback, newSession));
   }
   enqueueMerge(
     input: WorkTaskMergeRequest,

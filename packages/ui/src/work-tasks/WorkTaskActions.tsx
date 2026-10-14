@@ -80,6 +80,15 @@ export function WorkTaskActions({
         void panel.start(task.id);
       },
     });
+  if (task.status === "failed" && task.session && !task.archived)
+    actions.push({
+      label: t("retryNewSession"),
+      Icon: Play,
+      disabled: disabled || !panel.executable,
+      run: () => {
+        void panel.restartWithNewSession(task.id);
+      },
+    });
   if (["todo", "failed"].includes(task.status))
     actions.push({ label: t("edit"), Icon: Pencil, disabled, run: () => onEdit(task) });
   actions.push(

@@ -86,6 +86,9 @@ const enUS: Record<string, string> = {
   "workTasks.start": "Start",
   "workTasks.startAll": "Start all",
   "workTasks.retry": "Restart",
+  "workTasks.retryNewSession": "Restart with new session",
+  "workTasks.error.work-task.new-session-unavailable":
+    "Only a failed task with a bound session can restart with a new session.",
   "workTasks.cancel": "Cancel execution",
   "workTasks.complete": "Accept result",
   "workTasks.completionMethod": "Completion method",

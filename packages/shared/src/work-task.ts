@@ -333,7 +333,10 @@ export const workTaskUpdateSchema = workTaskCreateSchema
   .strict();
 export type WorkTaskUpdate = z.infer<typeof workTaskUpdateSchema>;
 export const workTaskStartSchema = workTaskTargetSchema
-  .extend({ feedback: z.string().trim().min(1).max(100_000).optional() })
+  .extend({
+    feedback: z.string().trim().min(1).max(100_000).optional(),
+    newSession: z.boolean().optional(),
+  })
   .strict();
 export type WorkTaskStart = z.infer<typeof workTaskStartSchema>;
 export const workTaskMergeRequestSchema = workTaskTargetSchema

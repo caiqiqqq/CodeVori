@@ -38,6 +38,21 @@ export function workTaskRunPrompt(task: WorkTask, feedback?: string) {
   };
 }
 
+export function assertNewSessionRestart(task: WorkTask, owner: string | null, feedback?: string) {
+  if (
+    feedback ||
+    owner ||
+    task.archived ||
+    task.stopPending ||
+    task.worktreeCleanup?.phase === "running" ||
+    task.status !== "failed" ||
+    !task.session ||
+    task.session.kind !== task.execution.kind ||
+    isWorkTaskMerging(task)
+  )
+    throw new Error("work-task.new-session-unavailable");
+}
+
 export function continueWorkTaskConversation(
   current: WorkTask,
   watched: WorkTask,

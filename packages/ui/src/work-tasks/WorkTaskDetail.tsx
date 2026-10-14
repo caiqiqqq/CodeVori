@@ -102,6 +102,20 @@ export function WorkTaskDetail({
               {t(task.status === "todo" ? "start" : "retry")}
             </Button>
           ) : null}
+          {task.status === "failed" && task.session && !task.archived ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={disabled || !panel.executable}
+              onClick={() => {
+                void panel.restartWithNewSession(task.id);
+              }}
+              data-testid="work-task-restart-new-session"
+            >
+              <Play className="size-4" />
+              {t("retryNewSession")}
+            </Button>
+          ) : null}
           {["todo", "failed"].includes(task.status) ? (
             <Button variant="outline" size="sm" disabled={disabled} onClick={onEdit}>
               <Pencil className="size-4" />
