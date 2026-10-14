@@ -217,9 +217,15 @@ test("Git model retains API dirty/clean and Office rules with reported ACP goal"
     buildConversationStatusPanelModel({
       ...input,
       gitWorktreeChangeSummary: { added: 0, removed: 0 },
-    }).hasContent,
+    }).hasExpandedContent,
     false,
   );
+  const clean = buildConversationStatusPanelModel({
+    ...input,
+    gitWorktreeChangeSummary: { added: 0, removed: 0 },
+  });
+  assert.equal(clean.git?.branchName, "fixture");
+  assert.equal(clean.hasContent, true);
   assert.equal(buildConversationStatusPanelModel({ ...input, isOfficeMode: true }).git, null);
   assert.equal(
     buildConversationStatusPanelModel({

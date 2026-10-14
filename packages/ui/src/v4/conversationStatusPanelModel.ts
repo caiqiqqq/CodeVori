@@ -108,6 +108,8 @@ export function workflowRunOpenTarget(
 
 export interface ConversationStatusPanelModel {
   hasContent: boolean;
+  /** 只有分支身份时保持自动模式的紧凑态；其他事实才占用宽屏展开布局。 */
+  hasExpandedContent: boolean;
   git: ConversationStatusPanelGitModel | null;
   goal: GoalState | null;
   reportedGoal: string | null;
@@ -146,11 +148,7 @@ function buildGitModel({
   }
   const added = gitWorktreeChangeSummary?.added ?? 0;
   const removed = gitWorktreeChangeSummary?.removed ?? 0;
-  // v4 之前只要是 Git repository 就创建 Git model，导致 clean repo
-  // 也挂出右上角状态卡；旧 ChatView 只在 worktree 有行级变化时展示 Git Tools。
-  if (added + removed <= 0) {
-    return null;
-  }
+  // 修复原因：干净仓库也需要显示所属分支；改动计数仍由真实 worktree 行变化提供。
   const isClean =
     !gitSummary.isDirty &&
     gitDirtyFileCount === 0 &&
@@ -366,6 +364,16 @@ export function buildConversationStatusPanelModel(
   }
 
   const runningWorkflowRuns = buildRunningWorkflowRuns(input.workflowRuns, workflowWorkByWorkId);
+  const hasExpandedContent = Boolean(
+    (git && git.added + git.removed > 0) ||
+    goal ||
+    reportedGoal ||
+    sessionPlans ||
+    plan ||
+    runningBashWorks.length > 0 ||
+    runningSubagentWorks.length > 0 ||
+    runningWorkflowRuns.length > 0,
+  );
 
   return {
     git,
@@ -376,6 +384,7 @@ export function buildConversationStatusPanelModel(
     runningBashWorks,
     runningSubagentWorks,
     runningWorkflowRuns,
+    hasExpandedContent,
     hasContent: Boolean(
       git ||
       goal ||

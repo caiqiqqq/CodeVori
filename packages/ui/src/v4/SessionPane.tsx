@@ -4462,7 +4462,8 @@ export function SessionPane({
   const shouldUseStatusPanelInlineLayout =
     !visibleEmptyDraft &&
     shouldUseConversationStatusPanelInlineLayout({
-      hasContent: statusPanelModel.hasContent,
+      // 修复原因：仅有分支身份时自动模式仍为胶囊；用户主动展开才给正文留出面板空间。
+      hasContent: statusPanelModel.hasExpandedContent || statusPanelVariant === "panel",
       variant: statusPanelVariant,
     });
   const statusPanelLayout = !shouldUseStatusPanelInlineLayout
