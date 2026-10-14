@@ -132,6 +132,7 @@ export const taskNotificationPayloadSchema = z.object({
   requestId: nonEmptyStringSchema.optional(),
   title: z.string(),
   body: z.string(),
+  onlyWhenUnfocused: z.boolean().optional(),
 });
 
 export const telemetryRendererContextSchema = z.object({

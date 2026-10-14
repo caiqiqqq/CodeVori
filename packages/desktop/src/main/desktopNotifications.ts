@@ -96,7 +96,8 @@ export function dispatchTaskNotification(options: {
     return false;
   }
 
-  if (isAnyAppWindowFocused()) {
+  // 焦点抑制由发送时的通知偏好控制；旧调用未传字段时保留后台通知规则。
+  if (result.data.onlyWhenUnfocused !== false && isAnyAppWindowFocused()) {
     return false;
   }
 

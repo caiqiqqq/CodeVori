@@ -3014,6 +3014,9 @@ const enUS: Record<string, string> = {
   "settings.notificationDescription":
     "Send desktop notifications when a task completes, fails, or needs approval.",
   "settings.notificationSound": "Notification sound",
+  "settings.notificationOnlyWhenUnfocused": "Notify only when unfocused",
+  "settings.notificationOnlyWhenUnfocusedDescription":
+    "When enabled, send notifications only while the window is unfocused. Turn off to also notify while focused.",
   "settings.notificationSoundDescription":
     "When notifications are enabled, you can mute the task notification sound separately.",
   "notification.taskWithTitle": "Task: {title}",

@@ -52,6 +52,7 @@ export function GeneralSectionContent({
   setInterfaceMode = () => {},
   notificationEnabled,
   notificationSoundEnabled,
+  notificationOnlyWhenUnfocused = true,
   closeToTrayOnWindows,
   keepAwakeWhileRunning = false,
   desktopChromiumHardwareAccelerationEnabled = true,
@@ -74,6 +75,7 @@ export function GeneralSectionContent({
   setLocalePreference,
   setNotificationEnabled,
   setNotificationSoundEnabled,
+  setNotificationOnlyWhenUnfocused = () => {},
   taskAutoArchiveEnabled,
   taskAutoArchiveOlderThanDays,
   messageStreamShowReasoning,
@@ -115,6 +117,7 @@ export function GeneralSectionContent({
   setInterfaceMode?: (mode: InterfaceMode) => void;
   notificationEnabled: boolean;
   notificationSoundEnabled: boolean;
+  notificationOnlyWhenUnfocused?: boolean;
   closeToTrayOnWindows: boolean;
   keepAwakeWhileRunning?: boolean;
   desktopChromiumHardwareAccelerationEnabled?: boolean;
@@ -138,6 +141,7 @@ export function GeneralSectionContent({
   setLocalePreference: (locale: LocalePreference) => void;
   setNotificationEnabled: (enabled: boolean) => void;
   setNotificationSoundEnabled: (enabled: boolean) => void;
+  setNotificationOnlyWhenUnfocused?: (enabled: boolean) => void;
   taskAutoArchiveEnabled: boolean;
   taskAutoArchiveOlderThanDays: number;
   messageStreamShowReasoning: boolean;
@@ -621,6 +625,21 @@ export function GeneralSectionContent({
           })}
           control={
             <Switch checked={notificationEnabled} onCheckedChange={setNotificationEnabled} />
+          }
+        />
+        <SettingsRow
+          label={intl.formatMessage({ id: "settings.notificationOnlyWhenUnfocused" })}
+          controlLayout="compact"
+          description={intl.formatMessage({
+            id: "settings.notificationOnlyWhenUnfocusedDescription",
+          })}
+          control={
+            <Switch
+              aria-label={intl.formatMessage({ id: "settings.notificationOnlyWhenUnfocused" })}
+              checked={notificationOnlyWhenUnfocused}
+              disabled={!notificationEnabled}
+              onCheckedChange={setNotificationOnlyWhenUnfocused}
+            />
           }
         />
         <SettingsRow

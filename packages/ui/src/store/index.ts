@@ -32,8 +32,10 @@ import {
 } from "@/lib/uiFontSize.js";
 import {
   isTaskNotificationEnabled,
+  isTaskNotificationOnlyWhenUnfocused,
   isTaskNotificationSoundPreferenceEnabled,
   persistTaskNotificationEnabled,
+  persistTaskNotificationOnlyWhenUnfocused,
   persistTaskNotificationSoundEnabled,
 } from "@/lib/taskNotificationPreferences.js";
 import type { Theme } from "../useTheme.js";
@@ -131,6 +133,10 @@ export interface ZCodeState {
   /** 是否启用任务通知声音（依附于任务通知总开关） */
   notificationSoundEnabled: boolean;
   setNotificationSoundEnabled: (enabled: boolean) => void;
+
+  /** 是否仅在窗口无焦点时通知；关闭后前台也发送通知 */
+  notificationOnlyWhenUnfocused: boolean;
+  setNotificationOnlyWhenUnfocused: (enabled: boolean) => void;
 
   /** 当前用户信息 */
   user: UserInfo | null;
@@ -309,6 +315,12 @@ export function createZCodeStore(
     setNotificationSoundEnabled: (enabled: boolean) => {
       persistTaskNotificationSoundEnabled(enabled);
       set({ notificationSoundEnabled: enabled });
+    },
+
+    notificationOnlyWhenUnfocused: isTaskNotificationOnlyWhenUnfocused(),
+    setNotificationOnlyWhenUnfocused: (enabled: boolean) => {
+      persistTaskNotificationOnlyWhenUnfocused(enabled);
+      set({ notificationOnlyWhenUnfocused: enabled });
     },
 
     user: null,
