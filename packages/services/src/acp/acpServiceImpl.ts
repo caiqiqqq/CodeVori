@@ -101,7 +101,7 @@ import {
 import { acpAgentConfigFingerprint, readAcpAgentConfigs } from "./acpAgentConfigs.js";
 import { projectAcpContextUsage } from "./acpContextUsage.js";
 import type { AcpToolDetails } from "./acpToolDetails.js";
-import { searchAcpSessions } from "./acpSessionSearch.js";
+import { excludeDelegatedAcpSessions, searchAcpSessions } from "./acpSessionSearch.js";
 import { createCodexUsageHistoryReader, type CodexUsageHistory } from "./acpNativeUsage.js";
 import { recordAcpPromptUsage, summarizeAcpUsage } from "./acpUsageStats.js";
 import {
@@ -202,6 +202,8 @@ function diagnosticToolStatus(status?: string): AcpDiagnosticEvent["status"] {
 export function createAcpService(
   options: {
     directory?: string;
+    /** Projection-only membership; exact read and internal execution keep child access. */
+    delegatedSessionIds?: (scope: AcpWorkspace) => Promise<string[]>;
     connect?: AcpConnectionFactory;
     agentManager?: AcpAgentManager;
     memoryContext?: ProjectMemoryContext;
@@ -1428,6 +1430,11 @@ export function createAcpService(
         return !unusedIdle || connections.has(value.id);
       });
   };
+  const listVisibleSessions = async (workspace: AcpWorkspace): Promise<AcpSession[]> => {
+    const sessions = await listScopedSessions(workspace);
+    if (!options.delegatedSessionIds) return sessions;
+    return excludeDelegatedAcpSessions(sessions, await options.delegatedSessionIds(workspace));
+  };
   const listAllSessions = async (): Promise<AcpSession[]> => {
     const names = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return [];
@@ -2198,22 +2205,39 @@ export function createAcpService(
       return (await listScopedSessions(workspace)).map((value) => structuredClone(value));
     },
     async listSummaries(workspace) {
-      return (await listScopedSessions(workspace)).map((value) =>
+      return (await listVisibleSessions(workspace)).map((value) =>
         structuredClone(summarizeAcpSession(value)),
       );
     },
     onDynamicSessionSummaryChanged(workspace) {
       return (listener) =>
         service.onDynamicSessionChanged(workspace)((change) => {
-          listener(
-            change.kind === "removed"
-              ? change
-              : {
-                  kind: "updated",
-                  session:
-                    projections.get(change.session.id)?.session ??
-                    summarizeAcpSession(change.session),
-                },
+          if (change.kind === "removed") {
+            listener(change);
+            return;
+          }
+          const delegatedSessionIds = options.delegatedSessionIds;
+          if (!delegatedSessionIds) {
+            listener({
+              kind: "updated",
+              session:
+                projections.get(change.session.id)?.session ?? summarizeAcpSession(change.session),
+            });
+            return;
+          }
+          // 修复原因：新增会话的 Host 事件可能早于委派绑定写回，历史资格与持久归属
+          // 都确认后才向普通列表发布；归属读取失败时宁可保留旧投影。
+          if (!isAcpHistorySession(change.session)) return;
+          void (async () => {
+            const hidden = await delegatedSessionIds(workspace);
+            if (hidden.includes(change.session.id)) return;
+            listener({
+              kind: "updated",
+              session:
+                projections.get(change.session.id)?.session ?? summarizeAcpSession(change.session),
+            });
+          })().catch((error: unknown) =>
+            logger.warn(undefined, "ACP child membership unavailable", { error }),
           );
         });
     },
@@ -2257,14 +2281,27 @@ export function createAcpService(
       };
     },
     async listArchivedWorkspaces() {
-      const scopes = new Map<string, AcpWorkspace>();
-      for (const session of await listAllSessions())
-        if (session.archived)
-          scopes.set(workspaceKey(session), {
+      const scopes = new Map<string, { scope: AcpWorkspace; sessionIds: string[] }>();
+      for (const session of await listAllSessions()) {
+        if (!session.archived) continue;
+        const key = JSON.stringify([workspaceKey(session), session.workspacePath]);
+        const group = scopes.get(key) ?? {
+          scope: {
             workspacePath: session.workspacePath,
             ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
-          });
-      return [...scopes.values()];
+          },
+          sessionIds: [],
+        };
+        group.sessionIds.push(session.id);
+        scopes.set(key, group);
+      }
+      const visible = await Promise.all(
+        [...scopes.values()].map(async ({ scope, sessionIds }) => {
+          const hidden = new Set((await options.delegatedSessionIds?.(scope)) ?? []);
+          return sessionIds.some((id) => !hidden.has(id)) ? scope : null;
+        }),
+      );
+      return visible.filter((scope): scope is AcpWorkspace => scope !== null);
     },
     async prepareWorktreeRemoval(workspace) {
       const scopedSessions = await listScopedSessions(workspace);
@@ -2314,7 +2351,7 @@ export function createAcpService(
     },
     async search(input) {
       const query = acpSessionSearchInputSchema.parse(input);
-      return searchAcpSessions(await listScopedSessions(query), query);
+      return searchAcpSessions(await listVisibleSessions(query), query);
     },
     async read(input) {
       const session = await scoped(input);

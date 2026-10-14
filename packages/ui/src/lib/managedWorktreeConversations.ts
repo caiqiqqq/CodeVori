@@ -7,20 +7,28 @@ export type ManagedWorktreeConversation =
   | { kind: "acp"; id: string; title: string; updatedAt: number; session: AcpSidebarSession };
 
 export async function loadManagedWorktreeConversations(
-  services: Pick<IServiceAccessor, "zcodeTaskService" | "acpService">,
+  services: Pick<IServiceAccessor, "zcodeTaskService" | "acpService" | "agentDelegationService">,
   workspacePath: string,
 ): Promise<{ conversations: ManagedWorktreeConversation[]; failed: boolean }> {
   const target = { workspacePath };
   // 工作树列表只展示未归档会话：API 普通/置顶分区已排除归档，ACP 历史需按 Host 的归档状态过滤。
-  const [ordinaryResult, pinnedResult, acpResult] = await Promise.allSettled([
-    services.zcodeTaskService.listTasks(target),
-    services.zcodeTaskService.listPinnedTasks(target),
-    services.acpService.list(target),
-  ] as const);
+  const [ordinaryResult, pinnedResult, acpResult, apiChildren, acpChildren] =
+    await Promise.allSettled([
+      services.zcodeTaskService.listTasks(target),
+      services.zcodeTaskService.listPinnedTasks(target),
+      services.acpService.list(target),
+      services.agentDelegationService?.childSessionIds(target, "api") ?? Promise.resolve([]),
+      services.agentDelegationService?.childSessionIds(target, "acp") ?? Promise.resolve([]),
+    ] as const);
+  // 修复原因：ACP 的内部 list 保留子会话以供 follow-up 校验，工作树设置只投影普通会话。
+  if (apiChildren.status === "rejected" || acpChildren.status === "rejected")
+    return { conversations: [], failed: true };
+  const hiddenApi = new Set(apiChildren.value);
+  const hiddenAcp = new Set(acpChildren.value);
   const tasks = new Map<string, ZCodeTaskMeta>();
   for (const result of [ordinaryResult, pinnedResult]) {
     if (result.status !== "fulfilled") continue;
-    for (const task of result.value) tasks.set(task.taskId, task);
+    for (const task of result.value) if (!hiddenApi.has(task.taskId)) tasks.set(task.taskId, task);
   }
   const native: ManagedWorktreeConversation[] = [...tasks.values()].map((task) => ({
     kind: "api",
@@ -32,7 +40,7 @@ export async function loadManagedWorktreeConversations(
   const acp: ManagedWorktreeConversation[] =
     acpResult.status === "fulfilled"
       ? projectAcpSidebarSessions(acpResult.value, target)
-          .filter((session) => !session.archived)
+          .filter((session) => !session.archived && !hiddenAcp.has(session.id))
           .map((session) => ({
             kind: "acp",
             id: session.id,

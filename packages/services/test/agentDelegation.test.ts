@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { uuidv7, type DelegationCreate, type DelegationTask } from "@zcode/shared";
 import { AgentDelegationService } from "../src/delegation/agentDelegationService.js";
+import { DelegationRepository } from "../src/delegation/delegationRepository.js";
 
 const parent = { workspacePath: "/project", kind: "acp" as const, sessionId: "parent" };
 const draft = (overrides: Partial<DelegationCreate> = {}): DelegationCreate => ({
@@ -72,6 +73,71 @@ async function flush(f: Awaited<ReturnType<typeof fixture>>) {
   await f.service.tick();
   await new Promise((resolve) => setImmediate(resolve));
 }
+test("child session membership survives retry and restart, scoped by workspace identity and path", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zcode-delegation-children-"));
+  const path = join(dir, "delegations.sqlite");
+  const repo = new DelegationRepository(path);
+  const input = draft();
+  const { workspacePath: _workspacePath, kind: _kind, sessionId: _sessionId, ...fields } = input;
+  const task: DelegationTask = {
+    ...fields,
+    id: uuidv7(),
+    parent,
+    rootParent: parent,
+    generation: 0,
+    depth: 1,
+    status: "failed",
+    attempts: [],
+    sessionRequestId: uuidv7(),
+    session: { kind: "acp", id: "old-child" },
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  try {
+    await repo.open();
+    repo.put(task);
+    repo.put({ ...task, session: { kind: "acp", id: "new-child" } });
+    repo.put({
+      ...task,
+      id: uuidv7(),
+      requestId: uuidv7(),
+      session: { kind: "acp", id: "worktree-child" },
+      worktree: {
+        rootPath: "/project",
+        projectPath: "/project",
+        path: "/project-worktree",
+        branchName: "delegation-child",
+        baseCommit: "abc123",
+      },
+    });
+    repo.close();
+    const reopened = new DelegationRepository(path);
+    try {
+      await reopened.open();
+      assert.deepEqual(reopened.childSessionIds({ workspacePath: "/project" }, "acp"), [
+        "new-child",
+        "old-child",
+      ]);
+      assert.deepEqual(
+        reopened.childSessionIds(
+          { workspacePath: "/project", workspaceIdentity: "remote:other" },
+          "acp",
+        ),
+        [],
+      );
+      assert.deepEqual(reopened.childSessionIds({ workspacePath: "/other" }, "acp"), []);
+      assert.deepEqual(reopened.childSessionIds({ workspacePath: "/project" }, "api"), []);
+      assert.deepEqual(reopened.childSessionIds({ workspacePath: "/project-worktree" }, "acp"), [
+        "worktree-child",
+      ]);
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    repo.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 test("archive removal guard observes queued descendants without canceling or delivering them", async () => {
   const f = await fixture();
   try {
@@ -100,6 +166,10 @@ test("durable admission, two lanes, dependencies, follow-up and immutable result
     const c = await f.service.delegate(draft({ dependsOn: [a.id] }));
     await flush(f);
     assert.equal(f.running.length, 2);
+    assert.deepEqual(
+      new Set(await f.service.childSessionIds({ workspacePath: "/project" }, "acp")),
+      new Set([`child-${a.id}`, `child-${b.id}`]),
+    );
     assert.equal((await f.service.list(parent)).find((t) => t.id === c.id)?.status, "queued");
     f.running[0]!.finish();
     await flush(f);

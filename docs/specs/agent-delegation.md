@@ -96,7 +96,19 @@ DelegationService 落盘 sessionRequestId
 
 - 服务：list、targets、delegate、followUp、retry、resume、cancel、cancelAll、redeliver、get/updateSettings、onDynamicChanged。
 - MCP：ListDelegationAgents、DelegateTask、GetDelegationTask、ListDelegationTasks、WaitDelegationTask、FollowUpDelegation、RetryDelegation、ResumeDelegation、CancelDelegation、CancelAllDelegations；子会话 SubmitDelegationResult。
-- 复用聊天界面上的折叠委派列表，显示智能体图标、状态、打开原子会话、取消/重试/恢复/追问、各次执行的完整结果与回传状态。手动委派和追问复用既有聊天输入及附件上传；设置通过独立的「多智能体协同」菜单进入，不新增对话页。
+- 委派任务显示在发起它的对话轮次的工作内容中，摘要行位于该轮最终回复之前，沿用 API 内置 Agent 的紧凑工具行视觉层级，显示目标图标、标题和实时状态；展开后保留打开原子会话、取消/重试/恢复/追问、各次执行的完整结果与回传状态。手动委派和追问复用既有聊天输入及附件上传；设置通过独立的「多智能体协同」菜单进入，不新增对话页。
+- 子会话保留完整历史，但普通 API/ACP 会话列表、全文搜索、置顶、归档、工作区分组和工作树会话列表不显示委派子会话；它只能经所属委派任务的「打开子会话」显式进入。导航和精确 ID 读取不受列表排除影响。普通会话与 API 内置 Agent 不受影响。
+- 子会话归属以 DelegationRepository 中按子会话实际 workspace identity/path、kind 和 session ID 持久化的绑定为准；隔离工作树使用工作树路径的 fallback key。绑定在执行器确认创建会话时随任务状态同一事务记录，follow-up 复用，retry 新建时不删除旧绑定，resume 沿用当前绑定；启动时从旧任务当前绑定补齐历史。旧版本在重试时已丢弃的绑定无法从现存任务恢复，不按标题或目录猜测。会话创建到绑定确认之间，历史投影不得短暂显示子会话；API 的 deferred 持久化和 ACP 的历史资格判定保持此事件顺序。
+- 普通列表的排除发生在各自的权威读取/搜索投影中，分页、total 和 hasMore 在排除后计算；ACP 的内部精确读取与执行校验继续可访问子会话。归属读取失败不得把已知隐藏子会话作为普通会话显示。不同 workspace identity 即使路径或会话 ID 相同也不能互相过滤。
+
+```text
+DelegateTask → DelegationRepository 接受任务 → 执行器创建 API/ACP 会话
+  → 同一事务提交 session 绑定和隐藏归属 → 普通列表/搜索排除
+  └→ 父会话委派行 → 按精确 ID 打开子会话
+retry → 新 session 绑定追加；旧绑定保留
+```
+
+- UI 只用持久任务的 `createdAt` 与 CLI/ACP 投影的轮次 `startedAt` 定位原轮次，以下一轮开始或已知 `endedAt` 为排他的结束边界；同一轮多个任务保持服务列表顺序，后续轮次、任务状态更新和历史分页不改变归属。无法可靠定位到已加载轮次的任务仍留在折叠的会话级列表，不能强行归到最新轮。编辑弹窗保持会话级挂载，避免虚拟滚动卸载轮次时丢失草稿。任务事实仍由 `AgentDelegationService` 持有，Renderer 只作投影，不能据 UI 时间推断 admission、完成或回传。
 - `@` 智能体候选行显示对应图标：ACP 复用 `AcpAgentIcon` 的品牌素材，API 复用 `TaskAgentIcon` 按当前 Host 的 providerId 读取模型设置中的 logo，不根据模型展示名猜测供应商。图标缺失或加载失败沿用既有默认图标；不新增图标状态、配置读取或网络请求路径。
 - 图标为纯展示，候选、选中引用及发送的 canonical 身份保持不变。候选行保留固定 16px 图标区域，在窄屏、亮暗主题和键盘选中时不挤压名称或描述。
 - 普通对话没有委派任务时不渲染委派列表，不保留标题、分隔线或空白占位。API 与 ACP 的手动入口统一放在主输入框的 `+` 菜单；新建草稿、只读视图及不支持执行的远程项目不提供该入口。
@@ -126,9 +138,12 @@ DelegationService 落盘 sessionRequestId
 17. API/ACP 新注册 MCP 在关闭时隐藏委派工具，已连接能力不能绕过最新 admission；已接受请求仍幂等，queued/running 不取消，SubmitDelegationResult 和查询/取消保留。关闭后新追问、重试、恢复拒绝，重新启用恢复入口。
 18. 缓存预算按根主会话隔离；默认/不限额、超预算淘汰、超大记录、停止及关闭清理、设置降低、跨 Host 写入/暂停、事务回滚和返回副本测试通过，持久结果与 outbox 不丢失。
 19. Desktop / Web 设置导航的「Agent 能力」分组均有且只有一个「多智能体协同」入口；SDK 管理页不再挂载委派设置。1280px / 375px 下菜单可打开对应分区，页标题不重复，切到 SDK 页再返回保留原保存值；重新打开设置记住分区，显式导航意图仍优先且只消费一次。中英文禁用提示指向新入口，原自动保存和失败回退回归通过。
+20. API/ACP 发起轮中的委派任务在该轮以 Agent 同级的摘要行展示；下一轮到来与任务完成不移动原行，展开可查看结果与操作。历史未加载、轮次无有效时间或时间冲突时仍能从会话级列表访问，不重复显示；1280px/375px、亮暗主题下无溢出，切换会话不残留旧任务或编辑草稿。
+21. API/ACP 各创建一个普通会话和一个委派子会话；侧栏 timeline、工作区分组、搜索/最近、置顶/归档及工作树设置只列出普通会话，数量与分页正确，委派行仍可打开并读取子会话。重启后保持；follow-up 不新建，retry 后旧/新子会话都不进入普通列表；同路径不同 identity 不串隐藏。订阅早于历史列表、创建 ACK 早于绑定、旧读取迟到和归属服务错误不闪现隐藏行。
 
 ## 本地验证记录
 
+- 2026-10-14，子会话普通列表归属：委派绑定、API 索引分页与 identity 隔离、ACP 纯投影、工作树列表及失败闭合回归 16/16 通过；1280px/375px 委派面板 E2E 通过，覆盖从委派行打开子会话。根 lint 0 error（74 个已有 warning），架构检查 0 violation，UI 独立类型检查通过。根类型检查及 ACP 服务级测试被当前检出缺失的 `@zcode/dynamic-workflow` 构建产物阻断；未调用真实模型或重启桌面 Host，运行时侧栏效果待装载新 Host 后验证。
 - 2026-10-07，Node 24.14.0：委派、ACP、工作流、附件、工作树、API 执行与 Runtime stop 联跑 88/88 通过。委派专项涵盖 MCP capability、跨窗口 lease、各次 attempt 回传、嵌套容量与取消、入队顺序和重复关闭。
 - `node packages/ui/test/agentDelegation.e2e.mjs`：1280px/375px 下共用列表、操作、附件/文件引用、@选择及自动保存通过；无页面异常与横向溢出。使用 fake Host，不启动真实模型。
 - 根 `pnpm typecheck` 与 Bootstrap typecheck 通过；CLI 15 个包通过 `pnpm -r --filter './apps/zcode-cli/packages/*' typecheck`。

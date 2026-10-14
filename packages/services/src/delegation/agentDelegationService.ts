@@ -6,6 +6,7 @@ import {
   delegationTargetSchema,
   delegationResultSchema,
   delegationRedeliverSchema,
+  workTaskScopeSchema,
   uuidv7,
   type DelegationCreate,
   type DelegationParent,
@@ -48,6 +49,11 @@ export class AgentDelegationService implements IAgentDelegationService {
   async list(input: DelegationParent) {
     await this.repo.open();
     return this.repo.list(delegationParentSchema.parse(input));
+  }
+  async childSessionIds(scope: WorkTaskScope, kind: "api" | "acp") {
+    await this.repo.open();
+    if (kind !== "api" && kind !== "acp") throw new Error("delegation.invalid-kind");
+    return this.repo.childSessionIds(workTaskScopeSchema.parse(scope), kind);
   }
   onDynamicChanged(_parent: DelegationParent) {
     return this.emitter.event;

@@ -87,3 +87,44 @@ test("partial history failure is reported while remaining conversations are stil
     ["ordinary"],
   );
 });
+
+test("managed worktree only lists ordinary sessions while delegated children remain readable", async () => {
+  const children = [session("acp-child", 300), session("acp-visible", 200)];
+  const services = {
+    zcodeTaskService: {
+      listTasks: async () => [task("api-child", 400), task("api-visible", 100)],
+      listPinnedTasks: async () => [],
+    },
+    acpService: { list: async () => children },
+    agentDelegationService: {
+      childSessionIds: async (_target: unknown, kind: string) =>
+        kind === "api" ? ["api-child"] : ["acp-child"],
+    },
+  } as unknown as Parameters<typeof loadManagedWorktreeConversations>[0];
+  const result = await loadManagedWorktreeConversations(services, path);
+  assert.equal(result.failed, false);
+  assert.deepEqual(
+    result.conversations.map(({ id }) => id),
+    ["acp-visible", "api-visible"],
+  );
+  assert.equal(children[0]?.id, "acp-child");
+});
+
+test("worktree does not show child candidates when delegation membership cannot be read", async () => {
+  const services = {
+    zcodeTaskService: {
+      listTasks: async () => [task("candidate", 1)],
+      listPinnedTasks: async () => [],
+    },
+    acpService: { list: async () => [session("candidate", 2)] },
+    agentDelegationService: {
+      childSessionIds: async () => {
+        throw new Error("membership unavailable");
+      },
+    },
+  } as unknown as Parameters<typeof loadManagedWorktreeConversations>[0];
+  assert.deepEqual(await loadManagedWorktreeConversations(services, path), {
+    conversations: [],
+    failed: true,
+  });
+});

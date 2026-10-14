@@ -2419,6 +2419,10 @@ export function createLocalServices(options: {
     ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
   });
   const acpService = createAcpService({
+    delegatedSessionIds: async (scope) => {
+      if (!agentDelegationService) throw new Error("delegation.owner-unavailable");
+      return agentDelegationService.childSessionIds(scope, "acp");
+    },
     memoryContext: createProjectMemoryContext({
       cliStorageRoot: join(getZCodeDataRootDir(), "cli"),
       isEnabled: async () => (await settingService.get()).memoryEnabled === true,
@@ -2538,6 +2542,10 @@ export function createLocalServices(options: {
     taskIndexSyncer: zcodeTaskIndexSyncer,
     settingService,
     cuaProductMcpServerResolver,
+    delegatedSessionIds: async (scope) => {
+      if (!agentDelegationService) throw new Error("delegation.owner-unavailable");
+      return agentDelegationService.childSessionIds(scope, "api");
+    },
   });
   const botRemoteWorkspaceService = createBotRemoteWorkspaceService({
     parentPort: options?.parentPort,

@@ -184,6 +184,10 @@ interface CreateZCodeTaskServiceAdapterOptions {
   taskIndexSyncer: ZCodeTaskIndexSyncer;
   settingService?: Pick<ISettingService, "get">;
   cuaProductMcpServerResolver?: CuaProductMcpServerResolver;
+  delegatedSessionIds?: (scope: {
+    workspacePath: string;
+    workspaceIdentity?: string;
+  }) => Promise<string[]>;
 }
 
 interface TaskTarget {
@@ -2344,12 +2348,14 @@ export function createZCodeTaskServiceAdapter(
     },
 
     async listTasks(params): Promise<ZCodeTaskMeta[]> {
+      const excludeTaskIds = await options.delegatedSessionIds?.(params);
       const tasks = await taskIndexRepo.listTaskMetas({
         workspacePath: params.workspacePath,
         workspaceIdentity: params.workspaceIdentity,
         provider: GLM_PROVIDER,
         pinned: false,
         archived: false,
+        excludeTaskIds,
       });
       return tasks.map(rememberIndexedTaskMeta);
     },
@@ -2360,16 +2366,40 @@ export function createZCodeTaskServiceAdapter(
         pinned: true,
         archived: false,
       });
-      return tasks.map((task) => task.taskId);
+      if (!options.delegatedSessionIds) return tasks.map((task) => task.taskId);
+      const scopes = new Map(
+        tasks.map((task) => [
+          JSON.stringify([resolveWorkspaceKey(task), task.workspacePath]),
+          { workspacePath: task.workspacePath, workspaceIdentity: task.workspaceIdentity },
+        ]),
+      );
+      const hidden = new Map(
+        await Promise.all(
+          [...scopes].map(
+            async ([key, scope]) =>
+              [key, new Set(await options.delegatedSessionIds!(scope))] as const,
+          ),
+        ),
+      );
+      return tasks
+        .filter(
+          (task) =>
+            !hidden
+              .get(JSON.stringify([resolveWorkspaceKey(task), task.workspacePath]))
+              ?.has(task.taskId),
+        )
+        .map((task) => task.taskId);
     },
 
     async listPinnedTasks(params): Promise<ZCodeTaskMeta[]> {
+      const excludeTaskIds = await options.delegatedSessionIds?.(params);
       const tasks = await taskIndexRepo.listTaskMetas({
         workspacePath: params.workspacePath,
         workspaceIdentity: params.workspaceIdentity,
         provider: GLM_PROVIDER,
         pinned: true,
         archived: false,
+        excludeTaskIds,
       });
       return tasks.map(rememberIndexedTaskMeta);
     },
@@ -2386,9 +2416,22 @@ export function createZCodeTaskServiceAdapter(
     // remoteTimelineTaskStore 补充链路；侧栏 5 视图 + remote shard 的无搜索行集合
     // 走上方三个分区读取。workspace 行在客户端用各 endpoint 的 task 行 + session detail 构建。
     async listTaskList(params: ZCodeTaskListQuery): Promise<ZCodeTaskListResult> {
+      const excludedSessions = options.delegatedSessionIds
+        ? (
+            await Promise.all(
+              params.workspaceScopes.map(async (scope) =>
+                (await options.delegatedSessionIds!(scope)).map((taskId) => ({
+                  workspaceKey: resolveWorkspaceKey(scope),
+                  taskId,
+                })),
+              ),
+            )
+          ).flat()
+        : [];
       const result = await taskIndexRepo.queryTaskList({
         ...params,
         provider: GLM_PROVIDER,
+        excludedSessions,
       });
       return {
         ...result,
@@ -2458,16 +2501,32 @@ export function createZCodeTaskServiceAdapter(
     },
 
     async listArchivedTasks(params): Promise<ZCodeTaskMeta[]> {
+      const excludeTaskIds = await options.delegatedSessionIds?.(params);
       const tasks = await taskIndexRepo.listTaskMetas({
         workspacePath: params.workspacePath,
         workspaceIdentity: params.workspaceIdentity,
         provider: GLM_PROVIDER,
         archived: true,
+        excludeTaskIds,
       });
       return tasks.map(rememberIndexedTaskMeta);
     },
 
-    listArchivedWorkspaces: () => taskIndexRepo.listArchivedWorkspaces(),
+    async listArchivedWorkspaces() {
+      const scopes = await taskIndexRepo.listArchivedWorkspaces();
+      const visible = await Promise.all(
+        scopes.map(async (scope) => ({
+          scope,
+          tasks: await taskIndexRepo.listTaskMetas({
+            ...scope,
+            provider: GLM_PROVIDER,
+            archived: true,
+            excludeTaskIds: await options.delegatedSessionIds?.(scope),
+          }),
+        })),
+      );
+      return visible.filter(({ tasks }) => tasks.length > 0).map(({ scope }) => scope);
+    },
 
     async archiveStaleTasks(params): Promise<ZCodeTaskMeta[]> {
       // stale archive API 和设置页自动归档保持一致，清理全部历史 provider。

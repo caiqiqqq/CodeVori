@@ -20,6 +20,8 @@ import { createServiceDescriptor } from "../descriptors.js";
 export interface IAgentDelegationService {
   targets(): Promise<DelegationAgent[]>;
   list(parent: DelegationParent): Promise<DelegationTask[]>;
+  /** Read-only durable child membership; exact session reads remain available. */
+  childSessionIds(scope: WorkTaskScope, kind: "api" | "acp"): Promise<string[]>;
   /** Read-only removal guard; queued/running descendants must be handled explicitly first. */
   hasPendingChildren(parent: DelegationParent): Promise<boolean>;
   delegate(input: DelegationCreate): Promise<DelegationTask>;

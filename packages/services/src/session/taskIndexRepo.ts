@@ -1721,6 +1721,7 @@ export class TaskIndexRepo {
     pinned?: boolean;
     archived?: boolean;
     includeDeleted?: boolean;
+    excludeTaskIds?: readonly string[];
   }): Promise<ZCodeTaskMeta[]> {
     await this.ensureReady();
     // listTaskMetas 支持不传 workspacePath 查询全部任务，但 workspaceKey 只接受必填路径。
@@ -1763,6 +1764,7 @@ export class TaskIndexRepo {
           AND (@provider IS NULL OR provider = @provider)
           AND (@pinned IS NULL OR pinned = @pinned)
           AND (@archived IS NULL OR archived = @archived)
+          AND task_id NOT IN (SELECT value FROM json_each(@excluded_task_ids))
         ORDER BY updated_at DESC, created_at DESC, task_id DESC`,
       )
       .all({
@@ -1771,6 +1773,7 @@ export class TaskIndexRepo {
         provider: params.provider ?? null,
         pinned: typeof params.pinned === "boolean" ? (params.pinned ? 1 : 0) : null,
         archived: typeof params.archived === "boolean" ? (params.archived ? 1 : 0) : null,
+        excluded_task_ids: JSON.stringify(params.excludeTaskIds ?? []),
       }) as unknown as TaskIndexRow[];
     return rows.map(rowToMeta);
   }
@@ -1848,7 +1851,10 @@ export class TaskIndexRepo {
   }
 
   async queryTaskList(
-    params: ZCodeTaskListQuery & { provider?: ZCodeProvider },
+    params: ZCodeTaskListQuery & {
+      provider?: ZCodeProvider;
+      excludedSessions?: readonly { workspaceKey: string; taskId: string }[];
+    },
   ): Promise<ZCodeTaskListResult> {
     await this.ensureReady();
     const workspaceKeys = normalizeWorkspaceKeys(params.workspaceScopes);
@@ -1864,6 +1870,11 @@ export class TaskIndexRepo {
     if (params.provider) {
       appendZCodeAgentIndexedProviderFilter(where, args, params.provider);
     }
+    // 修复原因：在 SQL 分页与 COUNT 前剔除委派子会话，避免首屏空位和错误的 hasMore。
+    where.push(`NOT EXISTS (SELECT 1 FROM json_each(?) AS hidden
+      WHERE json_extract(hidden.value, '$.workspaceKey') = workspace_key
+        AND json_extract(hidden.value, '$.taskId') = task_id)`);
+    args.push(JSON.stringify(params.excludedSessions ?? []));
     if (params.kind === "pinned") {
       where.push("pinned = 1", "archived = 0");
     } else if (params.kind === "archived") {
