@@ -23,6 +23,7 @@ interface ControlHintTooltipProps {
   standalone?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  disableHoverableContent?: ComponentProps<typeof Tooltip>["disableHoverableContent"];
   side?: ComponentProps<typeof TooltipContent>["side"];
   align?: ComponentProps<typeof TooltipContent>["align"];
   sideOffset?: ComponentProps<typeof TooltipContent>["sideOffset"];
@@ -57,6 +58,7 @@ export function ControlHintTooltip({
   standalone = false,
   open,
   onOpenChange,
+  disableHoverableContent,
   side = "top",
   align = "center",
   sideOffset = 2,
@@ -111,7 +113,11 @@ export function ControlHintTooltip({
   // 大会话会为每条消息动作渲染大量 ControlHintTooltip，逐个创建 Provider
   // 会把 Radix 上下文树放大到消息数量级；共享 Provider 统一放在 Root。
   const tooltip = (
-    <Tooltip open={open} onOpenChange={onOpenChange}>
+    <Tooltip
+      open={open}
+      onOpenChange={onOpenChange}
+      disableHoverableContent={disableHoverableContent}
+    >
       <TooltipTrigger asChild>{trigger}</TooltipTrigger>
       <TooltipContent
         align={align}

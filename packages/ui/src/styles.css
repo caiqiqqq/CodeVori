@@ -2078,3 +2078,8 @@ body {
 .prompt-mention[data-mention-category="plugins"]::before {
   border-radius: var(--radius-sm);
 }
+
+/* Radix 的定位外层仍会命中鼠标；活动图提示必须整层穿透，才能打开被浮层覆盖的日期格。 */
+[data-radix-popper-content-wrapper]:has(> .usage-heatmap-tooltip) {
+  pointer-events: none;
+}

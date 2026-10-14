@@ -36,6 +36,20 @@ Desktop 与手机均只读取原有快照；显隐选择不参与连续流或恢
 
 隔离 UI E2E 可通过 `ZCODE_USAGE_E2E_ORIGIN` 指定本工作树的 Vite 地址，优先于默认 `http://localhost:5174`。该变量仅用于测试夹具导航，不改变产品连接配置；地址不可用时测试失败，不改连其它服务器。
 
+### Token 活动连续悬浮（issue #125）
+
+- 活动图提示仅用于读取当前格子/周列的日期与用量，没有可交互内容；浮层不得拦截底下格子，也不保留从触发器移向浮层的 hover 通道。每日、每周、累计均遵守此规则。
+- 从 10 月 15 日的零用量格子连续移向 10 月 8 日，提示必须更新为 10 月 8 日及其实际用量。移过被旧浮层覆盖的格子也必须更新，离开网格后提示关闭。
+- 提示开关由对应的共享 Tooltip 实例持有，日期与用量继续来自当前活动图投影；不增加选中日期状态、不用延时修补事件、不改变统计查询或 Host 事实。其它控件的可悬浮提示行为保持原有语义。
+- 隔离真实组件 E2E 使用物理鼠标移动，覆盖连续跨格、浮层覆盖位置、周列切换、离开关闭，以及桌面/375px 窄屏明暗主题。
+
+```text
+鼠标进入格子/周列 → 对应 Tooltip 打开 → 当前投影的日期与用量
+鼠标离开触发器 → 关闭该提示 → 进入下一触发器 → 新提示
+                 浮层不参与鼠标命中或 hover 通道
+Desktop / 手机 Web 共用展示组件；没有统计写入或远端事件变化。
+```
+
 ## 所有者、接口与时序
 
 原生 Agent 日志是原生请求事实来源，ACP Host 是应用会话及统计查询所有者。扩展现有有界异步 reader，读取期间只留数值、时间和模型信息；不向 UI 传原文、路径、凭据，不建立另一累计值写路径，不将历史累计写入 usageTurns。共享 AcpAppUsageAgent 增加可选 dailyUsage；旧客户端/历史快照兼容。AgentManager 公开只读 resolveCodexHome，统计查询不调用 resolveLaunch。
@@ -84,3 +98,10 @@ sequenceDiagram
 - `pnpm typecheck` 通过。首次检查缺少 CLI workflow 包的类型构建产物；执行现有 `pnpm --filter '@zcode/dynamic-workflow*' -r build` 后重新完整检查通过，未修改这些包的源码。
 - `pnpm lint` 为 0 错误、72 条既有警告；目标文件格式检查、`git diff --check` 通过；架构检查的 baseline/new 均为 0。
 - 变更仅涉及 UI、spec 和测试。Host/Service 仍是统计事实所有者；新增活动图是纯只读投影，不改变查询、写入或 Desktop/手机恢复时序。E2E 使用固定服务快照，没有读取真实会话或验证真实远控连接。
+
+## issue #125 本地验证（2026-10-14）
+
+- GitHub issue 正文已核实。隔离真实组件先复现：从 10 月 15 日移到 10 月 8 日，仍显示 10 月 15 日的 0 Token。关闭活动提示的 hover 通道并让 Radix 定位外层穿透鼠标后，连续跨格与浮层覆盖区域均更新到当前日期。
+- `usageHeatmapHover.e2e.mjs` 在 1440px/375px 明暗主题通过，覆盖每日、每周、累计及离开关闭；`acpUsageStatistics.e2e.mjs` 和来源投影单测 6/6 通过。测试通过 `ZCODE_USAGE_E2E_ORIGIN` 使用本工作树的独立 Vite 服务与固定数据。
+- Node 24.14.0、pnpm 10.33.2：首次 typecheck 缺少 workflow 包的构建产物，执行现有 `pnpm --filter '@zcode/dynamic-workflow*' -r build` 后完整 `pnpm typecheck` 通过。`pnpm lint` 为 0 错误、74 条既有警告；目标文件 Lint 无警告，格式及 diff 检查通过，架构 baseline/new 均为 0。
+- 只改 UI、spec 与回归场景；Tooltip 继续持有提示开关，活动图继续使用既有只读投影，没有新增状态、查询、持久化或远端事件。未进行真实 Electron 安装包或手机远控实机验证。
