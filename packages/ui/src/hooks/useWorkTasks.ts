@@ -40,6 +40,8 @@ function commands(scope: WorkTaskScope, run: Run) {
       }),
     start: (id: string, feedback?: string) =>
       run(scope, (target) => target.start({ ...scope, id, ...(feedback ? { feedback } : {}) })),
+    restartWithNewSession: (id: string) =>
+      run(scope, (target) => target.start({ ...scope, id, newSession: true })),
     startAll: () => run(scope, (target) => target.startAll(scope)),
     cancel: (id: string) => run(scope, (target) => target.cancel({ ...scope, id })),
     complete: (id: string, forge?: WorkTaskForgeOptions, resendComment?: boolean) =>

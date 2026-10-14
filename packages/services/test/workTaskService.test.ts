@@ -134,6 +134,111 @@ for (const kind of ["api", "acp"] as const) {
   });
 }
 
+for (const kind of ["api", "acp"] as const) {
+  test(`${kind} failed task can restart with a fresh session and retain its workspace`, async () => {
+    const runs: WorkTask[] = [];
+    const binding = { kind, id: "damaged-session" };
+    const worktree = {
+      rootPath: "/trees",
+      path: "/trees/abcd/project",
+      projectPath: workspace.workspacePath,
+      branchName: "worktree/abcd",
+      baseCommit: "abcdef",
+    };
+    const f = await fixture(async (task, context) => {
+      runs.push(task);
+      if (runs.length === 1) {
+        await context.update({ session: binding, worktree });
+        throw new Error("damaged context");
+      }
+      await context.update({ session: { kind, id: "replacement-session" } });
+    });
+    try {
+      const a = f.makeService();
+      const b = f.makeService();
+      const task = await a.create({
+        ...draft,
+        execution: kind === "api" ? draft.execution : { kind, agent: "codex" as const, config: [] },
+      });
+      await a.start({ ...workspace, id: task.id });
+      await eventually(async () => (await a.list(workspace)).tasks[0]?.status === "failed");
+      const failed = (await b.list(workspace)).tasks[0]!;
+      const queued = await b.start({ ...workspace, id: task.id, newSession: true });
+      assert.equal(queued.status, "queued");
+      assert.equal(queued.session, undefined);
+      assert.deepEqual(queued.worktree, worktree);
+      assert.notEqual(queued.sessionRequestId, failed.sessionRequestId);
+      await assert.rejects(
+        a.start({ ...workspace, id: task.id, newSession: true }),
+        /work-task.new-session-unavailable/,
+      );
+      await eventually(async () => (await b.list(workspace)).tasks[0]?.status === "review");
+      assert.equal(runs.length, 2);
+      assert.equal(runs[1]?.id, task.id);
+      assert.equal(runs[1]?.runSeq, 2);
+      assert.equal(runs[1]?.session, undefined);
+      assert.deepEqual(runs[1]?.worktree, worktree);
+      assert.equal(runs[1]?.sessionRequestId, queued.sessionRequestId);
+      assert.equal((await a.list(workspace)).tasks[0]?.session?.id, "replacement-session");
+      const staleObserver = new WorkTaskRepo(f.dbPath);
+      await staleObserver.ready();
+      try {
+        assert.equal(
+          staleObserver.claimConversation(
+            failed,
+            "stale-host",
+            {
+              commandId: "old-session-late-command",
+              startedAt: Date.now() + 1000,
+              status: "running",
+            },
+            30_000,
+          ),
+          null,
+        );
+      } finally {
+        staleObserver.close();
+      }
+      await assert.rejects(
+        a.start({ ...workspace, id: task.id, newSession: true }),
+        /work-task.new-session-unavailable/,
+      );
+    } finally {
+      await f.cleanup();
+    }
+  });
+}
+
+test("new-session restart rejects unbound and remote tasks without enqueuing", async () => {
+  let executions = 0;
+  const f = await fixture(async () => {
+    executions++;
+    throw new Error("failure without binding");
+  });
+  try {
+    const service = f.makeService();
+    const task = await service.create(draft);
+    await assert.rejects(
+      service.start({ ...workspace, id: task.id, newSession: true }),
+      /work-task.new-session-unavailable/,
+    );
+    await service.start({ ...workspace, id: task.id });
+    await eventually(async () => (await service.list(workspace)).tasks[0]?.status === "failed");
+    await assert.rejects(
+      service.start({ ...workspace, id: task.id, newSession: true }),
+      /work-task.new-session-unavailable/,
+    );
+    await assert.rejects(
+      service.start({ ...workspace, workspaceIdentity: "remote", id: task.id, newSession: true }),
+      /work-task.remote-unsupported/,
+    );
+    assert.equal(executions, 1);
+    assert.equal((await service.list(workspace)).tasks[0]?.status, "failed");
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("two Hosts claim each task once without waiting for another project task", async () => {
   const started: string[] = [];
   const releases: (() => void)[] = [];

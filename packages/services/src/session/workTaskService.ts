@@ -302,7 +302,7 @@ export class WorkTaskService implements IWorkTaskService {
     const parsed = workTaskStartSchema.parse(input);
     assertWorkTaskLocal(parsed, this.options.allowExecution);
     await this.ready();
-    const task = this.options.repo.enqueue(parsed, parsed.id, parsed.feedback);
+    const task = this.options.repo.enqueue(parsed, parsed.id, parsed.feedback, parsed.newSession);
     this.publish();
     this.wake();
     return task;
