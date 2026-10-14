@@ -218,6 +218,14 @@ export function isWorkTaskForgePending(task: Pick<WorkTask, "forgeWriteback">): 
     !!state && [state.commentState, state.closeState].some((s) => s !== "done" && s !== "skipped")
   );
 }
+/** 有效同步租约才表示正在同步；失败收据或过期 owner 不应一直阻止清理。 */
+export function isWorkTaskForgeSyncing(
+  task: Pick<WorkTask, "forgeWriteback">,
+  now = Date.now(),
+): boolean {
+  const state = task.forgeWriteback;
+  return !!state?.owner && (state.leaseUntil ?? 0) > now;
+}
 export function workTaskSourceKey(
   source: Pick<WorkTaskSource, "repositoryKey" | "kind" | "number">,
 ): string {

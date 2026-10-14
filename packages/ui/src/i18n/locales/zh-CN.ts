@@ -166,6 +166,7 @@ const zhCN: Record<string, string> = {
   "workTasks.archive": "归档",
   "workTasks.cleanup.running": "清理中",
   "workTasks.cleanup.failed": "清理失败",
+  "workTasks.cleanup.waitingForForge": "任务已完成，正在同步议题，请稍后重试清理。",
   "workTasks.retryCleanup": "重试清理",
   "workTasks.archiveAndRemoveWorktree": "归档并删除工作树",
   "workTasks.archiveAndRemoveWorktreeBody":

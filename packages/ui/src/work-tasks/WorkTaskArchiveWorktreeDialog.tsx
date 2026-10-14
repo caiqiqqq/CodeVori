@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { WorkTask } from "@zcode/shared";
+import { isWorkTaskForgeSyncing, type WorkTask } from "@zcode/shared";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import {
   AlertDialog,
@@ -25,13 +25,15 @@ export function WorkTaskArchiveWorktreeDialog({
   const t = useWorkTaskMessages();
   const submitted = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const syncing = isWorkTaskForgeSyncing(task);
   const disabled =
     panel.busy ||
     !panel.executable ||
     task.stopPending ||
     task.status !== "done" ||
     !task.worktree ||
-    task.worktreeCleanup?.phase === "running";
+    task.worktreeCleanup?.phase === "running" ||
+    syncing;
   return (
     <AlertDialog
       open
@@ -53,6 +55,11 @@ export function WorkTaskArchiveWorktreeDialog({
             {task.worktree?.path}
           </p>
         </AlertDialogHeader>
+        {syncing ? (
+          <p role="status" className="text-ui-sm text-foreground-subtle">
+            {t("cleanup.waitingForForge")}
+          </p>
+        ) : null}
         <WorkTaskError error={error ?? task.worktreeCleanup?.error ?? null} />
         <AlertDialogFooter>
           <AlertDialogCancel disabled={panel.busy}>{t("close")}</AlertDialogCancel>

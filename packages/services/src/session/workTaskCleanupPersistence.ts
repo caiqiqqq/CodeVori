@@ -1,4 +1,10 @@
-import { WORK_TASK_ACTIVE_STATUSES, uuidv7, workTaskSchema, type WorkTask } from "@zcode/shared";
+import {
+  WORK_TASK_ACTIVE_STATUSES,
+  isWorkTaskForgeSyncing,
+  uuidv7,
+  workTaskSchema,
+  type WorkTask,
+} from "@zcode/shared";
 import { interruptWorkTaskRun } from "./workTaskRunState.js";
 import { writeWorkTask, type WorkTaskDatabase } from "./workTaskDatabase.js";
 
@@ -25,10 +31,11 @@ export function beginWorktreeCleanup(
     task.stopPending ||
     !task.worktree ||
     task.useWorktree === false ||
-    row.owner ||
-    (task.forgeWriteback?.owner && (task.forgeWriteback.leaseUntil ?? 0) > Date.now())
+    row.owner
   )
     throw new Error("work-task.not-cleanable");
+  // 完成事实与后台议题同步并存；同步占用应返回专用原因，不能误报任务未完成。
+  if (isWorkTaskForgeSyncing(task)) throw new Error("work-task.forge-busy");
   return writeWorkTask(
     db,
     { ...task, worktreeCleanup: { id: uuidv7(), phase: "running" }, updatedAt: Date.now() },

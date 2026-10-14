@@ -23,6 +23,7 @@ import { exerciseWorkTaskSelectionVisibility } from "./workTaskSelectionVisibili
 import { exerciseWorkTaskSidebarWidth } from "./workTaskSidebarWidthAssertions.mjs";
 import { exerciseWorkTaskExecutionConfig } from "./workTaskExecutionConfigAssertions.mjs";
 import { exerciseWorkTaskDetail } from "./workTaskDetailAssertions.mjs";
+import { exerciseWorkTaskCleanupSync } from "./workTaskCleanupSyncAssertions.mjs";
 
 export function launchWorkTaskBrowser() {
   return chromium.launch({
@@ -45,6 +46,7 @@ export {
   exerciseWorkTaskCompletion,
 };
 export const workTaskScenarios = {
+  "cleanup-sync": exerciseWorkTaskCleanupSync,
   detail: exerciseWorkTaskDetail,
   source: exerciseWorkTaskSource,
   "ai-result": exerciseWorkTaskResult,
