@@ -80,6 +80,9 @@ const zhCN: Record<string, string> = {
   "workTasks.start": "开始",
   "workTasks.startAll": "全部开始",
   "workTasks.retry": "重新开始",
+  "workTasks.retryNewSession": "使用新会话重新开始",
+  "workTasks.error.work-task.new-session-unavailable":
+    "仅失败且已绑定会话的任务可以使用新会话重新开始。",
   "workTasks.cancel": "取消执行",
   "workTasks.complete": "确认完成",
   "workTasks.completionMethod": "完成方式",

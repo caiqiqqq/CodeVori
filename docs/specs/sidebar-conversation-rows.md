@@ -49,6 +49,31 @@ ACP Agent 终态 → Host mutate(status + unreadAt) → 原子保存 → summary
 点击→已读、当前项完成→已读、手动未读、迟到 snapshot、同路径不同 Host，以及
 桌面/375px、浅深主题。效果图使用合成数据，不修改真实用户历史。
 
+## ACP 失败角标（issue #132）
+
+左侧项目、工作树、置顶和时间线的 ACP 会话行，在所属 Host 摘要为
+`status=interrupted` 且 `error` 非空时，在智能体图标右下角显示与 API 会话一致的
+红色失败角标；失败优先于未读。只有 `interrupted` 而没有错误时不判为失败，
+主动停止进入 `idle` 时不显示失败。新轮次开始由 Host 清除旧错误并进入 `running`，
+角标恢复运行状态；成功结束后按既有未读规则显示。
+
+Host 的 AcpSession/摘要是唯一状态所有者；侧栏 hook 从原有按 workspace identity、
+path、attachment 和 service 隔离的订阅投影 `status` 与有无 `error`，不保留错误正文、
+不新增 UI 状态或命令。相同 `status` 下错误变化也必须触发投影，旧 Host/旧 revision
+不能覆盖当前摘要。归档列表仍只显示品牌图标，不加运行状态角标。
+
+```text
+ACP 执行失败 → Host 保存 interrupted + error → scoped summary 广播/重连读取
+                                            → 侧栏投影：失败 > 未读 > 运行 > 无角标
+新一轮准入 → Host 保存 running + error=null ─┘
+桌面 continuous / 手机 replayable：只读取各自已有的 Host 摘要，不另建状态
+```
+
+验收：真实侧栏订阅及会话行测试覆盖失败且未读、无错误的 interrupted、主动停止、
+新轮运行、成功/未读、同状态错误变化、跨 Host 隔离和迟到快照。项目/工作树、置顶、
+时间线以及桌面/375px、Zai 浅深主题中检查红点可见、标题位置和行高稳定；
+不向 Host 发送写命令，也不读取 Agent。
+
 ## 当前会话选中反馈
 
 侧栏 API/ZCode 与 ACP 会话的当前行参考待办任务卡片：使用 `icon-blue` 蓝色内边线、

@@ -16,6 +16,8 @@ export interface AcpSidebarSession {
   deletionState?: "pending";
   unreadAt?: number | null;
   status: AcpSession["status"];
+  /** Host summary projection; lightweight navigation targets may omit it. */
+  failed?: boolean;
   workspacePath: string;
   workspaceIdentity?: string;
   remoteSessionId?: string;
@@ -57,6 +59,8 @@ export function projectAcpSidebarSessions(
         deletionState: session.deletionState,
         unreadAt: session.unreadAt,
         status: session.status,
+        // 修复原因：ACP 没有 failed 状态枚举；只有中断且 Host 留有错误才表示失败，主动停止不能亮红点。
+        failed: session.status === "interrupted" && Boolean(session.error),
         workspacePath: session.workspacePath,
         ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
         ...(workspace.remoteSessionId ? { remoteSessionId: workspace.remoteSessionId } : {}),

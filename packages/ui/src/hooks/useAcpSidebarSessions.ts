@@ -22,6 +22,7 @@ function sameSidebarRows(
         previous.deletionState === row.deletionState &&
         previous.unreadAt === row.unreadAt &&
         previous.status === row.status &&
+        previous.failed === row.failed &&
         previous.createdAt === row.createdAt &&
         previous.updatedAt === row.updatedAt
       );

@@ -38,9 +38,9 @@ function Fixture(){
 const params=new URLSearchParams(location.search), agent=params.get('agent')==='api'?null:'codex';
 const initialScope=agent?(params.get('scope')==='connected'?'acp:provisional-source':'acp-draft:workspace-main:codex'):'__draft__';
 const [target,setTarget]=useState({path:'/synthetic/source',identity:undefined as string|undefined,scope:initialScope});
-const [selected,setSelected]=useState(true),[autoSend,setAutoSend]=useState(null as any),[ready,setReady]=useState(true);
+const [selected,setSelected]=useState(true),[autoSend,setAutoSend]=useState(null as any),[ready,setReady]=useState(true),[sourceTransferred,setSourceTransferred]=useState(false);
 const provisional=target.path==='/synthetic/tree'&&target.scope==='acp:target';
-const sourceScope=provisional?'acp-draft:workspace-main:codex':shouldInheritWorktreeAutoSendDraft(autoSend,target.path,target.identity,null,agent,target.scope.startsWith('acp-draft:'))?'__draft__':undefined;
+const sourceScope=provisional&&!sourceTransferred?'acp-draft:workspace-main:codex':shouldInheritWorktreeAutoSendDraft(autoSend,target.path,target.identity,null,agent,target.scope.startsWith('acp-draft:'))?'__draft__':undefined;
 const control=useDraftConfigControl({workspacePath:target.path,workspaceIdentity:target.identity,sessionId:null,composerScopeId:target.scope,composerDraftSourceScopeId:sourceScope,modelSelectionService:null,agentStartupAllowed:false});
 const {composerDraft:draft,updateComposerContent:update,replaceComposerDraft:replace}=control;
 state.rootDraft=()=>readV4ComposerDraft('/synthetic/tree',undefined,'__draft__');state.connectTarget=()=>setTarget(old=>({...old,scope:'acp:target'}));
@@ -52,7 +52,7 @@ return <WorktreeDraftIntentContext.Provider value={intent}><main className="min-
 <ConversationComposer snapshot={null} sessionId={null} composerScopeId={target.scope} composerDraftSourceScopeId={sourceScope} draftMode
 composerDraft={draft} updateComposerContent={update} replaceComposerDraft={replace} workspacePath={target.path} workspaceIdentity={target.identity}
 acpAgent={agent} acpSessionId={target.scope.startsWith('acp:')?target.scope.slice(4):null} acpReady={ready} disabled={!agent&&!ready}
-onSendAcpText={async text=>{state.calls.push({path:target.path,kind:'acp',text:text.text});return 'sent'}}
+onSendAcpText={async text=>{state.calls.push({path:target.path,kind:'acp',text:text.text});setSourceTransferred(true);await new Promise(resolve=>requestAnimationFrame(resolve));return 'sent'}}
 onSendText={async text=>{state.calls.push({path:target.path,kind:'api',text});return 'sent'}}
 onStop={noop} onSelectModel={noop} onSelectThought={noop} onSwitchMode={noop} autoFocusEnabled={false} listenAddToChatEvents={false}/></main></WorktreeDraftIntentContext.Provider>;
 }
@@ -132,6 +132,10 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={p
           kind: kind === "api" ? "api" : "acp",
           text: "测试自动工作树首发",
         });
+        await page.waitForFunction(
+          () => document.querySelector('[data-testid="v4-composer-input"]')?.textContent === "",
+        );
+        assert.equal(await page.evaluate(() => window.__worktree.draft.text), "");
         await page.evaluate(() => window.__worktree.setReady(false));
         await page.evaluate(() => window.__worktree.setReady(true));
         await page.evaluate(

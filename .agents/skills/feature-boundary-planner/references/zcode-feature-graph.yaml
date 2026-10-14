@@ -474,6 +474,7 @@ nodes:
       - 待办任务
       - 代办任务
       - 项目待办
+      - 失败任务新会话重新开始
     codeSeeds:
       - file: packages/shared/src/work-task.ts
         symbol: workTaskSchema
@@ -482,6 +483,7 @@ nodes:
     invariants:
       - The target Host owns accepted task state; UI drafts and board projections are not another queue.
       - Starting and local task merging are explicit; ordinary completion and archive never write Git or delete a worktree or session.
+      - A failed task with a bound session may explicitly enqueue with a fresh session request while retaining the task and worktree; ordinary retry retains the binding.
       - The first phase executes local Git projects only; remote targets cannot fall back to local execution.
   - id: surface.work-tasks-board
     kind: ui-surface
@@ -604,6 +606,8 @@ nodes:
         symbol: WorkTaskService
       - file: packages/services/src/session/workTask.ts
         symbol: IWorkTaskService
+    invariants:
+      - Fresh-session retry clears the failed task binding and renews its creation request in the same SQLite admission transaction; owner, lease and runSeq fence stale work.
   - id: persistence.work-task-record
     kind: persistence
     label: Shared local task SQLite records, atomic claims and legacy settings

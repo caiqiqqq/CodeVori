@@ -57,6 +57,21 @@ test("ACP sidebar projects only durable conversations for the resolved workspace
   );
 });
 
+test("ACP sidebar projects only the failure fact from its Host session", () => {
+  const [failed, stopped, idle] = projectAcpSidebarSessions(
+    [
+      session("failed", { status: "interrupted", error: "agent disconnected", unreadAt: 150 }),
+      session("stopped", { status: "interrupted", error: null }),
+      session("idle", { status: "idle", error: "old error" }),
+    ],
+    { workspacePath: "/tmp/project", workspaceIdentity: "remote-one" },
+  );
+  assert.equal(failed?.failed, true);
+  assert.equal(stopped?.failed, false);
+  assert.equal(idle?.failed, false);
+  assert.equal("error" in (failed ?? {}), false, "sidebar must not retain the error text");
+});
+
 test("ACP sidebar uses accepted entry time and frozen Host legacy snapshot time", () => {
   const [dated, old, mixed, unknown] = projectAcpSidebarSessions(
     [
