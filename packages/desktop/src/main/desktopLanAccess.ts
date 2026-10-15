@@ -9,6 +9,10 @@ import { HostMessageTypes, PlatformChannels, type DesktopLanAccessState } from "
 /** Main 仅拥有监听器及 attachment 路由。不存在第二份 services/runtime。 */
 export function registerDesktopLanAccess(options: {
   hosts: Map<number, UtilityProcess>;
+  preference: {
+    getEnabled(): Promise<boolean>;
+    setEnabled(enabled: boolean): Promise<void>;
+  };
   onError: (error: unknown) => void;
 }) {
   type Entry = {
@@ -21,6 +25,20 @@ export function registerDesktopLanAccess(options: {
   const entries = new Map<number, Entry>();
   const flights = new Map<number, Promise<DesktopLanAccessState>>();
   const generations = new Map<number, number>();
+  const restorations = new Map<
+    number,
+    { host: UtilityProcess | undefined; promise: Promise<void> }
+  >();
+  const lifetime = new AbortController();
+  let restoreWindowId: number | undefined;
+  let disposed = false;
+  let operations: Promise<unknown> = Promise.resolve();
+  // 恢复与手动开关共用入口，避免异步读取旧设置后重新打开已关闭的监听器。
+  const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = operations.then(operation);
+    operations = result.catch(() => {});
+    return result;
+  };
   const disabled = (): DesktopLanAccessState => ({ enabled: false, urls: [] });
   const state = (id: number): DesktopLanAccessState => {
     const entry = entries.get(id);
@@ -38,6 +56,9 @@ export function registerDesktopLanAccess(options: {
   };
   async function start(win: BrowserWindow): Promise<DesktopLanAccessState> {
     const id = win.id;
+    if (entries.has(id) && entries.get(id)!.host !== options.hosts.get(win.webContents.id)) {
+      await stop(id);
+    }
     if (entries.has(id)) return state(id);
     const existing = flights.get(id);
     if (existing) return existing;
@@ -97,6 +118,7 @@ export function registerDesktopLanAccess(options: {
         },
       });
       if (
+        disposed ||
         win.isDestroyed() ||
         host !== options.hosts.get(win.webContents.id) ||
         generation !== generations.get(id)
@@ -136,25 +158,102 @@ export function registerDesktopLanAccess(options: {
     if (!win) throw new Error("Desktop window unavailable");
     return win;
   };
-  ipcMain.handle(PlatformChannels.GetDesktopLanAccess, (event) =>
-    state(senderWindow(event.sender).id),
-  );
+  const restoreWindow = async (win: BrowserWindow): Promise<void> => {
+    if (disposed || win.isDestroyed()) return;
+    // 只有首个主窗口自动恢复；窗口 id 只用于本进程路由，不作为持久化身份。
+    restoreWindowId ??= win.id;
+    if (restoreWindowId !== win.id) return;
+    const host = options.hosts.get(win.webContents.id);
+    if (!host) return;
+    if (!host.pid) {
+      // 生命周期回调早于 utilityProcess spawn；监听真实事件，不用超时猜测就绪。
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          host.off("spawn", done);
+          host.off("exit", done);
+          win.off("closed", done);
+          lifetime.signal.removeEventListener("abort", done);
+          resolve();
+        };
+        host.once("spawn", done);
+        host.once("exit", done);
+        win.once("closed", done);
+        lifetime.signal.addEventListener("abort", done, { once: true });
+      });
+    }
+    await enqueue(async () => {
+      if (
+        disposed ||
+        win.isDestroyed() ||
+        restoreWindowId !== win.id ||
+        host !== options.hosts.get(win.webContents.id) ||
+        !host.pid
+      )
+        return;
+      if (
+        !(await options.preference.getEnabled()) ||
+        disposed ||
+        win.isDestroyed() ||
+        host !== options.hosts.get(win.webContents.id)
+      )
+        return;
+      await start(win);
+    });
+  };
+  const restore = (win: BrowserWindow): Promise<void> => {
+    const current = restorations.get(win.id);
+    const host = options.hosts.get(win.webContents.id);
+    // Host 重建不能复用旧进程尚未完成的恢复，否则新的 spawn 通知会被吞掉。
+    if (current && current.host === host) return current.promise;
+    const pending = restoreWindow(win).finally(() => {
+      if (restorations.get(win.id)?.promise === pending) restorations.delete(win.id);
+    });
+    restorations.set(win.id, { host, promise: pending });
+    return pending;
+  };
+  ipcMain.handle(PlatformChannels.GetDesktopLanAccess, async (event) => {
+    const win = senderWindow(event.sender);
+    await restorations.get(win.id)?.promise;
+    return enqueue(async () => state(win.id));
+  });
   ipcMain.handle(PlatformChannels.SetDesktopLanAccessEnabled, async (event, enabled: unknown) => {
     if (typeof enabled !== "boolean") throw new Error("Invalid enabled value");
     const win = senderWindow(event.sender);
-    if (!enabled) {
-      await stop(win.id);
-      return disabled();
-    }
-    return start(win);
+    return enqueue(async () => {
+      if (disposed || win.isDestroyed()) throw new Error("Desktop window unavailable");
+      if (!enabled) {
+        try {
+          await options.preference.setEnabled(false);
+        } finally {
+          await stop(win.id);
+        }
+        return disabled();
+      }
+      const result = await start(win);
+      if (!result.enabled) return result;
+      try {
+        await options.preference.setEnabled(true);
+        restoreWindowId = win.id;
+        return state(win.id);
+      } catch (error) {
+        await stop(win.id);
+        throw error;
+      }
+    });
   });
+  const onQuit = () => {
+    void dispose().catch(options.onError);
+  };
   const dispose = async () => {
+    disposed = true;
+    lifetime.abort();
+    app.off("will-quit", onQuit);
     ipcMain.removeHandler(PlatformChannels.GetDesktopLanAccess);
     ipcMain.removeHandler(PlatformChannels.SetDesktopLanAccessEnabled);
-    await Promise.allSettled([...entries.keys(), ...flights.keys()].map(stop));
+    await enqueue(async () => {
+      await Promise.all([...new Set([...entries.keys(), ...flights.keys()])].map(stop));
+    });
   };
-  app.once("will-quit", () => {
-    void dispose().catch(options.onError);
-  });
-  return { dispose };
+  app.once("will-quit", onQuit);
+  return { dispose, restore };
 }

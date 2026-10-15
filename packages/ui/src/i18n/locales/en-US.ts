@@ -3,7 +3,7 @@ import { PRODUCT_NAME } from "@zcode/shared";
 const enUS: Record<string, string> = {
   "settings.desktopLan.title": "Phone access over LAN",
   "settings.desktopLan.description":
-    "Connect your phone to this desktop window and its projects, conversations and running sessions.",
+    "Connect your phone to this desktop window and its projects, conversations and running sessions. Your choice is remembered: access is restored for the main window after updates or restarts, until you disable it.",
   "settings.desktopLan.start": "Enable access",
   "settings.desktopLan.stop": "Disable access",
   "settings.desktopLan.enabled": "LAN access is enabled",
@@ -13,7 +13,7 @@ const enUS: Record<string, string> = {
     "Connect your phone to the same local network and open any reachable URL below. Focus a field to select the full link.",
   "settings.desktopLan.token": "Mobile app connection token",
   "settings.desktopLan.tokenDescription":
-    "In the mobile app, enter a root URL above and this token separately. Re-enabling access generates a new token.",
+    "In the mobile app, enter a root URL above and this token separately. Re-enabling access or restarting generates a new token. Pair again using the current connection URL.",
   "settings.desktopLan.hint":
     "Use on a trusted local network; HTTP is unencrypted. Disabling access or quitting the desktop disconnects your phone.",
   "chat.visualization.title": "Interactive preview",

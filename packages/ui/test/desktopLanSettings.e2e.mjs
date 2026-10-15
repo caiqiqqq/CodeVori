@@ -40,7 +40,7 @@ try {
     const snapshot=()=>({enabled:state.enabled,urls:state.enabled?['http://192.168.1.23:3030','http://10.0.0.2:3030','http://169.254.1.2:3030']:[],token:state.enabled?state.token:undefined});
     const platform:any={
       getDesktopLanAccess:async()=>{state.calls.push('read');const value=snapshot();if(state.holdRead){state.holdRead=false;await new Promise(resolve=>state.releaseRead=resolve)}return value},
-      setDesktopLanAccessEnabled:async(enabled:boolean)=>{state.calls.push(enabled?'enable':'disable');if(state.holdWrite){state.holdWrite=false;await new Promise(resolve=>state.releaseWrite=resolve)}if(state.fail){state.fail=false;throw new Error('Synthetic toggle failure')}state.enabled=enabled;return snapshot()},
+      setDesktopLanAccessEnabled:async(enabled:boolean)=>{state.calls.push(enabled?'enable':'disable');if(state.holdWrite){state.holdWrite=false;await new Promise(resolve=>state.releaseWrite=resolve)}if(state.fail){state.fail=false;if(state.failClosed){state.enabled=false;state.failClosed=false}throw new Error('Synthetic toggle failure')}state.enabled=enabled;return snapshot()},
       onSettingsChanged:()=>()=>{},selectDirectory:async()=>null,
     };
     const broadcast:any={send:async()=>{},onMessage:()=>({dispose(){}})};
@@ -165,6 +165,20 @@ try {
     4,
     "Failed disable retains authoritative enabled state",
   );
+  await page.evaluate(() => {
+    window.__lan.fail = true;
+    window.__lan.failClosed = true;
+  });
+  await toggle.click();
+  await ready();
+  assert.equal(
+    await panel.locator("input").count(),
+    0,
+    "Read actual disabled state after persistence failure",
+  );
+  assert.equal(await panel.getByRole("alert").count(), 1, "Preserve the persistence error");
+  await toggle.click();
+  await ready();
   await toggle.click();
   await ready();
   assert.equal(await panel.locator("input").count(), 0);

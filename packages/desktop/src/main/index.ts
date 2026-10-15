@@ -673,6 +673,7 @@ const UPDATE_STATUS_WINDOW_PROGRESS_HEIGHT = 224;
 const UPDATE_STATUS_WINDOW_READY_HEIGHT = UPDATE_STATUS_WINDOW_PROGRESS_HEIGHT - 54;
 const UPDATE_STATUS_WINDOW_TRAFFIC_LIGHT_POSITION = { x: 10, y: 10 } as const;
 const mainSettingService = createSettingService();
+let desktopLanAccess: ReturnType<typeof registerDesktopLanAccess> | undefined;
 const appLaunchGate = createAppLaunchGate();
 const appLaunchCoordinator = createAppLaunchCoordinator(appLaunchGate);
 const appTelemetryCredentialService = createCredentialService();
@@ -1703,7 +1704,16 @@ function createWindowInstance(startupBootstrap: StartupWindowBootstrap = {}) {
         hideWindow: () => win.hide(),
       }),
     windowHostProcessMap,
-    onHostProcessReady: (windowKey) => cuaPipFocusRouter.refreshWindow(windowKey),
+    onHostProcessReady: (windowKey) => {
+      cuaPipFocusRouter.refreshWindow(windowKey);
+      const contents = webContents.fromId(windowKey);
+      const window = contents ? BrowserWindow.fromWebContents(contents) : null;
+      if (window) {
+        void desktopLanAccess
+          ?.restore(window)
+          .catch((error) => logger.warn("[desktop-lan] failed to restore access", error));
+      }
+    },
     awaitFirstHostSpawnDecision,
     spawnHostProcess: (win, label, initMessage) =>
       spawnHostProcess(
@@ -1934,8 +1944,14 @@ app.on("second-instance", (_event, argv, _workingDirectory, additionalData) => {
 });
 
 app.whenReady().then(async () => {
-  registerDesktopLanAccess({
+  desktopLanAccess = registerDesktopLanAccess({
     hosts: windowHostProcessMap,
+    preference: {
+      getEnabled: async () => (await mainSettingService.get()).desktopLanAccessEnabled ?? false,
+      setEnabled: async (enabled) => {
+        await mainSettingService.update({ desktopLanAccessEnabled: enabled });
+      },
+    },
     onError: (error) => logger.warn("[desktop-lan] gateway lifecycle failed", error),
   });
   markMainLaunchAppReady();

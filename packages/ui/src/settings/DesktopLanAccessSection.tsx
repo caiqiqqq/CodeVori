@@ -37,6 +37,9 @@ export function DesktopLanAccessSection() {
       setState(await platform.setDesktopLanAccessEnabled!(!state.enabled));
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
+      // 关闭时即使偏好保存失败，Main 仍会停止监听；失败后重新读取事实，避免页面继续显示已开启。
+      const actual = await platform.getDesktopLanAccess!().catch(() => undefined);
+      if (actual) setState(actual);
     } finally {
       setBusy(false);
     }
