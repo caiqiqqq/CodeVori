@@ -1645,6 +1645,8 @@ const zhCN: Record<string, string> = {
   "git.selection.toggle": "切换 {file} 的勾选状态",
   "git.empty.title": "当前来源下没有可展示的改动",
   "git.empty.description": "可以切换其它来源，或等当前 workspace 产生新的 Git 改动后再查看。",
+  "git.empty.otherWorktreeSource": "当前来源没有文件改动；{source}中有 {count} 个改动文件。",
+  "git.action.viewSource": "查看{source}改动（{count}）",
   "git.loading.description": "正在读取当前工作区的 Git 状态和文件改动。",
   "git.error.title": "无法加载 Git 改动",
   "git.error.description": "Git 返回错误：{message}",

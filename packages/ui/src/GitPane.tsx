@@ -105,6 +105,23 @@ export function GitPane({
   );
   const normalizedFileChangeFindQuery = fileChangeFindQuery.trim();
 
+  // 修复原因：Git 摘要合计已暂存与未暂存，但审查只看单一来源；另一来源有文件时
+  // 必须明确指出入口。按文件数判断，避免二进制、重命名等零行变化再次被当成无改动。
+  const alternateWorktreeSource =
+    !gitState.loading &&
+    !gitState.error &&
+    gitState.summary.isGitAvailable &&
+    gitState.summary.isRepository &&
+    currentChanges.length === 0 &&
+    (currentSourceOption.id === "staged" || currentSourceOption.id === "unstaged")
+      ? gitState.sourceOptions.find(
+          (option) =>
+            option.id === (currentSourceOption.id === "staged" ? "unstaged" : "staged") &&
+            !option.disabled &&
+            option.count > 0,
+        )
+      : undefined;
+
   const emptyStateCopy = useMemo(() => {
     if (currentSourceOption.id === "last-turn") {
       return {
@@ -152,9 +169,18 @@ export function GitPane({
 
     return {
       title: intl.formatMessage({ id: "git.empty.title" }),
-      description: intl.formatMessage({ id: "git.empty.description" }),
+      description: alternateWorktreeSource
+        ? intl.formatMessage(
+            { id: "git.empty.otherWorktreeSource" },
+            {
+              source: intl.formatMessage({ id: getSourceMessageId(alternateWorktreeSource.id) }),
+              count: alternateWorktreeSource.count,
+            },
+          )
+        : intl.formatMessage({ id: "git.empty.description" }),
     };
   }, [
+    alternateWorktreeSource,
     currentSourceOption.id,
     gitState.error,
     gitState.loading,
@@ -458,6 +484,9 @@ export function GitPane({
             {gitState.sourceOptions.map((option) => (
               <SelectItem key={option.id} value={option.id} disabled={option.disabled}>
                 {intl.formatMessage({ id: getSourceMessageId(option.id) })}
+                <span className="text-ui-xs tabular-nums text-foreground-subtle">
+                  {option.count}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>
@@ -538,6 +567,24 @@ export function GitPane({
             <FileTextIcon className="size-8 text-foreground-subtlest" />
             <p className="mt-3 text-ui-base font-medium text-foreground">{emptyStateCopy.title}</p>
             <p className="mt-1 text-ui-base text-foreground-subtle">{emptyStateCopy.description}</p>
+            {alternateWorktreeSource ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3"
+                onClick={() => handleSelectSource(alternateWorktreeSource.id)}
+              >
+                {intl.formatMessage(
+                  { id: "git.action.viewSource" },
+                  {
+                    source: intl.formatMessage({
+                      id: getSourceMessageId(alternateWorktreeSource.id),
+                    }),
+                    count: alternateWorktreeSource.count,
+                  },
+                )}
+              </Button>
+            ) : null}
           </div>
         )}
       </div>
