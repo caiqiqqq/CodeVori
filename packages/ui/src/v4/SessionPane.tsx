@@ -553,6 +553,8 @@ export function SessionPane({
   draftComposerHeader,
   onDropTargetControllerChange,
   gitSummary,
+  // 状态小窗已使用宿主的首读标记；遗漏解构会使实际渲染报未定义错误。
+  gitLoading,
   gitDirtyFileCount,
   gitWorktreeReviewSourceId,
   gitWorktreeChangeSummary,
