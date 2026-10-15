@@ -585,7 +585,9 @@ export function useAcpConversation(
     if (!selected || !loaded || selected.provisional) return;
     // 修复原因：Codeg 选择历史会话时就恢复 ACP，实时配置和认证错误应在发送前可见。
     refreshSession(selected);
-  }, [loaded, refreshSession, selected]);
+    // 修复原因：重开同一会话会清除 readyIds，但 selected 对象可能不变（回复结束后尤其如此）。
+    // 选择意图也必须触发恢复，不能等待下一条 Host 通知或靠切换其它对话解锁发送。
+  }, [loaded, refreshSession, selected, selectedIds]);
 
   useEffect(() => {
     const previous = previousAgentRef.current;
