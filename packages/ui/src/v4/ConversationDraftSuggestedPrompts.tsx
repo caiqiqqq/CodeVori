@@ -289,13 +289,14 @@ export function ConversationDraftSuggestedPrompts({
     <div
       data-v4-draft-suggested-prompts="true"
       className={cn(
-        "w-full min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        "w-full min-w-0 md:overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         className,
       )}
     >
       <div
         data-v4-draft-suggested-prompts-group="true"
-        className="mx-auto flex w-max items-center gap-4"
+        // 手机单行会把后续入口藏在横向滚动区；换行展示，桌面保留原来的单行布局。
+        className="mx-auto flex w-full flex-wrap items-center justify-center gap-2 md:w-max md:flex-nowrap md:gap-4"
       >
         {items.map((item, index) => {
           const label = resolveDraftSuggestedPromptText(item.label, locale);
@@ -318,7 +319,7 @@ export function ConversationDraftSuggestedPrompts({
                   title={label}
                   disabled={!onSelect || disabled}
                   onClick={onSelect ? () => onSelect(item) : undefined}
-                  className="zcode-draft-prompt-waterfall h-8 min-w-0 justify-start gap-1.5 overflow-hidden rounded-lg px-3 text-left text-ui-caption font-normal leading-4.5 text-foreground"
+                  className="zcode-draft-prompt-waterfall h-8 min-w-0 max-w-full shrink-0 justify-start gap-1.5 overflow-hidden rounded-lg px-3 text-left text-ui-caption font-normal leading-4.5 text-foreground"
                   style={
                     {
                       "--zcode-draft-prompt-waterfall-delay": `${index * 65}ms`,

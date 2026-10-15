@@ -94,6 +94,23 @@ export default defineConfig(({ mode }) => {
       "import.meta.env.VITE_ZAI_OAUTH_ORIGIN": JSON.stringify(zaiOAuthOrigin),
     },
     build: {
+      rolldownOptions: {
+        output: {
+          // 默认拆分让每个共享图标都成为独立预加载请求，手机 HTTP/1.1 会排队数百次。
+          // 按稳定依赖族合并，仍保留业务页面和重型预览的动态导入边界。
+          strictExecutionOrder: true,
+          codeSplitting: {
+            groups: [
+              {
+                name: "react",
+                test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/,
+                priority: 20,
+              },
+              { name: "icons", test: /node_modules[\\/]lucide-react[\\/]/, priority: 10 },
+            ],
+          },
+        },
+      },
       // 生产不在浏览器产物暴露 sourceMappingURL，避免客户端侧还原业务源码。
       sourcemap: mode === "production" ? "hidden" : true,
     },

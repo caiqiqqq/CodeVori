@@ -6,8 +6,14 @@ const enUS: Record<string, string> = {
     "Connect your phone to this desktop window and its projects, conversations and running sessions.",
   "settings.desktopLan.start": "Enable access",
   "settings.desktopLan.stop": "Disable access",
+  "settings.desktopLan.enabled": "LAN access is enabled",
+  "settings.desktopLan.disabled": "LAN access is disabled",
   "settings.desktopLan.link": "Phone browser URL (includes access credentials)",
+  "settings.desktopLan.linkDescription":
+    "Connect your phone to the same local network and open any reachable URL below. Focus a field to select the full link.",
   "settings.desktopLan.token": "Mobile app connection token",
+  "settings.desktopLan.tokenDescription":
+    "In the mobile app, enter a root URL above and this token separately. Re-enabling access generates a new token.",
   "settings.desktopLan.hint":
     "Use on a trusted local network; HTTP is unencrypted. Disabling access or quitting the desktop disconnects your phone.",
   "chat.visualization.title": "Interactive preview",

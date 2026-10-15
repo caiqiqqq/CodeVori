@@ -726,10 +726,13 @@ export function ConversationDraftSuggestedPromptsContainer({
   );
 
   return (
-    <div data-v4-draft-suggested-prompts-slot="true" className={cn(!proactive && "h-8", className)}>
+    <div
+      data-v4-draft-suggested-prompts-slot="true"
+      className={cn(!proactive && "min-h-8", className)}
+    >
       <ConversationDraftSuggestedPrompts
         // 绝对定位让推荐区脱离 Composer 的正常结构，调试和间距语义都不直观。
-        // 旧场景推荐保留固定槽位；主动推荐列表必须由内容撑高，否则多行会溢出并覆盖下方内容。
+        // 场景推荐只保留最小行高，手机换行与主动推荐列表都由内容撑高，避免覆盖下方内容。
         items={items}
         layout={proactive ? "list" : "chips"}
         onSelect={handleSelect}

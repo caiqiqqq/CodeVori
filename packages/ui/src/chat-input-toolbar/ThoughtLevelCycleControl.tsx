@@ -202,22 +202,25 @@ export function ThoughtLevelCycleControl({
           // "inline-flex @lg/composer:hidden",
         )}
       />
-      <span
-        className={cn(
-          "relative w-1 self-stretch overflow-hidden rounded-full bg-current/10",
-          composerCollapsePriority !== undefined
-            ? "hidden group-data-[composer-compact=true]/thought:inline-flex"
-            : "hidden @sm/composer:inline-flex @xl/composer:hidden",
-        )}
-        aria-hidden="true"
-      >
+      {/* 手机紧凑工具栏的绿色竖条像额外按钮且含义不明；只保留原图标和可访问档位，桌面保持原显示。 */}
+      <span className="hidden md:contents" aria-hidden="true">
         <span
           className={cn(
-            "absolute bottom-0 left-0 w-full rounded-full bg-success transition-[height] duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-            progressPercent > 0 ? "min-h-1" : undefined,
+            "relative w-1 self-stretch overflow-hidden rounded-full bg-current/10",
+            composerCollapsePriority !== undefined
+              ? "hidden group-data-[composer-compact=true]/thought:inline-flex"
+              : "hidden @sm/composer:inline-flex @xl/composer:hidden",
           )}
-          style={{ height: `${progressPercent}%` }}
-        />
+          data-thought-level-progress="true"
+        >
+          <span
+            className={cn(
+              "absolute bottom-0 left-0 w-full rounded-full bg-success transition-[height] duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+              progressPercent > 0 ? "min-h-1" : undefined,
+            )}
+            style={{ height: `${progressPercent}%` }}
+          />
+        </span>
       </span>
       <span
         ref={labelRef}

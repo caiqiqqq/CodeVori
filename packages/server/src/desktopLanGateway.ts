@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
 import {
@@ -12,6 +12,7 @@ import {
   type ISocket,
 } from "@zcode/rpc";
 import { windowHostAttachmentScopeSchema, type WindowHostAttachmentScope } from "@zcode/shared";
+import { sendDesktopLanStatic } from "./desktopLanStatic.js";
 
 export interface DesktopLanAttachment {
   protocol: IMessagePassingProtocol;
@@ -182,14 +183,13 @@ export async function createDesktopLanGateway(options: {
         send(response, 403, "Forbidden");
         return;
       }
-      const content = await readFile(file);
-      response.writeHead(200, {
-        "Content-Type": MIME[extname(file)] ?? "application/octet-stream",
-        "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff",
-        "Referrer-Policy": "no-referrer",
-      });
-      response.end(request.method === "HEAD" ? undefined : content);
+      await sendDesktopLanStatic(
+        request,
+        response,
+        file,
+        root,
+        MIME[extname(file)] ?? "application/octet-stream",
+      );
     })().catch(() => {
       if (!response.headersSent) send(response, 400, "Invalid request");
       else response.end();

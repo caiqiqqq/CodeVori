@@ -47,6 +47,8 @@ sequenceDiagram
 - 用户分别输入 Web 根地址和必填访问 Token；以一份受保护的手机 SecureStore 记录保存，不把 Token 写入普通设置。首次页面请求按现有 Web 服务接口附带查询参数，服务将其交换为 HttpOnly cookie；局域网明文 HTTP 会暴露传输中的 Token，必须局限于可信网络。
 - WebView 只允许继续访问已配置的同源地址；外部 HTTPS 链接交给系统浏览器。
 - 当 Web 工作区实际宽度低于 768px（包括手机浏览器和手机 WebView）时，外层桌面侧栏在首次布局时自动收起，主内容占满可用宽度；侧栏显隐仍由 `useAppPanels` 的既有状态所有者管理，桌面宽度和用户手动显隐不受影响。Web 窄屏始终保留侧栏切换入口，工作任务看板再按自身容器宽度切换单栏/双栏。
+- 手机宽度低于 768px 时，新建会话输入框下的场景快捷入口自动换行，全部入口直接可见，不依赖横向滑动；项间距为 8px，单个长标签限制在容器宽度内。推荐区槽位随内容增高，不能固定为一行导致遮挡下方内容。桌面继续单行居中及溢出时横向滚动，办公模式的主动推荐列表不变。列表及顺序仍由现有 Client Scenes 服务提供，点击继续走同一草稿填入/插件流程，不创建第二份推荐状态。
+- 快捷入口布局验收：使用真实推荐组件及容器、合成 Client Scenes 的五个项目，在 320px/375px/390px、明暗主题和中英文下验证全部按钮位于可见宽度内、无重叠、容器包住所有行、末尾两项可点击且写入原草稿请求；1280px 保留单行。覆盖长英文标签及桌面宽度不足时的横向滚动，不发起真实模型请求。
 - 移动 Web 使用 HTTP 局域网地址时，浏览器可能提供 `crypto.getRandomValues` 但不提供 `crypto.randomUUID`；所有 UI 临时 ID 必须通过共享 UUID 工具生成，不能直接调用 `crypto.randomUUID()`。UUID 能力差异不能阻断首屏渲染、输入框交互或会话初始化。OAuth nonce 保留现有安全随机源要求，不使用非安全随机降级。
 - 回归场景：在 375px 手机视口禁用 `crypto.randomUUID`、保留 `getRandomValues`，验证真实输入组件可聚焦、可输入且发送按钮可用，提交仅由合成服务接纳；同时保留桌面有 `randomUUID` 的场景。Agent 未就绪时继续遵守连接门禁，不能为了恢复输入绕过该状态。
 - 断线展示重试，断开连接只删除手机凭据，不删除 Web 服务的会话。清除凭据后旧 WebView 立即卸载；WebView 的 Cookie 应按发行前的设备退出语义进一步验证。
@@ -81,6 +83,18 @@ sequenceDiagram
 ## 局域网连接桌面窗口（本次已授权）
 
 目标是手机浏览器显示所选桌面窗口的同一项目列表和会话事实。新增桌面局域网入口，明确区别于独立 `zcode --web`；不启动第二套 `createLocalServices`、Agent 或远端连接。
+
+### 手机资源加载与推理控件
+
+- 小于 768px 的手机视口不显示推理强度的绿色竖条，保留 Brain 图标、当前档位的可访问名称及原有选择菜单；桌面继续沿用已有强度显示。控件仍从原配置读取当前值，用户选择只调用原回调，不新增档位或推理状态。
+- 桌面 LAN 网关在鉴权及路径安全检查后才能提供静态资源或返回 304。HTML、配对、错误、API 继续 `no-store`；带内容哈希的 `/assets/` 文件使用浏览器私有长期缓存，其他静态文件私有缓存但每次验证，避免共享缓存存储受保护内容。
+- 可压缩且不小于 1KiB 的文本或 WASM 资源按 `Accept-Encoding` 协商 gzip，显式 `gzip;q=0` 不使用 gzip；设置 `Vary: Accept-Encoding`、正确的 `Content-Encoding` 和 `Content-Length`，HEAD 保留同 GET 的元信息但无响应体。压缩使用异步 IO/线程池，不在 Main 同步压缩大文件，不建立新的资源状态所有者。
+- 可缓存静态资源以内容摘要作为 ETag，匹配 `If-None-Match` 时返回无响应体的 304；源文件变化后验证失效。响应失败不能返回成功内容，鉴权、Host/Origin、目录穿越及符号链接边界保持原规则。缓存只覆盖构建资源，不覆盖会话、Token 或 API 响应。
+- Web 构建使用当前 Rolldown 支持的依赖分组策略合并图标等过碎的共享模块，降低首屏请求数；保留动态导入和重型预览懒加载，不通过关闭所有预加载或内联整个应用掩盖问题。以构建产物和通过真实 LAN 网关的冷/热加载测量验收，不能把本机模拟当成 iPhone 实测。
+
+验证：真实推理控件在 320px/390px/桌面、中英文及明暗主题下可操作且手机无绿色条；HTTP 测试覆盖 gzip/禁用压缩/HEAD/ETag/修改失效/鉴权后 304、HTML/API 不缓存及原 RPC 隔离；构建后检查入口资源数、压缩体积、浏览器第二次访问的资源缓存命中和运行时模块错误。已有手机列表、返回和侧栏修复保持不变。
+
+2026-10-15 本地验证：`mobileThoughtLevel.e2e.mjs`、`desktopLanStatic.test.ts` 和原有 `desktopLanGateway.test.ts` 通过。Web 生产构建的入口资源从 283 个降至 49 个；通过真实 LAN 网关、390px Chromium、10Mbps/20ms 模拟网络，冷加载资源传输 2,897,963 字节，第二次访问的 49 个资源全部命中浏览器缓存。此结果仅覆盖静态资源加载和生产模块初始化，不代表真实工作区就绪时间或 iOS/Android 实机表现；安装中的桌面版本未因此自动更新。
 
 - 桌面窗口的 Renderer 是打开项目及顺序、侧栏排序偏好的输入源；通过现有 WindowController 服务发布完整窗口投影。Host 为该投影赋予 epoch/revision，并向手机提供读取与变更事件。Web attachment 不能发布投影。
 - 手机连接时先订阅再读取，按 epoch/revision 丢弃迟到快照，精确替换项目成员与顺序；保留仍存在的手机当前选择、草稿和稳定 tab id。手机不把派生项目列表写回 `lastWorkspaceSession`，也不能在桌面投影之外创建或关闭项目。
@@ -119,6 +133,31 @@ sequenceDiagram
 - 根目录 `pnpm typecheck`、`pnpm lint`、`pnpm architecture:check --changed`，Web 及 Desktop Main/Host/Preload/Renderer 构建已通过。独立 Desktop Main/Preload/Renderer 子工程的额外类型检查仍有错误（包括缺失导出、rootDir 和 Window 类型声明），不视为通过。
 
 以上不等于安装版本已升级、当前用户 Host 已联通或 iOS/Android 实机验收；旧的 5173/3030 独立入口不会因此自动切换。
+
+## 局域网访问设置入口与布局
+
+- 设置左侧「基础设置」新增独立的「局域网手机访问」菜单，不再嵌入「常规」。仅拥有局域网读取、开关平台接口的桌面客户端显示；Web 或不支持该能力的平台收到此分区的历史偏好/导航意图时回到常规。
+- 页面复用设置页标题和内容宽度。访问开关、手机浏览器地址、手机 App Token 分组展示，卡片内容至少保留 16px 水平内边距。每个地址显示根地址及可选中的完整连接链接，Token 使用独立的密码输入框；长链接、多个网卡地址和英文文案不撑破窄屏布局。
+- Main 局域网网关仍是访问状态和凭据的唯一所有者。页面挂载读取当前状态，读取完成前不能操作开关；只在显式点击时调用现有平台开关接口，错误显示在页内。离开菜单不会关闭访问，返回时重新读取真实状态，不持久化 Token 到 UI 设置。
+- 本次不调整网关、Host、attachment 或网卡筛选语义；桌面 continuous 与手机 replayable 链路不变。
+
+```mermaid
+sequenceDiagram
+  participant Nav as 设置导航
+  participant UI as 局域网访问页
+  participant Main as Main 局域网网关
+  Nav->>UI: 进入独立分区
+  UI->>Main: getDesktopLanAccess
+  Main-->>UI: 当前状态、地址、凭据
+  UI->>Main: 用户点击 setDesktopLanAccessEnabled
+  Main-->>UI: 权威结果或错误
+  Nav->>UI: 离开并卸载页面
+  Note over Nav,Main: 不发送关闭命令；再次进入重新读取
+```
+
+验收：桌面菜单可达且常规页不重复；Web 隐藏入口并回退历史落点；开启/关闭、失败重试、菜单往返保持网关状态；长链接及多个地址在 375px/桌面、明暗主题、中英文下有内边距且无横向溢出。使用合成平台的共享 UI 交互 E2E，不修改真实桌面访问状态。
+
+验证入口：`TSX_TSCONFIG_PATH=packages/ui/tsconfig.json node --import tsx --test packages/ui/test/desktopLanSettingsNavigation.test.ts`；`NODE_OPTIONS='--import tsx' node packages/ui/test/desktopLanSettings.e2e.mjs`（自行启动并关闭隔离的 Vite 测试服务）。
 
 ## 后续范围
 
