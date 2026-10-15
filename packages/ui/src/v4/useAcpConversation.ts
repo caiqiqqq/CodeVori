@@ -237,6 +237,17 @@ export function useAcpConversation(
   );
 
   useEffect(() => {
+    if (selectedWorkspaceKeyRef.current === workspaceKey) return;
+    // 首次跨工作区打开历史时，延迟激活的订阅曾清掉刚选中的 id。
+    // 作用域清理先于 pane 消费打开意图，且不依赖激活；仅 attachment 重连不清选择。
+    selectedWorkspaceKeyRef.current = workspaceKey;
+    selectedIdsRef.current = {};
+    selectedRef.current = null;
+    archivedOpenIds.current.clear();
+    setSelectedIds({});
+  }, [workspaceKey]);
+
+  useEffect(() => {
     if (agent) setActivated(true);
   }, [agent]);
 
@@ -247,14 +258,6 @@ export function useAcpConversation(
     const removed = new Set<string>();
     setLoadedTargetKey(null);
     setSessions([]);
-    // remoteSessionId 重连只更换 attachment，不抹掉用户选中的同工作区历史会话。
-    if (selectedWorkspaceKeyRef.current !== workspaceKey) {
-      selectedWorkspaceKeyRef.current = workspaceKey;
-      selectedIdsRef.current = {};
-      selectedRef.current = null;
-      archivedOpenIds.current.clear();
-      setSelectedIds({});
-    }
     attempted.current.clear();
     refreshed.current.clear();
     refreshRequests.current.clear();

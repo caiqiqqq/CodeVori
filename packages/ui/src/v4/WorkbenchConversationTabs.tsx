@@ -54,8 +54,20 @@ export function WorkbenchConversationTabs({
   const { intl } = useZCodeIntl();
   const containerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    const tabs = containerRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
-    tabs?.[paneIds.indexOf(focusedPaneId)]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const container = containerRef.current;
+    const tab =
+      container?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[
+        paneIds.indexOf(focusedPaneId)
+      ];
+    if (!container || !tab) return;
+    const viewport = container.getBoundingClientRect();
+    const bounds = tab.getBoundingClientRect();
+    // scrollIntoView 会连带滚动 overflow-hidden 的工作区，把手机左上角按钮裁掉；只滚标签容器。
+    if (bounds.left < viewport.left || bounds.width > viewport.width) {
+      container.scrollLeft += bounds.left - viewport.left;
+    } else if (bounds.right > viewport.right) {
+      container.scrollLeft += bounds.right - viewport.right;
+    }
   }, [focusedPaneId, paneIds]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -71,7 +83,9 @@ export function WorkbenchConversationTabs({
     if (!paneId) return;
     event.preventDefault();
     onActivate(paneId);
-    containerRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
+    containerRef.current
+      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+      [nextIndex]?.focus({ preventScroll: true });
   };
 
   return (
