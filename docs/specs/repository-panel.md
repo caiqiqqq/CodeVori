@@ -283,6 +283,23 @@ panel remount / page restart -> local preference -> same navigation/read paths
   timestamps. Change requests also show source/target branches, changed-file
   patches and checks. Partial permission failures are reported per section,
   rather than making a successfully loaded item disappear.
+- Returning from an item detail to the list refreshes the current list snapshot
+  through the existing `useRepositoryPanel` revision owner. This applies to
+  newly created issues as well as existing items, preserves the current
+  filters/page/remote, and must discard any stale list response through the
+  existing owner and generation guards. It does not create a second cache or
+  write path, and it does not refresh while the detail remains open.
+
+```text
+close detail -> panel.refresh() -> scoped Forge list read -> current list owner
+                                  \-> stale prior response discarded
+```
+
+Acceptance: after creating an issue, the first post-create list read may still
+return the provider's old snapshot; closing the detail performs another read
+and the returned list shows the new issue without a manual toolbar refresh.
+Existing filters, page and remote selection remain unchanged.
+
 - Item details replace the list inside the repository main view, rather than
   opening a narrow side drawer. Keep the application's navigation and project
   scope; show repository/item breadcrumbs with a back command, title and actions,

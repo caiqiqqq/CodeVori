@@ -2294,6 +2294,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                     statusPanel: {
                                       workspaceKey: gitState.workspaceKey,
                                       gitSummary: gitState.summary,
+                                      gitLoading: gitState.loading,
                                       gitDirtyFileCount,
                                       gitWorktreeReviewSourceId,
                                       gitWorktreeChangeSummary,

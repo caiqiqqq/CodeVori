@@ -148,8 +148,6 @@ test("agent-specific field and auth method labels exist in both locales", () => 
     ),
     ...ACP_AGENT_ENV_FIELDS.antigravity[0].options.map((method) => `method.${method}`),
     ...ACP_AGENT_ENV_FIELDS.gemini[0].options.map((method) => `method.${method}`),
-    "agentTools",
-    "agentToolsHint",
     "saveGemini",
     "geminiAuthDocs",
     ...ACP_AGENT_ENV_FIELDS.gemini[0].options.map((mode) => `geminiHint.${mode}`),

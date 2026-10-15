@@ -27,6 +27,7 @@ export type WorkTaskConversationOptions = Pick<
   statusPanel?: Pick<
     SessionPaneProps,
     | "gitSummary"
+    | "gitLoading"
     | "gitDirtyFileCount"
     | "gitWorktreeReviewSourceId"
     | "gitWorktreeChangeSummary"
@@ -60,6 +61,7 @@ export function WorkTaskSessionView({
   const scope = { workspacePath: binding.workspacePath };
   const { statusPanel, ...paneOptions } = options ?? {};
   // 修复原因：待办会话漏传宿主 Git 投影；目标切换先于宿主刷新时也不能串入旧工作树数据或操作。
+  // gitLoading 由同一宿主投影传入，避免把目标切换后的空 summary 误显示成 Git 不可用。
   const scopedStatusPanel =
     statusPanel?.workspaceKey === (task.workspaceIdentity?.trim() || binding.workspacePath)
       ? statusPanel
