@@ -5,6 +5,7 @@
 - ACP Host 仍是连接、已接受输入、队列、附件副本与 revision 的唯一所有者；UI 仅拥有选择意图、尚未接受的草稿、操作等待及可见行的临时预览 URL。
 - 可见消息的图片/视频预取按附件的有效 ref、MIME、原序号及 workspace/session/reader/row target 标识生命周期。连续事件或重连快照即使克隆了附件数组，只要这些输入相同，不取消读取、不销毁 URL、不重新读取。附件目标或读取 Host 改变、行卸载时仍取消并释放；不新增跨会话内容缓存。
 - 同一 Agent 的旧会话恢复/配置/停止操作不得阻塞新选中的会话。等待状态绑定完整 workspace target、草稿 epoch、Agent 和会话 id；草稿连接等待仅作用于无选择的对应草稿。旧响应仍需经过既有 request/revision/selection 守卫。
+- 显式打开当前 ACP 会话也属于新的选择意图：即使 Host 没有新 revision、所选会话对象未变，清除就绪标记后仍须执行既有 refresh。回复结束且没有后续通知时，不能停留在不可发送状态，也不要求切换到其它会话恢复。useAcpConversation 的 selectedIds 是选择意图的唯一状态；不新增连接状态或发送路径。
 - 已就绪会话发送直接调用 `submitPrompt`，不再串行调用重复 `refresh`。Host 的 admission 仍核验连接、权限、能力、附件及幂等键，失败保留草稿；确认丢失沿用同 commandId 的 read 对账。不能提前把 UI 就绪当作 Host 接受。
 - 不改变 owner/lease 或跨 Host 路由，不缩短超时来掩盖同步问题，不改主智能体或委派规则。
 
@@ -21,6 +22,9 @@ sequenceDiagram
   Host-->>UI: durable acceptance ACK
   Host->>Agent: 同一轮 prompt
   Host-->>UI: Desktop continuous / Mobile replayable 快照
+  UI->>UI: 回复完成后显式重开同一会话，更新选择意图
+  UI->>Host: refresh（不依赖后续 Host 通知触发）
+  Host-->>UI: 同一目标就绪；恢复发送，保留草稿
   UI->>Media: 同一附件内容标识
   Note over Media: 保留在途读取/已加载 URL
   UI->>Host: 选择 B（A 的恢复可仍在途）
@@ -31,6 +35,7 @@ sequenceDiagram
 
 - 真实 SessionPane/图片组件 + synthetic Host：同一可见行生命周期内的 idle/running 连续克隆快照保持图片 URL 和读取次数（当前轮在 live tail/虚拟历史之间移动时沿用原重挂载规则）；新增或替换 ref 读取新内容，切换会话不会显示旧图片。1280/375px 都覆盖。
 - 真实 useAcpConversation：A 恢复挂起时选择同 Agent 的 B，B 就绪后可发送，迟到 A 不影响 B；idle/running 输入都只经过 submitPrompt，不产生发送前 refresh。错误与旧响应隔离仍成立。
+- 真实 SessionPane / Composer：模拟回复完成，保留下一条草稿，再次打开相同 session（新的打开 request）；没有后续 Host 通知时仍须 refresh 并恢复按钮和 Enter，正文保持不变且只提交一次。覆盖 1280/375px、浅深主题及 Desktop continuous / Web remote replayable；旧请求仍通过既有 request/revision/selection 守卫，不引入超时解锁。
 - 运行现有图片/队列/草稿/归档回归，以及 typecheck、lint、changed architecture 和改动格式检查。日志证据与 synthetic 验证不能表述为已安装应用的性能修复。
 
 ## 本地验证（2026-10-09）
@@ -40,3 +45,10 @@ sequenceDiagram
 - Node 24.14.0：UI 读取/行投影/admission 19 项与 Host 会话/队列 48 项共 67 项通过。5 组 E2E 通过：会话等待隔离与发送、图片/时间轴、草稿复用、归档、消息队列；覆盖 1280/375px、附件替换及拒绝重试。图片/队列/时间轴沿用真实组件与 synthetic Host，无真实模型请求。
 - 动态工作流依赖构建后根 `pnpm typecheck` 通过；`pnpm lint` 0 errors、72 warnings；架构 current/baseline/new 均为 0；改动格式与 `git diff --check` 通过。首轮检查受缺失依赖产物影响，不计为通过。
 - 状态所有者和协议不变，源码仅修改 ui 模块，净增 29 行。未构建或替换已安装应用，未提交、推送；真实使用的端到端卡顿需新版运行验证。
+
+## Issue #153 本地验证（2026-10-15）
+
+- GitHub issue 已核实。新增真实 SessionPane/Composer 回归：回复完成后显式重开同一会话，Host 不再发布通知；修复前等待 refresh 超时，修复后恢复发送且保留草稿。此证据确认一种触发路径，无法仅凭截图认定用户当次故障的完整事件顺序。
+- `acpMessageQueue.e2e.mjs` 通过，覆盖 1280/375px、浅深主题、continuous/replayable 目标、Enter/按钮各只提交一次及既有队列回归；`acpInteractionLatency.e2e.mjs` 与 admission/queue projection 9 项测试通过。使用 synthetic Host，无真实模型调用或手机网络连接。
+- Node 24.14.0：首次 typecheck 缺动态工作流构建产物；构建这两个现有依赖后重跑通过。Lint 0 errors、74 项已有 warnings；架构 current/baseline/new 均为 0，改动格式与 diff 检查通过。源码仅 ui 模块净增 2 行，未增加状态所有者、协议或写入路径。
+- 未提交、推送或替换已安装应用；截图中的实际故障仍需新版运行确认。

@@ -32,9 +32,11 @@ try {
       import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
       import '../../../ui/src/styles.css';
       const workspacePath='/synthetic/queue';
+      const remoteSessionId=new URLSearchParams(location.search).get('delivery')==='replayable'?'fixture-attachment':undefined;
+      const workspaceIdentity=remoteSessionId?'fixture-remote-queue':undefined;
       const listeners=new Set(); const events=[];
       let holdNext=false, held=null, dropAcceptance=false, deleteMode='normal', heldDelete=null, lastInput=null;
-      let snapshot={id:crypto.randomUUID(),agent:'codex',workspacePath,acpSessionId:'native-fixture',
+      let snapshot={id:crypto.randomUUID(),agent:'codex',workspacePath,workspaceIdentity,remoteSessionId,acpSessionId:'native-fixture',
         title:'queue fixture',revision:1,status:'running',entries:[{id:'user:first',kind:'user',text:'first task'}],
         configOptions:[],modeState:null,contextUsage:null,usageTurns:[],goal:null,pendingPermission:null,error:null,
         queue:{items:[],autoDrain:true}};
@@ -42,7 +44,7 @@ try {
       const publish=()=>{snapshot={...snapshot,revision:snapshot.revision+1};for(const listener of listeners) listener({kind:'updated',session:copy()});return copy()};
       const requireItem=id=>{const item=snapshot.queue.items.find(item=>item.commandId===id);if(!item||item.state!=='queued') throw new Error('queue item unavailable');return item};
       const acpService={
-        list:async()=>[copy()],read:async()=>copy(),refresh:async()=>copy(),
+        list:async()=>[copy()],read:async()=>copy(),refresh:async()=>{events.push("refresh");return copy()},
         listAvailableAgents:async()=>[{agent:'codex',available:true}],listAgentConfigs:async()=>[],
         listPlugins:async()=>[], onDynamicAgentConfigsChanged:()=>()=>({dispose(){}}),
         onDynamicSessionChanged:()=>listener=>{listeners.add(listener);return {dispose:()=>listeners.delete(listener)}} ,
@@ -65,10 +67,11 @@ try {
       const platform={isMacOS:false,isWindows:false,isLinux:false,isWeb:true};
       function Fixture(){
         const [epoch,setEpoch]=useState(0);
-        window.__queue={events,read:copy,lastInput:()=>lastInput,deleteMode:value=>deleteMode=value,deleting:()=>Boolean(heldDelete),releaseDelete:()=>{heldDelete?.();heldDelete=null},seedFile:()=>{snapshot.queue.items.push({commandId:'file-edit',text:'inspect [source.txt](./src/source.txt)',attachments:[{ref:'acp-attachment:00000000-0000-4000-8000-000000000000/0',fileName:'note.txt',mime:'text/plain',bytes:12}],workspaceFiles:['src/source.txt'],state:'queued',createdAt:Date.now()});publish()},hold:()=>holdNext=true,release:()=>{held?.resolve();held=null},reject:()=>{held?.reject(Error('synthetic admission failed'));held=null},acceptBeforeAck:()=>{const input=held.input;snapshot.queue.items.push({commandId:input.commandId,text:input.text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});publish()},dropAcceptance:()=>dropAcceptance=true,replay:()=>{publish();setEpoch(n=>n+1)},pause:()=>{snapshot.queue.autoDrain=false;snapshot.queue.pauseReason='error';publish()}};
+        const [openRequestId,setOpenRequestId]=useState(1);
+        window.__queue={events,read:copy,reopen:()=>setOpenRequestId(n=>n+1),complete:()=>{snapshot.status="idle";publish()},lastInput:()=>lastInput,deleteMode:value=>deleteMode=value,deleting:()=>Boolean(heldDelete),releaseDelete:()=>{heldDelete?.();heldDelete=null},seedFile:()=>{snapshot.queue.items.push({commandId:'file-edit',text:'inspect [source.txt](./src/source.txt)',attachments:[{ref:'acp-attachment:00000000-0000-4000-8000-000000000000/0',fileName:'note.txt',mime:'text/plain',bytes:12}],workspaceFiles:['src/source.txt'],state:'queued',createdAt:Date.now()});publish()},hold:()=>holdNext=true,release:()=>{held?.resolve();held=null},reject:()=>{held?.reject(Error('synthetic admission failed'));held=null},acceptBeforeAck:()=>{const input=held.input;snapshot.queue.items.push({commandId:input.commandId,text:input.text,attachments:[],workspaceFiles:[],state:'queued',createdAt:Date.now()});publish()},dropAcceptance:()=>dropAcceptance=true,replay:()=>{publish();setEpoch(n=>n+1)},pause:()=>{snapshot.queue.autoDrain=false;snapshot.queue.pauseReason='error';publish()}};
         return <main className="h-screen bg-background text-foreground p-2" data-fixture-ready="true">
-          <SessionPane key={epoch} paneId="queue-fixture" workspacePath={workspacePath} sessionId={null} focused
-            acpBoundSessionId={snapshot.id} acpOpenRequest={{requestId:epoch+1,session:copy()}} />
+          <SessionPane key={epoch} paneId="queue-fixture" workspacePath={workspacePath} workspaceIdentity={workspaceIdentity} remoteSessionId={remoteSessionId} sessionId={null} focused
+            acpBoundSessionId={snapshot.id} acpOpenRequest={{requestId:openRequestId,session:copy()}} />
         </main>;
       }
       createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform as never}><TabStoreProvider><ServiceProvider services={services as never}><ZCodeIntlProvider initialLocale="zh-CN"><TooltipProvider><V4ConversationContext.Provider value={native as never}><Fixture/></V4ConversationContext.Provider></TooltipProvider></ZCodeIntlProvider></ServiceProvider></TabStoreProvider></PlatformProvider>);
@@ -80,7 +83,10 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
-    await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`);
+    const delivery = width === 375 ? "replayable" : "continuous";
+    await page.goto(
+      `${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html?delivery=${delivery}`,
+    );
     const input = page.locator('[data-testid="v4-composer-input"]');
     await input.waitFor({ timeout: 15000 }).catch((error) => {
       throw new Error(errors.join("\n") || error.message);
@@ -260,12 +266,57 @@ try {
         false,
       );
       await page.screenshot({ path: join(artifacts, `queue-${theme}-${width}.png`) });
+      // Issue #153: completing a turn then explicitly reopening the same session must
+      // refresh even without another Host event; the mounted composer keeps its draft.
+      await page.evaluate(() => window.__queue.complete());
+      const followup = `after completion ${theme} ${width}`;
+      await input.fill(followup);
+      const sendButton = page.getByTestId("v4-composer-send");
+      await page.waitForFunction(
+        () => !document.querySelector('[data-testid="v4-composer-send"]')?.disabled,
+      );
+      const refreshes = await page.evaluate(
+        () => window.__queue.events.filter((event) => event === "refresh").length,
+      );
+      await page.evaluate(() => window.__queue.reopen());
+      // No publish/replay/remount after reopen: only refresh may restore readiness.
+      await page.waitForFunction(
+        (expected) =>
+          window.__queue.events.filter((event) => event === "refresh").length === expected,
+        refreshes + 1,
+        { timeout: 3000 },
+      );
+      await page.waitForFunction(
+        () => !document.querySelector('[data-testid="v4-composer-send"]')?.disabled,
+        null,
+        { timeout: 3000 },
+      );
+      assert.equal(
+        await page.evaluate(
+          () => window.__queue.events.filter((event) => event === "refresh").length,
+        ),
+        refreshes + 1,
+      );
+      assert.equal(await input.textContent(), followup, "Reopening preserves the next draft");
+      await page.screenshot({ path: join(artifacts, `reopened-${theme}-${width}.png`) });
+      if (theme === "light") await input.press("Enter");
+      else await sendButton.click();
+      await page.waitForFunction(
+        () => document.querySelector('[data-testid="v4-composer-input"]')?.textContent === "",
+      );
+      assert.equal(
+        await page.evaluate(
+          (text) => window.__queue.events.filter((event) => event === "prompt:" + text).length,
+          followup,
+        ),
+        1,
+      );
     }
     assert.deepEqual(errors, [], errors.join("\n"));
     await page.close();
   }
   console.log(
-    `PASS: API-style withdrawal, draft conflicts, rejection/delayed ACK, frozen file and mention restoration, immediate pending feedback, failure/retry, live-before-ACK, silent ACK, newer drafts, running composer admission, edit/delete/drag/send-now/resume and replay at 1280/375px in both themes. Screenshots: ${artifacts}`,
+    `PASS: API-style withdrawal, draft conflicts, rejection/delayed ACK, frozen file and mention restoration, immediate pending feedback, failure/retry, live-before-ACK, silent ACK, newer drafts, running composer admission, edit/delete/drag/send-now/resume and replay, same-session reopening after completion with Enter/button sends at 1280/375px in both themes (continuous/replayable targets). Screenshots: ${artifacts}`,
   );
 } finally {
   await browser?.close();
