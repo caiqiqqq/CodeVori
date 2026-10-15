@@ -2054,7 +2054,9 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
           data-panel=""
           id="content"
           className={cn(
-            "flex min-w-[320px] flex-1 flex-col",
+            "flex flex-1 flex-col",
+            // 手机侧栏展开后剩余宽度不足 320px；允许主区收缩，避免撑宽外壳并被标签/焦点滚动裁切导航。
+            isDesktop ? "min-w-[320px]" : "min-w-0 md:min-w-[320px]",
             hasDesktopPanelInset ? "p-1 pl-0 pt-0" : "p-0",
           )}
         >

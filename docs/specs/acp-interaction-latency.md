@@ -9,6 +9,29 @@
 - 已就绪会话发送直接调用 `submitPrompt`，不再串行调用重复 `refresh`。Host 的 admission 仍核验连接、权限、能力、附件及幂等键，失败保留草稿；确认丢失沿用同 commandId 的 read 对账。不能提前把 UI 就绪当作 Host 接受。
 - 不改变 owner/lease 或跨 Host 路由，不缩短超时来掩盖同步问题，不改主智能体或委派规则。
 
+### 跨工作区首次打开历史
+
+- `useAcpConversation` 在 workspace identity/path 变化时先清理旧选择，再由 pane 消费新打开意图。该清理不依赖 ACP 是否激活、列表是否返回或订阅是否建立；不能在延迟激活后清掉当前工作区刚选中的历史 id。
+- 选择仍由既有 `selectedIds` 唯一持有，Host 仍拥有历史和连接；列表加载不创建第二条选择写入路径。同路径不同 identity 必须隔离，仅 `remoteSessionId` 变化时保留同工作区的选择并重订阅。
+- 首次历史点击必须直接显示该 id 的历史并走既有 refresh，不能误走草稿 create。旧工作区延迟 list/refresh 或旧 attachment 响应不能覆盖新工作区。显式新建任务仍清理历史选择。
+
+```mermaid
+sequenceDiagram
+  participant Pane as SessionPane 打开意图
+  participant UI as useAcpConversation 选择所有者
+  participant Host as 已有 Host
+  Pane->>UI: 工作区 identity/path 改变
+  UI->>UI: 无条件完成旧作用域选择清理
+  Pane->>UI: 消费本次精确历史 id
+  UI->>Host: 初始化订阅、读取列表、refresh 历史
+  Host-->>UI: 当前 target 的历史投影
+  Note over UI,Host: Desktop continuous / 手机 replayable 共用此选择顺序
+```
+
+验收：真实 SessionPane 从未激活的项目草稿首次跨项目选择历史成功；同项目首次、跨 identity、已有 ACP 激活后跨项目、同工作区 attachment 重连、旧读取迟到均保留正确目标。连续与恢复链路均验证，不发送模型请求。
+
+2026-10-15 验证：`acpFirstSelection.e2e.mjs` 修复前在跨项目首次打开的历史可见性断言失败；修复后真实 SessionPane 的同项目/跨项目首次、相同路径及 id 的不同 identity、激活后切换、旧 list/refresh 迟到、新建草稿、attachment 重连均通过，历史打开不调用 create。1280px continuous 与 394px replayable 目标均覆盖。现有 `acpInteractionLatency.e2e.mjs`、`acpMessageQueue.e2e.mjs`、`acpArchiveSelection.e2e.mjs` 回归通过。仅合成 Host 与历史内容，未调用真实模型或安装程序，未验证 iPhone Safari 实机。
+
 ```mermaid
 sequenceDiagram
   participant UI as Pane 选择/草稿
