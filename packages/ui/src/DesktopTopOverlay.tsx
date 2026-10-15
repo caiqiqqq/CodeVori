@@ -1,4 +1,3 @@
-import { PRODUCT_NAME } from "@zcode/shared";
 import type { IPlatformService, UpdateStatePayload } from "@zcode/shared";
 import { cn } from "@/components/lib/utils.js";
 import {
@@ -36,7 +35,6 @@ interface DesktopTopOverlayProps {
   canGoBack: boolean;
   canGoForward: boolean;
   showNewTaskButton?: boolean;
-  appLogoUrl: string;
   platform: IPlatformService;
   onToggleSidebar: () => void;
   onCreateTask: () => void;
@@ -66,7 +64,6 @@ export function DesktopTopOverlay({
   canGoBack: _canGoBack,
   canGoForward: _canGoForward,
   showNewTaskButton,
-  appLogoUrl,
   platform,
   onToggleSidebar,
   onCreateTask,
@@ -132,13 +129,7 @@ export function DesktopTopOverlay({
             "pointer-events-auto flex items-center gap-1 shrink-0 [app-region:no-drag]",
           )}
         >
-          {/* macOS 原先让 Logo 和独立图标都切换侧栏，形成重复入口；Logo 仅展示，所有平台统一保留一个图标按钮。 */}
-          {isMacDesktop && (
-            <span className="inline-flex size-7 shrink-0 items-center justify-center">
-              <img src={appLogoUrl} alt={PRODUCT_NAME} className="size-5" draggable={false} />
-            </span>
-          )}
-
+          {/* 用户需要移除 V 图标本身，保留原侧栏按钮；默认、悬停和聚焦均只显示侧栏图标。 */}
           <DesktopTopOverlayActionButton
             title={toggleSidebarTitle}
             shortcut={toggleSidebarShortcutLabel}

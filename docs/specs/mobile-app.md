@@ -136,6 +136,37 @@ sequenceDiagram
 
 ## 局域网访问设置入口与布局
 
+### 开关在更新和重启后保留
+
+- 在既有 `AppSettings` 中新增 `desktopLanAccessEnabled` 保存最近一次用户选择，缺省为 false。Main 通过现有设置服务异步读写，网关仍仅拥有监听器及 attachment；不保存 Token、端口、项目或会话副本。
+- 启动后只为首个主应用窗口恢复入口，等待该窗口已有 Local Host 的进程 spawn，再检查保存的选择；帮助、更新等非工作区窗口不参与。其它新窗口不自动开放。手动在另一窗口开启时，该窗口成为本进程后续 Host 重建的恢复目标。
+- 同一 Main 管理器串行处理恢复和手动开关，保持既有 generation/Host 校验；迟到的启动不能覆盖关闭。GET 等待在途恢复/设置操作后返回实际监听状态。每次开启成功后再保存 true；保存失败关闭新入口并报错。关闭即使保存失败也必须关闭监听器并报错。
+- 手动关闭保存 false；窗口关闭、Host 退出、应用退出只清理监听器，不清除用户选择。恢复失败记录诊断并保持实际关闭，不启动另一 Host 或定时重试。退出时取消等待 spawn 的恢复工作，不留下监听器。
+- 开关操作失败时设置页重新读取 Main 实际状态，同时保留原错误，避免关闭监听器后页面仍显示已开启。读取也失败时不推测状态。
+- 重启或更新会生成新 Token 和端口；旧连接失效，手机需使用当前连接地址重新配对。此变更保证开关自动恢复，不承诺旧链接继续可用。旧版本从未持久化过开关，新版本首次需开启一次才能记住。
+
+```mermaid
+sequenceDiagram
+  participant UI as 设置页
+  participant Main as LAN 管理器
+  participant Settings as 既有设置服务
+  participant Host as 已有窗口 Host
+  UI->>Main: 开启
+  Main->>Host: 绑定已有 Host 的网关
+  Main->>Settings: 保存 true
+  Note over Main,Host: 更新/退出清理网关，保留选择
+  Host-->>Main: 新进程的主窗口 Host spawn
+  Main->>Settings: 读取 true
+  Main->>Host: 恢复网关，手机使用 replayable attachment
+  UI->>Main: 关闭（与恢复串行）
+  Main->>Settings: 保存 false
+  Main->>Host: 清理网关及 attachment
+```
+
+验收：缺省关闭；启用后重建 Main 管理器/重启进程自动恢复；手动关闭后重启仍关闭；新窗口不自动开放；Host 重建仍绑定当前 Host；退出和关闭期间的恢复不得残留监听器；设置读写失败可见、入口实际关闭；Token 不持久化且每次恢复更新。继续执行原有真实 Electron IPC/MessagePort/Host 测试，服务均为合成服务，不操作真实用户会话。
+
+2026-10-15 验证：`desktopLanAccess.electron.test.mjs` 通过，包含三次隔离 Electron 启动、缺省关闭、启用恢复及关闭后不恢复、真实 Host spawn/重建、旧 Host 的迟到恢复、新窗口隔离、恢复与关闭顺序、设置读写失败及关闭/退出清理；原有 HTTP/WebSocket 同 Host 测试保持通过。`desktopLanAccessSettings.test.ts` 通过真实设置服务验证 true/false 持久化、重新读取及非法值拒绝。`desktopLanSettings.e2e.mjs` 通过，并覆盖写入失败后重新显示实际关闭状态且保留错误。根目录类型检查、Lint（0 错误、74 条警告）、架构检查（0 违规）和 Desktop Main/Host/Preload/Scheduler 构建通过。未安装到当前程序，未进行手机实机或真实更新安装验收。
+
 - 设置左侧「基础设置」新增独立的「局域网手机访问」菜单，不再嵌入「常规」。仅拥有局域网读取、开关平台接口的桌面客户端显示；Web 或不支持该能力的平台收到此分区的历史偏好/导航意图时回到常规。
 - 页面复用设置页标题和内容宽度。访问开关、手机浏览器地址、手机 App Token 分组展示，卡片内容至少保留 16px 水平内边距。每个地址显示根地址及可选中的完整连接链接，Token 使用独立的密码输入框；长链接、多个网卡地址和英文文案不撑破窄屏布局。
 - Main 局域网网关仍是访问状态和凭据的唯一所有者。页面挂载读取当前状态，读取完成前不能操作开关；只在显式点击时调用现有平台开关接口，错误显示在页内。离开菜单不会关闭访问，返回时重新读取真实状态，不持久化 Token 到 UI 设置。

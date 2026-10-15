@@ -64,6 +64,7 @@ try {
     import {once} from 'node:events';
     import {join} from 'node:path';
     import {writeSync} from 'node:fs';
+    import {readFile,writeFile} from 'node:fs/promises';
     import {app,BrowserWindow,utilityProcess} from 'electron';
     import {WebSocket} from 'ws';
     import {Emitter,VSBuffer,SocketProtocol,ChannelClient,ProxyChannel} from '@zcode/rpc';
@@ -76,9 +77,27 @@ try {
       const win=new BrowserWindow({show:false,webPreferences:{nodeIntegration:true,contextIsolation:false}});
       await win.loadURL('about:blank');
       const host=utilityProcess.fork(join(app.getAppPath(),'host.cjs'));
-      await once(host,'message');
+      const hostReady=once(host,'message');
       const hosts=new Map([[win.webContents.id,host]]);
-      const errors=[];const manager=registerDesktopLanAccess({hosts,onError:error=>errors.push(String(error))});
+      const errors=[];
+      const preferenceFile=join(${JSON.stringify(root)},'lan-preference.json');
+      const preference={getEnabled:async()=>{try{return JSON.parse(await readFile(preferenceFile,'utf8')).enabled===true}catch(error){if(error.code==='ENOENT')return false;throw error}},setEnabled:async(enabled)=>{await writeFile(preferenceFile,JSON.stringify({enabled}))}};
+      let manager=registerDesktopLanAccess({hosts,preference,onError:error=>errors.push(String(error))});
+      const startupRestore=manager.restore(win);await hostReady;await startupRestore;
+      const readState=()=>win.webContents.executeJavaScript('require("electron").ipcRenderer.invoke('+JSON.stringify(PlatformChannels.GetDesktopLanAccess)+')');
+      if(process.argv.includes('--restart-enabled')||process.argv.includes('--restart-disabled')){
+        await manager.restore(win);
+        const restored=await readState();
+        assert.equal(restored.enabled,process.argv.includes('--restart-enabled'));
+        assert.deepEqual(JSON.parse(await readFile(preferenceFile,'utf8')),{enabled:process.argv.includes('--restart-enabled')});
+        if(restored.enabled){
+          const other=new BrowserWindow({show:false});hosts.set(other.webContents.id,host);await manager.restore(other);
+          other.destroy();
+          await win.webContents.executeJavaScript('require("electron").ipcRenderer.invoke('+JSON.stringify(PlatformChannels.SetDesktopLanAccessEnabled)+',false)');
+        }
+        await manager.dispose();host.kill();win.destroy();assert.deepEqual(errors,[]);writeSync(1,'LAN_RESTART_PASS\\n');return;
+      }
+      await manager.restore(win);assert.equal((await readState()).enabled,false,'Missing preference stays disabled');
       const invoke=(enabled)=>win.webContents.executeJavaScript('require("electron").ipcRenderer.invoke('+JSON.stringify(PlatformChannels.SetDesktopLanAccessEnabled)+','+JSON.stringify(enabled)+')');
       const state=await invoke(true);assert.equal(state.enabled,true);
       const origin=state.urls[0];
@@ -107,11 +126,55 @@ try {
       const baseline=host.listenerCount('exit');
       for(let n=0;n<3;n++){const next=await invoke(true);assert.notEqual(next.token,state.token);await invoke(false);}
       assert.equal(host.listenerCount('exit'),baseline,'Toggle does not accumulate Host listeners');
+      await invoke(true);await manager.dispose();
+      manager=registerDesktopLanAccess({hosts,preference,onError:error=>errors.push(String(error))});
+      await manager.restore(win);const restored=await readState();assert.equal(restored.enabled,true);assert.notEqual(restored.token,state.token);
+      const other=new BrowserWindow({show:false,webPreferences:{nodeIntegration:true,contextIsolation:false}});await other.loadURL('about:blank');hosts.set(other.webContents.id,host);await manager.restore(other);
+      assert.equal((await other.webContents.executeJavaScript('require("electron").ipcRenderer.invoke('+JSON.stringify(PlatformChannels.GetDesktopLanAccess)+')')).enabled,false,'New windows are not implicitly exposed');other.destroy();
+      await invoke(false);await manager.dispose();
+      manager=registerDesktopLanAccess({hosts,preference,onError:error=>errors.push(String(error))});await manager.restore(win);assert.equal((await readState()).enabled,false,'Explicit disable survives manager restart');
+      await manager.dispose();
+      // Restore read and a later disable share the same ordered operation path.
+      let releaseRead;const readEntered=new Promise(resolve=>releaseRead=resolve);let finishRead;
+      manager=registerDesktopLanAccess({hosts,preference:{...preference,getEnabled:()=>{releaseRead();return new Promise(resolve=>finishRead=resolve)}},onError:error=>errors.push(String(error))});
+      const pendingRestore=manager.restore(win);await readEntered;
+      const disable=invoke(false);finishRead(true);await pendingRestore;await disable;
+      assert.equal((await readState()).enabled,false,'Late restore cannot override disable');await manager.dispose();
+      // A failed persistence write must never leave a newly enabled endpoint open.
+      manager=registerDesktopLanAccess({hosts,preference:{getEnabled:async()=>false,setEnabled:async()=>{throw new Error('Synthetic preference write failure')}},onError:error=>errors.push(String(error))});
+      await assert.rejects(invoke(true),/Synthetic preference write failure/);assert.equal((await readState()).enabled,false);await manager.dispose();
+      manager=registerDesktopLanAccess({hosts,preference:{getEnabled:async()=>true,setEnabled:async()=>{throw new Error('Synthetic disable persistence failure')}},onError:error=>errors.push(String(error))});
+      await manager.restore(win);await assert.rejects(invoke(false),/Synthetic disable persistence failure/);assert.equal((await readState()).enabled,false,'Disable closes the listener even if saving fails');await manager.dispose();
+      manager=registerDesktopLanAccess({hosts,preference:{getEnabled:async()=>{throw new Error('Synthetic preference read failure')},setEnabled:preference.setEnabled},onError:error=>errors.push(String(error))});
+      await assert.rejects(manager.restore(win),/Synthetic preference read failure/);assert.equal((await readState()).enabled,false);await manager.dispose();
+      // Closing a window while its preference is being read must not create a listener.
+      const closing=new BrowserWindow({show:false});hosts.set(closing.webContents.id,host);
+      let releaseClosedRead;let finishClosedRead;const closedReadEntered=new Promise(resolve=>releaseClosedRead=resolve);
+      manager=registerDesktopLanAccess({hosts,preference:{getEnabled:()=>{releaseClosedRead();return new Promise(resolve=>finishClosedRead=resolve)},setEnabled:preference.setEnabled},onError:error=>errors.push(String(error))});
+      const closingRestore=manager.restore(closing);await closedReadEntered;closing.destroy();finishClosedRead(true);await closingRestore;
+      assert.equal(host.listenerCount('exit'),baseline);await manager.dispose();
+      // Dispose cancels a pending real utilityProcess spawn wait without a timer.
+      const unspawned=new (await import('node:events')).EventEmitter();
+      hosts.set(win.webContents.id,unspawned);
+      manager=registerDesktopLanAccess({hosts,preference,onError:error=>errors.push(String(error))});
+      const waitingSpawn=manager.restore(win);await manager.dispose();await waitingSpawn;
+      assert.equal(unspawned.listenerCount('spawn'),0);assert.equal(unspawned.listenerCount('exit'),0);
+      hosts.set(win.webContents.id,host);
+      await preference.setEnabled(true);
+      manager=registerDesktopLanAccess({hosts,preference,onError:error=>errors.push(String(error))});
+      hosts.set(win.webContents.id,unspawned);const obsoleteRestore=manager.restore(win);
+      hosts.set(win.webContents.id,host);await manager.restore(win);
+      assert.equal((await readState()).enabled,true,'New Host restore does not reuse old pending spawn');
+      unspawned.emit('exit');await obsoleteRestore;await manager.dispose();
+      manager=registerDesktopLanAccess({hosts,preference,onError:error=>errors.push(String(error))});
       const last=await invoke(true);const exit=once(host,'exit');host.kill();await exit;
       // IPC read waits for Host exit listeners without a polling timeout or new Host.
       const after=await win.webContents.executeJavaScript('require("electron").ipcRenderer.invoke('+JSON.stringify(PlatformChannels.GetDesktopLanAccess)+')');
       assert.equal(after.enabled,false);assert.equal(last.enabled,true);
-      await manager.dispose();win.destroy();assert.deepEqual(errors,[]);
+      const replacement=utilityProcess.fork(join(app.getAppPath(),'host.cjs'));hosts.set(win.webContents.id,replacement);
+      const replacementReady=once(replacement,'message');const replacementRestore=manager.restore(win);await replacementReady;await replacementRestore;
+      const resumed=await readState();assert.equal(resumed.enabled,true);assert.notEqual(resumed.token,last.token,'Host replacement uses fresh credentials');
+      await manager.dispose();replacement.kill();win.destroy();assert.deepEqual(errors,[]);
       writeSync(1,'LAN_NATIVE_PASS\\n');
     }
     main().then(()=>app.exit(0),error=>{console.error(error);app.exit(1)});
@@ -126,8 +189,16 @@ try {
     maxBuffer: 1024 * 1024,
   });
   assert.match(result.stdout, /LAN_NATIVE_PASS/);
+  for (const phase of ["--restart-enabled", "--restart-disabled"]) {
+    const restarted = await promisify(execFile)(requireDesktop("electron"), [appRoot, phase], {
+      env,
+      timeout: 30000,
+      maxBuffer: 1024 * 1024,
+    });
+    assert.match(restarted.stdout, /LAN_RESTART_PASS/);
+  }
   console.log(
-    "PASS native Main IPC → LAN gateway → MessagePort → existing utilityProcess Host; shared state, readonly projection, toggle and Host exit",
+    "PASS native Main IPC → LAN gateway → MessagePort → existing utilityProcess Host; shared state, readonly projection, restart persistence, disable/restore ordering, preference failures, cleanup and Host exit",
   );
 } finally {
   await rm(root, { recursive: true, force: true });
