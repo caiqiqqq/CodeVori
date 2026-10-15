@@ -127,26 +127,34 @@ export function SettingsRow({
 }) {
   const inlineDetail = controlLayout === "wide" || controlLayout === "balanced";
   return (
-    <div className="border-t border-border px-4 py-3 first:border-t-0">
+    <div className="@container/settings-row border-t border-border px-4 py-3 first:border-t-0">
+      {/* 固定控件列曾把手机说明挤成几字宽；按行的实际空间切换，兼顾桌面侧栏和窄分栏。 */}
       <div
         className={cn(
-          "grid items-center gap-4",
+          "grid min-w-0 items-center gap-3 @lg/settings-row:gap-4",
           controlLayout === "balanced"
-            ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,45%)]"
+            ? "grid-cols-1 @lg/settings-row:grid-cols-[minmax(0,1fr)_minmax(0,45%)]"
             : controlLayout === "wide"
-              ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_280px]"
+              ? "grid-cols-1 @lg/settings-row:grid-cols-[minmax(0,1fr)_280px]"
               : controlLayout === "compact"
                 ? "grid-cols-[minmax(0,1fr)_auto]"
-                : "grid-cols-[minmax(0,1fr)_192px]",
+                : "grid-cols-1 @lg/settings-row:grid-cols-[minmax(0,1fr)_192px]",
         )}
       >
-        <div className="min-w-0">
+        <div className="min-w-0 [overflow-wrap:anywhere]">
           <div className="text-ui-base font-medium text-foreground">{label}</div>
           {description ? (
             <div className="mt-1 text-ui-base leading-6 text-foreground-subtle">{description}</div>
           ) : null}
         </div>
-        <div className="flex w-full flex-nowrap items-center justify-end gap-2">
+        <div
+          className={cn(
+            "flex min-w-0 w-full flex-wrap items-center gap-2 [&>*]:max-w-full",
+            controlLayout === "compact"
+              ? "justify-end"
+              : "justify-start @lg/settings-row:justify-end",
+          )}
+        >
           {inlineDetail ? detail : null}
           {control}
         </div>
