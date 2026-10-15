@@ -13,6 +13,7 @@ import {
 } from "@zcode/ui";
 import "@zcode/ui/styles.css";
 import { connectViaWebSocket } from "@zcode/client";
+import { createDesktopWindowFollower } from "./desktopWindowConnection.js";
 import { WebCallbackPage } from "./auth/WebCallbackPage.js";
 import { createWebAuthService } from "./auth/webAuthService.js";
 import { WEB_ZAI_OAUTH_CONFIG, resolveWebAuthDevReturnTo } from "./auth/webZaiOAuthConfig.js";
@@ -81,6 +82,7 @@ const webAuthService = createWebAuthService();
 }
 
 interface WebBootstrapResult {
+  desktopWindow?: boolean;
   wsUrl: string;
   initialWorkspaceAbsPath?: string;
   initialWorkspaceIdentity?: string;
@@ -359,6 +361,22 @@ function resolveDefaultWsOrigin(): string {
 }
 
 async function resolveWebBootstrap(): Promise<WebBootstrapResult> {
+  const desktopResponse = await fetch("/api/desktop-window", {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (
+    desktopResponse.ok &&
+    desktopResponse.headers.get("content-type")?.includes("application/json") &&
+    (await desktopResponse.json()).kind === "desktop-window"
+  ) {
+    return {
+      wsUrl: `${resolveDefaultWsOrigin()}/ws`,
+      desktopWindow: true,
+      restoreSession: false,
+      allowOpenWorkspace: false,
+    };
+  }
   const params = new URLSearchParams(window.location.search);
   const remoteId = params.get("remote");
   const wsUrl = remoteId
@@ -445,8 +463,20 @@ async function bootstrapWebApp() {
   }
 
   try {
+    let desktopClosed = false;
+    const onDesktopClosed = () => {
+      if (desktopClosed) return;
+      desktopClosed = true;
+      desktopWindowFollower?.dispose();
+      renderWebBootstrapError(new Error("Desktop connection closed. Reload to reconnect."));
+    };
+    const desktopWindowFollower = bootstrap.desktopWindow
+      ? createDesktopWindowFollower(bootstrap.wsUrl, onDesktopClosed)
+      : undefined;
     const services = await connectViaWebSocket(bootstrap.wsUrl, {
-      onClose: () => {},
+      onClose: () => {
+        if (bootstrap.desktopWindow) onDesktopClosed();
+      },
     });
     const platform = createWebPlatform();
     document.title = `${PRODUCT_NAME} - Web + Server`;
@@ -458,6 +488,7 @@ async function bootstrapWebApp() {
           broadcastService={services.broadcastService}
         >
           <Root
+            desktopWindowFollower={desktopWindowFollower}
             services={services}
             platform={platform}
             initialWorkspaceAbsPath={bootstrap.initialWorkspaceAbsPath}

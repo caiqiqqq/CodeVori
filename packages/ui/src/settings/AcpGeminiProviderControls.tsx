@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { acpGeminiProviderSchema, type AcpGeminiProvider } from "@zcode/shared";
+import { acpGeminiProviderSchema, createUuid, type AcpGeminiProvider } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import {
@@ -88,7 +88,7 @@ export function AcpGeminiProviderControls({
           disabled={disabled || !providers.view}
           onClick={() => {
             setInvalid(false);
-            setDraft({ id: crypto.randomUUID(), name: "", apiUrl: "", apiKey: "", model: "" });
+            setDraft({ id: createUuid(), name: "", apiUrl: "", apiKey: "", model: "" });
           }}
           data-testid="acp-gemini-provider-add"
         >

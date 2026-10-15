@@ -4,6 +4,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { IAcpService } from "@zcode/services";
 import {
   summarizeAcpSession,
+  createUuid,
   type AcpAgent,
   type AcpPromptInput,
   type AcpQueueItem,
@@ -445,7 +446,7 @@ export function useAcpConversation(
       }
       const key = `${targetKey}:${nextAgent}`;
       if (startFresh) createRequestIds.current.delete(key);
-      const requestId = createRequestIds.current.get(key) ?? crypto.randomUUID();
+      const requestId = createRequestIds.current.get(key) ?? createUuid();
       createRequestIds.current.set(key, requestId);
       void run(
         async () => {
@@ -643,7 +644,7 @@ export function useAcpConversation(
         retry.input.text === input.text &&
         JSON.stringify(retry.input.attachments) === JSON.stringify(input.attachments) &&
         JSON.stringify(retry.input.workspaceFiles) === JSON.stringify(input.workspaceFiles);
-      const commandId = same ? retry.commandId : crypto.randomUUID();
+      const commandId = same ? retry.commandId : createUuid();
       retries.current.set(key, { input, commandId });
       // 修复原因：只等持久 ACK 才显示队列会造成几秒无正文反馈；发送锁同时持有临时摘要，
       // 不写入 Host queue、不提前清草稿，live 接受或 ACK 后让位于权威投影。

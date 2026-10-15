@@ -1,6 +1,7 @@
 import type { Event } from "@zcode/rpc";
 import { ServiceChannels } from "@zcode/shared";
 import type { ZCodeTaskMeta } from "@zcode/shared";
+import type { DesktopWindowSessionInput, DesktopWindowSessionSnapshot } from "@zcode/shared";
 import type {
   ControllerResyncParams,
   ControllerResyncResult,
@@ -50,6 +51,10 @@ export type WindowHostControllerFrame =
  * conversation/file/git/terminal 仍由 attachment 对应的 scoped facade 提供。
  */
 export interface IWindowControllerService {
+  /** 仅本窗口可信桌面 attachment 可发布；手机只订阅投影。旧 Host 可不提供。 */
+  publishWorkspaceSession?(input: DesktopWindowSessionInput): Promise<void>;
+  getWorkspaceSession?(): Promise<DesktopWindowSessionSnapshot>;
+  onDynamicWorkspaceSessionChanged?(): Event<DesktopWindowSessionSnapshot>;
   deleteArchivedTask(params: { address: WindowHostTaskAddress }): Promise<boolean>;
   deleteArchivedTasks(params: {
     address: WindowHostTaskAddress;

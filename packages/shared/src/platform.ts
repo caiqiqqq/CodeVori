@@ -47,6 +47,8 @@ export interface TaskNotificationPayload {
   onlyWhenUnfocused?: boolean;
 }
 
+export type { DesktopLanAccessState } from "./desktopWindow.js";
+
 /** Main 将一次能够定位真实 tab 的 browser-use 操作投递给其 origin renderer。 */
 export interface BrowserViewOperationPayload {
   workspaceKey: string;
@@ -715,6 +717,10 @@ export interface IPlatformService {
 
   /** 同步当前窗口所有 tab 的 workspace 路径到 main 进程（用于跨窗口去重） */
   syncWindowTabs(paths: string[]): void;
+  getDesktopLanAccess?(): Promise<import("./desktopWindow.js").DesktopLanAccessState>;
+  setDesktopLanAccessEnabled?(
+    enabled: boolean,
+  ): Promise<import("./desktopWindow.js").DesktopLanAccessState>;
 
   /** 同步当前窗口的未读 task 数给宿主环境，用于 Dock / 任务栏徽标聚合 */
   syncWindowUnreadCount(count: number): void;

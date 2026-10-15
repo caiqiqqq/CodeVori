@@ -26,8 +26,13 @@ import {TabStoreProvider} from '../../../ui/src/store/TabStoreProvider.tsx';
 import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
 import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
 import {applyTheme} from '../../../ui/src/useTheme.ts';
+import {LocalTtftObserver,setLocalTtftObserver} from '../../../ui/src/v4/telemetry/localTtftObserver.ts';
 import '../../../ui/src/styles.css';
 const calls=[],pending=[],tempTexts=[];
+// 开启真实提交观测路径，确保手机缺少 randomUUID 时发送不会在生成观测 ID 处失败。
+const ttft=new LocalTtftObserver(()=>{});
+ttft.enabled=true;
+setLocalTtftObserver(ttft);
 const services={
 clientConfigService:{getSnapshot:async()=>({pluginStoreOrder:null})},
 fileService:{searchWorkspaceFiles:async()=>[]},
@@ -73,11 +78,21 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={p
       page.setDefaultTimeout(10000);
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
+      if (width === 375) {
+        // 局域网 HTTP 的移动浏览器没有 randomUUID；保留安全随机源复现真实能力差异。
+        await page.addInitScript(() => {
+          Object.defineProperty(globalThis.crypto, "randomUUID", { value: undefined });
+        });
+      }
       await page.goto(
         `${process.env.ZCODE_E2E_BASE_URL ?? "http://127.0.0.1:5189"}/${name}.html?delivery=${delivery}`,
       );
       const input = page.getByTestId("v4-composer-input");
       const send = page.getByTestId("v4-composer-send");
+      if (width === 375) {
+        assert.equal(await page.evaluate(() => typeof crypto.randomUUID), "undefined");
+        assert.equal(await page.evaluate(() => typeof crypto.getRandomValues), "function");
+      }
       await input.waitFor().catch((error) => {
         throw Error(errors.join("\n") || error.message);
       });
@@ -96,7 +111,11 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={p
         await frames();
       };
       await frames();
+      await input.click();
+      assert.equal(await input.getAttribute("contenteditable"), "true");
+      assert.equal(await input.evaluate((element) => document.activeElement === element), true);
       await input.fill("A awaiting ACK");
+      assert.equal(await send.isEnabled(), true, "Typed mobile input can be submitted");
       await send.click();
       await page.waitForFunction(() => window.__submission.pending.length === 1);
       await switchTarget("B");

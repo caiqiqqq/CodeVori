@@ -1,3 +1,5 @@
+import { createUuid } from "@zcode/shared";
+
 export const WEB_ELEMENT_CONTEXT_ADD_TO_CHAT_EVENT = "zcode:web-element-context-add-to-chat";
 export const WEB_ELEMENT_CONTEXT_REMOVE_FROM_CHAT_EVENT =
   "zcode:web-element-context-remove-from-chat";
@@ -58,11 +60,7 @@ type WebElementContextRemoveFromChatEvent = CustomEvent<{
 }>;
 
 export function createWebElementContextId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-
-  return `web-element-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `web-element-${createUuid()}`;
 }
 
 export function getWebElementContextWorkspaceKey(

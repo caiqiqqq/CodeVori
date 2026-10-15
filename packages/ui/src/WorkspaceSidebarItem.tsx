@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- workspace 行同时承载折叠、远端状态和快捷操作，先保持同文件收口。 */
+import { useDesktopWindowView } from "@/root/desktopWindowSession.js";
 import {
   memo,
   useCallback,
@@ -457,6 +458,8 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   );
 
   const handleRemoveWorkspace = useCallback(async () => {
+    // 手机项目成员来自桌面窗口；移除不能顺带释放桌面正在使用的 runtime。
+    if (useDesktopWindowView.getState().following) return;
     const workspaceKey = tab.workspaceIdentity?.trim() || tab.workspacePath;
     logger.debug("[WorkspaceSidebarItem] 移除 workspace", {
       isExpanded,
@@ -1069,6 +1072,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
                           />
                           <DropdownMenuItem
                             data-testid={testId(TID_WORKSPACE_CLOSE, tab.workspacePath)}
+                            disabled={useDesktopWindowView.getState().following}
                             onMouseDown={(event) => {
                               event.preventDefault();
                               event.stopPropagation();

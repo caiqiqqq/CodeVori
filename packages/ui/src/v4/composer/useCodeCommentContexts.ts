@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createUuid } from "@zcode/shared";
 import {
   CODE_COMMENT_ADD_TO_CHAT_EVENT,
   CODE_COMMENT_REMOVE_FROM_CHAT_EVENT,
@@ -28,10 +29,7 @@ interface UseCodeCommentContextsResult {
 }
 
 function createCodeCommentAttachmentId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `code-comment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `code-comment-${createUuid()}`;
 }
 
 function contextKey(

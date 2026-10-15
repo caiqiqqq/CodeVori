@@ -8,6 +8,7 @@ import {
   LOCAL_TTFT_MAX_PENDING,
   LOCAL_TTFT_TTL_MS,
   LOCAL_TTFT_CLOCK_TTL_MS,
+  createUuid,
   localTtftNow,
   type LocalTtftContext,
   type LocalTtftCalibration,
@@ -44,7 +45,8 @@ export class LocalTtftObserver {
     if (!this.enabled) return undefined;
     this.expire();
     if (this.readForeground) this.visibility(this.readForeground());
-    const context: LocalTtftContext = { version: 1, observationId: crypto.randomUUID() };
+    // 手机 HTTP 环境没有 randomUUID；生成诊断 ID 不能因此阻断消息提交。
+    const context: LocalTtftContext = { version: 1, observationId: createUuid() };
     const pending: Pending = {
       context,
       workspace,

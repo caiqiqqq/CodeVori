@@ -337,6 +337,9 @@ contextBridge.exposeInMainWorld("zcode", {
     ipcRenderer.invoke(PlatformChannels.ActivateOrSetWorkspace, path),
   /** 同步当前窗口所有 tab 的 workspace 路径到 main 进程 */
   syncWindowTabs: (paths: string[]) => ipcRenderer.send(PlatformChannels.SyncWindowTabs, paths),
+  getDesktopLanAccess: () => ipcRenderer.invoke(PlatformChannels.GetDesktopLanAccess),
+  setDesktopLanAccessEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke(PlatformChannels.SetDesktopLanAccessEnabled, enabled),
   /** 同步当前窗口里 Web 远程控制允许切换的 workspace */
   /** 同步当前窗口里 Web 远程控制可展示的 task 快照 */
   /** 同步当前窗口的未读 task 数到 main 进程 */

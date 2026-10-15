@@ -5,6 +5,7 @@ import type { TabStoreState } from "@/store/tabStore.js";
 import { useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { usePaneLayoutStore } from "@/v4/paneLayoutStore.js";
 import { useWorkbenchGroupStore } from "@/v4/workbenchGroupStore.js";
+import { useDesktopWindowView } from "./desktopWindowSession.js";
 
 export function useConversationWorkspaceActions({
   services,
@@ -28,6 +29,18 @@ export function useConversationWorkspaceActions({
 
   const handleResolveConversationWorkspace = useCallback(async () => {
     try {
+      const view = useDesktopWindowView.getState();
+      if (view.following) {
+        // 手机“对话 +”只能复用桌面已打开的对话工作区，不能隐式创建第二个 cwd/runtime。
+        const workspace = view.snapshot?.workspaces.find(
+          (item) =>
+            item.workspacePurpose === "conversation" &&
+            !item.remoteSessionId &&
+            !item.workspaceIdentity,
+        );
+        if (!workspace) throw new Error("Open a conversation workspace on the desktop first.");
+        return workspace.workspacePath;
+      }
       const result = await services.fileService.ensureConversationWorkspace();
       setWorkspaceActionError(null);
       return result.path;

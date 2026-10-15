@@ -10,6 +10,7 @@ interface SidebarTaskPreferences {
 }
 
 const SIDEBAR_TASK_PREFERENCES_STORAGE_KEY = "zcode-sidebar-task-preferences";
+export const SIDEBAR_TASK_PREFERENCES_CHANGED_EVENT = "zcode-sidebar-task-preferences-changed";
 
 const DEFAULT_SIDEBAR_TASK_PREFERENCES: SidebarTaskPreferences = {
   organizeBy: "project",
@@ -60,6 +61,8 @@ export function persistSidebarTaskPreferences(
   // 刷新或重启后会回到默认 project/updated，用户以为 timeline 设置没有生效。
   // 这里统一写入本地偏好，桌面端和 Web 端都能恢复同一个侧栏展示方式。
   try {
+    const next = JSON.stringify({ organizeBy: preferences.organizeBy, sortBy: preferences.sortBy });
+    if (storage?.getItem(SIDEBAR_TASK_PREFERENCES_STORAGE_KEY) === next) return;
     storage?.setItem(
       SIDEBAR_TASK_PREFERENCES_STORAGE_KEY,
       JSON.stringify({
@@ -67,6 +70,8 @@ export function persistSidebarTaskPreferences(
         sortBy: preferences.sortBy,
       }),
     );
+    if (typeof window !== "undefined")
+      window.dispatchEvent(new Event(SIDEBAR_TASK_PREFERENCES_CHANGED_EVENT));
   } catch {
     // 受限浏览器或 SSR 测试里 storage 可能不可写，偏好写入失败不能阻断侧栏交互。
   }

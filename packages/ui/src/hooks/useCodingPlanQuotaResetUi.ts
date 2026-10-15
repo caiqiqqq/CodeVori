@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- 额度重置 hook 集中处理 scope 共享请求、轮询、幂等核销与服务端历史对账。 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IUsageStatsService } from "@zcode/services";
+import { createUuid } from "@zcode/shared";
 import type {
   CodingPlanResetScopeRequest,
   CodingPlanResetStatusSnapshot,
@@ -299,21 +300,7 @@ function markHistoryReadOnce(params: {
 }
 
 function createIdempotencyKey(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-
-  const bytes = new Uint8Array(16);
-  globalThis.crypto?.getRandomValues(bytes);
-  if (bytes.some((value) => value !== 0)) {
-    bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
-    bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
-    const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-  }
-
-  // 极旧 WebView 没有 Web Crypto 时仍需保证同一次失败重试稳定；该 key 只用于幂等，不承载鉴权。
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return createUuid();
 }
 
 function wait(delayMs: number): Promise<void> {

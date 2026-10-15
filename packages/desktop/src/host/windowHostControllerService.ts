@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- Controller source 聚合、路由、订阅与生命周期属于同一个 Host 边界。 */
 import { Emitter } from "@zcode/rpc";
+import { createWindowWorkspaceProjection } from "./windowWorkspaceProjection.js";
 import type { ZCodeTaskMeta } from "@zcode/shared";
 import type {
   ControllerSubscribeParams,
@@ -144,6 +145,7 @@ export function createWindowHostControllerRuntime(options: {
   ) => void;
 }) {
   const projection = createWindowHostControllerProjection({ createId: options.createId });
+  const workspaceProjection = createWindowWorkspaceProjection(options.createId());
   const registeredScopes = new Map<string, WindowHostControllerSourceScope>();
   const sourceAvailability = new Map<string, "online" | "offline">();
   const sourceTaskServices = new Map<string, IZCodeTaskService>();
@@ -583,10 +585,13 @@ export function createWindowHostControllerRuntime(options: {
     return { items: visible, total, hasMore: total > visible.length };
   }
 
-  function createAttachmentService(): IWindowControllerService & { dispose(): void } {
+  function createAttachmentService(
+    canPublishWorkspaceSession = true,
+  ): IWindowControllerService & { dispose(): void } {
     const frameEmitter = new Emitter<WindowHostControllerFrame>();
     const subscriptions = new Map<string, { dispose(): void }>();
     return {
+      ...workspaceProjection.attach(canPublishWorkspaceSession),
       listTaskList,
       async deleteArchivedTasks({ address, taskIds }) {
         if (taskIds.length === 0) {
@@ -779,6 +784,7 @@ export function createWindowHostControllerRuntime(options: {
     },
     dispose(): void {
       service.dispose();
+      workspaceProjection.dispose();
       for (const scope of registeredScopes.values()) {
         projection.removeSource(scope);
       }

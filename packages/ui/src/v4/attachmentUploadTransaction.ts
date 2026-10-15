@@ -1,5 +1,5 @@
 import { BufferWriter, serialize } from "@zcode/rpc";
-import { ServiceChannels } from "@zcode/shared";
+import { createUuid, ServiceChannels } from "@zcode/shared";
 import {
   PROTOCOL_V4_LIMITS,
   type V4AttachmentBeginResult,
@@ -99,11 +99,7 @@ async function checksum(bytes: Uint8Array): Promise<string> {
 }
 
 function createUploadId(): string {
-  if (typeof globalThis.crypto.randomUUID === "function") {
-    return `upload-${globalThis.crypto.randomUUID()}`;
-  }
-  const words = globalThis.crypto.getRandomValues(new Uint32Array(4));
-  return `upload-${[...words].map((word) => word.toString(16).padStart(8, "0")).join("")}`;
+  return `upload-${createUuid()}`;
 }
 
 /** 用 production ChannelClient 相同的 serializer 计量完整 method+args physical request。 */

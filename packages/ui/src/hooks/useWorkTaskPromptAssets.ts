@@ -10,6 +10,7 @@ import {
 import {
   workTaskCreateSchema,
   resolveWorkspaceKey,
+  createUuid,
   type WorkTask,
   type WorkTaskAttachment,
   type WorkTaskExecution,
@@ -39,7 +40,7 @@ export function useWorkTaskPromptAssets(
   initialFiles?: File[],
 ) {
   const resolution = useTaskServices(scope);
-  const [scopeId] = useState(() => `work-task-editor:${crypto.randomUUID()}`);
+  const [scopeId] = useState(() => `work-task-editor:${createUuid()}`);
   const composer = useComposerAttachments({
     ...scope,
     scopeId,

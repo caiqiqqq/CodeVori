@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { WorkTask, WorkTaskResultCancel, WorkTaskResultSource } from "@zcode/shared";
+import {
+  createUuid,
+  type WorkTask,
+  type WorkTaskResultCancel,
+  type WorkTaskResultSource,
+} from "@zcode/shared";
 import { useWorkspaceServicesResolution } from "./useWorkspaceServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { workTaskErrorMessage } from "@/lib/workTaskBoard.js";
@@ -110,7 +115,7 @@ export function useWorkTaskResultDraft(task: WorkTask) {
         workspacePath: task.workspacePath,
         id: task.id,
         runSeq: task.runSeq,
-        requestId: crypto.randomUUID(),
+        requestId: createUuid(),
       };
       pending.current = { owner, request };
       // 初始来源读取若晚于生成结果返回，不得覆盖实际采用的模型。

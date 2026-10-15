@@ -14,6 +14,7 @@ import { ServiceProvider } from "@/hooks/useServices.js";
 import { useDynamicWorkflowAvailabilityLoader } from "@/hooks/useDynamicWorkflowAvailability.js";
 import { DirectoryBrowser } from "@/DirectoryBrowser.js";
 import { useTabPersistence } from "@/hooks/useTabPersistence.js";
+import { useDesktopWindowSession } from "@/root/useDesktopWindowSession.js";
 import { useTokenRefresh } from "@/hooks/useTokenRefresh.js";
 import { useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -138,6 +139,7 @@ export function Root(props: RootProps) {
 }
 
 function RootInner({
+  desktopWindowFollower,
   services,
   platform,
   initialWorkspaceAbsPath,
@@ -588,10 +590,17 @@ function RootInner({
     settingService: supportsSettings ? services.settingService : undefined,
     // 首次安装未连接账号时，provider 登录入口判定会晚于 workspace 恢复。
     // 如果这里先恢复 workspace，ChatView mount 会触发草稿 session 预热并在登录页背后报错。
-    restoreSession: restoreSession && canRestoreWorkspaceSession,
-    persistSession: restoreSession && canRestoreWorkspaceSession,
+    restoreSession: !desktopWindowFollower && restoreSession && canRestoreWorkspaceSession,
+    persistSession: !desktopWindowFollower && restoreSession && canRestoreWorkspaceSession,
     restorePersistedSession,
     buildPersistPatch: buildPersistedTabPatch,
+  });
+
+  const desktopWindowState = useDesktopWindowSession({
+    services,
+    isDesktop,
+    ready: hasCompletedFullRestore,
+    follower: desktopWindowFollower,
   });
 
   useEffect(() => {
@@ -979,6 +988,20 @@ function RootInner({
             之前阻塞恢复 tab / 初始 workspace 注入时重新渲染纯文字“加载中...”，所以启动被拆成两套 loading。
             这里复用同一套 SVG 启动画面，只把文案保留到 aria-label，保证视觉始终连续且不牺牲可访问性。 */}
         <RootStartupLoading label={loadingLabel} />
+      </RootShell>
+    );
+  }
+
+  if (desktopWindowFollower && (desktopWindowState.loading || desktopWindowState.error)) {
+    return (
+      <RootShell>
+        {desktopWindowState.error ? (
+          <div role="alert" className="p-4 text-ui-base">
+            {desktopWindowState.error}
+          </div>
+        ) : (
+          <RootStartupLoading label={intl.formatMessage({ id: "common.loading" })} />
+        )}
       </RootShell>
     );
   }

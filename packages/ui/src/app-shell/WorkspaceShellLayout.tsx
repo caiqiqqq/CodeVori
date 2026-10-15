@@ -1,6 +1,16 @@
 /* eslint-disable max-lines -- workspace shell 当前集中编排 sidebar、chat、terminal 和 browser pane 的布局联动，先保持单文件收口，避免为满足行数限制打散关键布局状态。*/
 import { PRODUCT_NAME } from "@zcode/shared";
-import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
@@ -147,6 +157,7 @@ const EMPTY_REMOTE_WORKSPACE_SESSIONS: NonNullable<
 > = [];
 const CONVERSATION_AUTO_COLLAPSE_SIDEBAR_WIDTH_PX = 360;
 const CONVERSATION_AUTO_COLLAPSE_RESIZE_IDLE_MS = 300;
+const MOBILE_WORKSPACE_AUTO_COLLAPSE_WIDTH_PX = 768;
 // 性能修复：ResizablePanelGroup 收到深相等的新 panelIds 数组，
 // 会跟随 chat streaming render 重算布局上下文；固定数组语义上不会随消息变化。
 const WORKSPACE_BODY_PANEL_IDS = ["conversation-column", "browser"];
@@ -551,6 +562,41 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   const workspaceSidebarResizeLabel = intl.formatMessage({
     id: "workspaceSidebar.resizeSidebar",
   });
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const shellElement = workspaceShellRef.current;
+    if (!shellElement) return;
+
+    let previousWidthPx: number | null = null;
+    const collapseOnNarrowEntry = () => {
+      const widthPx = shellElement.getBoundingClientRect().width;
+      if (!Number.isFinite(widthPx) || widthPx <= 0) return;
+
+      const enteredNarrowWorkspace =
+        widthPx < MOBILE_WORKSPACE_AUTO_COLLAPSE_WIDTH_PX &&
+        (previousWidthPx === null || previousWidthPx >= MOBILE_WORKSPACE_AUTO_COLLAPSE_WIDTH_PX);
+      previousWidthPx = widthPx;
+
+      const state = conversationAutoCollapseStateRef.current;
+      if (!enteredNarrowWorkspace || !state.isSidebarVisible) return;
+
+      // 手机 Web 初始布局没有可拖拽的桌面侧栏空间；复用既有 toggle，保留唯一状态所有者。
+      logger.info("[WorkspaceShellLayout] narrow workspace 进入，自动收起侧栏", {
+        widthPx: Math.round(widthPx),
+        thresholdPx: MOBILE_WORKSPACE_AUTO_COLLAPSE_WIDTH_PX,
+        workspaceKey: state.workspaceKey,
+      });
+      state.handleToggleSidebar();
+    };
+
+    collapseOnNarrowEntry();
+    const observer =
+      typeof ResizeObserver === "function" ? new ResizeObserver(collapseOnNarrowEntry) : null;
+    observer?.observe(shellElement);
+    return () => observer?.disconnect();
+  }, [workspaceKey]);
 
   useEffect(() => {
     conversationAutoCollapseStateRef.current = {

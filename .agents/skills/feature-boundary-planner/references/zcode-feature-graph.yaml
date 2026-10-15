@@ -271,6 +271,29 @@ nodes:
         symbol: DELIVERY_PROFILES
       - file: packages/services/src/zcode-agent/zcodeAgentConnectionScope.ts
         symbol: ZCodeAgentV4ClientMode
+  - id: service.desktop-lan-gateway
+    kind: service
+    label: Authenticated LAN attachment to an existing desktop Window Host
+    aliases:
+      - LAN phone access
+      - 局域网手机访问
+    codeSeeds:
+      - file: packages/server/src/desktopLanGateway.ts
+        symbol: createDesktopLanGateway
+      - file: packages/desktop/src/main/desktopLanAccess.ts
+        symbol: registerDesktopLanAccess
+      - file: packages/ui/src/settings/DesktopLanAccessSection.tsx
+        symbol: DesktopLanAccessSection
+  - id: projection.desktop-window-session
+    kind: state-owner
+    label: Host versioned window workspace membership and sidebar preference projection
+    codeSeeds:
+      - file: packages/desktop/src/host/windowWorkspaceProjection.ts
+        symbol: createWindowWorkspaceProjection
+      - file: packages/ui/src/root/useDesktopWindowSession.ts
+        symbol: useDesktopWindowSession
+      - file: packages/web/src/desktopWindowConnection.ts
+        symbol: createDesktopWindowFollower
   - id: capability.composer-trigger-routing
     kind: capability
     label: Composer primary and compatibility trigger routing
@@ -719,6 +742,16 @@ nodes:
       - Tokens are ephemeral; child result submission checks the current command and lease.
       - Stop must validate foreground identity before pausing delegation.
 edges:
+  - from: service.desktop-lan-gateway
+    to: projection.desktop-window-session
+    type: attaches-through
+    rank: must-inspect
+    condition: Authenticated phones follow the selected existing desktop window and its ordered workspace snapshot.
+  - from: service.desktop-lan-gateway
+    to: boundary.web-remote-replayable
+    type: preserves
+    rank: invariant-only
+    condition: Main always attaches phone service ports with web-remote-replayable; it never starts another runtime.
   - from: capability.agent-delegation
     to: surface.agent-delegation
     type: renders-in

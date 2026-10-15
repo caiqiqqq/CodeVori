@@ -354,6 +354,27 @@ export interface MessagePortLike {
   close(): void;
 }
 
+/** 适配 Electron/Node 风格的带 {data} message 事件；不依赖具体宿主包。 */
+export function wrapNodeMessagePort(port: {
+  on(type: "message", listener: (event: { data: MessagePortPayload }) => void): unknown;
+  off(type: "message", listener: (event: { data: MessagePortPayload }) => void): unknown;
+  postMessage(message: MessagePortPayload): void;
+  start(): void;
+  close(): void;
+}): MessagePortLike {
+  return {
+    addEventListener: (_type, listener) => {
+      port.on("message", listener);
+    },
+    removeEventListener: (_type, listener) => {
+      port.off("message", listener);
+    },
+    postMessage: (message) => port.postMessage(message),
+    start: () => port.start(),
+    close: () => port.close(),
+  };
+}
+
 /**
  * 在 MessagePort 上实现 IMessagePassingProtocol。
  * 这是最简单的传输实现——不需要分帧，因为 MessagePort 本身就是消息边界的。

@@ -1,5 +1,6 @@
 packages:
   - packages/*
+  - apps/mobile
   - apps/zcode-cli
   - apps/zcode-cli/packages/*
   - apps/zcode-cli/tools/*

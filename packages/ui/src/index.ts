@@ -31,6 +31,7 @@ export { StoreProvider, useZCodeStore } from "./store/StoreProvider.js";
 export type { ZCodeState } from "./store/index.js";
 export {
   bindRemoteWorkspacePath,
+  bindRemoteWorkspaceIdentity,
   getRemoteWorkspaceSession,
   registerBaseWorkspaceServices,
   registerRemoteWorkspaceSession,

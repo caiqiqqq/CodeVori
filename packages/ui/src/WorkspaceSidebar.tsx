@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- sidebar 聚合项目、分组、任务视图与拖拽交互。 */
+import { useDesktopWindowView } from "@/root/desktopWindowSession.js";
 import {
   memo,
   useCallback,
@@ -478,15 +479,20 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(false);
   const [fileTreeTarget, setFileTreeTarget] = useState<SidebarFileTreeTarget | null>(null);
   const [groupedStickyHeader, setGroupedStickyHeader] = useState<ReactNode | null>(null);
-  const [taskOrganizeBy, setTaskOrganizeBy] = useState<TaskOrganizeBy>(
+  const desktopSidebar = useDesktopWindowView((state) =>
+    state.following ? state.snapshot?.sidebar : undefined,
+  );
+  const [localTaskOrganizeBy, setTaskOrganizeBy] = useState<TaskOrganizeBy>(
     () => readSidebarTaskPreferences().organizeBy,
   );
-  const [taskSortBy, setTaskSortBy] = useState<TaskSortBy>(
+  const [localTaskSortBy, setTaskSortBy] = useState<TaskSortBy>(
     () => readSidebarTaskPreferences().sortBy,
   );
   const [purposeSectionPreferences, setPurposeSectionPreferences] = useState(
     readSidebarPurposeSectionPreferences,
   );
+  const taskOrganizeBy = desktopSidebar?.organizeBy ?? localTaskOrganizeBy;
+  const taskSortBy = desktopSidebar?.sortBy ?? localTaskSortBy;
   const [workspaceTaskOrganizeBy, setWorkspaceTaskOrganizeBy] = useState<
     Extract<TaskOrganizeBy, "project" | "chronological">
   >(() => {
@@ -640,11 +646,12 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     return () => onFileTreeOpenChange?.(false);
   }, [onFileTreeOpenChange]);
   useEffect(() => {
+    if (desktopSidebar) return;
     persistSidebarTaskPreferences({
       organizeBy: taskOrganizeBy,
       sortBy: taskSortBy,
     });
-  }, [taskOrganizeBy, taskSortBy]);
+  }, [desktopSidebar, taskOrganizeBy, taskSortBy]);
   useEffect(() => {
     if (taskOrganizeBy === "project" || taskOrganizeBy === "chronological") {
       setWorkspaceTaskOrganizeBy(taskOrganizeBy);
@@ -787,6 +794,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     (event: DragEndEvent) => {
       const { active, over } = event;
       resetWorkspaceDrag();
+      if (useDesktopWindowView.getState().following) return;
       if (!over || active.id === over.id) {
         return;
       }
@@ -1202,6 +1210,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                       aria-label={intl.formatMessage({
                         id: "workspaceSidebar.taskViewOptions",
                       })}
+                      disabled={Boolean(desktopSidebar)}
                     >
                       <ListFilter className="size-3.5" />
                     </Button>

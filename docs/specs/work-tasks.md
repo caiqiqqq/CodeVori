@@ -765,6 +765,8 @@ desktop: 不连接连续会话流；mobile: 不连接 replay 流，不新建 Age
                                                                 └→ 原审查/刷新入口
 ```
 
+`SessionPane` 必须接收宿主的 `gitLoading` 并透传给状态小窗，不能遗漏参数解构；首读状态仍由宿主拥有，不新增 pane 内的 Git 状态或读取路径。
+
 Git 面板扩展数据由开到关时不发新读取，也不能撤销当前工作区仍在途的读取；新工作区、服务端口更换、显式刷新、断连或卸载通过请求版本使旧结果失效。验收包含已打开审查标签后从 API 切到 ACP 的任务场景，不能停留在永久 loading 或丢失小窗。
 
 接通 UI 投影并修复宿主 Git 读取失效边界，不改变 Host owner/lease、事件顺序及 desktop-continuous / web-remote-replayable 链路；无数据时保持原有空态。
