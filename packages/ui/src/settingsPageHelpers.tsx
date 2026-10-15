@@ -1,5 +1,4 @@
 import { ProxyDomainSettings } from "@/settings/ProxyDomainSettings.js";
-import { DesktopLanAccessSection } from "@/settings/DesktopLanAccessSection.js";
 /* oxlint-disable eslint(max-lines) -- settings helper 聚合多个设置分组；终端、网络与自动归档多侧能力暂时超过行数限制。 */
 import type {
   IntegratedTerminalShellOption,
@@ -286,11 +285,6 @@ export function GeneralSectionContent({
 
   return (
     <div className="space-y-4">
-      {isDesktop ? (
-        <SettingsGroupCard>
-          <DesktopLanAccessSection />
-        </SettingsGroupCard>
-      ) : null}
       <SettingsGroupCard>
         <SettingsRow
           label={intl.formatMessage({ id: "settings.locale" })}

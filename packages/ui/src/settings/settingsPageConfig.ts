@@ -23,6 +23,7 @@ import {
   FolderTree,
   GitBranch,
   MessageSquareText,
+  Smartphone,
 } from "lucide-react";
 import { isSettingsSectionEnabled, type SettingsSectionId } from "@/lib/settingsNavigation.js";
 import type { Theme } from "@/useTheme.js";
@@ -64,6 +65,12 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     id: "general",
     icon: Settings2,
     titleId: "settings.systemTitle",
+    groupId: "basics",
+  },
+  {
+    id: "desktopLan",
+    icon: Smartphone,
+    titleId: "settings.desktopLan.title",
     groupId: "basics",
   },
   {
@@ -200,25 +207,32 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
 ];
 
 // 兼容既有只读消费者：默认配置代表不带桌面平台能力的 Web 视图；
-// macOS/Windows/Linux 必须继续通过 createSettingsPageConfig 动态加入 Computer Use。
+// 桌面专属入口通过 createSettingsPageConfig 根据平台与可用能力动态加入。
 export const SETTINGS_SECTIONS = BASE_SETTINGS_SECTIONS.filter(
-  (section) => section.id !== "computerUse" && isSettingsSectionEnabled(section.id),
+  (section) =>
+    section.id !== "computerUse" &&
+    section.id !== "desktopLan" &&
+    isSettingsSectionEnabled(section.id),
 );
 
 interface SettingsPageConfigOptions {
   isDesktop?: boolean;
   isMacDesktop?: boolean;
   isWindowsDesktop?: boolean;
+  supportsDesktopLanAccess?: boolean;
 }
 
 export function createSettingsPageConfig({
   isDesktop = false,
   isMacDesktop = false,
   isWindowsDesktop = false,
+  supportsDesktopLanAccess = false,
 }: SettingsPageConfigOptions = {}) {
-  const showComputerUse = isDesktop || isMacDesktop || isWindowsDesktop;
+  const isDesktopPlatform = isDesktop || isMacDesktop || isWindowsDesktop;
   const settingsSections = BASE_SETTINGS_SECTIONS.filter((section) => {
-    if (section.id === "computerUse" && !showComputerUse) return false;
+    if (section.id === "computerUse" && !isDesktopPlatform) return false;
+    if (section.id === "desktopLan" && !(isDesktopPlatform && supportsDesktopLanAccess))
+      return false;
     return isSettingsSectionEnabled(section.id);
   });
   const settingsSectionGroups = BASE_SETTINGS_SECTION_GROUPS.map((group) => ({

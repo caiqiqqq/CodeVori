@@ -66,6 +66,7 @@ import { buildPersonalCodingPlanUsageSource } from "@/lib/codingPlanUsageSources
 import { SubagentsSection } from "@/settings/SubagentsSection.js";
 import { AcpAgentsSection } from "@/settings/AcpAgentsSection.js";
 import { DelegationSettingsSection } from "@/settings/DelegationSettingsSection.js";
+import { DesktopLanAccessSection } from "@/settings/DesktopLanAccessSection.js";
 import { isMatchingAcpWorkspaceTab } from "@/settings/acpAgentSettingsCatalog.js";
 import { AutomationsSection } from "@/settings/AutomationsSection.js";
 import { SegmentPill } from "@/settings/PluginStoreListView.js";
@@ -303,18 +304,22 @@ export function SettingsPage({
   user?: UserInfo | null;
 }) {
   const { intl, localePreference, setLocalePreference } = useZCodeIntl();
+  const platform = usePlatform();
+  const supportsDesktopLanAccess = Boolean(
+    platform.getDesktopLanAccess && platform.setDesktopLanAccessEnabled,
+  );
   const { settingsSectionGroups, settingsSections } = useMemo(
     () =>
       createSettingsPageConfig({
         isDesktop: Boolean(isDesktop),
         isMacDesktop: Boolean(isMacDesktop),
         isWindowsDesktop: Boolean(isWindowsDesktop),
+        supportsDesktopLanAccess,
       }),
-    [isDesktop, isMacDesktop, isWindowsDesktop],
+    [isDesktop, isMacDesktop, isWindowsDesktop, supportsDesktopLanAccess],
   );
   const isLinuxDesktop = Boolean(isDesktop && !isMacDesktop && !isWindowsDesktop);
   const usesInlineWindowControls = Boolean(isWindowsDesktop || isLinuxDesktop);
-  const platform = usePlatform();
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() => {
     const initialSection = consumeInitialSettingsSection("general");
     const visibleInitialSection = resolveSettingsSectionForPlatform(
@@ -606,11 +611,16 @@ export function SettingsPage({
   }, [selectedUsageCodingPlanSource, usageActiveTab, usageCodingPlanSources]);
   const setActiveSettingsSection = useCallback(
     (section: SettingsSectionId, fallbackSection: SettingsSectionId = activeSection) => {
-      const resolvedSection = resolveSettingsSection(section, fallbackSection);
+      // 已挂载页面也可能收到桌面专属分区意图；按可见菜单解析，避免 Web 落到空白页。
+      const resolvedSection = resolveSettingsSectionForPlatform(
+        resolveSettingsSection(section, fallbackSection),
+        settingsSections,
+        fallbackSection,
+      );
       setActiveSection(resolvedSection);
       writeLastSettingsSectionPreference(resolvedSection);
     },
-    [activeSection],
+    [activeSection, settingsSections],
   );
   const handleOpenModelProviderSettings = useCallback(() => {
     setActiveSettingsSection("modelProvider");
@@ -1779,6 +1789,8 @@ export function SettingsPage({
                               handleAskUserQuestionAutoResolutionEnabledChange
                             }
                           />
+                        ) : activeSection === "desktopLan" ? (
+                          <DesktopLanAccessSection />
                         ) : activeSection === "appearance" ? (
                           <AppearanceSectionContent
                             codePreviewSettings={codePreviewSettings}

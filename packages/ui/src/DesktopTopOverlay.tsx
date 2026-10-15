@@ -79,7 +79,6 @@ export function DesktopTopOverlay({
   const SidebarToggleIcon = isSidebarVisible ? PanelLeftClose : PanelLeftOpen;
   const isLinuxDesktop = Boolean(isDesktop && !isMacDesktop && !isWindowsDesktop);
   const usesCustomCaptionArea = isWindowsDesktop || isLinuxDesktop;
-  const showSidebarToggle = usesCustomCaptionArea || isMacDesktop || !isDesktop;
   const toggleSidebarTitle = intl.formatMessage({
     id: "workspaceSidebar.toggleSidebar",
   });
@@ -133,34 +132,21 @@ export function DesktopTopOverlay({
             "pointer-events-auto flex items-center gap-1 shrink-0 [app-region:no-drag]",
           )}
         >
-          {showSidebarToggle && (
-            <DesktopTopOverlayActionButton
-              title={toggleSidebarTitle}
-              shortcut={toggleSidebarShortcutLabel}
-              ariaLabel={toggleSidebarTitle}
-              buttonClassName="group relative overflow-hidden rounded-lg"
-              onClick={onToggleSidebar}
-            >
-              <img
-                src={appLogoUrl}
-                alt={PRODUCT_NAME}
-                className="size-5 transition-opacity duration-150 group-hover:opacity-0"
-                draggable={false}
-              />
-              <SidebarToggleIcon className="absolute inset-0 m-auto size-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100" />
-            </DesktopTopOverlayActionButton>
+          {/* macOS 原先让 Logo 和独立图标都切换侧栏，形成重复入口；Logo 仅展示，所有平台统一保留一个图标按钮。 */}
+          {isMacDesktop && (
+            <span className="inline-flex size-7 shrink-0 items-center justify-center">
+              <img src={appLogoUrl} alt={PRODUCT_NAME} className="size-5" draggable={false} />
+            </span>
           )}
 
-          {isMacDesktop && (
-            <DesktopTopOverlayActionButton
-              title={toggleSidebarTitle}
-              shortcut={toggleSidebarShortcutLabel}
-              ariaLabel={toggleSidebarTitle}
-              onClick={onToggleSidebar}
-            >
-              <SidebarToggleIcon className="size-4" />
-            </DesktopTopOverlayActionButton>
-          )}
+          <DesktopTopOverlayActionButton
+            title={toggleSidebarTitle}
+            shortcut={toggleSidebarShortcutLabel}
+            ariaLabel={toggleSidebarTitle}
+            onClick={onToggleSidebar}
+          >
+            <SidebarToggleIcon className="size-4" />
+          </DesktopTopOverlayActionButton>
 
           {/* 远程控制移动端左上角空间有限，任务前进/后退在这里会与主操作拥挤重叠。*/}
           {hideTaskNavigationButtons ? null : (

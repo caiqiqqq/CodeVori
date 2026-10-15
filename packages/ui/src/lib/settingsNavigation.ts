@@ -3,6 +3,7 @@ import { logger } from "@/logger.js";
 
 export type SettingsSectionId =
   | "general"
+  | "desktopLan"
   | "appearance"
   | "migration"
   | "browser"
@@ -68,6 +69,7 @@ export interface SettingsModelProviderTarget {
 function isSettingsSectionId(value: string): value is SettingsSectionId {
   return (
     value === "general" ||
+    value === "desktopLan" ||
     value === "appearance" ||
     value === "migration" ||
     value === "browser" ||

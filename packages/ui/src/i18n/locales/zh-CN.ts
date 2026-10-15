@@ -5,8 +5,14 @@ const zhCN: Record<string, string> = {
   "settings.desktopLan.description": "让手机连接当前桌面窗口，查看同一项目、会话和运行状态。",
   "settings.desktopLan.start": "开启访问",
   "settings.desktopLan.stop": "关闭访问",
+  "settings.desktopLan.enabled": "局域网访问已开启",
+  "settings.desktopLan.disabled": "局域网访问未开启",
   "settings.desktopLan.link": "手机浏览器连接地址（含访问凭据）",
+  "settings.desktopLan.linkDescription":
+    "手机与电脑连接同一局域网，在手机浏览器中打开以下任一可达地址。点击输入框可选中完整链接。",
   "settings.desktopLan.token": "手机 App 连接 Token",
+  "settings.desktopLan.tokenDescription":
+    "使用手机 App 时，分别填写上方的根地址与此 Token。重新开启访问会更换 Token。",
   "settings.desktopLan.hint":
     "在同一可信局域网中使用；HTTP 明文传输。关闭访问或退出桌面后连接立即失效。",
   "chat.visualization.title": "交互预览",

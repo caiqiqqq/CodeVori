@@ -1889,6 +1889,9 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   // 与 Task Header 分叉。桌面端统一复用 WorkspaceHeader，只由 variant 裁剪 task 专属内容；
   // 手机远控无 active task 时仍不渲染桌面 chrome，继续遵守 replayable overlay 边界。
   const shouldRenderMainViewHeader = workspaceMainView === "chat";
+  // Web 非聊天页没有桌面拖拽标题栏，侧栏收起后需为 h-14 全局导航预留高度，避免遮住任务标题及操作。
+  const shouldReserveWebNavigationSpace =
+    !isDesktop && !isSidebarVisible && !shouldRenderMainViewHeader;
   const shouldRenderWorkspaceHeader =
     shouldRenderMainViewHeader && (activeTaskId !== null || acpHeaderTitle !== null || isDesktop);
   // ErrorBoundary resetKeys 的数组如果每次 render 都重新创建，
@@ -2086,6 +2089,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                     data-workspace-conversation-frame="true"
                     className={cn(
                       "relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background",
+                      shouldReserveWebNavigationSpace && "pt-14",
                       isSidePaneVisible
                         ? "rounded-[var(--workspace-panel-radius)] border border-border"
                         : resolveWorkspaceShellWindowChromeClass({

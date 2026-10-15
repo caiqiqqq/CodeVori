@@ -39,15 +39,19 @@ try {
     const noop=()=>{};
     const tasks:any=['api','acp','pending','other'].map((kind,index)=>({id:kind,title:kind+' task',prompt:'Synthetic task',runText:'Synthetic task',workspacePath:kind==='other'?'/synthetic/other':'/synthetic/main',status:kind==='pending'?'todo':'running',execution:kind==='acp'?{kind:'acp',agent:'codex',config:[]}:{kind:'api',modelSelection:{providerId:'test',modelId:'model'},mode:'build'},...(kind==='pending'?{}:{session:{kind:kind==='acp'?'acp':'api',id:kind+'-session'},worktree:{rootPath:'/synthetic/trees',path:'/synthetic/trees/'+kind+'/project',projectPath:'/synthetic/main',branchName:'worktree/'+kind,baseCommit:'abcdef'}}),archived:false,stopPending:false,runSeq:1,createdAt:index,updatedAt:index,commandId:'command',sessionRequestId:'request'}));
     const changed=new Set();state.archive=(id:string)=>{tasks.find(t=>t.id===id).archived=true;for(const listener of changed)listener()};
+    for(const task of tasks)task.source={repositoryKey:'synthetic/repository',kind:'issue',number:1,url:'https://example.com/issues/1',title:'Synthetic issue with a long title for mobile layout'};
     state.review=(id:string)=>{Object.assign(tasks.find(t=>t.id===id),{status:'review',sourceBranch:'release'});for(const listener of changed)listener()};
     const services:any={
       workTaskService:{async list(scope:any){return {tasks:structuredClone(tasks.filter(task=>task.workspacePath===scope.workspacePath&&!task.archived)),concurrency:1}},onDynamicChanged:()=>listener=>{changed.add(listener);return {dispose:()=>changed.delete(listener)}}},
       gitService:{async getLocalBranches(r:any){state.calls.push({op:'branches',...r});return {headRefType:'branch',currentBranchName:'main',branches:['main','release'].map(name=>({name,isCurrent:name==='main',upstreamName:null,commitHash:'abcdef',commitTimestampMs:1}))}},async getWorkspaceRepositoryInfo(r:any){return {...r,isGitAvailable:true,kind:'main-tree',repoRoot:r.workspacePath}},async refresh(r:any){state.calls.push({op:'git',...r});return {summary:{...r,repoRoot:r.workspacePath,workspaceInRepoPath:'.',autoRefreshWatchPaths:[],branchName:'main',trackingBranchName:null,headRefType:'branch',ahead:0,behind:0,isDirty:true,isGitAvailable:true,isRepository:true},unstagedChanges:[],stagedChanges:[]}}},
       zcodeAgentService:{},zcodeSessionService:{},
     };
+    services.workTaskService.getEvents=async()=>[];
+    services.workTaskService.getResultSource=async()=>null;
     const platform:any={isWeb:true,async getInstalledEditors(){return [{id:'finder',name:'Finder',iconDataUrl:icon}]},async openInEditor(editor:string,path:string,options:any){state.calls.push({op:'editor',editor,path,options});return {success:true}},async openExternal(url:string){state.calls.push({op:'external',url})}};
     const tabs:any=[{workspacePath:'/synthetic/main',label:'Main',workspacePurpose:'project'},{workspacePath:'/synthetic/other',label:'Other',workspacePurpose:'project'}];
     function Fixture(){
+      const [desktop,setDesktop]=useState(true);state.desktop=setDesktop;
       const [statusKey,setStatusKey]=useState<string|null>(null);state.statusKey=setStatusKey;
       const [variant,setVariant]=useState<any>(null);
       const [mainView,setMainView]=useState<any>('work-tasks');const [workspacePath,setWorkspacePath]=useState('/synthetic/main');
@@ -59,7 +63,7 @@ try {
       const sidebarContainerRef=useRef(null);
       return <div className='h-dvh'><WorkspaceShellLayout {...panels} services={services} platform={platform} workspaceAbsPath={workspacePath} workspaceMainView={mainView} onWorkspaceMainViewChange={setMainView}
         workTaskTools={{...tools,services}} workspaceTabs={tabs} workspaceShellZCodeState={{draftFocusVersion:0,selectedProvider:'glm',activeTaskId:null}} theme='zai-light'
-        activeTaskId={null} sidePaneOwnerId='main-draft' projectName='Main' isWorkspaceVisible isDesktop={true} isMacDesktop={false} isWindowsDesktop={false} isMacFullscreen={false}
+        activeTaskId={null} sidePaneOwnerId='main-draft' projectName='Main' appLogoUrl={icon} isWorkspaceVisible isDesktop={desktop} isMacDesktop={false} isWindowsDesktop={false} isMacFullscreen={false}
         isSidebarVisible={false} isSidePaneOpen={!panels.isSidePaneCollapsed} isBrowserOpen={false} supportsEmbeddedBrowser={false} gitState={{...gitState,workspaceKey:statusKey??gitState.workspaceKey}} activeGitSourceId='unstaged'
         gitWorktreeChangeSummary={{added:7,removed:2}} gitWorktreeReviewSourceId='unstaged' summaryPanelVariantOverride={variant} onSummaryPanelVariantOverrideChange={setVariant}
         handleToggleSidePane={panels.handleToggleSidePaneCollapse} handleRefreshGit={()=>state.calls.push({op:'refresh',workspacePath:path})} setGitSelectedSourceId={noop} handleBrowserUrlChange={noop} activeTaskTitle=''
@@ -77,7 +81,7 @@ try {
   `,
   );
   browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, hasTouch: true });
   page.setDefaultTimeout(Number(process.env.ZCODE_E2E_TIMEOUT_MS ?? 15000));
   page.on("pageerror", (error) => errors.push(error.message));
   const stub = async (path, body) =>
@@ -86,7 +90,6 @@ try {
     );
   for (const [path, symbol] of [
     ["WorkspaceSidebar.tsx", "WorkspaceSidebar"],
-    ["DesktopTopOverlay.tsx", "DesktopTopOverlay"],
     ["command-center/CommandCenterDialog.tsx", "CommandCenterDialog"],
     ["quickpick/TaskFindDialog.tsx", "TaskFindDialog"],
   ])
@@ -94,7 +97,7 @@ try {
   await stub("v4/V4WorkspaceChatArea.tsx", "export function V4WorkspaceChatArea(){return null}");
   await stub(
     "WorkspaceHeader.tsx",
-    `import {WorkspaceHeaderActionSection} from '/@fs${new URL("../src/WorkspaceHeaderSections/WorkspaceHeaderActionSection.tsx", import.meta.url).pathname}';export function WorkspaceHeader(props){return window.__React.createElement('header',{'data-testid':'normal-chat-tools'},window.__React.createElement(WorkspaceHeaderActionSection,props))}`,
+    `import {WorkspaceHeaderActionSection} from '/@fs${new URL("../src/WorkspaceHeaderSections/WorkspaceHeaderActionSection.tsx", import.meta.url).pathname}';export function WorkspaceHeader(props){return window.__React.createElement('header',{'data-testid':'normal-chat-tools',className:'flex h-14 justify-end'},window.__React.createElement(WorkspaceHeaderActionSection,props))}`,
   );
   await stub(
     "v4/SessionPane.tsx",
@@ -149,7 +152,7 @@ try {
     assert.equal(await selectedHeader().getByTestId("workspace-help-menu-trigger").count(), 0);
     const path = `/synthetic/trees/${id}/project`;
     await page.waitForFunction((path) => window.__tools.target?.workspacePath === path, path);
-    const session = await page.getByTestId("tool-session").elementHandle();
+    let session = await page.getByTestId("tool-session").elementHandle();
     await page
       .getByRole("textbox", { name: "Synthetic draft", exact: true })
       .fill("保留原对话草稿");
@@ -166,15 +169,15 @@ try {
       );
       throw error;
     });
-    const expand = status.getByRole("button", { name: "展开状态", exact: true });
+    const expand = status.getByRole("button", { name: /展开状态$/ });
     if (await expand.isVisible()) await expand.click();
     await status.getByRole("button").filter({ hasText: "main" }).waitFor();
     await status.getByRole("button", { name: "收起为胶囊", exact: true }).click();
-    await status.getByRole("button", { name: "展开状态", exact: true }).click();
+    await expand.click();
     // 旧工作树和同路径的远端 identity 均不得投影到本地待办会话。
     for (const key of ["/synthetic/main", "remote-identity:" + path]) {
       await page.evaluate((key) => window.__tools.statusKey(key), key);
-      await status.waitFor({ state: "detached" });
+      await status.getByRole("button").filter({ hasText: "main" }).waitFor({ state: "detached" });
     }
     await page.evaluate(() => window.__tools.statusKey(null));
     await status.waitFor();
@@ -234,6 +237,72 @@ try {
       true,
       "tools must not remount conversation",
     );
+    // 必须组合真实全局导航和任务标题；替换导航会漏掉 Web 浮层遮挡标题的问题。
+    await page.evaluate(() => window.__tools.desktop(false));
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const theme of ["zai-light", "zai-dark"]) {
+        await page.evaluate((theme) => {
+          document.documentElement.classList.remove("theme-zai-light", "theme-zai-dark", "dark");
+          document.documentElement.classList.add("theme-" + theme);
+          if (theme === "zai-dark") document.documentElement.classList.add("dark");
+        }, theme);
+        const navigation = await page.getByTestId("desktop-top-nav-back").boundingBox();
+        const header = await selectedHeader().boundingBox();
+        assert.ok(
+          navigation && header && navigation.y + navigation.height <= header.y,
+          `Web navigation must sit above the task header at ${width}px: ${JSON.stringify({ navigation, header })}`,
+        );
+        assert.ok(header.x >= 0 && header.x + header.width <= width);
+        const source = await selectedHeader().getByTestId("work-task-source-link").boundingBox();
+        assert.ok(source && source.y >= header.y && source.x + source.width <= width);
+        await selectedHeader().getByRole("button", { name: "任务详情", exact: true }).tap();
+        await page.getByTestId("work-task-detail").waitFor();
+        await page.keyboard.press("Escape");
+        await page.getByTestId("work-task-detail").waitFor({ state: "detached" });
+        await selectedHeader().getByTestId("terminal-toggle").tap();
+        await page.getByRole("button", { name: "Close synthetic terminal", exact: true }).click();
+        await page.waitForFunction(
+          () =>
+            document
+              .querySelector('[data-workspace-terminal-frame="true"] > div')
+              ?.getAttribute("aria-hidden") === "true",
+        );
+        assert.equal(
+          await page.getByRole("textbox", { name: "Synthetic draft", exact: true }).inputValue(),
+          "保留原对话草稿",
+        );
+        assert.equal(await page.evaluate((element) => element.isConnected, session), true);
+        await page.screenshot({ path: join(artifacts, `${id}-web-header-${width}-${theme}.png`) });
+        const back = selectedHeader().getByTestId("work-task-back");
+        // Logo 曾覆盖返回箭头，几何分行之外还要验证真实命中与触摸返回，不能用 force 绕过遮挡。
+        assert.equal(
+          await back.evaluate((button) => {
+            const rect = button.getBoundingClientRect();
+            return (
+              document
+                .elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+                ?.closest("button") === button
+            );
+          }),
+          true,
+          "task back must receive the touch instead of the global Logo",
+        );
+        await back.tap();
+        await panel.getByTestId("work-task-content").waitFor({ state: "hidden" });
+        await card(id).tap();
+        await page.locator(`[data-testid="tool-session"][data-session="${id}-session"]`).waitFor();
+        await page.waitForFunction((path) => window.__tools.target?.workspacePath === path, path);
+        // 返回会关闭当前选择，允许 pane 卸载；合成 textarea 没有业务草稿存储，重选后重新准备工具测试。
+        await session.dispose();
+        session = await page.getByTestId("tool-session").elementHandle();
+        await page
+          .getByRole("textbox", { name: "Synthetic draft", exact: true })
+          .fill("保留原对话草稿");
+      }
+    }
+    await page.evaluate(() => window.__tools.desktop(true));
+    await page.setViewportSize({ width: 1440, height: 900 });
     await session.dispose();
     await page.screenshot({ path: join(artifacts, `${id}-tools.png`) });
   }
