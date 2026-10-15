@@ -46,6 +46,10 @@ modules:
   - id: web
     roots: [packages/web/src]
     managed: false
+  - id: mobile
+    roots: [apps/mobile]
+    managed: false
+    owner: mobile-client
   - id: desktop
     roots: [packages/desktop/src]
     managed: false

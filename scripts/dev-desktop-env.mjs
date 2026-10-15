@@ -58,6 +58,8 @@ try {
   // Preserve its runtime-asset preparation and stale `out` cleanup explicitly
   // before rebuilding bundles or starting Electron.
   await run(pnpmCommand, ["--filter", "@zcode/desktop", "pre-dev"]);
+  // 局域网入口必须服务同版本 Web 资源，不能把 Electron renderer 当成 Web 页面。
+  await run(pnpmCommand, ["--filter", "@zcode/web", "build"]);
   // On Windows, use "node" (resolved via PATHEXT) to avoid "C:\Program Files\..." space issues
   await run(process.platform === "win32" ? "node" : process.execPath, [
     resolve(repoRoot, "scripts/build-desktop-agent-cli.mjs"),

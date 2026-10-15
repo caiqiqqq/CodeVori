@@ -1,3 +1,4 @@
+import { createUuid } from "@zcode/shared";
 import type { PresentationPageElement } from "@/presentation/types.js";
 
 export const PPTX_ELEMENT_REFERENCE_ADD_TO_CHAT_EVENT = "zcode:pptx-element-reference-add-to-chat";
@@ -135,10 +136,7 @@ function isPptxElementReferencePayload(payload: unknown): payload is PptxElement
 }
 
 function createPptxElementReferenceId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `pptx-element-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `pptx-element-${createUuid()}`;
 }
 
 export async function sha256Fingerprint(value: ArrayBuffer | string): Promise<string> {

@@ -63,9 +63,18 @@ export function connectViaWebSocket(
   wsUrl: string,
   options?: WebSocketConnectionOptions,
 ): Promise<IServiceAccessor> {
+  return createWebSocketServiceConnection(wsUrl, options).then((connection) => connection.services);
+}
+
+export function createWebSocketServiceConnection(
+  wsUrl: string,
+  options?: WebSocketConnectionOptions,
+): Promise<{ services: IServiceAccessor; dispose: (reason?: Error) => void }> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(wsUrl);
     let settled = false;
+    let disposeConnection: ((reason?: Error) => void) | undefined;
+    let disposed = false;
 
     ws.addEventListener("error", () => {
       if (!settled) {
@@ -73,11 +82,15 @@ export function connectViaWebSocket(
       }
     });
     ws.addEventListener("close", (event) => {
-      options?.onClose?.({
-        code: event.code,
-        reason: event.reason,
-        wasClean: event.wasClean,
-      });
+      const wasDisposed = disposed;
+      // 手机 attachment 断开时立即 settle 挂起 RPC，不能让旧代请求跨重连永久悬置。
+      disposeConnection?.(new Error("WebSocket attachment disconnected"));
+      if (!wasDisposed)
+        options?.onClose?.({
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean,
+        });
 
       if (!settled) {
         reject(
@@ -94,7 +107,16 @@ export function connectViaWebSocket(
       settled = true;
       options?.onOpenSocket?.(ws);
       const socket = wrapBrowserWebSocket(ws);
-      resolve(connectViaProtocol(new SocketProtocol(socket)));
+      const protocol = new SocketProtocol(socket);
+      const client = new ChannelClient(protocol);
+      disposeConnection = (reason) => {
+        if (disposed) return;
+        disposed = true;
+        client.dispose(reason);
+        protocol.dispose();
+        ws.close();
+      };
+      resolve({ services: new RemoteServiceAccess(client), dispose: disposeConnection });
     });
   });
 }

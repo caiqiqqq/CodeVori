@@ -63,9 +63,11 @@ export {
   type ISocket,
   ChunkStream,
   SocketProtocol,
+  HEADER_SIZE,
   ProtocolMessageType,
   ProtocolMessage,
   MessagePortProtocol,
+  wrapNodeMessagePort,
   type MessagePortLike,
   createQueuePair,
 } from "./protocol.js";

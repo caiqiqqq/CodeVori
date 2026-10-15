@@ -1,3 +1,4 @@
+import { createUuid } from "@zcode/shared";
 import type { PptxCodeViewerSource, PptxReferencePreviewNavigation } from "@/lib/codeViewer.js";
 import {
   isPptxElementReferenceInWorkspaceScope,
@@ -14,10 +15,7 @@ interface PptxElementReferencePreviewScope {
 function createPptxReferencePreviewNavigation(
   reference: PptxElementReference,
 ): PptxReferencePreviewNavigation {
-  const requestId =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `pptx-preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const requestId = `pptx-preview-${createUuid()}`;
   return {
     requestId,
     pageIndex: reference.slideIndex,

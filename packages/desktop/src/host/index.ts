@@ -2014,7 +2014,9 @@ function exposeServicesOnMessagePort(
       })
     : undefined;
   services.register(IWindowControllerService, windowHostControllerRuntime.service);
-  const controllerAttachment = windowHostControllerRuntime.createAttachmentService();
+  const controllerAttachment = windowHostControllerRuntime.createAttachmentService(
+    clientMode === "desktop-continuous" && attachmentScope.kind === "local",
+  );
   const overrides = new Map<string, unknown>([
     [IWindowControllerService.channelName, controllerAttachment],
   ]);

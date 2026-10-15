@@ -1,6 +1,15 @@
 /** English translations */
 import { PRODUCT_NAME } from "@zcode/shared";
 const enUS: Record<string, string> = {
+  "settings.desktopLan.title": "Phone access over LAN",
+  "settings.desktopLan.description":
+    "Connect your phone to this desktop window and its projects, conversations and running sessions.",
+  "settings.desktopLan.start": "Enable access",
+  "settings.desktopLan.stop": "Disable access",
+  "settings.desktopLan.link": "Phone browser URL (includes access credentials)",
+  "settings.desktopLan.token": "Mobile app connection token",
+  "settings.desktopLan.hint":
+    "Use on a trusted local network; HTTP is unencrypted. Disabling access or quitting the desktop disconnects your phone.",
   "chat.visualization.title": "Interactive preview",
   "chat.visualization.loading": "Loading preview…",
   "chat.visualization.failed": "Preview unavailable. Check the workspace connection and HTML file.",

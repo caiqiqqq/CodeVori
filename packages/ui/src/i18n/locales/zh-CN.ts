@@ -1,6 +1,14 @@
 /** 中文翻译 */
 import { PRODUCT_NAME } from "@zcode/shared";
 const zhCN: Record<string, string> = {
+  "settings.desktopLan.title": "局域网手机访问",
+  "settings.desktopLan.description": "让手机连接当前桌面窗口，查看同一项目、会话和运行状态。",
+  "settings.desktopLan.start": "开启访问",
+  "settings.desktopLan.stop": "关闭访问",
+  "settings.desktopLan.link": "手机浏览器连接地址（含访问凭据）",
+  "settings.desktopLan.token": "手机 App 连接 Token",
+  "settings.desktopLan.hint":
+    "在同一可信局域网中使用；HTTP 明文传输。关闭访问或退出桌面后连接立即失效。",
   "chat.visualization.title": "交互预览",
   "chat.visualization.loading": "正在加载预览…",
   "chat.visualization.failed": "无法加载预览，请检查工作区连接及 HTML 文件。",

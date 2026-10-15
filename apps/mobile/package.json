@@ -1,0 +1,32 @@
+{
+  "name": "@zcode/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/connection.test.ts"
+  },
+  "dependencies": {
+    "expo": "~57.0.21",
+    "expo-build-properties": "~57.0.22",
+    "expo-secure-store": "~57.0.3",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-webview": "13.16.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "@types/react": "~19.2.2",
+    "tsx": "^4.20.0",
+    "typescript": "~6.0.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

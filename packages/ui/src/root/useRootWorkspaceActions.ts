@@ -30,6 +30,7 @@ import { resolveWorkbenchNewTaskTarget } from "@/v4/workbenchNewTaskTarget.js";
 import type { WorkbenchNewTaskTarget } from "@/v4/workbenchNewTaskTarget.js";
 import { useWorkbenchGroupStore } from "@/v4/workbenchGroupStore.js";
 import { persistV4ComposerDraft, V4_DRAFT_SCOPE_ROOT } from "@/v4/composer/composerDraftStore.js";
+import { useDesktopWindowView } from "./desktopWindowSession.js";
 
 interface OpenRemoteConnectionPreference {
   preferredKind?: RemoteTarget["kind"];
@@ -202,6 +203,18 @@ export function useRootWorkspaceActions({
         return;
       }
 
+      const windowView = useDesktopWindowView.getState();
+      // 已保存工作流可以携带跨项目目标；手机也必须在创建草稿前校验桌面成员。
+      if (
+        windowView.following &&
+        !windowView.snapshot?.workspaces.some(
+          (item) =>
+            (item.workspaceIdentity?.trim() || item.workspacePath) ===
+            (newTaskTarget.workspaceIdentity?.trim() || newTaskTarget.workspacePath),
+        )
+      )
+        return;
+
       // 仅禁用按钮无法覆盖桌面菜单和快捷键；启动期失效 workspace
       // 必须在动作边界再次校验，避免历史只读页被隐式切回可发送草稿态。
       if (
@@ -360,6 +373,17 @@ export function useRootWorkspaceActions({
 
   const handleSelectProject = useCallback(
     async (path: string) => {
+      if (useDesktopWindowView.getState().following) {
+        // 从设置/最近项目进入的动作也必须遵守桌面成员投影，不能只隐藏“打开项目”按钮。
+        const existing = tabStoreApi
+          .getState()
+          .tabs.find(
+            (tab) =>
+              tab.kind === "workspace" && tab.workspacePath === path && !tab.workspaceIdentity,
+          );
+        if (existing) tabStoreApi.getState().activateTab(existing.id);
+        return;
+      }
       logger.info("[Root] handleSelectProject called with path:", path);
       try {
         const wslUncWorkspace = parseWslUncWorkspacePath(path);
@@ -431,6 +455,7 @@ export function useRootWorkspaceActions({
       services.settingService,
       startDraftInWorkspace,
       supportsSettings,
+      tabStoreApi,
     ],
   );
 

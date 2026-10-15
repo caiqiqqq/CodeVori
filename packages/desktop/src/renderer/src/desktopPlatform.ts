@@ -81,6 +81,8 @@ export function createDesktopPlatform(options: {
         onlyWhenUnfocused: isTaskNotificationOnlyWhenUnfocused(),
       }),
     syncWindowTabs: (paths) => window.zcode.syncWindowTabs(paths),
+    getDesktopLanAccess: () => window.zcode.getDesktopLanAccess!(),
+    setDesktopLanAccessEnabled: (enabled) => window.zcode.setDesktopLanAccessEnabled!(enabled),
     syncWindowUnreadCount: (count) => window.zcode.syncWindowUnreadCount(count),
     syncActiveTaskSession: (sessionId) => window.zcode.syncActiveTaskSession(sessionId),
     syncAppSettings: (patch) => window.zcode.syncAppSettings?.(patch),

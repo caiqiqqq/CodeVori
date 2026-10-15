@@ -79,6 +79,7 @@ export function DesktopTopOverlay({
   const SidebarToggleIcon = isSidebarVisible ? PanelLeftClose : PanelLeftOpen;
   const isLinuxDesktop = Boolean(isDesktop && !isMacDesktop && !isWindowsDesktop);
   const usesCustomCaptionArea = isWindowsDesktop || isLinuxDesktop;
+  const showSidebarToggle = usesCustomCaptionArea || isMacDesktop || !isDesktop;
   const toggleSidebarTitle = intl.formatMessage({
     id: "workspaceSidebar.toggleSidebar",
   });
@@ -132,7 +133,7 @@ export function DesktopTopOverlay({
             "pointer-events-auto flex items-center gap-1 shrink-0 [app-region:no-drag]",
           )}
         >
-          {usesCustomCaptionArea && (
+          {showSidebarToggle && (
             <DesktopTopOverlayActionButton
               title={toggleSidebarTitle}
               shortcut={toggleSidebarShortcutLabel}

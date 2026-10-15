@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IAcpService } from "@zcode/services";
+import { createUuid } from "@zcode/shared";
 import type {
   AcpAgent,
   AcpAgentInfo,
@@ -148,7 +149,7 @@ export function useAcpAgentManagement(service: IAcpService | null) {
       setError(null);
       setLog([]);
       setOperationAgent(agent);
-      const operationId = crypto.randomUUID();
+      const operationId = createUuid();
       let disposeSubscription: (() => void) | undefined;
       try {
         const subscription = service.onDynamicAgentOperation(operationId)((event) => {

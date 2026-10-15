@@ -1,6 +1,7 @@
 import type { IAcpService } from "@zcode/services";
 import {
   acpConversationChangeSchema,
+  createUuid,
   type AcpConversationChange,
   type AcpWorkspace,
 } from "@zcode/shared";
@@ -93,7 +94,8 @@ export function createAcpConversationTransport(
   };
   return {
     async subscribe() {
-      const subscriptionId = crypto.randomUUID();
+      // 局域网 HTTP 浏览器缺少 randomUUID，订阅 ID 复用共享兼容入口以免会话初始化失败。
+      const subscriptionId = createUuid();
       const token = barrier.begin(topic);
       try {
         subscriptions.set(

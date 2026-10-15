@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import type { CreateTaskRequest } from "@/app-shell/types.js";
 
 export interface RootProps {
+  /** 连接已存在的桌面窗口；项目列表为只读 Host 投影，不恢复/写回独立 Web 历史。 */
+  desktopWindowFollower?: import("./useDesktopWindowSession.js").DesktopWindowFollower;
   services: IServiceAccessor;
   platform: IPlatformService;
   /** 如果从 main 进程传入则跳过项目选择页 */

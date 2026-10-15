@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { IGitService } from "@zcode/services";
 import {
   FORGE_IMAGE_UPLOAD_MAX_BYTES,
+  createUuid,
   type ForgeImageUploadCapability,
   type ForgeTargetRequest,
 } from "@zcode/shared";
@@ -71,7 +72,7 @@ export function useForgeImageUploads(
 
   const enqueue = (entry: ForgeDraftImage) => {
     const current = generation.current;
-    const requestId = crypto.randomUUID();
+    const requestId = createUuid();
     const exists = () =>
       current === generation.current && entries.current.some((image) => image.id === entry.id);
     // 原生上传按当前草稿串行，避免同时弹出多个登录窗口；这是未提交草稿，不是 Agent accepted queue。
@@ -135,7 +136,7 @@ export function useForgeImageUploads(
     }
     setError(null);
     const next = files.map((file) => ({
-      id: crypto.randomUUID(),
+      id: createUuid(),
       file,
       preview: URL.createObjectURL(file),
       state: "uploading" as const,
