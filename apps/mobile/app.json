@@ -11,7 +11,7 @@
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true,
-          "NSAllowsArbitraryLoads": true
+          "NSAllowsArbitraryLoadsInWebContent": true
         }
       }
     },

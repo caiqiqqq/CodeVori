@@ -26,6 +26,8 @@ pnpm --filter @zcode/mobile start
 
 开发阶段用 `pnpm --filter @zcode/mobile android` 或 `pnpm --filter @zcode/mobile ios` 生成并运行相应原生工程。需要 Android SDK 或完整 Xcode；这里没有提交生成的原生目录。`pnpm --filter @zcode/mobile typecheck`、`pnpm --filter @zcode/mobile test` 可检查手机壳源码。真机安装包仍需签名及平台构建环境。
 
+iOS 的 HTTP 网页通过 `app.json` 中的 `NSAllowsArbitraryLoadsInWebContent` 放行。`NSAllowsLocalNetworking` 存在时，通用的 `NSAllowsArbitraryLoads` 会被系统忽略，不能用它替代 WebView 专用配置。已有 iOS 工程需同步 Info.plist 并重新构建安装；仅更新 JavaScript 不会修复 ATS 的 `-1022` 错误。
+
 局域网 HTTP 仅用于可信网络；HTTP 会以明文传送首次连接的 Token。自定义域名同样支持 HTTP；域名需要正确解析并能从手机访问电脑的固定端口，公网使用建议通过 HTTPS 代理。移动壳不会接管 OAuth 流程：如果 Web 页面首次要求登录，应先在手机浏览器确认同一地址能完成登录，不能把手机 WebView 的连接成功等同于 OAuth 或完整会话已验收。
 
 手机显示名通过 `app.config.ts` 读取共享产品名，图标由 `pnpm --filter @zcode/mobile generate:icon` 从共享 V 字形生成。修改后需要重新生成原生资源并构建安装，Metro 热更新不会修改主屏名称和图标。
