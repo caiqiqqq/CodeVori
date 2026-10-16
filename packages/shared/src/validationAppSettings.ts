@@ -1,4 +1,5 @@
 import { normalizeProxyOnlyDomains } from "./proxyDomains.js";
+import { desktopLanAccessConfigurationSchema } from "./desktopWindow.js";
 /* oxlint-disable eslint(max-lines) -- AppSettings schema 聚合历史迁移、默认值和 patch 校验，拆分会削弱设置迁移的单一入口。 */
 import { z } from "zod";
 import type { AppSettings } from "./protocol.js";
@@ -488,6 +489,7 @@ const appSettingsObjectSchema = z.object({
   keepAwakeWhileRunning: z.boolean().default(false),
   desktopZoomLevel: desktopZoomLevelSchema.optional(),
   desktopLanAccessEnabled: z.boolean().default(false),
+  desktopLanAccessConfiguration: desktopLanAccessConfigurationSchema.optional(),
   desktopWindowSize: desktopWindowSizeSchema.optional(),
   desktopChromiumHardwareAccelerationEnabled: z.boolean().default(true),
   messageStreamShowReasoning: z.boolean().default(true),
@@ -564,6 +566,7 @@ export const appSettingsPatchSchema = z.object({
   closeToTrayOnWindowsMigrationInitialized: z.boolean().optional(),
   desktopZoomLevel: desktopZoomLevelSchema.optional(),
   desktopLanAccessEnabled: z.boolean().optional(),
+  desktopLanAccessConfiguration: desktopLanAccessConfigurationSchema.optional(),
   desktopWindowSize: desktopWindowSizeSchema.optional(),
   desktopChromiumHardwareAccelerationEnabled: z.boolean().optional(),
   messageStreamShowReasoning: z.boolean().optional(),

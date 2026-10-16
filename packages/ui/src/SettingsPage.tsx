@@ -306,7 +306,9 @@ export function SettingsPage({
   const { intl, localePreference, setLocalePreference } = useZCodeIntl();
   const platform = usePlatform();
   const supportsDesktopLanAccess = Boolean(
-    platform.getDesktopLanAccess && platform.setDesktopLanAccessEnabled,
+    platform.getDesktopLanAccess &&
+    platform.setDesktopLanAccessEnabled &&
+    platform.saveDesktopLanAccessConfiguration,
   );
   const { settingsSectionGroups, settingsSections } = useMemo(
     () =>

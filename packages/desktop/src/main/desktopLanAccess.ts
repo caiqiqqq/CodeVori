@@ -1,10 +1,15 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { networkInterfaces } from "node:os";
 import { resolve } from "node:path";
 import { app, BrowserWindow, ipcMain, MessageChannelMain, type UtilityProcess } from "electron";
 import { MessagePortProtocol, wrapNodeMessagePort } from "@zcode/rpc";
 import { createDesktopLanGateway } from "@zcode/server";
-import { HostMessageTypes, PlatformChannels, type DesktopLanAccessState } from "@zcode/shared";
+import {
+  HostMessageTypes,
+  PlatformChannels,
+  desktopLanAccessConfigurationSchema,
+  type DesktopLanAccessConfiguration,
+  type DesktopLanAccessState,
+} from "@zcode/shared";
 
 /** Main 仅拥有监听器及 attachment 路由。不存在第二份 services/runtime。 */
 export function registerDesktopLanAccess(options: {
@@ -12,6 +17,12 @@ export function registerDesktopLanAccess(options: {
   preference: {
     getEnabled(): Promise<boolean>;
     setEnabled(enabled: boolean): Promise<void>;
+    getConfiguration(): Promise<DesktopLanAccessConfiguration | undefined>;
+    setConfiguration(configuration: DesktopLanAccessConfiguration): Promise<void>;
+  };
+  credentials: {
+    load(key: string): Promise<string | null>;
+    save(key: string, value: string): Promise<void>;
   };
   onError: (error: unknown) => void;
 }) {
@@ -19,6 +30,7 @@ export function registerDesktopLanAccess(options: {
     host: UtilityProcess;
     token: string;
     urls: string[];
+    configuration: DesktopLanAccessConfiguration;
     gateway: Awaited<ReturnType<typeof createDesktopLanGateway>>;
     disposeLifecycle(): void;
   };
@@ -40,9 +52,13 @@ export function registerDesktopLanAccess(options: {
     return result;
   };
   const disabled = (): DesktopLanAccessState => ({ enabled: false, urls: [] });
-  const state = (id: number): DesktopLanAccessState => {
+  const state = async (id: number): Promise<DesktopLanAccessState> => {
     const entry = entries.get(id);
-    return entry ? { enabled: true, urls: entry.urls, token: entry.token } : disabled();
+    const configuration = entry?.configuration ?? (await options.preference.getConfiguration());
+    return {
+      ...(entry ? { enabled: true, urls: entry.urls, token: entry.token } : disabled()),
+      configuration,
+    };
   };
   const stop = async (id: number) => {
     generations.set(id, (generations.get(id) ?? 0) + 1);
@@ -67,15 +83,25 @@ export function registerDesktopLanAccess(options: {
     const flight = (async () => {
       const host = options.hosts.get(win.webContents.id);
       if (!host?.pid) throw new Error("Desktop Host is not ready");
-      const addresses = Object.values(networkInterfaces()).flatMap((items) =>
-        (items ?? [])
-          .filter((item) => item.family === "IPv4" && !item.internal)
-          .map((item) => item.address),
+      // 固定端口只能属于一个窗口 Host，不能让后打开的窗口抢占原手机连接。
+      if ([...entries.keys()].some((entryId) => entryId !== id))
+        throw new Error("LAN access is enabled in another window. Disable it there first.");
+      const configuration = desktopLanAccessConfigurationSchema.parse(
+        await options.preference.getConfiguration(),
       );
-      const token = randomBytes(32).toString("base64url");
+      const tokenKey = "desktop-lan-access-token-v1";
+      let token = await options.credentials.load(tokenKey);
+      if (token === null) {
+        token = randomBytes(32).toString("base64url");
+        await options.credentials.save(tokenKey, token);
+      }
+      // 不把凭据损坏当成首次配置；否则更新后悄悄换 Token 会让已配对手机全部失效。
+      if (!/^[A-Za-z0-9_-]{43}$/.test(token))
+        throw new Error("Invalid saved LAN access credential");
       const gateway = await createDesktopLanGateway({
         token,
-        allowedHosts: ["127.0.0.1", "localhost", ...addresses],
+        port: configuration.port,
+        allowedHosts: ["127.0.0.1", "localhost", configuration.address],
         staticRoot: resolve(app.getAppPath(), app.isPackaged ? "out/web" : "../web/dist"),
         openAttachment(scope, onClose) {
           if (host !== options.hosts.get(win.webContents.id) || !host.pid)
@@ -134,9 +160,8 @@ export function registerDesktopLanAccess(options: {
         host,
         token,
         gateway,
-        urls: (addresses.length ? addresses : ["127.0.0.1"]).map(
-          (address) => `http://${address}:${gateway.port}`,
-        ),
+        configuration,
+        urls: [`http://${configuration.address}:${configuration.port}`],
         disposeLifecycle() {
           host.off("exit", onStopped);
           win.off("closed", onStopped);
@@ -197,6 +222,8 @@ export function registerDesktopLanAccess(options: {
         host !== options.hosts.get(win.webContents.id)
       )
         return;
+      // 旧版本只保存开关；先让用户确认一次固定配置，不能用猜测的网卡/随机端口恢复。
+      if (!(await options.preference.getConfiguration())) return;
       await start(win);
     });
   };
@@ -221,13 +248,15 @@ export function registerDesktopLanAccess(options: {
     const win = senderWindow(event.sender);
     return enqueue(async () => {
       if (disposed || win.isDestroyed()) throw new Error("Desktop window unavailable");
+      if ([...entries.keys()].some((entryId) => entryId !== win.id))
+        throw new Error("LAN access is enabled in another window. Disable it there first.");
       if (!enabled) {
         try {
           await options.preference.setEnabled(false);
         } finally {
           await stop(win.id);
         }
-        return disabled();
+        return state(win.id);
       }
       const result = await start(win);
       if (!result.enabled) return result;
@@ -241,6 +270,19 @@ export function registerDesktopLanAccess(options: {
       }
     });
   });
+  ipcMain.handle(
+    PlatformChannels.SaveDesktopLanAccessConfiguration,
+    async (event, input: unknown) => {
+      const configuration = desktopLanAccessConfigurationSchema.parse(input);
+      const win = senderWindow(event.sender);
+      return enqueue(async () => {
+        if (disposed || win.isDestroyed()) throw new Error("Desktop window unavailable");
+        if (entries.size) throw new Error("Disable LAN access before changing its address or port");
+        await options.preference.setConfiguration(configuration);
+        return state(win.id);
+      });
+    },
+  );
   const onQuit = () => {
     void dispose().catch(options.onError);
   };
@@ -250,6 +292,7 @@ export function registerDesktopLanAccess(options: {
     app.off("will-quit", onQuit);
     ipcMain.removeHandler(PlatformChannels.GetDesktopLanAccess);
     ipcMain.removeHandler(PlatformChannels.SetDesktopLanAccessEnabled);
+    ipcMain.removeHandler(PlatformChannels.SaveDesktopLanAccessConfiguration);
     await enqueue(async () => {
       await Promise.all([...new Set([...entries.keys(), ...flights.keys()])].map(stop));
     });

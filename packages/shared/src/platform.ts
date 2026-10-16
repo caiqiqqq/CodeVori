@@ -721,6 +721,9 @@ export interface IPlatformService {
   setDesktopLanAccessEnabled?(
     enabled: boolean,
   ): Promise<import("./desktopWindow.js").DesktopLanAccessState>;
+  saveDesktopLanAccessConfiguration?(
+    configuration: import("./desktopWindow.js").DesktopLanAccessConfiguration,
+  ): Promise<import("./desktopWindow.js").DesktopLanAccessState>;
 
   /** 同步当前窗口的未读 task 数给宿主环境，用于 Dock / 任务栏徽标聚合 */
   syncWindowUnreadCount(count: number): void;

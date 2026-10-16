@@ -296,8 +296,10 @@ export interface AppSettings {
   closeToTrayOnWindowsMigrationInitialized?: boolean;
   /** 桌面端全局页面缩放档位；用于重启后恢复界面缩放，Web/手机端忽略。 */
   desktopZoomLevel?: number;
-  /** 桌面 LAN 入口最近一次选择；重启后只为首个主窗口恢复，凭据不持久化。 */
+  /** 桌面 LAN 入口最近一次选择；重启后只为首个主窗口恢复。 */
   desktopLanAccessEnabled?: boolean;
+  /** 用户保存的唯一访问地址与固定端口，独立于构建产物。 */
+  desktopLanAccessConfiguration?: import("./desktopWindow.js").DesktopLanAccessConfiguration;
   /** 桌面主窗口最近一次非最大化宽高及最大化状态；Web/手机端忽略。 */
   desktopWindowSize?: {
     width: number;

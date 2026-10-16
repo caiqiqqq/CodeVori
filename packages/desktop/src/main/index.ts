@@ -1951,7 +1951,12 @@ app.whenReady().then(async () => {
       setEnabled: async (enabled) => {
         await mainSettingService.update({ desktopLanAccessEnabled: enabled });
       },
+      getConfiguration: async () => (await mainSettingService.get()).desktopLanAccessConfiguration,
+      setConfiguration: async (configuration) => {
+        await mainSettingService.update({ desktopLanAccessConfiguration: configuration });
+      },
     },
+    credentials: createCredentialService(),
     onError: (error) => logger.warn("[desktop-lan] gateway lifecycle failed", error),
   });
   markMainLaunchAppReady();
