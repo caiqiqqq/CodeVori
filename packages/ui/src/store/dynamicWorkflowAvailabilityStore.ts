@@ -4,16 +4,16 @@ import type { ICodingPlanSubscriptionService } from "@zcode/services";
 import { logger } from "@/logger.js";
 
 // ============================================================
-// 动态工作流灰度快照在 renderer 的唯一副本
+// 动态工作流能力快照在 renderer 的唯一副本
 // ============================================================
 //
 // Host 是唯一的决策者，这里只缓存它给出的那一份 `{ mode, enabled, source }`：
 //   - 一个 app 会话只取一次。发请求的是 Root 里的 loader（唯一 owner），
 //     自动化页与 run 面板只读，不各自再发一次；
-//   - 不带 forceRefresh。Host 用同一份 1h 快照推导发给 CLI 的工具策略，
+//   - 不带 forceRefresh。Host 用同一份本地策略推导发给 CLI 的工具策略，
 //     renderer 单独 force 一次会让「界面有入口 / 模型没工具」这类分歧成为可能；
 //     要强制重取走 refresh()；
-//   - 请求失败按 disabled 处理（fail-closed，与 resolveDynamicWorkflowClientConfig 同一裁决），
+//   - Host 桥接请求失败按 disabled 处理（未知能力先隐藏，本地策略自身默认开启），
 //     但**不记住失败**：换一份 service 实例会重试。手机 `/remote` 在工作区桥接前拿到的是
 //     unsupported 代理，必然抛错，桥接完成后 accessor 会换一份，那一次必须能纠正回来。
 
@@ -30,7 +30,7 @@ export interface DynamicWorkflowAvailabilitySnapshot {
 interface DynamicWorkflowAvailabilityState extends DynamicWorkflowAvailabilitySnapshot {
   /** 首次取数；同一个 service 出过结果后是 no-op，并发调用共用同一次请求。 */
   ensureLoaded(service: ICodingPlanSubscriptionService): Promise<void>;
-  /** 绕过闩与 Host 的 1h 快照缓存重取（forceRefresh）。 */
+  /** 绕过 renderer 闩，重读 Host 的本地策略（forceRefresh 保留兼容）。 */
   refresh(service: ICodingPlanSubscriptionService): Promise<void>;
 }
 

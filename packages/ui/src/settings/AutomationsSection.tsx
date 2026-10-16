@@ -592,7 +592,7 @@ export function AutomationsSection({
     (filter: AutomationStatusFilter) => setTabState((previous) => ({ ...previous, filter })),
     [],
   );
-  // 动态工作流灰度：未命中就没有「工作流」标签，
+  // 工作流能力由 Host 本地策略裁决；关闭时不显示「工作流」标签，
   // 页面退回单一的「自动化」。快照未就绪时 enabled 为 false，宁可标题晚半拍长出切换，也不先闪
   // 一个标签再收起——中枢很少是用户进 app 后第一眼看的东西。
   const { enabled: dynamicWorkflowEnabled } = useDynamicWorkflowAvailability();
@@ -600,8 +600,8 @@ export function AutomationsSection({
   const [storedPageTab, setPageTabState] = useState<AutomationsPageTab>(() =>
     readAutomationsPageTab(),
   );
-  // 灰度关时忽略 sessionStorage 里记住的「工作流」：只收窄读出来的值，记忆本身不清，
-  // 灰度再开时用户仍然回到上次那一页。中枢只在 `pageTab === "workflow"` 分支挂载，
+  // 能力关闭时忽略 sessionStorage 里记住的「工作流」：只收窄读出来的值，记忆本身不清，
+  // 能力再开时用户仍然回到上次那一页。中枢只在 `pageTab === "workflow"` 分支挂载，
   // 收窄 pageTab 等于 SavedWorkflowsSection 永不挂载，不会有一帧的误挂载去发查询。
   const pageTab: AutomationsPageTab = dynamicWorkflowEnabled ? storedPageTab : "automation";
   const setPageTab = useCallback((next: AutomationsPageTab) => {
@@ -713,7 +713,7 @@ export function AutomationsSection({
 
   useEffect(() => {
     if (!openAutomationTab) return;
-    // 灰度关：请求的「工作流」标签不存在，
+    // 能力关闭：请求的「工作流」标签不存在，
     // 落到「自动化」并把深链消费掉——不消费会让请求一直挂着，反复把页面拉回来。
     if (openAutomationTab === "workflow" && !dynamicWorkflowEnabled) {
       setPageTab("automation");

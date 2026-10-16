@@ -383,7 +383,7 @@ const SESSION_CREATE_OPTIONAL_COMPAT_FIELDS = new Set<SessionCreateCompatField>(
   "toolDenylist",
   // Off-Peak 工具面 flag 同为可降级字段；旧 app-server 不认时省略重试（工具随之不注册，fail-closed）。
   "offPeakToolEnabled",
-  // 动态工作流灰度 flag 同理：旧 CLI 不认时
+  // 动态工作流能力 flag 同理：旧 CLI 不认时
   // 省略重试，工作流工具簇随之不注册，绝不让整个 create 硬失败。
   "dynamicWorkflowEnabled",
 ]);
@@ -657,7 +657,7 @@ function buildSessionCreateParams(
     ...(params.offPeakToolEnabled === true && !omittedFields.has("offPeakToolEnabled")
       ? { offPeakToolEnabled: true }
       : {}),
-    // 动态工作流灰度：同 Off-Peak 的下发形状，
+    // 动态工作流能力：同 Off-Peak 的下发形状，
     // 关闭时不写字段——CLI 的缺省就是不注册那九个工具。
     ...(params.dynamicWorkflowEnabled === true && !omittedFields.has("dynamicWorkflowEnabled")
       ? { dynamicWorkflowEnabled: true }
@@ -891,7 +891,7 @@ interface CreateZCodeAgentServiceOptions extends Omit<
    */
   resolveOffPeakClientConfig?: () => Promise<OffPeakClientConfig | undefined>;
   /**
-   * 动态工作流灰度快照。Host 是唯一裁决者：
+   * 动态工作流能力快照。Host 是唯一裁决者：
    * 结果既作为 workspace 级事实下发给 CLI，也决定 session create/resume/v4 是否带
    * dynamicWorkflowEnabled。缺省不传（纯 CLI 装配）= 永远关闭，与 CLI 缺省一致。
    */
@@ -1227,7 +1227,7 @@ export function createZCodeAgentService(
   const activeClientsByWorkspaceKey = new Map<string, ActiveWorkspaceClient>();
   const interactionPreferenceSyncByWorkspaceKey = new Map<string, Promise<void>>();
   let latestAppRuntimePreferences: ZCodeAgentAppRuntimePreferences | undefined;
-  /** 动态工作流灰度门的进程内单次判定；见 resolveDynamicWorkflowGate 的注释。 */
+  /** 动态工作流能力门的进程内单次判定；见 resolveDynamicWorkflowGate 的注释。 */
   let dynamicWorkflowGate: Promise<boolean> | undefined;
   const waitingWorkspaceStartups = new Map<string, WaitingWorkspaceStartup>();
   function cancelWaitingWorkspaceStartup(workspaceKey: string): void {
@@ -3072,7 +3072,7 @@ export function createZCodeAgentService(
         }
       }
     })();
-    // 动态工作流灰度门禁：与 Off-Peak 同一
+    // 动态工作流能力门禁：与 Off-Peak 同一
     // 模式的 workspace 级事实，在允许任何 session 工作前同步给 CLI，v4 冷恢复也才拿得到工具面。
     // 关闭时不发请求（CLI 缺省即 false，对旧 CLI/测试假客户端零打扰）。
     const dynamicWorkflowPolicyReady = (async () => {
@@ -3337,13 +3337,13 @@ export function createZCodeAgentService(
   }
 
   /**
-   * 动态工作流灰度门：Host 判定一次并在本
+   * 动态工作流本地策略：Host 判定一次并在本
    * 进程内固定。三点理由：
    *   1. 同一次判定同时喂给 workspace/updateDynamicWorkflowPolicy 和 session flag，两者不会
    *      出现"策略说开、create 说关"的裂口；
    *   2. 判定落在 client 就绪路径上，不能每次建会话都等远端——3.12.2 已因此回归过一次；
-   *   3. 读取失败 fail-closed 且不再重试，避免离线时每条 create 都赔上一次请求超时；
-   *      服务端翻转灰度按设计在下一个 Host 进程生效（provider 侧另有 1h 快照与 forceRefresh）。
+   *   3. 读取失败 fail-closed 且不再重试，不把异常当作可用能力；
+   *      本地环境变化在下一个 Host 进程生效，不读取服务端灰度。
    * 与 Off-Peak 不同：远程 workspace 同样可用，所以这里不看 workspaceIdentity / remoteSessionId。
    */
   function resolveDynamicWorkflowGate(): Promise<boolean> {
@@ -3353,7 +3353,7 @@ export function createZCodeAgentService(
       try {
         return (await resolve())?.enabled === true;
       } catch (error) {
-        logger.warn(undefined, "动态工作流灰度读取失败，按关闭处理", {
+        logger.warn(undefined, "动态工作流能力读取失败，按关闭处理", {
           errorMessage: error instanceof Error ? error.message : String(error),
         });
         return false;
@@ -3378,7 +3378,7 @@ export function createZCodeAgentService(
         payload: {
           ...payload,
           ...(offPeakToolEnabled ? { offPeakToolEnabled: true } : {}),
-          // 动态工作流灰度：V4 createSession 是桌面新会话的实际创建路径，不透传则九个工具
+          // 动态工作流能力：V4 createSession 是桌面新会话的实际创建路径，不透传则九个工具
           // 永不注册。
           ...(dynamicWorkflowEnabled ? { dynamicWorkflowEnabled: true } : {}),
         },

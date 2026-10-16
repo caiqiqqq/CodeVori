@@ -2192,9 +2192,9 @@ export function createLocalServices(options: {
     ...(modelSelectionReadinessSource ? { modelSelectionReadinessSource } : {}),
     authorizeLocalMediaPreviewPath: options?.authorizeLocalMediaPreviewPath,
     ...offPeakToolWiring,
-    // 动态工作流灰度：与 Off-Peak 不同，
+    // 动态工作流本地策略：与 Off-Peak 不同，
     // 这里不按 serviceAuthorityMode 裁剪——SSH/WSL/Docker 的 desktop-attached-remote Host
-    // 是它自己那些 workspace 的唯一裁决者，灰度开启时远程 workspace 同样提供工作流。
+    // 是它自己那些 workspace 的唯一裁决者，能力开启时远程 workspace 同样提供工作流。
     resolveDynamicWorkflowClientConfig: () =>
       codingPlanSubscriptionService.getDynamicWorkflowClientConfig(),
     commandResolver: options?.zcodeAgentCommandResolver,
@@ -2419,6 +2419,8 @@ export function createLocalServices(options: {
     ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
   });
   const acpService = createAcpService({
+    resolveDynamicWorkflowClientConfig: () =>
+      codingPlanSubscriptionService.getDynamicWorkflowClientConfig(),
     delegatedSessionIds: async (scope) => {
       if (!agentDelegationService) throw new Error("delegation.owner-unavailable");
       return agentDelegationService.childSessionIds(scope, "acp");

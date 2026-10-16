@@ -2,6 +2,8 @@
 
 ## 产品规则
 
+- 工作流是本地能力，默认开启；管理页、API 工具策略和 ACP 新连接使用目标 Host 的同一份本地配置，不读取服务端 `dynamicWorkflow` 灰度。`ZCODE_DYNAMIC_WORKFLOW_MODE` 的合法值覆盖默认值，开发、Preview、正式包和独立 Web/server Host 均保留该覆盖；`disabled` 显式关闭，`alwaysOn` / `onDemand` 开启，缺省或非法值回到 `alwaysOn`。
+- 配置沿用 `getDynamicWorkflowClientConfig` 接口，由 Host 解析进程环境，Renderer 只读快照；调整环境后须重启 Host。已有活跃连接不热撤工具，不中断已接受的运行；关闭后新 ACP 连接不提供工作流 MCP，`/workflow` 不得声称可调用不存在的工具。历史、产物读取及已有运行的停止/恢复保持原有归属校验。
 - API 与 ACP 在原有输入框的 `+ → 工作流` / `/workflow` 入口启动工作流。ACP 原文保留在历史中；Host 展开命令并提供真实的工作流工具，不能把裸命令当作已执行。
 - ACP 的 `CreateWorkflow` 使用 ZCode 的公开 dynamic-workflow 编译器、引擎和隔离沙箱。子代理创建独立的 ACP 会话，继承启动时父会话的智能体、模型、模式及配置；不依赖 API 凭据，不改动 API 工作流路径。
 - 主代理通过会话绑定的 stdio MCP 使用 `ReadWorkflowInstructions`、`CreateWorkflow`、`GetWorkflowRun`、`CancelWorkflowRun`、`ResumeWorkflowRun`，工具声明准确的必填参数。子代理只获得本 actor 的 `submit_result`；提交由引擎进行 schema 校验和修复裁决。子代理继承脚本定义的角色指令。
@@ -14,6 +16,7 @@
 
 ## 所有者与接口
 
+- `ICodingPlanSubscriptionService.getDynamicWorkflowClientConfig` 保留兼容接口及 `forceRefresh` 参数，但仅返回 Host 本地策略，不发网络请求、不读账号或订阅；API workspace/session 策略与 ACP 连接注册复用此接口。独立构造 ACP service 时使用同一个 shared 纯解析器。
 - `AcpService`：会话、命令 admission、workspace identity、权限队列、snapshot/revision 和 MCP 生命周期的唯一所有者。
 - 会话内 `AcpWorkflowHost`：run admission/取消/恢复；公开引擎拥有 actor/node 调度与 schema 裁决，ACP driver 只执行边界副作用。
 - journal adapter：单份 run/actor/node/event 状态，串行原子异步落盘；执行外部副作用前必须等待 journal flush，失败直接停止，不能吞掉持久化错误。
@@ -21,6 +24,15 @@
 - `IAcpService.cancelWorkflow` / `resumeWorkflow`：携带 workspacePath、workspaceIdentity、remoteSessionId、id、runId。run 必须归属于该会话，命令重复取消幂等，重复恢复共享 admission。
 - `IAcpService.getWorkflowArtifact`：在同一工作区与会话作用域查 run 的 journal，按产物 id 返回已完成的最新版文件路径，不使用 renderer 推导的 URI；目标 Host 的 `FileService` 仍是预览读取入口。
 - MCP token 只保存在 Host 内存和启动环境，不进入会话、日志、UI/RPC。绑定父会话或 actor；断连即撤销。只监听 loopback，不接受任意 workspace/run/token 组合。
+
+```mermaid
+flowchart LR
+    E[Host 启动环境] --> P[本地策略：合法覆盖优先，否则默认开启]
+    P --> S[getDynamicWorkflowClientConfig]
+    S --> U[Renderer 只读快照：管理页与 ACP 添加菜单]
+    S --> C[API workspace/session 工具策略]
+    S --> A[ACP 新连接 MCP 注册]
+```
 
 ```mermaid
 sequenceDiagram
@@ -49,6 +61,7 @@ Desktop continuous 和手机 replayable 读取同一 Host snapshot、revision �
 
 ## 验收
 
+0. 无账号、离线、上游下发 `disabled` 时，本地默认配置仍为 `alwaysOn/default` 且不发配置请求；合法环境覆盖生效，非法值回默认。Desktop 正式包与 Preview 均不丢弃/改写合法覆盖。Desktop 和窄屏 Web 管理页显示「工作流」并能进入模板列表；显式关闭时隐藏入口，新 ACP 连接不提供工作流工具；已有运行记录仍可读。
 1. `/workflow` 保留用户原文，传给 ACP 的内容包含真实工具使用说明；原 `+` 菜单可选工作流，API 行为不变。
 2. 真实编译器/沙箱/引擎 + fake ACP 执行并行及 typed ask；正确结果送回主代理；错误提交返回 schema violations，修复后完成。
 3. 启动拒绝不创建 run/actor；并行子任务权限按序展示，拒绝或停止不悬挂。
