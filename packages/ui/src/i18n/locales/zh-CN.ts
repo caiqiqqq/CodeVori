@@ -82,6 +82,9 @@ const zhCN: Record<string, string> = {
   "workTasks.error.work-task.attachment-size-mismatch":
     "附件内容不完整或文件已发生变化，请重新添加。",
   "workTasks.error.work-task.attachment-checksum": "附件校验失败，请重新保存。",
+  "workTasks.error.fault.attachment.checksumUnavailable":
+    "无法计算附件校验值，请重新保存或重新添加文件。",
+  "workTasks.error.fault.attachment.checksumFailed": "附件校验计算失败，请重新保存或重新添加文件。",
   "workTasks.error.work-task.attachment-upload-not-found": "附件上传已失效，请重新保存。",
   "workTasks.error.work-task.attachment-upload-conflict": "附件上传信息不一致，请重新保存。",
   "workTasks.error.work-task.attachment-upload-limit": "同时上传的附件过多，请稍后重试。",

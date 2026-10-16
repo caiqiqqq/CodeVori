@@ -147,3 +147,92 @@ test("ordinary chat wrapper retains session and workspace identity and validates
   );
   assert.equal(f.begins.length, calls);
 });
+
+test("HTTP attachment checksum matches Node SHA-256 for empty, padding-boundary, offset and maximum files", async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  Object.defineProperty(globalThis, "crypto", { configurable: true, value: undefined });
+  try {
+    for (const size of [0, 1, 55, 56, 63, 64, 65, PROTOCOL_V4_LIMITS.attachmentMaxBytes]) {
+      const backing = Uint8Array.from({ length: size + 9 }, (_, i) => i % 256);
+      const bytes = backing.subarray(5, 5 + size);
+      const f = fixture();
+      await uploadAttachmentBytes(f.port, input(bytes));
+      assert.equal(
+        f.begins[0]!.checksum,
+        `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+      );
+      assert.deepEqual(
+        Buffer.concat(f.chunks.map((chunk) => Buffer.from(chunk.dataBase64, "base64"))),
+        Buffer.from(bytes),
+      );
+      assert.equal(f.commits.length, 1);
+    }
+    const f = fixture();
+    await uploadAttachmentTransaction(
+      {
+        attachmentBeginV4: f.port.begin,
+        attachmentChunkV4: f.port.chunk,
+        attachmentCommitV4: f.port.commit,
+        attachmentAbortV4: f.port.abort,
+      },
+      { workspacePath: "/http" },
+      { sessionId: "chat", fileName: "image.png", mime: "image/png", dataBase64: "AP+AAQ==" },
+    );
+    assert.equal(
+      f.begins[0]!.checksum,
+      `sha256:${createHash("sha256")
+        .update(Buffer.from([0, 255, 128, 1]))
+        .digest("hex")}`,
+    );
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "crypto", descriptor);
+    else Reflect.deleteProperty(globalThis, "crypto");
+  }
+});
+
+test("HTTP checksum yields to cancellation before starting any upload", async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  Object.defineProperty(globalThis, "crypto", { configurable: true, value: {} });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 0);
+  const f = fixture();
+  try {
+    await assert.rejects(
+      uploadAttachmentBytes(f.port, input(new Uint8Array(PROTOCOL_V4_LIMITS.attachmentMaxBytes)), {
+        signal: controller.signal,
+      }),
+      { name: "AbortError" },
+    );
+    assert.deepEqual(f.begins, []);
+    assert.deepEqual(f.aborts, []);
+  } finally {
+    clearTimeout(timer);
+    if (descriptor) Object.defineProperty(globalThis, "crypto", descriptor);
+    else Reflect.deleteProperty(globalThis, "crypto");
+  }
+});
+
+test("native checksum failure is reported before upload begins", async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  Object.defineProperty(globalThis, "crypto", {
+    configurable: true,
+    value: {
+      subtle: {
+        async digest() {
+          throw new Error("Synthetic digest failure");
+        },
+      },
+    },
+  });
+  const f = fixture();
+  try {
+    await assert.rejects(
+      uploadAttachmentBytes(f.port, input()),
+      /fault\.attachment\.checksumFailed/,
+    );
+    assert.deepEqual(f.begins, []);
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "crypto", descriptor);
+    else Reflect.deleteProperty(globalThis, "crypto");
+  }
+});

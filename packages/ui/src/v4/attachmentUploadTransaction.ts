@@ -1,4 +1,5 @@
 import { BufferWriter, serialize } from "@zcode/rpc";
+import { sha256 } from "@noble/hashes/sha2";
 import { createUuid, ServiceChannels } from "@zcode/shared";
 import {
   PROTOCOL_V4_LIMITS,
@@ -88,13 +89,35 @@ function encodeBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-async function checksum(bytes: Uint8Array): Promise<string> {
-  if (!globalThis.crypto?.subtle) throw new Error("fault.attachment.checksumUnavailable");
-  // WebCrypto 的 BufferSource 要求 ArrayBuffer；复制也避免调用期间底层 view 被复用。
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", Uint8Array.from(bytes).buffer);
-  const hex = [...new Uint8Array(digest)]
-    .map((value) => value.toString(16).padStart(2, "0"))
-    .join("");
+async function checksum(bytes: Uint8Array, signal?: AbortSignal): Promise<string> {
+  let digest: Uint8Array;
+  if (globalThis.crypto?.subtle) {
+    try {
+      // WebCrypto 的 BufferSource 要求 ArrayBuffer；复制也避免调用期间底层 view 被复用。
+      digest = new Uint8Array(
+        await globalThis.crypto.subtle.digest("SHA-256", Uint8Array.from(bytes).buffer),
+      );
+    } catch (cause) {
+      throw new Error("fault.attachment.checksumFailed", { cause });
+    }
+  } else {
+    // 真机确认：局域网 HTTP 的 WebView 没有 subtle；仍计算同一 SHA-256，不能跳过 Host 校验。
+    const hash = sha256.create();
+    try {
+      for (let offset = 0; offset < bytes.length; offset += ATTACHMENT_UPLOAD_CHUNK_BYTES) {
+        throwIfAborted(signal);
+        hash.update(bytes.subarray(offset, offset + ATTACHMENT_UPLOAD_CHUNK_BYTES));
+        // 大附件分段让出主线程，取消操作可以在上传开始前生效。
+        if (offset + ATTACHMENT_UPLOAD_CHUNK_BYTES < bytes.length)
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+      throwIfAborted(signal);
+      digest = hash.digest();
+    } finally {
+      hash.destroy();
+    }
+  }
+  const hex = [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
   return `sha256:${hex}`;
 }
 
@@ -195,7 +218,7 @@ export async function uploadAttachmentBytes(
     mime: input.mime,
     totalBytes: bytes.byteLength,
     totalChunks,
-    checksum: await checksum(bytes),
+    checksum: await checksum(bytes, options.signal),
   };
 
   let began = false;
