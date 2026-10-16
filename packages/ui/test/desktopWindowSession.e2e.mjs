@@ -20,6 +20,9 @@ import React,{useState,useCallback} from 'react';
 import {createRoot} from 'react-dom/client';
 import {useDesktopWindowSession} from '../../../ui/src/root/useDesktopWindowSession.ts';
 import {useDesktopWindowView} from '../../../ui/src/root/desktopWindowSession.ts';
+import {DesktopWindowDraftLanding} from '../../../ui/src/root/DesktopWindowDraftLanding.tsx';
+import {useZCodeSessionStore} from '../../../ui/src/store/zcodeSessionStore.ts';
+import {applyTheme} from '../../../ui/src/useTheme.ts';
 import {useConversationWorkspaceActions} from '../../../ui/src/root/useConversationWorkspaceActions.ts';
 import {TabStoreProvider,useTabStore,useTabStoreApi} from '../../../ui/src/store/TabStoreProvider.tsx';
 import {ConversationComposer} from '../../../ui/src/v4/ConversationComposer.tsx';
@@ -34,8 +37,9 @@ clientConfigService:{getSnapshot:async()=>({pluginStoreOrder:null})},fileService
 skillsService:{list:async()=>({skills:[],diagnostics:[],capability:{userScopeAvailable:true}})},zcodeAgentService:{getSkillReferenceCatalog:async()=>({authority:'workspace',skills:[]}),getWorkspaceSlashCommandCatalog:async()=>({commands:[]}),onAgentRuntimeRestarted:()=>({dispose(){}}),onDynamicSessionsIndexFrame:()=>()=>({dispose(){}}),onAgentRuntimeLifecycleChanged:()=>({dispose(){}})}};
 const follower={prepare:async snapshot=>{state.prepared.push(snapshot);if(snapshot.workspaces.some(item=>item.workspaceIdentity==='invalid'))throw Error('scope unavailable')}};
 const platform={isMacOS:false,isWindows:false,isLinux:true,isWeb:true};const noop=()=>{};
+useZCodeSessionStore.setState({workspaces:{'/conversation':{...useZCodeSessionStore.getState().getWorkspaceState('/conversation'),activeTaskId:'old-conversation'}}});
 function Fixture(){
-const store=useTabStoreApi();window.__desktopFixture={...state,emit:value=>state.listener(value),resolve:value=>state.resolve(value),state,store};
+const store=useTabStoreApi();window.__desktopFixture={...state,emit:value=>state.listener(value),resolve:value=>state.resolve(value),state,store,sessions:useZCodeSessionStore,applyTheme};
 const result=useDesktopWindowSession({services:services as never,ready:true,follower});
 const actions=useConversationWorkspaceActions({services:services as never,addTab:store.getState().addTab,setWorkspaceActionError:error=>state.actionError=error});
 window.__desktopFixture.createConversation=actions.handleCreateConversationTask;
@@ -45,6 +49,7 @@ const key=tab?.workspaceIdentity||tab?.workspacePath;const draft=drafts[key]??{t
 const update=useCallback(content=>setDrafts(current=>({...current,[key]:{...current[key],...content,updatedAt:Date.now()}})),[key]);
 const replace=useCallback(content=>setDrafts(current=>({...current,[key]:{...content,updatedAt:Date.now()}})),[key]);
 if(result.error)return <p role="alert">{result.error}</p>;if(result.loading)return <p>waiting</p>;
+if(!tab)return <DesktopWindowDraftLanding workspaces={tabs} onSelectWorkspace={workspace=>{store.getState().activateTab(workspace.id);useZCodeSessionStore.getState().startDraft(workspace.workspacePath,undefined,workspace.workspaceIdentity)}}/>;
 return <main className="h-screen flex flex-col p-3 bg-background text-foreground"><ul>{tabs.map(item=><li key={item.id}><button data-identity={item.workspaceIdentity||item.workspacePath} onClick={()=>store.getState().activateTab(item.id)}>{item.label}</button></li>)}</ul>
 <output data-testid="sort">{snapshot?.sidebar.sortBy}</output><div className="mt-auto">
 {tab?<ConversationComposer snapshot={{sessionId:'synthetic',config:{mode:'build',followupMode:'queue'},inputRouting:{mode:'startNow'},control:{canStop:false,phase:'idle'},rows:{totalCount:0},usage:null,queue:{items:[]},backgroundWorks:[]} as never}
@@ -56,7 +61,12 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={p
 `,
   );
   browser = await chromium.launch({ headless: true });
-  for (const width of [390, 1280]) {
+  for (const [width, theme] of [
+    [320, "zai-light"],
+    [390, "zai-dark"],
+    [1280, "zai-light"],
+    [1280, "zai-dark"],
+  ]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -67,6 +77,7 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={p
     await page.waitForFunction(
       () => window.__desktopFixture?.state.listener && window.__desktopFixture.state.resolve,
     );
+    await page.evaluate((theme) => window.__desktopFixture.applyTheme(theme), theme);
     const first = {
       epoch: "existing-host",
       revision: 3,
@@ -76,8 +87,79 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={p
       ],
       sidebar: { organizeBy: "project", sortBy: "updated" },
     };
+    // A project is first in desktop order; cold phone entry must use the existing conversation draft.
+    await page.evaluate(
+      (snapshot) =>
+        window.__desktopFixture.emit({
+          ...snapshot,
+          revision: 1,
+          workspaces: [
+            ...snapshot.workspaces,
+            { workspacePath: "/conversation", workspacePurpose: "conversation" },
+          ],
+        }),
+      first,
+    );
+    const input = page.getByTestId("v4-composer-input");
+    await input.waitFor();
+    assert.equal(
+      await page.evaluate(() => window.__desktopFixture.store.getState().activeWorkspacePath),
+      "/conversation",
+    );
+    assert.equal(
+      await page.evaluate(
+        () =>
+          window.__desktopFixture.sessions.getState().getWorkspaceState("/conversation")
+            .activeTaskId,
+      ),
+      null,
+    );
+    await input.fill("保留的对话草稿");
+    // A subsequent snapshot must not reset a conversation the user has since opened.
+    await page.evaluate((snapshot) => {
+      const sessions = window.__desktopFixture.sessions;
+      sessions.setState({
+        workspaces: {
+          ...sessions.getState().workspaces,
+          "/conversation": {
+            ...sessions.getState().getWorkspaceState("/conversation"),
+            activeTaskId: "user-selected",
+          },
+        },
+      });
+      window.__desktopFixture.emit({
+        ...snapshot,
+        revision: 2,
+        workspaces: [
+          { workspacePath: "/conversation", workspacePurpose: "conversation" },
+          ...snapshot.workspaces,
+        ],
+      });
+    }, first);
+    await page.waitForFunction(() => window.__desktopFixture.state.prepared.length === 2);
+    assert.equal(await input.textContent(), "保留的对话草稿");
+    assert.equal(
+      await page.evaluate(
+        () =>
+          window.__desktopFixture.sessions.getState().getWorkspaceState("/conversation")
+            .activeTaskId,
+      ),
+      "user-selected",
+    );
+    // Removing the active workspace must never fall back to the first project.
     await page.evaluate((snapshot) => window.__desktopFixture.emit(snapshot), first);
-    await page.locator('[data-identity="remote-B"]').waitFor();
+    const landing = page.getByTestId("desktop-window-draft-landing");
+    await landing.waitFor();
+    assert.equal(
+      await page.evaluate(() => window.__desktopFixture.store.getState().activeWorkspacePath),
+      null,
+    );
+    assert.equal(await input.count(), 0);
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+    );
+    await page.screenshot({ path: `/tmp/zcode-180-${width}-${theme}.png` });
     await page.evaluate(() => window.__desktopFixture.createConversation());
     assert.equal(
       await page.evaluate(() => window.__desktopFixture.state.ensured),
@@ -85,11 +167,10 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={p
       "Phone must not create a backing workspace outside desktop membership",
     );
     assert.equal(await page.locator('[data-identity="/new-unowned"]').count(), 0);
-    await page.locator('[data-identity="remote-B"]').click();
+    await landing.getByRole("button", { name: /remote-B/ }).click();
     const activeId = await page.evaluate(
       () => window.__desktopFixture.store.getState().activeTabId,
     );
-    const input = page.getByTestId("v4-composer-input");
     await input.click();
     await input.fill("手机未发送草稿");
     // Late startup response and an older event must not roll the sidebar back.
@@ -138,6 +219,18 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={p
       first,
     );
     await page.locator('[data-identity="remote-B"]').waitFor({ state: "detached" });
+    await landing.waitFor();
+    assert.equal(
+      await page.evaluate(() => window.__desktopFixture.store.getState().activeTabId),
+      null,
+    );
+    // Empty membership remains a visible new-task page, with no selectable project.
+    await page.evaluate(
+      (snapshot) => window.__desktopFixture.emit({ ...snapshot, revision: 6, workspaces: [] }),
+      first,
+    );
+    await landing.getByText("尚未打开项目").waitFor();
+    assert.equal(await landing.getByRole("button").count(), 0);
     assert.deepEqual(
       await page.evaluate(() => window.__desktopFixture.state.published),
       [],
@@ -147,7 +240,7 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={p
       (snapshot) =>
         window.__desktopFixture.emit({
           ...snapshot,
-          revision: 6,
+          revision: 7,
           workspaces: [
             { workspacePath: "/same", workspaceIdentity: "invalid", remoteSessionId: "stale" },
           ],
@@ -162,7 +255,9 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={p
       "Failed scope cannot expose a local composer",
     );
     assert.deepEqual(errors, []);
-    console.log(`PASS desktop window membership, stale snapshot, identity and composer ${width}px`);
+    console.log(
+      `PASS draft landing, membership, stale snapshot, identity and composer ${width}px ${theme}`,
+    );
     await page.close();
   }
 } finally {

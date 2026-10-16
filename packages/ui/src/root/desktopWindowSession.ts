@@ -11,7 +11,7 @@ export const useDesktopWindowView = create<{
   snapshot: DesktopWindowSessionSnapshot | null;
 }>(() => ({ following: false, snapshot: null }));
 
-export function applyDesktopWindowSession(store: TabStore, input: unknown): void {
+export function applyDesktopWindowSession(store: TabStore, input: unknown) {
   const snapshot = desktopWindowSessionSnapshotSchema.parse(input);
   const previous = useDesktopWindowView.getState().snapshot;
   if (previous?.epoch === snapshot.epoch && previous.revision >= snapshot.revision) return;
@@ -35,7 +35,18 @@ export function applyDesktopWindowSession(store: TabStore, input: unknown): void
   });
   const extraTabs = state.tabs.filter((tab) => !isWorkspaceTab(tab));
   const tabs = [...workspaces, ...extraTabs];
-  const active = tabs.find((tab) => tab.id === state.activeTabId) ?? workspaces[0] ?? extraTabs[0];
+  const retainedActive = tabs.find((tab) => tab.id === state.activeTabId);
+  // #180：窗口成员顺序不代表手机的启动目标。只自动进入已有本地对话工作区，
+  // 没有对话工作区时保留未选择态，不能打开第一个项目或隐式创建新 runtime。
+  const active =
+    retainedActive ??
+    workspaces.find(
+      (tab) =>
+        tab.workspacePurpose === "conversation" &&
+        !tab.workspaceIdentity &&
+        !tab.remoteSessionId &&
+        tab.availability !== "unavailable-local-directory",
+    );
   store.setState({
     tabs,
     activeTabId: active?.id ?? null,
@@ -49,4 +60,5 @@ export function applyDesktopWindowSession(store: TabStore, input: unknown): void
     ),
   });
   useDesktopWindowView.setState({ following: true, snapshot });
+  return !retainedActive && active && isWorkspaceTab(active) ? active : undefined;
 }

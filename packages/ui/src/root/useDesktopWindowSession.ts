@@ -4,6 +4,7 @@ import type { DesktopWindowSessionSnapshot } from "@zcode/shared";
 import { desktopWindowSessionSnapshotSchema } from "@zcode/shared";
 import { useTabStoreApi } from "@/store/TabStoreProvider.js";
 import { isWorkspaceTab } from "@/store/tabStore.js";
+import { useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import {
   readSidebarTaskPreferences,
   SIDEBAR_TASK_PREFERENCES_CHANGED_EVENT,
@@ -97,7 +98,12 @@ export function useDesktopWindowSession({
           // Attach remote scopes before mounting consumers. No local fallback while prepare is pending.
           await follower.prepare(snapshot);
           if (!live || epoch !== snapshot.epoch || revision !== snapshot.revision) return;
-          applyDesktopWindowSession(store, snapshot);
+          const draftWorkspace = applyDesktopWindowSession(store, snapshot);
+          if (draftWorkspace) {
+            // #180：自动进入对话首页时复用新草稿入口，避免恢复手机上次的历史会话。
+            // 后续快照保留有效选择，不重复 startDraft 干扰当前输入/会话。
+            useZCodeSessionStore.getState().startDraft(draftWorkspace.workspacePath);
+          }
           setState({ loading: false, error: null });
         })
         .catch(fail);
