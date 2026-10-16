@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isDesktopLanAddress } from "./desktopLanAddress.js";
 
 export const desktopWindowWorkspaceSchema = z
   .object({
@@ -56,20 +57,10 @@ export const desktopLanAccessConfigurationSchema = z
       .trim()
       .toLowerCase()
       .max(253)
-      .refine((address) => {
-        if (/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+local$/.test(address))
-          return true;
-        if (!/^(?:\d{1,3}\.){3}\d{1,3}$/.test(address)) return false;
-        const parts = address.split(".");
-        const octets = parts.map(Number);
-        if (parts.some((part, index) => String(octets[index]) !== part || octets[index]! > 255))
-          return false;
-        return (
-          octets[0] === 10 ||
-          (octets[0] === 172 && octets[1]! >= 16 && octets[1]! <= 31) ||
-          (octets[0] === 192 && octets[1] === 168)
-        );
-      }, "Enter a LAN IPv4 address or a .local hostname, without a protocol or port"),
+      .refine(
+        isDesktopLanAddress,
+        "Enter a LAN IPv4 address or domain, without a protocol or port",
+      ),
     port: z.number().int().min(1).max(65535),
   })
   .strict();

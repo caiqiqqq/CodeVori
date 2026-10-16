@@ -13,7 +13,7 @@ const name = `__pairing-${process.pid}`;
 const html = join(root, `${name}.html`),
   entry = join(root, `${name}.jsx`);
 const artifacts = await mkdtemp(join(tmpdir(), "zcode-pairing-"));
-const link = "http://192.168.1.23:3030/?token=synthetic%2B%2F%3Dtoken";
+const link = "http://codevori.example.test:52235/?token=synthetic%2B%2F%3Dtoken";
 let server, browser;
 const errors = [];
 try {
@@ -85,7 +85,7 @@ try {
     await page.emulateMedia({ colorScheme: theme });
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 568 });
-      await address.fill("http://desktop.local:3030");
+      await address.fill("http://codevori.example.test:52235");
       await token.fill("manual-test-token");
       await connect.scrollIntoViewIfNeeded();
       assert.equal(await connect.isVisible(), true);
@@ -100,7 +100,7 @@ try {
   await page.getByTestId("remote").waitFor();
   assert.equal(
     await page.getByTestId("remote").getAttribute("data-url"),
-    "http://desktop.local:3030/?token=manual-test-token",
+    "http://codevori.example.test:52235/?token=manual-test-token",
   );
   await page.reload();
   await page.getByTestId("remote").waitFor();
@@ -116,7 +116,7 @@ try {
     await page.emulateMedia({ colorScheme: theme });
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 568 });
-      assert.equal(await page.getByText("desktop.local:3030", { exact: true }).count(), 0);
+      assert.equal(await page.getByText("codevori.example.test:52235", { exact: true }).count(), 0);
       const bounds = await remote.boundingBox();
       assert.equal(bounds.y, 0);
       assert.equal(bounds.height, 568);
@@ -134,7 +134,7 @@ try {
       const changeBounds = await change.boundingBox();
       assert.ok(card.height > 200 && card.y >= 0 && card.y + card.height <= 568);
       assert.ok(changeBounds.y + changeBounds.height <= card.y + card.height);
-      await page.getByText("desktop.local:3030", { exact: true }).waitFor();
+      await page.getByText("codevori.example.test:52235", { exact: true }).waitFor();
       assert.equal(await page.getByText("manual-test-token", { exact: false }).count(), 0);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       await page.screenshot({
@@ -251,7 +251,7 @@ try {
   await reset();
 
   // Permission denial and cancel preserve the manual draft and never persist it.
-  await address.fill("http://desktop.local:3030");
+  await address.fill("http://codevori.example.test:52235");
   await scan.tap();
   await page.evaluate(() => {
     window.__mobile.nextPermission = { granted: false, canAskAgain: false };
@@ -259,7 +259,7 @@ try {
   await page.getByRole("button", { name: "允许使用相机" }).tap();
   await page.getByRole("button", { name: "前往系统设置" }).waitFor();
   await page.getByRole("button", { name: "返回手动输入" }).tap();
-  assert.equal(await address.inputValue(), "http://desktop.local:3030");
+  assert.equal(await address.inputValue(), "http://codevori.example.test:52235");
   assert.equal(await page.evaluate(() => window.__mobile.saveCalls.length), 0);
 
   await page.evaluate(() => {
@@ -314,7 +314,7 @@ try {
     window.__mobile.staleScan = stale;
   }, decoded.data);
   await address.waitFor();
-  assert.equal(await address.inputValue(), "http://192.168.1.23:3030/");
+  assert.equal(await address.inputValue(), "http://codevori.example.test:52235/");
   assert.equal(await token.inputValue(), "synthetic+/=token");
   assert.equal(await page.getByTestId("camera").count(), 0);
   assert.equal(
@@ -323,7 +323,7 @@ try {
     "Scanning needs user confirmation",
   );
   await page.evaluate(() => window.__mobile.staleScan("http://10.0.0.2:3030/?token=late"));
-  assert.equal(await address.inputValue(), "http://192.168.1.23:3030/");
+  assert.equal(await address.inputValue(), "http://codevori.example.test:52235/");
   await page.screenshot({
     animations: "disabled",
     path: join(artifacts, "scanned-confirmation.png"),

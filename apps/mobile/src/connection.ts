@@ -1,3 +1,5 @@
+import { isDesktopLanAddress } from "@zcode/shared/desktop-lan-address";
+
 export type MobileConnection = {
   readonly origin: string;
   readonly token: string;
@@ -6,21 +8,6 @@ export type MobileConnection = {
 export type ConnectionParseResult =
   | { readonly ok: true; readonly connection: MobileConnection }
   | { readonly ok: false; readonly reason: string };
-
-function isLanHttpHost(hostname: string): boolean {
-  if (hostname.endsWith(".local")) return true;
-  const octets = hostname.split(".").map(Number);
-  if (
-    octets.length !== 4 ||
-    octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)
-  )
-    return false;
-  return (
-    octets[0] === 10 ||
-    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
-    (octets[0] === 192 && octets[1] === 168)
-  );
-}
 
 function normalizeOrigin(value: string): URL | null {
   try {
@@ -35,7 +22,7 @@ function normalizeOrigin(value: string): URL | null {
       url.pathname !== "/"
     )
       return null;
-    if (url.protocol === "http:" && !isLanHttpHost(url.hostname)) return null;
+    if (url.protocol === "http:" && !isDesktopLanAddress(url.hostname)) return null;
     return url;
   } catch {
     return null;

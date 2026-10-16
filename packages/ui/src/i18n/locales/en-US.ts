@@ -9,11 +9,11 @@ const enUS: Record<string, string> = {
   "settings.desktopLan.save": "Save configuration",
   "settings.desktopLan.saved": "Configuration saved. You can enable access.",
   "settings.desktopLan.configurationDescription":
-    "Enter this computer’s LAN IPv4 address or .local hostname, without http:// or a port. Saved connection details stay the same across rebuilds and restarts.",
+    "Enter this computer’s LAN IPv4 address or custom domain, without http:// or a port. Saved connection details stay the same across rebuilds and restarts.",
   "settings.desktopLan.configurationLocked":
     "Access is enabled. Disable access before changing the address or port.",
   "settings.desktopLan.invalidConfiguration":
-    "Enter a LAN IPv4 address or .local hostname and an integer port between 1 and 65535.",
+    "Enter a LAN IPv4 address or custom domain and an integer port between 1 and 65535.",
   "settings.desktopLan.start": "Enable access",
   "settings.desktopLan.stop": "Disable access",
   "settings.desktopLan.enabled": "LAN access is enabled",

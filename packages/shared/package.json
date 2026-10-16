@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./product-brand": "./src/product-brand.mjs",
+    "./desktop-lan-address": "./src/desktopLanAddress.ts",
     "./runtime-env": "./src/runtimeEnv.ts",
     "./mcp": "./src/mcp.ts",
     "./runtime-tool-runtime": "./src/runtime-tool-runtime.ts",

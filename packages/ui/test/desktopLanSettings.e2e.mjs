@@ -108,7 +108,7 @@ try {
     ["read"],
     "Invalid input never calls Main",
   );
-  await address.fill("192.168.1.23");
+  await address.fill("codevori.example.test");
   await port.fill("65536");
   await save.click();
   assert.equal(await toggle.isDisabled(), true);
@@ -116,7 +116,11 @@ try {
   await page.evaluate(() => (window.__lan.failSave = true));
   await save.click();
   await ready();
-  assert.equal(await address.inputValue(), "192.168.1.23", "Save failure retains user draft");
+  assert.equal(
+    await address.inputValue(),
+    "codevori.example.test",
+    "Save failure retains user draft",
+  );
   assert.equal(await toggle.isDisabled(), true, "Failed save cannot enable access");
   await page.evaluate(() => {
     window.__lan.holdWrite = true;
@@ -161,7 +165,7 @@ try {
   assert.equal(
     await link.inputValue(),
     await page.evaluate(
-      () => "http://192.168.1.23:3030/?token=" + encodeURIComponent(window.__lan.token),
+      () => "http://codevori.example.test:3030/?token=" + encodeURIComponent(window.__lan.token),
     ),
   );
   await link.focus();
