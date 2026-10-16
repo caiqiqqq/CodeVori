@@ -58,11 +58,12 @@ export function ShortcutBindingRow({
   const conflictBinding = isRecording ? recording?.conflictBinding : null;
 
   // 录制内嵌块：出现在被替换条目 / 追加条目的位置（预览 kbd 抢占焦点）
-  function renderRecorder() {
+  function renderRecorder(key: string) {
     return (
-      <span className="flex min-w-0 flex-col gap-1">
-        <span className="flex items-center gap-2">
-          <Keyboard className="size-4 text-foreground-subtle" />
+      // 替换态仍属于原绑定列表，沿用绑定 key，避免录制时列表身份不稳定。
+      <span key={key} className="flex min-w-0 max-w-full flex-col gap-1 [overflow-wrap:anywhere]">
+        <span className="flex min-w-0 items-center gap-2">
+          <Keyboard className="size-4 shrink-0 text-foreground-subtle" />
           <kbd
             ref={(el) => {
               // 录制开始即抢占焦点：把焦点从可编辑元素（如上方搜索框）里拉出来，
@@ -71,7 +72,7 @@ export function ShortcutBindingRow({
               el?.focus();
             }}
             tabIndex={-1}
-            className="w-fit rounded-md bg-surface px-2 py-1 font-mono text-ui-sm outline-none"
+            className="min-w-0 rounded-md bg-surface px-2 py-1 font-mono text-ui-sm outline-none"
           >
             {recording?.preview ?? intl.formatMessage({ id: "settings.shortcuts.recording" })}
           </kbd>
@@ -92,7 +93,7 @@ export function ShortcutBindingRow({
           <Button
             variant="outline"
             size="xs"
-            className="w-fit"
+            className="h-auto max-w-full whitespace-normal py-1"
             data-testid={`settings-shortcut-steal-${entry.id}`}
             onClick={() => onSteal(conflictBinding)}
           >
@@ -111,11 +112,11 @@ export function ShortcutBindingRow({
    */
   function renderBinding(binding: string, index: number) {
     return (
-      <span key={binding} className="flex items-center gap-1.5">
+      <span key={binding} className="flex w-full min-w-0 flex-wrap items-center gap-1.5">
         <button
           type="button"
           disabled={menuChannelUnavailable}
-          className="w-fit rounded-lg px-0 py-1 text-left focus-visible:outline-2 focus-visible:outline-offset-4 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-w-0 max-w-full rounded-lg px-0 py-1 text-left focus-visible:outline-2 focus-visible:outline-offset-4 disabled:cursor-not-allowed disabled:opacity-60"
           aria-label={intl.formatMessage(
             { id: "settings.shortcuts.rebindAria" },
             { command: commandLabel },
@@ -123,7 +124,7 @@ export function ShortcutBindingRow({
           data-testid={`settings-shortcut-bind-${entry.id}-${index}`}
           onClick={() => onRecord(index)}
         >
-          <KbdGroup>
+          <KbdGroup className="flex-wrap">
             {formatShortcutBindingLabelParts(binding).map((part, partIndex) => (
               <Kbd key={`${part}-${partIndex}`} className={isOverridden ? "text-brand" : undefined}>
                 {part}
@@ -150,21 +151,22 @@ export function ShortcutBindingRow({
 
   return (
     <div
-      className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_80px_72px] items-center border-t border-border px-4 py-3 text-ui-base"
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-t border-border px-4 py-3 text-ui-base first:border-t-0 @3xl/shortcuts:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_80px_40px] @3xl/shortcuts:gap-y-0"
       data-testid={`settings-shortcut-row-${entry.id}`}
     >
-      <span className="flex min-w-0 items-center">
-        <span className="truncate">{commandLabel}</span>
+      <span className="col-start-1 row-start-1 flex min-w-0 items-center [overflow-wrap:anywhere]">
+        <span>{commandLabel}</span>
       </span>
-      <span className="flex min-w-0 flex-col items-start gap-1.5">
+      {/* 窄容器让键位独占一行，长组合键可换行，编辑按钮不再越入作用域列。 */}
+      <span className="col-span-2 col-start-1 row-start-3 flex min-w-0 flex-col items-start gap-1.5 @3xl/shortcuts:col-span-1 @3xl/shortcuts:col-start-2 @3xl/shortcuts:row-start-1">
         {bindings.map((binding, index) =>
           isRecording && recording?.mode === "replace" && recording.bindingIndex === index
-            ? renderRecorder()
+            ? renderRecorder(binding)
             : renderBinding(binding, index),
         )}
         {/* 未分配命令录第一条：bindings 为空时录制态占满键位单元格 */}
         {isRecording && recording?.mode === "replace" && recording?.bindingIndex === null
-          ? renderRecorder()
+          ? renderRecorder("unassigned")
           : null}
         {bindings.length === 0 && !isRecording ? (
           <button
@@ -184,7 +186,7 @@ export function ShortcutBindingRow({
       </span>
       {/* 作用域独立成列：global = 全局生效；composer = 仅聊天输入框内生效 */}
       <span
-        className="text-ui-sm text-foreground-subtle"
+        className="col-start-1 row-start-2 min-w-0 text-ui-sm text-foreground-subtle [overflow-wrap:anywhere] @3xl/shortcuts:col-start-3 @3xl/shortcuts:row-start-1"
         data-testid={`settings-shortcut-scope-${entry.id}`}
       >
         {entry.scope === "composer"
@@ -194,6 +196,7 @@ export function ShortcutBindingRow({
       <Button
         variant="ghost"
         size="icon"
+        className="col-start-2 row-span-2 row-start-1 self-start @3xl/shortcuts:col-start-4 @3xl/shortcuts:row-span-1 @3xl/shortcuts:self-center"
         aria-label={intl.formatMessage(
           { id: "settings.shortcuts.clearAria" },
           { command: commandLabel },

@@ -212,7 +212,10 @@ export function ShortcutSettingsSection({ isDesktop = false }: { isDesktop?: boo
   const recordingCommandId = recording?.commandId ?? null;
 
   return (
-    <div className="space-y-4" data-testid="settings-shortcuts-section">
+    <div
+      className="@container/shortcuts min-w-0 space-y-4"
+      data-testid="settings-shortcuts-section"
+    >
       <ShortcutSearchBar
         query={query}
         onQueryChange={setQuery}
@@ -233,7 +236,8 @@ export function ShortcutSettingsSection({ isDesktop = false }: { isDesktop?: boo
       />
 
       <div className="overflow-hidden rounded-xl border border-border">
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_80px_72px] bg-surface px-4 py-3 text-ui-sm text-foreground-subtle">
+        {/* 手机内容区容不下四列；与行共用容器断点，避免键帽和作用域互相覆盖。 */}
+        <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_80px_40px] gap-x-3 bg-surface px-4 py-3 text-ui-sm text-foreground-subtle @3xl/shortcuts:grid">
           <span>{intl.formatMessage({ id: "settings.shortcuts.columnHeaderCommand" })}</span>
           <span>{intl.formatMessage({ id: "settings.shortcuts.columnHeaderBinding" })}</span>
           <span>{intl.formatMessage({ id: "settings.shortcuts.columnHeaderScope" })}</span>
