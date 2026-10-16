@@ -33,6 +33,7 @@ try {
       import { consumeInitialSettingsSection, setPendingSettingsSectionIntent, writeLastSettingsSectionPreference } from "../../../ui/src/lib/settingsNavigation.ts";
       import { useZCodeIntl } from "../../../ui/src/i18n/IntlProvider.tsx";
       import { ChatPromptEditor } from "../../../ui/src/prompt-editor/ChatPromptEditor.tsx";
+      import { ConversationUserInputContent } from "../../../ui/src/v4/ConversationUserInputContent.tsx";
       import { useAgentDelegation } from "../../../ui/src/hooks/useAgentDelegation.ts";
       import { listenWorktreeSettingsConversation } from "../../../ui/src/lib/worktreeSettingsNavigation.ts";
       import { ServiceProvider } from "../../../ui/src/hooks/useServices.tsx";
@@ -83,6 +84,7 @@ try {
       listenWorktreeSettingsConversation(target => { state.navigation = target; });
       function Fixture() {
         const [kind, setKind] = useState('acp');
+        const [sentText, setSentText] = useState('');
         const [view, setView] = useState('session');
         const [settingsKey, setSettingsKey] = useState(0);
         const [settingsSection, setSettingsSection] = useState('delegation');
@@ -105,7 +107,8 @@ try {
           <ChatPromptEditor workspacePath={parent.workspacePath} taskId={kind === 'api' ? parent.sessionId || null : null} acpMode={kind === 'acp'} acpAgent={kind === 'acp' ? 'codex' : null} acpSessionId={kind === 'acp' ? parent.sessionId || null : null}
             showMentionButton enableMentionPanel onDelegateTask={delegation.available ? () => delegation.openEditor('new') : undefined}
             attachmentAction={{ label: '上传主附件', onSelect: () => state.calls.push({ op: 'main-attachment' }) }}
-            inputTestId="main-input" submitLabel="发送主消息" onSubmit={value => { state.sent.push(value); return false; }} />
+            inputTestId="main-input" submitLabel="发送主消息" onSubmit={value => { state.sent.push(value); setSentText(value); return false; }} />
+          <div data-testid="sent-user-message"><ConversationUserInputContent text={sentText} /></div>
           <div className="mt-8" data-testid="delegation-settings-section" data-section={settingsSection}>
             <nav className="mb-4 flex flex-wrap gap-3 text-ui-base" data-testid="delegation-settings-navigation">
               {sections.map(({id, titleId, icon: Icon}) => <button key={id} aria-current={settingsSection === id ? 'page' : undefined} onClick={() => openSettings(id)} className="flex items-center gap-2"><Icon className="size-4" aria-hidden />{intl.formatMessage({id: titleId})}</button>)}
@@ -351,8 +354,18 @@ try {
       0,
     );
     await target.click();
+    const acpChip = main.locator('[data-mention-category="subagents"]');
+    assert.equal(await acpChip.innerText(), "Claude ACP");
+    const acpColor = await acpChip.evaluate((element) => getComputedStyle(element).color);
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => window.__delegation.sent.length === 1);
+    const sentAcpChip = page.getByTestId("sent-user-message").locator("span").first();
+    assert.equal(await sentAcpChip.innerText(), "Claude ACP");
+    assert.equal(await sentAcpChip.locator("svg.lucide-bot").count(), 1);
+    assert.equal(
+      await sentAcpChip.evaluate((element) => getComputedStyle(element).color),
+      acpColor,
+    );
     assert.match(await page.evaluate(() => window.__delegation.sent[0]), /@acp\.claude/);
     assert.equal(
       await page.evaluate(() => window.__delegation.kind),
