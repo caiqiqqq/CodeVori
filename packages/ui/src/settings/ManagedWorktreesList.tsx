@@ -150,16 +150,17 @@ export function ManagedWorktreesList({
             <FolderGit2 className="size-4 shrink-0" />
             <span className="truncate">{project.projectPath}</span>
           </div>
-          <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="@container/worktrees overflow-hidden rounded-xl border border-border bg-card">
             {project.worktrees.map((worktree, index) => (
               <div
                 key={worktree.worktreePath}
                 className={index > 0 ? "border-t border-border" : ""}
                 data-testid="managed-worktree"
               >
-                <div className="flex min-w-0 flex-wrap items-start justify-between gap-2 px-4 py-3">
+                {/* 同行按钮曾把手机路径挤成逐字换行；按卡片空间将操作移到信息下方，兼顾桌面窄分栏。 */}
+                <div className="flex min-w-0 flex-col items-start gap-2 px-4 py-3 @lg/worktrees:flex-row @lg/worktrees:justify-between">
                   <div className="min-w-0 flex-1">
-                    <div className="text-ui-base font-medium text-foreground">
+                    <div className="text-ui-base font-medium text-foreground [overflow-wrap:anywhere]">
                       {worktree.branchName || getPathLeaf(worktree.worktreePath)}
                     </div>
                     <div
@@ -169,7 +170,7 @@ export function ManagedWorktreesList({
                       {worktree.worktreePath}
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex max-w-full min-w-0 flex-wrap gap-1 [&>button]:h-auto [&>button]:min-h-8 [&>button]:max-w-full [&>button]:whitespace-normal [&>button]:[overflow-wrap:anywhere] @lg/worktrees:[&>button]:min-h-6">
                     <Button
                       size="sm"
                       variant="ghost"
