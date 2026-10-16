@@ -87,6 +87,10 @@ const enUS: Record<string, string> = {
   "workTasks.error.work-task.attachment-size-mismatch":
     "Attachment content is incomplete or the file changed. Add it again.",
   "workTasks.error.work-task.attachment-checksum": "Attachment verification failed. Save again.",
+  "workTasks.error.fault.attachment.checksumUnavailable":
+    "Cannot calculate the attachment checksum. Save again or re-add the file.",
+  "workTasks.error.fault.attachment.checksumFailed":
+    "Attachment checksum calculation failed. Save again or re-add the file.",
   "workTasks.error.work-task.attachment-upload-not-found": "Attachment upload expired. Save again.",
   "workTasks.error.work-task.attachment-upload-conflict":
     "Attachment upload metadata does not match. Save again.",

@@ -11,7 +11,7 @@ export const workTaskPromptAssetsFixture = String.raw`
       {type:'file',name:'main.ts',relativePath:'src/main.ts',path:'/synthetic/project/src/main.ts'},
       {type:'file',name:'spec.md',relativePath:'docs/spec.md',path:'/synthetic/project/docs/spec.md'}
     ];
-    const digest = async (bytes:any) => 'sha256:' + [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(v=>v.toString(16).padStart(2,'0')).join('');
+    const digest = async (bytes:any) => typeof (window as any).__taskHostChecksum === 'function' ? (window as any).__taskHostChecksum([...bytes]) : 'sha256:' + [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(v=>v.toString(16).padStart(2,'0')).join('');
     const uploadKey = (r:any) => JSON.stringify([r.workspacePath,r.uploadId]);
     Object.assign(service, {
       async attachmentBegin(r:any) {

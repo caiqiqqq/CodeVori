@@ -25,10 +25,15 @@ import { exerciseWorkTaskExecutionConfig } from "./workTaskExecutionConfigAssert
 import { exerciseWorkTaskDetail } from "./workTaskDetailAssertions.mjs";
 import { exerciseWorkTaskCleanupSync } from "./workTaskCleanupSyncAssertions.mjs";
 import { exerciseWorkTaskNewSession } from "./workTaskNewSessionAssertions.mjs";
+import { exerciseWorkTaskHttpAttachments } from "./workTaskHttpAttachmentsAssertions.mjs";
 
 export function launchWorkTaskBrowser() {
   return chromium.launch({
     headless: true,
+    args:
+      process.env.ZCODE_E2E_SCENARIO === "http-attachments"
+        ? ["--host-resolver-rules=MAP zcode-http.test 127.0.0.1", "--no-proxy-server"]
+        : [],
     // Playwright 默认隐藏滚动条，等宽回归必须保留真实占位才能复现分组宽度差异。
     ignoreDefaultArgs:
       process.env.ZCODE_E2E_SCENARIO === "equal-widths" ? ["--hide-scrollbars"] : [],
@@ -47,6 +52,7 @@ export {
   exerciseWorkTaskCompletion,
 };
 export const workTaskScenarios = {
+  "http-attachments": exerciseWorkTaskHttpAttachments,
   "new-session": exerciseWorkTaskNewSession,
   "cleanup-sync": exerciseWorkTaskCleanupSync,
   detail: exerciseWorkTaskDetail,

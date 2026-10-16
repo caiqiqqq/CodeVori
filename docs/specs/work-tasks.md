@@ -685,6 +685,19 @@ API 选择菜单沿用按钮定位（popper）和视口碰撞边界。
 
 UI 只拥有尚未保存的描述、Lexical 状态和附件。`WorkTaskService` 是保存后的任务及附件引用的唯一所有者；附件存放在 Host 数据目录 `work-task-attachments`，SQLite JSON 只保存不可变引用、名称、MIME 和字节数，不保存 base64。保存时本地文件复制为内容快照，无本地路径的浏览器文件和粘贴内容通过有界 begin/chunk/commit/abort 上传；复用现有附件事务校验和分片发送，不使用伪会话或 Agent artifact 上传。最多 8 个附件，每个最多 20 MiB；二进制文件不得仅保存元信息或静默丢弃内容。校验大小、校验和、分片顺序和 scope，目录与损坏/不可读文件明确失败。未完成上传在失败、取消和 Host 关闭时清理；已提交快照不因编辑删除而删除，避免破坏已有会话引用。附件保存失败保留描述、引用和附件草稿，不创建/启动任务；任务保存失败可复用已提交快照重试。远端未支持任务附件时明确拒绝，不能回落本机或混用 Host。
 
+### 局域网 HTTP 附件校验兼容
+
+- 共享附件上传事务唯一负责客户端 SHA-256：WebCrypto 可用时使用原生摘要；局域网 HTTP/WebView 缺少 `crypto.subtle` 时使用显式声明的浏览器兼容 SHA-256 依赖，分段计算并让出事件循环、检查取消。两条计算路径必须生成相同的 `sha256:<64位小写hex>`，不省略或弱化 Host 的大小、scope、分片顺序和内容校验。
+- 先计算完整摘要，再走原 begin/chunk/commit/abort；摘要失败或计算期间取消不得创建上传、任务或 Agent。UI 草稿与 Host 附件所有者、owner/lease、desktop continuous 与 mobile replayable 均不变。不增加原生桥或新 RPC，不改变协议与保存格式。
+- 校验计算失败显示中文/英文可操作提示，保留描述、图片和执行配置；不可直接显示内部 `fault.attachment.checksum*` 错误码。
+- 验收：单测比较原生摘要与兼容路径的空文件、二进制、SHA-256 填充边界和 20 MiB 附件，覆盖非零偏移、普通聊天上传及计算期间取消。真实任务编辑 E2E 在 HTTP 非安全上下文、390px 下保存 API/ACP 带图任务并验证完整字节；计算失败展示本地化提示、保留草稿，重试成功且不启动 Agent。原生路径继续通过现有事务测试。
+
+```text
+UI 草稿文件 → 共享事务计算 SHA-256（原生 / HTTP 兼容实现）
+  → 已有 Host begin/chunk/commit → Host 校验并保存不可变附件 → WorkTaskService 保存引用
+失败 / 取消 → 保留 UI 草稿；摘要完成前零上传 IO
+```
+
 任务记录增加可选 `attachments`、`workspaceFiles`、`promptEditorState` 和 `runUsesPromptAssets`，兼容旧 JSON。最多 20 个项目文件引用，只接受项目内相对路径，执行时相对于任务自己的工作树解析，不引用主项目的旧内容；编辑时恢复真实 mention 节点，删除引用后同步更新保存结果。API 继续通过原 V4 `sendText` 发送附件引用，ACP 继续通过原 `prompt` 发送附件路径和 workspaceFiles，由各自运行时处理能力差异和拒绝，不新建运行通道。原始描述、新编辑描述及其失败重试携带对应附件；显式文字反馈将运行输入切为反馈并关闭原附件/文件引用，再次失败重试仍只重试该反馈。未绑定任务消息和任务详情也展示保存的附件，真实会话仍复用既有时间线。
 
 任务详情和编辑器的图片附件自动显示真实缩略图，不要求先点击。已有草稿 object URL 直接复用；只有 Host 文件路径时，通过当前 scope 的 `fileService.stat/readFileRange` 有界读取（每片不超过 384 KiB、总计不超过 20 MiB），不启动 Agent，不改变保存引用或上传状态。视频和 PDF 仍在点击时加载，不新增远端支持，断连或不支持的远端不得读取本机文件。
