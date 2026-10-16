@@ -6,6 +6,7 @@ import {
   botsStateFileSchema,
   type BotsConfigFile,
   type BotsStateFile,
+  type BotNotificationRecipient,
 } from "@zcode/shared";
 import { getAppConfigDir } from "../paths.js";
 import {
@@ -76,7 +77,32 @@ export class BotsRepo {
   async writeState(state: BotsStateFile): Promise<BotsStateFile> {
     const parsed = botsStateFileSchema.parse(state);
     const path = join(getAppConfigDir(), BOTS_STATE_FILE);
-    await withFileLock(path, () => writeJson(path, parsed));
+    await withFileLock(path, async () => {
+      const current = await readOptionalJson(path);
+      const latest: Pick<BotsStateFile, "bots"> =
+        current === undefined ? { bots: {} } : botsStateFileSchema.parse(current);
+      for (const [id, context] of Object.entries(parsed.bots)) {
+        // 通知目标只由已授权私聊更新；迟到 context 也不能复活解绑时已移除的目标。
+        context.notificationRecipient = latest.bots[id]?.notificationRecipient;
+      }
+      await writeJson(path, parsed);
+    });
     return parsed;
+  }
+
+  async rememberNotificationRecipient(
+    botId: string,
+    recipient: BotNotificationRecipient,
+  ): Promise<void> {
+    const path = join(getAppConfigDir(), BOTS_STATE_FILE);
+    await withFileLock(path, async () => {
+      const current = await readOptionalJson(path);
+      if (current === undefined) return;
+      const state = botsStateFileSchema.parse(current);
+      const context = state.bots[botId];
+      if (!context) return;
+      context.notificationRecipient = recipient;
+      await writeJson(path, botsStateFileSchema.parse(state));
+    });
   }
 }

@@ -1302,6 +1302,16 @@ const enUS: Record<string, string> = {
   "bots.feishuRegistration.error": "Registration failed.",
   "bots.enabledToggle": "Enable {name}",
   "bots.replyGranularity": "Bot reply granularity",
+  "bots.taskNotifications": "Task notifications",
+  "bots.taskNotifications.description":
+    "Send completion, failure and confirmation reminders for open projects to the bound private chat. Uses the workspace scope below, independently of system notifications and window focus.",
+  "bots.taskNotifications.bindRequired":
+    "Enable and bind the bot first. For Weixin, send a private message after signing in; Webhook requires an outbound URL.",
+  "bots.taskNotifications.test": "Send test notification",
+  "bots.taskNotifications.testing": "Sending…",
+  "bots.taskNotifications.testSuccess": "Test notification sent",
+  "bots.taskNotifications.testFailure":
+    "Delivery failed. Check the binding, sign-in status and bot delivery error.",
   "bots.replyGranularity.description": "Message detail level.",
   "bots.replyGranularity.assistantChanges": "Standard reply",
   "bots.replyGranularity.assistantChanges.description":

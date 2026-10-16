@@ -138,6 +138,11 @@ export function applySessionsIndexFrame(
  * 负责订阅生命周期与断档重订阅。
  */
 export class SessionsIndexStore {
+  // 通知只观察实时边沿；恢复/重连帧即使携带终态，也只能重建基线。
+  private notificationBaselineRevision = 0;
+  getNotificationBaselineRevision(): number {
+    return this.notificationBaselineRevision;
+  }
   private state: SessionsIndexState = EMPTY_SESSIONS_INDEX_STATE;
   private readonly listeners = new Set<() => void>();
   /** 缓存的有序列表（getSessions 稳定引用，避免每次 new array 触发重渲染）。 */
@@ -358,7 +363,7 @@ export class SessionsIndexStore {
       this.awaitingInitial = null;
     }
     if (deliveryKind === "online" && this.recovery && frame.payload.kind === "snapshot") {
-      const gap = this.applyFrame(frame);
+      const gap = this.applyFrame(frame, true);
       if (!gap) this.subscriptionHasAppliedBase = true;
       return;
     }
@@ -372,7 +377,10 @@ export class SessionsIndexStore {
       this.requestRecovery(deliveryKind === "recovery");
       return;
     }
-    const gap = this.applyFrame(frame);
+    const gap = this.applyFrame(
+      frame,
+      deliveryKind !== "online" || frame.payload.kind === "snapshot",
+    );
     if (gap && this.transport) {
       logger.warn(
         `[v4-sessions-index] 帧断档 fromSeq=${frame.fromSeq} local=${this.state.seq}，重订阅`,
@@ -741,11 +749,15 @@ export class SessionsIndexStore {
   }
 
   /** 应用一帧；断档返回 true（调用方重订阅）。 */
-  applyFrame(frame: SessionsIndexTopicFrame): boolean {
+  applyFrame(
+    frame: SessionsIndexTopicFrame,
+    baseline = frame.payload.kind === "snapshot",
+  ): boolean {
     const { state, gap } = applySessionsIndexFrame(this.state, frame);
     if (gap) return true;
     if (state !== this.state) {
       this.state = state;
+      if (baseline) this.notificationBaselineRevision += 1;
       this.cachedList = null;
       this.emit();
     }

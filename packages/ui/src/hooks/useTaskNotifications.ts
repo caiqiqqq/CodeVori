@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { IPlatformService, TaskNotificationPayload } from "@zcode/shared";
+import type { IPlatformService, TaskNotificationPayload, WorkTaskScope } from "@zcode/shared";
 import type { ConversationSnapshot, SessionSummary } from "@zcode/shared/zcode-protocol-v4";
 import { useServices } from "@/hooks/useServices.js";
 import type { IntlInstance } from "@/i18n/index.js";
@@ -16,6 +16,7 @@ import {
 import type { SessionsIndexStoreStatus } from "@/v4/sessionsIndexStore.js";
 import { getWorkTaskReadModel } from "./workTaskReadModel.js";
 import { isWorkTaskNotificationSession } from "@/lib/workTaskNotifications.js";
+import type { BotTaskNotificationSender } from "./useBotTaskNotifier.js";
 
 type FormatMessage = IntlInstance["formatMessage"];
 type TaskNotificationPlatform = Pick<IPlatformService, "showTaskNotification">;
@@ -28,6 +29,8 @@ interface WorkspaceTerminalTaskNotificationsParams {
   rpcReady: boolean;
   platform: TaskNotificationPlatform | null | undefined;
   formatMessage: FormatMessage;
+  botNotifier?: BotTaskNotificationSender;
+  workTaskScope?: WorkTaskScope;
 }
 
 interface PendingInteractionTaskNotificationsParams {
@@ -41,6 +44,7 @@ interface SessionsIndexNotificationState {
   signature: string;
   sessions: readonly SessionSummary[];
   status: SessionsIndexStoreStatus;
+  baselineRevision: number;
 }
 
 function trimOptional(value: string | null | undefined): string | undefined {
@@ -95,26 +99,35 @@ export function useWorkspaceTerminalTaskNotifications({
   rpcReady,
   platform,
   formatMessage,
+  botNotifier,
+  workTaskScope,
 }: WorkspaceTerminalTaskNotificationsParams): void {
   const { zcodeAgentService, workTaskService } = useServices();
   const workspaceIdentity = trimOptional(rawWorkspaceIdentity);
   const endpointKey = trimOptional(rawEndpointKey);
   const workspaceKey = workspaceIdentity ?? workspacePath;
+  const taskWorkspacePath = workTaskScope?.workspacePath ?? workspacePath;
+  const taskWorkspaceIdentity = workTaskScope ? workTaskScope.workspaceIdentity : workspaceIdentity;
+  const taskRemoteSessionId = workTaskScope ? workTaskScope.remoteSessionId : endpointKey;
   const workTasks = useMemo(
     () =>
       workTaskService
         ? getWorkTaskReadModel(
             workTaskService,
             {
-              workspacePath,
-              workspaceIdentity,
-              remoteSessionId: endpointKey,
+              workspacePath: taskWorkspacePath,
+              workspaceIdentity: taskWorkspaceIdentity,
+              remoteSessionId: taskRemoteSessionId,
             },
             false,
           )
         : null,
-    [workTaskService, workspacePath, workspaceIdentity, endpointKey],
+    [workTaskService, taskWorkspacePath, taskWorkspaceIdentity, taskRemoteSessionId],
   );
+  // 机器人观察器也独立保留原共享读取，不能依赖当前页面恰好挂载待办看板。
+  useEffect(() => {
+    if (botNotifier && rpcReady) return workTasks?.subscribe(() => {});
+  }, [botNotifier, rpcReady, workTasks]);
   const signature = useMemo(
     () =>
       buildWorkspaceNotificationSignature({
@@ -128,21 +141,24 @@ export function useWorkspaceTerminalTaskNotifications({
     signature,
     sessions: [],
     status: "idle",
+    baselineRevision: 0,
   });
   const previousBySessionIdRef = useRef<Map<string, SessionSummary> | null>(null);
+  const baselineRevisionRef = useRef<number | null>(null);
 
   useEffect(() => {
     previousBySessionIdRef.current = null;
-    setIndexState({ signature, sessions: [], status: "idle" });
+    baselineRevisionRef.current = null;
+    setIndexState({ signature, sessions: [], status: "idle", baselineRevision: 0 });
   }, [signature]);
 
   useEffect(() => {
-    if (!enabled || !rpcReady || !platform) {
+    if ((!enabled && !botNotifier) || !rpcReady || (!platform && !botNotifier)) {
       // App 壳在 remote attachment 就绪前会先挂载，旧通知 hook
       // 只看用户开关就订阅 sessions-index，从而越过 conversation 的 readiness gate
       // 访问断连代理。这里共用 workspace rpcReady；本地 workspace 始终为 true。
       previousBySessionIdRef.current = null;
-      setIndexState({ signature, sessions: [], status: "idle" });
+      setIndexState({ signature, sessions: [], status: "idle", baselineRevision: 0 });
       return;
     }
 
@@ -158,6 +174,7 @@ export function useWorkspaceTerminalTaskNotifications({
         signature,
         sessions: store.getSessions(),
         status: store.getStatus(),
+        baselineRevision: store.getNotificationBaselineRevision(),
       });
     };
     const unsubscribe = store.subscribe(syncState);
@@ -169,6 +186,7 @@ export function useWorkspaceTerminalTaskNotifications({
     };
   }, [
     enabled,
+    botNotifier,
     endpointKey,
     platform,
     rpcReady,
@@ -180,9 +198,14 @@ export function useWorkspaceTerminalTaskNotifications({
   ]);
 
   useEffect(() => {
+    if (indexState.status !== "live") {
+      previousBySessionIdRef.current = null;
+      baselineRevisionRef.current = null;
+      return;
+    }
     if (
-      !enabled ||
-      !platform ||
+      (!enabled && !botNotifier) ||
+      (!platform && !botNotifier) ||
       indexState.signature !== signature ||
       indexState.status !== "live"
     ) {
@@ -191,7 +214,8 @@ export function useWorkspaceTerminalTaskNotifications({
 
     const previousBySessionId = previousBySessionIdRef.current;
     const nextBySessionId = toSessionMap(indexState.sessions);
-    if (!previousBySessionId) {
+    if (!previousBySessionId || baselineRevisionRef.current !== indexState.baselineRevision) {
+      baselineRevisionRef.current = indexState.baselineRevision;
       previousBySessionIdRef.current = nextBySessionId;
       return;
     }
@@ -211,10 +235,60 @@ export function useWorkspaceTerminalTaskNotifications({
       formatMessage,
     });
     for (const payload of payloads) {
-      showTaskNotification(platform, payload);
+      if (enabled && platform) showTaskNotification(platform, payload);
+      const session = nextBySessionId.get(payload.taskId);
+      if (session)
+        botNotifier?.({
+          source: "api",
+          taskId: payload.taskId,
+          eventKey: String(session.lastActivityAt),
+          status: payload.status === "failed" ? "failed" : "completed",
+          title: payload.title,
+          body: session.title,
+        });
     }
+    // 后台等待只读取列表的轻量 interaction 身份，不订阅问题、命令或完整对话。
+    if (botNotifier)
+      for (const session of indexState.sessions) {
+        const request = session.pendingInteraction;
+        const previous = previousBySessionId.get(session.sessionId);
+        if (
+          !previous ||
+          !request ||
+          previous.pendingInteraction?.interactionId === request.interactionId ||
+          isWorkTaskNotificationSession(
+            workTasks?.getSnapshot().data?.tasks ?? [],
+            "api",
+            session.sessionId,
+            workspacePath,
+          )
+        )
+          continue;
+        botNotifier({
+          source: "api",
+          taskId: session.sessionId,
+          eventKey: request.interactionId,
+          status: "awaiting_input",
+          title: formatMessage({
+            id:
+              request.kind === "permission"
+                ? "notification.permissionRequired"
+                : "notification.inputRequired",
+          }),
+          body: session.title,
+        });
+      }
     previousBySessionIdRef.current = nextBySessionId;
-  }, [enabled, formatMessage, indexState, platform, signature, workTasks, workspacePath]);
+  }, [
+    enabled,
+    botNotifier,
+    formatMessage,
+    indexState,
+    platform,
+    signature,
+    workTasks,
+    workspacePath,
+  ]);
 }
 
 /**

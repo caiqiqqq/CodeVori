@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useMemo, useRef } from "react";
-import type { AcpSession, IPlatformService } from "@zcode/shared";
+import type { AcpSession, IPlatformService, WorkTaskScope } from "@zcode/shared";
 import { useServices } from "@/hooks/useServices.js";
 import type { IntlInstance } from "@/i18n/index.js";
 import { logger } from "@/logger.js";
@@ -13,6 +13,7 @@ import {
 import { requestWorktreeSettingsConversation } from "@/lib/worktreeSettingsNavigation.js";
 import { getWorkTaskReadModel } from "./workTaskReadModel.js";
 import { isWorkTaskNotificationSession } from "@/lib/workTaskNotifications.js";
+import type { BotTaskNotificationSender } from "./useBotTaskNotifier.js";
 
 /** ACP 完成事实独立于 API sessions-index，通知必须在 workspace 壳观察，不能绑定选中面板。 */
 export function useAcpTaskNotifications({
@@ -23,6 +24,8 @@ export function useAcpTaskNotifications({
   rpcReady,
   platform,
   formatMessage,
+  botNotifier,
+  workTaskScope,
 }: {
   workspacePath: string;
   workspaceIdentity?: string;
@@ -31,6 +34,8 @@ export function useAcpTaskNotifications({
   rpcReady: boolean;
   platform: Pick<IPlatformService, "showTaskNotification" | "onTaskNotificationClick"> | null;
   formatMessage: IntlInstance["formatMessage"];
+  botNotifier?: BotTaskNotificationSender;
+  workTaskScope?: WorkTaskScope;
 }): void {
   const { acpService, workTaskService } = useServices();
   const workspaceIdentity = rawIdentity?.trim() || undefined;
@@ -38,13 +43,30 @@ export function useAcpTaskNotifications({
     () => ({ workspacePath, workspaceIdentity, remoteSessionId }),
     [workspacePath, workspaceIdentity, remoteSessionId],
   );
+  const taskWorkspacePath = workTaskScope?.workspacePath ?? workspacePath;
+  const taskWorkspaceIdentity = workTaskScope ? workTaskScope.workspaceIdentity : workspaceIdentity;
+  const taskRemoteSessionId = workTaskScope ? workTaskScope.remoteSessionId : remoteSessionId;
   const workTasks = useMemo(
-    () => (workTaskService ? getWorkTaskReadModel(workTaskService, workspace, false) : null),
-    [workTaskService, workspace],
+    () =>
+      workTaskService
+        ? getWorkTaskReadModel(
+            workTaskService,
+            {
+              workspacePath: taskWorkspacePath,
+              workspaceIdentity: taskWorkspaceIdentity,
+              remoteSessionId: taskRemoteSessionId,
+            },
+            false,
+          )
+        : null,
+    [workTaskService, taskWorkspacePath, taskWorkspaceIdentity, taskRemoteSessionId],
   );
+  useEffect(() => {
+    if (botNotifier && rpcReady) return workTasks?.subscribe(() => {});
+  }, [botNotifier, rpcReady, workTasks]);
   const owner = useMemo(
     () => ({}),
-    [workspace, acpService, enabled, rpcReady, platform, workTasks],
+    [workspace, acpService, enabled, rpcReady, platform, workTasks, botNotifier],
   );
   const currentOwner = useRef(owner);
   currentOwner.current = owner;
@@ -54,13 +76,14 @@ export function useAcpTaskNotifications({
   );
 
   useEffect(() => {
-    if (!enabled || !rpcReady || !platform) return;
+    if ((!enabled && !botNotifier) || !rpcReady || (!platform && !botNotifier)) return;
     let live = true;
     const isCurrent = () => live && currentOwner.current === owner;
     const key = workspaceIdentity ?? workspacePath;
     const facts = new Map<string, AcpTaskNotificationState>();
     const removed = new Set<string>();
     const targets = new Map<string, AcpSidebarSession>();
+    const pendingRequests = new Map<string, string | undefined>();
     const matches = (session: AcpSession) =>
       session.workspacePath === workspacePath &&
       (session.workspaceIdentity?.trim() || session.workspacePath) === key;
@@ -70,10 +93,12 @@ export function useAcpTaskNotifications({
       if (previous && previous.revision >= session.revision) return;
       const next = toAcpTaskNotificationState(session);
       facts.set(session.id, next);
+      const pending = session.pendingPermission ?? session.pendingElicitation;
+      const oldPending = pendingRequests.get(session.id);
+      pendingRequests.set(session.id, pending?.requestId);
       if (session.archived || session.supersededBy) targets.delete(session.id);
       // 修复原因：初始/恢复快照只建立观察基线；系统通知只能来自已观察运行轮的实时终态边沿。
       const payload = baseline ? null : payloadFor(previous, next);
-      if (!payload) return;
       // 修复依据：直接分支待办与普通会话同目录，终态提醒由窗口级待办观察器统一负责。
       if (
         isWorkTaskNotificationSession(
@@ -84,10 +109,42 @@ export function useAcpTaskNotifications({
         )
       )
         return;
+      if (
+        !baseline &&
+        previous &&
+        !session.archived &&
+        !session.provisional &&
+        !session.supersededBy &&
+        pending &&
+        oldPending !== pending.requestId
+      ) {
+        botNotifier?.({
+          source: "acp",
+          taskId: session.id,
+          eventKey: pending.requestId,
+          status: "awaiting_input",
+          title: formatMessage({
+            id: session.pendingPermission
+              ? "notification.permissionRequired"
+              : "notification.inputRequired",
+          }),
+          body: session.title,
+        });
+      }
+      if (!payload) return;
+      const user = session.entries.findLast((entry) => entry.kind === "user");
+      botNotifier?.({
+        source: "acp",
+        taskId: session.id,
+        eventKey: user?.id ?? String(user?.createdAt ?? session.revision),
+        status: payload.status === "failed" ? "failed" : "completed",
+        title: payload.title,
+        body: session.title,
+      });
       const row = projectAcpSidebarSessions([session], workspace)[0];
       if (row) targets.set(session.id, row);
       try {
-        platform.showTaskNotification(payload);
+        if (enabled) platform?.showTaskNotification(payload);
       } catch (error) {
         logger.warn("[acp-task-notification] 触发平台通知失败", { error });
       }
@@ -100,9 +157,10 @@ export function useAcpTaskNotifications({
         removed.add(change.id);
         facts.delete(change.id);
         targets.delete(change.id);
+        pendingRequests.delete(change.id);
       }
     });
-    const disposeClick = platform.onTaskNotificationClick((id) => {
+    const disposeClick = platform?.onTaskNotificationClick((id) => {
       if (!isCurrent() || !id.startsWith(ACP_TASK_NOTIFICATION_PREFIX)) return;
       const session = targets.get(id.slice(ACP_TASK_NOTIFICATION_PREFIX.length));
       if (session) requestWorktreeSettingsConversation({ kind: "acp", session });
@@ -117,11 +175,12 @@ export function useAcpTaskNotifications({
     return () => {
       live = false;
       subscription.dispose();
-      disposeClick();
+      disposeClick?.();
     };
   }, [
     acpService,
     enabled,
+    botNotifier,
     owner,
     platform,
     rpcReady,

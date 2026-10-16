@@ -54,6 +54,7 @@ import {
 } from "@/BotsDialog/BotSummaryCard.js";
 import { ProviderSettingsCard } from "@/BotsDialog/ProviderSettingsCard.js";
 import { WorkspaceAccessCard } from "@/BotsDialog/WorkspaceAccessCard.js";
+import { TaskNotificationsCard } from "@/BotsDialog/TaskNotificationsCard.js";
 import { SettingsGroupCard } from "@/settings/SettingsPageParts.js";
 import {
   BIND_CODE_TTL_MS,
@@ -297,7 +298,7 @@ export function BotsDialog({
       !open ||
       selectedBot?.provider !== "weixin" ||
       !selectedBot.credentialRef ||
-      selectedBotState?.weixinActivatedAt
+      (selectedBotState?.weixinActivatedAt && selectedBotState?.notificationRecipient)
     ) {
       return undefined;
     }
@@ -330,6 +331,7 @@ export function BotsDialog({
     selectedBot?.id,
     selectedBot?.provider,
     selectedBotState?.weixinActivatedAt,
+    selectedBotState?.notificationRecipient,
   ]);
 
   useEffect(() => {
@@ -1333,6 +1335,12 @@ export function BotsDialog({
                 />
 
                 <SettingsGroupCard>
+                  <TaskNotificationsCard
+                    key={selectedBot.id}
+                    bot={selectedBot}
+                    weixinRecipientReady={Boolean(selectedBotState?.notificationRecipient)}
+                    onPatchBot={patchSelectedBot}
+                  />
                   <BotReplyGranularityCard
                     bot={selectedBot}
                     onPatchBot={patchSelectedBot}
