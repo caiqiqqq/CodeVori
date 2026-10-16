@@ -2321,6 +2321,7 @@ const enUS: Record<string, string> = {
   "workspaceSidebar.showSidebar": "Toggle sidebar",
   "workspaceSidebar.hideSidebar": "Toggle sidebar",
   "workspaceSidebar.toggleSidebar": "Toggle sidebar",
+  "workspaceSidebar.collapseSidebar": "Collapse sidebar",
   "workspaceSidebar.resizeSidebar": "Resize sidebar",
   "workspaceSidebar.showFileTree": "Show files",
   "workspaceSidebar.sshConnectionTitle": "SSH connection",

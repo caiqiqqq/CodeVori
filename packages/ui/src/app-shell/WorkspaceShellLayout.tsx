@@ -1934,7 +1934,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
         data-workspace-shell="true"
         style={workspaceShellSplitStyle}
         className={cn(
-          "relative flex h-full min-h-0 w-full overflow-hidden",
+          "@container/workspace-shell relative flex h-full min-h-0 w-full overflow-hidden",
           // 窗口原生 resize 时，外层 react-resizable-panels 会把每一帧
           // 都写进 layout store，连带侧栏 tooltip/menu 子树反复 commit。这里改成
           // CSS 变量驱动的专用 split，普通窗口 resize 只走浏览器布局，不触发 React 状态。
@@ -2054,7 +2054,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
           data-panel=""
           id="content"
           className={cn(
-            "flex flex-1 flex-col",
+            "relative flex flex-1 flex-col",
             // 手机侧栏展开后剩余宽度不足 320px；允许主区收缩，避免撑宽外壳并被标签/焦点滚动裁切导航。
             isDesktop ? "min-w-[320px]" : "min-w-0 md:min-w-[320px]",
             hasDesktopPanelInset ? "p-1 pl-0 pt-0" : "p-0",
@@ -2492,6 +2492,17 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                     切换时卸载 Guest；截图请求期间由上层临时展开真实面板承载可合成的 WebContents。 */}
             {sidePanePanel}
           </ResizablePanelGroup>
+          {/* 手机展开侧栏后，外侧点击只用于收起；独立遮罩阻止底层按钮和输入框被误触。
+              用实际工作区容器宽度判定窄屏，复用既有显隐 owner，不另存 mobile/open 状态。 */}
+          {!isDesktop && isSidebarVisible ? (
+            <button
+              type="button"
+              data-testid="mobile-sidebar-dismiss"
+              aria-label={intl.formatMessage({ id: "workspaceSidebar.collapseSidebar" })}
+              onClick={handleToggleSidebar}
+              className="absolute inset-0 z-40 hidden bg-background/40 [app-region:no-drag] @max-[768px]/workspace-shell:block focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+            />
+          ) : null}
         </div>
         <ScopedErrorBoundary
           scope="desktop-top-overlay"
