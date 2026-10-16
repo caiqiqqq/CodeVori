@@ -60,6 +60,14 @@ API / ACP 主智能体 ─ MCP capability ─┐
 
 ## API 委派目标
 
+### 委派引用的发送前后展示（#170）
+
+- 输入框与发送后的用户消息复用现有 subagents chip：相同的 Bot 图标、16px 图标尺寸、1.5 描边及 `text-subagent-node-foreground` 语义颜色；候选列表的 ACP/API 品牌图标不改变 chip 的展示规则。
+- 标签规范化由 UI 的 `normalizePromptMentionDisplayLabel` 统一持有，不新增状态、目录请求或持久化元数据。已知 `acp.<agent>` 使用现有 ACP catalog 的可读名称（例如 `DeepSeek Harness`），输入框、发送后及旧消息回放保持一致。
+- API 的 canonical 链接继续保留完整 model/provider 身份和原可读标签；UI 解析结果保留 reference，仅供展示判别，不从模型名称猜 ACP 身份，不改变消息协议、发送文本或委派执行。
+- 缺失目录元数据的旧消息仍能按已知 ACP reference 展示名称；未知 ACP、普通 `@name` 和缺失/非法身份保持原标签与通用 Bot，不请求配置、不抛错。输入框恢复旧草稿遵守同一规则。
+- 验收：选择 ACP/API 候选后实际提交，气泡与输入框的标签、图标和语义颜色一致；API 中文、斜杠和同名不同 provider 标签保留；未知旧引用安全降级。1280px/375px、Zai Light/Dark 均不溢出，canonical 发送文本保持不变。
+
 - API 目标只读取 Host 的 `IModelSelectionService` 已应用 Registry，不从 Renderer 偏好、设置草稿或历史会话拼出候选；不调用连通性测试，不读取/发送 API key。禁用、隐藏、配置无效或尚未发布的模型不出现在委派列表。
 - 公共 targets 返回经过运行时校验的 API / ACP 联合投影。API 携带 provider 名称、完整 modelSelection 与可用 reasoningLevel 档位，首次选择沿用既有 `completeNewModelSelection` 规则；服务端 admission 再次检查 provider/model 身份和档位，Runtime 保持最终执行校验。
 - API 引用身份为 `api.<providerId 的 UTF-8 hex>.<modelId 的 UTF-8 hex>`；同名模型按 provider 区分，中文、空格及斜杠不丢失或发生替换碰撞。输入框和消息展示可读模型名与 provider；MCP 的 ListDelegationAgents 返回相同 reference 与执行参数供主智能体使用。已有 `@acp.<agent>` 继续有效。

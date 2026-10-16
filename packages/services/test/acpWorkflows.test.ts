@@ -9,6 +9,66 @@ import type { NativeMcpServerRecord } from "@zcode/shared";
 import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
 import { createAcpWorkflowWorld } from "../src/acp/acpWorkflowWorld.js";
 
+test("disabled Host policy omits ACP workflow tools and does not advertise an executable command", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "zcode-acp-workflow-disabled-"));
+  const target = { workspacePath: directory };
+  const prompts: string[] = [];
+  const service = createAcpService({
+    directory: join(directory, "sessions"),
+    resolveDynamicWorkflowClientConfig: async () => ({
+      mode: "disabled",
+      enabled: false,
+      source: "override",
+    }),
+    connect: async (input) => {
+      assert.equal(
+        input.workflowServers?.some((server) => server.name === "zcode-workflows"),
+        false,
+      );
+      return {
+        sessionId: "disabled-workflow-native",
+        configOptions: [],
+        modeState: null,
+        async setConfigOption() {
+          return [];
+        },
+        async setMode() {},
+        async cancel() {},
+        close() {},
+        async prompt(text, blocks) {
+          prompts.push(
+            text,
+            ...(blocks ?? []).flatMap((block) => (block.type === "text" ? [block.text] : [])),
+          );
+        },
+      };
+    },
+  });
+  try {
+    const session = await service.create({
+      ...target,
+      agent: "codex",
+      requestId: crypto.randomUUID(),
+    });
+    await service.prompt({
+      ...target,
+      id: session.id,
+      commandId: crypto.randomUUID(),
+      text: "/workflow 测试",
+      attachments: [],
+      workspaceFiles: [],
+    });
+    assert.match(prompts.join("\n"), /workflows are disabled/);
+    assert.doesNotMatch(prompts.join("\n"), /then call CreateWorkflow/);
+    const saved = await service.read({ ...target, id: session.id });
+    assert.equal(saved.workflowRuns?.runs.length ?? 0, 0);
+    assert.equal(saved.entries.find((entry) => entry.kind === "user")?.text, "/workflow 测试");
+  } finally {
+    await service.disposeAllAndWait();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 const typedScript = `phase("调查");
 const a = agent("研究员");
 const result = await a.ask<{value: number}>("返回 42");

@@ -5,11 +5,14 @@
 Populated ACP and API conversations reuse ConversationStatusPanel, its Git tools,
 mini/panel/automatic modes and the timeline's coordinated layout. Empty ACP drafts
 retain their existing greeting. A compact branch entry remains visible in populated
-conversations even when the repository is clean or no other panel facts are present.
-Clicking it expands the existing panel. The full Git tools section is available for
-clean repositories too; Changes remains actionable only when review is available.
-Office mode hides Git tools but keeps the branch identity entry. Unknown, unavailable,
-nonrepository and detached HEAD states have explicit labels; no branch is guessed.
+conversations when Git is available, even when the repository is clean or no other
+panel facts are present. Clicking it expands the existing panel. The full Git tools
+section is available for clean repositories too; Changes remains actionable only when
+review is available. Office mode hides Git tools but keeps the branch identity entry.
+A confirmed unavailable Git runtime hides the branch entry and Git environment row;
+when no other panel facts exist, the status panel does not render an empty placeholder.
+A Git-enabled directory that is not a repository keeps the explicit no-repository
+label. Detached HEAD and unknown branch states remain explicit; no branch is guessed.
 Automatic mode keeps a branch-only panel compact even on wide screens. Existing goal,
 plan, change and background summaries retain their priority alongside the branch.
 
@@ -17,7 +20,7 @@ The workspace shell's existing Git hook owns repository reads/watch refresh. Sam
 workspace panes share its summary and actions; different workspace identity/path
 panes must not consume shell Git facts or callbacks (existing Workbench boundary).
 This change does not introduce a second repository state owner or a cross-workspace
-Git review surface. Unavailable Git shows an explicit label rather than inventing a
+Git review surface. Unavailable Git hides its branch label rather than inventing a
 branch or zero changes. A scope switch first selects the new pane's Git projection;
 existing stale-response guards prevent the previous scope from replacing it.
 
@@ -88,8 +91,10 @@ web-remote-replayable snapshots ─┴→ selected pane → Terminals → output
    from Host snapshots only. No API goal actions, task diffs or background state.
 3. Mini → expanded → mini uses existing controls. Desktop wide layout reserves
    room consistently; narrow/mobile does not overflow. Check light/dark themes.
-4. Clean/nonrepository/unavailable Git and Office mode keep existing API visibility
-   rules. Different identities cannot reuse shell Git summary/callbacks.
+4. Clean/nonrepository Git and Office mode keep existing API visibility rules. A
+   confirmed unavailable Git runtime has no compact branch label or Git environment row;
+   if it is the only fact, no status-panel placeholder is rendered. Different identities
+   cannot reuse shell Git summary/callbacks.
 5. Remount from replay snapshot and scoped session switch reproduce current facts,
    with no new ACP connection/prompt caused by panel interactions.
 6. Execute projection regressions, actual pane E2E, typecheck, lint, architecture
@@ -105,6 +110,7 @@ web-remote-replayable snapshots ─┴→ selected pane → Terminals → output
 9. A populated API or ACP conversation in a clean repository shows its branch in a
    compact entry, including after a Host replay; clicking it expands the existing
    Git section. Branch-only auto mode does not reserve the expanded wide layout.
-   Active plan/change summaries remain visible with the branch. Detached, unknown,
-   unavailable and nonrepository scopes have accurate labels without leaking the
-   previous workspace's branch. Check desktop/mobile and light/dark themes.
+   Active plan/change summaries remain visible with the branch. Detached and unknown
+   scopes have accurate labels without leaking the previous workspace's branch; a
+   confirmed unavailable Git runtime omits the branch entry and environment row.
+   Check desktop/mobile and light/dark themes.

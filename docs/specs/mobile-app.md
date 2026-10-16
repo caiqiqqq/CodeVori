@@ -25,6 +25,13 @@ sequenceDiagram
 
 验收：第一个项目在对话工作区之前时仍进入对话新草稿；预存历史会话选择不会被打开；无对话工作区、空列表及当前项目被删除时不自动选项目；用户显式选项目可进入新草稿；后续排序、旧快照及新增对话工作区不抢走有效选择。390px/桌面宽度及明暗主题的共享 UI E2E 验证输入、发送仍按 identity 路由；不调用付费模型，不将合成服务验证作为实机证明。
 
+## iOS WebView HTTP 连接
+
+- 原生 ATS 策略由 Expo `app.json` 的 `ios.infoPlist.NSAppTransportSecurity` 提供；保留本地网络能力，使用 `NSAllowsArbitraryLoadsInWebContent` 显式支持 WebView 加载用户配置的 HTTP 地址，不使用被 `NSAllowsLocalNetworking` 覆盖的通用 `NSAllowsArbitraryLoads`。iOS 10 及以上两键并存会导致通用开关失效，真机已捕获 `NSURLErrorDomain -1022`。
+- 仅调整原生网页传输策略，不改变地址解析、Token、SecureStore、同源导航或桌面 Host/会话所有者；HTTPS 连接继续正常验证证书，不增加任意证书信任逻辑。桌面 `/pair` 的来源校验是独立问题，不在本次修改范围。
+- 既有未跟踪的 iOS 工程需同步 Info.plist 后重新构建安装，避免重建工程覆盖本机签名。后续新生成的工程从 Expo 配置继承策略，Metro 更新不能替换原生网络配置。
+- 验收先复用真机已保存的连接捕获失败，再检查 Expo 生效配置与 Release `.app` 中 ATS 键，覆盖安装后读取 WebView 成功/失败回调；`-1022` 消失与网页实际加载成功分开报告。连接解析与同源限制的既有单测保持通过，根目录类型、Lint 与架构检查必需。
+
 ## Issue #163：真机消息延迟诊断
 
 - 手机壳通过构建时 `EXPO_PUBLIC_WEBVIEW_DEBUG=1` 显式开启 WebView 检查；未设置或其他值均关闭。开关由手机构建唯一拥有，不持久化、不从网页或连接参数读取。
@@ -194,7 +201,7 @@ sequenceDiagram
 - 移动 Web 使用 HTTP 局域网地址时，浏览器可能提供 `crypto.getRandomValues` 但不提供 `crypto.randomUUID`；所有 UI 临时 ID 必须通过共享 UUID 工具生成，不能直接调用 `crypto.randomUUID()`。UUID 能力差异不能阻断首屏渲染、输入框交互或会话初始化。OAuth nonce 保留现有安全随机源要求，不使用非安全随机降级。
 - 回归场景：在 375px 手机视口禁用 `crypto.randomUUID`、保留 `getRandomValues`，验证真实输入组件可聚焦、可输入且发送按钮可用，提交仅由合成服务接纳；同时保留桌面有 `randomUUID` 的场景。Agent 未就绪时继续遵守连接门禁，不能为了恢复输入绕过该状态。
 - 断线展示重试，断开连接只删除手机凭据，不删除 Web 服务的会话。清除凭据后旧 WebView 立即卸载；WebView 的 Cookie 应按发行前的设备退出语义进一步验证。
-- HTTP 接受私有 IPv4 和有效自定义域名，不根据域名后缀推断网络范围；HTTPS 保持兼容。iOS ATS 和 Android manifest 已开启明文能力，此处只修正应用层地址校验，不改变平台网络配置。
+- HTTP 接受私有 IPv4 和有效自定义域名，不根据域名后缀推断网络范围；HTTPS 保持兼容。iOS ATS 使用上文的 WebView 专用明文配置，Android manifest 保持已有明文能力。
 - 该壳加载现有 Web 服务地址，不把 `packages/web` 静态资源复制成第二份，也不新增手机侧 Agent、任务队列或会话事实。
 - Web 当前 OAuth 配置的回调与局域网 Web 服务地址可能不一致；如果该 Web 页面要求重新登录，手机壳不保证能完成登录。首期验收以手机浏览器能够在同一个地址完成真实操作为前提，OAuth 回调需要另案验证。
 

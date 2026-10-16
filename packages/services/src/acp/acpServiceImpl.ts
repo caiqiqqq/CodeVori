@@ -25,6 +25,8 @@ import {
   acpConversationReadSchema,
   acpConversationRowsRangeSchema,
   summarizeAcpSession,
+  resolveDynamicWorkflowClientConfig,
+  type DynamicWorkflowClientConfig,
   type AcpSessionSummary,
 } from "@zcode/shared";
 import type { ConversationDelta } from "@zcode/shared/zcode-protocol-v4";
@@ -202,6 +204,8 @@ function diagnosticToolStatus(status?: string): AcpDiagnosticEvent["status"] {
 export function createAcpService(
   options: {
     directory?: string;
+    /** Same Host policy as the management page and API session tools. */
+    resolveDynamicWorkflowClientConfig?: () => Promise<DynamicWorkflowClientConfig>;
     /** Projection-only membership; exact read and internal execution keep child access. */
     delegatedSessionIds?: (scope: AcpWorkspace) => Promise<string[]>;
     connect?: AcpConnectionFactory;
@@ -968,11 +972,16 @@ export function createAcpService(
           }),
         ),
       ]);
-      const workflowRegistration = await performanceDiagnostics.run(
-        `acp.attach.workflow.${session.agent}`,
-        () => workflowHost.register(session),
-      );
-      workflowRegistrations.set(session.id, workflowRegistration);
+      // 修复原因：ACP 曾绕过管理页的能力开关；新连接复用 Host 本地策略，已有运行不热撤。
+      const workflowConfig = options.resolveDynamicWorkflowClientConfig
+        ? await options.resolveDynamicWorkflowClientConfig()
+        : resolveDynamicWorkflowClientConfig({ env: process.env });
+      const workflowRegistration = workflowConfig.enabled
+        ? await performanceDiagnostics.run(`acp.attach.workflow.${session.agent}`, () =>
+            workflowHost.register(session),
+          )
+        : undefined;
+      if (workflowRegistration) workflowRegistrations.set(session.id, workflowRegistration);
       const delegationRegistration = await performanceDiagnostics.run(
         `acp.attach.delegation.${session.agent}`,
         async () => options.delegation?.register(session),
@@ -984,7 +993,7 @@ export function createAcpService(
         sessionId: session.acpSessionId || undefined,
         ...(mcpSettings ? { mcpServers: mcpSettings.servers } : {}),
         workflowServers: [
-          workflowRegistration.record,
+          ...(workflowRegistration ? [workflowRegistration.record] : []),
           ...(delegationRegistration ? [delegationRegistration.record] : []),
         ],
         ...(plugins ? { pluginServers: plugins.servers } : {}),
@@ -1665,7 +1674,9 @@ export function createAcpService(
           ? "用户提到委派或 @智能体时，使用 zcode-delegation 的 ListDelegationAgents / DelegateTask；保持当前主智能体，显式传递必要上下文，不复制全部历史。子任务完成只汇总，不自动继续修改、合并或推送。"
           : undefined;
       const workflowInstruction = /^\/workflow(?:\s|$)/i.test(prompt.text.trimStart())
-        ? `Use the ZCode zcode-workflows MCP ReadWorkflowInstructions tool, then call CreateWorkflow for this request: ${prompt.text.trimStart().replace(/^\/workflow\s*/i, "")}`
+        ? workflowRegistrations.has(session.id)
+          ? `Use the ZCode zcode-workflows MCP ReadWorkflowInstructions tool, then call CreateWorkflow for this request: ${prompt.text.trimStart().replace(/^\/workflow\s*/i, "")}`
+          : "ZCode workflows are disabled on this Host. Explain that the requested workflow cannot start; do not claim it ran or substitute another execution method."
         : undefined;
       const references = referencedAcpPlugins(prompt.text);
       const [pluginSnapshot, pluginSkills] = references.length
