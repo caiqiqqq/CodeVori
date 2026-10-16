@@ -13,6 +13,7 @@ import type {
   BotWorkspaceRef,
   BotsConfigFile,
   ZCodeAutomationBotDeliveryTarget,
+  BotTaskNotification,
 } from "@zcode/shared";
 import type { ZCodeAgentAppRuntimePreferences } from "../zcode-agent/zcodeAgent.js";
 
@@ -154,6 +155,10 @@ export interface IBotsService {
   resetBotState(contextKey: string): Promise<void>;
   /** 在 automation prompt 派发前订阅终态，并把结果回推到创建它的 Bot 会话。 */
   watchAutomationRun(params: BotAutomationRunWatchParams): Promise<void>;
+  /** 发送实时任务边沿；发送失败不改变任务事实，不自动重试。 */
+  notifyTask(notification: BotTaskNotification): Promise<void>;
+  /** 对已保存配置和已绑定目标进行真实投递测试。 */
+  testTaskNotification(botId: string): Promise<BotTestResult>;
   handleInboundMessage(message: BotInboundMessage): Promise<BotOutboundMessage[]>;
   handleProviderCallback(provider: BotProvider, payload: unknown): Promise<BotOutboundMessage[]>;
   handleProviderCallbackResponse(

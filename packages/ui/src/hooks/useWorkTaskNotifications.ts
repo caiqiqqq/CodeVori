@@ -11,6 +11,7 @@ import {
 import { requestWorktreeSettingsConversation } from "@/lib/worktreeSettingsNavigation.js";
 import { columnForWorkTaskStatus } from "@/lib/workTaskBoard.js";
 import { getWorkTaskReadModel } from "./workTaskReadModel.js";
+import type { BotTaskNotificationSender } from "./useBotTaskNotifier.js";
 
 /** 后台待办不会挂载交互弹窗；等待通知必须观察原 Host task 投影，而非当前选中对话。 */
 export function useWorkTaskNotifications({
@@ -19,12 +20,14 @@ export function useWorkTaskNotifications({
   enabled,
   platform,
   formatMessage,
+  botNotifier,
 }: {
   service: IWorkTaskService | undefined;
   scope: WorkTaskScope;
   enabled: boolean;
   platform: Pick<IPlatformService, "showTaskNotification" | "onTaskNotificationClick"> | null;
   formatMessage: IntlInstance["formatMessage"];
+  botNotifier?: BotTaskNotificationSender;
 }): void {
   const scope = useMemo(
     () => ({
@@ -34,7 +37,7 @@ export function useWorkTaskNotifications({
     }),
     [input.workspacePath, input.workspaceIdentity, input.remoteSessionId],
   );
-  const owner = useMemo(() => ({}), [service, scope, enabled, platform]);
+  const owner = useMemo(() => ({}), [service, scope, enabled, platform, botNotifier]);
   const currentOwner = useRef(owner);
   currentOwner.current = owner;
   const payloadFor = useEffectEvent(
@@ -45,7 +48,7 @@ export function useWorkTaskNotifications({
   );
 
   useEffect(() => {
-    if (!enabled || !service || !platform) return;
+    if ((!enabled && !botNotifier) || !service || (!platform && !botNotifier)) return;
     let live = true;
     const isCurrent = () => live && currentOwner.current === owner;
     const resource = getWorkTaskReadModel(service, scope, false);
@@ -69,9 +72,22 @@ export function useWorkTaskNotifications({
         // 首个成功快照及恢复读取只建立基线；共享读取负责丢弃旧 RPC，不能补发历史等待。
         const payload = previous ? payloadFor(previous.get(task.id), task) : null;
         if (!payload) continue;
+        botNotifier?.({
+          source: "work-task",
+          taskId: task.id,
+          eventKey: JSON.stringify([task.runSeq, task.status, task.updatedAt]),
+          status:
+            payload.status === "completed"
+              ? "completed"
+              : payload.status === "failed"
+                ? "failed"
+                : "awaiting_input",
+          title: payload.title,
+          body: task.title,
+        });
         targets.set(payload.taskId, { id: task.id, runSeq: task.runSeq });
         try {
-          platform.showTaskNotification(payload);
+          if (enabled) platform?.showTaskNotification(payload);
         } catch (error) {
           logger.warn("[work-task-notification] 触发平台通知失败", { error });
         }
@@ -91,7 +107,7 @@ export function useWorkTaskNotifications({
     };
     const unsubscribe = resource.subscribe(observe);
     observe();
-    const disposeClick = platform.onTaskNotificationClick((id) => {
+    const disposeClick = platform?.onTaskNotificationClick((id) => {
       if (!isCurrent()) return;
       const target = targets.get(id);
       if (target) requestWorktreeSettingsConversation({ kind: "work-task", scope, id: target.id });
@@ -99,7 +115,7 @@ export function useWorkTaskNotifications({
     return () => {
       live = false;
       unsubscribe();
-      disposeClick();
+      disposeClick?.();
     };
-  }, [enabled, owner, platform, scope, service]);
+  }, [enabled, botNotifier, owner, platform, scope, service]);
 }

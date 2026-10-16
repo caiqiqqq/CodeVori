@@ -7,6 +7,7 @@ import type {
   SelectionPrompt,
 } from "@zcode/shared";
 import type { BotProviderAdapter } from "./types.js";
+import { fetchBotProvider } from "./providerRequest.js";
 
 interface WebhookProviderDeps {
   loadCredential(key: string): Promise<string | null>;
@@ -221,7 +222,8 @@ export function createWebhookBotProvider(
       if (secret) {
         headers[bot.webhookAuthHeaderName || "x-zcode-bot-secret"] = secret;
       }
-      const response = await postWebhookWithRetry(bot.webhookUrl, {
+      const post = message.singleAttempt ? fetchBotProvider : postWebhookWithRetry;
+      const response = await post(bot.webhookUrl, {
         method: "POST",
         headers,
         body: JSON.stringify({

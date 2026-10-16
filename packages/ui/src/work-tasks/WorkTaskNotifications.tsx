@@ -3,6 +3,7 @@ import type { WorkTaskScope } from "@zcode/shared";
 import { useOptionalPlatform } from "@/hooks/usePlatform.js";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { useWorkTaskNotifications } from "@/hooks/useWorkTaskNotifications.js";
+import { useBotTaskNotifier } from "@/hooks/useBotTaskNotifier.js";
 import { useWorktreeProjectGroupsResolution } from "@/hooks/useWorktreeProjectGroups.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { resolveWorkspaceServices } from "@/lib/workspaceServiceResolver.js";
@@ -18,10 +19,16 @@ function ProjectNotifications({ scope }: { scope: WorkTaskScope }) {
   const platform = useOptionalPlatform();
   const { intl } = useZCodeIntl();
   const enabled = useZCodeStoreWithDefault((state) => state.notificationEnabled, true);
+  const resolvedScope = {
+    ...scope,
+    remoteSessionId: resolution?.remoteSessionId ?? scope.remoteSessionId,
+  };
+  const botNotifier = useBotTaskNotifier(resolvedScope);
   useWorkTaskNotifications({
-    scope: { ...scope, remoteSessionId: resolution?.remoteSessionId ?? scope.remoteSessionId },
+    scope: resolvedScope,
     service: resolution?.services.workTaskService,
     enabled,
+    botNotifier,
     platform,
     formatMessage: intl.formatMessage,
   });

@@ -1161,6 +1161,15 @@ const zhCN: Record<string, string> = {
   "bots.feishuRegistration.error": "注册失败。",
   "bots.enabledToggle": "启用 {name}",
   "bots.replyGranularity": "机器人回复颗粒度",
+  "bots.taskNotifications": "任务通知",
+  "bots.taskNotifications.description":
+    "向已绑定的私聊发送已打开项目的任务完成、失败和等待确认提醒。遵循下方工作区范围，与系统通知和窗口焦点无关。",
+  "bots.taskNotifications.bindRequired":
+    "请先启用并绑定机器人。微信需要在当前登录后发送一条私聊消息；Webhook 需要出站地址。",
+  "bots.taskNotifications.test": "发送测试通知",
+  "bots.taskNotifications.testing": "正在发送…",
+  "bots.taskNotifications.testSuccess": "测试通知已发送",
+  "bots.taskNotifications.testFailure": "发送失败，请检查绑定、登录状态和机器人投递错误。",
   "bots.replyGranularity.description": "消息详细程度。",
   "bots.replyGranularity.assistantChanges": "标准回复",
   "bots.replyGranularity.assistantChanges.description":

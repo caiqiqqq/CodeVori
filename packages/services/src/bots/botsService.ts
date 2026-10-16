@@ -3,6 +3,8 @@ import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { createBotTaskNotifier, testBotTaskNotification } from "./taskNotifications.js";
+import { BotNotificationReceipts } from "./notificationReceipts.js";
 import type { IDisposable } from "@zcode/rpc";
 import { completeNewModelSelection } from "@zcode/provider";
 import {
@@ -2001,6 +2003,26 @@ export function createBotsService(
     }
     await adapter.send(bot, message);
   }
+
+  async function credentialFingerprint(bot: BotConfig): Promise<string> {
+    const credential = bot.credentialRef
+      ? await deps.credentialService.load(bot.credentialRef)
+      : null;
+    return credential ? createHash("sha256").update(credential).digest("hex") : "";
+  }
+
+  const notificationReceipts = new BotNotificationReceipts(
+    join(getAppConfigDir(), "bot-notification-receipts.v1.json"),
+  );
+  const taskNotificationDeps = {
+    readConfig: () => repo.readConfig(),
+    readState: () => repo.readState(),
+    credentialFingerprint,
+    claim: (key: string) => notificationReceipts.claim(key),
+    send: sendOutbound,
+    onDeliveryResult,
+  };
+  const notifyTask = createBotTaskNotifier(taskNotificationDeps);
 
   function buildInboundDeliveryKey(message: BotInboundMessage): string | null {
     const providerMessageId = message.actor.providerMessageId?.trim();
@@ -4508,6 +4530,18 @@ export function createBotsService(
     if (remoteDisconnectedReply) {
       return { ok: false, reply: remoteDisconnectedReply };
     }
+    if (bot.provider === "weixin") {
+      const fingerprint = await credentialFingerprint(bot);
+      if (fingerprint) {
+        // 微信扫码身份不能用于通知；以当前凭据下已授权的私聊收件人与最新 token 为准。
+        await writeContext(context);
+        await repo.rememberNotificationRecipient(bot.id, {
+          providerUserId: message.actor.providerUserId,
+          providerContextToken: message.actor.providerContextToken,
+          credentialFingerprint: fingerprint,
+        });
+      }
+    }
     if (isFeishuBotProvider(bot.provider)) {
       // Bugfix: 飞书短命令 typing 现在由同步回复完成后显式删除。
       // 这里必须等 reaction 创建完成，否则 stopInboundTyping 可能先执行，最终留下无法清理的 Typing reaction。
@@ -5393,7 +5427,24 @@ export function createBotsService(
       return { code, expiresAt };
     },
     async getBotStates() {
-      return Object.values((await repo.readState()).bots);
+      const [states, config] = await Promise.all([repo.readState(), repo.readConfig()]);
+      return Promise.all(
+        Object.values(states.bots).map(async (state) => {
+          const bot = findBot(config, state.botId);
+          const target = state.notificationRecipient;
+          const ready =
+            bot?.provider === "weixin" &&
+            target &&
+            target.credentialFingerprint === (await credentialFingerprint(bot));
+          return {
+            ...state,
+            // 通知 context token 只供 Host 投递；重新登录后配置页也不能沿用旧目标就绪状态。
+            notificationRecipient: ready
+              ? { ...target, providerContextToken: undefined }
+              : undefined,
+          };
+        }),
+      );
     },
     async resetBotState(contextKey: string) {
       const state = await repo.readState();
@@ -5401,6 +5452,8 @@ export function createBotsService(
       await repo.writeState(state);
     },
     watchAutomationRun,
+    notifyTask,
+    testTaskNotification: (botId) => testBotTaskNotification(botId, taskNotificationDeps),
     async handleInboundMessage(message: BotInboundMessage) {
       return enqueueInboundProcessing(message.actor, async () => {
         if (message.elicitationResponse) {

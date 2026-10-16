@@ -117,7 +117,33 @@ export interface BotConfig {
   allowedCommands: BotAllowedCommands;
   currentOptions: BotCurrentOptions;
   replyMode: BotReplyMode;
+  /** 独立于系统通知与 Bot 回复颗粒度，旧配置默认关闭。 */
+  taskNotifications?: boolean;
 }
+
+export const botTaskNotificationSchema = z
+  .object({
+    workspacePath: z.string().trim().min(1).max(4096),
+    workspaceIdentity: z.string().trim().min(1).max(4096).optional(),
+    remoteSessionId: z.string().trim().min(1).max(4096).optional(),
+    source: z.enum(["api", "acp", "work-task"]),
+    taskId: z.string().min(1).max(4096),
+    eventKey: z.string().min(1).max(8192),
+    status: z.enum(["completed", "failed", "awaiting_input"]),
+    title: z.string().min(1).max(512),
+    body: z.string().max(2048),
+  })
+  .strict();
+export type BotTaskNotification = z.infer<typeof botTaskNotificationSchema>;
+
+const botNotificationRecipientSchema = z
+  .object({
+    providerUserId: z.string().min(1),
+    providerContextToken: z.string().optional(),
+    credentialFingerprint: z.string().min(1),
+  })
+  .strict();
+export type BotNotificationRecipient = z.infer<typeof botNotificationRecipientSchema>;
 
 export interface BotPendingPermissionOption {
   requestId: string;
@@ -187,6 +213,7 @@ export interface BotState {
   telegramOffset?: number;
   weixinGetUpdatesBuf?: string;
   weixinActivatedAt?: number;
+  notificationRecipient?: BotNotificationRecipient;
   updatedAt: number;
 }
 
@@ -306,6 +333,8 @@ export interface BotOutboundMessage {
   selection?: SelectionPrompt;
   elicitation?: BotOutboundElicitationRequest;
   providerContextToken?: string;
+  /** 通知已认领一次投递，不能在网络结果不确定时重试。 */
+  singleAttempt?: boolean;
 }
 
 export interface BotTaskSummary {
@@ -475,6 +504,7 @@ export const botConfigSchema = z
       "summary_changes",
       "streaming_card",
     ]),
+    taskNotifications: z.boolean().optional(),
   })
   .strict();
 
@@ -514,6 +544,7 @@ export const botsStateFileSchema = z
         telegramOffset: z.number().optional(),
         weixinGetUpdatesBuf: z.string().optional(),
         weixinActivatedAt: z.number().optional(),
+        notificationRecipient: botNotificationRecipientSchema.optional(),
         updatedAt: z.number(),
       }),
     ),
