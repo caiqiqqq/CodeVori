@@ -101,7 +101,7 @@ type MentionTextPart =
   | { type: "directory"; label: string }
   | { type: "skill"; label: string }
   | { type: "command"; label: string }
-  | { type: "subagent"; label: string }
+  | { type: "subagent"; label: string; reference?: string }
   | { type: "session"; label: string }
   | { type: "plugin"; label: string; pluginId?: string };
 
@@ -206,7 +206,11 @@ export function parseMentionMarkdown(content: string): MentionTextPart[] {
       });
     } else if (/^delegation:\/\/api\.[0-9a-f]+\.[0-9a-f]+$/.test(destination)) {
       // API 身份包含 provider，展示名可能带中文/斜杠；不能把智能体引用还原成项目文件。
-      parts.push({ type: "subagent", label: label.startsWith("@") ? label.slice(1) : label });
+      parts.push({
+        type: "subagent",
+        label: label.startsWith("@") ? label.slice(1) : label,
+        reference: destination.slice("delegation://".length),
+      });
     } else if (label.startsWith("$")) {
       parts.push({ type: "skill", label: label.slice(1) });
     } else if (isDirectoryMentionDestination(destination)) {

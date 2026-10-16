@@ -59,8 +59,9 @@ try {
         const [epoch,setEpoch]=useState(0);
         const [dirty,setDirty]=useState(true);
         const [noGit,setNoGit]=useState(false);
+        const [gitUnavailable,setGitUnavailable]=useState(false);
         const [variant,setVariant]=useState(null);
-        window.__status={events,read:copy,dirty:setDirty,noGit:setNoGit,variant:setVariant,
+        window.__status={events,read:copy,dirty:setDirty,noGit:setNoGit,gitUnavailable:setGitUnavailable,variant:setVariant,
           startCommands:()=>{snapshot.status='running';snapshot.entries.push(
             {id:'execute',kind:'tool',title:'npm run dev',toolKind:'execute',status:'in_progress',createdAt:Date.now(),input:'npm run dev',output:'tool ready'},
             {id:'linked',kind:'tool',title:'linked terminal',toolKind:'execute',status:'in_progress',terminalIds:['managed'],createdAt:Date.now()},
@@ -75,7 +76,7 @@ try {
         };
         return <main className="h-screen bg-background text-foreground p-2" data-fixture-ready="true" data-fixture-epoch={epoch}>
           <SessionPane key={epoch} paneId="status-fixture" workspacePath={workspacePath} sessionId={null} focused
-            gitWorktreeReviewSourceId="unstaged" gitSummary={noGit?{...dirtySummary,isRepository:false}:dirtySummary} gitDirtyFileCount={dirty?2:0}
+            gitWorktreeReviewSourceId="unstaged" gitSummary={gitUnavailable?{...dirtySummary,isGitAvailable:false,isRepository:false}:noGit?{...dirtySummary,isRepository:false}:dirtySummary} gitDirtyFileCount={dirty?2:0}
             gitWorktreeChangeSummary={dirty?{added:12,removed:3}:{added:0,removed:0}}
             onRefreshGit={()=>events.push('refresh')}
             onOpenGitReview={source=>events.push('review:'+source)}
@@ -275,6 +276,11 @@ try {
       });
       await panel.getByText("无 Git 仓库").first().waitFor();
       assert.equal(await panel.getByText("fixture-main").count(), 0);
+      await page.evaluate(() => {
+        window.__status.gitUnavailable(true);
+      });
+      await panel.waitFor({ state: "hidden" });
+      assert.equal(await page.getByText("Git 不可用", { exact: true }).count(), 0);
       assert.equal(
         (await page.evaluate(() => window.__status.events)).some(
           (e) => e === "create" || e === "prompt",

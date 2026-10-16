@@ -1,3 +1,4 @@
+import { ACP_AGENT_CATALOG } from "@zcode/shared";
 import type { MentionCategory } from "@/mentions/mentionTypes.js";
 
 function unescapePromptMentionMarkdownText(text: string): string {
@@ -26,6 +27,12 @@ export function normalizePromptMentionDisplayLabel(
   label: string,
   value: string,
 ): string {
+  // 根因：ACP 发送文本保存 acp.<agent>，气泡直接回显身份导致与输入框目录名称不同。
+  // 只按明确的 ACP reference 复用既有 catalog；API 标签及未知旧引用不能据名称猜身份。
+  if (category === "subagents" && value.startsWith("acp.")) {
+    const agent = ACP_AGENT_CATALOG.find((item) => `acp.${item.id}` === value);
+    if (agent) return agent.name;
+  }
   const markdownLabel = extractPromptMentionMarkdownLabel(label);
   let displayLabel = markdownLabel ?? label;
 

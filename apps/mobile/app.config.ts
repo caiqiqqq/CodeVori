@@ -7,6 +7,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   slug: config.slug ?? "zcode-lan-mobile",
   ios: {
     ...config.ios,
+    // HTTP 域名由 app.json 的 WebView 专用 ATS 键放行；本地网络键会让通用开关失效。
     infoPlist: {
       ...config.ios?.infoPlist,
       NSLocalNetworkUsageDescription: `用于连接同一局域网内运行的 ${PRODUCT_NAME} Web 服务。`,

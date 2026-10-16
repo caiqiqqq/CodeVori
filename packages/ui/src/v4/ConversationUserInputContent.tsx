@@ -21,6 +21,7 @@ import {
   parseMentionMarkdown,
 } from "@/mentions/mentionMarkdown.js";
 import { parseV4VisibleSlashCommand } from "@/v4/slashCommands.js";
+import { normalizePromptMentionDisplayLabel } from "@/mentions/promptMentionLabel.js";
 
 const GOAL_QUERY_TOKEN_PATTERN = /^(\s*)(\/(?:goal|target))(?=\s|$)([\s\S]*)$/i;
 const EMPTY_ATTACHMENTS: readonly unknown[] = [];
@@ -128,7 +129,7 @@ function V4UserInputMention({
     return (
       <span className={mentionClassName("subagents")}>
         <Bot aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.5} />
-        {part.label}
+        {normalizePromptMentionDisplayLabel("subagents", part.label, part.reference ?? part.label)}
       </span>
     );
   }
