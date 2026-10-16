@@ -2131,6 +2131,7 @@ const zhCN: Record<string, string> = {
   "workspaceSidebar.showSidebar": "显示侧边栏",
   "workspaceSidebar.hideSidebar": "隐藏侧边栏",
   "workspaceSidebar.toggleSidebar": "切换侧边栏",
+  "workspaceSidebar.collapseSidebar": "收起侧边栏",
   "workspaceSidebar.resizeSidebar": "调整侧边栏宽度",
   "workspaceSidebar.showFileTree": "查看文件",
   "workspaceSidebar.sshConnectionTitle": "SSH 连接",
