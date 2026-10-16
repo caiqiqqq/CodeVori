@@ -318,9 +318,16 @@ Existing filters, page and remote selection remain unchanged.
   only the supplemental projection; useRepositoryItem merges it for display,
   with the same generation guard as the base snapshot. Slow supplemental reads
   never block the description or the state validation before a confirmed write.
-  Malformed optional responses are isolated like permission errors. Attributes
-  are read-only; do not add placeholder
-  edit, upload, reaction, assignment or create-MR controls without write APIs.
+  Malformed optional responses are isolated like permission errors. Existing
+  issues expose one native edit action for title, Markdown body, labels,
+  assignees and milestone; GitLab also edits confidentiality and due date. The
+  edit draft belongs to the detail view, catalogs are read through the same
+  target-bound Host, and a single update request replaces the complete editable
+  projection so clearing a label, assignee or milestone is explicit. The Host
+  revalidates repository/account before the provider PATCH/PUT. A failed update
+  keeps the complete draft and selections; success closes the editor and
+  re-reads the detail. No website editor, optimistic remote truth or automatic
+  retry is introduced.
   Calendar due dates do not shift to another day in negative UTC offsets; zero
   spent time is shown as zero rather than an unset estimate.
 - GitLab notes include system notes as activity, with a local all-activity /
@@ -659,6 +666,38 @@ covered/old target reply -> ignored; explicit retry -> fresh read, never create
   fields and invalid dates rejected before IO, section permission errors,
   stale target rejection; E2E Write/Preview, attribute selection, failed-create
   draft retention, settings/Host switches and narrow-screen containment.
+
+### Native issue editing
+
+- The issue detail owns an edit dialog initialized from the current detail and
+  refreshed option catalogs. It is available for issues only; pull requests and
+  merge requests remain unchanged. Closing the dialog never writes. Double
+  submission is admitted once through the existing mutation owner.
+- GitHub sends title/body, complete label names, assignee logins and milestone
+  number; GitLab sends title/description, complete labels/member IDs,
+  `milestone_id` (or null), confidentiality and due date; Gitea sends title/body,
+  complete label IDs, assignee logins and milestone ID. Empty arrays and null
+  milestone/due-date values clear the corresponding fields. Provider adapters
+  reject unsupported fields before HTTP.
+- `updateForgeIssue` is the only public write operation for this behavior. Its
+  shared schema requires an issue target and complete editable projection. The
+  Host validates the target immediately before the provider request, and the UI
+  ignores stale option/detail replies after a workspace, Host, remote or item
+  switch. A successful update triggers the existing detail refresh/list owner;
+  an error remains local to the dialog and preserves the draft.
+
+```text
+detail snapshot -> edit draft + bound catalogs -> one updateForgeIssue
+             -> Host target revalidation -> provider PATCH/PUT
+             -> success: close + detail reread; failure: keep draft and error
+```
+
+Acceptance: service tests assert exact update payloads, clearing fields,
+unsupported-provider rejection and target-change rejection for GitHub, GitLab
+and Gitea. UI tests cover opening from an issue detail, title/body and attribute
+editing, failed-update draft retention, one-write admission, successful reread,
+and no edit action for pull requests. Cover 320px, both themes and English/
+Chinese labels.
 
 - The Git Host owns remote discovery, accepted account selection and API calls.
   Public typed operations are exposed through IGitService; shared Zod schemas

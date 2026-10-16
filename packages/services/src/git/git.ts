@@ -64,6 +64,7 @@ import type {
   ForgeTargetRequest,
   ForgeLabel,
   ForgeNewIssueRequest,
+  ForgeUpdateIssueRequest,
   ForgeItem,
   ForgeCommentRequest,
   ForgeStateRequest,
@@ -90,6 +91,7 @@ export interface IGitService {
   listForgeLabels(params: ForgeTargetRequest): Promise<ForgeLabel[]>;
   getForgeIssueOptions(params: ForgeTargetRequest): Promise<ForgeIssueOptions>;
   createForgeIssue(params: ForgeNewIssueRequest): Promise<ForgeItem>;
+  updateForgeIssue(params: ForgeUpdateIssueRequest): Promise<ForgeItem>;
   createForgeComment(params: ForgeCommentRequest): Promise<void>;
   setForgeItemState(params: ForgeStateRequest): Promise<void>;
   mergeForgePullRequest(params: ForgeMergeRequest): Promise<void>;

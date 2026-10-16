@@ -4,6 +4,7 @@ import {
   forgeListRequestSchema,
   forgeMergeRequestSchema,
   forgeNewIssueRequestSchema,
+  forgeUpdateIssueRequestSchema,
   forgePageRequestSchema,
   forgeRepositoryRequestSchema,
   forgeStateRequestSchema,
@@ -53,6 +54,7 @@ export type ForgeService = Pick<
   | "listForgeLabels"
   | "getForgeIssueOptions"
   | "createForgeIssue"
+  | "updateForgeIssue"
   | "createForgeComment"
   | "setForgeItemState"
   | "mergeForgePullRequest"
@@ -262,6 +264,10 @@ export function createForgeService(options?: {
     async createForgeIssue(input) {
       const request = forgeNewIssueRequestSchema.parse(input);
       return (await target(request)).createIssue(request);
+    },
+    async updateForgeIssue(input) {
+      const request = forgeUpdateIssueRequestSchema.parse(input);
+      return (await target(request)).updateIssue(request);
     },
     async createForgeComment(input) {
       const request = forgeCommentRequestSchema.parse(input);

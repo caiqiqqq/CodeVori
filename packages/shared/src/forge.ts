@@ -212,6 +212,42 @@ export const forgeNewIssueRequestSchema = forgeTargetRequestSchema.extend({
 });
 export type ForgeNewIssueRequest = z.infer<typeof forgeNewIssueRequestSchema>;
 export type ForgeIssueDraft = Omit<ForgeNewIssueRequest, keyof ForgeTargetRequest>;
+export const forgeUpdateIssueRequestSchema = forgeItemRequestSchema
+  .extend({
+    kind: z.literal("issue"),
+    title: z.string().trim().min(1).max(256),
+    body: z.string().max(65_000),
+    labels: z
+      .array(z.string().min(1).max(256))
+      .max(20)
+      .refine((keys) => new Set(keys).size === keys.length),
+    assignees: z
+      .array(z.string().min(1).max(256))
+      .max(20)
+      .refine((keys) => new Set(keys).size === keys.length),
+    milestone: z.union([
+      z
+        .string()
+        .regex(/^[1-9]\d*$/)
+        .refine((key) => Number.isSafeInteger(Number(key))),
+      z.null(),
+    ]),
+    confidential: z.boolean().optional(),
+    dueDate: z
+      .union([
+        z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .refine((value) => {
+            const date = new Date(`${value}T00:00:00Z`);
+            return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+          }),
+        z.null(),
+      ])
+      .optional(),
+  })
+  .strict();
+export type ForgeUpdateIssueRequest = z.infer<typeof forgeUpdateIssueRequestSchema>;
 export interface ForgeIssueOptionSection<T> {
   items: T[];
   error: string | null;
