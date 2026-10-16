@@ -10,10 +10,13 @@ const zhCN: Record<string, string> = {
   "settings.desktopLan.disabled": "局域网访问未开启",
   "settings.desktopLan.link": "手机浏览器连接地址（含访问凭据）",
   "settings.desktopLan.linkDescription":
-    "手机与电脑连接同一局域网，在手机浏览器中打开以下任一可达地址。点击输入框可选中完整链接。",
+    "手机与电脑连接同一局域网，在手机浏览器中打开以下任一可达地址，或在手机 App 中扫描对应二维码。点击输入框可选中完整链接。二维码含访问凭据，请勿分享。",
+  "settings.desktopLan.qr": "局域网连接二维码",
+  "settings.desktopLan.qrLoading": "正在生成连接二维码…",
+  "settings.desktopLan.qrFailed": "二维码生成失败，请复制连接链接。",
   "settings.desktopLan.token": "手机 App 连接 Token",
   "settings.desktopLan.tokenDescription":
-    "使用手机 App 时，分别填写上方的根地址与此 Token。重新开启或重启后会更换 Token，请使用当前连接地址重新配对。",
+    "手机 App 支持扫码、粘贴完整连接链接，或分别填写根地址与此 Token。重新开启或重启后会更换 Token，请使用当前连接地址重新配对。",
   "settings.desktopLan.hint":
     "在同一可信局域网中使用；HTTP 明文传输。关闭访问或退出桌面后连接立即失效。",
   "chat.visualization.title": "交互预览",

@@ -1,15 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AppState, Linking, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { WebView, type WebViewNavigation } from "react-native-webview";
-import {
-  buildAuthenticatedUrl,
-  isSameOrigin,
-  parseConnectionInput,
-  type MobileConnection,
-} from "./src/connection";
-import { clearConnection, loadConnection, saveConnection } from "./src/connectionStore";
+import { buildAuthenticatedUrl, isSameOrigin, type MobileConnection } from "./src/connection";
+import { clearConnection, loadConnection } from "./src/connectionStore";
+
+import { FloatingConnectionButton } from "./src/FloatingConnectionButton";
+import { PairingScreen } from "./src/PairingScreen";
+import { useConnectionStyles } from "./src/connectionStyles";
 
 export default function App() {
   const [connection, setConnection] = useState<MobileConnection | null>(null);
@@ -48,70 +47,6 @@ export default function App() {
   );
 }
 
-function PairingScreen({
-  initialError,
-  onConnected,
-}: {
-  readonly initialError: string | null;
-  readonly onConnected: (connection: MobileConnection) => void;
-}) {
-  const [address, setAddress] = useState("");
-  const [token, setToken] = useState("");
-  const [error, setError] = useState(initialError);
-
-  const connect = async () => {
-    const result = parseConnectionInput(address, token);
-    if (!result.ok) {
-      setError(result.reason);
-      return;
-    }
-    try {
-      await saveConnection(result.connection);
-      setError(null);
-      onConnected(result.connection);
-    } catch {
-      setError("连接配置保存失败，请检查系统安全存储权限。");
-    }
-  };
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
-      <View style={styles.container}>
-        <Text style={styles.title}>ZCode LAN Mobile</Text>
-        <Text style={styles.subtitle}>连接同一局域网内运行的 ZCode Web 服务。</Text>
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          placeholder="http://192.168.1.23:3030"
-          placeholderTextColor="#78828c"
-          style={styles.input}
-          value={address}
-          onChangeText={setAddress}
-        />
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder="Web 服务 Token"
-          placeholderTextColor="#78828c"
-          secureTextEntry
-          style={styles.input}
-          value={token}
-          onChangeText={setToken}
-        />
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable style={styles.primaryButton} onPress={() => void connect()}>
-          <Text style={styles.primaryButtonText}>连接桌面端</Text>
-        </Pressable>
-        <Text style={styles.hint}>
-          仅允许局域网 HTTP 地址或 HTTPS 地址；手机与电脑需处于可互访网络。
-        </Text>
-      </View>
-    </SafeAreaView>
-  );
-}
-
 function RemoteScreen({
   connection,
   onDisconnect,
@@ -120,71 +55,129 @@ function RemoteScreen({
   readonly onDisconnect: () => Promise<void>;
 }) {
   const [failed, setFailed] = useState(false);
+  const [webGeneration, setWebGeneration] = useState(0);
+  const web = useRef<WebView>(null);
+  useEffect(() => {
+    let previous = AppState.currentState;
+    const subscription = AppState.addEventListener("change", (next) => {
+      if (next === "active" && previous !== "active") {
+        // 前台恢复只唤醒断线恢复器，不无条件刷新仍健康的会话。
+        web.current?.injectJavaScript('window.dispatchEvent(new Event("zcode:resume"));true;');
+      }
+      previous = next;
+    });
+    return () => subscription.remove();
+  }, []);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
-  const url = useMemo(() => buildAuthenticatedUrl(connection), [connection]);
+  const disconnectPending = useRef(false);
+  const connectionStyles = useConnectionStyles();
+  const source = useMemo(() => ({ uri: buildAuthenticatedUrl(connection) }), [connection]);
 
-  const disconnect = () => {
-    Alert.alert("更换连接？", "这只会清除手机保存的地址和 Token，不影响桌面端会话。", [
-      { text: "取消", style: "cancel" },
-      {
-        text: "更换连接",
-        style: "destructive",
-        onPress: () => {
-          void onDisconnect().catch(() => setDisconnectError("清除连接失败，请重试。"));
-        },
-      },
-    ]);
+  const openSettings = () => {
+    setDisconnectError(null);
+    setSettingsOpen(true);
   };
-
-  if (failed) {
-    return (
-      <StateScreen
-        title="无法连接桌面端"
-        actionLabel="重新加载"
-        onAction={() => setFailed(false)}
-        secondaryLabel="更换连接"
-        onSecondary={disconnect}
-      />
-    );
-  }
+  const closeSettings = () => {
+    if (!disconnectPending.current) setSettingsOpen(false);
+  };
+  const disconnect = async () => {
+    // 清除成功前保留原连接；同步门禁避免连续点击重复删除 SecureStore。
+    if (disconnectPending.current) return;
+    disconnectPending.current = true;
+    setDisconnecting(true);
+    setDisconnectError(null);
+    try {
+      await onDisconnect();
+    } catch {
+      setDisconnectError("清除连接失败，请重试。");
+      setDisconnecting(false);
+      disconnectPending.current = false;
+    }
+  };
 
   return (
     <SafeAreaView style={styles.webSafeArea}>
       <StatusBar style="light" />
-      <View style={styles.toolbar}>
-        <Text style={styles.toolbarLabel} numberOfLines={1}>
-          {new URL(connection.origin).host}
-        </Text>
-        {disconnectError ? <Text style={styles.error}>{disconnectError}</Text> : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="更换连接"
-          onPress={disconnect}
-          style={styles.toolbarButton}
-        >
-          <Text style={styles.toolbarButtonText}>更换连接</Text>
-        </Pressable>
-      </View>
-      <WebView
-        source={{ uri: url }}
-        originWhitelist={["http://*", "https://*"]}
-        javaScriptEnabled
-        domStorageEnabled
-        sharedCookiesEnabled
-        thirdPartyCookiesEnabled
-        setSupportMultipleWindows={false}
-        onError={() => setFailed(true)}
-        onHttpError={(event) => {
-          if (event.nativeEvent.statusCode >= 400) setFailed(true);
-        }}
-        onShouldStartLoadWithRequest={(request: WebViewNavigation) => {
-          if (isSameOrigin(request.url, connection.origin)) return true;
-          if (request.url.startsWith("https://"))
-            void Linking.openURL(request.url).catch(() => undefined);
-          return false;
-        }}
-        style={styles.webView}
-      />
+      {failed ? (
+        <StateScreen
+          title="无法连接桌面端"
+          actionLabel="重新加载"
+          onAction={() => setFailed(false)}
+          secondaryLabel="更换连接"
+          onSecondary={openSettings}
+        />
+      ) : (
+        <View style={styles.remoteContent}>
+          <WebView
+            key={webGeneration}
+            ref={web}
+            onContentProcessDidTerminate={() => setWebGeneration((value) => value + 1)}
+            source={source}
+            originWhitelist={["http://*", "https://*"]}
+            javaScriptEnabled
+            domStorageEnabled
+            sharedCookiesEnabled
+            thirdPartyCookiesEnabled
+            setSupportMultipleWindows={false}
+            onError={() => setFailed(true)}
+            onHttpError={(event) => {
+              if (event.nativeEvent.statusCode >= 400) setFailed(true);
+            }}
+            onShouldStartLoadWithRequest={(request: WebViewNavigation) => {
+              if (isSameOrigin(request.url, connection.origin)) return true;
+              if (request.url.startsWith("https://"))
+                void Linking.openURL(request.url).catch(() => undefined);
+              return false;
+            }}
+            style={styles.webView}
+          />
+          <FloatingConnectionButton onPress={openSettings} />
+        </View>
+      )}
+      {/* 连接栏不再挤占网页高度；弹层独立挂载，打开/取消时保留 WebView 和会话。 */}
+      <Modal visible={settingsOpen} transparent animationType="fade" onRequestClose={closeSettings}>
+        <View style={styles.modalBackdrop}>
+          <View
+            testID="connection-settings"
+            accessibilityViewIsModal
+            style={[connectionStyles.panel, styles.connectionCard]}
+          >
+            <Text style={connectionStyles.title}>连接设置</Text>
+            <Text style={connectionStyles.subtitle}>当前电脑</Text>
+            <Text selectable style={connectionStyles.label}>
+              {new URL(connection.origin).host}
+            </Text>
+            <Text style={connectionStyles.subtitle}>
+              更换连接只会清除手机保存的地址和 Token，不影响桌面端会话。
+            </Text>
+            {disconnectError ? (
+              <Text accessibilityRole="alert" style={connectionStyles.error}>
+                {disconnectError}
+              </Text>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              disabled={disconnecting}
+              style={connectionStyles.primaryButton}
+              onPress={closeSettings}
+            >
+              <Text style={connectionStyles.primaryText}>继续使用</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={disconnecting}
+              style={connectionStyles.secondaryButton}
+              onPress={() => void disconnect()}
+            >
+              <Text style={connectionStyles.secondaryText}>
+                {disconnecting ? "正在更换…" : "更换连接"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -208,12 +201,16 @@ function StateScreen({
       <View style={styles.centered}>
         <Text style={styles.title}>{title}</Text>
         {actionLabel && onAction ? (
-          <Pressable style={styles.primaryButton} onPress={onAction}>
+          <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={onAction}>
             <Text style={styles.primaryButtonText}>{actionLabel}</Text>
           </Pressable>
         ) : null}
         {secondaryLabel && onSecondary ? (
-          <Pressable style={styles.secondaryButton} onPress={onSecondary}>
+          <Pressable
+            accessibilityRole="button"
+            style={styles.secondaryButton}
+            onPress={onSecondary}
+          >
             <Text style={styles.secondaryButtonText}>{secondaryLabel}</Text>
           </Pressable>
         ) : null}
@@ -225,7 +222,6 @@ function StateScreen({
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#0c0e0f" },
   webSafeArea: { flex: 1, backgroundColor: "#0c0e0f" },
-  container: { flex: 1, justifyContent: "center", gap: 14, paddingHorizontal: 24 },
   centered: {
     flex: 1,
     alignItems: "center",
@@ -234,19 +230,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   title: { color: "#f5f7f8", fontSize: 24, fontWeight: "700" },
-  subtitle: { color: "#a7afb8", fontSize: 15, lineHeight: 22 },
-  input: {
-    minHeight: 52,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    borderRadius: 12,
-    backgroundColor: "#151718",
-    color: "#f5f7f8",
-    paddingHorizontal: 14,
-    fontSize: 16,
-  },
-  error: { color: "#ffaaa6", fontSize: 13, lineHeight: 19 },
-  hint: { color: "#78828c", fontSize: 12, lineHeight: 18 },
   primaryButton: {
     minHeight: 52,
     alignItems: "center",
@@ -266,16 +249,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   secondaryButtonText: { color: "#e5e9ec", fontSize: 15, fontWeight: "700" },
-  toolbar: {
-    minHeight: 48,
-    flexDirection: "row",
+  remoteContent: { flex: 1 },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "center",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 14,
-    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 24,
   },
-  toolbarLabel: { flex: 1, color: "#a7afb8", fontSize: 13 },
-  toolbarButton: { paddingHorizontal: 10, paddingVertical: 8 },
-  toolbarButtonText: { color: "#e5e9ec", fontSize: 13 },
+  connectionCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 12,
+    padding: 20,
+    gap: 12,
+  },
   webView: { flex: 1, backgroundColor: "#0c0e0f" },
 });

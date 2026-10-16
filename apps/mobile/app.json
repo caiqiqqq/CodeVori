@@ -1,6 +1,5 @@
 {
   "expo": {
-    "name": "ZCode LAN Mobile",
     "slug": "zcode-lan-mobile",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -10,7 +9,6 @@
       "supportsTablet": true,
       "bundleIdentifier": "ai.zcode.lanmobile",
       "infoPlist": {
-        "NSLocalNetworkUsageDescription": "用于连接同一局域网内运行的 ZCode Web 服务。",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true,
           "NSAllowsArbitraryLoads": true
@@ -22,6 +20,14 @@
     },
     "plugins": [
       [
+        "expo-camera",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {
@@ -29,6 +35,7 @@
           }
         }
       ]
-    ]
+    ],
+    "icon": "./assets/icon.png"
   }
 }
