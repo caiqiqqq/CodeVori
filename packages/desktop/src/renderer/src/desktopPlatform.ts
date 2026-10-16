@@ -83,6 +83,8 @@ export function createDesktopPlatform(options: {
     syncWindowTabs: (paths) => window.zcode.syncWindowTabs(paths),
     getDesktopLanAccess: () => window.zcode.getDesktopLanAccess!(),
     setDesktopLanAccessEnabled: (enabled) => window.zcode.setDesktopLanAccessEnabled!(enabled),
+    saveDesktopLanAccessConfiguration: (configuration) =>
+      window.zcode.saveDesktopLanAccessConfiguration!(configuration),
     syncWindowUnreadCount: (count) => window.zcode.syncWindowUnreadCount(count),
     syncActiveTaskSession: (sessionId) => window.zcode.syncActiveTaskSession(sessionId),
     syncAppSettings: (patch) => window.zcode.syncAppSettings?.(patch),

@@ -4,22 +4,32 @@ const enUS: Record<string, string> = {
   "settings.desktopLan.title": "Phone access over LAN",
   "settings.desktopLan.description":
     "Connect your phone to this desktop window and its projects, conversations and running sessions. Your choice is remembered: access is restored for the main window after updates or restarts, until you disable it.",
+  "settings.desktopLan.address": "Access address",
+  "settings.desktopLan.port": "Fixed port",
+  "settings.desktopLan.save": "Save configuration",
+  "settings.desktopLan.saved": "Configuration saved. You can enable access.",
+  "settings.desktopLan.configurationDescription":
+    "Enter this computer’s LAN IPv4 address or .local hostname, without http:// or a port. Saved connection details stay the same across rebuilds and restarts.",
+  "settings.desktopLan.configurationLocked":
+    "Access is enabled. Disable access before changing the address or port.",
+  "settings.desktopLan.invalidConfiguration":
+    "Enter a LAN IPv4 address or .local hostname and an integer port between 1 and 65535.",
   "settings.desktopLan.start": "Enable access",
   "settings.desktopLan.stop": "Disable access",
   "settings.desktopLan.enabled": "LAN access is enabled",
   "settings.desktopLan.disabled": "LAN access is disabled",
   "settings.desktopLan.link": "Phone browser URL (includes access credentials)",
   "settings.desktopLan.linkDescription":
-    "Connect your phone to the same local network and open any reachable URL below, or scan its QR code in the mobile app. Focus a field to select the full link. QR codes contain access credentials; do not share them.",
+    "Connect your phone to the same local network and open this URL, or scan its QR code in the mobile app. Focus a field to select the full link. QR codes contain access credentials; do not share them.",
   "settings.desktopLan.qr": "LAN connection QR code",
   "settings.desktopLan.qrLoading": "Generating connection QR code…",
   "settings.desktopLan.qrFailed":
     "Unable to generate the QR code. Copy the connection link instead.",
   "settings.desktopLan.token": "Mobile app connection token",
   "settings.desktopLan.tokenDescription":
-    "Scan a QR code, paste a full connection link, or enter a root URL above and this token separately in the mobile app. Re-enabling access or restarting generates a new token. Pair again using the current connection URL.",
+    "Scan a QR code, paste a full connection link, or enter a root URL above and this token separately in the mobile app. The address, port and token are saved on this computer and stay the same across restarts and updates.",
   "settings.desktopLan.hint":
-    "Use on a trusted local network; HTTP is unencrypted. Disabling access or quitting the desktop disconnects your phone.",
+    "Use on a trusted local network; HTTP is unencrypted. Disabling access or quitting disconnects your phone. If your router changes this computer’s IP, update the address or reserve an IP on your router.",
   "chat.visualization.title": "Interactive preview",
   "chat.visualization.loading": "Loading preview…",
   "chat.visualization.failed": "Preview unavailable. Check the workspace connection and HTML file.",

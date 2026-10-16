@@ -36,13 +36,14 @@ try {
     import {applyTheme} from '../../../ui/src/useTheme.ts';
     import jsQR from 'jsqr';
     import '../../../ui/src/styles.css';
-    const state:any={enabled:false,calls:[],fail:false,holdRead:false,holdWrite:false,token:'synthetic-token-'.repeat(12)};
+    const state:any={enabled:false,calls:[],fail:false,holdRead:false,holdWrite:false,configuration:undefined,failSave:false,token:'synthetic-token-'.repeat(12)};
     window.__lan=state;state.setTheme=applyTheme;state.intent=setPendingSettingsSectionIntent;
     state.decodeQr=async(index=0)=>{const img=document.querySelectorAll('[data-testid="desktop-lan-qr"]')[index];await img.decode();const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);return jsQR(ctx.getImageData(0,0,canvas.width,canvas.height).data,canvas.width,canvas.height)?.data};
-    const snapshot=()=>({enabled:state.enabled,urls:state.enabled?['http://192.168.1.23:3030','http://10.0.0.2:3030','http://169.254.1.2:3030']:[],token:state.enabled?state.token:undefined});
+    const snapshot=()=>({enabled:state.enabled,configuration:state.configuration,urls:state.enabled?['http://'+state.configuration.address+':'+state.configuration.port]:[],token:state.enabled?state.token:undefined});
     const platform:any={
       getDesktopLanAccess:async()=>{state.calls.push('read');const value=snapshot();if(state.holdRead){state.holdRead=false;await new Promise(resolve=>state.releaseRead=resolve)}return value},
       setDesktopLanAccessEnabled:async(enabled:boolean)=>{state.calls.push(enabled?'enable':'disable');if(state.holdWrite){state.holdWrite=false;await new Promise(resolve=>state.releaseWrite=resolve)}if(state.fail){state.fail=false;if(state.failClosed){state.enabled=false;state.failClosed=false}throw new Error('Synthetic toggle failure')}state.enabled=enabled;return snapshot()},
+      saveDesktopLanAccessConfiguration:async(configuration:any)=>{state.calls.push('save');if(state.holdWrite){state.holdWrite=false;await new Promise(resolve=>state.releaseWrite=resolve)}if(state.failSave){state.failSave=false;throw new Error('Synthetic configuration save failure')}state.configuration=configuration;return snapshot()},
       onSettingsChanged:()=>()=>{},selectDirectory:async()=>null,
     };
     const broadcast:any={send:async()=>{},onMessage:()=>({dispose(){}})};
@@ -94,8 +95,47 @@ try {
   await page.waitForFunction(() => Boolean(window.__lan.releaseRead));
   await page.evaluate(() => window.__lan.releaseRead());
   await ready();
+  const address = panel.getByTestId("desktop-lan-address");
+  const port = panel.getByTestId("desktop-lan-port");
+  const save = panel.getByTestId("desktop-lan-save");
+  assert.equal(await toggle.isDisabled(), true, "Missing configuration cannot enable access");
+  await address.fill("http://192.168.1.23");
+  await port.fill("3030");
+  await save.click();
+  await panel.getByRole("alert").waitFor();
+  assert.deepEqual(
+    await page.evaluate(() => window.__lan.calls),
+    ["read"],
+    "Invalid input never calls Main",
+  );
+  await address.fill("192.168.1.23");
+  await port.fill("65536");
+  await save.click();
+  assert.equal(await toggle.isDisabled(), true);
+  await port.fill("3030");
+  await page.evaluate(() => (window.__lan.failSave = true));
+  await save.click();
+  await ready();
+  assert.equal(await address.inputValue(), "192.168.1.23", "Save failure retains user draft");
+  assert.equal(await toggle.isDisabled(), true, "Failed save cannot enable access");
   await page.evaluate(() => {
     window.__lan.holdWrite = true;
+    window.__lan.releaseWrite = undefined;
+  });
+  await save.click();
+  await page.waitForFunction(() => Boolean(window.__lan.releaseWrite));
+  assert.equal(await address.isDisabled(), true);
+  assert.equal(await save.isDisabled(), true);
+  await page.evaluate(() => window.__lan.releaseWrite());
+  await ready();
+  assert.equal(await panel.getByRole("status").count(), 1);
+  assert.equal(await toggle.isDisabled(), false);
+  await port.fill("3031");
+  assert.equal(await toggle.isDisabled(), true, "Unsaved edits cannot enable a different endpoint");
+  await port.fill("3030");
+  await page.evaluate(() => {
+    window.__lan.holdWrite = true;
+    window.__lan.releaseWrite = undefined;
   });
   await toggle.click();
   assert.equal(await toggle.isDisabled(), true);
@@ -104,10 +144,14 @@ try {
   await ready();
   assert.equal(await panel.locator('input[type="password"]').count(), 1);
   assert.equal(await panel.locator('input:not([type="password"])').count(), 3);
+  assert.equal(await address.isDisabled(), true);
+  assert.equal(await port.isDisabled(), true);
+  assert.equal(await save.isDisabled(), true);
   const link = panel.locator("#desktop-lan-url-0");
   const qr = panel.getByTestId("desktop-lan-qr");
-  await qr.nth(2).waitFor();
-  for (let index = 0; index < 3; index++) {
+  await qr.first().waitFor();
+  assert.equal(await qr.count(), 1, "Only one configured address has a QR");
+  for (let index = 0; index < 1; index++) {
     assert.equal(
       await page.evaluate((index) => window.__lan.decodeQr(index), index),
       await panel.locator(`#desktop-lan-url-${index}`).inputValue(),
@@ -131,7 +175,14 @@ try {
   await navigation.click();
   await ready();
   assert.equal(await toggle.textContent(), "关闭访问");
-  assert.deepEqual(await page.evaluate(() => window.__lan.calls), ["read", "enable", "read"]);
+  assert.deepEqual(await page.evaluate(() => window.__lan.calls), [
+    "read",
+    "save",
+    "read",
+    "save",
+    "enable",
+    "read",
+  ]);
   const previousQr = await qr.first().getAttribute("src");
   await general.click();
   await page.evaluate(() => {
@@ -200,8 +251,8 @@ try {
   await ready();
   assert.equal(
     await panel.locator("input").count(),
-    0,
-    "Read actual disabled state after persistence failure",
+    2,
+    "Disabled state retains editable saved configuration",
   );
   assert.equal(await panel.getByRole("alert").count(), 1, "Preserve the persistence error");
   assert.equal(await qr.count(), 0, "Disabled access must remove all old credential QR codes");
@@ -209,7 +260,7 @@ try {
   await ready();
   await toggle.click();
   await ready();
-  assert.equal(await panel.locator("input").count(), 0);
+  assert.equal(await panel.locator("input").count(), 2);
   assert.equal(await panel.getByRole("alert").count(), 0);
   await toggle.click();
   await ready();
@@ -228,7 +279,7 @@ try {
   assert.equal(await general.getAttribute("aria-current"), "page");
   assert.deepEqual(errors, []);
   process.stdout.write(
-    `PASS: real SettingsPage navigation, QR decoding/rotation/removal, capability gating, initial read, pending toggle, remount, error retry, long URLs, 320/375/1280px, zh/en, light/dark. Screenshots: ${artifacts}\n`,
+    `PASS: real SettingsPage navigation, single QR decoding/rotation/removal, configuration save/validation/failure/lock/remount, capability gating, initial read, pending toggle, remount, error retry, long URLs, 320/375/1280px, zh/en, light/dark. Screenshots: ${artifacts}\n`,
   );
 } catch (error) {
   await page?.screenshot({ path: join(artifacts, "failure.png") }).catch(() => {});

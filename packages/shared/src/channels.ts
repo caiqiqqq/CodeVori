@@ -209,6 +209,7 @@ export const PlatformChannels = {
   SyncWindowTabs: "zcode:sync-window-tabs",
   GetDesktopLanAccess: "zcode:get-desktop-lan-access",
   SetDesktopLanAccessEnabled: "zcode:set-desktop-lan-access-enabled",
+  SaveDesktopLanAccessConfiguration: "zcode:save-desktop-lan-access-configuration",
   /** Renderer → Main：同步当前窗口的未读 task 数 */
   SyncWindowUnreadCount: "zcode:sync-window-unread-count",
   /** Renderer → Main：当前窗口 active task，只更新 Main 的临时焦点映射。 */
