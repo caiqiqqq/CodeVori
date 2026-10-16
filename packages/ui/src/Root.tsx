@@ -41,6 +41,7 @@ import { isSettingsTab, isWorkspaceTab, type WorkspaceTabState } from "@/store/t
 import { logger } from "@/logger.js";
 import { RootShell } from "@/root/RootShell.js";
 import { RootWorkspaceContent } from "@/root/RootWorkspaceContent.js";
+import { DesktopWindowDraftLanding } from "@/root/DesktopWindowDraftLanding.js";
 import { resolveRootWorkspaceShellTarget } from "@/root/rootWorkspaceShellTarget.js";
 import { useRemoteWorkspaceHistory } from "@/root/useRemoteWorkspaceHistory.js";
 import { useRemoteWorkspaceTabLifecycle } from "@/root/useRemoteWorkspaceTabLifecycle.js";
@@ -1050,6 +1051,16 @@ function RootInner({
           >
             <SettingsPage {...settingsLayerProps} />
           </ScopedErrorBoundary>
+        ) : desktopWindowFollower ? (
+          <DesktopWindowDraftLanding
+            workspaces={windowWorkspaceTabs}
+            onSelectWorkspace={(workspace) => {
+              // 快照可能已移除点击目标；以当前窗口成员为准，不能重新添回旧项目。
+              if (!tabStoreApi.getState().tabs.some((tab) => tab.id === workspace.id)) return;
+              tabStoreApi.getState().activateTab(workspace.id);
+              startDraftInWorkspace(workspace.workspacePath, workspace.workspaceIdentity);
+            }}
+          />
         ) : null
       ) : (
         <RootWorkspaceContent

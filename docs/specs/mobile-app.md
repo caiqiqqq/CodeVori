@@ -1,5 +1,30 @@
 # Issue #146：手机 App 开发方案草案
 
+## Issue #180：手机启动进入新建会话
+
+- 手机附着桌面窗口后，首次有效快照只自动选择桌面已发布且可用的本地 `conversation` 工作区，并进入新草稿；不得按项目列表顺序选择第一个项目，也不恢复该工作区上次选中的历史会话。复用现有草稿状态与页面，不清除未发送文本。
+- 窗口项目成员仍由 Host 快照唯一拥有；当前 tab 由手机 TabStore 拥有，当前会话/草稿由现有 ZCodeSessionStore 拥有。新快照只在当前选择不存在时重新进入对话草稿；排序、增删其他项目或迟到快照不得重置仍有效的选择与草稿。
+- 没有可用本地对话工作区时，手机显示新建会话的项目选择入口，等待用户显式选择后进入该项目的新草稿；列表为空时提示桌面尚未打开项目。不得在手机创建额外 cwd/Host/runtime，也不回退第一个项目。当前项目被桌面移除时同样适用。
+- 仅调整桌面窗口 follower 的 UI 导航。桌面启动恢复、独立 Web bootstrap、Host owner/lease、远端 identity/session 路由和 continuous/replayable 投递协议保持原边界。健康连接回前台不重新初始化选择；网页重新挂载按新启动处理。
+
+```mermaid
+sequenceDiagram
+  participant Host as Window Host（项目成员所有者）
+  participant Phone as 手机窗口投影
+  participant Tabs as 手机 TabStore（导航所有者）
+  participant Draft as ZCodeSessionStore（会话选择所有者）
+  Host-->>Phone: epoch/revision 快照（prepare 完成后）
+  Phone->>Tabs: 精确更新成员，保留仍有效的选择
+  alt 首次进入或原选择被移除
+    Phone->>Tabs: 选择可用的本地对话工作区，否则不选择项目
+    Phone->>Draft: 有对话工作区时 startDraft
+  else 选择仍有效
+    Note over Tabs,Draft: 保留选择与草稿，不重新初始化
+  end
+```
+
+验收：第一个项目在对话工作区之前时仍进入对话新草稿；预存历史会话选择不会被打开；无对话工作区、空列表及当前项目被删除时不自动选项目；用户显式选项目可进入新草稿；后续排序、旧快照及新增对话工作区不抢走有效选择。390px/桌面宽度及明暗主题的共享 UI E2E 验证输入、发送仍按 identity 路由；不调用付费模型，不将合成服务验证作为实机证明。
+
 ## Issue #163：真机消息延迟诊断
 
 - 手机壳通过构建时 `EXPO_PUBLIC_WEBVIEW_DEBUG=1` 显式开启 WebView 检查；未设置或其他值均关闭。开关由手机构建唯一拥有，不持久化、不从网页或连接参数读取。
