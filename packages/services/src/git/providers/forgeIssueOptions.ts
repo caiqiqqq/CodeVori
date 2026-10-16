@@ -1,4 +1,9 @@
-import type { ForgeIssueOptions, ForgeNewIssueRequest, ForgeProvider } from "@zcode/shared";
+import type {
+  ForgeIssueOptions,
+  ForgeNewIssueRequest,
+  ForgeProvider,
+  ForgeUpdateIssueRequest,
+} from "@zcode/shared";
 import {
   author,
   errorCode,
@@ -109,5 +114,37 @@ export function forgeIssueAttributes(request: ForgeNewIssueRequest, provider: Fo
           : {}),
         ...(request.assignees?.length ? { assignees: request.assignees } : {}),
         ...(request.milestone ? { milestone: integer(request.milestone) } : {}),
+      };
+}
+
+export function forgeIssueUpdateAttributes(
+  request: ForgeUpdateIssueRequest,
+  provider: ForgeProvider,
+) {
+  if (provider === "github" && request.assignees.length > 10) throw new Error("FORGE_INVALID_ITEM");
+  if (
+    provider !== "gitlab" &&
+    (request.confidential !== undefined || request.dueDate !== undefined)
+  )
+    throw new Error("FORGE_INVALID_ITEM");
+  const integer = (key: string) => {
+    if (!/^[1-9]\d*$/.test(key) || !Number.isSafeInteger(Number(key)))
+      throw new Error("FORGE_INVALID_ITEM");
+    return Number(key);
+  };
+  if (provider === "gitlab" && request.labels.some((label) => label.includes(",")))
+    throw new Error("FORGE_INVALID_ITEM");
+  return provider === "gitlab"
+    ? {
+        labels: request.labels.join(","),
+        assignee_ids: request.assignees.map(integer),
+        milestone_id: request.milestone === null ? null : integer(request.milestone),
+        ...(request.confidential !== undefined ? { confidential: request.confidential } : {}),
+        ...(request.dueDate !== undefined ? { due_date: request.dueDate } : {}),
+      }
+    : {
+        labels: provider === "gitea" ? request.labels.map(integer) : request.labels,
+        assignees: request.assignees,
+        milestone: request.milestone === null ? null : integer(request.milestone),
       };
 }

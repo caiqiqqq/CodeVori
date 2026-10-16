@@ -1,5 +1,6 @@
 // Synthetic Host commands only; no model requests, credentials or user repositories.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -132,6 +133,13 @@ try {
   );
   browser = await launchWorkTaskBrowser();
   const page = await browser.newPage({ viewport: { width: 1280, height: 850 } });
+  if (process.env.ZCODE_E2E_SCENARIO === "http-attachments") {
+    // 合成 Host 在 Node 独立计算摘要，不能依赖被测 HTTP 网页的 WebCrypto。
+    await page.exposeFunction(
+      "__taskHostChecksum",
+      (bytes) => `sha256:${createHash("sha256").update(Uint8Array.from(bytes)).digest("hex")}`,
+    );
+  }
   page.setDefaultTimeout(Number(process.env.ZCODE_E2E_TIMEOUT_MS ?? 15000));
   page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
   await routeWorkTaskConversationFixture(page);

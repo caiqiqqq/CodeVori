@@ -33,6 +33,11 @@ try {
     configFile: false,
     root,
     logLevel: "warn",
+    define: {
+      "process.env.EXPO_PUBLIC_WEBVIEW_DEBUG": JSON.stringify(
+        process.env.EXPO_PUBLIC_WEBVIEW_DEBUG ?? "",
+      ),
+    },
     oxc: { jsx: { runtime: "automatic" } },
     resolve: {
       alias: [
@@ -57,7 +62,7 @@ try {
           if (id === "\0safe-area") return "export {View as SafeAreaView} from 'react-native-web'";
           if (id === "\0status-bar") return "export const StatusBar=()=>null";
           if (id === "\0webview")
-            return `import React,{useEffect,useImperativeHandle,forwardRef} from 'react';export const WebView=forwardRef(({source,style,onError,onContentProcessDidTerminate},ref)=>{useImperativeHandle(ref,()=>({injectJavaScript:script=>window.__mobile.injections=(window.__mobile.injections??[]).concat(script)}),[]);window.__mobile.contentTerminated=onContentProcessDidTerminate;useEffect(()=>{window.__mobile.remoteMounts=(window.__mobile.remoteMounts??0)+1},[]);useEffect(()=>{window.__mobile.remoteLoads=(window.__mobile.remoteLoads??0)+1},[source]);window.__mobile.remoteError=onError;return React.createElement('div',{'data-testid':'remote','data-url':source.uri,style:{flex:1,backgroundColor:style.backgroundColor}},'Synthetic WebView')})`;
+            return `import React,{useEffect,useImperativeHandle,forwardRef} from 'react';export const WebView=forwardRef(({source,style,onError,onContentProcessDidTerminate,webviewDebuggingEnabled},ref)=>{useImperativeHandle(ref,()=>({injectJavaScript:script=>window.__mobile.injections=(window.__mobile.injections??[]).concat(script)}),[]);window.__mobile.webviewDebuggingEnabled=webviewDebuggingEnabled;window.__mobile.contentTerminated=onContentProcessDidTerminate;useEffect(()=>{window.__mobile.remoteMounts=(window.__mobile.remoteMounts??0)+1},[]);useEffect(()=>{window.__mobile.remoteLoads=(window.__mobile.remoteLoads??0)+1},[source]);window.__mobile.remoteError=onError;return React.createElement('div',{'data-testid':'remote','data-url':source.uri,style:{flex:1,backgroundColor:style.backgroundColor}},'Synthetic WebView')})`;
         },
       },
     ],
@@ -98,6 +103,10 @@ try {
   }
   await connect.tap();
   await page.getByTestId("remote").waitFor();
+  assert.equal(
+    await page.evaluate(() => window.__mobile.webviewDebuggingEnabled),
+    process.env.EXPO_PUBLIC_WEBVIEW_DEBUG === "1",
+  );
   assert.equal(
     await page.getByTestId("remote").getAttribute("data-url"),
     "http://codevori.example.test:52235/?token=manual-test-token",

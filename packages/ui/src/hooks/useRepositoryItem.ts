@@ -5,6 +5,7 @@ import type {
   ForgeItemDetail,
   ForgeItemExtras,
   ForgeItemRequest,
+  ForgeUpdateIssueRequest,
   ForgeMergeMethod,
   ForgePage,
 } from "@zcode/shared";
@@ -118,6 +119,16 @@ export function useRepositoryItem(
     if (result) refresh();
     return Boolean(result);
   };
+  const updateIssue = async (
+    draft: Omit<ForgeUpdateIssueRequest, keyof ForgeItemRequest | "kind" | "number">,
+  ) => {
+    if (request.kind !== "issue") return false;
+    const result = await mutation.run(() =>
+      gitService.updateForgeIssue({ ...request, kind: "issue", ...draft }),
+    );
+    if (result) refresh();
+    return Boolean(result);
+  };
   const merge = async (headSha: string, method: ForgeMergeMethod) => {
     if (request.kind !== "pull-request") return false;
     const result = await mutation.run(() =>
@@ -146,6 +157,7 @@ export function useRepositoryItem(
     loadMore,
     createComment,
     setItemState,
+    updateIssue,
     merge,
   };
 }

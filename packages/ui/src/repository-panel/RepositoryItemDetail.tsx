@@ -1,5 +1,6 @@
+/* eslint-disable max-lines -- issue detail keeps the existing activity, state and edit actions in one scoped owner. */
 import { useMemo, useState } from "react";
-import { ArrowLeft, Bot, CircleCheck, GitMerge, RotateCw, Send } from "lucide-react";
+import { ArrowLeft, Bot, CircleCheck, GitMerge, Pencil, RotateCw, Send } from "lucide-react";
 import type { IGitService } from "@zcode/services";
 import { isWorkTaskForgePending } from "@zcode/shared";
 import type {
@@ -23,6 +24,7 @@ import {
 import { Textarea } from "@/components/ui/textarea.js";
 import type { Theme } from "@/useTheme.js";
 import { RepositoryTaskStatus } from "./RepositoryTaskStatus.js";
+import { EditIssueDialog } from "./EditIssueDialog.js";
 import { RepositoryItemSections } from "./RepositoryItemSections.js";
 import { RepositoryItemAttributes } from "./RepositoryItemAttributes.js";
 import type { RepositoryContentContext } from "./RepositoryMarkdown.js";
@@ -79,6 +81,7 @@ export function RepositoryItemDetail({
   const [comment, setComment] = useState("");
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<ForgeMergeMethod>("merge");
+  const [editing, setEditing] = useState(false);
   const item = detail.item;
   const contentContext = useMemo<RepositoryContentContext>(
     () => ({
@@ -234,6 +237,17 @@ export function RepositoryItemDetail({
                 </>
               ) : null}
               <RepositoryExternalButton url={item.url} label={t("openItem")} onOpen={onOpen} />
+              {item.kind === "issue" ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={detail.mutation.busy}
+                  onClick={() => setEditing(true)}
+                >
+                  <Pencil className="size-4" />
+                  {t("editIssue")}
+                </Button>
+              ) : null}
               <RepositoryIconButton
                 label={t("refreshDetail")}
                 disabled={detail.loading || detail.mutation.busy}
@@ -376,6 +390,33 @@ export function RepositoryItemDetail({
           </div>
         </DialogContent>
       </Dialog>
+      {item?.kind === "issue" ? (
+        <EditIssueDialog
+          open={active && editing}
+          repository={repository}
+          target={{
+            workspacePath: request.workspacePath,
+            workspaceIdentity: request.workspaceIdentity,
+            remoteName: request.remoteName,
+            repositoryKey: request.repositoryKey,
+            accountId: request.accountId,
+          }}
+          gitService={gitService}
+          theme={theme}
+          item={item}
+          busy={detail.mutation.busy}
+          error={detail.mutation.error}
+          onClose={() => setEditing(false)}
+          onSubmit={async (draft) => {
+            const success = await detail.updateIssue(draft);
+            if (success) {
+              setEditing(false);
+              onChanged();
+            }
+            return success;
+          }}
+        />
+      ) : null}
     </section>
   );
 }

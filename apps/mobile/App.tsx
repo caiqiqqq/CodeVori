@@ -113,6 +113,8 @@ function RemoteScreen({
           <WebView
             key={webGeneration}
             ref={web}
+            // 真机延迟诊断需显式构建开关，避免常规发行包开放网页检查。
+            webviewDebuggingEnabled={process.env.EXPO_PUBLIC_WEBVIEW_DEBUG === "1"}
             onContentProcessDidTerminate={() => setWebGeneration((value) => value + 1)}
             source={source}
             originWhitelist={["http://*", "https://*"]}

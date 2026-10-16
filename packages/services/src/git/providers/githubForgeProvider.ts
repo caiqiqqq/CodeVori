@@ -4,7 +4,11 @@ import type {
   ForgeMergeMethod,
   ForgeImagePreview,
 } from "@zcode/shared";
-import { readForgeIssueOptions, forgeIssueAttributes } from "./forgeIssueOptions.js";
+import {
+  readForgeIssueOptions,
+  forgeIssueAttributes,
+  forgeIssueUpdateAttributes,
+} from "./forgeIssueOptions.js";
 import type { ForgeProviderAdapter } from "./forgeProvider.js";
 import {
   author,
@@ -205,6 +209,28 @@ export function createGithubForgeProvider(
                   title: request.title,
                   body: request.body,
                   ...forgeIssueAttributes(request, "github"),
+                },
+              },
+            )
+          ).data,
+        ),
+        "issue",
+        "github",
+      );
+    },
+    async updateIssue(request) {
+      return item(
+        record(
+          (
+            await api(
+              `${repo}/issues/${request.number}`,
+              {},
+              {
+                method: "PATCH",
+                body: {
+                  title: request.title,
+                  body: request.body,
+                  ...forgeIssueUpdateAttributes(request, "github"),
                 },
               },
             )

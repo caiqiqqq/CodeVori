@@ -102,7 +102,10 @@ export function WorkTaskError({ error }: { error: string | null }) {
   const t = useWorkTaskMessages();
   const { intl } = useZCodeIntl();
   if (!error) return null;
-  const code = error.match(/work-task\.[a-z-]+/)?.[0];
+  // 共享上传层的摘要失败发生在 Host RPC 前，也要显示任务草稿可重试的本地化提示。
+  const code =
+    error.match(/work-task\.[a-z-]+/)?.[0] ??
+    error.match(/^fault\.attachment\.checksum(?:Unavailable|Failed)$/)?.[0];
   const localized = code
     ? t(`error.${code}`)
     : /^FORGE_[A-Z_]+$/.test(error)
