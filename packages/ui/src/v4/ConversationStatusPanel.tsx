@@ -1575,7 +1575,7 @@ function StatusSummaryRow({
   model,
   onVariantChange,
 }: {
-  branchLabel: string;
+  branchLabel: string | null;
   /** 已结束 run 的目录计数；宿主给 0 表示目录入口不可渲染（缺会话或缺回调）。 */
   endedWorkflowRunCount: number;
   gitWorktreeChangeSummary?: { added: number; removed: number } | null;
@@ -1706,19 +1706,21 @@ function StatusSummaryRow({
     <ControlHintTooltip title={expandLabel} sideOffset={4} side="left">
       <button
         type="button"
-        aria-label={`${branchLabel} · ${expandLabel}`}
+        aria-label={[branchLabel, expandLabel].filter(Boolean).join(" · ")}
         className="group inline-flex h-8 w-max max-w-80 cursor-pointer items-center text-left text-[var(--color-foreground)] transition-colors hover:bg-[var(--color-menu-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-input-border-focused)]"
         onClick={() => onVariantChange?.("panel")}
       >
         {/* 修复原因：旧胶囊只有活动摘要，干净仓库会失去会话所属分支的唯一可见入口。 */}
-        <span
-          data-testid="conversation-branch-entry"
-          title={branchLabel}
-          className="inline-flex min-w-0 max-w-36 items-center gap-1.5 pl-2 pr-2 text-ui-base"
-        >
-          <GitBranchIcon className="size-4 shrink-0" />
-          <span className="truncate">{branchLabel}</span>
-        </span>
+        {branchLabel ? (
+          <span
+            data-testid="conversation-branch-entry"
+            title={branchLabel}
+            className="inline-flex min-w-0 max-w-36 items-center gap-1.5 pl-2 pr-2 text-ui-base"
+          >
+            <GitBranchIcon className="size-4 shrink-0" />
+            <span className="truncate">{branchLabel}</span>
+          </span>
+        ) : null}
         {summaryMetric ? (
           <span className="min-w-0 flex-1 overflow-hidden border-l border-[var(--color-border)] [&>div]:max-w-full [&>div]:pl-2">
             {summaryMetric}
@@ -1838,6 +1840,9 @@ function ConversationStatusPanelImpl({
     detachedLabel: intl.formatMessage({ id: "git.head.detached" }),
     unknownLabel: intl.formatMessage({ id: "chat.statusPanel.branchUnknown" }),
   });
+  // Git 不可用时没有可操作的分支身份；紧凑态不应把“Git 不可用”渲染成主入口。
+  // 首次读取仍保留 loading 入口，避免把目标切换中的空快照误报为不可用。
+  const showBranchEntry = gitLoading || Boolean(gitSummary?.isGitAvailable);
   const canRenderGoal = Boolean(model.goal || model.reportedGoal);
   const canRenderSessionPlans = Boolean(model.sessionPlans);
   const canRenderPlan = Boolean(model.plan);
@@ -1894,6 +1899,10 @@ function ConversationStatusPanelImpl({
     observer.observe(element);
     return () => observer.disconnect();
   }, [model]);
+
+  if (!model.hasContent && !showBranchEntry) {
+    return null;
+  }
 
   return (
     <div
@@ -2024,7 +2033,7 @@ function ConversationStatusPanelImpl({
                 separated={false}
                 useVerticalFloatingPanels={useVerticalFloatingPanels}
               />
-            ) : (
+            ) : showBranchEntry ? (
               <StatusSection
                 section="environment"
                 title={intl.formatMessage({ id: "chat.statusPanel.branch" })}
@@ -2033,7 +2042,7 @@ function ConversationStatusPanelImpl({
                   {branchLabel}
                 </div>
               </StatusSection>
-            )}
+            ) : null}
             {model.reportedGoal ? (
               <StatusSection
                 section="goal"
@@ -2136,7 +2145,7 @@ function ConversationStatusPanelImpl({
           )}
         >
           <StatusSummaryRow
-            branchLabel={branchLabel}
+            branchLabel={showBranchEntry ? branchLabel : null}
             model={model}
             // 与页脚同一道门（canRenderEndedWorkflows）：缺会话或缺回调时目录打不开，
             // 胶囊也就不该报一个点了没反应的数。
