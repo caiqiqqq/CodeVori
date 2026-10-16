@@ -259,6 +259,80 @@ test("issue catalogs and create attributes use each provider's native identifier
   }
 });
 
+test("issue updates send complete native attributes, including clears", async () => {
+  for (const provider of ["github", "gitlab", "gitea"] as const) {
+    const host = provider === "github" ? "github.com" : `${provider}.example.invalid`;
+    const f = fixture(
+      `https://${host}/team/project.git`,
+      [account(provider, `https://${host}`)],
+      [
+        provider === "gitlab"
+          ? { iid: 7, title: "Edited", description: "body", state: "opened" }
+          : { number: 7, title: "Edited", body: "body", state: "open" },
+      ],
+    );
+    const target = await f.target();
+    await f.service.updateForgeIssue({
+      ...target,
+      kind: "issue",
+      number: 7,
+      title: "Edited",
+      body: "body",
+      labels: [],
+      assignees: [],
+      milestone: null,
+      ...(provider === "gitlab" ? { confidential: false, dueDate: null } : {}),
+    });
+    const call = f.state.calls[0]!;
+    assert.equal(
+      call.url.pathname.endsWith(provider === "gitlab" ? "/issues/7" : "/issues/7"),
+      true,
+    );
+    assert.deepEqual(
+      JSON.parse(String(call.init.body)),
+      provider === "gitlab"
+        ? {
+            title: "Edited",
+            description: "body",
+            labels: "",
+            assignee_ids: [],
+            milestone_id: null,
+            confidential: false,
+            due_date: null,
+          }
+        : {
+            title: "Edited",
+            body: "body",
+            labels: provider === "gitea" ? [] : [],
+            assignees: [],
+            milestone: null,
+          },
+    );
+  }
+});
+
+test("issue updates reject unsupported fields before provider IO", async () => {
+  const f = fixture("https://github.com/team/project.git", [
+    account("github", "https://github.com"),
+  ]);
+  const target = await f.target();
+  await assert.rejects(
+    f.service.updateForgeIssue({
+      ...target,
+      kind: "issue",
+      number: 7,
+      title: "Edited",
+      body: "body",
+      labels: [],
+      assignees: [],
+      milestone: null,
+      dueDate: "2026-10-20",
+    }),
+    /FORGE_INVALID_ITEM/,
+  );
+  assert.equal(f.state.calls.length, 0);
+});
+
 test("issue catalog pagination and section failures remain explicit", async () => {
   const f = fixture(
     "https://github.com/team/project.git",

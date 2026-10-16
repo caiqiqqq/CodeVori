@@ -11,6 +11,7 @@ import type {
   ForgeListQuery,
   ForgeMergeRequest,
   ForgeNewIssueRequest,
+  ForgeUpdateIssueRequest,
   ForgePage,
   ForgePageRequest,
   ForgeStateRequest,
@@ -33,6 +34,7 @@ export interface ForgeProviderAdapter {
   listLabels(): Promise<ForgeLabel[]>;
   getIssueOptions(): Promise<ForgeIssueOptions>;
   createIssue(request: ForgeNewIssueRequest): Promise<ForgeItem>;
+  updateIssue(request: ForgeUpdateIssueRequest): Promise<ForgeItem>;
   createComment(request: ForgeCommentRequest): Promise<void>;
   setState(request: ForgeStateRequest): Promise<void>;
   merge(request: ForgeMergeRequest): Promise<void>;

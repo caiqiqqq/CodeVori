@@ -44,7 +44,7 @@ try {
     ${repositoryTask.importsFixture}
     ${taskImages.importsFixture}
     import '../../../ui/src/styles.css';
-    const state:any={calls:[],pending:[],status:'ready',delayList:false,delayWrite:false,delayDiscovery:false,failWrite:false,remote:false,accountDiscovery:false,createdIssue:null,postCreateListReads:0};
+    const state:any={calls:[],pending:[],status:'ready',delayList:false,delayWrite:false,delayDiscovery:false,failWrite:false,failUpdate:false,remote:false,accountDiscovery:false,createdIssue:null,editedIssue:null,postCreateListReads:0};
     window.__forge=state;
     const clone=(v:any)=>JSON.parse(JSON.stringify(v));
     const hosts:any={};
@@ -66,11 +66,12 @@ try {
       async listForgeLabels(){return [label]},
       async getForgeImageUploadCapability(){return {supported:true,requiresWebLogin:false}},
       async getForgeIssueOptions(r:any){state.calls.push({host,op:'options',...r});const result={labels:{items:[label,{key:'enhancement',name:'enhancement',color:'#a2eeef'}],error:null},assignees:{items:[{key:'alice',username:'alice',avatarUrl:null}],error:state.failOptions?'FORGE_FORBIDDEN':null},milestones:{items:[{key:'3',title:'Release'}],error:null}};if(state.delayOptions){state.delayOptions=false;return new Promise(resolve=>state.pending.push(()=>resolve(clone(result))))}return clone(result)},
-      async getForgeItem(r:any){state.calls.push({host,op:'detail',...r});if(state.failDetail){state.failDetail=false;throw new Error('FORGE_NETWORK')}const result={...baseItem(host,r),body:'## Synthetic description\\n\\nA reproducible issue.\\nFull detail only.',state:states[host],change:r.kind==='pull-request'?{headSha:'a'.repeat(40),headBranch:'feature',baseBranch:'main',mergeable:true,mergeMethods:['merge','squash'],mergeOptionsError:null,checks:[{id:'check',name:'tests',state:'success',url:null}],checksError:null}:null};if(state.delayDetail){state.delayDetail=false;return new Promise(resolve=>state.pending.push(()=>resolve(result)))}return result},
+      async getForgeItem(r:any){state.calls.push({host,op:'detail',...r});if(state.failDetail){state.failDetail=false;throw new Error('FORGE_NETWORK')}const result={...baseItem(host,r),body:'## Synthetic description\\n\\nA reproducible issue.\\nFull detail only.',state:states[host],...(state.editedIssue&&r.kind==='issue'?state.editedIssue:{}),change:r.kind==='pull-request'?{headSha:'a'.repeat(40),headBranch:'feature',baseBranch:'main',mergeable:true,mergeMethods:['merge','squash'],mergeOptionsError:null,checks:[{id:'check',name:'tests',state:'success',url:null}],checksError:null}:null};if(state.delayDetail){state.delayDetail=false;return new Promise(resolve=>state.pending.push(()=>resolve(result)))}return result},
       async getForgeItemExtras(){return {}},
       async listForgeComments(r:any){return {items:clone(commentRows[host]),page:r.page,pageSize:30,hasMore:false,total:commentRows[host].length}},
       async listForgeFiles(r:any){return {items:[{path:'src/very-long-project-directory/a-very-long-filename-with-many-words.ts',previousPath:null,status:'modified',additions:1,deletions:1,patch:'@@ -1 +1 @@\\n-old\\n+new',truncated:false}],page:r.page,pageSize:30,hasMore:false,total:1}},
       async createForgeIssue(r:any){state.calls.push({host,op:'create',...r});if(state.failWrite){state.failWrite=false;throw new Error('FORGE_FORBIDDEN')}const created={...baseItem(host,{kind:'issue',...r}),number:99,title:r.title,body:r.body};if(r.title==='Created issue'){state.createdIssue=created;state.postCreateListReads=0}return clone(created)},
+      async updateForgeIssue(r:any){state.calls.push({host,op:'update',...r});if(state.failUpdate){state.failUpdate=false;throw new Error('FORGE_FORBIDDEN')}state.editedIssue={title:r.title,body:r.body,labels:r.labels.map((key:string)=>({key,name:key,color:null}))};return clone({...baseItem(host,r),...state.editedIssue})},
       async createForgeComment(r:any){state.calls.push({host,op:'comment',...r});if(state.failWrite){state.failWrite=false;throw new Error('FORGE_FORBIDDEN')}if(state.delayWrite){state.delayWrite=false;await new Promise(resolve=>state.pending.push(resolve))}commentRows[host].push({...comment,id:'c'+commentRows[host].length,body:r.body})},
       async setForgeItemState(r:any){state.calls.push({host,op:'state',...r});states[host]=r.state},
       async mergeForgePullRequest(r:any){state.calls.push({host,op:'merge',...r});states[host]='merged'},
@@ -132,6 +133,20 @@ try {
   await row().click();
   const detail = page.getByTestId("repository-item-detail");
   await detail.getByText("Synthetic description", { exact: true }).waitFor();
+  await page.evaluate(() => {
+    window.__forge.failUpdate = true;
+  });
+  await detail.getByRole("button", { name: "编辑议题", exact: true }).click();
+  const edit = page.getByTestId("repository-edit-issue");
+  await edit.getByRole("textbox").first().fill("Edited synthetic issue");
+  await edit.getByRole("textbox", { name: "描述" }).fill("Edited body");
+  await edit.getByRole("button", { name: "保存修改", exact: true }).click();
+  await edit.getByRole("alert").waitFor();
+  assert.equal(await edit.getByRole("textbox").first().inputValue(), "Edited synthetic issue");
+  await edit.getByRole("button", { name: "保存修改", exact: true }).click();
+  await edit.waitFor({ state: "detached" });
+  await detail.getByText("Edited body", { exact: true }).waitFor();
+  assert.equal(await countCalls("update"), 2);
   const input = detail.getByRole("textbox", { name: "评论" });
   await input.fill("Test comment");
   await page.evaluate(() => {
