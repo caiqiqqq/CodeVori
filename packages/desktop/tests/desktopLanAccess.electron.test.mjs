@@ -69,6 +69,7 @@ try {
     import {writeSync} from 'node:fs';
     import {readFile,writeFile} from 'node:fs/promises';
     import {createServer} from 'node:net';
+    import {request} from 'node:http';
     import {createCredentialService} from '@zcode/services/node';
     import {app,BrowserWindow,utilityProcess} from 'electron';
     import {WebSocket} from 'ws';
@@ -121,13 +122,13 @@ try {
       await preference.setEnabled(false);
       await assert.rejects(invoke(true),'Missing configuration cannot choose a random port');
       const reservation=createServer();reservation.listen(0,'0.0.0.0');await once(reservation,'listening');
-      const configuration={address:'codevori-test.local',port:reservation.address().port};
+      const configuration={address:'codevori.example.test',port:reservation.address().port};
       await save(configuration);
       await assert.rejects(invoke(true),/EADDRINUSE/);assert.equal((await readState()).enabled,false);
       assert.deepEqual((await readState()).configuration,configuration,'Port conflict retains fixed configuration');
       await new Promise(resolve=>reservation.close(resolve));
       const state=await invoke(true);assert.equal(state.enabled,true);assert.equal(state.urls.length,1);
-      assert.equal(state.urls[0],'http://codevori-test.local:'+configuration.port);
+      assert.equal(state.urls[0],'http://codevori.example.test:'+configuration.port);
       await assert.rejects(save({...configuration,port:configuration.port+1}),/Disable LAN access/);
       const origin='http://127.0.0.1:'+configuration.port;
       assert.equal(await credentials.load('desktop-lan-access-token-v1'),state.token);
@@ -138,6 +139,19 @@ try {
       const paired=await fetch(origin+'/?token='+encodeURIComponent(state.token),{redirect:'manual'});
       assert.equal(paired.status,303);const cookie=paired.headers.get('set-cookie').split(';')[0];
       assert.equal(await (await fetch(origin,{headers:{Cookie:cookie}})).text(),'synthetic native bridge');
+      // 使用原始 HTTP 请求验证 Host；Electron fetch 会自行重写该请求头。
+      const requestHost=(host,path='/',cookie)=>new Promise((resolve,reject)=>{
+        const req=request(origin+path,{headers:{Host:host,...(cookie?{Cookie:cookie}:{})}},res=>{
+          let body='';res.setEncoding('utf8');res.on('data',chunk=>body+=chunk);
+          res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,body}));
+        });req.on('error',reject);req.end();
+      });
+      const domainHost=configuration.address+':'+configuration.port;
+      const domainPair=await requestHost(domainHost,'/?token='+encodeURIComponent(state.token));
+      assert.equal(domainPair.status,303,'Configured custom domain can pair');
+      const domainCookie=domainPair.headers['set-cookie'][0].split(';')[0];
+      assert.equal((await requestHost(domainHost,'/',domainCookie)).body,'synthetic native bridge');
+      assert.equal((await requestHost('other.example.test:'+configuration.port,'/',domainCookie)).status,400,'Other domains stay blocked');
       const clients=[];
       async function connect(){
         const ws=new WebSocket(origin.replace('http:','ws:')+'/ws',{headers:{Cookie:cookie,Origin:origin}});
@@ -174,7 +188,7 @@ try {
       await manager.dispose();
       // Existing config and pairing survive rejected schema and storage failures.
       manager=createManager({hosts,preference:{...preference,setConfiguration:async()=>{throw new Error('Synthetic configuration write failure')}},onError:error=>errors.push(String(error))});
-      await assert.rejects(save({address:'http://codevori-test.local',port:3030}));
+      await assert.rejects(save({address:'http://codevori.example.test',port:3030}));
       await assert.rejects(save({...configuration,port:3031}),/Synthetic configuration write failure/);
       assert.deepEqual((await readState()).configuration,configuration);await manager.dispose();
       for(const broken of [

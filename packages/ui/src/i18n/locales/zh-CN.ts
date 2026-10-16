@@ -9,10 +9,10 @@ const zhCN: Record<string, string> = {
   "settings.desktopLan.save": "保存配置",
   "settings.desktopLan.saved": "配置已保存，可开启访问。",
   "settings.desktopLan.configurationDescription":
-    "填写本机局域网 IPv4 地址或 .local 主机名（不含 http:// 和端口）。保存后地址、端口及连接凭据不会因重新构建或重启而变化。",
+    "填写本机局域网 IPv4 地址或自定义域名（不含 http:// 和端口）。保存后地址、端口及连接凭据不会因重新构建或重启而变化。",
   "settings.desktopLan.configurationLocked": "访问已开启。需先关闭访问，再修改地址和端口。",
   "settings.desktopLan.invalidConfiguration":
-    "请输入局域网 IPv4 地址或 .local 主机名，以及 1–65535 之间的整数端口。",
+    "请输入局域网 IPv4 地址或自定义域名，以及 1–65535 之间的整数端口。",
   "settings.desktopLan.start": "开启访问",
   "settings.desktopLan.stop": "关闭访问",
   "settings.desktopLan.enabled": "局域网访问已开启",

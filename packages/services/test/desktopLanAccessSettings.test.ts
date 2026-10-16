@@ -14,7 +14,7 @@ test("LAN startup preference defaults off, persists true/false and rejects malfo
     const service = createSettingService();
     assert.equal((await service.get()).desktopLanAccessEnabled, false);
     assert.equal((await service.get()).desktopLanAccessConfiguration, undefined);
-    const configuration = { address: "my-codevori.local", port: 49152 };
+    const configuration = { address: "codevori.example.test", port: 49152 };
     await service.update({ desktopLanAccessConfiguration: configuration });
     assert.deepEqual(
       (await createSettingService().get()).desktopLanAccessConfiguration,
@@ -26,7 +26,10 @@ test("LAN startup preference defaults off, persists true/false and rejects malfo
       { address: "0.0.0.0", port: 3030 },
       { address: "192.168.1.999", port: 3030 },
       { address: "169.254.1.10", port: 3030 },
-      { address: "example.com", port: 3030 },
+      { address: "bad_domain.test", port: 3030 },
+      { address: "bad..test", port: 3030 },
+      { address: "*.example.test", port: 3030 },
+      { address: "user@example.test", port: 3030 },
       { address: "192.168.1.100", port: 0 },
       { address: "192.168.1.100", port: 65536 },
       { address: "192.168.1.100", port: 3.5 },
@@ -38,7 +41,14 @@ test("LAN startup preference defaults off, persists true/false and rejects malfo
       (await createSettingService().get()).desktopLanAccessConfiguration,
       configuration,
     );
-    for (const address of ["10.0.0.3", "172.16.1.2", "192.168.1.100", "CodeVori.local"]) {
+    for (const address of [
+      "10.0.0.3",
+      "172.16.1.2",
+      "192.168.1.100",
+      "CodeVori.local",
+      "CodeVori.example.test",
+      "example.com",
+    ]) {
       assert.equal(
         desktopLanAccessConfigurationSchema.safeParse({ address, port: 65535 }).success,
         true,

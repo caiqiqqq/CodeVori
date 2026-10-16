@@ -24,7 +24,6 @@ test("rejects credentials, fragments, and missing tokens", () => {
   assert.equal(parseConnectionInput("http://192.168.1.23:3030/#fragment", "secret").ok, false);
   assert.equal(parseConnectionInput("http://192.168.1.23:3030/?token=secret", "secret").ok, false);
   assert.equal(parseConnectionInput("http://192.168.1.23:3030/remote", "secret").ok, false);
-  assert.equal(parseConnectionInput("http://example.com:3030/", "secret").ok, false);
   assert.equal(parseConnectionInput("http://192.168.1.23:3030", " ").ok, false);
 });
 
@@ -60,7 +59,7 @@ test("invalid QR codes cannot change the origin or sneak in unsupported paramete
     "http://192.168.1.23:3030/?token=a&redirect=https://example.test",
     "http://192.168.1.23:3030/?token=a#fragment",
     "http://user:password@192.168.1.23:3030/?token=a",
-    "http://example.test/?token=a",
+    "http://bad_domain.test/?token=a",
     "https://zcode.z.ai/remote/v4?token=a",
     "exp://192.168.1.23:8081",
     '{"url":"http://192.168.1.23:3030/?token=a"}',
@@ -68,4 +67,33 @@ test("invalid QR codes cannot change the origin or sneak in unsupported paramete
     assert.equal(parsePairingLink(address).ok, false, address);
     if (address.includes("?")) assert.equal(parsePairingInput(address, "a").ok, false, address);
   }
+});
+
+test("custom HTTP domains support manual input, pasted links, QR and same-origin navigation", () => {
+  for (const address of ["codevori.example.test", "sub.example.com", "desktop.local"]) {
+    const connection = { origin: `http://${address}:52235/`, token: "synthetic+/=token" };
+    const expected = { ok: true, connection };
+    const link = buildAuthenticatedUrl(connection);
+    assert.deepEqual(parseConnectionInput(connection.origin, connection.token), expected);
+    assert.deepEqual(parsePairingInput(link, ""), expected);
+    assert.deepEqual(parsePairingLink(link), expected);
+    assert.equal(isSameOrigin(`${connection.origin}api/desktop-window`, connection.origin), true);
+    assert.equal(isSameOrigin("http://other.example.test:52235/", connection.origin), false);
+    assert.equal(parseConnectionInput(connection.origin, "").ok, false);
+    assert.equal(parsePairingLink(link + "&extra=1").ok, false);
+    assert.equal(parsePairingInput(link, "other-token").ok, false);
+    assert.equal(parsePairingLink(`http://user:password@${address}:52235/?token=a`).ok, false);
+  }
+  for (const host of [
+    "bad_domain.test",
+    "-bad.test",
+    "bad..test",
+    "*.example.test",
+    "192.168.1.999",
+    "0.0.0.0",
+    "8.8.8.8",
+  ]) {
+    assert.equal(parseConnectionInput(`http://${host}:52235`, "token").ok, false, host);
+  }
+  assert.equal(parseConnectionInput("https://8.8.8.8:52235", "token").ok, true);
 });
