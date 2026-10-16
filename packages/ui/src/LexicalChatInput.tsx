@@ -1451,7 +1451,7 @@ export function LexicalChatInput({
         "aria-placeholder": placeholder,
         placeholder: (
           <div
-            className={`pointer-events-none absolute left-0 top-0 ${compactPlaceholder ? "line-clamp-2" : ""} text-ui-base leading-5 text-foreground-subtlest`}
+            className={`pointer-events-none absolute left-0 top-0 ${compactPlaceholder ? "line-clamp-2" : ""} text-mobile-input-safe md:pointer-fine:text-ui-base leading-5 text-foreground-subtlest`}
           >
             {placeholder}
           </div>
@@ -1465,7 +1465,9 @@ export function LexicalChatInput({
     <ContentEditable
       // mention node 使用固定行高的 inline-flex chip，普通正文如果继承浏览器 normal line-height，
       // 在 token 后继续输入文字时会按不同 line box 计算基线；这里显式收口正文行高。
-      className="min-h-10 max-h-40 overflow-y-auto text-ui-base leading-5 text-foreground outline-none"
+      // iOS 聚焦小于 16px 的编辑区会自动放大，失焦后仍可能保留比例；
+      // 触屏横屏也必须守住字号下限，仅桌面宽度且精细指针时恢复界面字号。
+      className="min-h-10 max-h-40 overflow-y-auto text-mobile-input-safe md:pointer-fine:text-ui-base leading-5 text-foreground outline-none"
       data-testid={inputTestId}
       onFocus={onFocus}
       {...contentEditableProps}

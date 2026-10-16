@@ -5,6 +5,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import { SettingsGroupCard, SettingsRow } from "@/settings/SettingsPageParts.js";
+import { DesktopLanQrCode } from "@/settings/DesktopLanQrCode.js";
 
 export function DesktopLanAccessSection() {
   const platform = usePlatform();
@@ -96,6 +97,13 @@ export function DesktopLanAccessSection() {
                     value={`${url}/?token=${encodeURIComponent(state.token ?? "")}`}
                     onFocus={(event) => event.target.select()}
                   />
+                  {state.token ? (
+                    // 凭据变化即重建，异步生成期间也不能继续显示上一份 Token 的二维码。
+                    <DesktopLanQrCode
+                      key={`${url}:${state.token}`}
+                      value={`${url}/?token=${encodeURIComponent(state.token)}`}
+                    />
+                  ) : null}
                 </div>
               ))}
             </div>

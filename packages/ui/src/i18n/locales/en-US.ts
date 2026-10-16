@@ -10,10 +10,14 @@ const enUS: Record<string, string> = {
   "settings.desktopLan.disabled": "LAN access is disabled",
   "settings.desktopLan.link": "Phone browser URL (includes access credentials)",
   "settings.desktopLan.linkDescription":
-    "Connect your phone to the same local network and open any reachable URL below. Focus a field to select the full link.",
+    "Connect your phone to the same local network and open any reachable URL below, or scan its QR code in the mobile app. Focus a field to select the full link. QR codes contain access credentials; do not share them.",
+  "settings.desktopLan.qr": "LAN connection QR code",
+  "settings.desktopLan.qrLoading": "Generating connection QR code…",
+  "settings.desktopLan.qrFailed":
+    "Unable to generate the QR code. Copy the connection link instead.",
   "settings.desktopLan.token": "Mobile app connection token",
   "settings.desktopLan.tokenDescription":
-    "In the mobile app, enter a root URL above and this token separately. Re-enabling access or restarting generates a new token. Pair again using the current connection URL.",
+    "Scan a QR code, paste a full connection link, or enter a root URL above and this token separately in the mobile app. Re-enabling access or restarting generates a new token. Pair again using the current connection URL.",
   "settings.desktopLan.hint":
     "Use on a trusted local network; HTTP is unencrypted. Disabling access or quitting the desktop disconnects your phone.",
   "chat.visualization.title": "Interactive preview",

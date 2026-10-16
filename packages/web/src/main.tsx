@@ -12,7 +12,8 @@ import {
   type Theme,
 } from "@zcode/ui";
 import "@zcode/ui/styles.css";
-import { connectViaWebSocket } from "@zcode/client";
+import { createWebSocketServiceConnection } from "@zcode/client";
+import { DesktopReconnectError, DesktopReconnectScreen } from "./DesktopReconnectScreen.js";
 import { createDesktopWindowFollower } from "./desktopWindowConnection.js";
 import { WebCallbackPage } from "./auth/WebCallbackPage.js";
 import { createWebAuthService } from "./auth/webAuthService.js";
@@ -360,10 +361,14 @@ function resolveDefaultWsOrigin(): string {
   return `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`;
 }
 
-async function resolveWebBootstrap(): Promise<WebBootstrapResult> {
+async function resolveWebBootstrap(
+  signal?: AbortSignal,
+  requireDesktop = false,
+): Promise<WebBootstrapResult> {
   const desktopResponse = await fetch("/api/desktop-window", {
     credentials: "same-origin",
     cache: "no-store",
+    signal,
   });
   if (
     desktopResponse.ok &&
@@ -376,6 +381,12 @@ async function resolveWebBootstrap(): Promise<WebBootstrapResult> {
       restoreSession: false,
       allowOpenWorkspace: false,
     };
+  }
+  if (requireDesktop) {
+    throw new DesktopReconnectError(
+      "Desktop gateway unavailable",
+      [401, 403].includes(desktopResponse.status),
+    );
   }
   const params = new URLSearchParams(window.location.search);
   const remoteId = params.get("remote");
@@ -462,49 +473,83 @@ async function bootstrapWebApp() {
     return;
   }
 
-  try {
-    let desktopClosed = false;
-    const onDesktopClosed = () => {
-      if (desktopClosed) return;
-      desktopClosed = true;
+  const mount = async (next: WebBootstrapResult, signal?: AbortSignal) => {
+    let closed = false;
+    let mounted = false;
+    let connection: Awaited<ReturnType<typeof createWebSocketServiceConnection>> | undefined;
+    const dispose = () => {
+      closed = true;
       desktopWindowFollower?.dispose();
-      renderWebBootstrapError(new Error("Desktop connection closed. Reload to reconnect."));
+      connection?.dispose();
     };
-    const desktopWindowFollower = bootstrap.desktopWindow
-      ? createDesktopWindowFollower(bootstrap.wsUrl, onDesktopClosed)
+    const reconnect = async (retrySignal: AbortSignal) => {
+      const fresh = await resolveWebBootstrap(retrySignal, true);
+      if (!retrySignal.aborted) await mount(fresh, retrySignal);
+    };
+    const onDesktopClosed = () => {
+      if (closed) return;
+      dispose();
+      if (mounted) root.render(<DesktopReconnectScreen reconnect={reconnect} />);
+    };
+    const desktopWindowFollower = next.desktopWindow
+      ? createDesktopWindowFollower(next.wsUrl, onDesktopClosed)
       : undefined;
-    const services = await connectViaWebSocket(bootstrap.wsUrl, {
-      onClose: () => {
-        if (bootstrap.desktopWindow) onDesktopClosed();
-      },
-    });
-    const platform = createWebPlatform();
-    document.title = `${PRODUCT_NAME} - Web + Server`;
-
-    root.render(
-      <AppErrorBoundary>
-        <ZCodeIntlProvider
-          settingService={services.settingService}
-          broadcastService={services.broadcastService}
-        >
-          <Root
-            desktopWindowFollower={desktopWindowFollower}
-            services={services}
-            platform={platform}
-            initialWorkspaceAbsPath={bootstrap.initialWorkspaceAbsPath}
-            initialWorkspaceIdentity={bootstrap.initialWorkspaceIdentity}
-            initialTaskId={bootstrap.initialTaskId}
-            restoreSession={bootstrap.restoreSession}
-            allowOpenWorkspace={bootstrap.allowOpenWorkspace}
-            preferDirectoryBrowser
-            supportsEmbeddedBrowser={false}
-            allowRemoteWorkspace={false}
-          />
-        </ZCodeIntlProvider>
-      </AppErrorBoundary>,
-    );
+    signal?.addEventListener("abort", dispose, { once: true });
+    try {
+      connection = await createWebSocketServiceConnection(next.wsUrl, {
+        onClose: () => {
+          if (next.desktopWindow) onDesktopClosed();
+        },
+      });
+      // 旧代 RPC/follower 已失效时不挂载；重连页取消后迟到的 socket 也必须释放。
+      if (closed || signal?.aborted) {
+        dispose();
+        throw new Error("Desktop connection interrupted");
+      }
+      signal?.removeEventListener("abort", dispose);
+      const { services } = connection;
+      const platform = createWebPlatform();
+      document.title = `${PRODUCT_NAME} - Web + Server`;
+      mounted = true;
+      root.render(
+        <AppErrorBoundary>
+          <ZCodeIntlProvider
+            settingService={services.settingService}
+            broadcastService={services.broadcastService}
+          >
+            <Root
+              desktopWindowFollower={desktopWindowFollower}
+              services={services}
+              platform={platform}
+              initialWorkspaceAbsPath={next.initialWorkspaceAbsPath}
+              initialWorkspaceIdentity={next.initialWorkspaceIdentity}
+              initialTaskId={next.initialTaskId}
+              restoreSession={next.restoreSession}
+              allowOpenWorkspace={next.allowOpenWorkspace}
+              preferDirectoryBrowser
+              supportsEmbeddedBrowser={false}
+              allowRemoteWorkspace={false}
+            />
+          </ZCodeIntlProvider>
+        </AppErrorBoundary>,
+      );
+    } catch (error) {
+      dispose();
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", dispose);
+    }
+  };
+  try {
+    await mount(bootstrap);
   } catch (error) {
-    renderWebBootstrapError(error);
+    if (bootstrap.desktopWindow) {
+      const reconnect = async (signal: AbortSignal) => {
+        const fresh = await resolveWebBootstrap(signal, true);
+        if (!signal.aborted) await mount(fresh, signal);
+      };
+      root.render(<DesktopReconnectScreen reconnect={reconnect} />);
+    } else renderWebBootstrapError(error);
   }
 }
 
