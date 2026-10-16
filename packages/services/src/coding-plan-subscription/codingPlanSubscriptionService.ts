@@ -1,4 +1,4 @@
-import type { ApiClient } from "@zcode/shared";
+import { resolveDynamicWorkflowClientConfig, type ApiClient } from "@zcode/shared";
 import type { ICredentialService } from "../credential/credential.js";
 import type { ICodingPlanSubscriptionService } from "./codingPlanSubscription.js";
 import { BigModelCodingPlanSubscriptionProvider } from "./bigmodelCodingPlanSubscriptionProvider.js";
@@ -34,10 +34,9 @@ export function createCodingPlanSubscriptionService(
 
   return {
     getOffPeakClientConfig: (options) => bigmodelProvider.getOffPeakClientConfig(options),
-    // 动态工作流灰度：与 client/configs 同源，
-    // 因此和其它平台级配置一样固定走 bigmodel provider，与 family 无关。
-    getDynamicWorkflowClientConfig: (options) =>
-      bigmodelProvider.getDynamicWorkflowClientConfig(options),
+    // 修复原因：管理页与执行能力共用 Host 本地策略，不让上游灰度隐藏本地功能。
+    getDynamicWorkflowClientConfig: async () =>
+      resolveDynamicWorkflowClientConfig({ env: process.env }),
     getModelContextBudgetStrategy: () => bigmodelProvider.getModelContextBudgetStrategy(),
     getForceUpdateConfig: () => bigmodelProvider.getForceUpdateConfig(),
     getEnterprisePricing: (request) =>

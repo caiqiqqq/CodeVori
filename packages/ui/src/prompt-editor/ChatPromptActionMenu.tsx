@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button.js";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover.js";
 import { buildSlashApplyMentionPayload } from "@/lib/slashApplyMentionPayload.js";
 import { useSlashCommands } from "@/hooks/useSlashCommands.js";
+import { useDynamicWorkflowAvailability } from "@/hooks/useDynamicWorkflowAvailability.js";
 import { normalizeSlashCommandValue } from "@/slashCommandHelpers.js";
 import type { LexicalChatInputHandle } from "@/LexicalChatInput.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -81,6 +82,7 @@ export function ChatPromptActionMenu({
   excludedSlashCommandNames?: readonly string[];
 }) {
   const { intl } = useZCodeIntl();
+  const { enabled: workflowEnabled } = useDynamicWorkflowAvailability();
   const { messages } = useQuickMessages();
   const [quickMessages, setQuickMessages] = useState<QuickMessage[]>([]);
   const [open, setOpen] = useState(false);
@@ -285,7 +287,8 @@ export function ChatPromptActionMenu({
               : [
                   ...(onDelegateTask ? (["delegation"] as const) : []),
                   ...(acpMode || offered("goal", sessionId === null) ? (["goal"] as const) : []),
-                  ...(acpMode ? (["workflow"] as const) : []),
+                  // 修复原因：ACP 添加菜单也读取 Host 快照，显式关闭时不再展示不可执行的工作流。
+                  ...(acpMode && workflowEnabled ? (["workflow"] as const) : []),
                   ...(offered(
                     "workflow",
                     !acpMode &&

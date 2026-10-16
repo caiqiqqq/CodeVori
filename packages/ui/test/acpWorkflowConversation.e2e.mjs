@@ -30,9 +30,12 @@ try {
       import { PlatformProvider } from "../../../ui/src/hooks/usePlatform.tsx";
       import { ZCodeIntlProvider } from "../../../ui/src/i18n/IntlProvider.tsx";
       import { TooltipProvider } from "../../../ui/src/components/ui/tooltip.tsx";
+      import { useDynamicWorkflowAvailabilityLoader } from "../../../ui/src/hooks/useDynamicWorkflowAvailability.ts";
+      import { resolveDynamicWorkflowClientConfig } from "../../../shared/src/dynamic-workflow-feature.ts";
       import "../../../ui/src/styles.css";
       window.__sent = [];
       window.__actions = [];
+      const workflowPolicy = { getDynamicWorkflowClientConfig: async () => resolveDynamicWorkflowClientConfig({env: new URLSearchParams(location.search).has('disabled') ? { ZCODE_DYNAMIC_WORKFLOW_MODE: 'disabled' } : {}}) };
       const services = {
         clientConfigService: { getSnapshot: async () => ({ pluginStoreOrder: null }) },
         fileService: { searchWorkspaceFiles: async () => [] },
@@ -47,6 +50,7 @@ try {
         lanes: [{ id: 'actor#1', name: '研究员' }], participants: [{ id: 'phase#1:actor#1', phase: 'phase#1', lane: 'actor#1', steps: ['ask#1'] }], handoffs: [],
         phases: [{ id: 'phase#1', name: '调查' }], phaseEdges: [], exits: ['phase#1'] };
       function Fixture() {
+        useDynamicWorkflowAvailabilityLoader(workflowPolicy);
         const [status, setStatus] = useState('running');
         const [acp, setAcp] = useState(true);
         const entries = [{ id: 'user:one', kind: 'user', text: '/workflow 查找线索', createdAt: 1 },
@@ -128,8 +132,26 @@ try {
     assert.deepEqual(errors, [], `Browser errors at ${width}px`);
     await page.close();
   }
+  for (const width of [1280, 375]) {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await page.goto(`http://localhost:5174/${name}.html?disabled`);
+    await page.getByTestId("v4-composer-input").waitFor();
+    await page.getByRole("button", { name: "添加上下文" }).click();
+    await page
+      .locator('[data-trigger="+"] [data-section-id="add"][role="option"]')
+      .first()
+      .waitFor();
+    assert.equal(
+      await page
+        .locator('[data-trigger="+"] [data-section-id="add"][role="option"]')
+        .filter({ hasText: "工作流" })
+        .count(),
+      0,
+    );
+    await page.close();
+  }
   process.stdout.write(
-    "PASS ACP editor, workflow menu, full-script permission, artifact, digest stop/resume at 1280/375px.\n",
+    "PASS ACP editor, workflow menu enabled/disabled, full-script permission, artifact, digest stop/resume at 1280/375px.\n",
   );
 } finally {
   await browser?.close();
