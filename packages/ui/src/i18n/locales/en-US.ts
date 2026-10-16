@@ -1809,6 +1809,9 @@ const enUS: Record<string, string> = {
   "git.empty.title": "No changes are available in this source",
   "git.empty.description":
     "Switch to another source, or wait until this workspace has new Git changes to inspect.",
+  "git.empty.otherWorktreeSource":
+    "This source has no changed files. {source} contains {count, plural, one {# changed file} other {# changed files}}.",
+  "git.action.viewSource": "View {source} changes ({count})",
   "git.loading.description": "Reading Git status and changed files for the current workspace.",
   "git.error.title": "Could not load Git changes",
   "git.error.description": "Git returned an error: {message}",
