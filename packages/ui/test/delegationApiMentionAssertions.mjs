@@ -46,6 +46,9 @@ export async function assertApiDelegationMentions(page, main, shots, width) {
     );
     await apiOption.click();
     assert.ok((await main.innerText()).includes("model/中文 v2"));
+    const chip = main.locator('[data-mention-category="subagents"]');
+    const label = await chip.innerText();
+    const chipColor = await chip.evaluate((element) => getComputedStyle(element).color);
     assert.equal(await page.evaluate(() => window.__delegation.kind), kind);
     assert.equal(
       await page.evaluate(
@@ -60,6 +63,10 @@ export async function assertApiDelegationMentions(page, main, shots, width) {
       kind === "acp" ? 2 : 3,
     );
     const sent = await page.evaluate(() => window.__delegation.sent.at(-1));
+    const sentChip = page.getByTestId("sent-user-message").locator("span").first();
+    assert.equal(await sentChip.innerText(), label);
+    assert.equal(await sentChip.locator("svg.lucide-bot").count(), 1);
+    assert.equal(await sentChip.evaluate((element) => getComputedStyle(element).color), chipColor);
     assert.match(
       sent,
       /\[@model\/中文 v2.*测试 API.*\]\(delegation:\/\/api\.[0-9a-f]+\.[0-9a-f]+\)/,
