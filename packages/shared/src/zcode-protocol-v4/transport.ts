@@ -838,7 +838,9 @@ export const v4AttachmentBeginParamsSchema = z
       .string()
       .min(1)
       .max(255)
-      .regex(/^[^\0\r\n]+$/),
+      // #188：该约束也会导出到委派 MCP；用跨引擎的十六进制转义，避免外部模型拒绝 \0。
+      // eslint-disable-next-line no-control-regex -- 附件名必须明确拒绝 NUL，不能移除校验来兼容供应商。
+      .regex(/^[^\x00\r\n]+$/),
     mime: z
       .string()
       .min(3)

@@ -50,6 +50,8 @@ API / ACP 主智能体 ─ MCP capability ─┐
 
 ## 平台与持久化边界
 
+- 委派 MCP 的 JSON Schema 正则须能被外部模型服务校验。附件名称的 NUL 禁止规则使用跨引擎兼容的 `\x00`，不输出 `\0`；`DelegateTask` 与 `FollowUpDelegation` 继续复用共享附件协议，Host 仍拒绝空名称、超长名称、NUL、回车和换行，不通过移除校验来兼容供应商。
+- schema 由共享协议定义，经 `delegationMcp` 的既有 `z.toJSONSchema` 和 MCP `tools/list` 发送给 API/ACP；不新增供应商分支、状态所有者或写入路径，不改变 Desktop continuous / Mobile replayable 的消息和恢复语义。该修复不迁移数据，新建或重新连接 Agent 后加载新工具目录。
 - 初版执行本地项目，远程 workspace 必须明确拒绝本地执行，绝不把远程路径当本地 cwd。移动端连接桌面已有 Host 读取同一服务，不启动新运行时。
 - desktop-continuous 复用实时会话 stream；web-remote-replayable 复用快照与断档恢复。委派列表事件仅作失效通知，重连读取持久化 list，不承载第二份任务队列。
 - MCP 复用现有 Host loopback capability bridge，工具 metadata 参数化；调用并发避免 wait 阻塞 cancel。token 仅存在 Host 内存及启动环境，不写 task/session 快照。
@@ -149,7 +151,11 @@ retry → 新 session 绑定追加；旧绑定保留
 20. API/ACP 发起轮中的委派任务在该轮以 Agent 同级的摘要行展示；下一轮到来与任务完成不移动原行，展开可查看结果与操作。历史未加载、轮次无有效时间或时间冲突时仍能从会话级列表访问，不重复显示；1280px/375px、亮暗主题下无溢出，切换会话不残留旧任务或编辑草稿。
 21. API/ACP 各创建一个普通会话和一个委派子会话；侧栏 timeline、工作区分组、搜索/最近、置顶/归档及工作树设置只列出普通会话，数量与分页正确，委派行仍可打开并读取子会话。重启后保持；follow-up 不新建，retry 后旧/新子会话都不进入普通列表；同路径不同 identity 不串隐藏。订阅早于历史列表、创建 ACK 早于绑定、旧读取迟到和归属服务错误不闪现隐藏行。
 
+22. API/ACP 主会话的真实 MCP `tools/list` 中，`DelegateTask` 和 `FollowUpDelegation` 的附件名称正则不包含 `\0`；导出的正则与 Host 校验均接受普通中英文文件名，拒绝 NUL、回车和换行，保留长度限制及其他字段约束。
+
 ## 本地验证记录
+
+- 2026-10-17，issue #188：确认 `DelegateTask.attachments[].fileName` 导出的 `\0` 与截图中的非法正则一致，改为等价的 `\x00`。API/ACP 真实 MCP 目录新增 2 项回归先失败、修复后通过；委派/MCP/stdio/附件联跑 13 项通过、1 项 ACP 回传 `uncertain` 超时，恢复修改前的共享协议后单独复跑仍同样失败。补齐本工作树 workflow 构建产物后，Node 24.14.0 的 root typecheck 通过，Lint 73 warning、0 error，架构 0 baseline/0 new violation，相关格式与 diff 检查通过；未调用真实 DeepSeek 模型，未构建或替换桌面应用。
 
 - 2026-10-14，子会话普通列表归属：委派绑定、API 索引分页与 identity 隔离、ACP 纯投影、工作树列表及失败闭合回归 16/16 通过；1280px/375px 委派面板 E2E 通过，覆盖从委派行打开子会话。根 lint 0 error（74 个已有 warning），架构检查 0 violation，UI 独立类型检查通过。根类型检查及 ACP 服务级测试被当前检出缺失的 `@zcode/dynamic-workflow` 构建产物阻断；未调用真实模型或重启桌面 Host，运行时侧栏效果待装载新 Host 后验证。
 - 2026-10-07，Node 24.14.0：委派、ACP、工作流、附件、工作树、API 执行与 Runtime stop 联跑 88/88 通过。委派专项涵盖 MCP capability、跨窗口 lease、各次 attempt 回传、嵌套容量与取消、入队顺序和重复关闭。
