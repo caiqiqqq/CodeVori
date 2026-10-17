@@ -228,6 +228,11 @@ export function createAcpService(
       canPurge?(session: AcpSession): Promise<boolean>;
       onResultInput(session: AcpSession, commandId: string): Promise<void>;
     };
+    issuesMcp?: {
+      register(
+        session: AcpSession,
+      ): Promise<{ record: NativeMcpServerRecord; revoke(): void } | undefined>;
+    };
   } = {},
 ): IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } {
   const directory = options.directory ?? join(getZCodeDataRootDir(), "acp-sessions");
@@ -300,6 +305,7 @@ export function createAcpService(
   >();
   const workflowMcp = createAcpWorkflowMcp(directory);
   const workflowRegistrations = new Map<string, { revoke(): void }>();
+  const issuesRegistrations = new Map<string, { revoke(): void }>();
   const interactionQueues = new Map<
     string,
     Array<{
@@ -932,6 +938,8 @@ export function createAcpService(
     workflowRegistrations.delete(id);
     delegationRegistrations.get(id)?.revoke();
     delegationRegistrations.delete(id);
+    issuesRegistrations.get(id)?.revoke();
+    issuesRegistrations.delete(id);
     connections.get(id)?.close();
     connections.delete(id);
     connecting.delete(id);
@@ -950,6 +958,7 @@ export function createAcpService(
     let receivedConfig = false;
     let receivedContextUsage = false;
     let updatedModeId: string | undefined;
+    let issuesRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
     // 修复原因：若仅在设置页检查启用/安装状态，create 与 session/load 仍会从旧静态命令
     // 启动禁用的 Agent。每次新连接都向同一个 Host 设置所有者重新解析，复用连接不重启。
     const connectionTask = (async () => {
@@ -987,6 +996,14 @@ export function createAcpService(
         async () => options.delegation?.register(session),
       );
       if (delegationRegistration) delegationRegistrations.set(session.id, delegationRegistration);
+      issuesRegistration = await options.issuesMcp?.register(session);
+      // 注册期间可能已 detach；迟到的 capability 不能挂到下一代连接或继续启动 Agent。
+      if (disposed || generations.get(session.id) !== generation || removed.has(session.id)) {
+        issuesRegistration?.revoke();
+        issuesRegistration = undefined;
+        throw new Error("ACP session closed while registering issues MCP");
+      }
+      if (issuesRegistration) issuesRegistrations.set(session.id, issuesRegistration);
       return connect({
         agent: session.agent,
         workspacePath: session.workspacePath,
@@ -995,6 +1012,7 @@ export function createAcpService(
         workflowServers: [
           ...(workflowRegistration ? [workflowRegistration.record] : []),
           ...(delegationRegistration ? [delegationRegistration.record] : []),
+          ...(issuesRegistration ? [issuesRegistration.record] : []),
         ],
         ...(plugins ? { pluginServers: plugins.servers } : {}),
         ...(launch ? { launch } : {}),
@@ -1206,6 +1224,8 @@ export function createAcpService(
           workflowHost.stopSession(session.id);
           workflowRegistrations.get(session.id)?.revoke();
           workflowRegistrations.delete(session.id);
+          issuesRegistrations.get(session.id)?.revoke();
+          issuesRegistrations.delete(session.id);
           // Adapter root 已退出仍需回收其进程组内可能存活的 App Server 后代。
           connections.get(session.id)?.close();
           connections.delete(session.id);
@@ -1311,6 +1331,13 @@ export function createAcpService(
     connecting.set(session.id, task);
     try {
       return await task;
+    } catch (error) {
+      // 握手失败时 connectionTask 可能在拿到 port 前拒绝，仍需回收已签发的议题 capability。
+      if (issuesRegistration && issuesRegistrations.get(session.id) === issuesRegistration) {
+        issuesRegistration.revoke();
+        issuesRegistrations.delete(session.id);
+      }
+      throw error;
     } finally {
       if (connecting.get(session.id) === task) connecting.delete(session.id);
     }

@@ -73,6 +73,8 @@ import {
   zcodeOfficialMcpAuthHeadersRequestParamsSchema,
   zcodeDelegationMcpRequestParamsSchema,
   zcodeDelegationMcpResponseSchema,
+  zcodeIssuesMcpRequestParamsSchema,
+  zcodeIssuesMcpResponseSchema,
   summarizeOfficialMcpIdentityHeaders,
   zcodeProtocolEmptyResultSchema,
   zcodeProtocolMethods,
@@ -900,6 +902,10 @@ interface CreateZCodeAgentServiceOptions extends Omit<
     workspace: ZCodeAgentWorkspaceTarget,
     sessionId: string,
     createRequestId?: string,
+  ) => Promise<import("@zcode/shared").ZCodeProtocolMcpServer[]>;
+  resolveIssuesMcp?: (
+    workspace: ZCodeAgentWorkspaceTarget,
+    sessionId: string,
   ) => Promise<import("@zcode/shared").ZCodeProtocolMcpServer[]>;
   onDelegationConversationCommand?: (
     workspace: ZCodeAgentWorkspaceTarget,
@@ -2341,6 +2347,28 @@ export function createZCodeAgentService(
           return;
         }
 
+        if (request.method === zcodeProtocolMethods.interactionRequestIssuesMcp) {
+          const parsed = zcodeIssuesMcpRequestParamsSchema.safeParse(request.params);
+          if (!parsed.success) {
+            void client.respondError(request.id, {
+              code: -32602,
+              message: "Invalid issues MCP request",
+            });
+            return;
+          }
+          // 会话能力只能绑定当前连接的 workspace，不能由模型指定路径。
+          void (async () => {
+            const servers =
+              (await options?.resolveIssuesMcp?.(workspace, parsed.data.sessionId)) ?? [];
+            await client.respond(request.id, zcodeIssuesMcpResponseSchema.parse(servers));
+          })().catch(() => {
+            void client.respondError(request.id, {
+              code: -32000,
+              message: "Issues Host unavailable",
+            });
+          });
+          return;
+        }
         if (
           request.method === zcodeProtocolMethods.interactionRequestDelegationMcp ||
           request.method === zcodeProtocolMethods.interactionPauseDelegations

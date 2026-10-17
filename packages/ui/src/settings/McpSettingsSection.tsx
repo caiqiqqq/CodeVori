@@ -29,6 +29,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { logger } from "@/logger.js";
 import { McpServerForm } from "@/settings/McpServerForm.js";
+import { BuiltInIssuesMcp, isBuiltInIssuesMcpVisible } from "@/settings/BuiltInIssuesMcp.js";
 import { McpServerList, McpStatusDot } from "@/settings/McpServerList.js";
 import {
   formToConfig,
@@ -1190,7 +1191,16 @@ export function McpSettingsSection({
   const mcpProjectionReady =
     !activeWorkspacePath ||
     (mcpStoreMatchesActiveWorkspace && mcpConfigReadyWorkspaceKey === activeWorkspaceKey);
-  const hasEmptySearchResult = Boolean(query.trim()) && filteredMcpCount === 0;
+  const showBuiltInIssues = isBuiltInIssuesMcpVisible({
+    scope: scopeFilter,
+    workspaceIdentity: activeWorkspaceIdentity,
+    remoteSessionId,
+    remote: Boolean(remoteTarget),
+    query,
+    title: intl.formatMessage({ id: "settings.mcp.issues.title" }),
+  });
+  const hasEmptySearchResult =
+    Boolean(query.trim()) && filteredMcpCount === 0 && !showBuiltInIssues;
   const installedServers = useMemo(
     () =>
       filteredServers
@@ -1209,8 +1219,8 @@ export function McpSettingsSection({
   );
   const hideInstalledGroup = Boolean(query.trim()) && installedServers.length === 0;
   useEffect(() => {
-    onVisibleCountChange?.(filteredMcpCount);
-  }, [filteredMcpCount, onVisibleCountChange]);
+    onVisibleCountChange?.(filteredMcpCount + Number(showBuiltInIssues));
+  }, [filteredMcpCount, onVisibleCountChange, showBuiltInIssues]);
   const remoteMcpSyncTargetLabel = connectedRemoteSyncTarget
     ? formatRemoteSkillSyncTarget(connectedRemoteSyncTarget, activeWorkspacePath ?? "")
     : "";
@@ -1445,6 +1455,7 @@ export function McpSettingsSection({
         </div>
       ) : null}
 
+      {showBuiltInIssues ? <BuiltInIssuesMcp key={activeWorkspaceKey} services={services} /> : null}
       {!mcpProjectionReady ? (
         <PluginLoadingState label={intl.formatMessage({ id: "common.loading" })} />
       ) : hasEmptySearchResult ? (

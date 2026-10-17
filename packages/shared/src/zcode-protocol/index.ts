@@ -657,6 +657,14 @@ export const zcodeDelegationMcpRequestParamsSchema = z
   .object({ sessionId: nonEmptyString, createRequestId: nonEmptyString.optional() })
   .strict();
 export const zcodeDelegationMcpResponseSchema = z.array(zcodeProtocolMcpServerSchema).max(1);
+export const zcodeIssuesMcpRequestParamsSchema = z.object({ sessionId: nonEmptyString }).strict();
+export const zcodeIssuesMcpResponseSchema = z
+  .array(
+    zcodeProtocolMcpServerSchema.and(
+      z.object({ name: z.literal("zcode-issues"), isolation: z.literal("session") }),
+    ),
+  )
+  .max(1);
 
 export const zcodeMcpServerStatusKindSchema = z.enum([
   "connecting",
@@ -3712,6 +3720,7 @@ export const zcodeProtocolMethods = {
   interactionRequestProviderRuntimeHeaders: "interaction/requestProviderRuntimeHeaders",
   interactionRequestOfficialMcpAuthHeaders: "interaction/requestOfficialMcpAuthHeaders",
   interactionRequestDelegationMcp: "interaction/requestDelegationMcp",
+  interactionRequestIssuesMcp: "interaction/requestIssuesMcp",
   interactionPauseDelegations: "interaction/pauseDelegations",
   // browser-use 反向请求由 agent 发起，host 转给 main 中的 CDP executor。
   interactionBrowserList: "interaction/browserList",

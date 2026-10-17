@@ -313,6 +313,7 @@ import { IAgentDelegationService } from "./delegation/contract.js";
 import { AgentDelegationService } from "./delegation/agentDelegationService.js";
 import { listApiDelegationTargets } from "./delegation/delegationTargets.js";
 import { createDelegationMcp, delegationProtocolServer } from "./delegation/delegationMcp.js";
+import { createForgeIssuesMcp, forgeIssuesProtocolServer } from "./git/forgeIssuesMcp.js";
 import {
   createDelegationExecution,
   createDelegationDelivery,
@@ -2148,10 +2149,16 @@ export function createLocalServices(options: {
     return workTaskRepo.hasActiveConversation(scope, { kind, id });
   };
   let delegationMcp: ReturnType<typeof createDelegationMcp> | undefined;
+  let issuesMcp: ReturnType<typeof createForgeIssuesMcp> | undefined;
   const liveDelegationParents = new Map<string, string>();
   const liveParentKey = (workspace: WorkTaskScope, sessionId: string) =>
     JSON.stringify([resolveWorkspaceKey(workspace), sessionId]);
   const zcodeAgentService = createZCodeAgentService({
+    resolveIssuesMcp: async (workspace, sessionId) => {
+      if (isDesktopAttachedRemote) return [];
+      const registration = await issuesMcp?.register({ ...workspace, kind: "api", sessionId });
+      return registration ? [forgeIssuesProtocolServer(registration.record)] : [];
+    },
     pauseDelegations: async (workspace, sessionId) => {
       await agentDelegationService?.pauseParent({ ...workspace, kind: "api", sessionId });
     },
@@ -2419,6 +2426,13 @@ export function createLocalServices(options: {
     ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
   });
   const acpService = createAcpService({
+    issuesMcp: {
+      register: (session) =>
+        isDesktopAttachedRemote
+          ? Promise.resolve(undefined)
+          : (issuesMcp?.register({ ...session, kind: "acp", sessionId: session.id }) ??
+            Promise.resolve(undefined)),
+    },
     resolveDynamicWorkflowClientConfig: () =>
       codingPlanSubscriptionService.getDynamicWorkflowClientConfig(),
     delegatedSessionIds: async (scope) => {
@@ -2674,6 +2688,10 @@ export function createLocalServices(options: {
       return deliverDelegation(task, commandId, text);
     },
   });
+  issuesMcp = createForgeIssuesMcp(join(getZCodeDataRootDir(), "issues-mcp"), {
+    git: gitService,
+    isEnabled: async () => (await settingService.get()).forgeIssuesMcpEnabled !== false,
+  });
   delegationMcp = createDelegationMcp(
     join(getZCodeDataRootDir(), "delegation-mcp"),
     agentDelegationService,
@@ -2681,6 +2699,7 @@ export function createLocalServices(options: {
   const delegationLifecycle = zcodeAgentService.onAgentRuntimeLifecycle?.((event) => {
     if (event.state === "unavailable") {
       delegationMcp?.revokeWorkspace(event.workspaceKey);
+      issuesMcp?.revokeWorkspace(event.workspaceKey);
       for (const [key, workspaceKey] of liveDelegationParents)
         if (workspaceKey === event.workspaceKey) liveDelegationParents.delete(key);
     }
@@ -2689,6 +2708,7 @@ export function createLocalServices(options: {
   agentDelegationService.disposeAll = () => {
     delegationLifecycle?.dispose();
     delegationMcp?.dispose();
+    issuesMcp?.dispose();
     delegationDispose();
   };
   agentDelegationService.startScheduler();

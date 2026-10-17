@@ -30,7 +30,7 @@ test("V4 create forwards its command ID before child capability provisioning", a
   assert.equal(result?.type, "createSession");
 });
 
-test("Host delegation overlay preserves user, project, plugin, and built-in MCP sources", () => {
+test("Host delegation and issue overlay preserves user, project, plugin, and built-in MCP sources", () => {
   const server = (command: string) => ({ type: "stdio" as const, command });
   const configResult = {
     config: {
@@ -53,20 +53,28 @@ test("Host delegation overlay preserves user, project, plugin, and built-in MCP 
       pluginMcpServers: { plugin: server("plugin") },
       builtInMcpServers: { node_repl: server("builtin") },
     });
-  const hostMcpServers = { "zcode-delegation": server("host") };
+  const hostMcpServers = {
+    "zcode-delegation": server("host"),
+    "zcode-issues": server("issues-host"),
+  };
   assert.deepEqual(Object.keys(resolve({ hostMcpServers }).configuredMcpServers).sort(), [
     "node_repl",
     "plugin",
     "project",
     "user",
     "zcode-delegation",
+    "zcode-issues",
   ]);
   const explicit = resolve({
     hostMcpServers,
     runtimeConfig: {
       mcp: {
         enabled: true,
-        servers: { custom: server("custom"), "zcode-delegation": server("untrusted") },
+        servers: {
+          custom: server("custom"),
+          "zcode-delegation": server("untrusted"),
+          "zcode-issues": server("untrusted-issues"),
+        },
       },
     },
   });
@@ -75,10 +83,15 @@ test("Host delegation overlay preserves user, project, plugin, and built-in MCP 
     "node_repl",
     "plugin",
     "zcode-delegation",
+    "zcode-issues",
   ]);
   assert.equal(
     (explicit.configuredMcpServers["zcode-delegation"] as { command: string }).command,
     "host",
+  );
+  assert.equal(
+    (explicit.configuredMcpServers["zcode-issues"] as { command: string }).command,
+    "issues-host",
   );
   assert.deepEqual(Object.keys(resolve({}).configuredMcpServers).sort(), [
     "node_repl",
