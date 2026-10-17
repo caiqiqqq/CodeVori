@@ -1022,6 +1022,17 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     },
     [onCreateTask, showChatMainView, workspaceReadOnlyReason],
   );
+  const handleCreateConversationTaskInChat = useCallback(() => {
+    if (!onCreateConversationTask) {
+      handleCreateTaskInChat();
+      return;
+    }
+    // 独立任务创建只更新工作区和草稿，已有工作区不会重挂载 App；
+    // 与普通新建入口一样显式退出待办等主视图，并清除旧 ACP 打开请求。
+    setAcpOpenRequest(null);
+    showChatMainView();
+    onCreateConversationTask();
+  }, [handleCreateTaskInChat, onCreateConversationTask, showChatMainView]);
   const shellWorkbenchBinding = useMemo<WorkbenchSessionBinding | null>(
     () =>
       buildPrimaryWorkbenchSessionBinding(
@@ -1982,7 +1993,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                     onOpenBrowserUrl={handleOpenBrowserUrl}
                     fileTreeOpenRequest={fileTreeOpenRequest}
                     onCreateTask={handleCreateTaskInChat}
-                    onCreateConversationTask={onCreateConversationTask ?? handleCreateTaskInChat}
+                    onCreateConversationTask={handleCreateConversationTaskInChat}
                     onOpenFolderFromWorkspaceMenu={onOpenFolderFromWorkspaceMenu}
                     onOpenRemoteWorkspace={onOpenRemoteWorkspace}
                     theme={theme}
