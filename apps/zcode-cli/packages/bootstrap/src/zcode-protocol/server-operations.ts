@@ -46,6 +46,7 @@ import {
   zcodeProtocolErrorCodes,
   zcodeProtocolMethods,
   zcodeDelegationMcpResponseSchema,
+  zcodeIssuesMcpResponseSchema,
   zcodeSessionCancelBackgroundTaskParamsSchema,
   zcodeSessionCompactParamsSchema,
   zcodeSessionCloseParamsSchema,
@@ -3338,24 +3339,39 @@ async function createRecord(
       : undefined;
   const taskType = params.taskType ?? "interactive";
   // create/resume 都向当前 Host 取会话 capability，避免把临时 bearer 持久化或复用旧 Host 的地址。
-  const delegationServers =
+  const [delegationServers, issuesServers] =
     taskType === "interactive"
-      ? await context
-          .requestClient(
-            zcodeProtocolMethods.interactionRequestDelegationMcp,
-            {
-              sessionId,
-              ...(params.createRequestId ? { createRequestId: params.createRequestId } : {}),
-            },
-            zcodeDelegationMcpResponseSchema,
-            { timeoutMs: 5000 },
-          )
-          .catch(() => [])
-      : [];
+      ? await Promise.all([
+          context
+            .requestClient(
+              zcodeProtocolMethods.interactionRequestDelegationMcp,
+              {
+                sessionId,
+                ...(params.createRequestId ? { createRequestId: params.createRequestId } : {}),
+              },
+              zcodeDelegationMcpResponseSchema,
+              { timeoutMs: 5000 },
+            )
+            .catch(() => []),
+          context
+            .requestClient(
+              zcodeProtocolMethods.interactionRequestIssuesMcp,
+              { sessionId },
+              zcodeIssuesMcpResponseSchema,
+              { timeoutMs: 5000 },
+            )
+            .catch(() => []),
+        ])
+      : [[], []];
   const runtimeMcp = protocolMcpServersToRuntimeMcpConfig(
-    params.mcpServers?.filter((server) => server.name !== "zcode-delegation"),
+    params.mcpServers?.filter(
+      (server) => server.name !== "zcode-delegation" && server.name !== "zcode-issues",
+    ),
   );
-  const hostMcpServers = protocolMcpServersToRuntimeMcpConfig(delegationServers)?.servers;
+  const hostMcpServers = protocolMcpServersToRuntimeMcpConfig([
+    ...delegationServers,
+    ...issuesServers,
+  ])?.servers;
   context.logger?.info("ZCode Protocol createRecord MCP config", {
     event: "zcode_protocol.create_record.mcp_config",
     rootTraceId: traceContext.traceId,

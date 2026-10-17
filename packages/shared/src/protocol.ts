@@ -339,6 +339,8 @@ export interface AppSettings {
   nativeSearchEnhancementsEnabled?: boolean;
   /** 新建或冷恢复 Session 是否启用 Memory；默认关闭。 */
   memoryEnabled?: boolean;
+  /** Host 提供的内置议题 MCP；缺失按启用处理。 */
+  forgeIssuesMcpEnabled?: boolean;
   onboardingOccupation?:
     | "office"
     | "developer"

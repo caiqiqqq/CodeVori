@@ -3183,6 +3183,14 @@ const zhCN: Record<string, string> = {
   "settings.mcp.plugin.disconnected": "未连接",
   "settings.mcp.plugin.disconnectedDescription": "该插件 MCP 服务器已加载，但当前未连接。",
   "settings.mcp.host.active": "宿主内置",
+  "settings.mcp.builtIn": "内置",
+  "settings.mcp.issues.title": "议题管理",
+  "settings.mcp.issues.toggle": "启用议题管理 MCP",
+  "settings.mcp.issues.description":
+    "让智能体查询和创建当前项目的议题，复用版本控制账号，支持 GitHub、GitLab 和 Gitea。",
+  "settings.mcp.issues.reconnect":
+    "新建或重新连接会话后加载工具；关闭后立即拒绝新的工具调用。创建议题需要明确的发布指令。",
+  "settings.mcp.issues.saveFailed": "无法读取或保存设置，请重试。",
   "settings.mcp.host.activeDescription": `该 MCP 服务器由 ${PRODUCT_NAME} 宿主为 {pluginName} 插件提供，运行时身份由宿主管理。`,
   "settings.mcp.plugin.disabled": "插件未启用",
   "settings.mcp.plugin.disabledDescription": "该 MCP 服务器内置在插件中，启用插件后会加载。",
