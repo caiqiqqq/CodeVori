@@ -1299,6 +1299,18 @@ const zhCN: Record<string, string> = {
   "bots.runtime.weixinLongPollingRunning": "微信长轮询运行中。",
   "bots.runtime.weixinLongPollingStarting": "微信长轮询启动中。",
   "bots.runtime.weixinLongPollingStopped": "微信长轮询已停止。",
+  "bots.runtime.weixinHandledElsewhere": `微信长轮询由另一个 ${PRODUCT_NAME} 窗口处理。`,
+  "bots.runtime.weixinReconnecting": "微信连接暂时失败，正在自动重连；请检查网络。",
+  "bots.runtime.weixinLoginRequired":
+    "微信登录已失效或鉴权被拒绝，自动重连无法恢复，请重新扫码登录。",
+  "bots.runtime.weixinRecoveryFailed": "无法读取微信凭据，请检查本地存储权限，再停用并启用机器人。",
+  "bots.runtime.weixinSignInAgain": "重新扫码登录",
+  "bots.runtime.weixinDeliveryNetwork":
+    "通知发送遇到网络故障或超时，可能尚未送达。为避免重复不会自动重发，请检查网络，恢复后发送测试通知。",
+  "bots.runtime.weixinDeliveryRejected":
+    "微信接口拒绝了通知。请先在微信中向机器人发送一条消息，再发送测试通知；若仍失败，请重新扫码并提供下方错误码。",
+  "bots.runtime.weixinDeliveryUnknown":
+    "通知发送失败，原因尚未确定。请检查登录状态和本地存储，发送测试通知并提供对应时间的诊断日志。",
   "bots.runtime.botDisabled": "机器人已停用。",
   "bots.scanQrCode": "扫码",
   "bots.authorizationQr": "授权二维码",

@@ -1,5 +1,12 @@
 const BOT_PROVIDER_REQUEST_TIMEOUT_MS = 15_000;
 
+export class BotProviderRequestTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Bot provider request timed out after ${timeoutMs}ms.`);
+    this.name = "BotProviderRequestTimeoutError";
+  }
+}
+
 export interface BotProviderJsonResponse<T> {
   ok: boolean;
   status: number;
@@ -27,13 +34,17 @@ async function runBotProviderRequest<T>(
     externalSignal?.addEventListener("abort", onAbort, { once: true });
   }
   const timeout = setTimeout(() => {
-    controller.abort(new Error(`Bot provider request timed out after ${timeoutMs}ms.`));
+    controller.abort(new BotProviderRequestTimeoutError(timeoutMs));
   }, timeoutMs);
   try {
     const response = await fetch(input, { ...init, signal: controller.signal });
     // 修复原因：收到响应头不代表请求完成。必须在同一个 AbortSignal 和 deadline 下
     // 消费响应体，否则服务端 headers 后停滞仍会永久堵住 Bot actor 队列。
     return await consume(response);
+  } catch (error) {
+    // Bugfix：响应体超时可能只抛 AbortError；保留 deadline 的受控原因，供 provider 区分超时和网络失败。
+    if (controller.signal.aborted) throw controller.signal.reason ?? error;
+    throw error;
   } finally {
     clearTimeout(timeout);
     externalSignal?.removeEventListener("abort", onAbort);

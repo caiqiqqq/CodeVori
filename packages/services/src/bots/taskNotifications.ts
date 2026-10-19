@@ -8,6 +8,14 @@ import {
   type BotTaskNotification,
 } from "@zcode/shared";
 import { isWorkspaceAllowed } from "./workspaceHelpers.js";
+import { createServiceLogger } from "../logger/serviceLogger.js";
+import {
+  formatWeixinDiagnostic,
+  WeixinProviderError,
+  weixinDeliveryMessageId,
+} from "./providers/weixinErrors.js";
+
+const logger = createServiceLogger("bot-notifications");
 
 interface BotTaskNotifierDeps {
   readConfig(): Promise<BotsConfigFile>;
@@ -15,7 +23,24 @@ interface BotTaskNotifierDeps {
   credentialFingerprint(bot: BotConfig): Promise<string>;
   claim(key: string): Promise<boolean>;
   send(bot: BotConfig, message: BotOutboundMessage): Promise<void>;
-  onDeliveryResult(bot: BotConfig, error: string | undefined): void;
+  onDeliveryResult(bot: BotConfig, error: string | undefined, messageId?: string): void;
+}
+
+function reportDeliveryFailure(bot: BotConfig, error: unknown, deps: BotTaskNotifierDeps): string {
+  // Bugfix：原 catch 吞掉发送原因；只记录安全分类/数值码，绝不回显异常正文或第三方 errmsg。
+  const diagnostic = formatWeixinDiagnostic(error);
+  logger.warn(
+    undefined,
+    `task notification delivery failed bot=${bot.id} provider=${bot.provider} ${diagnostic}`,
+  );
+  const message =
+    error instanceof WeixinProviderError ? error.message : "Task notification delivery failed.";
+  deps.onDeliveryResult(
+    bot,
+    message,
+    bot.provider === "weixin" ? weixinDeliveryMessageId(error) : undefined,
+  );
+  return message;
 }
 
 export function supportsBotTaskNotifications(bot: BotConfig): boolean {
@@ -80,9 +105,8 @@ export function createBotTaskNotifier(deps: BotTaskNotifierDeps) {
             text: `${event.title}\n${event.body}`,
           });
           deps.onDeliveryResult(bot, undefined);
-        } catch {
-          // Provider 错误可能含 URL/token，状态只暴露固定错误，不记录 payload 或凭据。
-          deps.onDeliveryResult(bot, "Task notification delivery failed.");
+        } catch (error) {
+          reportDeliveryFailure(bot, error, deps);
         }
       }),
     );
@@ -112,8 +136,7 @@ export async function testBotTaskNotification(
     });
     deps.onDeliveryResult(bot, undefined);
     return { ok: true, message: "Test notification delivered." };
-  } catch {
-    deps.onDeliveryResult(bot, "Task notification delivery failed.");
-    return { ok: false, message: "Task notification delivery failed." };
+  } catch (error) {
+    return { ok: false, message: reportDeliveryFailure(bot, error, deps) };
   }
 }

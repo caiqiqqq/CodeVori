@@ -754,14 +754,22 @@ export function createBotsService(
   };
   let shutdownPromise: Promise<void> | null = null;
 
-  function onDeliveryResult(bot: BotConfig, deliveryError: string | undefined): void {
+  function onDeliveryResult(
+    bot: BotConfig,
+    deliveryError: string | undefined,
+    deliveryErrorMessageId?: string,
+  ): void {
     // 收消息正常不代表回复已投递，不能把投递错误混成连接错误。
     const current = runtimeByBotId.get(bot.id);
+    if (current?.deliveryError && !deliveryError) {
+      botsLogger.info(undefined, `bot delivery recovered bot=${bot.id} provider=${bot.provider}`);
+    }
     setRuntimeStatus({
       botId: bot.id,
       provider: bot.provider,
       status: current?.status ?? (bot.enabled ? "idle" : "disabled"),
       deliveryError,
+      deliveryErrorMessageId,
     });
   }
 

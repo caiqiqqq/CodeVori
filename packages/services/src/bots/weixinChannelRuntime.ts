@@ -1,10 +1,7 @@
-import type {
-  BotConfig,
-  BotProviderCallbackResult,
-  BotsConfigFile,
-} from "@zcode/shared";
+import type { BotConfig, BotProviderCallbackResult, BotsConfigFile } from "@zcode/shared";
 import type { ICredentialService } from "../credential/credential.js";
 import { getWeixinUpdates } from "./providers/weixinProvider.js";
+import { formatWeixinDiagnostic, WeixinProviderError } from "./providers/weixinErrors.js";
 import {
   acquireWeixinPollingLock,
   assertBotCallbackSucceeded,
@@ -25,10 +22,7 @@ interface WeixinChannelRuntimeDeps {
   readConfig(): Promise<BotsConfigFile>;
   readWeixinGetUpdatesBuf(botId: string): Promise<string | undefined>;
   writeWeixinGetUpdatesBuf(botId: string, buf: string): Promise<void>;
-  processProviderCallback(
-    provider: "weixin",
-    payload: unknown,
-  ): Promise<BotProviderCallbackResult>;
+  processProviderCallback(provider: "weixin", payload: unknown): Promise<BotProviderCallbackResult>;
 }
 
 export function createWeixinChannelRuntime(deps: WeixinChannelRuntimeDeps) {
@@ -53,59 +47,82 @@ export function createWeixinChannelRuntime(deps: WeixinChannelRuntimeDeps) {
   }
 
   async function pollBot(bot: BotConfig, signal: AbortSignal): Promise<void> {
-    const token = bot.credentialRef
-      ? await deps.credentialService.load(bot.credentialRef)
-      : null;
-    if (!token?.trim()) {
+    let failures = 0;
+    function reportFailure(error: unknown, phase: string): number {
+      failures++;
+      const loginRequired = error instanceof WeixinProviderError && error.requiresLogin;
+      const retryMs = loginRequired ? 0 : Math.min(5_000 * 2 ** Math.min(failures - 1, 4), 60_000);
+      const diagnostic = formatWeixinDiagnostic(error);
       deps.statusSink.setRuntimeStatus({
         botId: bot.id,
         provider: "weixin",
         status: "error",
-        message: "Weixin bot token is missing.",
+        messageId: loginRequired
+          ? "bots.runtime.weixinLoginRequired"
+          : "bots.runtime.weixinReconnecting",
+        message: `${loginRequired ? "Weixin login expired. Scan the QR code again." : "Weixin polling failed. Reconnecting automatically."} ${diagnostic}`,
       });
+      deps.logger.warn(
+        undefined,
+        `weixin polling failed bot=${bot.id} phase=${phase} failures=${failures} retryMs=${retryMs} ${diagnostic}`,
+      );
+      return retryMs;
+    }
+    let token: string | null;
+    try {
+      token = bot.credentialRef ? await deps.credentialService.load(bot.credentialRef) : null;
+    } catch (error) {
+      if (signal.aborted) return;
+      deps.statusSink.setRuntimeStatus({
+        botId: bot.id,
+        provider: "weixin",
+        status: "error",
+        messageId: "bots.runtime.weixinRecoveryFailed",
+        message:
+          "Weixin credentials could not be read. Check local storage and enable the bot again.",
+      });
+      deps.logger.warn(
+        undefined,
+        `weixin polling failed bot=${bot.id} phase=credentials ${formatWeixinDiagnostic(error)}`,
+      );
+      return;
+    }
+    if (signal.aborted) return;
+    if (!token?.trim()) {
+      reportFailure(new WeixinProviderError("/getupdates", "credentials"), "credentials");
       return;
     }
 
     while (!signal.aborted) {
       let lock: Awaited<ReturnType<typeof acquireWeixinPollingLock>>;
       try {
-        lock = await acquireWeixinPollingLock(
-          token,
-          bot.id,
-        );
+        lock = await acquireWeixinPollingLock(token, bot.id);
       } catch (error) {
         if (signal.aborted) return;
         // Bugfix：每个窗口都有独立 host。微信锁 I/O 失败必须退避重试，不能让后台 Promise 退出。
-        deps.statusSink.setRuntimeStatus({
-          botId: bot.id,
-          provider: "weixin",
-          status: "error",
-          message: `Weixin polling lock failed: ${error instanceof Error ? error.message : String(error)}`,
-        });
-        await waitFor(5_000, signal);
+        await waitFor(reportFailure(error, "lock"), signal);
         continue;
       }
       if (!lock) {
+        if (signal.aborted) return;
         deps.statusSink.setRuntimeStatus({
           botId: bot.id,
           provider: "weixin",
           status: "idle",
+          messageId: "bots.runtime.weixinHandledElsewhere",
           message: "Weixin long polling is handled by another ZCode window.",
         });
         await waitFor(BOT_RUNTIME_LOCK_RETRY_MS, signal);
         continue;
       }
+      let phase = "cursor-read";
+      let retryMs = 0;
       try {
-        deps.statusSink.setRuntimeStatus({
-          botId: bot.id,
-          provider: "weixin",
-          status: "polling",
-          // 修复：运行状态会直接展示到 UI。补充 messageId，让前端按当前语言渲染，message 仅作为旧版本兜底。
-          message: "Weixin long polling is running.",
-          messageId: "bots.runtime.weixinLongPollingRunning",
-        });
         while (!signal.aborted) {
+          phase = "cursor-read";
           const buf = await deps.readWeixinGetUpdatesBuf(bot.id);
+          if (signal.aborted) return;
+          phase = "getupdates";
           const result = await getWeixinUpdates({
             bot,
             deps: { loadCredential: (key) => deps.credentialService.load(key) },
@@ -137,6 +154,7 @@ export function createWeixinChannelRuntime(deps: WeixinChannelRuntimeDeps) {
             if (signal.aborted) {
               return;
             }
+            phase = "callback";
             const callbackResult = await deps.processProviderCallback("weixin", {
               botId: bot.id,
               messages: [
@@ -156,10 +174,21 @@ export function createWeixinChannelRuntime(deps: WeixinChannelRuntimeDeps) {
             });
             assertBotCallbackSucceeded("Weixin", callbackResult);
           }
+          // Bugfix：停止或替换凭据后，迟到的 callback 不能提交旧批次或覆盖新连接状态。
+          if (signal.aborted) return;
           if (result.buf) {
             // Bugfix: 微信 get_updates_buf 代表服务端游标，必须等本批消息全部进入业务处理后再持久化。
             // 之前先写游标再处理回复，进程在中途失败会跳过未完成消息，导致 AskUserQuestion 回复顺序错乱或丢失。
+            phase = "cursor-write";
             await deps.writeWeixinGetUpdatesBuf(bot.id, result.buf);
+          }
+          if (signal.aborted) return;
+          if (failures > 0) {
+            deps.logger.info(
+              undefined,
+              `weixin polling recovered bot=${bot.id} failures=${failures}`,
+            );
+            failures = 0;
           }
           deps.statusSink.setRuntimeStatus({
             botId: bot.id,
@@ -174,22 +203,19 @@ export function createWeixinChannelRuntime(deps: WeixinChannelRuntimeDeps) {
         if (signal.aborted) {
           return;
         }
-        deps.statusSink.setRuntimeStatus({
-          botId: bot.id,
-          provider: "weixin",
-          status: "error",
-          message: `Weixin polling failed: ${error instanceof Error ? error.message : String(error)}`,
-        });
-        await waitFor(5_000, signal);
+        retryMs = reportFailure(error, phase);
+        if (retryMs === 0) return;
       } finally {
         // Bugfix：微信 buf 是第三方队列确认点；只有持锁 owner 能消费和写入，退出时必须释放给其他 host 接管。
         await lock.release().catch((error: unknown) => {
           deps.logger.debug(
             undefined,
-            `release Weixin polling lock failed bot=${bot.id}: ${error instanceof Error ? error.message : String(error)}`,
+            `release Weixin polling lock failed bot=${bot.id} ${formatWeixinDiagnostic(error)}`,
           );
         });
       }
+      // Bugfix：先释放跨 Host 锁再退避；停用/重登可立即中止等待，不并发建立第二个 owner。
+      if (retryMs > 0) await waitFor(retryMs, signal);
     }
   }
 
@@ -259,10 +285,7 @@ export function createWeixinChannelRuntime(deps: WeixinChannelRuntimeDeps) {
     }
     const activeWeixinIds = new Set(
       currentConfig.bots
-        .filter(
-          (bot) =>
-            bot.provider === "weixin" && bot.enabled && bot.credentialRef,
-        )
+        .filter((bot) => bot.provider === "weixin" && bot.enabled && bot.credentialRef)
         .map((bot) => bot.id),
     );
     for (const botId of runtimes.keys()) {
@@ -275,7 +298,25 @@ export function createWeixinChannelRuntime(deps: WeixinChannelRuntimeDeps) {
     }
     for (const bot of currentConfig.bots) {
       if (bot.provider === "weixin" && bot.enabled && bot.credentialRef) {
-        const fingerprint = await getConnectionFingerprint(bot);
+        let fingerprint: string;
+        try {
+          fingerprint = await getConnectionFingerprint(bot);
+        } catch (error) {
+          if (!isLatest()) return;
+          deps.statusSink.setRuntimeStatus({
+            botId: bot.id,
+            provider: "weixin",
+            status: "error",
+            messageId: "bots.runtime.weixinRecoveryFailed",
+            message:
+              "Weixin credentials could not be read. Check local storage and enable the bot again.",
+          });
+          deps.logger.warn(
+            undefined,
+            `weixin refresh failed bot=${bot.id} phase=credentials ${formatWeixinDiagnostic(error)}`,
+          );
+          continue;
+        }
         if (!isLatest()) {
           return;
         }
@@ -314,7 +355,7 @@ export function createWeixinChannelRuntime(deps: WeixinChannelRuntimeDeps) {
     void refresh(config).catch((error: unknown) => {
       deps.logger.warn(
         undefined,
-        `refresh Weixin polling failed: ${error instanceof Error ? error.message : String(error)}`,
+        `refresh Weixin polling failed: ${formatWeixinDiagnostic(error)}`,
       );
     });
   }
