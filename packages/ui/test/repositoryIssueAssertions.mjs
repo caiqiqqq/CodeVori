@@ -114,7 +114,58 @@ export async function assertResponsiveIssueCreation({
   });
   assert.ok(dialogBounds.width <= dialogBounds.client, theme + "/" + width + " create overflow");
   await page.screenshot({ path: join(artifacts, theme + "-" + width + "-create.png") });
-  await create.getByRole("button", { name: "取消", exact: true }).click();
+  const codes = { 1120: "SERVER_ERROR", 390: "HTTP_ERROR", 320: "BAD_REQUEST" };
+  const code = codes[width];
+  const before = await page.evaluate(
+    () => window.__forge.calls.filter((c) => c.op === "create").length,
+  );
+  const body = await create.getByRole("textbox", { name: "描述", exact: true }).inputValue();
+  await page.evaluate((code) => {
+    window.__forge.failCreate = "FORGE_" + code;
+  }, code);
+  await create.getByRole("button", { name: "创建", exact: true }).click();
+  const alert = create.getByRole("alert");
+  await alert.waitFor();
+  assert.match(
+    await alert.innerText(),
+    code === "SERVER_ERROR" ? /暂时不可用/ : code === "BAD_REQUEST" ? /请求内容/ : /未能完成请求/,
+  );
+  assert.equal(
+    await create.getByRole("textbox", { name: "标题", exact: true }).inputValue(),
+    "改进议题创建体验",
+  );
+  assert.equal(await create.getByRole("textbox", { name: "描述", exact: true }).inputValue(), body);
+  await create
+    .getByTestId("repository-selected-labels")
+    .getByText("enhancement", { exact: true })
+    .waitFor();
+  if (code !== "BAD_REQUEST") {
+    await create.getByText(/请先查看仓库/).waitFor();
+    await create.getByRole("button", { name: "打开仓库", exact: true }).click();
+    assert.ok(
+      await page.evaluate(() =>
+        window.__forge.calls.some(
+          (c) => c.op === "external" && c.url === "https://forge.example.invalid/team/A",
+        ),
+      ),
+    );
+  }
+  await settleVisuals();
+  assert.equal(
+    await page.evaluate(() => window.__forge.calls.filter((c) => c.op === "create").length),
+    before + 1,
+    "Rendering or opening the repository must not resend the POST",
+  );
+  await page.screenshot({ path: join(artifacts, theme + "-" + width + "-create-error.png") });
+  await create.getByRole("button", { name: "创建", exact: true }).click();
+  await create.waitFor({ state: "detached" });
+  const detail = page.getByTestId("repository-item-detail");
+  await detail.waitFor();
+  const calls = await page.evaluate(() => window.__forge.calls.filter((c) => c.op === "create"));
+  assert.equal(calls.length, before + 2);
+  assert.deepEqual(calls.at(-1).labels, ["bug", "enhancement"]);
+  assert.equal(calls.at(-1).body, body);
+  await detail.getByRole("button", { name: "关闭详情", exact: true }).click();
 }
 
 export async function assertIssueCatalogScopeAndGitlab({

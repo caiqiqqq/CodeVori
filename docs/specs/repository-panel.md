@@ -1,5 +1,48 @@
 # Repository Panel
 
+## Forge request failures and issue creation recovery (#175)
+
+- The bound Host's existing Forge API client owns HTTP error classification and
+  failure diagnostics. Preserve authentication, permission, not-found, conflict
+  and rate-limit codes; distinguish HTTP 400 (`BAD_REQUEST`), 5xx (`SERVER_ERROR`)
+  and other unsuccessful HTTP responses (`HTTP_ERROR`) from malformed successful
+  responses (`RESPONSE`). A GitHub 403 with exhausted rate-limit headers or a
+  numeric Retry-After is a rate-limit error. Do not infer a cause from response
+  prose. Errors carry the numeric HTTP `status` through existing RPC metadata.
+- Emit one service warning per failed API attempt with provider, method, phase,
+  HTTP status when available and a bounded provider request ID. Never include
+  the server URL, repository path, query, credentials, request/response bodies,
+  status text, cookies or arbitrary response headers. Discard invalid request
+  IDs. Body cleanup failure must not replace the original HTTP error.
+- New-issue drafts and selected attributes remain owned by the current dialog;
+  the existing mutation admission prevents simultaneous submissions. Keep the
+  complete draft after failure and let the user submit explicitly after checking
+  the result. A network, 5xx, unknown HTTP or response failure may leave creation
+  uncertain: show a localized reminder to check the repository before resending,
+  with the existing platform external-link action. Never retry POST automatically
+  or report that an uncertain creation definitely failed on the provider.
+- Desktop and mobile use the same bound Host command and error codes. Preserve
+  target/account validation and stale Host reply guards. No new queue, receipt,
+  persistence, protocol command or stream/replay behavior is introduced. Old Hosts
+  returning `RESPONSE` retain a useful fallback and the uncertainty reminder.
+
+```text
+dialog draft -> existing mutation admission -> bound Host target/account check
+  -> single provider POST -> success -> detail + list refresh
+                         -> failure -> sanitized Host warning + RPC code/status
+                            -> same dialog draft + localized recovery action
+user checks provider result -> explicit resubmit through same admission
+```
+
+Acceptance: simulate GitHub issue POST 400/401/403/404/409/422/429/5xx and an
+unmapped HTTP status; check code/status, exactly one POST, draft retention and
+explicit retry success. Verify no sensitive material in diagnostics, invalid
+request IDs, malformed/oversized success bodies and cancellation failures.
+Browser E2E covers mobile 320/390px and desktop, both themes, selected labels,
+failure messages, repository action, retained title/body and no automatic resend.
+Historical #175's exact HTTP status was not recorded and cannot be inferred from
+`FORGE_RESPONSE`; these changes repair that diagnostic and recovery gap.
+
 ## Repository Markdown parser isolation
 
 - Relative image and link resolution uses the current content context for every

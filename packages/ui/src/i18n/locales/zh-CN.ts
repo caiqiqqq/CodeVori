@@ -567,6 +567,11 @@ const zhCN: Record<string, string> = {
   "repositoryPanel.error.MERGE_UNSUPPORTED": "仓库不允许这种合并方式，请刷新后重新选择。",
   "repositoryPanel.error.CONFLICT": "托管平台拒绝了操作，请刷新条目后重试。",
   "repositoryPanel.error.RESPONSE": "加载或提交失败，请稍后重试。",
+  "repositoryPanel.error.BAD_REQUEST": "托管平台拒绝了请求内容，请检查标题、正文及所选属性。",
+  "repositoryPanel.error.SERVER_ERROR": "托管平台暂时不可用，请稍后再试。",
+  "repositoryPanel.error.HTTP_ERROR": "托管平台未能完成请求，请在仓库网页查看服务状态或访问限制。",
+  "repositoryPanel.checkBeforeResubmit":
+    "草稿已保留。请先查看仓库，确认是否已创建该议题，再决定是否重新提交。",
   "repositoryPanel.error.INVALID_MEDIA": "图片地址或格式不受支持。",
   "repositoryPanel.error.MEDIA_UNAVAILABLE": "当前托管平台无法提供此图片，请在浏览器中查看。",
   "startPlan.recommendation.subagentDescription":

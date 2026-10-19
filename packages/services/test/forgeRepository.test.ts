@@ -1466,14 +1466,17 @@ test("failure to read merge settings disables methods without discarding the PR"
 });
 
 test("redirects, network failures and oversized responses fail closed without returning payloads", async () => {
-  for (const reply of [
-    new Response("private payload", {
-      status: 302,
-      headers: { location: "https://other.example.invalid" },
-    }),
-    new Error("sensitive network details"),
-    new Response("x".repeat(8 * 1024 * 1024 + 1)),
-  ]) {
+  for (const [reply, expectedCode] of [
+    [
+      new Response("private payload", {
+        status: 302,
+        headers: { location: "https://other.example.invalid" },
+      }),
+      "FORGE_HTTP_ERROR",
+    ],
+    [new Error("sensitive network details"), "FORGE_NETWORK"],
+    [new Response("x".repeat(8 * 1024 * 1024 + 1)), "FORGE_RESPONSE"],
+  ] as const) {
     const f = fixture(
       "https://github.com/team/project.git",
       [account("github", "https://github.com")],
@@ -1489,10 +1492,51 @@ test("redirects, network failures and oversized responses fail closed without re
       }),
       (error: unknown) => {
         assert.ok(error instanceof Error);
-        assert.match(error.message, /^FORGE_(NETWORK|RESPONSE)$/);
+        assert.equal(error.message, expectedCode);
         return true;
       },
     );
     assert.equal(f.state.calls.length, 1);
+  }
+});
+
+test("failed issue creation preserves HTTP status and the same draft succeeds only on explicit resubmit", async () => {
+  const f = fixture(
+    "https://github.com/team/project.git",
+    [account("github", "https://github.com")],
+    [
+      new Response("private-provider-body", { status: 502 }),
+      Response.json(
+        { number: 88, title: "Retained title", body: "Retained body", state: "open" },
+        { status: 201 },
+      ),
+    ],
+  );
+  const request = {
+    ...(await f.target()),
+    title: "Retained title",
+    body: "Retained body",
+    labels: ["enhancement"],
+  };
+  await assert.rejects(
+    f.service.createForgeIssue(request),
+    (error: Error & { status?: number }) => {
+      assert.equal(error.message, "FORGE_SERVER_ERROR");
+      assert.equal(error.status, 502);
+      return true;
+    },
+  );
+  assert.equal(f.state.calls.length, 1);
+  const created = await f.service.createForgeIssue(request);
+  assert.equal(created.number, 88);
+  assert.equal(f.state.calls.length, 2);
+  for (const call of f.state.calls) {
+    assert.equal(call.init.method, "POST");
+    assert.equal(call.url.pathname, "/repos/team/project/issues");
+    assert.deepEqual(JSON.parse(String(call.init.body)), {
+      title: "Retained title",
+      body: "Retained body",
+      labels: ["enhancement"],
+    });
   }
 });

@@ -645,6 +645,13 @@ const enUS: Record<string, string> = {
   "repositoryPanel.error.CONFLICT":
     "The hosting provider rejected the operation. Refresh the item and retry.",
   "repositoryPanel.error.RESPONSE": "Loading or submission failed. Try again later.",
+  "repositoryPanel.error.BAD_REQUEST":
+    "The forge rejected the request content. Check the title, body and selected attributes.",
+  "repositoryPanel.error.SERVER_ERROR": "The forge is temporarily unavailable. Try again later.",
+  "repositoryPanel.error.HTTP_ERROR":
+    "The forge could not complete the request. Check its website for service status or access restrictions.",
+  "repositoryPanel.checkBeforeResubmit":
+    "Your draft has been kept. Check the repository to see whether the issue was created before submitting again.",
   "repositoryPanel.error.INVALID_MEDIA": "This image URL or format is not supported.",
   "repositoryPanel.error.MEDIA_UNAVAILABLE":
     "This provider cannot serve the image. Open it in your browser.",
