@@ -31,11 +31,11 @@ try {
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
     import {applyTheme} from '../../../ui/src/useTheme.ts';
     import '../../../ui/src/styles.css';
-    const state:any={calls:[],pending:[],delay:true,fail:false,supported:true};window.__images=state;
+    const state:any={calls:[],pending:[],delay:true,fail:false,supported:true,requiresWebLogin:true};window.__images=state;
     const services:any={};
     for(const host of ['A','B']) services[host]={
       async getForgeIssueOptions(){return {labels:{items:[],error:null},assignees:{items:[],error:null},milestones:{items:[],error:null}}},
-      async getForgeImageUploadCapability(){return {supported:state.supported,requiresWebLogin:true,reason:state.supported?undefined:'web-login-unavailable'}},
+      async getForgeImageUploadCapability(){return {supported:state.supported,requiresWebLogin:state.requiresWebLogin,reason:state.supported?undefined:'web-login-unavailable'}},
       async uploadForgeImage(request:any){state.calls.push({host,...request});if(state.fail){const failure=state.fail;state.fail=false;throw new Error(typeof failure==='string'?failure:'FORGE_NETWORK')}const url='https://github.com/user-attachments/assets/'+request.requestId;return state.delay?new Promise(resolve=>state.pending.push(()=>resolve({url}))):{url}},
     };
     const broadcast:any={send(){},onMessage(){return {dispose(){}}}};
@@ -84,6 +84,21 @@ try {
   assert.equal(await page.evaluate(() => window.__images.calls.length), 0);
   await choose("first.png");
   assert.equal(await create.isDisabled(), true);
+  const desktopUploadHint =
+    "手机上无法操作电脑的登录窗口；如需直接在手机上添加图片，可打开仓库网页。草稿和图片不会自动带入网页。";
+  const webButton = dialog.getByRole("button", { name: "打开仓库网页", exact: true });
+  await dialog.getByText(desktopUploadHint, { exact: true }).waitFor();
+  await dialog.getByText("正在通过电脑上传图片…", { exact: true }).waitFor();
+  await webButton.click();
+  assert.equal(
+    await page.evaluate(() => window.__images.external),
+    "https://github.com/synthetic/project",
+  );
+  assert.equal(await body.inputValue(), "原始描述");
+  assert.equal(await title.inputValue(), "带截图的议题");
+  assert.equal(await dialog.getByTestId("repository-draft-image").count(), 1);
+  assert.equal(await page.evaluate(() => window.__images.calls.length), 1);
+  assert.equal(await page.evaluate(() => window.__images.created), undefined);
   await body.fill("上传期间继续编辑的描述");
   await release();
   await dialog.getByText("图片已上传", { exact: true }).waitFor();
@@ -130,6 +145,10 @@ try {
         );
       });
       assert.equal(await dialog.getByText(authError, { exact: true }).isVisible(), true);
+      assert.equal(await dialog.getByText(desktopUploadHint, { exact: true }).isVisible(), true);
+      await webButton.click();
+      assert.equal(await body.inputValue(), "上传期间继续编辑的描述\n\n");
+      assert.equal(await create.isDisabled(), true);
       assert.ok(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1));
       await page.screenshot({ path: join(artifacts, `github-sign-in-${theme}-${width}.png`) });
     }
@@ -238,6 +257,17 @@ try {
     await page.evaluate(() => window.__images.external),
     "https://github.com/synthetic/project",
   );
+  await page.evaluate(() => {
+    window.__images.supported = true;
+    window.__images.requiresWebLogin = false;
+    window.__images.remount();
+  });
+  await choose("api-upload.png");
+  await dialog.getByText("正在上传图片…", { exact: true }).waitFor();
+  assert.equal(await dialog.getByText(desktopUploadHint, { exact: true }).count(), 0);
+  assert.equal(await webButton.count(), 0);
+  await release();
+  await dialog.getByText("图片已上传", { exact: true }).waitFor();
   assert.deepEqual(errors, []);
   process.stdout.write(`Repository image E2E passed. Screenshots: ${artifacts}\n`);
 } catch (error) {

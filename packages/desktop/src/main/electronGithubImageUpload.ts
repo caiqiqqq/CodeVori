@@ -13,6 +13,11 @@ export async function executeGithubImageUpload(params: {
   win: BrowserWindow;
   context: ForgeWebUploadContext;
   signal: AbortSignal;
+  onNavigationFailure?: (details: {
+    phase: "repository" | "login";
+    code?: string;
+    errno?: number;
+  }) => void;
 }): Promise<ForgeImageUploadResult> {
   const context = forgeWebUploadContextSchema.parse(params.context);
   const serverUrl = new URL(context.serverUrl);
@@ -83,6 +88,26 @@ export async function executeGithubImageUpload(params: {
       else reject(error instanceof Error ? error : new Error("FORGE_UPLOAD_UNAVAILABLE"));
     };
     const cancelled = () => finish(undefined, new Error("FORGE_MEDIA_AUTHENTICATION_CANCELLED"));
+    const navigationFailed = (phase: "repository" | "login", error: unknown) => {
+      if (settled) return;
+      // loadURL 原始错误包含仓库/登录回跳 URL；只保留 Chromium 错误码，避免吞掉排障依据或泄露私有路径。
+      const errorCode =
+        error && typeof error === "object" && "code" in error ? error.code : undefined;
+      const code =
+        typeof errorCode === "string" && /^ERR_[A-Z0-9_]{1,64}$/.test(errorCode)
+          ? errorCode
+          : error instanceof Error
+            ? error.message.match(/^ERR_[A-Z0-9_]{1,64}(?=\s|\(|$)/)?.[0]
+            : undefined;
+      const errno =
+        error && typeof error === "object" && "errno" in error ? error.errno : undefined;
+      params.onNavigationFailure?.({
+        phase,
+        ...(code ? { code } : {}),
+        ...(typeof errno === "number" && Number.isSafeInteger(errno) ? { errno } : {}),
+      });
+      finish(undefined, new Error("FORGE_NETWORK"));
+    };
     const deadline = setTimeout(
       () => finish(undefined, new Error("FORGE_MEDIA_AUTHENTICATION_CANCELLED")),
       600_000,
@@ -140,7 +165,7 @@ export async function executeGithubImageUpload(params: {
             executing = false;
             void window
               .loadURL(loginUrl.href)
-              .catch(() => finish(undefined, new Error("FORGE_NETWORK")));
+              .catch((error: unknown) => navigationFailed("login", error));
             return;
           }
           finish(undefined, new Error(message ?? "FORGE_UPLOAD_UNCERTAIN"));
@@ -148,6 +173,7 @@ export async function executeGithubImageUpload(params: {
       );
     });
     if (params.signal.aborted || params.win.isDestroyed()) cancelled();
-    else void window.loadURL(pageUrl).catch(() => finish(undefined, new Error("FORGE_NETWORK")));
+    else
+      void window.loadURL(pageUrl).catch((error: unknown) => navigationFailed("repository", error));
   });
 }
