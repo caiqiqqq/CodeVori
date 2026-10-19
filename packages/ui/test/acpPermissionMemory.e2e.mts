@@ -18,6 +18,7 @@ const name = `__acp-permission-e2e-${process.pid}`;
 const html = join(root, `${name}.html`);
 const moduleFile = join(root, `${name}.tsx`);
 const directory = await mkdtemp(join(tmpdir(), "zcode-permission-e2e-"));
+const viteOrigin = process.env.ACP_CONFIG_E2E_ORIGIN ?? "http://127.0.0.1:5174";
 const calls: Array<{ kind: string; value?: string | boolean }> = [];
 const serverErrors: string[] = [];
 const mode = (value = "agent"): AcpConfigOption => ({
@@ -31,21 +32,48 @@ const mode = (value = "agent"): AcpConfigOption => ({
     { value: "agent-full-access", name: "Full access" },
   ],
 });
-const connect: AcpConnectionFactory = async ({ sessionId }) => ({
-  sessionId: sessionId ?? randomUUID(),
-  configOptions: [mode()],
-  modeState: null,
-  async setConfigOption(_id, value) {
-    calls.push({ kind: "permission", value });
-    return [mode(String(value))];
-  },
-  async setMode() {},
-  async prompt() {
-    throw new Error("This fixture must never prompt an Agent");
-  },
-  async cancel() {},
-  close() {},
-});
+const config = (): AcpConfigOption[] => [
+  mode(),
+  ...(
+    [
+      ["model", "5.6-sol", "6-sol", "model"],
+      ["reasoning_effort", "medium", "high", "thought_level"],
+      ["collaboration_mode", "default", "plan", "collaboration_mode"],
+    ] as const
+  ).map(
+    ([id, currentValue, other, category]): AcpConfigOption => ({
+      id,
+      name: id,
+      category,
+      type: "select",
+      currentValue,
+      options: [currentValue, other].map((value) => ({ value, name: value })),
+    }),
+  ),
+];
+const connect: AcpConnectionFactory = async ({ sessionId }) => {
+  let options = config();
+  return {
+    sessionId: sessionId ?? randomUUID(),
+    configOptions: options,
+    modeState: null,
+    async setConfigOption(id, value) {
+      calls.push({ kind: id, value });
+      options = options.map((option) =>
+        option.id === id && option.type === "select"
+          ? { ...option, currentValue: String(value) }
+          : option,
+      );
+      return options;
+    },
+    async setMode() {},
+    async prompt() {
+      throw new Error("This fixture must never prompt an Agent");
+    },
+    async cancel() {},
+    close() {},
+  };
+};
 let service = createAcpService({ directory, connect });
 const server = createServer(async (request, response) => {
   response.setHeader("Access-Control-Allow-Origin", "*");
@@ -135,6 +163,8 @@ try {
       const conversation=useAcpConversation(service as never,{
         workspacePath:'/fixture/permission-e2e',workspaceIdentity:identity
       },'codex');
+      window.__permissionSession=conversation.selected?.id;
+      window.__permissionOpenHistory=id=>conversation.selectById('codex',id);
       const ready=conversation.loaded&&conversation.ready&&!conversation.busy;
       return <div data-testid="permission-state" data-ready={ready} data-error={conversation.error??''}>
         <AcpComposerConfigControls agent="codex" sessionId={conversation.selected?.id}
@@ -171,7 +201,7 @@ try {
           );
         });
     };
-    await page.goto(`http://127.0.0.1:5174/${name}.html`);
+    await page.goto(`${viteOrigin}/${name}.html`);
     await ready();
     const trigger = page.getByTestId("acp-config-trigger-mode");
     const select = async (label: string) => {
@@ -234,6 +264,56 @@ try {
     await page.reload();
     await ready();
     assert.match((await trigger.getAttribute("aria-label"))!, /自动审核/);
+    // 用原始 Host 会话 ID 恢复，而不是新草稿；验证三种配置不被 load 默认值覆盖。
+    const historyResponse = await fetch(`${endpoint}/create`, {
+      method: "POST",
+      body: JSON.stringify({
+        workspacePath: "/fixture/permission-e2e",
+        workspaceIdentity: "workspace:one",
+        agent: "codex",
+      }),
+    });
+    assert.equal(historyResponse.status, 200);
+    const historyId = (await historyResponse.json()).id;
+    const selections = { model: "6-sol", reasoning_effort: "high", collaboration_mode: "plan" };
+    for (const [configId, value] of Object.entries(selections)) {
+      const response = await fetch(`${endpoint}/setConfigOption`, {
+        method: "POST",
+        body: JSON.stringify({
+          workspacePath: "/fixture/permission-e2e",
+          workspaceIdentity: "workspace:one",
+          id: historyId,
+          configId,
+          value,
+        }),
+      });
+      assert.equal(response.status, 200);
+    }
+    const beforeRestore = calls.length;
+    await fetch(`${endpoint}/restart`, { method: "POST" });
+    await page.reload();
+    await ready();
+    await page.evaluate((id) => (window as any).__permissionOpenHistory(id), historyId);
+    await ready();
+    await page.waitForFunction(
+      (expected) => (window as any).__permissionSession === expected,
+      historyId,
+    );
+    for (const [id, value] of Object.entries(selections))
+      assert.match(
+        (await page.getByTestId(`acp-config-trigger-${id}`).getAttribute("aria-label"))!,
+        new RegExp(
+          id === "reasoning_effort"
+            ? "高|high"
+            : id === "collaboration_mode"
+              ? "规划|计划|plan"
+              : value,
+        ),
+      );
+    assert.deepEqual(
+      calls.slice(beforeRestore).map(({ kind, value }) => [kind, value]),
+      Object.entries(selections),
+    );
     assert.deepEqual(
       errors,
       [],

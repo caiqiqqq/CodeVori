@@ -1053,7 +1053,7 @@ test("ACP config is Agent-owned, validates choices and refreshes the full catalo
     await writeFile(savedPath, JSON.stringify(saved));
     const restarted = createAcpService({ directory: dir, connect });
     assert.deepEqual((await restarted.read({ ...workspace, id: codex.id })).configOptions, []);
-    // session/load 的 Agent 目录覆盖旧快照，旧会话无需重建。
+    // 没有保存选择的旧快照沿用 session/load 返回的原生配置。
     const refreshed = await restarted.refresh({ ...workspace, id: codex.id });
     assert.equal(refreshed.configOptions[0]?.currentValue, "sol");
     await assert.rejects(restarted.refresh({ workspacePath: "/tmp/other", id: codex.id }));
