@@ -1455,7 +1455,6 @@ export function McpSettingsSection({
         </div>
       ) : null}
 
-      {showBuiltInIssues ? <BuiltInIssuesMcp key={activeWorkspaceKey} services={services} /> : null}
       {!mcpProjectionReady ? (
         <PluginLoadingState label={intl.formatMessage({ id: "common.loading" })} />
       ) : hasEmptySearchResult ? (
@@ -1565,6 +1564,7 @@ export function McpSettingsSection({
           </section>
         ))}
       </div>
+      {showBuiltInIssues ? <BuiltInIssuesMcp key={activeWorkspaceKey} services={services} /> : null}
       <McpServersImportDialog
         // 对话框携带的是 mcpStore 的 currentProjectPath，只有它与当前 target
         // 一致时才和 services 的 host 同源；不一致的过渡帧不能让导入按 A 的 host 落盘 B 的路径。
