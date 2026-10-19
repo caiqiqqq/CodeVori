@@ -569,6 +569,19 @@ Existing filters, page and remote selection remain unchanged.
 
 ### New-issue images
 
+- GitHub's native-window upload is performed on the connected Desktop, including
+  requests from mobile Web. Before selection, explain that sign-in may require
+  the GitHub window on that computer. While uploading, identify the computer as
+  the upload location without claiming that authentication is actually pending.
+  Keep the existing repository website action available for supported native
+  uploads as well as unavailable capability, including during pending/failure.
+  Opening it preserves the current draft and does not create an issue or retry
+  an upload. It opens the repository only; it does not transfer draft text/files.
+  API uploads (GitLab) retain their generic hint/status and need no Desktop hint.
+  This is a presentation fix, not a new authentication flow or upload owner:
+  `mobile draft → bound Host upload/receipt → Desktop window → result → same draft`.
+  Validate the guidance, website action, editable draft and creation gate at
+  mobile/desktop widths in both themes, plus the non-native capability path.
 - The draft editor accepts image files, pasted screenshots and dropped images.
   Accept PNG, JPEG, GIF and WebP, at most 4 MiB each and eight images per draft.
   Keep local thumbnails, uploading/failed/succeeded state, retry and removal.
@@ -616,6 +629,15 @@ Existing filters, page and remote selection remain unchanged.
 - Native account windows apply the existing Desktop HTTP proxy/domain-selection
   policy before navigation. Network settings are shared while cookies stay
   isolated; these windows keep strict TLS verification. See `network-proxy.md`.
+  GitHub native navigation failures retain a Main-side diagnostic containing
+  only the navigation phase (`repository` or `login`), Chromium `ERR_*` code
+  and numeric error number, when available. Never log the raw error, stack,
+  URL, repository/account identity, cookies or image data. The Host/UI still
+  receive the existing `FORGE_NETWORK` error; diagnostics do not retry navigation
+  or an upload, clear authentication, or change the request/receipt owner.
+  Settled/cancelled requests ignore late navigation failures. Real Electron
+  regression coverage must distinguish repository and login failures, verify
+  redaction, and keep existing successful upload/login/cancellation coverage.
 - The native upload transport is a port behind Host, not UI or task state in Main.
   Extend the strict existing Host native-media protocol with typed upload request
   and result variants. Tokens/cookies stay on Host/Main; native replies contain

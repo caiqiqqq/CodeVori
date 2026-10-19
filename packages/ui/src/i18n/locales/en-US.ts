@@ -476,13 +476,16 @@ const enUS: Record<string, string> = {
   "repositoryPanel.imageUploadHint":
     "Choose, paste or drop images; up to 4 MB each, 8 images total",
   "repositoryPanel.imageWebLoginHint":
-    "Choose, paste or drop up to 8 images, 4 MB each; GitHub may require web sign-in",
+    "Up to 8 images, 4 MB each. GitHub uploads run on the connected computer and may require signing in there with the repository's linked account",
+  "repositoryPanel.imageWebLoginHelp":
+    "The computer's sign-in window cannot be used from your phone. To add images directly on your phone, open the repository website. Draft text and images are not transferred automatically.",
   "repositoryPanel.imageWebUnavailable":
     "This Host cannot upload GitHub images. Use the repository website",
   "repositoryPanel.imageProviderUnsupported":
     "This provider does not support images before issue creation",
   "repositoryPanel.openRepositoryWeb": "Open repository website",
   "repositoryPanel.imageUploading": "Uploading image…",
+  "repositoryPanel.imageUploadingOnDesktop": "Uploading image via computer…",
   "repositoryPanel.imageUploaded": "Image uploaded",
   "repositoryPanel.removeImage": "Remove image {name}",
   "repositoryPanel.error.UPLOAD_LIMIT": "An issue can contain up to 8 uploaded images",
