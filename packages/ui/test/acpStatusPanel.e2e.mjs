@@ -34,7 +34,12 @@ try {
       const workspacePath='/synthetic/status';
       const listeners=new Set(); const events=[];
       let snapshot={id:'11111111-1111-4111-8111-111111111111',agent:'codex',workspacePath,acpSessionId:'native-fixture',
-        title:'status fixture',revision:1,status:'idle',entries:[{id:'user:first',kind:'user',text:'first task'},
+        title:'status fixture',revision:1,status:'idle',entries:[
+          ...Array.from({length:12},(_,index)=>[
+            {id:'history-user:'+index,kind:'user',text:'History question '+index},
+            {id:'history-answer:'+index,kind:'assistant',text:('History answer '+index+' with enough detail to scroll.\\n\\n').repeat(12)},
+          ]).flat(),
+          {id:'user:first',kind:'user',text:'first task'},
           {id:'plan:first',kind:'plan',entries:[{content:'ACP inspect source',priority:'high',status:'in_progress'}]}],
         usageTurns:[],nativeUsage:{nativeSessionId:'native-fixture',usage:{inputTokens:100,outputTokens:20,totalTokens:120,cacheReadTokens:60}},configOptions:[],modeState:null,contextUsage:null,goal:'ACP objective',pendingPermission:null,error:null,
         queue:{items:[],autoDrain:true}};
@@ -74,7 +79,7 @@ try {
           goal:goal=>{snapshot.goal=goal;publish()},
           nextSession:()=>{snapshot={...snapshot,id:'22222222-2222-4222-8222-222222222222',title:'second fixture',acpSessionId:'second-native',nativeUsage:null,usageTurns:[],entries:[{id:'user:other',kind:'user',text:'other'}],goal:'second objective'};setEpoch(n=>n+1)},
         };
-        return <main className="h-screen bg-background text-foreground p-2" data-fixture-ready="true" data-fixture-epoch={epoch}>
+        return <main className="h-screen bg-background text-foreground" data-fixture-ready="true" data-fixture-epoch={epoch}>
           <SessionPane key={epoch} paneId="status-fixture" workspacePath={workspacePath} sessionId={null} focused
             gitWorktreeReviewSourceId="unstaged" gitSummary={gitUnavailable?{...dirtySummary,isGitAvailable:false,isRepository:false}:noGit?{...dirtySummary,isRepository:false}:dirtySummary} gitDirtyFileCount={dirty?2:0}
             gitWorktreeChangeSummary={dirty?{added:12,removed:3}:{added:0,removed:0}}
@@ -89,7 +94,7 @@ try {
     ),
   ]);
   browser = await chromium.launch({ headless: true });
-  for (const width of [1440, 375]) {
+  for (const width of [1440, 1280, 1279, 375]) {
     for (const theme of ["zai-light", "zai-dark"]) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       page.setDefaultTimeout(60000);
@@ -149,21 +154,108 @@ try {
       const expand = async () => {
         const button = panel.getByRole("button", { name: /展开状态/ });
         const mode = await panel.getAttribute("data-display-mode");
-        if (mode === "mini" || (mode === "auto" && width === 375)) await button.click();
+        if (mode === "mini" || (mode === "auto" && width < 1280)) await button.click();
       };
       await expand();
       await panel.getByRole("button", { name: "切换 Git 分支" }).waitFor();
       assert.equal(await panel.locator("[data-goal-action]").count(), 0);
       await panel.locator("[data-acp-objective]").filter({ hasText: "ACP objective" }).waitFor();
       await panel.getByTitle("ACP inspect source", { exact: true }).waitFor();
+      // Issue #196: compare every rendered frame, including the old 150ms transform transition.
+      const startGeometryCapture = async () => {
+        await page.evaluate(async () => {
+          await document.fonts.ready;
+          const scroll = document.querySelector("[data-v4-timeline-scroll]");
+          const composer = document.querySelector('[data-testid="v4-composer-input"]');
+          const history = document.querySelector("[data-v4-timeline-virtual-history]");
+          const message = [...history.querySelectorAll("[data-v4-turn-unit]")].find((node) => {
+            const rect = node.getBoundingClientRect();
+            const viewport = scroll.getBoundingClientRect();
+            return rect.bottom > viewport.top && rect.top < viewport.bottom;
+          });
+          const columns = [
+            ...document.querySelectorAll(
+              "[data-v4-timeline-content-column], [data-v4-composer-dock-content]",
+            ),
+          ];
+          const sample = () => ({
+            scrollTop: scroll.scrollTop,
+            rects: [...columns, message, scroll].map((node) => {
+              const { x, y, width, height } = node.getBoundingClientRect();
+              return { x, y, width, height };
+            }),
+            sameNodes:
+              scroll.isConnected &&
+              composer.isConnected &&
+              history.isConnected &&
+              message.isConnected,
+            draft: composer.textContent,
+          });
+          const state = { baseline: sample(), frames: [], active: true };
+          window.__geometryCapture = state;
+          const capture = () => {
+            state.frames.push(sample());
+            if (state.active) requestAnimationFrame(capture);
+          };
+          requestAnimationFrame(capture);
+        });
+      };
+      const assertStableGeometry = async () => {
+        const { baseline, frames } = await page.evaluate(async () => {
+          for (let frame = 0; frame < 20; frame++) await new Promise(requestAnimationFrame);
+          window.__geometryCapture.active = false;
+          return window.__geometryCapture;
+        });
+        assert.ok(frames.length >= 20);
+        for (const frame of frames) {
+          assert.equal(frame.sameNodes, true, "panel controls must retain conversation DOM");
+          assert.equal(frame.draft, baseline.draft, "panel controls must retain unsent draft");
+          assert.ok(
+            Math.abs(frame.scrollTop - baseline.scrollTop) <= 1,
+            "panel controls must retain scroll position",
+          );
+          frame.rects.forEach((rect, index) => {
+            for (const key of ["x", "y", "width", "height"]) {
+              assert.ok(
+                Math.abs(rect[key] - baseline.rects[index][key]) <= 1,
+                `${width}/${theme}: column ${index} ${key} moved from ${baseline.rects[index][key]} to ${rect[key]}`,
+              );
+            }
+          });
+        }
+      };
+      await page.getByTestId("v4-composer-input").fill("retained status-panel draft");
+      await page.waitForFunction(() =>
+        [...document.getAnimations()].every((a) => a.playState !== "running"),
+      );
+      await startGeometryCapture();
       await panel.getByRole("button", { name: "收起为胶囊" }).click();
+      await assertStableGeometry();
       await page.waitForFunction(
         () =>
           document
             .querySelector('[data-testid="chat-summary-panel"]')
             ?.getAttribute("data-display-mode") === "mini",
       );
+      await startGeometryCapture();
       await expand();
+      await assertStableGeometry();
+      // Repeat away from the bottom so a scroll-to-bottom side effect cannot hide a regression.
+      await page.evaluate(() => {
+        const scroll = document.querySelector("[data-v4-timeline-scroll]");
+        scroll.scrollTop = Math.max(0, scroll.scrollTop - 500);
+      });
+      await page.waitForFunction(() => {
+        const scroll = document.querySelector("[data-v4-timeline-scroll]");
+        return scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop > 100;
+      });
+      await startGeometryCapture();
+      await panel.getByRole("button", { name: "收起为胶囊" }).click();
+      await assertStableGeometry();
+      await startGeometryCapture();
+      await expand();
+      await assertStableGeometry();
+      await startGeometryCapture();
       await panel.getByRole("button", { name: "状态面板展开策略" }).click();
       await page.getByRole("menuitemradio", { name: "自动展开" }).click();
       await page.waitForFunction(
@@ -172,9 +264,10 @@ try {
             .querySelector('[data-testid="chat-summary-panel"]')
             ?.getAttribute("data-display-mode") === "auto",
       );
+      await assertStableGeometry();
       await expand();
       // 宽屏与 API 使用同一正文/输入框让位规则；手机保持胶囊自动模式且不横向溢出。
-      if (width === 1440) {
+      if (width >= 1280) {
         const rect = await panel.boundingBox();
         const inputRect = await page.getByTestId("v4-composer-input").boundingBox();
         assert.ok(rect && inputRect && inputRect.x + inputRect.width <= rect.x);
@@ -250,15 +343,19 @@ try {
       assert.equal(await panel.getByText("ACP objective", { exact: true }).count(), 0);
       await page.evaluate(() => window.__status.dirty(false));
       await panel.getByRole("button", { name: "切换 Git 分支" }).waitFor();
+      await startGeometryCapture();
       await page.evaluate(() => window.__status.goal(null));
       await page.evaluate(() => window.__status.variant(null));
       await panel.getByTestId("conversation-branch-entry").getByText("fixture-main").waitFor();
       assert.equal(await panel.getAttribute("data-state"), "collapsed");
+      await assertStableGeometry();
       await page.waitForFunction(() =>
         [...document.getAnimations()].every((animation) => animation.playState !== "running"),
       );
       await page.screenshot({ path: join(artifacts, `branch-clean-${width}-${theme}.png`) });
+      await startGeometryCapture();
       await panel.getByTestId("conversation-branch-entry").click();
+      await assertStableGeometry();
       assert.equal(await panel.getAttribute("data-state"), "expanded");
       assert.equal(
         await panel

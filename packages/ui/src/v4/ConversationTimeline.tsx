@@ -318,8 +318,8 @@ interface ConversationTimelineProps {
   centerEmptyStateWithDock?: boolean;
   /** 窄屏/粗指针视口保留紧凑居中布局，不复用桌面草稿安全间距。 */
   compactEmptyStateWithDock?: boolean;
-  /** 右侧状态面板对消息列的布局模式；auto 由 conversation container query 裁决。 */
-  summaryPanelLayout?: "none" | "auto" | "inline";
+  /** 宿主包含状态面板时固定预留宽屏侧栏；不得随面板模式或内容变化。 */
+  reserveStatusPanelSpace?: boolean;
   conversationFindQuery?: string;
   conversationFindActiveIndex?: number;
   conversationFindNavigationRequestId?: number;
@@ -386,7 +386,7 @@ function ConversationTimelineImpl({
   headerSlot,
   centerEmptyStateWithDock = false,
   compactEmptyStateWithDock = false,
-  summaryPanelLayout = "none",
+  reserveStatusPanelSpace = false,
   conversationFindQuery = "",
   conversationFindActiveIndex = -1,
   conversationFindNavigationRequestId = 0,
@@ -565,13 +565,12 @@ function ConversationTimelineImpl({
     centerYPx: number;
     maxHeightPx: number;
   } | null>(null);
-  // 右侧状态面板完整 inline 展开时，中间消息列和输入 dock 必须使用同一偏移；
-  // 否则面板会覆盖正文，而不是并排布局。
-  const summaryPanelInlineOffsetClassName =
-    getConversationStatusPanelOffsetClassName(summaryPanelLayout);
+  // 修复 #196：消息列与输入 dock 共用稳定侧栏留白，不再随面板展开/收起移动。
+  const contentOffsetClassName = getConversationStatusPanelOffsetClassName(
+    reserveStatusPanelSpace && !centeredEmptyLayout,
+  );
   const contentWidthClassName = getConversationContentWidthClassName({
     centeredEmptyLayout,
-    statusPanelLayout: summaryPanelLayout,
   });
 
   const syncShareSelectionPanelLayout = useCallback(() => {
@@ -1895,7 +1894,7 @@ function ConversationTimelineImpl({
                 centeredEmptyLayout
                   ? "flex w-full max-w-2xl shrink-0 items-center justify-center"
                   : "min-h-0 flex-1",
-                !centeredEmptyLayout && summaryPanelInlineOffsetClassName,
+                !centeredEmptyLayout && contentOffsetClassName,
               )}
             >
               {emptyState}
@@ -1918,7 +1917,7 @@ function ConversationTimelineImpl({
                   className={cn(
                     "relative mx-auto w-full shrink-0",
                     contentWidthClassName,
-                    summaryPanelInlineOffsetClassName,
+                    contentOffsetClassName,
                   )}
                 >
                   {headerSlot}
@@ -1929,12 +1928,10 @@ function ConversationTimelineImpl({
                 data-v4-timeline-virtual-history="true"
                 data-v4-timeline-content-column="true"
                 className={cn(
-                  // 默认（< 1280px）过渡 width/max-width/transform，让 w-full ↔ max-w-4xl
-                  // 的中等宽度切换平滑；≥1280px 触发的面板让位（max-w-6xl + 168px 左移）
-                  // 用 @min-[1280px] 降级为只过渡 transform，避免大范围跳变叠加位移抖动。
+                  // 容器断点切换保留宽度过渡；宽屏固定预留侧栏，与面板展示状态无关。
                   "relative mx-auto w-full shrink-0 transition-[width,max-width,transform] duration-150 ease-out @min-[1280px]/conversation:transition-[transform]",
                   contentWidthClassName,
-                  summaryPanelInlineOffsetClassName,
+                  contentOffsetClassName,
                 )}
                 style={{ height: totalSize }}
               >
@@ -1980,10 +1977,10 @@ function ConversationTimelineImpl({
                   data-turn-id={liveUnit.turnId}
                   data-v4-timeline-content-column="true"
                   className={cn(
-                    // ≥1280px 面板让位时降级为只过渡 transform，避免大范围跳变叠加位移抖动。
+                    // 与历史消息列共用容器断点和固定侧栏留白。
                     "relative mx-auto w-full shrink-0 transition-[width,max-width,transform] duration-150 ease-out @min-[1280px]/conversation:transition-[transform]",
                     contentWidthClassName,
-                    summaryPanelInlineOffsetClassName,
+                    contentOffsetClassName,
                   )}
                 >
                   <ConversationTurnGroup
@@ -2007,7 +2004,7 @@ function ConversationTimelineImpl({
                   className={cn(
                     "relative mx-auto w-full shrink-0",
                     contentWidthClassName,
-                    summaryPanelInlineOffsetClassName,
+                    contentOffsetClassName,
                   )}
                 >
                   <ConversationPendingGuideList
@@ -2030,7 +2027,7 @@ function ConversationTimelineImpl({
                   className={cn(
                     "relative mx-auto w-full shrink-0",
                     contentWidthClassName,
-                    summaryPanelInlineOffsetClassName,
+                    contentOffsetClassName,
                   )}
                 >
                   {footerSlot}
@@ -2064,12 +2061,11 @@ function ConversationTimelineImpl({
               <div
                 data-v4-composer-dock-content="true"
                 className={cn(
-                  // 同 virtual history/live tail，恢复宽度过渡避免硬跳。
-                  // ≥1280px 面板让位时降级为只过渡 transform，避免大范围跳变叠加位移抖动。
+                  // 同历史消息与 live tail，输入框共用容器断点和固定侧栏留白。
                   "pointer-events-auto relative z-10 w-full shrink-0 transition-[width,max-width,transform] duration-150 ease-out @min-[1280px]/conversation:transition-[transform]",
                   contentWidthClassName,
                   !centeredEmptyLayout && "px-4 pb-4",
-                  !centeredEmptyLayout && summaryPanelInlineOffsetClassName,
+                  !centeredEmptyLayout && contentOffsetClassName,
                 )}
               >
                 <div data-v4-back-to-bottom-anchor="composer-dock" className="relative">
