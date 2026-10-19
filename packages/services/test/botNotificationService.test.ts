@@ -9,7 +9,10 @@ import { createBotsService } from "../src/bots/botsService.js";
 import { BotsRepo } from "../src/bots/repo.js";
 import { setDataBaseDir } from "../src/paths.js";
 
-test("public Bot service persists preferences, protects Weixin targets and deduplicates two Hosts", async () => {
+test("public Bot service persists preferences, protects Weixin targets and deduplicates two Hosts", async (t) => {
+  const logs: string[] = [];
+  t.mock.method(console, "warn", (...args: unknown[]) => logs.push(args.join(" ")));
+  t.mock.method(console, "log", (...args: unknown[]) => logs.push(args.join(" ")));
   const dir = await mkdtemp(join(tmpdir(), "bot-service-notifications-"));
   const originalFetch = globalThis.fetch;
   setDataBaseDir(dir);
@@ -96,7 +99,40 @@ test("public Bot service persists preferences, protects Weixin targets and dedup
     };
     await service.notifyTask({ ...event, eventKey: "turn:two" });
     const status = await service.getStatus();
-    assert.equal(status.botRuntime[0]?.deliveryError, "Task notification delivery failed.");
+    assert.match(status.botRuntime[0]?.deliveryError ?? "", /kind=unknown/);
+    assert.equal(
+      status.botRuntime[0]?.deliveryErrorMessageId,
+      "bots.runtime.weixinDeliveryUnknown",
+    );
+    assert.doesNotMatch(JSON.stringify(status), /private credential/);
+    for (const [payload, httpStatus, messageId] of [
+      [{ ret: -14, errmsg: "private credential" }, 200, "bots.runtime.weixinLoginRequired"],
+      [
+        { ret: 1, errcode: 987, errmsg: "private credential" },
+        200,
+        "bots.runtime.weixinDeliveryRejected",
+      ],
+      [{ errmsg: "private credential" }, 503, "bots.runtime.weixinDeliveryNetwork"],
+    ] as const) {
+      let attempts = 0;
+      globalThis.fetch = async () => {
+        attempts++;
+        return new Response(JSON.stringify(payload), { status: httpStatus });
+      };
+      assert.equal((await service.testTaskNotification(bot.id)).ok, false);
+      const failed = (await service.getStatus()).botRuntime[0]!;
+      assert.equal(failed.deliveryErrorMessageId, messageId);
+      assert.equal(failed.status, "idle", "delivery failure must not replace connection status");
+      assert.equal(attempts, 1, "ambiguous delivery cannot be automatically resent");
+    }
+    globalThis.fetch = async () => new Response(JSON.stringify({ ret: 0 }));
+    assert.equal((await service.testTaskNotification(bot.id)).ok, true);
+    const recovered = (await service.getStatus()).botRuntime[0]!;
+    assert.equal(recovered.deliveryError, undefined);
+    assert.equal(recovered.deliveryErrorMessageId, undefined);
+    assert.match(logs.join("\n"), /errcode=987/);
+    assert.match(logs.join("\n"), /bot delivery recovered/);
+    assert.doesNotMatch(logs.join("\n"), /private credential|new-context|rotated-synthetic-token/);
   } finally {
     await Promise.all(services.map((host) => host.disposeAllAndWait()));
     globalThis.fetch = originalFetch;

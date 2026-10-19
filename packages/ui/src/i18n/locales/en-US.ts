@@ -784,6 +784,20 @@ const enUS: Record<string, string> = {
   "bashOutput.error.query_failed": "Could not connect to the task runtime",
 
   "bots.runtime.deliveryFailed": "Bot reply delivery failed",
+  "bots.runtime.weixinHandledElsewhere": `Weixin long polling is handled by another ${PRODUCT_NAME} window.`,
+  "bots.runtime.weixinReconnecting":
+    "Weixin connection failed temporarily. Reconnecting automatically; check your network.",
+  "bots.runtime.weixinLoginRequired":
+    "Weixin login expired or authorization was denied. Automatic reconnection cannot restore it; scan the QR code to sign in again.",
+  "bots.runtime.weixinRecoveryFailed":
+    "Weixin credentials could not be read. Check local storage permissions, then disable and enable the bot.",
+  "bots.runtime.weixinSignInAgain": "Sign in again with QR code",
+  "bots.runtime.weixinDeliveryNetwork":
+    "Notification delivery encountered a network error or timeout and may not have arrived. It will not be resent automatically to avoid duplicates. Check your network, then send a test notification.",
+  "bots.runtime.weixinDeliveryRejected":
+    "Weixin rejected the notification. Send the bot a message in Weixin, then send a test notification. If it still fails, sign in again and share the error codes below.",
+  "bots.runtime.weixinDeliveryUnknown":
+    "Notification delivery failed for an undetermined reason. Check your login and local storage, send a test notification, and share diagnostic logs for the failure time.",
   "bots.runtime.deliveryFailedDescription":
     "The message could not be delivered. Share the details below for troubleshooting. This notice clears after the next successful send.",
   "chat.selections.previewSideBlocked":

@@ -20,7 +20,7 @@ import { SettingsGroupCard, SettingsRow } from "@/settings/SettingsPageParts.js"
 import { cn } from "@/components/lib/utils.js";
 import { logger } from "@/logger.js";
 import type { BindCodeState, FeishuRegistrationState, WeixinRegistrationState } from "./shared.js";
-import { TELEGRAM_BOTFATHER_URL, formatBindCountdown } from "./shared.js";
+import { TELEGRAM_BOTFATHER_URL, formatBindCountdown, runtimeText } from "./shared.js";
 
 function DetailPanel({ children }: { children: ReactNode }) {
   return <div className="rounded-lg bg-background p-3">{children}</div>;
@@ -177,6 +177,25 @@ export function ProviderSettingsCard({
         });
   const hasActiveFeishuRegistration = feishuRegistration?.botId === bot.id;
   const hasActiveWeixinRegistration = weixinRegistration?.botId === bot.id;
+  const weixinLoginRequired =
+    isWeixin &&
+    (runtime?.messageId === "bots.runtime.weixinLoginRequired" ||
+      runtime?.deliveryErrorMessageId === "bots.runtime.weixinLoginRequired");
+  const weixinSignInButton = (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={onStartWeixinRegistration}
+      disabled={weixinRegistrationLoading}
+    >
+      {weixinRegistrationLoading ? (
+        <LoaderCircle className="size-4 animate-spin" />
+      ) : (
+        <QrCode className="size-4" />
+      )}
+      {intl.formatMessage({ id: "bots.runtime.weixinSignInAgain" })}
+    </Button>
+  );
   const showBindCode = bindCode?.botId === bot.id;
 
   let control: ReactNode = null;
@@ -251,7 +270,21 @@ export function ProviderSettingsCard({
     );
   }
 
-  if (isFeishuLike && hasRuntimeError) {
+  if (isWeixin && hasRuntimeError) {
+    detail = (
+      <DetailPanel>
+        <div role="alert" className="min-w-0 space-y-2 text-ui-base text-foreground-subtle">
+          <div>
+            {weixinLoginRequired
+              ? intl.formatMessage({ id: "bots.runtime.weixinLoginRequired" })
+              : runtimeText(runtime, bot.enabled, (id) => intl.formatMessage({ id }))}
+          </div>
+          {hasRuntimeError ? <div className="break-words font-mono">{runtime?.message}</div> : null}
+          {weixinLoginRequired ? weixinSignInButton : null}
+        </div>
+      </DetailPanel>
+    );
+  } else if (isFeishuLike && hasRuntimeError) {
     const errorCode = runtime.message?.match(/\b\d{7,}\b/)?.[0];
     detail = (
       <DetailPanel>
@@ -405,7 +438,9 @@ export function ProviderSettingsCard({
         </div>
       </DetailPanel>
     );
-  } else if (hasActiveWeixinRegistration) {
+  }
+  // Bugfix：重登时旧凭据仍在，错误面板不能遮住新二维码；沿用原扫码保存/refresh 路径。
+  if (hasActiveWeixinRegistration) {
     detail = (
       <DetailPanel>
         <div className="flex flex-wrap items-start justify-center gap-4">
@@ -455,11 +490,17 @@ export function ProviderSettingsCard({
                     {intl.formatMessage({ id: "bots.runtime.deliveryFailed" })}
                   </div>
                   <div className="text-foreground-subtle">
-                    {intl.formatMessage({ id: "bots.runtime.deliveryFailedDescription" })}
+                    {intl.formatMessage({
+                      id:
+                        runtime.deliveryErrorMessageId ?? "bots.runtime.deliveryFailedDescription",
+                    })}
                   </div>
                   <div className="whitespace-pre-wrap break-all text-foreground-subtle">
                     {runtime.deliveryError}
                   </div>
+                  {weixinLoginRequired && !hasRuntimeError && !hasActiveWeixinRegistration
+                    ? weixinSignInButton
+                    : null}
                 </div>
               </DetailPanel>
               {detail}

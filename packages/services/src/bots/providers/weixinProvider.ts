@@ -8,7 +8,11 @@ import type {
   BotOutboundMessage,
 } from "@zcode/shared";
 import type { BotProviderAdapter, BotTypingTarget } from "./types.js";
-import { fetchBotProviderJson } from "#src/bots/providers/providerRequest.js";
+import {
+  BotProviderRequestTimeoutError,
+  fetchBotProviderJson,
+} from "#src/bots/providers/providerRequest.js";
+import { readWeixinErrorCode, WeixinProviderError, type WeixinOperation } from "./weixinErrors.js";
 
 export const DEFAULT_WEIXIN_ILINK_BASE_URL = "https://ilinkai.weixin.qq.com";
 const WEIXIN_BOT_API_PREFIX = "/ilink/bot";
@@ -124,14 +128,23 @@ function appendBaseInfo(body: unknown): unknown {
 async function requestWeixinJson(
   bot: BotConfig,
   deps: WeixinProviderDeps,
-  path: string,
+  path: WeixinOperation,
   body?: unknown,
   signal?: AbortSignal,
   timeoutMs?: number,
 ): Promise<unknown> {
-  const token = await readAccessToken(bot, deps);
+  const token = await readAccessToken(bot, deps).catch((error: unknown) => {
+    throw new WeixinProviderError(
+      path,
+      "unknown",
+      undefined,
+      undefined,
+      undefined,
+      readWeixinErrorCode(error),
+    );
+  });
   if (!token?.trim()) {
-    throw new Error("Weixin iLink bot token is missing. Scan the Weixin login QR code first.");
+    throw new WeixinProviderError(path, "credentials");
   }
   const response = await fetchBotProviderJson<unknown>(
     `${getWeixinApiBaseUrl()}${WEIXIN_BOT_API_PREFIX}${path}`,
@@ -142,17 +155,47 @@ async function requestWeixinJson(
       signal,
     },
     timeoutMs,
-  );
-  if (!response.ok) {
-    throw new Error(`Weixin iLink ${path} failed: HTTP ${response.status}`);
-  }
+  ).catch((error: unknown) => {
+    if (signal?.aborted) throw error;
+    // Bugfix：原始 fetch/JSON 异常可包含 URL 和 token；只向上提供安全故障分类。
+    const kind =
+      error instanceof BotProviderRequestTimeoutError
+        ? "timeout"
+        : error instanceof SyntaxError
+          ? "response"
+          : error instanceof TypeError
+            ? "network"
+            : "unknown";
+    throw new WeixinProviderError(
+      path,
+      kind,
+      undefined,
+      undefined,
+      undefined,
+      readWeixinErrorCode(error),
+    );
+  });
   const payload = response.payload;
-  const data = isRecord(payload) ? payload : null;
-  const ret = readNumber(data, "ret");
-  const errcode = readNumber(data, "errcode");
+  const ret = readNumber(isRecord(payload) ? payload : null, "ret");
+  const errcode = readNumber(isRecord(payload) ? payload : null, "errcode");
+  if (!response.ok) {
+    throw new WeixinProviderError(
+      path,
+      "http",
+      response.status,
+      ret ?? undefined,
+      errcode ?? undefined,
+    );
+  }
+  if (!isRecord(payload)) throw new WeixinProviderError(path, "response", response.status);
   if ((ret !== null && ret !== 0) || (errcode !== null && errcode !== 0)) {
-    const message = readString(data, "errmsg") || readString(data, "message") || `ret=${ret ?? ""} errcode=${errcode ?? ""}`.trim();
-    throw new Error(`Weixin iLink ${path} failed: ${message}`);
+    throw new WeixinProviderError(
+      path,
+      "api",
+      response.status,
+      ret ?? undefined,
+      errcode ?? undefined,
+    );
   }
   return payload;
 }

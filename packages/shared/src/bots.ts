@@ -227,6 +227,8 @@ export interface BotsStateFile {
 export interface BotRuntimeInfo {
   /** 最近一次消息投递错误；独立于长连接状态，成功投递后清除。 */
   deliveryError?: string;
+  /** 安全投递故障的处理建议；由 Host 设置，UI 只按当前语言展示。 */
+  deliveryErrorMessageId?: string;
   botId: string;
   provider: BotProvider;
   status: "disabled" | "idle" | "polling" | "connected" | "error";

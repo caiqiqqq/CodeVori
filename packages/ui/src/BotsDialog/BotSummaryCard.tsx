@@ -62,14 +62,16 @@ export function BotSummaryCard({
   // 修复原因：连接失败会直接阻断 /bind，不能再用“未绑定”覆盖真正的阻塞状态。
   const summaryStatusText =
     runtime?.status === "error"
-      ? intl.formatMessage({
-          id:
-            bot.provider === "feishu"
-              ? "bots.runtime.feishuConnectionFailed"
-              : bot.provider === "lark"
-                ? "bots.runtime.larkConnectionFailed"
-                : "bots.runtime.connectionFailed",
-        })
+      ? bot.provider === "weixin"
+        ? runtimeText(runtime, bot.enabled, (id) => intl.formatMessage({ id }))
+        : intl.formatMessage({
+            id:
+              bot.provider === "feishu"
+                ? "bots.runtime.feishuConnectionFailed"
+                : bot.provider === "lark"
+                  ? "bots.runtime.larkConnectionFailed"
+                  : "bots.runtime.connectionFailed",
+          })
       : isBound
         ? runtimeText(runtime, bot.enabled, (id) => intl.formatMessage({ id }))
         : intl.formatMessage({ id: "bots.unbound" });
