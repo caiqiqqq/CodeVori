@@ -2,7 +2,7 @@
 
 ## 产品规则
 
-- MCP 设置的用户作用域新增“内置”分组中的 `zcode-issues`（议题管理），默认启用，支持关闭，不允许编辑启动参数、删除或导出会话凭据。无需再配置命令或令牌；账号复用版本控制设置。
+- MCP 设置的用户作用域在 MCP 列表底部新增“内置”分组中的 `zcode-issues`（议题管理），默认启用，支持关闭，不允许编辑启动参数、删除或导出会话凭据。无需再配置命令或令牌；账号复用版本控制设置。
 - 第一版提供 GetRepository、ListIssues、GetIssue、GetIssueOptions、CreateIssue。仅操作议题，不提供评论、关闭、PR/MR、Git 提交或任务启动。只有用户明确要求发布，或已明确授权的自动化任务，才创建议题；仅讨论和引用外部内容不构成发布指令。
 - GetRepository 可列出 remote；实际查询和创建均要求显式 remoteName 及 GetRepository 返回的 repositoryKey。不让模型传 workspacePath、accountId、服务 URL 或密钥。多个 remote 不默认选 origin；目标变化由 ForgeService 二次校验拒绝。
 - API 与支持 MCP 的 ACP 在新建/重新连接会话时注入同一工具。设置关闭后旧 capability 的新调用也拒绝，已接受的网络请求可完成。重新启用后，新建/重新连接会话加载工具目录。
