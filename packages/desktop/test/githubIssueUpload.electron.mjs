@@ -29,10 +29,11 @@ try {
     const profile=session.fromPartition('persist:github-issue-upload-'+key);
     await applyDesktopChromiumNetworkPolicies(session,{httpProxy:'http://127.0.0.1:17890',httpProxyOnlyDomains:'github.com'},{info(){},warn(){}});
     let policyCalls=0;const setProxy=profile.setProxy.bind(profile);profile.setProxy=(config)=>{policyCalls++;return setProxy(config)};
-    let username='tester',hasInput=true,currentEditor=false,delayedReact=false,loginUsername,loginReads=0,holdLogin=false,uploadReads=0;
+    let username='tester',hasInput=true,currentEditor=false,delayedReact=false,loginUsername,loginReads=0,holdLogin=false,uploadReads=0,failNavigation;
     await profile.protocol.handle('https',(request)=>{
       assert.equal(policyCalls,1,'Proxy policy must complete before navigation');
       const target=new URL(request.url);
+      if(failNavigation===(target.pathname==='/login'?'login':'repository'))return Response.error();
       if(target.pathname==='/login'){
         loginReads++;assert.equal(target.searchParams.get('return_to'),context.repositoryUrl+'/issues/new');
         if(loginUsername!==undefined)username=loginUsername;
@@ -43,9 +44,10 @@ try {
       if(currentEditor&&hasInput)return new Response('<!doctype html><meta name="user-login" content="'+username+'"><label id="description">Add a description</label><textarea aria-labelledby="description"></textarea><script>document.querySelector("textarea").addEventListener("paste",event=>{event.preventDefault();document.querySelector("textarea").value="![image]('+url+')"})</script>',{headers:{'Content-Type':'text/html'}});
       return new Response('<!doctype html><meta name="user-login" content="'+username+'"><textarea aria-label="Markdown value" '+(hasInput?'':'disabled')+'></textarea>'+(hasInput?'<input type="file"><script>document.querySelector("input").addEventListener("change",()=>{document.querySelector("textarea").value="![image]('+url+')"})</script>':''),{headers:{'Content-Type':'text/html'}});
     });
-    let createdWindows=0;app.on('browser-window-created',(_event,window)=>{createdWindows++;window.hide()});
+    let createdWindows=0,loadError;app.on('browser-window-created',(_event,window)=>{createdWindows++;window.hide();if(loadError)window.loadURL=()=>Promise.reject(loadError)});
     const parent=new BrowserWindow({show:false});const keeper=new BrowserWindow({show:false});
-    const run=(signal=new AbortController().signal)=>executeGithubImageUpload({win:parent,context,signal});
+    const navigationFailures=[];
+    const run=(signal=new AbortController().signal)=>executeGithubImageUpload({win:parent,context,signal,onNavigationFailure:details=>navigationFailures.push(details)});
     try {
       assert.deepEqual(await run(),{url});
       currentEditor=true;assert.deepEqual(await run(),{url});
@@ -53,6 +55,21 @@ try {
       assert.equal(await profile.resolveProxy('https://github.com'),'PROXY 127.0.0.1:17890');
       assert.equal(await profile.resolveProxy('https://other.test'),'DIRECT');
       assert.equal(BrowserWindow.getAllWindows().length,2,'Successful upload closes only its native window');
+      failNavigation='repository';
+      await assert.rejects(run(),/FORGE_NETWORK/);
+      assert.deepEqual(navigationFailures.splice(0),[{phase:'repository',code:'ERR_FAILED',errno:-2}],'Repository navigation must retain only safe Chromium error fields');
+      assert.equal(BrowserWindow.getAllWindows().length,2,'Failed navigation closes only its upload window');
+      failNavigation='login';username='';
+      await assert.rejects(run(),/FORGE_NETWORK/);
+      assert.deepEqual(navigationFailures.splice(0),[{phase:'login',code:'ERR_FAILED',errno:-2}],'Login navigation has its own phase without the return URL');
+      failNavigation=undefined;username='tester';
+      loadError=Object.assign(new Error('Navigation failed: https://github.com/private/ERR_PRIVATE_NAME?token=secret'),{code:'https://github.com/private/ERR_PRIVATE_NAME',errno:'secret'});
+      await assert.rejects(run(),/FORGE_NETWORK/);
+      assert.deepEqual(navigationFailures.splice(0),[{phase:'repository'}],'Unknown errors must not extract private URL content or log raw fields');
+      loadError=Object.assign(new Error('private URL must not be logged'),{code:'ERR_PROXY_CONNECTION_FAILED',errno:-130});
+      await assert.rejects(run(),/FORGE_NETWORK/);
+      assert.deepEqual(navigationFailures.splice(0),[{phase:'repository',code:'ERR_PROXY_CONNECTION_FAILED',errno:-130}]);
+      loadError=undefined;
       await profile.cookies.set({url:'https://github.com',name:'synthetic-session',value:'wrong-account'});
       username='different-user';
       await assert.rejects(run(),/FORGE_MEDIA_IDENTITY_CHANGED/);
@@ -89,6 +106,8 @@ try {
       await assert.rejects(executeGithubImageUpload({win:parent,signal:new AbortController().signal,context:{...context,repositoryUrl:'https://other.example.invalid/project'}}),/FORGE_INVALID_MEDIA/);
       const parentClosed=assert.rejects(run(),/FORGE_MEDIA_AUTHENTICATION_CANCELLED/);
       setTimeout(()=>parent.destroy(),100);await parentClosed;
+      await new Promise(resolve=>setImmediate(resolve));
+      assert.deepEqual(navigationFailures,[],'Late navigation rejections after cancellation must not report a network failure');
       assert.equal(BrowserWindow.getAllWindows().length,1,'Parent disposal closes the upload window');
       const setupParent=new BrowserWindow({show:false});setupParent.on('close',event=>event.preventDefault());
       const setupContext={...context,accountId:'5c88bcca-98b9-4aaa-9c0c-2f869f0c1b01'};

@@ -55,6 +55,21 @@ export function NewIssueImages({
           </span>
         ) : null}
       </div>
+      {/* 手机复用电脑端上传窗口；不能把需要用户操作电脑的路径只显示为普通上传等待。 */}
+      {uploads.capability?.supported && uploads.capability.requiresWebLogin ? (
+        <div className="flex flex-wrap items-center gap-2 text-ui-sm text-foreground-subtle">
+          <span className="min-w-0 break-words">{t("imageWebLoginHelp")}</span>
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            disabled={disabled}
+            onClick={onOpenRepository}
+          >
+            {t("openRepositoryWeb")}
+          </Button>
+        </div>
+      ) : null}
       {uploads.capability && !uploads.capability.supported ? (
         <div className="flex flex-wrap items-center gap-2 text-ui-sm text-foreground-subtle">
           <span>
@@ -107,7 +122,13 @@ export function NewIssueImages({
                 {image.state === "uploading" ? (
                   <LoaderCircle className="size-3 animate-spin" />
                 ) : null}
-                {t(image.state === "uploading" ? "imageUploading" : "imageUploaded")}
+                {t(
+                  image.state !== "uploading"
+                    ? "imageUploaded"
+                    : uploads.capability?.requiresWebLogin
+                      ? "imageUploadingOnDesktop"
+                      : "imageUploading",
+                )}
               </span>
             )}
           </div>

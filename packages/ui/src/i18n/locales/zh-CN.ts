@@ -423,11 +423,14 @@ const zhCN: Record<string, string> = {
   "repositoryPanel.addImages": "添加图片",
   "repositoryPanel.imageUploadHint": "支持选择、粘贴或拖拽图片，每张最多 4 MB，最多 8 张",
   "repositoryPanel.imageWebLoginHint":
-    "支持选择、粘贴或拖拽，每张最多 4 MB、最多 8 张；GitHub 上传可能需要网页登录",
+    "每张最多 4 MB、最多 8 张；GitHub 通过连接的电脑上传，可能需要在电脑窗口使用仓库绑定的账号登录",
+  "repositoryPanel.imageWebLoginHelp":
+    "手机上无法操作电脑的登录窗口；如需直接在手机上添加图片，可打开仓库网页。草稿和图片不会自动带入网页。",
   "repositoryPanel.imageWebUnavailable": "当前 Host 无法进行 GitHub 图片上传，请使用仓库网页",
   "repositoryPanel.imageProviderUnsupported": "当前平台尚不支持创建前上传图片",
   "repositoryPanel.openRepositoryWeb": "打开仓库网页",
   "repositoryPanel.imageUploading": "正在上传图片…",
+  "repositoryPanel.imageUploadingOnDesktop": "正在通过电脑上传图片…",
   "repositoryPanel.imageUploaded": "图片已上传",
   "repositoryPanel.removeImage": "移除图片 {name}",
   "repositoryPanel.error.UPLOAD_LIMIT": "每个议题最多添加 8 张图片",

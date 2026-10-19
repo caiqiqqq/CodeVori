@@ -8,6 +8,7 @@ import { BrowserWindow, session } from "electron";
 import type { ForgeWebMediaContext, ForgeWebUploadContext } from "@zcode/shared";
 import { createForgeNativeMediaTransport, validateForgeWebMediaContext } from "./forgeWebMedia.js";
 import { executeGithubImageUpload } from "./electronGithubImageUpload.js";
+import { logger } from "./logger.js";
 
 export async function executeForgeWebMedia(
   params: {
@@ -18,7 +19,12 @@ export async function executeForgeWebMedia(
     | { action: "upload"; context: ForgeWebUploadContext }
   ),
 ) {
-  if (params.action === "upload") return executeGithubImageUpload(params);
+  if (params.action === "upload")
+    return executeGithubImageUpload({
+      ...params,
+      onNavigationFailure: (details) =>
+        logger.warn("[forge-image-upload] navigation failed", details),
+    });
   if (params.win.isDestroyed())
     return Promise.reject(new Error("FORGE_MEDIA_AUTHENTICATION_CANCELLED"));
   const controller = new AbortController();
