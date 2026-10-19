@@ -21,7 +21,11 @@ import { resolveForgeContentUrl } from "@/lib/forgeContent.js";
 import type { Theme } from "@/useTheme.js";
 import { NewIssueAttributes } from "./NewIssueAttributes.js";
 import { NewIssueImages } from "./NewIssueImages.js";
-import { RepositoryError, useRepositoryMessages } from "./RepositoryParts.js";
+import {
+  RepositoryError,
+  RepositoryExternalButton,
+  useRepositoryMessages,
+} from "./RepositoryParts.js";
 
 export function NewIssueDialog({
   open,
@@ -223,6 +227,18 @@ export function NewIssueDialog({
             />
           </div>
           {error ? <RepositoryError error={error} /> : null}
+          {/* POST 的网络/响应错误不证明远端未创建；保留草稿并提示先核对，不能自动重发。 */}
+          {error &&
+          ["NETWORK", "SERVER_ERROR", "HTTP_ERROR", "RESPONSE", "DISCONNECTED"].includes(error) ? (
+            <div className="flex flex-wrap items-center gap-2 text-ui-sm text-foreground-subtle">
+              <span className="min-w-0 flex-1 break-words">{t("checkBeforeResubmit")}</span>
+              <RepositoryExternalButton
+                url={repository.url}
+                label={t("openRepository")}
+                onOpen={onOpen}
+              />
+            </div>
+          ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
               {t("cancel")}

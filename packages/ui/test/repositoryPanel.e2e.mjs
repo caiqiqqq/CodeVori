@@ -70,7 +70,7 @@ try {
       async getForgeItemExtras(){return {}},
       async listForgeComments(r:any){return {items:clone(commentRows[host]),page:r.page,pageSize:30,hasMore:false,total:commentRows[host].length}},
       async listForgeFiles(r:any){return {items:[{path:'src/very-long-project-directory/a-very-long-filename-with-many-words.ts',previousPath:null,status:'modified',additions:1,deletions:1,patch:'@@ -1 +1 @@\\n-old\\n+new',truncated:false}],page:r.page,pageSize:30,hasMore:false,total:1}},
-      async createForgeIssue(r:any){state.calls.push({host,op:'create',...r});if(state.failWrite){state.failWrite=false;throw new Error('FORGE_FORBIDDEN')}const created={...baseItem(host,{kind:'issue',...r}),number:99,title:r.title,body:r.body};if(r.title==='Created issue'){state.createdIssue=created;state.postCreateListReads=0}return clone(created)},
+      async createForgeIssue(r:any){state.calls.push({host,op:'create',...r});if(state.failCreate){const code=state.failCreate;state.failCreate=null;throw new Error(code)}if(state.failWrite){state.failWrite=false;throw new Error('FORGE_FORBIDDEN')}const created={...baseItem(host,{kind:'issue',...r}),number:99,title:r.title,body:r.body};if(r.title==='Created issue'){state.createdIssue=created;state.postCreateListReads=0}return clone(created)},
       async updateForgeIssue(r:any){state.calls.push({host,op:'update',...r});if(state.failUpdate){state.failUpdate=false;throw new Error('FORGE_FORBIDDEN')}state.editedIssue={title:r.title,body:r.body,labels:r.labels.map((key:string)=>({key,name:key,color:null}))};return clone({...baseItem(host,r),...state.editedIssue})},
       async createForgeComment(r:any){state.calls.push({host,op:'comment',...r});if(state.failWrite){state.failWrite=false;throw new Error('FORGE_FORBIDDEN')}if(state.delayWrite){state.delayWrite=false;await new Promise(resolve=>state.pending.push(resolve))}commentRows[host].push({...comment,id:'c'+commentRows[host].length,body:r.body})},
       async setForgeItemState(r:any){state.calls.push({host,op:'state',...r});states[host]=r.state},
@@ -195,6 +195,8 @@ try {
   await row().getByText("Created issue", { exact: true }).waitFor();
   await page.evaluate(() => {
     window.__forge.createdIssue = null;
+    // 编辑场景的全局模拟快照不能污染随后 Host 切换和创建场景的原始议题。
+    window.__forge.editedIssue = null;
   });
   await page.evaluate(() => {
     window.__forge.delayList = true;

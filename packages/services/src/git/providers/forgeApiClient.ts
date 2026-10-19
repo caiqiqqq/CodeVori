@@ -8,7 +8,10 @@ import type {
   ForgeItemMetadata,
 } from "@zcode/shared";
 import { z } from "zod";
+import { createServiceLogger } from "../../logger/serviceLogger.js";
 import { readForgeImageResponse } from "./forgeMedia.js";
+
+const logger = createServiceLogger("ForgeApiClient");
 
 export interface ForgeApiResponse {
   data: unknown;
@@ -28,6 +31,21 @@ export function createForgeApiClient(options: {
   fetcher: typeof fetch;
 }): ForgeApiClient {
   return async (path, query = {}, write, format = "json") => {
+    const failure = (code: string, phase: "http" | "network" | "response", response?: Response) => {
+      const rawId = response?.headers.get(
+        options.provider === "github" ? "x-github-request-id" : "x-request-id",
+      );
+      const idPattern = options.provider === "github" ? /^[a-f\d:]{1,128}$/i : /^[\w-]{1,128}$/;
+      // #175 的 HTTP 失败曾只留下 FORGE_RESPONSE；只记录有限元数据，不能记录仓库 URL 或正文。
+      logger.warn(undefined, "request failed", {
+        provider: options.provider,
+        method: write?.method ?? "GET",
+        phase,
+        status: response?.status ?? null,
+        requestId: rawId && idPattern.test(rawId) ? rawId : null,
+      });
+      return Object.assign(new Error(`FORGE_${code}`), response ? { status: response.status } : {});
+    };
     const url = new URL(`${options.baseUrl}/${path.replace(/^\//, "")}`);
     for (const [key, value] of Object.entries(query))
       if (value !== undefined) url.searchParams.set(key, String(value));
@@ -62,23 +80,34 @@ export function createForgeApiClient(options: {
           : {}),
       });
     } catch {
-      throw new Error("FORGE_NETWORK");
+      throw failure("NETWORK", "network");
     }
     if (!response.ok) {
-      await response.body?.cancel();
+      // 取消错误响应流也可能失败，不能用清理异常覆盖服务端原始状态或泄露底层错误。
+      await response.body?.cancel().catch(() => {});
+      const githubRateLimit =
+        options.provider === "github" &&
+        (response.headers.get("x-ratelimit-remaining") === "0" ||
+          /^\d+$/.test(response.headers.get("retry-after") ?? ""));
       const code =
-        response.status === 401
-          ? "AUTHENTICATION"
-          : response.status === 403
-            ? "FORBIDDEN"
-            : response.status === 404
-              ? "NOT_FOUND"
-              : response.status === 429
-                ? "RATE_LIMIT"
-                : response.status === 409 || response.status === 405 || response.status === 422
-                  ? "CONFLICT"
-                  : "RESPONSE";
-      throw new Error(`FORGE_${code}`);
+        response.status >= 500
+          ? "SERVER_ERROR"
+          : response.status === 400
+            ? "BAD_REQUEST"
+            : response.status === 401
+              ? "AUTHENTICATION"
+              : response.status === 403
+                ? githubRateLimit
+                  ? "RATE_LIMIT"
+                  : "FORBIDDEN"
+                : response.status === 404
+                  ? "NOT_FOUND"
+                  : response.status === 429
+                    ? "RATE_LIMIT"
+                    : response.status === 409 || response.status === 405 || response.status === 422
+                      ? "CONFLICT"
+                      : "HTTP_ERROR";
+      throw failure(code, "http", response);
     }
     try {
       if (response.status === 204) return { data: null, headers: response.headers };
@@ -103,7 +132,7 @@ export function createForgeApiClient(options: {
       const text = bytes.toString("utf8");
       return { data: format === "text" ? text : JSON.parse(text), headers: response.headers };
     } catch {
-      throw new Error("FORGE_RESPONSE");
+      throw failure("RESPONSE", "response", response);
     }
   };
 }
