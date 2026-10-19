@@ -3445,8 +3445,6 @@ const enUS: Record<string, string> = {
   "settings.mcp.issues.toggle": "Enable issue management MCP",
   "settings.mcp.issues.description":
     "Let agents find and create issues for this project using your version control account. Supports GitHub, GitLab and Gitea.",
-  "settings.mcp.issues.reconnect":
-    "Tools load in new or reconnected sessions. Disabling blocks new tool calls immediately. Publishing an issue requires an explicit instruction.",
   "settings.mcp.issues.saveFailed": "Could not load or save settings. Please retry.",
   "settings.mcp.host.activeDescription": `${PRODUCT_NAME} provides this MCP server for the {pluginName} plugin. Its runtime identity is managed by the host.`,
   "settings.mcp.plugin.disabled": "Plugin disabled",

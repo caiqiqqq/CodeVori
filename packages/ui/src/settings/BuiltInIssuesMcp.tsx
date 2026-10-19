@@ -67,9 +67,6 @@ export function BuiltInIssuesMcp({ services }: { services: IServiceAccessor }) {
             onCheckedChange={(enabled) => void toggle(enabled)}
           />
         </div>
-        <p className="mt-2 text-ui-sm text-foreground-subtle">
-          {intl.formatMessage({ id: "settings.mcp.issues.reconnect" })}
-        </p>
         {failed || error ? (
           <p role="alert" className="mt-2 text-ui-sm text-destructive">
             {intl.formatMessage({ id: "settings.mcp.issues.saveFailed" })}

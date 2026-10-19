@@ -67,6 +67,10 @@ try {
       const row = page.getByTestId("built-in-issues-mcp");
       const toggle = row.getByRole("switch", { name: "启用议题管理 MCP" });
       await toggle.waitFor();
+      assert.equal(
+        await row.getByText(/新建或重新连接|Tools load in new or reconnected sessions/).count(),
+        0,
+      );
       await page.waitForFunction(() => !document.querySelector('[role="switch"]').disabled);
       assert.equal(await toggle.getAttribute("aria-checked"), "true");
       await toggle.click();

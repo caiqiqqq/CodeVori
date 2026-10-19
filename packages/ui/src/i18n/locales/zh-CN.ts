@@ -3188,8 +3188,6 @@ const zhCN: Record<string, string> = {
   "settings.mcp.issues.toggle": "启用议题管理 MCP",
   "settings.mcp.issues.description":
     "让智能体查询和创建当前项目的议题，复用版本控制账号，支持 GitHub、GitLab 和 Gitea。",
-  "settings.mcp.issues.reconnect":
-    "新建或重新连接会话后加载工具；关闭后立即拒绝新的工具调用。创建议题需要明确的发布指令。",
   "settings.mcp.issues.saveFailed": "无法读取或保存设置，请重试。",
   "settings.mcp.host.activeDescription": `该 MCP 服务器由 ${PRODUCT_NAME} 宿主为 {pluginName} 插件提供，运行时身份由宿主管理。`,
   "settings.mcp.plugin.disabled": "插件未启用",
