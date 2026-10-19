@@ -1464,12 +1464,9 @@ export function McpSettingsSection({
           })}
         />
       ) : null}
-      <div
-        className={!mcpProjectionReady || hasEmptySearchResult ? "hidden" : "space-y-6"}
-        data-mcp-list-layout="grouped"
-      >
+      <div className={hasEmptySearchResult ? "hidden" : "space-y-6"} data-mcp-list-layout="grouped">
         <section
-          className={hideInstalledGroup ? "hidden" : "space-y-4"}
+          className={!mcpProjectionReady || hideInstalledGroup ? "hidden" : "space-y-4"}
           data-mcp-plugin-group="installed"
         >
           <div data-mcp-plugin-installed-actions="true">
@@ -1540,10 +1537,14 @@ export function McpSettingsSection({
             />
           ) : null}
         </section>
+        {/* 内置分组紧跟已安装列表；加载目录时仍保留内置能力的独立可见性。 */}
+        {showBuiltInIssues ? (
+          <BuiltInIssuesMcp key={activeWorkspaceKey} services={services} />
+        ) : null}
         {pluginMcpGroups.map((group) => (
           <section
             key={group.pluginId}
-            className="space-y-4"
+            className={!mcpProjectionReady ? "hidden" : "space-y-4"}
             data-mcp-plugin-group={group.pluginId}
           >
             <SettingsResourceGroupHeader
@@ -1564,7 +1565,6 @@ export function McpSettingsSection({
           </section>
         ))}
       </div>
-      {showBuiltInIssues ? <BuiltInIssuesMcp key={activeWorkspaceKey} services={services} /> : null}
       <McpServersImportDialog
         // 对话框携带的是 mcpStore 的 currentProjectPath，只有它与当前 target
         // 一致时才和 services 的 host 同源；不一致的过渡帧不能让导入按 A 的 host 落盘 B 的路径。
