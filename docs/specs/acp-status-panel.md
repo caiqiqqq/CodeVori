@@ -3,7 +3,7 @@
 ## Rules and owners
 
 Populated ACP and API conversations reuse ConversationStatusPanel, its Git tools,
-mini/panel/automatic modes and the timeline's coordinated layout. Empty ACP drafts
+mini/panel/automatic modes and the timeline's stable layout. Empty ACP drafts
 retain their existing greeting. A compact branch entry remains visible in populated
 conversations when Git is available, even when the repository is clean or no other
 panel facts are present. Clicking it expands the existing panel. The full Git tools
@@ -45,7 +45,7 @@ ACP Host → persist revision ───────────────┼�
   └→ web-remote-replayable snapshots ─────┘                            for timeline/dock
 ```
 
-Layout is derived from the same projected content as the panel. Switching Agent,
+Panel content is derived from the current projection. Switching Agent,
 session or workspace replaces the facts; no UI transcript or persistent cache is
 added. Existing local panel display preference is shared with API. Workspace
 identity isolation and revision/stale callback guards stay unchanged.
@@ -89,8 +89,8 @@ web-remote-replayable snapshots ─┴→ selected pane → Terminals → output
    selection lists branches via the supplied workspace service. No real Git mutation.
 2. Fake ACP plan updates, empty replacement, new user turn and goal updates appear
    from Host snapshots only. No API goal actions, task diffs or background state.
-3. Mini → expanded → mini uses existing controls. Desktop wide layout reserves
-   room consistently; narrow/mobile does not overflow. Check light/dark themes.
+3. Mini → expanded → mini uses existing controls. Follow the stable geometry rules
+   below; narrow/mobile does not overflow. Check light/dark themes.
 4. Clean/nonrepository Git and Office mode keep existing API visibility rules. A
    confirmed unavailable Git runtime has no compact branch label or Git environment row;
    if it is the only fact, no status-panel placeholder is rendered. Different identities
@@ -109,8 +109,41 @@ web-remote-replayable snapshots ─┴→ selected pane → Terminals → output
    identity and terminal IDs and update via the same Host snapshot subscription.
 9. A populated API or ACP conversation in a clean repository shows its branch in a
    compact entry, including after a Host replay; clicking it expands the existing
-   Git section. Branch-only auto mode does not reserve the expanded wide layout.
+   Git section. Branch-only auto mode keeps the panel itself compact.
    Active plan/change summaries remain visible with the branch. Detached and unknown
    scopes have accurate labels without leaking the previous workspace's branch; a
    confirmed unavailable Git runtime omits the branch entry and environment row.
    Check desktop/mobile and light/dark themes.
+
+## Stable conversation geometry (issue #196)
+
+- Populated API and ACP conversations reserve the same right-hand status area at
+  conversation-container widths of at least 1280px, regardless of mini, panel or
+  automatic mode, content arrival/clearing, or Git availability. Message columns
+  and the composer keep the same width and horizontal position during toggles.
+- Below 1280px the existing panel overlays the conversation without changing its
+  geometry. Automatic mode stays compact; explicit expansion remains available.
+  Empty drafts keep their existing centered greeting/composer layout.
+- SessionPane owns the existing display preference and panel facts. Timeline owns
+  geometry derived only from container width and empty-draft layout, never from
+  panel display state. SessionPane opts into this stable status area; timeline
+  consumers without a status panel (such as unstarted task previews) retain their
+  existing layout. No additional state, protocol, persistence or migration.
+- Clicking panel controls must retain message/composer/scroll-container DOM,
+  unsent draft, scroll position and visible-message position. Do not compensate
+  with scroll commands, timers or new ResizeObserver state.
+
+```text
+panel toggle → SessionPane display preference → status-panel presentation
+container width + empty draft → Timeline CSS layout → message columns + composer
+desktop continuous / mobile replayable → existing projections → panel facts only
+```
+
+Acceptance: real SessionPane browser tests exercise repeated mini/panel toggles,
+automatic mode and branch-only content at widths above, at and below 1280px and
+mobile width, in light/dark themes. Sample geometry throughout the transition,
+both at the bottom and while reading history; assert stable DOM, draft, scroll,
+message and composer rectangles. Wide panels must not cover the message/composer
+column. Existing Git actions, replay and scoped-session tests continue to pass.
+Shared Timeline layout is also covered by its conversation-switch regression;
+synthetic Host tests do not claim live remote transport verification.

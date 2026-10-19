@@ -4461,12 +4461,11 @@ export function SessionPane({
   const statusPanelVariant = resolveConversationStatusPanelVariant({
     variantOverride: effectiveSummaryPanelVariantOverride,
   });
-  // 若只有 status panel 内部知道自动展开态，而 timeline/composer 未同步调整布局，
-  // 宽屏下就会出现面板覆盖内容。因此外层布局也必须使用同一展开状态。
+  // 此模式只控制面板自身定位；Timeline 的侧栏留白独立于面板展示状态（#196）。
   const shouldUseStatusPanelInlineLayout =
     !visibleEmptyDraft &&
     shouldUseConversationStatusPanelInlineLayout({
-      // 修复原因：仅有分支身份时自动模式仍为胶囊；用户主动展开才给正文留出面板空间。
+      // 仅有分支身份时自动模式仍为胶囊，用户主动展开才使用展开面板的定位。
       hasContent: statusPanelModel.hasExpandedContent || statusPanelVariant === "panel",
       variant: statusPanelVariant,
     });
@@ -5450,7 +5449,7 @@ export function SessionPane({
                 ) : null
               }
               centerEmptyStateWithDock={visibleEmptyDraft}
-              summaryPanelLayout={statusPanelLayout}
+              reserveStatusPanelSpace
               conversationFindQuery={(acpAgent || !isDraft) && focused ? conversationFindQuery : ""}
               conversationFindActiveIndex={
                 (acpAgent || !isDraft) && focused ? conversationFindActiveIndex : -1
