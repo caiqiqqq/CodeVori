@@ -191,11 +191,19 @@ pnpm bundle:desktop -- --help
 
 默认目标为 macOS arm64，默认输出目录为 `packages/desktop/dist/`。`--os` 支持 `mac`、`win`、`linux`，`--arch` 支持 `x64`、`arm64`；实际打包与签名需要目标平台对应的工具和配置。
 
-macOS 安装：打开构建产物 DMG，将 CodeVori 拖入“应用程序”。签名与公证状态取决于构建配置；对于自行构建且已确认来源的应用，如果被系统隔离属性拦截，可移除其隔离属性：
+macOS 安装：打开构建产物 DMG，将 CodeVori 拖入“应用程序”。签名与公证状态取决于构建配置。
+
+#### macOS 提示“App 已损坏，无法打开”
+
+未经 Apple 公证的应用可能被 macOS 安全检查拦截，并提示“App 已损坏，无法打开”。仅在确认应用来自本项目的 [GitHub Releases](https://github.com/caiqiqqq/CodeVori/releases)、并已核对 `SHA256SUMS` 中的校验值后，才可在终端移除应用的隔离属性，再重新打开：
 
 ```bash
-sudo xattr -rd com.apple.quarantine /Applications/CodeVori.app
+xattr -d com.apple.quarantine "/Applications/CodeVori.app"
 ```
+
+如果仍被隔离属性拦截，可使用 `xattr -rd com.apple.quarantine "/Applications/CodeVori.app"` 递归处理应用包内文件；若提示权限不足，再在命令前加 `sudo`。安装位置不同时，请替换为实际路径。
+
+此操作会移除下载隔离标记，不会修复真正损坏的文件。来源不明、校验不一致或处理后仍无法打开时，请勿继续绕过安全检查，应重新下载或反馈问题。
 
 ### CodeVori 命令行版
 
