@@ -324,6 +324,7 @@ import { createWorkTaskMerge } from "./work-task/workTaskMerge.js";
 import { createWorkTaskResult } from "./work-task/workTaskResult.js";
 import { createWorkTaskConversation } from "./work-task/workTaskConversation.js";
 import { createAcpService } from "./acp/acpServiceImpl.js";
+import { buildAcpInstallNetworkEnv } from "./acp/acpInstallNetworkEnv.js";
 import { IZCodeAgentService } from "./zcode-agent/zcodeAgent.js";
 import type { CuaOperationStateReporter } from "./zcode-agent/cuaOperationTurnTracker.js";
 import { IZCodeSessionService } from "./zcode-session/zcodeSession.js";
@@ -2426,6 +2427,25 @@ export function createLocalServices(options: {
     ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
   });
   const acpService = createAcpService({
+    resolveInstallEnv: async () => {
+      const settings = await settingService.get();
+      const network =
+        isDesktopAttachedRemote && options?.remoteAgentNetwork
+          ? options.remoteAgentNetwork
+          : {
+              httpProxy: settings.httpProxy,
+              noProxy: settings.httpProxyNoProxy,
+              onlyDomains: settings.httpProxyOnlyDomains,
+            };
+      return buildAcpInstallNetworkEnv({
+        httpProxy: await hostApiNetworkTransport.getSubprocessProxyUrl({
+          ...network,
+          caCertPath: settings.httpProxyCaCertPath,
+        }),
+        noProxy: network.noProxy,
+        caCertPath: settings.httpProxyCaCertPath,
+      });
+    },
     issuesMcp: {
       register: (session) =>
         isDesktopAttachedRemote

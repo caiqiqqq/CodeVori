@@ -1,9 +1,27 @@
 # ACP 智能体设置
 
+## 安装诊断、取消和恢复（2026-10-20）
+
+- 目标 Host 的 ACP 管理器唯一持有包操作 admission、operationId、实例 ownerId、实例内递增 sequence 和最近一次操作快照。快照包含运行/取消/终态、可取消能力及最多 100 条脱敏日志（每条最多 2048 字符）；不落盘。页面重开先订阅再读取快照，忽略同实例旧 sequence；Host 重启接受新 ownerId，丢弃已退役实例迟到快照；Host 切换清除投影。桌面连续订阅与手机断线恢复读取同一 Host 快照，不创建第二条队列或回落本机。
+- npm 安装以 foreground scripts 输出 npm 和 postinstall 日志，UTF-8 分行、有界缓冲和批量发布；隐藏终端控制字符、URL 凭据/查询参数及环境中的凭据。不能将 npm 镜像等同于第三方脚本的全部网络出口。
+- 每次 npm 安装读取目标 Host 最新网络设置，复用 Host 子进程代理路由（含 onlyDomains、No Proxy、自定义 CA），不修改全局环境和 npm 配置。受支持的 Node 通过 `NODE_USE_ENV_PROXY` 开启原生 fetch/HTTP 环境代理；旧 Node 或自行实现网络栈、忽略标准变量的第三方脚本不保证代理生效。显式设置优先，不把开发机固定代理地址写入产品。远程 localhost 指远程 Host。
+- 仅 npm 子进程执行阶段支持取消；Node/二进制下载和原子发布阶段不宣称可取消。取消按严格 operationId 定位，旧 ID 不影响新任务，重复请求幂等。npm 执行最多 20 分钟，超时与取消共用进程树清理屏障；进程树退出后才移除 staging、发布失败终态并释放锁，保留旧包。清理无法确认退出时保留 staging 和 admission，明确提示重启 Host 后检查残留，不伪装为可重试。
+- 新能力通过可选 capability 字段发现；旧 Host 保持原有事件/命令流程，不发送新方法。新 Host 的状态读取失败时显示错误并阻止包操作，不把未知当空闲。Host 重启不重放此前内存进度，也不自动结束其他版本仍在运行的安装。
+
+```text
+页面命令 → 目标 Host admission → npm + postinstall（同一进程树）
+                │                         │ 日志 → 有界脱敏批次
+                ├─ 快照(sequence) ←───────┘
+                └─ cancel(id) / deadline → 清理进程树 → staging 清理 → 终态/解锁
+桌面 continuous：订阅快照；手机 replayable / 页面重开：订阅 → 读快照 → 丢弃旧序号
+```
+
+验收：假 npm 输出跨 chunk/超长行/凭据、生成孙进程；验证日志有界脱敏、取消与超时杀树、旧包不变、清理前拒绝并发、旧取消拒绝、最新代理配置生效。真实 hook/panel E2E 验证重开恢复、取消中禁用、跨 Host 迟到快照隔离及旧 Host 兼容；不安装真实 Hermes 或终止用户现有安装。
+
 ## 一键安装 Node/npm（2026-10-20）
 
 - npm 智能体环境缺失或 Node 不兼容时，支持此能力的目标 Host 展示“一键安装 Node.js / npm”。通过现有 `manageAgent` 的 `install-runtime` 动作安装运行环境，不隐式安装智能体、不修改系统 Node、全局 npm 配置或 shell 配置、不申请提权。旧 Host 仍保留官网下载入口。
-- Host 的 ACP 管理器是唯一写入所有者，运行环境与包操作共用 admission 锁及 operationId 事件。按钮在操作期间禁用；断线不回落本机，切换 Host 后忽略旧结果。桌面 continuous 与手机 replayable 复用既有 RPC/attachment 语义；页面重开只读 Host 文件事实，不宣称重放历史下载进度。
+- Host 的 ACP 管理器是唯一写入所有者，运行环境与包操作共用 admission 锁及 operationId 事件。按钮在操作期间禁用；断线不回落本机，切换 Host 后忽略旧结果。桌面 continuous 与手机 replayable 复用既有 RPC/attachment 语义；页面重开读取上述 Host 内存操作快照及文件事实，Host 重启后不宣称重放历史下载进度。
 - admission 绑定智能体精确发行版本，读取对应 engines.node；从 npmmirror 的 Node 发行索引选择满足要求的最新稳定 LTS（未声明时 >=20），按目标 Host OS/架构选择 macOS/Linux x64/arm64 或 Windows x64/arm64 的归档。无可用发行、未知要求查询失败、不支持平台时明确失败，不运行远端脚本或任意 URL。
 - 下载归档和 SHA-256 清单均走 HTTPS 国内镜像，必须校验完整性（不声称镜像提供独立来源真实性证明）。拒绝越界路径和特殊文件；Node tar 中的链接不提取，只创建已知 npm/npx 本地链接。校验实际 Node/npm 可执行及 Node 精确版本后才原子发布 active 指针。失败清理 staging，保留旧指针，允许重试。
 - 安装位于目标 Host ACP 数据目录下 runtime/versions，不删除旧版本；该 Host 后续 ACP 诊断、npm 安装、模型目录查询和新进程启动统一优先使用托管 Node/npm，无需重启 Host。现有会话不重启。共享环境切换后，各智能体仍分别按自己的目标要求展示兼容性，不自动升级适配器。

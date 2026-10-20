@@ -152,6 +152,8 @@ export const acpAgentInfoSchema = z.object({
   nodeVersionCompatible: z.boolean().nullable().optional(),
   /** Capability flag: old Hosts must not receive install-runtime. */
   nodeInstallSupported: z.boolean().optional(),
+  /** Host-owned package snapshot, bounded logs and exact-ID cancellation. */
+  agentManagementSupported: z.boolean().optional(),
   nodeRuntimeSource: z.enum(["managed", "system", "missing"]).optional(),
 });
 export type AcpAgentInfo = z.infer<typeof acpAgentInfoSchema>;
@@ -238,6 +240,29 @@ export const acpAgentOperationEventSchema = z.object({
   message: z.string(),
 });
 export type AcpAgentOperationEvent = z.infer<typeof acpAgentOperationEventSchema>;
+
+export const acpAgentOperationCancelSchema = z.object({ operationId: z.string().uuid() }).strict();
+export type AcpAgentOperationCancel = z.infer<typeof acpAgentOperationCancelSchema>;
+
+export const acpAgentManagementSnapshotSchema = z
+  .object({
+    ownerId: z.string().uuid(),
+    sequence: z.number().int().nonnegative(),
+    operation: z
+      .object({
+        operationId: z.string().uuid(),
+        agent: acpAgentSchema,
+        action: acpAgentManagementSchema.shape.action,
+        status: z.enum(["running", "cancelling", "completed", "failed"]),
+        busy: z.boolean(),
+        cancellable: z.boolean(),
+        log: z.array(z.string().max(2048)).max(100),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+export type AcpAgentManagementSnapshot = z.infer<typeof acpAgentManagementSnapshotSchema>;
 
 export const acpWorkspaceSchema = z.object({
   workspacePath: z.string().trim().min(1),

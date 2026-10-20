@@ -4406,6 +4406,12 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.adapterHint": `Managed adapters live only in this Host's ${PRODUCT_NAME} data directory and do not replace system commands.`,
   "settings.acpAgents.diagnostics": "Runtime diagnostics",
   "settings.acpAgents.install": "Install adapter",
+  "settings.acpAgents.operationLog": "Installation log",
+  "settings.acpAgents.cancelInstall": "Cancel installation",
+  "settings.acpAgents.cancelling": "Cancelling…",
+  "settings.acpAgents.invalidSnapshot": "Invalid Host installation state. Please reconnect.",
+  "settings.acpAgents.snapshotUnavailable":
+    "Host installation subscription unavailable. Retrying the snapshot.",
   "settings.acpAgents.upgrade": "Upgrade to target",
   "settings.acpAgents.uninstall": "Uninstall managed adapter",
   "settings.acpAgents.uninstallConfirm": `Only the adapter managed by ${PRODUCT_NAME} on this Host is removed. System commands and saved sessions are kept.`,

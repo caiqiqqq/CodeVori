@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IAcpService } from "@zcode/services";
 import { createUuid } from "@zcode/shared";
+import { useAcpOperationSnapshot } from "@/settings/useAcpOperationSnapshot.js";
 import type {
   AcpAgent,
   AcpAgentInfo,
@@ -82,6 +83,11 @@ export function useAcpAgentManagement(service: IAcpService | null) {
   );
 
   const refresh = useCallback(() => read({ checkUpdates: true, force: true }), [read]);
+  const operationsSupported = agents.some((agent) => agent.agentManagementSupported === true);
+  const operationState = useAcpOperationSnapshot(service, operationsSupported, () => {
+    void read();
+  });
+  const refreshOperation = operationState.refreshOperation;
 
   useEffect(() => {
     ++generation.current;
@@ -147,17 +153,20 @@ export function useAcpAgentManagement(service: IAcpService | null) {
       setChecking(false);
       setBusy(true);
       setError(null);
-      setLog([]);
-      setOperationAgent(agent);
       const operationId = createUuid();
       let disposeSubscription: (() => void) | undefined;
       try {
-        const subscription = service.onDynamicAgentOperation(operationId)((event) => {
-          if (generation.current === currentGeneration)
-            setLog((previous) => [...previous, event.message]);
-        });
-        disposeSubscription = () => subscription.dispose();
-        subscriptions.current.add(disposeSubscription);
+        // 新 Host 只订阅统一快照；按 ID 的临时日志仅用于旧 Host，避免维护第二份操作事实。
+        if (!operationsSupported) {
+          setLog([]);
+          setOperationAgent(agent);
+          const subscription = service.onDynamicAgentOperation(operationId)((event) => {
+            if (generation.current === currentGeneration)
+              setLog((previous) => [...previous.slice(-99), event.message.slice(0, 2048)]);
+          });
+          disposeSubscription = () => subscription.dispose();
+          subscriptions.current.add(disposeSubscription);
+        }
         await service.manageAgent({
           agent,
           action,
@@ -183,10 +192,25 @@ export function useAcpAgentManagement(service: IAcpService | null) {
         disposeSubscription?.();
         if (disposeSubscription) subscriptions.current.delete(disposeSubscription);
         if (generation.current === currentGeneration) setBusy(false);
+        if (generation.current === currentGeneration) await refreshOperation();
       }
     },
-    [service],
+    [service, operationsSupported, refreshOperation],
   );
 
-  return { agents, loading, checking, error, busy, log, operationAgent, refresh, update, manage };
+  const hostOperation = operationsSupported ? operationState.snapshot?.operation : null;
+  return {
+    agents,
+    loading,
+    checking,
+    error: operationState.error ?? error,
+    busy: busy || operationState.busy,
+    log: operationsSupported ? (hostOperation?.log ?? []) : log,
+    operationAgent: operationsSupported ? (hostOperation?.agent ?? null) : operationAgent,
+    operation: hostOperation,
+    cancel: operationState.cancel,
+    refresh,
+    update,
+    manage,
+  };
 }

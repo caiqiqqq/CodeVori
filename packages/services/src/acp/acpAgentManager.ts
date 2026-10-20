@@ -6,7 +6,7 @@ import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises
 import { delimiter, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { satisfies } from "semver";
-import { Emitter, type Event } from "@zcode/rpc";
+import { type Event } from "@zcode/rpc";
 import {
   ACP_AGENT_CATALOG,
   acpAgentDefinition,
@@ -19,6 +19,8 @@ import {
   type AcpAgentInfo,
   type AcpAgentListOptions,
   type AcpAgentManagement,
+  type AcpAgentManagementSnapshot,
+  type AcpAgentOperationCancel,
   type AcpAgentOperationEvent,
   type AcpAgentUpdate,
   type AcpCodexConfig,
@@ -44,6 +46,9 @@ import {
 import { createGeminiProviderStore } from "./acpGeminiProviders.js";
 import { createAcpReleaseRegistry } from "./acpReleaseRegistry.js";
 import { ACP_NPM_REGISTRY, createAcpNodeRuntime } from "./acpNodeRuntime.js";
+import { AcpAgentOperations } from "./acpAgentOperations.js";
+import { AcpInstallCleanupError, runAcpInstallProcess } from "./acpInstallProcess.js";
+import { mergeAcpInstallNetworkEnv } from "./acpInstallNetworkEnv.js";
 
 /** Offline release defaults. Remote checks replace only version/distribution metadata on this Host. */
 const catalog = {
@@ -180,6 +185,9 @@ export interface AcpAgentManager {
   listGeminiProviders(): Promise<AcpGeminiProviders>;
   updateGeminiProviders(input: AcpGeminiProvidersUpdate): Promise<AcpGeminiProviders>;
   manageAgent(input: AcpAgentManagement): Promise<AcpAgentInfo>;
+  readAgentManagement(): AcpAgentManagementSnapshot;
+  cancelAgentOperation(input: AcpAgentOperationCancel): void;
+  onAgentManagement: Event<AcpAgentManagementSnapshot>;
   resolveLaunch(agent: AcpAgent): Promise<AcpAgentLaunch>;
   /** Read native usage history without availability probes or process startup. */
   resolveCodexHome?(): Promise<string>;
@@ -298,7 +306,13 @@ async function npmInstallAttempt(
   agent: AcpAgent,
   env: NodeJS.ProcessEnv,
   targetVersion: string,
-  runtime?: { node: string; npm: string } | null,
+  runtime: { node: string; npm: string } | null,
+  control: {
+    signal: AbortSignal;
+    onLog(message: string): void;
+    onProcessDone(): void;
+    timeoutMs?: number;
+  },
 ): Promise<void> {
   const meta = catalog[agent];
   if (meta.kind !== "npm") throw new Error("Not an npm ACP release");
@@ -313,43 +327,31 @@ async function npmInstallAttempt(
       delete installEnv[key];
   }
   await mkdir(staging, { recursive: true });
+  let cleanupFailed = false;
   try {
-    await new Promise<void>((finish, reject) => {
-      // 包名来自内置目录，版本已通过发行校验；prefix 通过环境变量传入，避免 Windows 命令插值。
-      const child = spawn(
-        runtime?.node ?? "npm",
-        [
-          ...(runtime ? [runtime.npm] : []),
-          "install",
-          "-g",
-          "--no-audit",
-          "--no-fund",
-          "--include=optional",
-          `${meta.packageName}@${targetVersion}`,
-        ],
-        {
-          env: {
-            ...installEnv,
-            npm_config_prefix: staging,
-            npm_config_registry: ACP_NPM_REGISTRY,
-            npm_config_disturl: "https://npmmirror.com/mirrors/node",
-          },
-          windowsHide: true,
-          shell: !runtime && process.platform === "win32",
-          stdio: "ignore",
-        },
-      );
-      child.once("error", reject);
-      child.once("close", (code) =>
-        code === 0
-          ? finish()
-          : reject(
-              new Error(
-                `npm exited with code ${code}；已使用国内 npm 镜像，第三方安装脚本仍可能需要访问 GitHub 或额外的本机工具。`,
-              ),
-            ),
-      );
+    await runAcpInstallProcess({
+      ...control,
+      command: runtime?.node ?? "npm",
+      args: [
+        ...(runtime ? [runtime.npm] : []),
+        "install",
+        "-g",
+        "--no-audit",
+        "--no-fund",
+        "--include=optional",
+        "--foreground-scripts",
+        `${meta.packageName}@${targetVersion}`,
+      ],
+      env: {
+        ...installEnv,
+        npm_config_prefix: staging,
+        npm_config_registry: ACP_NPM_REGISTRY,
+        npm_config_disturl: "https://npmmirror.com/mirrors/node",
+      },
+      shell: !runtime && process.platform === "win32",
     });
+    control.onProcessDone();
+    control.signal.throwIfAborted();
     const installed = await managedPackage(staging, agent);
     if (!installed)
       throw new Error("ACP adapter installation did not produce a launchable package");
@@ -369,8 +371,11 @@ async function npmInstallAttempt(
       throw error;
     }
     if (previous) await rm(backup, { recursive: true, force: true });
+  } catch (error) {
+    cleanupFailed = error instanceof AcpInstallCleanupError;
+    throw error;
   } finally {
-    await rm(staging, { recursive: true, force: true });
+    if (!cleanupFailed) await rm(staging, { recursive: true, force: true });
   }
 }
 
@@ -382,14 +387,15 @@ export function createAcpAgentManager(
     runPackageCommand?: (agent: AcpAgent, action: Action) => Promise<void>;
     fetchMetadata?: (url: string) => Promise<unknown>;
     now?: () => number;
+    resolveInstallEnv?: () => Promise<Record<string, string>>;
+    installTimeoutMs?: number;
   } = {},
 ): AcpAgentManager {
   const directory = options.directory ?? join(getZCodeDataRootDir(), "acp-agents");
   const env = options.env ?? process.env;
   const nodeRuntime = createAcpNodeRuntime(join(directory, "runtime"), env);
   const geminiProviders = createGeminiProviderStore(directory);
-  const emitter = new Emitter<AcpAgentOperationEvent>();
-  let busy = false;
+  const operations = new AcpAgentOperations();
   const updates = new Map<AcpAgent, Promise<AcpAgentInfo>>();
   let codexUpdate: Promise<AcpCodexConfig> | undefined;
   const settingsFile = (agent: AcpAgent) => join(directory, `${agent}.json`);
@@ -560,6 +566,7 @@ export function createAcpAgentManager(
       npmVersion,
       nodeVersionRange,
       nodeInstallSupported: nodeRuntime.supported(),
+      agentManagementSupported: true,
       nodeRuntimeSource: runtime ? "managed" : nodePath ? "system" : "missing",
       nodeVersionCompatible:
         meta.kind === "binary"
@@ -573,7 +580,10 @@ export function createAcpAgentManager(
   };
 
   return {
-    onAgentOperation: emitter.event,
+    onAgentOperation: operations.events.event,
+    onAgentManagement: operations.changed.event,
+    readAgentManagement: operations.read,
+    cancelAgentOperation: (input) => operations.cancel(input),
     listGeminiProviders: geminiProviders.list,
     updateGeminiProviders: geminiProviders.update,
     async readCodexConfig() {
@@ -667,13 +677,14 @@ export function createAcpAgentManager(
     },
     async manageAgent(input) {
       const { agent, action, operationId, expectedVersion } = acpAgentManagementSchema.parse(input);
-      if (busy) throw new Error("ACP package operation already running");
-      busy = true;
+      const signal = operations.begin({ agent, action, operationId });
       // 修复原因：检查可能与安装并发，admission 时绑定完整目标，不能在下载期间换版本或 URL。
       const target = releases.target(agent);
       const emit = (phase: AcpAgentOperationEvent["phase"], message: string) =>
-        emitter.fire({ operationId, agent, phase, message });
+        operations.emit(phase, message);
       emit("started", `${action}: ${acpAgentDefinition(agent).command}`);
+      let failed = true;
+      let cleanupFailed = false;
       try {
         if (action === "install-runtime") {
           if (catalog[agent].kind !== "npm") throw new Error("此智能体不需要 Node.js 运行环境");
@@ -686,6 +697,7 @@ export function createAcpAgentManager(
           );
           const result = await status(agent);
           emit("completed", "目标 Host 的 Node.js / npm 已就绪");
+          failed = false;
           return result;
         }
         const runtime = await nodeRuntime.read();
@@ -735,7 +747,20 @@ export function createAcpAgentManager(
             await options.runPackageCommand(agent, action);
           } else if (meta.kind === "npm") {
             emit("log", `Installing ${meta.packageName}@${target.version}`);
-            await npmInstallAttempt(prefix(agent), agent, operationEnv, target.version, runtime);
+            const installEnv = options.resolveInstallEnv
+              ? mergeAcpInstallNetworkEnv(operationEnv, await options.resolveInstallEnv())
+              : operationEnv;
+            operations.setCancellable(true);
+            try {
+              await npmInstallAttempt(prefix(agent), agent, installEnv, target.version, runtime, {
+                signal,
+                onProcessDone: () => operations.setCancellable(false),
+                onLog: (message) => emit("log", message),
+                timeoutMs: options.installTimeoutMs,
+              });
+            } finally {
+              operations.setCancellable(false);
+            }
           } else {
             emit("log", `Installing ${acpAgentDefinition(agent).command}@${target.version}`);
             await installAcpBinary(binaryDir(agent), url!, {
@@ -748,12 +773,14 @@ export function createAcpAgentManager(
         }
         const result = await status(agent);
         emit("completed", `${acpAgentDefinition(agent).command}: ${result.source}`);
+        failed = false;
         return result;
       } catch (error) {
+        cleanupFailed = error instanceof AcpInstallCleanupError;
         emit("failed", error instanceof Error ? error.message : String(error));
         throw error;
       } finally {
-        busy = false;
+        operations.finish(failed, cleanupFailed);
       }
     },
     resolveCodexHome: codexHome,
@@ -839,7 +866,7 @@ export function createAcpAgentManager(
       };
     },
     dispose() {
-      emitter.dispose();
+      operations.dispose();
     },
   };
 }

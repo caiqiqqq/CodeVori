@@ -91,17 +91,42 @@ export function AcpAgentManagerPanel({
     }
     void management.manage(agent, action, agentInfo?.registryVersion);
   };
-  const operationLog =
-    management.log.length && management.operationAgent === agent ? (
+  const operationLog = management.log.length ? (
+    <section className="space-y-2" aria-label={label("operationLog")}>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
+        <span>
+          {
+            ACP_AGENT_SETTINGS_CATALOG.find((item) => item.agent === management.operationAgent)
+              ?.name
+          }
+          {" · "}
+          {label(management.operation?.status === "cancelling" ? "cancelling" : "operationLog")}
+        </span>
+        {management.operation?.busy &&
+        (management.operation.cancellable || management.operation.status === "cancelling") ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!management.operation.cancellable}
+            onClick={() => void management.cancel()}
+          >
+            {label(management.operation.status === "cancelling" ? "cancelling" : "cancelInstall")}
+          </Button>
+        ) : null}
+      </div>
       <div
         role="log"
-        className="max-h-32 space-y-1 overflow-y-auto rounded-lg bg-surface px-3 py-2 font-mono text-ui-sm text-foreground-subtle"
+        className="max-h-48 space-y-1 overflow-y-auto rounded-lg bg-surface px-3 py-2 font-mono text-ui-sm text-foreground-subtle"
       >
         {management.log.map((entry, index) => (
-          <p key={`${index}:${entry}`}>{entry}</p>
+          <p className="whitespace-pre-wrap break-all" key={`${index}:${entry}`}>
+            {entry}
+          </p>
         ))}
       </div>
-    ) : null;
+    </section>
+  ) : null;
 
   return (
     <div
