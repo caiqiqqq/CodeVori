@@ -4370,6 +4370,17 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.collapseChecks": "Collapse all",
   "settings.acpAgents.checkAdapter": "ACP adapter",
   "settings.acpAgents.checkVersion": "Version status",
+  "settings.acpAgents.checkNode": "Node.js / npm environment",
+  "settings.acpAgents.nodeVersionRange": "Node.js required by target release",
+  "settings.acpAgents.nodeEnvironmentSummary":
+    "Current Node.js: {node}, npm: {npm}. Target release requires Node.js: {range}.",
+  "settings.acpAgents.nodeRequirementUnknown":
+    "Unknown (not checked or not declared by the release)",
+  "settings.acpAgents.nodeInstallHint":
+    "Node.js / npm is missing or the Node.js version is incompatible on the target Host. Install or upgrade it before retrying.",
+  "settings.acpAgents.nodeHostHint":
+    "Install a compatible Node.js version (including npm) on the Host running this agent, then restart that Host and refresh. For a remote Host, install it on the remote machine.",
+  "settings.acpAgents.installNode": "Get Node.js",
   "settings.acpAgents.checkPass": "PASS",
   "settings.acpAgents.checkWarn": "WARN",
   "settings.acpAgents.checkFail": "FAIL",

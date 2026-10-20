@@ -16,15 +16,28 @@ export function shouldOfferManagedAcpInstall(info: AcpAgentInfo): boolean {
   return comparison === null || comparison < 0;
 }
 
-export type AcpAgentCheckId = "adapter" | "version";
+export type AcpAgentCheckId = "node" | "adapter" | "version";
 export type AcpAgentCheckStatus = "pass" | "warn" | "fail";
 
-/** 仅展示适配器与版本；安装工具和厂商 CLI 仍由 Host 探测并参与操作判定。 */
+/** 修复原因：隐藏环境版本会把 Node 不兼容误报为普通安装失败；只投影目标 Host 的诊断。 */
 export function projectAcpAgentChecks(
   info: AcpAgentInfo,
 ): { id: AcpAgentCheckId; status: AcpAgentCheckStatus }[] {
   const versionComparison = compareAcpAdapterVersions(info.installedVersion, info.registryVersion);
   return [
+    ...(info.distribution === "binary"
+      ? []
+      : [
+          {
+            id: "node" as const,
+            status:
+              !info.nodeVersion || !info.npmVersion
+                ? ("fail" as const)
+                : info.nodeVersionCompatible === true
+                  ? ("pass" as const)
+                  : ("warn" as const),
+          },
+        ]),
     { id: "adapter", status: info.ready ? "pass" : "fail" },
     {
       id: "version",

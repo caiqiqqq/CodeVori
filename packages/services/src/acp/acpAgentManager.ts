@@ -5,6 +5,7 @@ import { constants } from "node:fs";
 import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { delimiter, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
+import { satisfies } from "semver";
 import { Emitter, type Event } from "@zcode/rpc";
 import {
   ACP_AGENT_CATALOG,
@@ -491,6 +492,7 @@ export function createAcpAgentManager(
       versions ? versions.npm : probeVersion(npmPath, env),
       managed && (release || nodePath) ? Promise.resolve(null) : probeVersion(systemPath, env),
     ]);
+    const nodeVersionRange = releases.target(agent).nodeVersionRange ?? null;
     return {
       agent,
       command: definition.command,
@@ -514,6 +516,15 @@ export function createAcpAgentManager(
       nativePath,
       nodeVersion,
       npmVersion,
+      nodeVersionRange,
+      nodeVersionCompatible:
+        meta.kind === "binary"
+          ? null
+          : !nodeVersion
+            ? false
+            : nodeVersionRange
+              ? satisfies(nodeVersion, nodeVersionRange)
+              : null,
     };
   };
 
@@ -641,6 +652,16 @@ export function createAcpAgentManager(
             ]);
             if (!node || !npm)
               throw new Error("Node.js and npm are required to install ACP adapters");
+            const npmTarget = await releases.resolveNpmTarget(agent, target);
+            const nodeVersion = await probeVersion(node, env);
+            // 修复原因：命令存在不代表版本兼容；OpenClaw 会在 preinstall 拒绝旧 Node，须提前说明要求。
+            if (
+              !nodeVersion ||
+              (npmTarget.nodeVersionRange && !satisfies(nodeVersion, npmTarget.nodeVersionRange))
+            )
+              throw new Error(
+                `Node.js 当前版本 ${nodeVersion ?? "未知"}，目标版本要求 ${npmTarget.nodeVersionRange ?? "可识别的 Node.js 版本"}。请在目标 Host 安装兼容版本后重启 Host 并刷新。`,
+              );
           }
           const url = target.binary?.url;
           if (meta.kind === "binary" && (!url || !target.platformSupported))

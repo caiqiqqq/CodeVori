@@ -147,6 +147,9 @@ export const acpAgentInfoSchema = z.object({
   nativePath: z.string().nullable(),
   nodeVersion: z.string().nullable(),
   npmVersion: z.string().nullable(),
+  /** Target release requirement; absent/null on old Hosts or when not declared/checked. */
+  nodeVersionRange: z.string().max(512).nullable().optional(),
+  nodeVersionCompatible: z.boolean().nullable().optional(),
 });
 export type AcpAgentInfo = z.infer<typeof acpAgentInfoSchema>;
 
