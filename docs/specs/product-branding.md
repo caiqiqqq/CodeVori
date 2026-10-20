@@ -6,6 +6,7 @@
 - 正式版为 `CodeVori`，预览版为 `CodeVori Preview`，开发版为 `CodeVori Dev`。
 - macOS 的 CodeVori 与旧 ZCode 使用不同 bundle ID，允许同时安装；系统录屏授权后的“退出并重新打开”必须仍打开 CodeVori，不能由 LaunchServices 解析到旧 ZCode。
 - 桌面菜单、Dock/托盘、关于窗口、窗口标题、Web 页面标题、欢迎/设置/输入框文案、安装包文件名和系统“在应用中打开”菜单使用新名称。
+- 自绘关于窗口的正文产品名为 `CodeVori`；中英文窗口标题和版权展示文案均从共享产品名生成，不再单独硬编码旧品牌。仅修改展示文案，保留包内原作者和许可证信息。
 - 产品图标使用 CodeVori 的 `V` 字母：白色几何字形配黑色圆角底，沿用现有紧凑比例。应用、Dock/托盘、安装器、启动页、关于页、导航标志与网页 favicon 使用同一字形；首页装饰使用同一字形的浅色线框/深色渐变版本。
 - 手机壳的 Expo 配置、连接页及权限说明同样消费共享产品名称；手机图标从共享 V 字形生成不透明的正方形资源，由手机系统裁圆角。保留既有手机安装身份和连接存储，详细规则见 `mobile-app.md`。
 - 供应商、API 模型和 ACP 智能体的第三方图标不跟随产品改名；保留原作者和许可证。
@@ -47,6 +48,7 @@ flowchart LR
 3. 显式应用名覆盖仍隔离测试数据；输入为空白时仍使用默认身份。
 4. macOS Dev bundle 的 CFBundleName/CFBundleDisplayName 为 CodeVori Dev，bundleId 为 dev.codevori.app.development，zcode scheme 保留，启动路径为 CodeVori Dev.app；旧身份缓存不能直接复用。
 5. 中英文关于/托盘菜单、欢迎语和新对话输入框均出现 CodeVori；实际 `.zcode/v2` 路径提示与协议键不变。
+   关于窗口的标题、HTML 标题、正文名称、无障碍名称及版权展示文案均使用 CodeVori，版本与本地化按钮文案保持原有规则。
 6. 正式/预览安装包名称由新的 productName 生成；Windows/Linux 配置及 macOS 权限提示使用相同名称。
 7. 页面验证覆盖中文和英文、宽屏和手机宽度、深浅主题；标题和品牌文案没有截断或横向溢出。
 8. 重启本地桌面开发版后，系统应用名、窗口名及菜单可见新名称，主进程读取的 userData/sessionData 与重启前一致。

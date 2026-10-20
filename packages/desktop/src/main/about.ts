@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   DEFAULT_LOCALE,
   type Locale,
+  PRODUCT_NAME,
   ZCODE_BUILD_TIME,
   ZCODE_COMMIT,
   ZCODE_ENV,
@@ -52,11 +53,11 @@ interface AboutSnapshotOptions {
   };
 }
 
-const ABOUT_APPLICATION_NAME = "ZCode Desktop App";
 // 自定义 About 内容本体是 256x280；原生窗口如果同尺寸会让内容贴满透明窗口边界。
 // 这里给 BrowserWindow 额外留出背景呼吸空间，避免正式 About 看起来比 demo 更局促。
 const ABOUT_WINDOW_WIDTH = 256;
 const ABOUT_WINDOW_HEIGHT = 312;
+// 关于窗口曾单独硬编码旧品牌；标题、正文与版权统一读取共享产品名，避免改名后遗漏。
 const ABOUT_MESSAGES: Record<
   Locale,
   {
@@ -68,18 +69,18 @@ const ABOUT_MESSAGES: Record<
   }
 > = {
   "zh-CN": {
-    aboutTitle: "关于 ZCode",
+    aboutTitle: `关于 ${PRODUCT_NAME}`,
     versionLabel: "版本",
     okButtonLabel: "确定",
     optimizedForAppleSilicon: "已针对 Apple Silicon 优化。",
-    copyright: (year) => `版权所有 © ${year} ZCode。`,
+    copyright: (year) => `版权所有 © ${year} ${PRODUCT_NAME}。`,
   },
   "en-US": {
-    aboutTitle: "About ZCode",
+    aboutTitle: `About ${PRODUCT_NAME}`,
     versionLabel: "version",
     okButtonLabel: "OK",
     optimizedForAppleSilicon: "Optimized for Apple Silicon.",
-    copyright: (year) => `Copyright © ${year} ZCode.`,
+    copyright: (year) => `Copyright © ${year} ${PRODUCT_NAME}.`,
   },
 };
 
@@ -255,7 +256,7 @@ export async function showAboutDialog(
   void aboutWindow.loadURL(
     `data:text/html;charset=utf-8,${encodeURIComponent(
       createCustomAboutDialogHtml({
-        applicationName: ABOUT_APPLICATION_NAME,
+        applicationName: PRODUCT_NAME,
         appVersion: snapshot.appVersion,
         copyright: formatAboutCopyright(undefined, locale),
         optimizationLine: formatAboutOptimizationLine(snapshot, locale),

@@ -1,33 +1,63 @@
-# ZCode
+# CodeVori
 
 <div align="center">
-  <img src="public/logo/icons/1024x1024.png" alt="ZCode" width="128" height="128" />
+  <img src="packages/ui/src/assets/product-logo.svg" alt="CodeVori" width="128" height="128" />
 </div>
 <p align="center">
-  <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=47ag983c-8fcb-4d6d-814b-5395193a712c&amp;qr_code=true">飞书社群</a> ·
-  <a href="https://discord.gg/z9aBcQXZQ3">Discord</a>
+  <a href="https://github.com/caiqiqqq/CodeVori">项目仓库</a> ·
+  <a href="https://github.com/caiqiqqq/CodeVori/issues">问题反馈</a> ·
+  <a href="LICENSE">Apache-2.0</a>
 </p>
 <p align="center">
   简体中文 | <a href="README.en.md">English</a>
 </p>
+CodeVori 是面向日常开发的 AI 编程工作台。你可以在同一个工作区中与智能体讨论需求、查看文件和代码差异、执行终端命令，并通过任务与 Git 工作树组织并行开发。除了桌面应用，还提供 Web 界面、终端 Agent 和连接桌面的手机端。
 
+> **项目来源：CodeVori 基于 [ZCode](https://github.com/zai-org/ZCode) 二次开发，部分功能参考 [Codeg](https://github.com/xintaofei/codeg) 项目。**
+>
+> CodeVori 独立维护，不是 ZCode 或 Codeg 的官方发行版。感谢两个项目及其贡献者提供的开源基础与功能参考；原作者署名、许可证和第三方声明予以保留。
 
+## 功能概览
 
-ZCode 是 AI 编程工作台，提供桌面应用、浏览器界面和终端 Agent。本仓库包含客户端、后端服务、共享 UI，以及 Agent CLI 与运行时源码。
+| 能力            | 说明                                                                                    |
+| --------------- | --------------------------------------------------------------------------------------- |
+| AI 编程对话     | 在项目上下文中提问、修改代码、调用工具，并查看会话与执行过程。                          |
+| 多智能体接入    | 通过 ACP 接入 Codex、Claude Code、Gemini 等智能体，在设置中管理适配器、认证和运行配置。 |
+| 智能体协作      | 将子任务委派给其他智能体，在主会话中查看进度与结果。                                    |
+| 待办与工作树    | 将开发事项保存为任务，结合独立分支和 Git worktree 管理执行、审阅与后续合并。            |
+| 开发工作区      | 在对话旁查看文件、代码差异与终端，使用 Git 工具管理改动，并通过分屏同时处理多个会话。   |
+| 远程开发        | 连接 SSH、WSL 工作区，由目标环境处理文件操作和智能体执行。                              |
+| 手机远控        | 通过手机浏览器或手机 App 连接桌面窗口，查看项目和会话、发送消息及处理交互。             |
+| MCP、技能与插件 | 按项目和智能体配置工具及技能，扩展任务可使用的能力。                                    |
 
-## 更新
+智能体的可用能力取决于对应适配器、安装环境和账号配置；安装适配器后仍可能需要登录或配置模型服务。手机端复用电脑上已有的 Host 与会话，电脑需要保持运行且网络可达。
 
-- 2026-9-23：更新至 ZCode v3.14.3 版本。
+## 文档导航
+
+- [手机端连接与开发](apps/mobile/README.md)
+- [Agent CLI 与运行时](apps/zcode-cli/)
+- [内置配置说明](config/README.md)
+- [产品与功能规范](docs/specs/)
+- [使用与数据说明](NOTICE.md)
+- [第三方组件与版权声明](THIRD-PARTY-NOTICES.md)
+
+## 开始使用
+
+以下内容面向从源码运行和构建 CodeVori 的开发者。版本以根目录 [package.json](package.json) 为准，独立于上游 ZCode 的版本。
+
+为兼容现有配置和工具链，命令 `zcode`、包作用域 `@zcode/*`、环境变量 `ZCODE_*` 以及 `.zcode` 数据目录仍保留原名；这不影响应用显示名称为 CodeVori。
 
 ## 初始化
 
-准备 Git、Node.js **24.14.0** 和 pnpm **10.33.2**，版本以 [mise.toml](mise.toml) 为准。以下开发和打包命令均在仓库根目录执行。
+准备 Git、Node.js **24.14.0** 和 pnpm **10.33.2**，工具版本以 [mise.toml](mise.toml) 为准。从本仓库克隆代码后进入根目录：
 
 ```bash
+git clone https://github.com/caiqiqqq/CodeVori.git
+cd CodeVori
 pnpm bootstrap
 ```
 
-`pnpm bootstrap` 安装 workspace 依赖、准备桌面本地运行资源，再执行 `build:bootstrap`。
+后续命令均在仓库根目录执行。`pnpm bootstrap` 会安装 workspace 依赖、准备桌面本地运行资源，再执行 `build:bootstrap`。
 
 Agent CLI 与运行时源码位于 [apps/zcode-cli/](apps/zcode-cli/)，作为普通目录随本仓库一起克隆，无需单独拉取或初始化 Git submodule。
 
@@ -54,7 +84,7 @@ pnpm dev:desktop
 pnpm dev:desktop:test
 ```
 
-`pnpm dev:desktop` 默认等同于 `pnpm dev:desktop:prod`，使用生产服务配置。启动脚本会准备本地运行资源、构建桌面 Agent，再启动 Electron 和源码监听。
+桌面端基于 Electron。`pnpm dev:desktop` 等同于 `pnpm dev:desktop:prod`，使用生产服务配置；启动时准备本地运行资源、构建桌面 Agent，再运行应用并监听源码变化。
 
 需要独立开发数据目录时，可设置 `ZCODE_DATA_BASE_DIR`。例如在 macOS / Linux 中：
 
@@ -65,6 +95,16 @@ ZCODE_DATA_BASE_DIR="$HOME/.zcode-dev-home" pnpm dev:desktop:test
 ### 远程功能（SSH/WSL）
 
 先执行 `pnpm bootstrap:with-remote` 准备远程资源（mock-cdn），再 `pnpm dev:desktop`；连接远程项目时资源选择「本地下载后上传」。开发态资源取自本地 `packages/desktop/mock-cdn` 和本地构建产物，经 SFTP 上传到远程，不访问 CDN。
+
+### 手机连接桌面
+
+手机端用于接手正在运行的桌面工作区，连接步骤如下：
+
+1. 在 CodeVori 桌面端打开 **设置 → 局域网手机访问**，保存电脑的局域网地址或可解析到本机的域名及端口，然后开启访问。
+2. 在可访问电脑的网络中，用手机浏览器打开完整连接链接；也可在手机 App 中粘贴链接，或扫描桌面提供的二维码后确认连接。
+3. 连接到该桌面窗口后，查看项目、继续会话或处理智能体的交互请求。关闭目标窗口或退出桌面端会断开连接。
+
+手机 App 源码位于 [apps/mobile](apps/mobile/)，使用 Expo 与 WebView，不在手机上另起 Agent。原生开发、构建签名和连接设置见 [手机端 README](apps/mobile/README.md)。连接链接包含访问凭据，请仅在可信设备与网络中使用。
 
 ### Web 开发
 
@@ -79,9 +119,9 @@ ZCODE_SERVER_WORKSPACE=/path/to/project pnpm dev:web
 
 该命令同时启动 Web 开发服务器（默认 `http://localhost:5173`）和后端（默认 `http://localhost:3030`）；浏览器访问前者。`/ws` 和一般 `/api` 请求代理到本地后端，`/api/v1/oauth/token` 单独代理到当前配置的产品服务。
 
-Agent 源码修改后，执行 `pnpm --filter @zcode/cli... build` 并重启服务。需要验证完整发行包时，按下方“ZCode 命令行版”打包章节解压运行。
+Agent 源码修改后，执行 `pnpm --filter @zcode/cli... build` 并重启服务。需要验证完整发行包时，按下方“CodeVori 命令行版”打包章节解压运行。
 
-### ZCode 命令行版
+### CodeVori 命令行版
 
 命令行发行包包含 TUI、Web 和 Agent，统一使用 `zcode` 启动：无参数进入 TUI；第一个参数为 `--web` 时启动 Web；其他参数交给现有 Agent CLI 处理。两种模式都在本机运行，无需 Electron。
 
@@ -136,7 +176,7 @@ node apps/zcode-cli/packages/cli/dist/zcode.cjs --help
 
 ## 打包
 
-第三方声明生成、发行校验流程及声明在发行物中的位置见 [third-party/README.md](third-party/README.md)。
+构建与分发时需保留相应第三方声明；组件与许可清单见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)，原始材料位于 [third-party](third-party/)。
 
 ### 桌面版
 
@@ -151,13 +191,13 @@ pnpm bundle:desktop -- --help
 
 默认目标为 macOS arm64，默认输出目录为 `packages/desktop/dist/`。`--os` 支持 `mac`、`win`、`linux`，`--arch` 支持 `x64`、`arm64`；实际打包与签名需要目标平台对应的工具和配置。
 
-安装：双击打开产物 DMG，将 ZCode 拖入"应用程序"。本地构建未签名，首次打开若被 macOS 拦截，执行：
+macOS 安装：打开构建产物 DMG，将 CodeVori 拖入“应用程序”。签名与公证状态取决于构建配置；对于自行构建且已确认来源的应用，如果被系统隔离属性拦截，可移除其隔离属性：
 
 ```bash
-sudo xattr -rd com.apple.quarantine /Applications/ZCode.app
+sudo xattr -rd com.apple.quarantine /Applications/CodeVori.app
 ```
 
-### ZCode 命令行版
+### CodeVori 命令行版
 
 构建入口为 `pnpm build:zcode`。脚本会依次构建 CLI/TUI、后端和 Web，收集 TUI 的原生库、worker 与运行时依赖，再组装发行包；运行发行包仍需要 Node.js，版本以 `mise.toml` 为准。
 
@@ -216,8 +256,30 @@ node dist/zcode/debug/zcode/bin/zcode.mjs --web \
 | `packages/shared`、`packages/rpc`、`packages/client` | 共享协议和类型、RPC 框架、Agent 客户端 SDK |
 | `packages/provider`、`packages/provider-node`        | Provider 公共能力与 Node 实现              |
 | `apps/zcode-cli`                                     | Agent CLI、TUI、运行时与工具               |
+| `apps/mobile`                                        | Expo 手机应用与 WebView 连接壳             |
 | `scripts`、`config`、`third-party`                   | 构建维护脚本、内置配置与第三方声明材料     |
 
-## 项目声明
+## 开发检查
 
-功能与优惠范围、维护规则、执行与数据风险，以及许可和第三方版权说明，详见 [NOTICE.md](NOTICE.md)。
+提交改动前，按变更范围运行对应验证。仓库通用检查入口如下：
+
+```bash
+pnpm typecheck
+pnpm lint
+pnpm fmt:check
+pnpm architecture:check --changed
+```
+
+各包的测试入口以其 `package.json` 和实际测试文件为准。新增或调整行为前，先更新对应的 [功能规范](docs/specs/)，并遵守 [AGENTS.md](AGENTS.md) 中的开发约定。
+
+## 来源与致谢
+
+- [ZCode](https://github.com/zai-org/ZCode)：CodeVori 二次开发的基础项目，保留其原作者署名与许可信息。
+- [Codeg](https://github.com/xintaofei/codeg)：本项目部分功能的参考来源，包括多智能体协作、智能体配置及任务工作流等方面的设计；实际使用的第三方资源以仓库声明为准。
+- 感谢相关智能体适配器、协议、依赖库及其他开源项目的贡献者。具体组件与许可见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
+## 许可与项目声明
+
+本仓库第一方代码使用 [Apache License 2.0](LICENSE)。第三方软件、图标和其他资源按各自许可证使用与分发；CodeVori 的名称与界面调整不替代原作者和第三方的版权声明。
+
+功能范围、执行权限、网络行为、本地数据与日志等说明见 [NOTICE.md](NOTICE.md)。
