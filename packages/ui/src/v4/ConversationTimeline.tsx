@@ -42,10 +42,7 @@ import { ConversationTurnNavigator } from "@/v4/ConversationTurnNavigator.js";
 import { syncConversationShareSelectionPanelLayout } from "@/v4/conversationShareSelectionPanelLayout.js";
 import type { ConversationRowRenderContext } from "@/v4/conversationRowContext.js";
 import { splitConversationTimelineLiveTail } from "@/v4/conversationTimelineLiveTail.js";
-import {
-  getConversationContentWidthClassName,
-  getConversationStatusPanelOffsetClassName,
-} from "@/v4/conversationLayout.js";
+import { getConversationContentWidthClassName } from "@/v4/conversationLayout.js";
 import {
   buildConversationTurnRenderUnits,
   type ConversationTurnRenderUnit,
@@ -318,8 +315,6 @@ interface ConversationTimelineProps {
   centerEmptyStateWithDock?: boolean;
   /** 窄屏/粗指针视口保留紧凑居中布局，不复用桌面草稿安全间距。 */
   compactEmptyStateWithDock?: boolean;
-  /** 宿主包含状态面板时固定预留宽屏侧栏；不得随面板模式或内容变化。 */
-  reserveStatusPanelSpace?: boolean;
   conversationFindQuery?: string;
   conversationFindActiveIndex?: number;
   conversationFindNavigationRequestId?: number;
@@ -386,7 +381,6 @@ function ConversationTimelineImpl({
   headerSlot,
   centerEmptyStateWithDock = false,
   compactEmptyStateWithDock = false,
-  reserveStatusPanelSpace = false,
   conversationFindQuery = "",
   conversationFindActiveIndex = -1,
   conversationFindNavigationRequestId = 0,
@@ -565,10 +559,8 @@ function ConversationTimelineImpl({
     centerYPx: number;
     maxHeightPx: number;
   } | null>(null);
-  // 修复 #196：消息列与输入 dock 共用稳定侧栏留白，不再随面板展开/收起移动。
-  const contentOffsetClassName = getConversationStatusPanelOffsetClassName(
-    reserveStatusPanelSpace && !centeredEmptyLayout,
-  );
+  // 修复依据：固定给状态面板让位会让胶囊模式的主会话偏左；
+  // 消息与输入 dock 统一在会话视口内居中，面板切换只改变自身浮层。
   const contentWidthClassName = getConversationContentWidthClassName({
     centeredEmptyLayout,
   });
@@ -1894,7 +1886,6 @@ function ConversationTimelineImpl({
                 centeredEmptyLayout
                   ? "flex w-full max-w-2xl shrink-0 items-center justify-center"
                   : "min-h-0 flex-1",
-                !centeredEmptyLayout && contentOffsetClassName,
               )}
             >
               {emptyState}
@@ -1914,11 +1905,7 @@ function ConversationTimelineImpl({
                   ref={headerSlotRef}
                   data-v4-timeline-header-slot="true"
                   data-v4-timeline-content-column="true"
-                  className={cn(
-                    "relative mx-auto w-full shrink-0",
-                    contentWidthClassName,
-                    contentOffsetClassName,
-                  )}
+                  className={cn("relative mx-auto w-full shrink-0", contentWidthClassName)}
                 >
                   {headerSlot}
                 </div>
@@ -1928,10 +1915,9 @@ function ConversationTimelineImpl({
                 data-v4-timeline-virtual-history="true"
                 data-v4-timeline-content-column="true"
                 className={cn(
-                  // 容器断点切换保留宽度过渡；宽屏固定预留侧栏，与面板展示状态无关。
-                  "relative mx-auto w-full shrink-0 transition-[width,max-width,transform] duration-150 ease-out @min-[1280px]/conversation:transition-[transform]",
+                  // 容器断点切换保留宽度过渡，正文始终在当前会话视口内居中。
+                  "relative mx-auto w-full shrink-0 transition-[width,max-width] duration-150 ease-out @min-[1280px]/conversation:transition-none",
                   contentWidthClassName,
-                  contentOffsetClassName,
                 )}
                 style={{ height: totalSize }}
               >
@@ -1977,10 +1963,9 @@ function ConversationTimelineImpl({
                   data-turn-id={liveUnit.turnId}
                   data-v4-timeline-content-column="true"
                   className={cn(
-                    // 与历史消息列共用容器断点和固定侧栏留白。
-                    "relative mx-auto w-full shrink-0 transition-[width,max-width,transform] duration-150 ease-out @min-[1280px]/conversation:transition-[transform]",
+                    // 与历史消息列共用容器断点和居中规则。
+                    "relative mx-auto w-full shrink-0 transition-[width,max-width] duration-150 ease-out @min-[1280px]/conversation:transition-none",
                     contentWidthClassName,
-                    contentOffsetClassName,
                   )}
                 >
                   <ConversationTurnGroup
@@ -2001,11 +1986,7 @@ function ConversationTimelineImpl({
               {pendingGuides.length > 0 ? (
                 <div
                   data-v4-timeline-content-column="true"
-                  className={cn(
-                    "relative mx-auto w-full shrink-0",
-                    contentWidthClassName,
-                    contentOffsetClassName,
-                  )}
+                  className={cn("relative mx-auto w-full shrink-0", contentWidthClassName)}
                 >
                   <ConversationPendingGuideList
                     context={rowContext}
@@ -2024,11 +2005,7 @@ function ConversationTimelineImpl({
                   ref={footerSlotRef}
                   data-v4-timeline-footer-slot="true"
                   data-v4-timeline-content-column="true"
-                  className={cn(
-                    "relative mx-auto w-full shrink-0",
-                    contentWidthClassName,
-                    contentOffsetClassName,
-                  )}
+                  className={cn("relative mx-auto w-full shrink-0", contentWidthClassName)}
                 >
                   {footerSlot}
                   {hasDelegationFooter && delegation ? (
@@ -2061,11 +2038,10 @@ function ConversationTimelineImpl({
               <div
                 data-v4-composer-dock-content="true"
                 className={cn(
-                  // 同历史消息与 live tail，输入框共用容器断点和固定侧栏留白。
-                  "pointer-events-auto relative z-10 w-full shrink-0 transition-[width,max-width,transform] duration-150 ease-out @min-[1280px]/conversation:transition-[transform]",
+                  // 同历史消息与 live tail，输入框共用容器断点和居中规则。
+                  "pointer-events-auto relative z-10 w-full shrink-0 transition-[width,max-width] duration-150 ease-out @min-[1280px]/conversation:transition-none",
                   contentWidthClassName,
                   !centeredEmptyLayout && "px-4 pb-4",
-                  !centeredEmptyLayout && contentOffsetClassName,
                 )}
               >
                 <div data-v4-back-to-bottom-anchor="composer-dock" className="relative">
