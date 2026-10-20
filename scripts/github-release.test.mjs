@@ -48,6 +48,15 @@ test("all four platforms must supply installers before publication", async (t) =
   await assert.rejects(verifyAssets(directory, context), /ENOENT/);
 });
 
+test("Linux allowlist matches electron-builder package-specific architecture names", () => {
+  assert.deepEqual(artifactNames("0.0.1", "linux-x64"), [
+    "CodeVori-0.0.1-linux-x86_64.AppImage",
+    "CodeVori-0.0.1-linux-amd64.deb",
+    "CodeVori-0.0.1-linux-x86_64.rpm",
+    "CodeVori-0.0.1-linux-x64.pkg.tar.zst",
+  ]);
+});
+
 test("reject artifacts from another source commit", async (t) => {
   const { directory, manifests } = await fixture(t);
   const { manifest, path } = manifests["mac-arm64"];

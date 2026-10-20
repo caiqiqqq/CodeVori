@@ -31,7 +31,13 @@ export function releaseVersion(tag, version) {
 export function artifactNames(version, target) {
   if (!releaseTargets.includes(target)) throw new Error(`Unsupported release target: ${target}`);
   const [os, arch] = target.split("-");
-  return extensions[os].map((extension) => `CodeVori-${version}-${os}-${arch}.${extension}`);
+  // electron-builder 会按 Linux 包格式替换架构名称；必须与真实打包结果一致，
+  // 否则安装包已构建成功却在收集阶段因找不到 x64 文件而失败。
+  const linuxArchitectures = { AppImage: "x86_64", deb: "amd64", rpm: "x86_64" };
+  return extensions[os].map((extension) => {
+    const artifactArch = os === "linux" ? linuxArchitectures[extension] || arch : arch;
+    return `CodeVori-${version}-${os}-${artifactArch}.${extension}`;
+  });
 }
 
 export async function fileHash(path) {
