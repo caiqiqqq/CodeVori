@@ -4379,8 +4379,12 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.nodeInstallHint":
     "Node.js / npm is missing or the Node.js version is incompatible on the target Host. Install or upgrade it before retrying.",
   "settings.acpAgents.nodeHostHint":
-    "Install a compatible Node.js version (including npm) on the Host running this agent, then restart that Host and refresh. For a remote Host, install it on the remote machine.",
+    "Install compatible Node.js (including npm) on the Host running this agent. One-click installation is private to this app and takes effect immediately; manual system changes may require a Host restart.",
   "settings.acpAgents.installNode": "Get Node.js",
+  "settings.acpAgents.installNodeRuntime": "Install Node.js / npm",
+  "settings.acpAgents.nodeManagedInstallHint":
+    "Downloads from a China mirror into an app-managed directory on the target Host, without replacing system Node.js or changing global npm settings.",
+  "settings.acpAgents.nodeManagedSource": "Using app-managed Node.js / npm.",
   "settings.acpAgents.checkPass": "PASS",
   "settings.acpAgents.checkWarn": "WARN",
   "settings.acpAgents.checkFail": "FAIL",

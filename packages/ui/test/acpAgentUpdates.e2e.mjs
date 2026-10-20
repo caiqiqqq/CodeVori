@@ -29,18 +29,18 @@ try {
       import {useConfirmDialogStore} from "../../../ui/src/store/confirmDialogStore.ts";
       import "../../../ui/src/styles.css";
       const initial = {agent:'gemini',command:'gemini',args:['--acp'],distribution:'npm',platformSupported:true,packageName:'@google/gemini-cli',registryVersion:'0.59.0',enabled:true,env:{},source:'system',ready:true,installedVersion:'0.59.0',managedVersion:null,executablePath:'/fake/gemini',nativeCommand:'',nativePath:null,nodeVersion:'24.14.0',npmVersion:'10.33.2',nodeVersionRange:'>=20',nodeVersionCompatible:true,updateCheck:{status:'unchecked',source:'builtin',checkedAt:null}};
-      const state:any = {pending:[],operations:[],calls:[],mode:'normal',environment:{},external:[]};
+      const state:any = {pending:[],operations:[],calls:[],mode:'normal',environment:{},external:[],runtimePending:[],listeners:{}};
       window.__updates = state;
       state.confirmPending = () => Boolean(useConfirmDialogStore.getState().pendingRequest);
       state.confirm = () => useConfirmDialogStore.getState().settleConfirmation(true);
       const makeHost = (host:string) => ({
         async listAgents(options?:any) {
           state.calls.push({host,options});
-          if (!options?.checkUpdates) return [{...initial,...state.environment,registryVersion:host==='B'?'0.62.0':'0.59.0'}];
+          if (!options?.checkUpdates) return [{...initial,...state.environment,source:host==='B'?'managed':'system',managedVersion:host==='B'?'0.59.0':null,registryVersion:host==='B'?'0.62.0':'0.59.0'}];
           return new Promise(resolve=>state.pending.push({host,resolve}));
         },
-        onDynamicAgentOperation(){return ()=>({dispose(){}})},
-        async manageAgent(input:any){state.operations.push(input);return initial},
+        onDynamicAgentOperation(id:string){return (listener:any)=>{state.listeners[id]=listener;return {dispose(){delete state.listeners[id]}}}},
+        async manageAgent(input:any){state.operations.push({host,...input});if(input.action==='install-runtime') return new Promise((resolve,reject)=>state.runtimePending.push({host,resolve,reject,...input}));return initial},
         async updateAgent(input:any){return {...initial,...input,registryVersion:'0.62.0'}},
         async listGeminiProviders(){return {version:'fake',providers:[]}},
       });
@@ -179,6 +179,78 @@ try {
   assert.deepEqual(await page.evaluate(() => window.__updates.external), [
     "https://nodejs.org/en/download",
   ]);
+  await refreshEnvironment({
+    nodeVersion: "22.17.0",
+    npmVersion: "10.9.2",
+    nodeVersionRange: ">=24.16 <25",
+    nodeVersionCompatible: false,
+    nodeInstallSupported: true,
+  });
+  const installRuntime = warning.getByRole("button", {
+    name: "一键安装 Node.js / npm",
+    exact: true,
+  });
+  await installRuntime.click();
+  await page.waitForFunction(() => window.__updates.runtimePending.length === 1);
+  assert.equal(await installRuntime.isDisabled(), true);
+  assert.equal(await page.getByTestId("settings-acp-agents-refresh").isDisabled(), true);
+  await page.evaluate(() => {
+    const state = window.__updates;
+    const input = state.runtimePending[0];
+    if (input.host !== "B" || input.agent !== "gemini" || input.expectedVersion !== "0.62.0")
+      throw new Error("Wrong target Host or release");
+    state.listeners[input.operationId]({
+      operationId: input.operationId,
+      agent: input.agent,
+      phase: "log",
+      message: "正在下载 Node.js：50%",
+    });
+  });
+  await page.getByRole("log").getByText("正在下载 Node.js：50%", { exact: true }).waitFor();
+  await page
+    .getByTestId("settings-acp-agent-manager")
+    .screenshot({ path: "/tmp/zcode-node-runtime-installing-375.png" });
+  await page.evaluate(() =>
+    window.__updates.runtimePending.shift().reject(new Error("国内镜像下载失败，请重试")),
+  );
+  await page.getByText("国内镜像下载失败，请重试", { exact: true }).waitFor();
+  assert.equal(await installRuntime.isEnabled(), true);
+  await installRuntime.click();
+  await page.waitForFunction(() => window.__updates.runtimePending.length === 1);
+  await page.evaluate(() => {
+    window.__updates.environment = {
+      ...window.__updates.environment,
+      nodeVersion: "24.19.0",
+      npmVersion: "11.9.0",
+      nodeVersionCompatible: true,
+      nodeRuntimeSource: "managed",
+    };
+    window.__updates.runtimePending.shift().resolve({});
+  });
+  await warning.waitFor({ state: "detached" });
+  assert.equal(await page.getByTestId("acp-upgrade").isEnabled(), true);
+  await refreshEnvironment({
+    nodeVersion: null,
+    npmVersion: null,
+    nodeVersionCompatible: false,
+    nodeInstallSupported: true,
+  });
+  await installRuntime.click();
+  await page.waitForFunction(() => window.__updates.runtimePending.length === 1);
+  await page.evaluate(() => {
+    window.__updates.switchHost("A");
+  });
+  await page.waitForFunction(() => window.__updates.pending.some((item) => item.host === "A"));
+  await page.evaluate(() => {
+    window.__updates.finish("A");
+  });
+  await page.evaluate(() =>
+    window.__updates.runtimePending.shift().reject(new Error("旧 Host 安装失败")),
+  );
+  assert.equal(await page.getByText("旧 Host 安装失败", { exact: true }).count(), 0);
+  await page.evaluate(() => window.__updates.switchHost("B"));
+  await page.waitForFunction(() => window.__updates.pending.some((item) => item.host === "B"));
+  await page.evaluate(() => window.__updates.finish("B"));
   await page.setViewportSize({ width: 375, height: 800 });
   assert.ok(
     await page.evaluate(
@@ -203,7 +275,7 @@ try {
   );
   assert.deepEqual(errors, []);
   process.stdout.write(
-    "PASS: background update, force refresh, actions, stale Host isolation, Node requirements, install link, environment recovery and mobile layout.\n",
+    "PASS: background update, force refresh, actions, stale Host isolation, Node requirements, legacy link, runtime install progress/failure/retry/recovery, late Host result isolation and mobile layout.\n",
   );
 } finally {
   await browser?.close();
