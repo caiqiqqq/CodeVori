@@ -3,6 +3,8 @@ import { join } from "node:path";
 import {
   ACP_AGENT_CATALOG,
   acpAgentConfigCatalogSchema,
+  acpAgentModelSchema,
+  type AcpAgentModel,
   acpSessionSchema,
   type AcpAgent,
   type AcpAgentConfigSnapshot,
@@ -31,7 +33,7 @@ export function acpAgentConfigFingerprint(
 
 export async function readAcpAgentConfigs(
   directory: string,
-  workspace: AcpWorkspace,
+  workspace: AcpWorkspace | undefined,
   sessions: ReadonlyMap<string, AcpSession>,
   removed: ReadonlySet<string>,
 ): Promise<AcpAgentConfigSnapshot[]> {
@@ -71,7 +73,7 @@ export async function readAcpAgentConfigs(
     });
   }
   const known = new Map<AcpAgent, { snapshot: AcpAgentConfigSnapshot; at: number }>();
-  const key = workspace.workspaceIdentity?.trim() || workspace.workspacePath;
+  const key = workspace?.workspaceIdentity?.trim() || workspace?.workspacePath;
   for (const { session, at } of candidates.values()) {
     if (
       removed.has(session.id) ||
@@ -80,6 +82,7 @@ export async function readAcpAgentConfigs(
     )
       continue;
     const source =
+      workspace &&
       (session.workspaceIdentity?.trim() || session.workspacePath) === key &&
       session.workspacePath === workspace.workspacePath
         ? "workspace"
@@ -108,4 +111,22 @@ export async function readAcpAgentConfigs(
       return item ? [item.snapshot] : [];
     }),
   );
+}
+
+/** Preserve the adapter's IDs and labels, including user-configured aliases. */
+export function projectAcpAgentModels(
+  snapshot: AcpAgentConfigSnapshot | undefined,
+): AcpAgentModel[] {
+  const option = snapshot?.configOptions.find(
+    (item) => item.type === "select" && (item.category === "model" || item.id === "model"),
+  );
+  if (option?.type !== "select") return [];
+  const seen = new Set<string>();
+  return option.options
+    .flatMap((item) => ("group" in item ? item.options : [item]))
+    .flatMap((item) => {
+      if (!item.value || seen.has(item.value)) return [];
+      seen.add(item.value);
+      return [acpAgentModelSchema.parse({ slug: item.value, name: item.name })];
+    });
 }

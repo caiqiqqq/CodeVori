@@ -33,6 +33,9 @@ import type { ConversationDelta } from "@zcode/shared/zcode-protocol-v4";
 import type { ContentBlock, PromptCapabilities } from "@agentclientprotocol/sdk";
 import {
   acpAgentAvailabilityListSchema,
+  ACP_AGENT_MODEL_ENV,
+  acpAgentModelsInputSchema,
+  acpAgentUpdateSchema,
   acpAgentDefinition,
   acpCreateInputSchema,
   acpSetConfigOptionInputSchema,
@@ -94,14 +97,22 @@ import { projectAcpPluginMcpServers } from "./acpMcpServers.js";
 import { createAcpWorkflowMcp } from "./acpWorkflowMcp.js";
 import { AcpWorkflowHost } from "./acpWorkflowHost.js";
 import { acpConfigValues } from "./acpConfigOptions.js";
-import { acpConfigOptionsRestored, restoreAcpConfigOptions } from "./acpConfigRestore.js";
+import {
+  acpConfigOptionsRestored,
+  defaultAcpModelSelection,
+  restoreAcpConfigOptions,
+} from "./acpConfigRestore.js";
 import {
   AcpPermissionPreferences,
   isAcpPermissionOption,
   restoreAcpPermission,
   sessionPermissionSelection,
 } from "./acpPermissionPreferences.js";
-import { acpAgentConfigFingerprint, readAcpAgentConfigs } from "./acpAgentConfigs.js";
+import {
+  acpAgentConfigFingerprint,
+  projectAcpAgentModels,
+  readAcpAgentConfigs,
+} from "./acpAgentConfigs.js";
 import { projectAcpContextUsage } from "./acpContextUsage.js";
 import type { AcpToolDetails } from "./acpToolDetails.js";
 import { excludeDelegatedAcpSessions, searchAcpSessions } from "./acpSessionSearch.js";
@@ -958,6 +969,7 @@ export function createAcpService(
       (session.acpSessionId ? sessionPermissionSelection(session) : undefined);
     // 修复原因：重连握手通知可能先于 load 返回；必须在连接前冻结旧选择，恢复完成才发布。
     const savedConfigOptions = structuredClone(session.configOptions);
+    let configuredDefaultModel: string | undefined;
     const generation = {};
     generations.set(session.id, generation);
     let receivedConfig = false;
@@ -989,6 +1001,7 @@ export function createAcpService(
           }),
         ),
       ]);
+      configuredDefaultModel = launch?.defaultModel;
       // 修复原因：ACP 曾绕过管理页的能力开关；新连接复用 Host 本地策略，已有运行不热撤。
       const workflowConfig = options.resolveDynamicWorkflowClientConfig
         ? await options.resolveDynamicWorkflowClientConfig()
@@ -1300,9 +1313,15 @@ export function createAcpService(
           // setter 期间较新的通知优先；返回完整目录，不能复活模型切换后已移除的选项。
           return configVersion !== version ? pendingConfigOptions : next;
         };
+        const initialConfig = receivedConfig ? pendingConfigOptions : (port.configOptions ?? []);
+        // 新默认值只用于全新会话；重连必须恢复该会话原有的模型，不能套用新的全局偏好。
+        const selections =
+          !session.acpSessionId && !savedConfigOptions.length && configuredDefaultModel
+            ? defaultAcpModelSelection(initialConfig, configuredDefaultModel)
+            : savedConfigOptions;
         const restoredConfig = await restoreAcpConfigOptions(
-          savedConfigOptions,
-          receivedConfig ? pendingConfigOptions : (port.configOptions ?? []),
+          selections,
+          initialConfig,
           permissionSelection?.configId,
           setRestoredConfig,
           (configId, error) =>
@@ -1334,7 +1353,7 @@ export function createAcpService(
         ensureGeneration();
         if (
           !acpConfigOptionsRestored(
-            savedConfigOptions,
+            selections,
             restored.configOptions,
             permissionSelection?.configId,
           )
@@ -2241,10 +2260,24 @@ export function createAcpService(
         });
       };
     },
-    updateAgent: (input) => agentManager.updateAgent(input),
+    async updateAgent(input) {
+      const parsed = acpAgentUpdateSchema.parse(input);
+      if (parsed.defaultModel && !ACP_AGENT_MODEL_ENV[parsed.agent]) {
+        const models = await service.listAgentModels({ agent: parsed.agent });
+        if (!models.some((model) => model.slug === parsed.defaultModel))
+          throw new Error("默认模型不在已知 ACP 模型列表中，请先连接智能体后刷新列表。");
+      }
+      return agentManager.updateAgent(parsed);
+    },
     readCodexConfig: () => agentManager.readCodexConfig(),
     updateCodexConfig: (input) => agentManager.updateCodexConfig(input),
     listCodexModels: () => agentManager.listCodexModels(),
+    async listAgentModels(input) {
+      if (disposed) throw new Error("ACP service closed");
+      const { agent } = acpAgentModelsInputSchema.parse(input);
+      const configs = await readAcpAgentConfigs(directory, undefined, sessions, removed);
+      return projectAcpAgentModels(configs.find((item) => item.agent === agent));
+    },
     manageAgent: (input) => agentManager.manageAgent(input),
     readAgentManagement: async () => agentManager.readAgentManagement(),
     cancelAgentOperation: async (input) => agentManager.cancelAgentOperation(input),

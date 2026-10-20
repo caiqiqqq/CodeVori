@@ -4115,6 +4115,20 @@ const zhCN: Record<string, string> = {
     "目标 Host 尚无订阅凭据，请在该 Host 的终端运行 codex login --device-auth。",
   "settings.acpAgents.codex.show": "显示密钥",
   "settings.acpAgents.codex.hide": "隐藏密钥",
+  "settings.acpAgents.models.title": "ACP 模型列表 / 默认模型",
+  "settings.acpAgents.models.refresh": "刷新 ACP 模型列表",
+  "settings.acpAgents.models.loading": "正在读取目标 Host 的模型记录…",
+  "settings.acpAgents.models.failed": "模型列表读取失败，请重试。远端 Host 可能需要更新。",
+  "settings.acpAgents.models.empty":
+    "暂无模型记录，请先连接一次此智能体后刷新；适配器需通过 ACP 提供模型选项。",
+  "settings.acpAgents.models.envHint":
+    "列表来自最近一次 ACP 连接，也可填写自定义模型 ID。选择后需保存，下次连接生效；清空则使用智能体默认模型。",
+  "settings.acpAgents.models.hint":
+    "从列表选择默认模型并保存，新会话连接后生效；已有会话保留自己的选择。清空则使用智能体默认模型。",
+  "settings.acpAgents.models.providerHint":
+    "模型由所选 Gemini 供应商配置决定，请在供应商配置中修改。",
+  "settings.acpAgents.models.oldHost":
+    "当前 Host 版本不支持保存此智能体的默认模型，请先更新 Host。",
   "settings.acpAgents.codex.models": "官方模型列表 / 默认模型",
   "settings.acpAgents.codex.refreshModels": "刷新官方模型",
   "settings.acpAgents.codex.loadingModels": "正在读取适配器自带的 Codex 模型目录…",

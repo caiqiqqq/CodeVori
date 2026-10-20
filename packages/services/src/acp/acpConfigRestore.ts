@@ -7,6 +7,20 @@ export interface AcpConfigRestoreResult {
   incomplete: boolean;
 }
 
+/** 新会话默认值只从实时 ACP 目录投影；历史会话继续恢复自己的选择。 */
+export function defaultAcpModelSelection(
+  catalog: AcpConfigOption[],
+  model: string,
+): AcpConfigOption[] {
+  if (!model) return [];
+  const option = catalog.find(
+    (item) => item.type === "select" && (item.category === "model" || item.id === "model"),
+  );
+  if (option?.type !== "select" || !acpConfigValues(option).includes(model))
+    throw new Error("默认模型不在当前 ACP 模型列表中，请在智能体设置中重新选择或清空默认模型。");
+  return [{ ...option, currentValue: model }];
+}
+
 export function acpConfigOptionsRestored(
   saved: AcpConfigOption[],
   catalog: AcpConfigOption[],

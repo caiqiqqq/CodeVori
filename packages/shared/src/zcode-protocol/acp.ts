@@ -29,6 +29,18 @@ export const acpAgentSchema = z.enum([
 ]);
 export type AcpAgent = z.infer<typeof acpAgentSchema>;
 
+/** Only verified native model variables; all other adapters use ACP config selection. */
+export const ACP_AGENT_MODEL_ENV: Partial<Record<AcpAgent, string>> = {
+  claude: "ANTHROPIC_MODEL",
+  gemini: "GEMINI_MODEL",
+  "kimi-code": "KIMI_MODEL_NAME",
+  grok: "GROK_DEFAULT_MODEL",
+  deepseek: "DEEPSEEK_ACP_MODEL",
+  antigravity: "AGY_ACP_DEFAULT_MODEL",
+};
+export const acpAgentModelsInputSchema = z.object({ agent: acpAgentSchema }).strict();
+export type AcpAgentModelsInput = z.infer<typeof acpAgentModelsInputSchema>;
+
 /** Gemini authentication choices accepted by the target Host and settings editor. */
 export const ACP_GEMINI_AUTH_MODES = [
   "custom",
@@ -138,6 +150,8 @@ export const acpAgentInfoSchema = z.object({
   updateCheck: acpAgentUpdateCheckSchema.optional(),
   enabled: z.boolean(),
   env: z.record(z.string(), z.string()),
+  defaultModel: z.string().optional(),
+  defaultModelSupported: z.boolean().optional(),
   source: z.enum(["managed", "system", "missing"]),
   ready: z.boolean(),
   installedVersion: z.string().nullable(),
@@ -171,6 +185,7 @@ export const acpAgentUpdateSchema = z
   .object({
     agent: acpAgentSchema,
     enabled: z.boolean().optional(),
+    defaultModel: z.string().trim().max(8192).optional(),
     env: z
       .record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string().max(8192))
       .refine(
@@ -182,7 +197,13 @@ export const acpAgentUpdateSchema = z
       )
       .optional(),
   })
-  .refine((value) => value.enabled !== undefined || value.env !== undefined)
+  .refine(
+    (value) =>
+      value.enabled !== undefined || value.env !== undefined || value.defaultModel !== undefined,
+  )
+  .refine((value) => value.agent !== "codex" || value.defaultModel === undefined, {
+    message: "Codex 默认模型使用原生配置保存",
+  })
   .refine(
     (value) =>
       value.agent !== "gemini" ||
@@ -219,10 +240,12 @@ export const acpCodexConfigUpdateSchema = acpCodexConfigSchema
   });
 export type AcpCodexConfigUpdate = z.infer<typeof acpCodexConfigUpdateSchema>;
 
-export const acpCodexModelSchema = z.object({
+export const acpAgentModelSchema = z.object({
   slug: z.string().min(1),
   name: z.string(),
 });
+export type AcpAgentModel = z.infer<typeof acpAgentModelSchema>;
+export const acpCodexModelSchema = acpAgentModelSchema;
 export type AcpCodexModel = z.infer<typeof acpCodexModelSchema>;
 
 export const acpAgentManagementSchema = z.object({

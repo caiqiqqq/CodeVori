@@ -4437,6 +4437,20 @@ const enUS: Record<string, string> = {
     "No subscription credentials on this Host. Run codex login --device-auth in its terminal.",
   "settings.acpAgents.codex.show": "Show key",
   "settings.acpAgents.codex.hide": "Hide key",
+  "settings.acpAgents.models.title": "ACP models / Default model",
+  "settings.acpAgents.models.refresh": "Refresh ACP models",
+  "settings.acpAgents.models.loading": "Reading the target Host's model metadata…",
+  "settings.acpAgents.models.failed": "Could not read models. Retry or update the remote Host.",
+  "settings.acpAgents.models.empty":
+    "No model metadata yet. Connect this agent once, then refresh. The adapter must expose model options through ACP.",
+  "settings.acpAgents.models.envHint":
+    "Models come from the last ACP connection. Custom model IDs are also supported. Save to apply on the next connection; clear to use the agent's default.",
+  "settings.acpAgents.models.hint":
+    "Select a listed default model and save to apply to new sessions. Existing sessions keep their own selection. Clear to use the agent's default.",
+  "settings.acpAgents.models.providerHint":
+    "The selected Gemini provider owns this model. Edit the provider configuration to change it.",
+  "settings.acpAgents.models.oldHost":
+    "Update this Host to enable saving this agent's default model.",
   "settings.acpAgents.codex.models": "Official models / Default model",
   "settings.acpAgents.codex.refreshModels": "Refresh official models",
   "settings.acpAgents.codex.loadingModels": "Reading the adapter's Codex model catalog…",

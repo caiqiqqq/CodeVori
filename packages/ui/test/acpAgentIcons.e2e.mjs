@@ -225,6 +225,20 @@ try {
       await page.getByTestId(`settings-acp-agent-detail-${catalog[1].id}`).waitFor();
       assert.equal(await section.getByTestId("acp-agent-environment").count(), 0);
       assert.equal(await section.getByTestId("acp-codex-native-config").count(), 1);
+      const model = section.locator("#acp-codex-default-model");
+      const option = section.getByRole("button", {
+        name: "Example model gpt-example",
+        exact: true,
+      });
+      await option.waitFor();
+      assert.equal(await option.getAttribute("aria-pressed"), "true");
+      await model.fill("custom-codex");
+      assert.equal(await option.getAttribute("aria-pressed"), "false");
+      await section.getByRole("button", { name: "刷新官方模型", exact: true }).click();
+      assert.equal(await model.inputValue(), "custom-codex");
+      await option.click();
+      assert.equal(await model.inputValue(), "gpt-example");
+      assert.equal(await option.getAttribute("aria-pressed"), "true");
       assert.deepEqual(await page.evaluate(() => window.__iconFixture.calls), [
         "listAgents",
         "checkUpdates",

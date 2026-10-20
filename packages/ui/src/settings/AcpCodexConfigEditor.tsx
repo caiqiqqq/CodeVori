@@ -1,9 +1,10 @@
-import { Eye, EyeOff, RefreshCw, Star } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { IAcpService } from "@zcode/services";
 import type { AcpCodexConfig, AcpCodexModel } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
+import { AcpModelPicker } from "@/settings/AcpModelPicker.js";
 import {
   Select,
   SelectContent,
@@ -206,67 +207,22 @@ export function AcpCodexConfigEditor({ service }: { service: IAcpService }) {
               </div>
             </>
           )}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <label
-                htmlFor="acp-codex-default-model"
-                className="text-ui-sm text-foreground-subtle"
-              >
-                {label("models")}
-              </label>
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                aria-label={label("refreshModels")}
-                onClick={refreshModels}
-                disabled={modelLoading}
-              >
-                <RefreshCw className={`size-4 ${modelLoading ? "animate-spin" : ""}`} />
-              </Button>
-            </div>
-            {modelLoading ? (
-              <p className="text-ui-sm text-foreground-subtle">{label("loadingModels")}</p>
-            ) : null}
-            {modelError ? (
-              <p role="alert" className="text-ui-sm text-destructive">
-                {modelError}
-              </p>
-            ) : null}
-            <Input
-              id="acp-codex-default-model"
-              value={draft.model}
-              onChange={(event) => change({ model: event.target.value })}
-              placeholder={label("nativeModel")}
-              spellCheck={false}
-            />
-            {models.length ? (
-              <div
-                className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-1.5"
-                aria-label={label("models")}
-              >
-                {models.map((item) => (
-                  <button
-                    key={item.slug}
-                    type="button"
-                    aria-pressed={draft.model === item.slug}
-                    onClick={() => change({ model: item.slug })}
-                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-ui-sm text-foreground hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-brand"
-                  >
-                    <Star
-                      className={`size-4 shrink-0 ${draft.model === item.slug ? "fill-warning text-warning" : "text-foreground-subtlest"}`}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                    <span className="max-w-[45%] truncate font-mono text-ui-xs text-foreground-subtle">
-                      {item.slug}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <p className="text-ui-sm text-foreground-subtle">{label("modelsHint")}</p>
-          </div>
+          <AcpModelPicker
+            id="acp-codex-default-model"
+            value={draft.model}
+            models={models}
+            loading={modelLoading}
+            error={modelError}
+            onRefresh={refreshModels}
+            onChange={(model) => change({ model })}
+            labels={{
+              title: label("models"),
+              refresh: label("refreshModels"),
+              loading: label("loadingModels"),
+              placeholder: label("nativeModel"),
+              hint: label("modelsHint"),
+            }}
+          />
           <Button
             type="button"
             size="sm"

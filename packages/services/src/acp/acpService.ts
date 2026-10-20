@@ -14,6 +14,8 @@ import {
   type AcpCodexConfig,
   type AcpCodexConfigUpdate,
   type AcpCodexModel,
+  type AcpAgentModel,
+  type AcpAgentModelsInput,
   type AcpGeminiProviders,
   type AcpGeminiProvidersUpdate,
   type AcpCreateInput,
@@ -72,6 +74,8 @@ export interface IAcpService {
   readCodexConfig(): Promise<AcpCodexConfig>;
   updateCodexConfig(input: AcpCodexConfigUpdate): Promise<AcpCodexConfig>;
   listCodexModels(): Promise<AcpCodexModel[]>;
+  /** Latest target-Host ACP model metadata; never starts a session. */
+  listAgentModels(input: AcpAgentModelsInput): Promise<AcpAgentModel[]>;
   listGeminiProviders(): Promise<AcpGeminiProviders>;
   updateGeminiProviders(input: AcpGeminiProvidersUpdate): Promise<AcpGeminiProviders>;
   manageAgent(input: AcpAgentManagement): Promise<AcpAgentInfo>;

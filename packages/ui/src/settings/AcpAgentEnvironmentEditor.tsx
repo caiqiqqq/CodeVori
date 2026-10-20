@@ -1,10 +1,12 @@
 import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
-import type { AcpAgentInfo } from "@zcode/shared";
+import { ACP_AGENT_MODEL_ENV, type AcpAgentInfo } from "@zcode/shared";
 import type { IAcpService } from "@zcode/services";
 import { Button } from "@/components/ui/button.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useAcpGeminiProviders } from "@/hooks/useAcpGeminiProviders.js";
+import { useAcpAgentModels } from "@/hooks/useAcpAgentModels.js";
+import { AcpModelPicker } from "@/settings/AcpModelPicker.js";
 import { AcpGeminiProviderControls } from "@/settings/AcpGeminiProviderControls.js";
 import { Input } from "@/components/ui/input.js";
 import {
@@ -31,6 +33,8 @@ export function AcpAgentEnvironmentEditor({
   info,
   service,
   text,
+  defaultModel,
+  onDefaultModelChange,
   changed,
   busy,
   onChange,
@@ -39,6 +43,8 @@ export function AcpAgentEnvironmentEditor({
   info: AcpAgentInfo;
   service: IAcpService | null;
   text: string;
+  defaultModel: string;
+  onDefaultModelChange: (value: string) => void;
   changed: boolean;
   busy: boolean;
   onChange: (text: string) => void;
@@ -50,12 +56,17 @@ export function AcpAgentEnvironmentEditor({
   const method = info.agent === "antigravity" ? acpEnvValue(text, "AGY_AUTH_METHOD") : "";
   const geminiMethod = info.agent === "gemini" ? inferAcpGeminiAuthMode(text) : "";
   const providers = useAcpGeminiProviders(info.agent === "gemini" ? service : null);
+  const models = useAcpAgentModels(service, info.agent);
+  const modelKey = ACP_AGENT_MODEL_ENV[info.agent];
+  const modelLabel = (key: string) =>
+    intl.formatMessage({ id: `settings.acpAgents.models.${key}` });
   const selectedProvider = providers.view?.providers.find(
     (provider) => provider.id === acpEnvValue(text, "ZCODE_GEMINI_PROVIDER_ID"),
   );
   const providerMode = geminiMethod === "model_provider";
   const editorBusy = busy || providers.saving;
   const fields: readonly AcpEnvField[] = ACP_AGENT_ENV_FIELDS[info.agent].filter((field) => {
+    if (field.key === modelKey) return false;
     if (info.agent === "gemini") {
       if (field.key === "ZCODE_GEMINI_AUTH_MODE" || field.key === "GEMINI_MODEL") return true;
       if (field.key === "GOOGLE_GEMINI_BASE_URL") return geminiMethod === "custom" || providerMode;
@@ -217,6 +228,43 @@ export function AcpAgentEnvironmentEditor({
           </div>
         );
       })}
+      <AcpModelPicker
+        id={modelKey ? `acp-env-${info.agent}-${modelKey}` : `acp-default-model-${info.agent}`}
+        value={
+          providerMode
+            ? (selectedProvider?.model ?? "")
+            : modelKey
+              ? acpEnvValue(text, modelKey)
+              : defaultModel
+        }
+        models={models.models}
+        loading={models.loading}
+        error={models.error ? modelLabel("failed") : null}
+        disabled={editorBusy || !service}
+        readOnly={providerMode || (!modelKey && !info.defaultModelSupported)}
+        onRefresh={() => void models.reload()}
+        onChange={(value) => {
+          setError(null);
+          if (modelKey) update(patchAcpAgentFieldText(info.agent, text, modelKey, value));
+          else onDefaultModelChange(value);
+        }}
+        labels={{
+          title: modelLabel("title"),
+          refresh: modelLabel("refresh"),
+          loading: modelLabel("loading"),
+          placeholder: label("optional"),
+          empty: modelLabel("empty"),
+          hint: modelLabel(
+            providerMode
+              ? "providerHint"
+              : !modelKey && !info.defaultModelSupported
+                ? "oldHost"
+                : modelKey
+                  ? "envHint"
+                  : "hint",
+          ),
+        }}
+      />
       {info.agent === "gemini" ? (
         <Button
           type="button"

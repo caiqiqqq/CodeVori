@@ -4,7 +4,12 @@ import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { acpSessionSchema, type AcpConfigOption, type AcpSession } from "@zcode/shared";
+import {
+  ACP_AGENT_CATALOG,
+  acpSessionSchema,
+  type AcpConfigOption,
+  type AcpSession,
+} from "@zcode/shared";
 import {
   createAcpService,
   type AcpConnectionFactory,
@@ -43,6 +48,78 @@ async function persist(directory: string, session: AcpSession, at: number) {
   await utimes(path, at, at);
   return path;
 }
+
+test("model catalogs remain isolated for all 15 built-in ACP agents", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "zcode-all-model-catalogs-"));
+  const service = createAcpService({
+    directory,
+    connect: async () => {
+      throw new Error("Must not connect");
+    },
+  });
+  try {
+    for (const { id: agent } of ACP_AGENT_CATALOG)
+      await persist(directory, snapshot({ agent, configOptions: [model(`${agent}-model`)] }), 1);
+    for (const { id: agent } of ACP_AGENT_CATALOG)
+      assert.deepEqual(await service.listAgentModels({ agent }), [
+        { slug: `${agent}-model`, name: `${agent}-model` },
+      ]);
+  } finally {
+    service.disposeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("Claude settings model list projects latest Host metadata without connecting", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "zcode-claude-models-"));
+  const service = createAcpService({
+    directory,
+    connect: async () => {
+      throw new Error("Must not connect");
+    },
+  });
+  try {
+    assert.deepEqual(await service.listAgentModels({ agent: "claude" }), []);
+    await persist(directory, snapshot({ agent: "claude", configOptions: [model("old")] }), 1);
+    const option: AcpConfigOption = {
+      ...model("sonnet"),
+      type: "select",
+      options: [
+        { value: "sonnet", name: "Custom Sonnet" },
+        {
+          group: "more",
+          name: "More",
+          options: [
+            { value: "opus", name: "Custom Opus" },
+            { value: "sonnet", name: "Duplicate" },
+          ],
+        },
+      ],
+    };
+    await persist(
+      directory,
+      snapshot({ agent: "claude", workspacePath: "/fixture/other", configOptions: [option] }),
+      2,
+    );
+    await persist(
+      directory,
+      snapshot({ agent: "codex", configOptions: [model("wrong-agent")] }),
+      3,
+    );
+    assert.deepEqual(await service.listAgentModels({ agent: "claude" }), [
+      { slug: "sonnet", name: "Custom Sonnet" },
+      { slug: "opus", name: "Custom Opus" },
+    ]);
+    assert.deepEqual(await service.listAgentModels({ agent: "codex" }), [
+      { slug: "wrong-agent", name: "wrong-agent" },
+    ]);
+    await assert.rejects(service.listAgentModels({ agent: "invalid" } as never));
+    await assert.rejects(service.listAgentModels({ agent: "claude", extra: true } as never));
+  } finally {
+    service.disposeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("ACP agent catalogs reuse target-Host worktree metadata without connecting or changing history", async () => {
   const directory = await mkdtemp(join(tmpdir(), "zcode-agent-catalog-"));

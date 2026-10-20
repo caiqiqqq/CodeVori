@@ -12,15 +12,8 @@ import { AcpNodeEnvironment } from "@/settings/AcpNodeEnvironment.js";
 import { AcpCheckFact, AcpCheckRow } from "@/settings/AcpAgentCheckRow.js";
 import { AcpAgentEnvironmentEditor } from "@/settings/AcpAgentEnvironmentEditor.js";
 import { AcpCodexConfigEditor } from "@/settings/AcpCodexConfigEditor.js";
-import {
-  clearAcpEnvDraftIfUnchanged,
-  normalizeAcpAgentEnvText,
-} from "@/settings/acpAgentEnvironment.js";
-import {
-  formatAcpEnv,
-  parseAcpEnv,
-  useAcpAgentManagement,
-} from "@/settings/useAcpAgentManagement.js";
+import { useAcpAgentManagement } from "@/settings/useAcpAgentManagement.js";
+import { useAcpAgentSettingsDrafts } from "@/settings/useAcpAgentSettingsDrafts.js";
 import {
   ACP_AGENT_SETTINGS_CATALOG,
   compareAcpAdapterVersions,
@@ -48,7 +41,6 @@ export function AcpAgentManagerPanel({
 }: Props) {
   const { intl } = useZCodeIntl();
   const confirmDialog = useConfirmDialog();
-  const [envDrafts, setEnvDrafts] = useState<Partial<Record<AcpAgent, string>>>({});
   const catalogItem = ACP_AGENT_SETTINGS_CATALOG.find((item) => item.agent === agent)!;
   const agentInfo = management.agents.find((item) => item.agent === agent);
   const checks = agentInfo ? projectAcpAgentChecks(agentInfo) : [];
@@ -59,8 +51,8 @@ export function AcpAgentManagerPanel({
   const setCheckOpen = (id: AcpAgentCheckId, open: boolean) => {
     setExpandedChecks((previous) => ({ ...previous, [`${agent}:${id}`]: open }));
   };
-  const envText = envDrafts[agent] ?? formatAcpEnv(agentInfo?.env ?? {});
-  const envChanged = Boolean(agentInfo && envText !== formatAcpEnv(agentInfo.env));
+  const drafts = useAcpAgentSettingsDrafts(agent, agentInfo, management.update);
+  const envChanged = drafts.changed;
   const label = (key: string) => intl.formatMessage({ id: `settings.acpAgents.${key}` });
   const managedIsNewer = Boolean(
     agentInfo?.managedVersion &&
@@ -362,20 +354,13 @@ export function AcpAgentManagerPanel({
                 key={`environment:${agent}`}
                 info={agentInfo}
                 service={service}
-                text={envText}
+                text={drafts.text}
+                defaultModel={drafts.defaultModel}
+                onDefaultModelChange={drafts.setModel}
                 changed={envChanged}
                 busy={management.busy}
-                onChange={(text) => setEnvDrafts((previous) => ({ ...previous, [agent]: text }))}
-                onSave={async (submitted) => {
-                  // 修复原因：认证方式切换后，保存时仍需去掉互斥凭据并保留无关变量。
-                  const env = parseAcpEnv(normalizeAcpAgentEnvText(agent, submitted));
-                  await management.update({ agent, env });
-                  // 修复原因：旧保存回执不能清空等待期间的新草稿；所有编辑入口共用这一份文本。
-                  setEnvDrafts((previous) => ({
-                    ...previous,
-                    [agent]: clearAcpEnvDraftIfUnchanged(previous[agent], submitted),
-                  }));
-                }}
+                onChange={drafts.setText}
+                onSave={drafts.save}
               />
             ) : null}
             {agent !== "codex" ? (

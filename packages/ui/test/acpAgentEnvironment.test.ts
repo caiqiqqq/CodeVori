@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ACP_AGENT_CATALOG } from "@zcode/shared";
+import { ACP_AGENT_CATALOG, ACP_AGENT_MODEL_ENV } from "@zcode/shared";
 import {
   ACP_AGENT_ENV_FIELDS,
   acpEnvValue,
@@ -33,6 +33,13 @@ test("agent environment fields follow real Codeg keys without invented generic c
     ["DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_ACP_MODEL"],
   );
   assert.deepEqual(ACP_AGENT_ENV_FIELDS.codex, []);
+  for (const { id } of ACP_AGENT_CATALOG) {
+    const fields = ACP_AGENT_ENV_FIELDS[id].filter((field) => field.label === "model");
+    assert.deepEqual(
+      fields.map((field) => field.key),
+      ACP_AGENT_MODEL_ENV[id] ? [ACP_AGENT_MODEL_ENV[id]] : [],
+    );
+  }
   assert.ok(
     Object.values(ACP_AGENT_ENV_FIELDS)
       .flat()

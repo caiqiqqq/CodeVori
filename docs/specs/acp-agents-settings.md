@@ -148,6 +148,47 @@ Codex 面板草稿 → IAcpService.read/list/update → 目标 Host 的 Codex �
 
 验收：本机与远端目标 Host 的配置隔离；官方目录只来自对应适配器；认证方式、URL、Key、默认模型保存后重新读取并在新连接由同一 `CODEX_HOME` 生效；保存过程中外部文件更新产生版本冲突而不覆盖外部内容；现有环境变量输入框、API/ZCode 模式与其它智能体设置仍可用；交互 E2E 使用假的 Host/CLI/原生文件，不进行真实模型请求。
 
+## 全部 ACP 默认模型列表
+
+- 15 个内置适配器均显示模型列表和默认值；Codex 保留原生目录与配置，其余智能体统一经 `listAgentModels({agent})` 读取目标 Host 最近一次 ACP 模型元数据。分组展开、按 ID 去重，保留原始 ID 与名称。无目录提示先连接一次后刷新，失败和旧 Host 可重试，不启动适配器、不请求模型。
+- Claude、Gemini、Kimi Code、Grok、DeepSeek、Antigravity 的默认值仍分别只存于现有真实模型环境变量；共享映射定义这些键。其它智能体由同一个 Host Agent 设置文件持有 `defaultModel`，不创造假环境变量；`updateAgent` 是唯一保存命令。环境变量与模型草稿由当前 Host 面板按 Agent 持有，一次保存，分别按提交版本清理，保留未知变量。旧 Host 未声明默认模型能力时，不允许保存无环境变量智能体的默认值。
+- 无模型环境变量的适配器在新会话握手后、权限恢复前，按实时模型目录校验并应用默认值，确认返回值后才发布 ready。目录缺失、选项已撤回、setter 拒绝或未生效均明确报错并关闭本代连接，不伪造默认成功。已有会话重连优先恢复会话自身选择，运行中会话不会被设置页更改；清空只移除之后新会话的覆盖。
+- Gemini 使用“模型供应商”时，模型仍是所绑定供应商的只读投影，不在 Agent 默认值另存第二份；列表可见但选择禁用，提示到供应商配置修改模型。
+- Desktop 与手机使用同一 Host RPC，列表与草稿不跨 Host；generation 和 agent 共同隔离迟到结果。未修改 owner/lease、连续流或可恢复流语义。
+
+```mermaid
+sequenceDiagram
+    participant UI as 当前 Host/Agent 草稿
+    participant Host as Host 设置所有者
+    participant ACP as 新会话适配器
+    UI->>Host: listAgentModels(agent) 只读目录
+    Host-->>UI: 最近 ACP 模型元数据
+    UI->>Host: updateAgent(env, defaultModel)
+    Note over Host: 有真实模型变量则保存在 env，否则保存 defaultModel
+    Host->>ACP: 新会话握手（真实 env）
+    ACP-->>Host: 实时配置目录
+    Host->>ACP: 无 env 时应用已保存默认模型
+    ACP-->>Host: 确认模型与完整配置
+    Note over Host: 恢复权限后才 ready；已有会话恢复自己的选择
+```
+
+验收覆盖全部 15 项，包含有/无环境变量保存、重开、清空、分组目录、Gemini 供应商只读、旧 Host、实时目录变化拒绝启动、旧会话模型优先、慢速保存与换 Host、窄屏与主题。使用假 Host/适配器，不发送真实模型请求。
+
+### Claude 连接字段兼容
+
+- Claude 连接配置中的 `ANTHROPIC_MODEL` 展示可编辑默认值、刷新按钮和可星标选择的模型列表，与 Codex 的列表交互一致。列表明确标记为最近一次 ACP 连接提供的选项，不宣称是实时官方目录；保留原始 ID 与名称，不把别名改写为推测的模型。未知、自定义或空默认值均保留。
+- 目标 Host 的 `listAgentModels({agent:"claude"})` 只投影本 Host 最新有效 Claude 会话的模型配置元数据，支持分组、按 ID 去重；不读取聊天内容到 UI，不启动或重连适配器、不发送模型请求。空目录提示先连接一次 Claude 后刷新。旧 Host 不支持接口或读取失败时显示可重试错误，仍能手动编辑及保存。
+- 模型默认值仍由面板的完整环境变量草稿持有，唯一写入路径为 `updateAgent`；点击模型仅修改草稿，保存保留其它变量，清空移除覆盖值。下一次新建或重连使用此值，不改当前会话的模型或原生别名映射。
+- 列表请求经 UI hook 调用同一目标 Host 的服务；请求代次、Host 身份及卸载检查丢弃迟到结果。刷新不覆盖草稿；失败清除旧列表，避免误展示过期选项。Desktop 与手机复用 RPC 读取，无新增 stream、owner/lease 或恢复状态。
+
+```text
+进入 Claude / 刷新 → UI hook → 目标 Host 最新 ACP 元数据 → 模型列表投影
+点击星标 / 手动输入 → 原有环境变量草稿 → 保存 updateAgent → 下次连接生效
+切换 Host / 卸载 → 旧请求失效，结果不能写入新 Host 页面
+```
+
+验收：分组和重复 ID、别名名称保留、无历史空列表、失败重试和旧 Host；列表选择、手动输入、清空、保存重读、隐藏变量保留、刷新不丢草稿、跨 Host 迟到请求隔离和窄屏布局。使用假 Host/会话，不请求真实模型。
+
 ## Gemini 认证与适配器选项
 
 - Gemini 的认证下拉与 Codeg 保持相同的七项和顺序：自定义接口、Google 登录（OAuth）、Gemini API Key、Vertex AI（ADC）、Vertex AI（服务账号）、Vertex AI API Key、模型供应商。不显示“使用原生配置”。未显式选择的旧配置按 URL、Gemini Key、Google Key、服务账号文件、项目/区域顺序推断，没有凭据时显示 Google 登录；进入页面和切换下拉只改变 UI 草稿，不执行登录或原生文件写入。旧配置仍在未显式保存认证时沿用原生启动行为。
@@ -180,7 +221,7 @@ Gemini 供应商表单 → updateGeminiProviders(预期版本) → 同一 Host �
 - PATH 中已有适配器且可比较的现用版本达到或超过已解析的发行目标版本时，按 Codeg 的版本状态规则视为满足要求：显示现用与目标版本，不提供安装较旧托管版的操作或降级提示，继续使用系统适配器。系统版低于目标或无法比较时仍可显式安装托管版，安装前显示现用和目标版本、说明新连接会优先使用托管包，并要求确认。缺失适配器时可安装。已经托管的版本达到或超过目标版本时，不提供“升级到目标版本”操作；不能把降级称为升级。此变更仅调整设置页的诊断和操作投影，不迁移适配器或改变 Host 的探测、启动优先级；现有连接不受影响。
 - 启用和环境变量配置由目标 Host 持久化为用户级设置（私有权限，原子替换）。禁用后拒绝新建或重新连接该 Agent，会话历史仍可读；运行中的连接不被强制终止，设置改动在下一次连接生效。环境变量只传给对应 Agent 进程，不复制 API Provider 的密钥，也不出现在安装日志中。
 - 智能体设置中的常用环境变量参照 Codeg 的各 Agent 映射，只展示该 Agent 真正支持、且由启动进程读取的键；例如 Claude 的 `ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_BASE_URL`、Qoder 的 `QODER_PERSONAL_ACCESS_TOKEN`、DeepSeek 的 `DEEPSEEK_API_KEY`/`DEEPSEEK_BASE_URL`。没有对应环境变量的原生登录和配置项，不显示虚假的通用 `OPENAI_API_KEY`/URL 字段。Qoder 额外提供明确的 `qoder login` 操作指引；托管安装时需给出目标 Host 上可执行的命令。PAT 用密码框显示，留空并保存会删除该 Agent 的键；不要在示例、日志、错误或截图中明文回显它。系统已有浏览器登录凭据由 Qoder CLI 自行管理，不能把仅有适配器安装状态显示成已登录。
-- 常用字段使用每个 Agent 一份完整未保存草稿，字段更新只修改对应键并保留其它变量。保存时一次性替换目标 Agent 的变量 map；成功后仅在提交的草稿仍是当前版本时清空草稿，防止慢速保存覆盖期间的新输入。编辑不得跨智能体或跨 Host 串值。空值移除当前 Agent 自己的键；其他 Agent、API Provider、系统登录状态不被改写。Claude 的 `ANTHROPIC_AUTH_TOKEN` 与 `ANTHROPIC_API_KEY` 分别显示，不把已有 API Key 写成另一种认证方式；各智能体的实际模型环境变量按需提供，Qoder 模型继续由会话的 ACP 配置选择，Cursor 不显示无效的 URL 或模型环境变量。
+- 常用字段使用每个 Agent 一份完整未保存草稿，字段更新只修改对应键并保留其它变量。保存时一次性替换目标 Agent 的变量 map；成功后仅在提交的草稿仍是当前版本时清空草稿，防止慢速保存覆盖期间的新输入。编辑不得跨智能体或跨 Host 串值。空值移除当前 Agent 自己的键；其他 Agent、API Provider、系统登录状态不被改写。Claude 的 `ANTHROPIC_AUTH_TOKEN` 与 `ANTHROPIC_API_KEY` 分别显示，不把已有 API Key 写成另一种认证方式；各智能体的实际模型环境变量按需提供。Qoder、Cursor 等没有模型变量的智能体使用 Host 默认模型偏好及 ACP 会话配置，不创造无效模型或 URL 环境变量。
 - Codeg 的 `agent_setting.env_json` 与 ZCode 的目标 Host 设置分别持久化，ZCode 不在每次打开页面时隐式读取另一个应用的数据库，也不将本机 Codeg 配置应用到远端 Host。针对本机已有 Codeg 配置的一次性迁移经 ZCode 现有 `updateAgent` 路径写入目标 Host，并保留 ZCode 原有的变量和启用状态；之后仍由 ZCode 自己的 Host 负责配置及新连接的环境变量，Codeg 后续改动不自动同步。
 - Antigravity 的常用凭据随显式选择的认证方式显示：个人 OAuth 没有凭据框；企业 OAuth 显示项目及区域；Gemini API Key 显示 `GEMINI_API_KEY`；Agent Platform 显示 `GOOGLE_API_KEY` 或未填写 Key 时的项目及区域。切换方式时在草稿中清理当前面板所拥有的其它认证方式凭据，保留无关行；没有显式选择认证方式时遵循原生配置，不擅自切换 OAuth 或清理已有凭据。后端启动时按所选方式隔离继承的环境变量。
 - 对外管理操作需校验 Agent、动作、操作 ID 和环境变量输入；安装失败不写成功状态，使用本地真实探测结果重新展示。目标 Host 的探测与启动使用同一个解析规则；NPM 前置检查不代表 Agent 已登录，登录失败仍由现有 ACP 会话错误报告。
@@ -259,7 +300,7 @@ Gemini 供应商表单 → updateGeminiProviders(预期版本) → 同一 Host �
 14. 打开含多个 ACP 智能体的聊天模型菜单：菜单高度受限时列表可纵向滚动，纵向滚动条存在时其滚动容器 `scrollWidth` 不大于 `clientWidth`，最后一个智能体及底部“管理模型”仍可选择；在窄屏 Web 宽度下重复检查。
 15. 交互 E2E：选中已登录适配器时出现实时模型和模式，首次发送前没有新历史文件；假 ACP Host 返回指定 Qoder 认证错误时首页横幅显示上述中文提示且发送不可用，切换其他智能体同文错误与 Qoder 其他错误仍显示原文。使用假 ACP Host 验证选择 `create(deferPersistence)` → 首问 `prompt`、首问落盘及原消息；模拟丢失创建 ACK 后重试同一 ID。选历史会话时立即 `refresh`；切回 API/ZCode 可按原路径发送。
 16. 启动耗时回归：假适配器的 `--version` 命令写标记，菜单读取和系统/托管适配器的 `resolveLaunch` 均不触发该标记；设置页 `listAgents` 仍进行版本诊断。禁用、缺失、Pi 前置 CLI、托管版 Node 与 Antigravity 认证文件的启动规则保持一致。用本机未登录 Qoder 仅测握手和错误，不发送模型请求；分别记录列表、启动解析、ACP 初始化和报错耗时，不能将 Qoder 自身初始化耗时归功于 Host 优化。
-17. 智能体环境变量：在 Claude、Qoder、DeepSeek 等非 Codex 目录项中检查常用字段映射为各自真实键，Qoder PAT 默认隐藏；输入、清空后只修改对应键，切换智能体/Host 不串值，保存和下次连接后读取同一目标 Host 设置。模拟慢速保存期间继续输入，新输入不被旧回执清掉。没有受支持字段的非 Codex 智能体仅显示原生登录/配置说明，无原始编辑器；错误变量名不应被当成可登录凭据。桌面、Web 和远程 Host 走原有 IAcpService 通道；不发付费模型请求。
+17. 智能体环境变量：在 Claude、Qoder、DeepSeek 等非 Codex 目录项中检查常用字段映射为各自真实键，Qoder PAT 默认隐藏；输入、清空后只修改对应键，切换智能体/Host 不串值，保存和下次连接后读取同一目标 Host 设置。模拟慢速保存期间继续输入，新输入不被旧回执清掉。没有受支持环境字段的非 Codex 智能体显示原生登录/配置说明及通用模型列表，无原始环境编辑器；错误变量名不应被当成可登录凭据。桌面、Web 和远程 Host 走原有 IAcpService 通道；不发付费模型请求。
 18. 在桌面设置页选择 Claude、Gemini 及无预置字段的智能体后，均不显示原始 `KEY=value` 编辑器；选择 Codex 时仅显示原生配置。用脱敏假数据走字段编辑、清空、保存、刷新、新建连接的完整路径，确认未展示的已有变量保留，`env` 与启动环境键值一致。Codeg 本机迁移时只导入当前 Agent 的有效变量，保留 ZCode 中已有键及启用状态；验证仅以键名、键数和等值比较报告结果，不输出凭据值。远端 Host、其他 Agent 不被本机迁移影响。
 19. 切换回归 E2E：在已打开的智能体设置页连续执行 Codex → Gemini → Codex → Claude → Codex 三轮，再遍历全部 15 个智能体；每一步检查选中项、右侧详情 ID、Codex 仅有原生配置块、其它智能体仅有自己的环境变量编辑器，且文件/命令只读开关均不显示，不能随切换累积。Codex 原生配置读取尚未完成时切走，也不能在迟到回执后把 Codex 内容插回其他智能体。此用例只点击导航并统计元素，既不读取输入框值，也不保存或发送模型请求。
 

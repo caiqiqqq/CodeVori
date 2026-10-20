@@ -9,6 +9,7 @@ import { satisfies } from "semver";
 import { type Event } from "@zcode/rpc";
 import {
   ACP_AGENT_CATALOG,
+  ACP_AGENT_MODEL_ENV,
   acpAgentDefinition,
   acpAgentListOptionsSchema,
   acpAgentManagementSchema,
@@ -167,12 +168,14 @@ function platformUrl(agent: AcpAgent): string | null {
 }
 
 type Action = AcpAgentManagement["action"];
-type Settings = { enabled: boolean; env: Record<string, string> };
+type Settings = { enabled: boolean; env: Record<string, string>; defaultModel?: string };
 export type AcpAgentLaunch = {
   command: string;
   args: string[];
   env: NodeJS.ProcessEnv;
   shell?: boolean;
+  /** Applied against the live ACP catalog only for new sessions without a native model variable. */
+  defaultModel?: string;
 };
 
 export interface AcpAgentManager {
@@ -467,7 +470,13 @@ export function createAcpAgentManager(
       const savedEnv = { ...parsed.env };
       // 修复原因：旧版保存的 latest 标志在控件移除后不可继续暗中改变安装行为或传给 Agent。
       delete savedEnv.ZCODE_ADAPTER_CHANNEL;
-      return { enabled: parsed.enabled ?? true, env: savedEnv };
+      return {
+        enabled: parsed.enabled ?? true,
+        env: savedEnv,
+        ...(!ACP_AGENT_MODEL_ENV[agent] && parsed.defaultModel
+          ? { defaultModel: parsed.defaultModel }
+          : {}),
+      };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return { enabled: true, env: {} };
       throw error;
@@ -556,6 +565,10 @@ export function createAcpAgentManager(
       updateCheck: releases.check(agent),
       enabled: settings.enabled,
       env: settings.env,
+      defaultModel: ACP_AGENT_MODEL_ENV[agent]
+        ? (settings.env[ACP_AGENT_MODEL_ENV[agent]!] ?? "")
+        : (settings.defaultModel ?? ""),
+      defaultModelSupported: agent !== "codex",
       source,
       ready,
       managedVersion: managed?.version ?? null,
@@ -645,12 +658,28 @@ export function createAcpAgentManager(
         const previous = await readSettings(parsed.agent);
         const next = {
           enabled: parsed.enabled ?? previous.enabled,
+          ...(!ACP_AGENT_MODEL_ENV[parsed.agent] && (parsed.defaultModel ?? previous.defaultModel)
+            ? { defaultModel: parsed.defaultModel ?? previous.defaultModel }
+            : {}),
           env: parsed.env
             ? parsed.agent === "gemini"
               ? normalizeGeminiCredentials(parsed.env)
               : parsed.env
             : previous.env,
         };
+        const modelKey = ACP_AGENT_MODEL_ENV[parsed.agent];
+        // Gemini 供应商是模型的唯一所有者，不能经通用默认值命令另存一份无效覆盖。
+        if (
+          parsed.agent === "gemini" &&
+          geminiAuthMode(next.env) === "model_provider" &&
+          parsed.defaultModel
+        )
+          throw new Error("请在 Gemini 供应商配置中修改模型。");
+        if (modelKey && parsed.defaultModel !== undefined) {
+          next.env = { ...next.env };
+          if (parsed.defaultModel) next.env[modelKey] = parsed.defaultModel;
+          else delete next.env[modelKey];
+        }
         delete next.env.ZCODE_ADAPTER_CHANNEL;
         if (
           parsed.agent === "gemini" &&
@@ -852,16 +881,23 @@ export function createAcpAgentManager(
             command: executablePath,
             args,
             env: launchEnv,
+            ...(settings.defaultModel ? { defaultModel: settings.defaultModel } : {}),
             shell: process.platform === "win32" && executablePath.endsWith(".cmd"),
           };
         if (!nodePath) throw new Error("Node.js is required to run the managed ACP adapter");
-        return { command: nodePath, args: [executablePath, ...args], env: launchEnv };
+        return {
+          command: nodePath,
+          args: [executablePath, ...args],
+          env: launchEnv,
+          ...(settings.defaultModel ? { defaultModel: settings.defaultModel } : {}),
+        };
       }
       // Windows shims require cmd.exe; pass only a static command name, never a path from settings.
       return {
         command: process.platform === "win32" ? definition.command : executablePath,
         args,
         env: launchEnv,
+        ...(settings.defaultModel ? { defaultModel: settings.defaultModel } : {}),
         shell: process.platform === "win32",
       };
     },

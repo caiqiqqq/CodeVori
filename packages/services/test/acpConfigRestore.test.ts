@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { AcpConfigOption } from "@zcode/shared";
-import { restoreAcpConfigOptions } from "../src/acp/acpConfigRestore.js";
+import { defaultAcpModelSelection, restoreAcpConfigOptions } from "../src/acp/acpConfigRestore.js";
 import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
 
 const target = { workspacePath: "/fixture/config-restore", workspaceIdentity: "fixture:restore" };
@@ -23,6 +23,36 @@ const catalog = (): AcpConfigOption[] => [
   select("model", "5.6-sol", ["5.6-sol", "6-sol"]),
   { id: "fast", name: "Fast", type: "boolean", currentValue: false },
 ];
+
+test("new-session default must exist in the live ACP catalog and be acknowledged", async () => {
+  assert.deepEqual(defaultAcpModelSelection(catalog(), ""), []);
+  assert.throws(() => defaultAcpModelSelection(catalog(), "withdrawn"), /默认模型不在/);
+  assert.throws(() => defaultAcpModelSelection([], "6-sol"), /默认模型不在/);
+  const saved = defaultAcpModelSelection(catalog(), "6-sol");
+  const calls: unknown[] = [];
+  const good = await restoreAcpConfigOptions(
+    saved,
+    catalog(),
+    undefined,
+    async (id, value) => {
+      calls.push([id, value]);
+      return catalog().map((item) =>
+        item.id === id ? ({ ...item, currentValue: value } as AcpConfigOption) : item,
+      );
+    },
+    () => {},
+  );
+  assert.equal(good.incomplete, false);
+  assert.deepEqual(calls, [["model", "6-sol"]]);
+  const ignored = await restoreAcpConfigOptions(
+    saved,
+    catalog(),
+    undefined,
+    async () => catalog(),
+    () => {},
+  );
+  assert.equal(ignored.incomplete, true);
+});
 
 function fixture() {
   const calls: string[] = [];
