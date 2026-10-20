@@ -83,7 +83,7 @@ try {
       const tools=[...(detail?.querySelectorAll('button[role=switch]')||[])].find(el=>el.getAttribute('aria-label')==='由 Agent 自行处理文件与命令');
       return { raw:Boolean(detail?.querySelector('#acp-env-raw-gemini')), channel:Boolean(detail?.querySelector('[data-testid=acp-adapter-channel]')), tools:Boolean(tools && tools.disabled && tools.getAttribute('aria-checked')==='true'), docs:detail?.textContent?.includes('查看认证文档') };
     })()`),
-    { raw: true, channel: false, tools: true, docs: true },
+    { raw: false, channel: false, tools: false, docs: true },
   );
   for (const [label, expected] of modes) {
     edited = true;
@@ -110,7 +110,7 @@ try {
       {
         mode: label,
         fields: expected,
-        rawHasMode: true,
+        rawHasMode: false,
         secretInputs: true,
         saveEnabled:
           label === "模型供应商"
@@ -157,7 +157,7 @@ try {
     }
   }
   process.stdout.write(
-    `PASS: ${modes.length} Gemini auth modes share the raw draft and show their own fields.\n`,
+    `PASS: ${modes.length} Gemini auth modes show their own fields without a raw editor.\n`,
   );
 } finally {
   // No save was issued; reload drops only the temporary UI draft.

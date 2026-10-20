@@ -179,9 +179,7 @@ test("agent-specific field and auth method labels exist in both locales", () => 
     "optional",
     "show",
     "hide",
-    "advanced",
     "common",
-    "advancedHint",
     "clearHint",
     "qoderLogin",
   ];
@@ -192,7 +190,7 @@ test("agent-specific field and auth method labels exist in both locales", () => 
   }
 });
 
-test("raw editor projects every saved key, including keys outside the common fields", () => {
+test("structured field saves and clears preserve hidden saved variables", () => {
   const saved = {
     ANTHROPIC_AUTH_TOKEN: "fake-token",
     ANTHROPIC_DEFAULT_OPUS_MODEL: "fake-model",
@@ -201,6 +199,11 @@ test("raw editor projects every saved key, including keys outside the common fie
   const text = formatAcpEnv(saved);
   assert.deepEqual(parseAcpEnv(text), saved);
   assert.equal(acpEnvValue(text, "ANTHROPIC_AUTH_TOKEN"), "fake-token");
+  const updated = patchAcpAgentFieldText("claude", text, "ANTHROPIC_AUTH_TOKEN", "new-token");
+  assert.deepEqual(parseAcpEnv(updated), { ...saved, ANTHROPIC_AUTH_TOKEN: "new-token" });
+  const cleared = patchAcpAgentFieldText("claude", updated, "ANTHROPIC_AUTH_TOKEN", "");
+  const { ANTHROPIC_AUTH_TOKEN: _removed, ...hidden } = saved;
+  assert.deepEqual(parseAcpEnv(cleared), hidden);
   assert.equal(Object.keys(parseAcpEnv(formatAcpEnv({}))).length, 0);
 });
 

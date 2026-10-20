@@ -77,13 +77,14 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`${process.env.ZCODE_E2E_VITE_URL ?? "http://localhost:5174"}/${name}.html`);
   await page
-    .locator("#acp-env-raw-gemini")
+    .locator("#acp-env-gemini-GEMINI_MODEL")
     .waitFor({ timeout: 10000 })
     .catch((error) => {
       throw new Error(`Settings fixture failed: ${errors.join("; ") || error.message}`);
     });
   await page.waitForFunction(() => window.__updates.pending.length === 1);
-  await page.locator("#acp-env-raw-gemini").fill("EXTRA=keep-my-draft");
+  assert.equal(await page.locator("textarea").count(), 0);
+  await page.locator("#acp-env-gemini-GEMINI_MODEL").fill("keep-my-draft");
   await page.evaluate(() => window.__updates.finish("A"));
   await page.getByTestId("acp-update-available").waitFor();
   assert.match(await page.getByTestId("acp-update-available").textContent(), /0\.62\.0/);
@@ -95,11 +96,11 @@ try {
   );
   await page.getByTestId("settings-acp-agents-refresh").click();
   await page.waitForFunction(() => window.__updates.pending.length === 1);
-  assert.equal(await page.locator("#acp-env-raw-gemini").inputValue(), "EXTRA=keep-my-draft");
+  assert.equal(await page.locator("#acp-env-gemini-GEMINI_MODEL").inputValue(), "keep-my-draft");
   await page.evaluate(() => window.__updates.finish("A", true));
   await page.getByTestId("acp-update-check-error").waitFor();
-  assert.equal(await page.locator("#acp-env-raw-gemini").inputValue(), "EXTRA=keep-my-draft");
-  await page.locator("#acp-env-raw-gemini").fill("");
+  assert.equal(await page.locator("#acp-env-gemini-GEMINI_MODEL").inputValue(), "keep-my-draft");
+  await page.locator("#acp-env-gemini-GEMINI_MODEL").fill("");
   await install.click();
   await page.waitForFunction(() => window.__updates.confirmPending());
   await page.getByTestId("settings-acp-agents-refresh").click();
@@ -116,7 +117,7 @@ try {
     "Confirmation after leaving Host must not install on the old Host",
   );
   assert.equal(await page.locator("[data-host]").getAttribute("data-host"), "B");
-  assert.equal(await page.locator("#acp-env-raw-gemini").inputValue(), "");
+  assert.equal(await page.locator("#acp-env-gemini-GEMINI_MODEL").inputValue(), "");
   assert.equal(await page.getByTestId("acp-install").count(), 0);
   await page.getByTestId("acp-upgrade").click();
   await page.waitForFunction(() => window.__updates.operations.length === 1);

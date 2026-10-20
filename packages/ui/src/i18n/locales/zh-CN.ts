@@ -4173,10 +4173,7 @@ const zhCN: Record<string, string> = {
   "settings.acpAgents.env.optional": "可选；未设置时使用智能体自身配置",
   "settings.acpAgents.env.show": "显示密钥",
   "settings.acpAgents.env.hide": "隐藏密钥",
-  "settings.acpAgents.env.advanced": "环境变量（KEY=value）",
   "settings.acpAgents.env.common": "常用字段",
-  "settings.acpAgents.env.advancedHint":
-    "每行一个变量，# 开头的注释仅在编辑时保留；下方常用字段与这里共用配置。已保存的密钥会以明文显示。",
   "settings.acpAgents.env.clearHint": `清空字段并保存会移除 ${PRODUCT_NAME} 为此智能体设置的变量；系统环境和智能体原生配置仍由智能体自行读取。`,
   "settings.acpAgents.env.qoderLogin":
     "在目标 Host 的终端用以下命令登录 Qoder。无浏览器环境可使用上方的 PAT；Qoder 不读取 OPENAI_API_KEY 或 QODER_API_KEY。",
