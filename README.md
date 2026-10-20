@@ -32,6 +32,42 @@ CodeVori 是面向日常开发的 AI 编程工作台。你可以在同一个工�
 
 智能体的可用能力取决于对应适配器、安装环境和账号配置；安装适配器后仍可能需要登录或配置模型服务。手机端复用电脑上已有的 Host 与会话，电脑需要保持运行且网络可达。
 
+## 界面展示
+
+### 桌面端
+
+工作区首页：选择项目，与智能体开始对话。
+
+<p align="center">
+  <img src=".github/assets/screenshots/desktop-home.webp" alt="CodeVori 桌面端工作区首页" width="1000" />
+</p>
+
+| 自动化与定时任务 | 待办任务面板 |
+| --- | --- |
+| <img src=".github/assets/screenshots/desktop-automation.webp" alt="CodeVori 自动化与定时任务模板" width="500" /> | <img src=".github/assets/screenshots/desktop-tasks.webp" alt="CodeVori 待办、处理中、等待处理与已完成任务分栏" width="500" /> |
+
+### 手机端
+
+通过手机浏览器连接电脑上的 CodeVori，查看项目、发送消息和查看工作流结果。以下为 iPhone 模拟器中的手机 Web 实际界面；电脑需要保持运行并开启局域网手机访问。
+
+| 对话首页 | 项目与会话导航 | 工作流结果 |
+| --- | --- | --- |
+| <img src=".github/assets/screenshots/mobile-home.webp" alt="手机 Web 对话首页与模型选择" width="260" /> | <img src=".github/assets/screenshots/mobile-projects.webp" alt="手机 Web 项目与会话侧边栏，实际名称已遮盖" width="260" /> | <img src=".github/assets/screenshots/mobile-workflow.webp" alt="手机 Web 查看已完成的工作流及 JSON 结果" width="260" /> |
+
+<details>
+<summary>更多手机端截图：App 连接页与侧边面板</summary>
+
+左图为原生 App 的连接页，右图为手机 Web 的侧边面板。连接页截图保留了当前模拟器包的配置读取报错，不代表已成功配对；当前 iOS 发行包仅供模拟器使用，不能安装到 iPhone。
+
+<p align="center">
+  <img src=".github/assets/screenshots/mobile-pairing.webp" alt="iOS 模拟器 App 连接页，显示读取本机连接失败提示" width="260" />
+  <img src=".github/assets/screenshots/mobile-split-view.webp" alt="手机 Web 对话与审查、终端侧边面板" width="260" />
+</p>
+
+</details>
+
+展示图片已压缩，手机 Web 截图已裁去包含连接地址的浏览器底栏，实际项目与会话名称已遮盖。
+
 ## 文档导航
 
 - [手机端连接与开发](apps/mobile/README.md)
