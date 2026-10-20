@@ -66,7 +66,7 @@ test("same path with another remote workspace identity cannot supply ACP routing
   assert.equal(isMatchingAcpWorkspaceTab({ workspacePath: "/work" }, "/work", undefined), true);
 });
 
-test("Agent SDK displays only adapter and version checks while keeping install prerequisites in Host data", () => {
+test("Agent SDK restores npm runtime diagnostics without adding prerequisites to binary agents", () => {
   const agent: AcpAgentInfo = {
     agent: "codex",
     command: "codex-acp",
@@ -88,6 +88,7 @@ test("Agent SDK displays only adapter and version checks while keeping install p
     npmVersion: "10.9.2",
   };
   assert.deepEqual(projectAcpAgentChecks(agent), [
+    { id: "node", status: "fail" },
     { id: "adapter", status: "pass" },
     { id: "version", status: "pass" },
   ]);
@@ -101,6 +102,7 @@ test("Agent SDK displays only adapter and version checks while keeping install p
       nodeVersion: "22.17.0",
     }),
     [
+      { id: "node", status: "warn" },
       { id: "adapter", status: "fail" },
       { id: "version", status: "fail" },
     ],
@@ -113,11 +115,45 @@ test("Agent SDK displays only adapter and version checks while keeping install p
     ],
   );
   assert.equal(
-    projectAcpAgentChecks({ ...agent, source: "managed", managedVersion: "1.13.1" })[1]?.status,
+    projectAcpAgentChecks({ ...agent, source: "managed", managedVersion: "1.13.1" }).find(
+      ({ id }) => id === "version",
+    )?.status,
     "pass",
   );
-  assert.equal(projectAcpAgentChecks({ ...agent, installedVersion: null })[1]?.status, "warn");
-  assert.equal(projectAcpAgentChecks({ ...agent, installedVersion: "1.9.9" })[1]?.status, "warn");
+  assert.equal(
+    projectAcpAgentChecks({ ...agent, installedVersion: null }).find(({ id }) => id === "version")
+      ?.status,
+    "warn",
+  );
+  assert.equal(
+    projectAcpAgentChecks({ ...agent, installedVersion: "1.9.9" }).find(
+      ({ id }) => id === "version",
+    )?.status,
+    "warn",
+  );
+  assert.equal(
+    projectAcpAgentChecks({
+      ...agent,
+      nodeVersion: "22.17.0",
+      nodeVersionRange: ">=24.16.0 <25 || >=26.1.0",
+      nodeVersionCompatible: false,
+    })[0]?.status,
+    "warn",
+  );
+  assert.equal(
+    projectAcpAgentChecks({ ...agent, nodeVersion: "24.19.0", nodeVersionCompatible: true })[0]
+      ?.status,
+    "pass",
+  );
+  assert.equal(
+    projectAcpAgentChecks({
+      ...agent,
+      nodeVersion: "24.19.0",
+      npmVersion: null,
+      nodeVersionCompatible: true,
+    })[0]?.status,
+    "fail",
+  );
 });
 
 test("system ACP adapter at or above the fixed target keeps its version without a managed install", () => {
@@ -157,14 +193,19 @@ test("system ACP adapter at or above the fixed target keeps its version without 
     updateCheck: { status: "checked", source: "acp-registry", checkedAt: null },
   } as const;
   assert.equal(shouldOfferManagedAcpInstall(updated), true);
-  assert.equal(projectAcpAgentChecks(updated)[1]?.status, "warn");
-  assert.equal(projectAcpAgentChecks({ ...updated, installedVersion: "2.0.1" })[1]?.status, "pass");
+  assert.equal(projectAcpAgentChecks(updated).find(({ id }) => id === "version")?.status, "warn");
+  assert.equal(
+    projectAcpAgentChecks({ ...updated, installedVersion: "2.0.1" }).find(
+      ({ id }) => id === "version",
+    )?.status,
+    "pass",
+  );
   assert.equal(
     projectAcpAgentChecks({
       ...updated,
       installedVersion: "2.0.1",
       updateCheck: { ...updated.updateCheck, status: "error" },
-    })[1]?.status,
+    }).find(({ id }) => id === "version")?.status,
     "warn",
   );
 });

@@ -28,15 +28,15 @@ try {
       import {PlatformProvider} from "../../../ui/src/hooks/usePlatform.tsx";
       import {useConfirmDialogStore} from "../../../ui/src/store/confirmDialogStore.ts";
       import "../../../ui/src/styles.css";
-      const initial = {agent:'gemini',command:'gemini',args:['--acp'],distribution:'npm',platformSupported:true,packageName:'@google/gemini-cli',registryVersion:'0.59.0',enabled:true,env:{},source:'system',ready:true,installedVersion:'0.59.0',managedVersion:null,executablePath:'/fake/gemini',nativeCommand:'',nativePath:null,nodeVersion:'24.14.0',npmVersion:'10.33.2',updateCheck:{status:'unchecked',source:'builtin',checkedAt:null}};
-      const state:any = {pending:[],operations:[],calls:[],mode:'normal'};
+      const initial = {agent:'gemini',command:'gemini',args:['--acp'],distribution:'npm',platformSupported:true,packageName:'@google/gemini-cli',registryVersion:'0.59.0',enabled:true,env:{},source:'system',ready:true,installedVersion:'0.59.0',managedVersion:null,executablePath:'/fake/gemini',nativeCommand:'',nativePath:null,nodeVersion:'24.14.0',npmVersion:'10.33.2',nodeVersionRange:'>=20',nodeVersionCompatible:true,updateCheck:{status:'unchecked',source:'builtin',checkedAt:null}};
+      const state:any = {pending:[],operations:[],calls:[],mode:'normal',environment:{},external:[]};
       window.__updates = state;
       state.confirmPending = () => Boolean(useConfirmDialogStore.getState().pendingRequest);
       state.confirm = () => useConfirmDialogStore.getState().settleConfirmation(true);
       const makeHost = (host:string) => ({
         async listAgents(options?:any) {
           state.calls.push({host,options});
-          if (!options?.checkUpdates) return [{...initial,registryVersion:host==='B'?'0.62.0':'0.59.0'}];
+          if (!options?.checkUpdates) return [{...initial,...state.environment,registryVersion:host==='B'?'0.62.0':'0.59.0'}];
           return new Promise(resolve=>state.pending.push({host,resolve}));
         },
         onDynamicAgentOperation(){return ()=>({dispose(){}})},
@@ -48,7 +48,7 @@ try {
       state.finish = (host:string, error=false) => {
         const item=state.pending.findIndex(x=>x.host===host);
         if(item<0) throw new Error('Missing pending Host');
-        state.pending.splice(item,1)[0].resolve([{...initial,source:host==='B'?'managed':'system',managedVersion:host==='B'?'0.59.0':null,registryVersion:'0.62.0',updateCheck:{status:error?'error':'checked',source:'acp-registry',checkedAt:'2026-09-30T01:00:00.000Z'}}]);
+        state.pending.splice(item,1)[0].resolve([{...initial,...state.environment,source:host==='B'?'managed':'system',managedVersion:host==='B'?'0.59.0':null,registryVersion:'0.62.0',updateCheck:{status:error?'error':'checked',source:'acp-registry',checkedAt:'2026-09-30T01:00:00.000Z'}}]);
       };
       function Fixture(){
         const [host,setHost]=useState<'A'|'B'>('A');
@@ -62,15 +62,20 @@ try {
           refreshDisabled={management.busy} refreshLabel="检查更新" refreshTestId="settings-acp-agents-refresh"
         /><AcpAgentManagerPanel agent="gemini" service={hosts[host] as any} serviceAvailable waiting={false} management={management}/></div>;
       }
-      createRoot(document.getElementById('root')!).render(<PlatformProvider platform={{} as any}><ZCodeIntlProvider initialLocale="zh-CN"><TooltipProvider><Fixture/></TooltipProvider></ZCodeIntlProvider></PlatformProvider>);
+      createRoot(document.getElementById('root')!).render(<PlatformProvider platform={{openExternal:async(url)=>state.external.push(url)} as any}><ZCodeIntlProvider initialLocale="zh-CN"><TooltipProvider><Fixture/></TooltipProvider></ZCodeIntlProvider></PlatformProvider>);
     `,
     ),
   ]);
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    ...(process.env.ZCODE_E2E_CHROMIUM_PATH
+      ? { executablePath: process.env.ZCODE_E2E_CHROMIUM_PATH }
+      : {}),
+  });
   const page = await browser.newPage({ viewport: { width: 1040, height: 840 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto(`http://localhost:5174/${name}.html`);
+  await page.goto(`${process.env.ZCODE_E2E_VITE_URL ?? "http://localhost:5174"}/${name}.html`);
   await page
     .locator("#acp-env-raw-gemini")
     .waitFor({ timeout: 10000 })
@@ -131,6 +136,65 @@ try {
     "Old checks cannot overwrite a completed settings save",
   );
   assert.ok(await page.evaluate(() => window.__updates.calls.some((x) => x.options?.force)));
+  const refreshEnvironment = async (environment) => {
+    await page.evaluate((value) => {
+      window.__updates.environment = value;
+    }, environment);
+    await page.getByTestId("settings-acp-agents-refresh").click();
+    await page.waitForFunction(() => window.__updates.pending.length === 1);
+    await page.evaluate(() => window.__updates.finish("B"));
+  };
+  await refreshEnvironment({
+    nodeVersion: "22.17.0",
+    nodeVersionRange: ">=24.16.0 <25 || >=26.1.0",
+    nodeVersionCompatible: false,
+  });
+  const warning = page.getByTestId("acp-node-warning");
+  await warning.waitFor();
+  assert.match(await warning.textContent(), /22\.17\.0/);
+  assert.match(await warning.textContent(), /24\.16\.0/);
+  assert.equal(await page.getByTestId("acp-upgrade").isDisabled(), true);
+  assert.equal(
+    await page.getByRole("button", { name: "卸载托管适配器", exact: true }).isEnabled(),
+    true,
+  );
+  for (const width of [1040, 375]) {
+    await page.setViewportSize({ width, height: 840 });
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate((value) => {
+        document.documentElement.className =
+          value === "dark" ? "dark theme-zai-dark" : "theme-zai-light";
+      }, theme);
+      assert.ok(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        ),
+      );
+      await page
+        .getByTestId("settings-acp-agent-manager")
+        .screenshot({ path: `/tmp/zcode-node-check-19f9-${width}-${theme}.png` });
+    }
+  }
+  await warning.getByRole("button", { name: "前往安装 Node.js", exact: true }).click();
+  assert.deepEqual(await page.evaluate(() => window.__updates.external), [
+    "https://nodejs.org/en/download",
+  ]);
+  await page.setViewportSize({ width: 375, height: 800 });
+  assert.ok(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  );
+  await refreshEnvironment({
+    nodeVersion: "24.19.0",
+    nodeVersionRange: ">=24.16.0 <25 || >=26.1.0",
+    nodeVersionCompatible: true,
+  });
+  await warning.waitFor({ state: "detached" });
+  assert.equal(await page.getByTestId("acp-upgrade").isEnabled(), true);
+  await refreshEnvironment({ nodeVersion: null, npmVersion: null, nodeVersionCompatible: false });
+  await warning.waitFor();
+  assert.equal(await page.getByTestId("acp-upgrade").isDisabled(), true);
   await page.setViewportSize({ width: 375, height: 800 });
   assert.ok(
     await page.evaluate(
@@ -139,7 +203,7 @@ try {
   );
   assert.deepEqual(errors, []);
   process.stdout.write(
-    "PASS: background update, force refresh, system/managed actions, exact version, draft preservation and stale Host isolation.\n",
+    "PASS: background update, force refresh, actions, stale Host isolation, Node requirements, install link, environment recovery and mobile layout.\n",
   );
 } finally {
   await browser?.close();

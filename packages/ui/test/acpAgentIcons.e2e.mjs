@@ -174,8 +174,9 @@ try {
         await section.getByRole("switch", { name: "由 Agent 自行处理文件与命令" }).count(),
         0,
       );
-      assert.equal(await section.locator('[data-testid^="settings-acp-check-"]').count(), 2);
-      for (const id of ["node", "npm", "native"]) {
+      assert.equal(await section.locator('[data-testid^="settings-acp-check-"]').count(), 3);
+      assert.equal(await section.getByTestId("settings-acp-check-node").count(), 1);
+      for (const id of ["npm", "native"]) {
         assert.equal(await section.getByTestId(`settings-acp-check-${id}`).count(), 0);
       }
       assert.equal(await update(catalog[0].id).count(), 1, "Older checked version has an update");

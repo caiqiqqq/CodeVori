@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button.js";
 import { Switch } from "@/components/ui/switch.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
+import { AcpNodeEnvironment } from "@/settings/AcpNodeEnvironment.js";
 import { AcpCheckFact, AcpCheckRow } from "@/settings/AcpAgentCheckRow.js";
 import { AcpAgentEnvironmentEditor } from "@/settings/AcpAgentEnvironmentEditor.js";
 import { AcpCodexConfigEditor } from "@/settings/AcpCodexConfigEditor.js";
@@ -148,6 +149,9 @@ export function AcpAgentManagerPanel({
           <p className="text-ui-base text-foreground-subtle">{label("checking")}</p>
         ) : agentInfo ? (
           <>
+            {agentInfo.distribution !== "binary" ? (
+              <AcpNodeEnvironment info={agentInfo} notice />
+            ) : null}
             <section className="space-y-2" aria-label={label("diagnostics")}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-ui-sm text-foreground-subtle">
@@ -182,7 +186,9 @@ export function AcpAgentManagerPanel({
                   open={isOpen(id, status)}
                   onOpenChange={(open) => setCheckOpen(id, open)}
                 >
-                  {id === "adapter" ? (
+                  {id === "node" ? (
+                    <AcpNodeEnvironment info={agentInfo} />
+                  ) : id === "adapter" ? (
                     <>
                       <AcpCheckFact
                         label={label("status")}
@@ -255,7 +261,9 @@ export function AcpAgentManagerPanel({
                               envChanged ||
                               agentInfo.platformSupported === false ||
                               (agentInfo.distribution !== "binary" &&
-                                (!agentInfo.nodeVersion || !agentInfo.npmVersion))
+                                (!agentInfo.nodeVersion ||
+                                  !agentInfo.npmVersion ||
+                                  agentInfo.nodeVersionCompatible === false))
                             }
                             onClick={() => manage("install")}
                           >
@@ -274,7 +282,9 @@ export function AcpAgentManagerPanel({
                                 envChanged ||
                                 agentInfo.platformSupported === false ||
                                 (agentInfo.distribution !== "binary" &&
-                                  (!agentInfo.nodeVersion || !agentInfo.npmVersion)) ||
+                                  (!agentInfo.nodeVersion ||
+                                    !agentInfo.npmVersion ||
+                                    agentInfo.nodeVersionCompatible === false)) ||
                                 agentInfo.managedVersion === agentInfo.registryVersion ||
                                 managedIsNewer
                               }

@@ -54,6 +54,7 @@ test("npm 安装只请求固定版，旧 latest 标志不生效，失败保留�
   const managerRoot = join(root, "agents");
   const manager = createAcpAgentManager({
     directory: managerRoot,
+    fetchMetadata: async () => ({ name: "@google/gemini-cli", version: "0.59.0" }),
     env: {
       PATH: bin,
       ZCODE_ADAPTER_CHANNEL: "latest",

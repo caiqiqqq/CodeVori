@@ -4053,6 +4053,16 @@ const zhCN: Record<string, string> = {
   "settings.acpAgents.collapseChecks": "收起全部",
   "settings.acpAgents.checkAdapter": "ACP 适配器",
   "settings.acpAgents.checkVersion": "版本状态",
+  "settings.acpAgents.checkNode": "Node.js / npm 环境",
+  "settings.acpAgents.nodeVersionRange": "目标版本要求 Node.js",
+  "settings.acpAgents.nodeEnvironmentSummary":
+    "当前 Node.js：{node}，npm：{npm}。目标版本要求 Node.js：{range}。",
+  "settings.acpAgents.nodeRequirementUnknown": "未知（尚未检查或发行包未声明）",
+  "settings.acpAgents.nodeInstallHint":
+    "目标 Host 的 Node.js / npm 缺失或 Node.js 版本不兼容，请安装或升级后重试。",
+  "settings.acpAgents.nodeHostHint":
+    "请在实际运行智能体的目标 Host 安装兼容版本的 Node.js（包含 npm），重启该 Host 后刷新检查。远程 Host 需要在远程机器安装。",
+  "settings.acpAgents.installNode": "前往安装 Node.js",
   "settings.acpAgents.checkPass": "通过",
   "settings.acpAgents.checkWarn": "注意",
   "settings.acpAgents.checkFail": "缺失",

@@ -20,8 +20,10 @@ const registry = (version: string) => ({
   ],
 });
 const npmMetadata = (url: string) => ({
-  name: decodeURIComponent(new URL(url).pathname.slice(1).replace(/\/latest$/, "")),
-  version: "3.0.0",
+  name: decodeURIComponent(new URL(url).pathname.slice(1).split("/")[0]!),
+  version: new URL(url).pathname.endsWith("/latest")
+    ? "3.0.0"
+    : new URL(url).pathname.split("/").at(-1),
 });
 
 test("发行检查经 RPC 查询官方版本；Host 缓存隔离、在途合并和强制刷新，聊天及普通诊断不联网", async () => {
