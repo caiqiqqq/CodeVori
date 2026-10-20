@@ -7,7 +7,6 @@ import { usePlatform } from "@/hooks/usePlatform.js";
 import { useAcpGeminiProviders } from "@/hooks/useAcpGeminiProviders.js";
 import { AcpGeminiProviderControls } from "@/settings/AcpGeminiProviderControls.js";
 import { Input } from "@/components/ui/input.js";
-import { Textarea } from "@/components/ui/textarea.js";
 import {
   Select,
   SelectContent,
@@ -27,7 +26,7 @@ import {
   type AcpEnvField,
 } from "@/settings/acpAgentEnvironment.js";
 
-/** Common controls and the advanced editor are projections of the same unsaved text. */
+/** Connection fields project the complete draft, including saved keys without a visible field. */
 export function AcpAgentEnvironmentEditor({
   info,
   service,
@@ -99,26 +98,7 @@ export function AcpAgentEnvironmentEditor({
           </code>
         </div>
       ) : null}
-      <div className="space-y-2">
-        <label
-          htmlFor={`acp-env-raw-${info.agent}`}
-          className="block text-ui-sm font-medium text-foreground-subtle"
-        >
-          {label("advanced")}
-        </label>
-        {/* 修复原因：Codeg 始终展示完整变量列表；折叠原始编辑器会让已保存的非预置变量看起来消失。 */}
-        <Textarea
-          id={`acp-env-raw-${info.agent}`}
-          value={text}
-          disabled={editorBusy}
-          onChange={(event) => update(normalizeAcpAgentEnvText(info.agent, event.target.value))}
-          placeholder="KEY=value"
-          autoComplete="off"
-          spellCheck={false}
-          className="min-h-44 max-h-72 resize-y overflow-y-auto font-mono text-ui-base"
-        />
-        <p className="text-ui-sm text-foreground-subtle">{label("advancedHint")}</p>
-      </div>
+      {/* 修复原因：原始变量区与连接字段重复且明文展示凭据；完整草稿仍保留隐藏的已有键。 */}
       {fields.length ? (
         <h5 className="text-ui-sm font-medium">
           {label(info.agent === "gemini" ? "geminiTitle" : "common")}

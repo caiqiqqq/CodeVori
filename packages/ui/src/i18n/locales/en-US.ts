@@ -4488,10 +4488,7 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.env.optional": "Optional; uses the agent's own configuration if unset",
   "settings.acpAgents.env.show": "Show credential",
   "settings.acpAgents.env.hide": "Hide credential",
-  "settings.acpAgents.env.advanced": "Environment variables (KEY=value)",
   "settings.acpAgents.env.common": "Common fields",
-  "settings.acpAgents.env.advancedHint":
-    "One variable per line; comments starting with # are kept only while editing. The common fields below share this configuration. Saved credentials appear here in plain text.",
   "settings.acpAgents.env.clearHint": `Clear and save to remove ${PRODUCT_NAME}'s value for this agent. The agent may still read system variables and native configuration.`,
   "settings.acpAgents.env.qoderLogin":
     "Run this command in the target Host's terminal to log in to Qoder. Use the PAT above on hosts without a browser; Qoder does not read OPENAI_API_KEY or QODER_API_KEY.",

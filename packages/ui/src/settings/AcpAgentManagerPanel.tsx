@@ -325,7 +325,7 @@ export function AcpAgentManagerPanel({
                 busy={management.busy}
                 onChange={(text) => setEnvDrafts((previous) => ({ ...previous, [agent]: text }))}
                 onSave={async (submitted) => {
-                  // 修复原因：高级文本可直接修改认证方式，保存时仍需按 Codeg 的规则去掉互斥凭据。
+                  // 修复原因：认证方式切换后，保存时仍需去掉互斥凭据并保留无关变量。
                   const env = parseAcpEnv(normalizeAcpAgentEnvText(agent, submitted));
                   await management.update({ agent, env });
                   // 修复原因：旧保存回执不能清空等待期间的新草稿；所有编辑入口共用这一份文本。

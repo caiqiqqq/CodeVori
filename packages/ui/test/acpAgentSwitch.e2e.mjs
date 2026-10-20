@@ -98,7 +98,8 @@ try {
           detail: Boolean(detail),
           native: document.querySelectorAll('[data-testid="acp-codex-native-config"]').length,
           env: document.querySelectorAll('[data-testid="acp-agent-environment"]').length,
-          ownEnv: Boolean(detail?.querySelector('#acp-env-raw-${agent}')),
+          ownEnv: Boolean(detail?.querySelector('[data-testid="acp-agent-environment"]')),
+          rawEnv: Boolean(detail?.querySelector('textarea[id^="acp-env-raw-"]')),
           agentTools: Boolean(detail?.querySelector('[aria-label="由 Agent 自行处理文件与命令"]')),
           versionChannel: Boolean(detail?.querySelector('[data-testid="acp-adapter-channel"]'))
         };
@@ -114,6 +115,7 @@ try {
         native: agent === "codex" ? 1 : 0,
         env: agent === "codex" ? 0 : 1,
         ownEnv: agent !== "codex",
+        rawEnv: false,
         agentTools: false,
         versionChannel: false,
       },
