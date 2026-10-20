@@ -1908,8 +1908,7 @@ function ConversationStatusPanelImpl({
     <div
       className={cn(
         "pointer-events-none absolute top-0 z-20 pt-4",
-        // 旧 ChatView 的 inline 面板直接钉在右侧，正文列通过独立 translate 让位。
-        // v4 若继续用 inset-x-0 + justify-end，会让面板容器宽铺满并改变宽屏下的横向对齐。
+        // 面板浮在会话右上方；定位模式只影响自身容器，不能再让居中的正文横移让位。
         layoutMode === "inline"
           ? "right-4"
           : layoutMode === "auto"

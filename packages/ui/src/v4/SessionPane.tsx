@@ -4461,7 +4461,7 @@ export function SessionPane({
   const statusPanelVariant = resolveConversationStatusPanelVariant({
     variantOverride: effectiveSummaryPanelVariantOverride,
   });
-  // 此模式只控制面板自身定位；Timeline 的侧栏留白独立于面板展示状态（#196）。
+  // 此模式只控制面板自身定位；Timeline 始终居中，不能随面板展开/收起横移。
   const shouldUseStatusPanelInlineLayout =
     !visibleEmptyDraft &&
     shouldUseConversationStatusPanelInlineLayout({
@@ -5449,7 +5449,6 @@ export function SessionPane({
                 ) : null
               }
               centerEmptyStateWithDock={visibleEmptyDraft}
-              reserveStatusPanelSpace
               conversationFindQuery={(acpAgent || !isDraft) && focused ? conversationFindQuery : ""}
               conversationFindActiveIndex={
                 (acpAgent || !isDraft) && focused ? conversationFindActiveIndex : -1

@@ -115,20 +115,24 @@ web-remote-replayable snapshots ─┴→ selected pane → Terminals → output
    confirmed unavailable Git runtime omits the branch entry and environment row.
    Check desktop/mobile and light/dark themes.
 
-## Stable conversation geometry (issue #196)
+## Stable centered conversation geometry (issue #196 follow-up)
 
-- Populated API and ACP conversations reserve the same right-hand status area at
-  conversation-container widths of at least 1280px, regardless of mini, panel or
-  automatic mode, content arrival/clearing, or Git availability. Message columns
-  and the composer keep the same width and horizontal position during toggles.
-- Below 1280px the existing panel overlays the conversation without changing its
-  geometry. Automatic mode stays compact; explicit expansion remains available.
+- Populated API and ACP message columns and the composer stay horizontally centered
+  within their conversation scroll viewport, including widths of at least 1280px.
+  The workspace navigation, external Side Pane and other split panes are outside
+  this viewport. Do not reserve a permanent right-hand status area or translate
+  the conversation when only the compact branch entry is visible.
+- Mini, panel and automatic modes, content arrival/clearing and Git availability
+  never change the message/composer width or horizontal position. The existing
+  status panel overlays the upper-right conversation area at every width; expanding
+  it may cover that area without pushing the conversation sideways. Below 1280px,
+  automatic mode stays compact and explicit expansion remains available.
   Empty drafts keep their existing centered greeting/composer layout.
 - SessionPane owns the existing display preference and panel facts. Timeline owns
   geometry derived only from container width and empty-draft layout, never from
-  panel display state. SessionPane opts into this stable status area; timeline
-  consumers without a status panel (such as unstarted task previews) retain their
-  existing layout. No additional state, protocol, persistence or migration.
+  panel display state. All Timeline consumers use the same centered geometry,
+  including side conversations and unstarted task previews. No additional state,
+  protocol, persistence or migration.
 - Clicking panel controls must retain message/composer/scroll-container DOM,
   unsent draft, scroll position and visible-message position. Do not compensate
   with scroll commands, timers or new ResizeObserver state.
@@ -141,9 +145,11 @@ desktop continuous / mobile replayable → existing projections → panel facts 
 
 Acceptance: real SessionPane browser tests exercise repeated mini/panel toggles,
 automatic mode and branch-only content at widths above, at and below 1280px and
-mobile width, in light/dark themes. Sample geometry throughout the transition,
+mobile width, in light/dark themes. Include a wide viewport with a left navigation
+inset and assert that every message/composer column is centered in the conversation
+viewport rather than the whole window. Sample geometry throughout the transition,
 both at the bottom and while reading history; assert stable DOM, draft, scroll,
-message and composer rectangles. Wide panels must not cover the message/composer
-column. Existing Git actions, replay and scoped-session tests continue to pass.
+message and composer rectangles. Existing Git actions, replay and scoped-session
+tests continue to pass.
 Shared Timeline layout is also covered by its conversation-switch regression;
 synthetic Host tests do not claim live remote transport verification.
