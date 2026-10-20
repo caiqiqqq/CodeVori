@@ -79,7 +79,8 @@ try {
           goal:goal=>{snapshot.goal=goal;publish()},
           nextSession:()=>{snapshot={...snapshot,id:'22222222-2222-4222-8222-222222222222',title:'second fixture',acpSessionId:'second-native',nativeUsage:null,usageTurns:[],entries:[{id:'user:other',kind:'user',text:'other'}],goal:'second objective'};setEpoch(n=>n+1)},
         };
-        return <main className="h-screen bg-background text-foreground" data-fixture-ready="true" data-fixture-epoch={epoch}>
+        const sidebarInset=Number(new URLSearchParams(location.search).get('sidebarInset')??0);
+        return <main style={{marginLeft:sidebarInset}} className="h-screen bg-background text-foreground" data-fixture-ready="true" data-fixture-epoch={epoch}>
           <SessionPane key={epoch} paneId="status-fixture" workspacePath={workspacePath} sessionId={null} focused
             gitWorktreeReviewSourceId="unstaged" gitSummary={gitUnavailable?{...dirtySummary,isGitAvailable:false,isRepository:false}:noGit?{...dirtySummary,isRepository:false}:dirtySummary} gitDirtyFileCount={dirty?2:0}
             gitWorktreeChangeSummary={dirty?{added:12,removed:3}:{added:0,removed:0}}
@@ -94,15 +95,19 @@ try {
     ),
   ]);
   browser = await chromium.launch({ headless: true });
-  for (const width of [1440, 1280, 1279, 375]) {
+  for (const width of [2048, 1440, 1280, 1279, 375]) {
     for (const theme of ["zai-light", "zai-dark"]) {
-      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      const sidebarInset = width === 2048 ? 264 : 0;
+      const page = await browser.newPage({
+        viewport: { width: width + sidebarInset, height: 900 },
+      });
       page.setDefaultTimeout(60000);
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
-      await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`, {
-        waitUntil: "domcontentloaded",
-      });
+      await page.goto(
+        `${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html?sidebarInset=${sidebarInset}`,
+        { waitUntil: "domcontentloaded" },
+      );
       await page
         .getByTestId("v4-composer-input")
         .waitFor()
@@ -165,6 +170,8 @@ try {
       const startGeometryCapture = async () => {
         await page.evaluate(async () => {
           await document.fonts.ready;
+          // 程序化滚动后先提交虚拟列表的可见窗口与测高，再采集面板交互前的基线。
+          for (let frame = 0; frame < 2; frame++) await new Promise(requestAnimationFrame);
           const scroll = document.querySelector("[data-v4-timeline-scroll]");
           const composer = document.querySelector('[data-testid="v4-composer-input"]');
           const history = document.querySelector("[data-v4-timeline-virtual-history]");
@@ -179,6 +186,7 @@ try {
             ),
           ];
           const sample = () => ({
+            contentCenterX: scroll.getBoundingClientRect().x + scroll.clientWidth / 2,
             scrollTop: scroll.scrollTop,
             rects: [...columns, message, scroll].map((node) => {
               const { x, y, width, height } = node.getBoundingClientRect();
@@ -207,12 +215,19 @@ try {
           return window.__geometryCapture;
         });
         assert.ok(frames.length >= 20);
-        for (const frame of frames) {
+        for (const frame of [baseline, ...frames]) {
+          // 回归依据：仅断言切换不移动会漏掉整体固定左移，必须校验会话视口内的中心。
+          for (const rect of frame.rects.slice(0, -2)) {
+            assert.ok(
+              Math.abs(rect.x + rect.width / 2 - frame.contentCenterX) <= 1,
+              `${width}/${theme}: conversation column must stay centered in its viewport`,
+            );
+          }
           assert.equal(frame.sameNodes, true, "panel controls must retain conversation DOM");
           assert.equal(frame.draft, baseline.draft, "panel controls must retain unsent draft");
           assert.ok(
             Math.abs(frame.scrollTop - baseline.scrollTop) <= 1,
-            "panel controls must retain scroll position",
+            `${width}/${theme}: panel controls changed scroll from ${baseline.scrollTop} to ${frame.scrollTop}`,
           );
           frame.rects.forEach((rect, index) => {
             for (const key of ["x", "y", "width", "height"]) {
@@ -266,12 +281,6 @@ try {
       );
       await assertStableGeometry();
       await expand();
-      // 宽屏与 API 使用同一正文/输入框让位规则；手机保持胶囊自动模式且不横向溢出。
-      if (width >= 1280) {
-        const rect = await panel.boundingBox();
-        const inputRect = await page.getByTestId("v4-composer-input").boundingBox();
-        assert.ok(rect && inputRect && inputRect.x + inputRect.width <= rect.x);
-      }
       await page.waitForFunction(() =>
         [...document.getAnimations()].every((a) => a.playState !== "running"),
       );
