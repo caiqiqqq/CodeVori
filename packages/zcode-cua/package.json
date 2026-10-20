@@ -1,0 +1,73 @@
+{
+  "name": "@zcode/zcode-cua",
+  "version": "0.6.3",
+  "private": true,
+  "description": "Open-source macOS Computer Use runtime, with fail-closed compatibility ports for the proprietary CUA broker.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./open-mcp": {
+      "types": "./open-mcp.d.ts",
+      "import": "./open-mcp.mjs"
+    },
+    "./open-runtime": {
+      "types": "./open-runtime.d.ts",
+      "import": "./open-runtime.mjs"
+    },
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    },
+    "./frame-contract": {
+      "types": "./frame-contract.d.ts",
+      "import": "./frame-contract.js"
+    },
+    "./host-display-contract": {
+      "types": "./host-display-contract.d.ts",
+      "import": "./host-display-contract.js"
+    },
+    "./request-access-contract": {
+      "types": "./request-access-contract.d.ts",
+      "import": "./request-access-contract.js"
+    },
+    "./pip-session": {
+      "types": "./pip-session.d.ts",
+      "import": "./pip-session.js"
+    },
+    "./pip-session/node": {
+      "types": "./pip-session-node.d.ts",
+      "import": "./pip-session-node.js"
+    },
+    "./broker": {
+      "types": "./broker.d.ts",
+      "import": "./broker.js"
+    },
+    "./broker/server": {
+      "types": "./broker-server.d.ts",
+      "import": "./broker-server.js"
+    },
+    "./broker/ports": {
+      "types": "./broker-ports.d.ts",
+      "import": "./broker-ports.js"
+    },
+    "./broker/socketPath": {
+      "types": "./broker-socket-path.d.ts",
+      "import": "./broker-socket-path.js"
+    },
+    "./broker/helperConstants": {
+      "types": "./broker-helper-constants.d.ts",
+      "import": "./broker-helper-constants.js"
+    },
+    "./broker/helperHealth": {
+      "types": "./broker-helper-health.d.ts",
+      "import": "./broker-helper-health.js"
+    }
+  },
+  "scripts": {
+    "build:native": "node scripts/build-native.mjs",
+    "test": "node --test test/*.test.mjs vendor/open-zcode-computer-use/tests/*.test.mjs"
+  },
+  "dependencies": {
+    "proper-lockfile": "4.1.2"
+  }
+}

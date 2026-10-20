@@ -1,0 +1,63 @@
+import { readForgeImageResponse } from "./forgeMedia.js";
+import { forgeAttachmentDownloadUrl, type ForgeRepository } from "@zcode/shared";
+
+const STORAGE_ORIGINS = new Set([
+  "https://github-production-user-asset-6210df.s3.amazonaws.com",
+  "https://private-user-images.githubusercontent.com",
+]);
+
+function mediaUrl(source: string): URL {
+  let url: URL;
+  try {
+    url = new URL(source);
+  } catch {
+    throw new Error("FORGE_INVALID_MEDIA");
+  }
+  if (url.username || url.password || url.hash) throw new Error("FORGE_INVALID_MEDIA");
+  return url;
+}
+
+export async function readGithubAttachmentImage(
+  repository: ForgeRepository,
+  source: string,
+  secret: string,
+  fetcher: typeof fetch,
+) {
+  const endpoint = forgeAttachmentDownloadUrl(repository, source);
+  // Enterprise 也要读取私有附件，但不能套用 github.com 的域名或向任意同源页面发送令牌。
+  if (repository.provider !== "github" || !endpoint) throw new Error("FORGE_INVALID_MEDIA");
+  const url = mediaUrl(endpoint);
+  const signal = AbortSignal.timeout(15_000);
+  const read = async (href: string, authenticated: boolean) => {
+    try {
+      return await fetcher(href, {
+        redirect: "manual",
+        credentials: "omit",
+        signal,
+        headers: {
+          Accept: "image/png,image/jpeg,image/gif,image/webp,image/avif",
+          "User-Agent": "ZCode",
+          ...(authenticated ? { Authorization: `Bearer ${secret}` } : {}),
+        },
+      });
+    } catch {
+      throw new Error("FORGE_NETWORK");
+    }
+  };
+  let response = await read(url.href, true);
+  if ([301, 302, 303, 307, 308].includes(response.status)) {
+    const location = response.headers.get("location");
+    await response.body?.cancel();
+    // 自建服务器的 SSO/存储域名没有可信协议，不能复用 GitHub.com 的存储允许列表。
+    if (url.origin !== "https://github.com" || !location) throw new Error("FORGE_INVALID_MEDIA");
+    const storage = mediaUrl(location);
+    if (!STORAGE_ORIGINS.has(storage.origin)) throw new Error("FORGE_INVALID_MEDIA");
+    // GitHub 返回带签名的存储地址；只允许一次跳转，后续请求不携带令牌或 Cookie。
+    response = await read(storage.href, false);
+  }
+  if (response.status === 401 || response.status === 403) {
+    await response.body?.cancel();
+    throw new Error(response.status === 401 ? "FORGE_AUTHENTICATION" : "FORGE_FORBIDDEN");
+  }
+  return readForgeImageResponse(response);
+}

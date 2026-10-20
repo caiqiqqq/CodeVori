@@ -1,0 +1,179 @@
+import { applyDesktopBrowserSessionNetworkPolicy } from "./desktopNetworkPolicy.js";
+import { createHash } from "node:crypto";
+import { BrowserWindow, session } from "electron";
+import {
+  forgeWebUploadContextSchema,
+  forgeImageUploadResultSchema,
+  type ForgeWebUploadContext,
+  type ForgeImageUploadResult,
+} from "@zcode/shared";
+import { githubIssueUploadScript } from "./githubIssueUploadScript.js";
+
+export async function executeGithubImageUpload(params: {
+  win: BrowserWindow;
+  context: ForgeWebUploadContext;
+  signal: AbortSignal;
+  onNavigationFailure?: (details: {
+    phase: "repository" | "login";
+    code?: string;
+    errno?: number;
+  }) => void;
+}): Promise<ForgeImageUploadResult> {
+  const context = forgeWebUploadContextSchema.parse(params.context);
+  const serverUrl = new URL(context.serverUrl);
+  const repoUrl = new URL(context.repositoryUrl);
+  if (
+    serverUrl.href !== "https://github.com/" ||
+    repoUrl.origin !== "https://github.com" ||
+    repoUrl.username ||
+    repoUrl.password ||
+    repoUrl.search ||
+    repoUrl.hash ||
+    repoUrl.pathname !== `/${context.repository.split("/").map(encodeURIComponent).join("/")}` ||
+    !/^[\w.-]+\/[\w.-]+$/.test(context.repository)
+  )
+    return Promise.reject(new Error("FORGE_INVALID_MEDIA"));
+  if (params.signal.aborted || params.win.isDestroyed())
+    return Promise.reject(new Error("FORGE_MEDIA_AUTHENTICATION_CANCELLED"));
+  const key = createHash("sha256")
+    .update(JSON.stringify([context.serverUrl, context.accountId, context.username]))
+    .digest("hex");
+  const profile = session.fromPartition(`persist:github-issue-upload-${key}`);
+  let parentClosed = false;
+  const closedDuringSetup = () => {
+    parentClosed = true;
+  };
+  params.win.once("close", closedDuringSetup);
+  params.win.once("closed", closedDuringSetup);
+  try {
+    await applyDesktopBrowserSessionNetworkPolicy(profile);
+  } finally {
+    params.win.removeListener("close", closedDuringSetup);
+    params.win.removeListener("closed", closedDuringSetup);
+  }
+  if (parentClosed || params.signal.aborted || params.win.isDestroyed())
+    throw new Error("FORGE_MEDIA_AUTHENTICATION_CANCELLED");
+  const window = new BrowserWindow({
+    parent: params.win,
+    title: `GitHub · ${context.username}`,
+    width: 900,
+    height: 720,
+    webPreferences: {
+      session: profile,
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // 登录页标题会覆盖窗口标题；始终保留预期 GitHub 账号，避免用户误以为应登录 GitLab 账号。
+  window.on("page-title-updated", (event) => event.preventDefault());
+  const pageUrl = `${repoUrl.href}/issues/new`;
+  const loginUrl = new URL("https://github.com/login");
+  loginUrl.searchParams.set("return_to", pageUrl);
+  return new Promise((resolve, reject) => {
+    let settled = false,
+      executing = false,
+      loginRecoveryUsed = false;
+    const finish = (value?: ForgeImageUploadResult, error?: unknown) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      params.signal.removeEventListener("abort", cancelled);
+      params.win.removeListener("close", cancelled);
+      params.win.removeListener("closed", cancelled);
+      window.removeListener("closed", cancelled);
+      if (!window.isDestroyed()) window.destroy();
+      if (value) resolve(value);
+      else reject(error instanceof Error ? error : new Error("FORGE_UPLOAD_UNAVAILABLE"));
+    };
+    const cancelled = () => finish(undefined, new Error("FORGE_MEDIA_AUTHENTICATION_CANCELLED"));
+    const navigationFailed = (phase: "repository" | "login", error: unknown) => {
+      if (settled) return;
+      // loadURL 原始错误包含仓库/登录回跳 URL；只保留 Chromium 错误码，避免吞掉排障依据或泄露私有路径。
+      const errorCode =
+        error && typeof error === "object" && "code" in error ? error.code : undefined;
+      const code =
+        typeof errorCode === "string" && /^ERR_[A-Z0-9_]{1,64}$/.test(errorCode)
+          ? errorCode
+          : error instanceof Error
+            ? error.message.match(/^ERR_[A-Z0-9_]{1,64}(?=\s|\(|$)/)?.[0]
+            : undefined;
+      const errno =
+        error && typeof error === "object" && "errno" in error ? error.errno : undefined;
+      params.onNavigationFailure?.({
+        phase,
+        ...(code ? { code } : {}),
+        ...(typeof errno === "number" && Number.isSafeInteger(errno) ? { errno } : {}),
+      });
+      finish(undefined, new Error("FORGE_NETWORK"));
+    };
+    const deadline = setTimeout(
+      () => finish(undefined, new Error("FORGE_MEDIA_AUTHENTICATION_CANCELLED")),
+      600_000,
+    );
+    params.signal.addEventListener("abort", cancelled, { once: true });
+    params.win.once("close", cancelled);
+    params.win.once("closed", cancelled);
+    window.once("closed", cancelled);
+    window.webContents.on("did-finish-load", () => {
+      if (settled || executing) return;
+      // 登录/SSO 页面由用户完成；只向固定仓库页面传递图片，不向认证页或跨站跳转注入字节。
+      if (window.webContents.getURL() !== pageUrl) return;
+      executing = true;
+      void window.webContents.executeJavaScript(githubIssueUploadScript(context), true).then(
+        (result: unknown) => {
+          const uploaded = forgeImageUploadResultSchema.safeParse(result);
+          if (!uploaded.success) {
+            finish(undefined, new Error("FORGE_RESPONSE"));
+            return;
+          }
+          const url = new URL(uploaded.data.url);
+          if (
+            url.origin !== "https://github.com" ||
+            url.username ||
+            url.password ||
+            url.search ||
+            url.hash ||
+            !/^\/user-attachments\/assets\/[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(
+              url.pathname,
+            )
+          )
+            finish(undefined, new Error("FORGE_INVALID_MEDIA"));
+          else finish(uploaded.data);
+        },
+        async (error: unknown) => {
+          if (settled) return;
+          const message =
+            error instanceof Error ? error.message.match(/FORGE_[A-Z_]+/)?.[0] : undefined;
+          // 身份错误发生在附件派发前：同一窗口最多恢复登录一次，不重试已开始的上传。
+          if (
+            !loginRecoveryUsed &&
+            (message === "FORGE_MEDIA_AUTHENTICATION" || message === "FORGE_MEDIA_IDENTITY_CHANGED")
+          ) {
+            loginRecoveryUsed = true;
+            if (message === "FORGE_MEDIA_IDENTITY_CHANGED") {
+              try {
+                // 只有确认账号不同才清理本功能 GitHub partition；身份未知不能清理，GitLab 登录态也不受影响。
+                await profile.clearStorageData({ storages: ["cookies", "localstorage"] });
+              } catch {
+                finish(undefined, new Error(message));
+                return;
+              }
+            }
+            if (settled) return;
+            executing = false;
+            void window
+              .loadURL(loginUrl.href)
+              .catch((error: unknown) => navigationFailed("login", error));
+            return;
+          }
+          finish(undefined, new Error(message ?? "FORGE_UPLOAD_UNCERTAIN"));
+        },
+      );
+    });
+    if (params.signal.aborted || params.win.isDestroyed()) cancelled();
+    else
+      void window.loadURL(pageUrl).catch((error: unknown) => navigationFailed("repository", error));
+  });
+}

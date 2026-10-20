@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="96 96 832 832"><title>CodeVori</title><defs><linearGradient id="tile" x2="0" y2="1"><stop stop-color="#151718"/><stop offset="1" stop-color="#050606"/></linearGradient></defs>
+  <rect x="96" y="96" width="832" height="832" rx="184" fill="url(#tile)" stroke="#ffffff" stroke-opacity=".12" stroke-width="2"/>
+  <g transform="translate(256 294) scale(2)" color="#ffffff"><path d="M0 8H56L128 158L200 8H256L158 210H98Z" fill="currentColor"/></g></svg>

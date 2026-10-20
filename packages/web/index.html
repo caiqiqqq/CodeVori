@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#161616" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Chrome dev 下可能不发 favicon 网络请求；内嵌小尺寸 App 图标，避免标签页回退到默认图标。-->
+    <link
+      rel="icon"
+      type="image/png"
+      href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAADmElEQVR4nOxXzU9TQRCf1xbCl3IpkcAFudiEiBe+IuFiDJgAQfSCicSzfwAxgImJLSZSDt70qDcwJiVtJAETKhGkcLIlIe3BgokQEzARhEJtu+vu9r3t7nt9BSlJL86B2dnfzM5vZ3ceWwsUWCxQYCk4AZvJvKWquvohIOgFwG2gKJVsFmMgY9PF9DjGeE8BJQAYfDs7P16SKaQPMaxmt9uvgMX6hgxbKYh1zpjNKIJ9anwFkPXB7u52xJRATU1NWTyZWiXUG+hG2IbURTSbB54FB1j7abc3wfr6H83PKhIoLil5Qsp2VyHeRIPCV8nYev1POCiXSg9j6Ch2+FHLKV1C4nRT1ZrN2It2/ji6JebUd4Ej7YR1Qedpg0NMKHUBcaqkp5Z2phpBW2sbWG1WZm9tfYfNzW8Srvevq7sMtbU1zE4lExBYWdX7V5oSoPXCpFPSZ4jomcHg4H24NzDA4Gg0Ck0tLSrZNM78VW1RLPDu7RTU19czn8nJKVgOBAx+pkfAy4Qy5XNPTABC6SC68J3+fgkXdX//bZ6cxoy73Vn9TAloybFAIvo1Ch7PNMdHhoclnPuTxSmmicfjgY2NDQkHIS53BVSNVP2c7ESbozvs6e6WcIr1dvfw3VN73D0h4ex4T6oA5rdV1pFIGLxeH/d7PDpi8Bslc5p4fT4Ih8OGdbDQDaYVwDpnrXyuZ2Pcz+FwQFdXJ8e7OjvZnCausTFDvLiuKQHIUi7WOmRIdzQzM8P9RkdGOK6NqbwnPpFwxBBvdhGl/wUVFy7izMdbZJW2G682wtLiJz7d29fHWtY7nbmk7R0dEAqGssZr+mB/n6O2bBVg/Yp033Zih0IhmJ2dJeXvYr6PhoYkpnNzHyAYDJrGa7ZpBcorKnBO6kQ3Nl6Dz0uLkE2ut7cTkms546k+PPjNk2S5AwjkbzfilaESDH6Beb/fkHx+3s8qdFK8ZmclIPc/NrWfOp0GAk6X89TxokhHUFpejvmz6gTd1toKRcXFzE4kkxBYXj5VHNVHsZiSlUBJaRnmLxv1yNSXjFoi4eWTBy4S0N0BvIJQulyglQ+lx1i088BJNyyIGWUCGL8C6QsmXCgs23ngr8WUhlcxeReukslm3r/nq/3x4+MbOQkUFZU1K5YUuVHyg/UcJEWSNcTjcelZbkiCUGI7lUq5LDbbLxKgEOZVhHnJWXZMZI/8XSATLxLxeB9Zd1efT4ECy/8fp38BAAD//4xSosAAAAAGSURBVAMASNprdyC0/akAAAAASUVORK5CYII="
+      sizes="32x32"
+    />
+    <title>CodeVori</title>
+    <script>
+      (() => {
+        // JS bundle 执行前先按本地主题偏好决定首屏底色，避免 dark 用户在这一帧看到白底闪烁。
+        const STORAGE_KEY = "zcode-theme";
+        const DEFAULT_THEME = "zai-dark";
+        const BROWSER_THEME_COLORS = {
+          dark: "#161616",
+          light: "#f8f8f8",
+        };
+
+        const normalizeResolvedTheme = (theme) => {
+          if (theme === "dark") return "dark";
+          if (theme === "light") return "light";
+          if (theme === "zai-dark") return "dark";
+          if (theme === "zai-light") return "light";
+          return theme;
+        };
+
+        const syncBrowserThemeSurface = (theme) => {
+          document.documentElement.setAttribute("data-zcode-browser-theme-surface", theme);
+          document.documentElement.style.colorScheme = theme;
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute("content", BROWSER_THEME_COLORS[theme]);
+          document.querySelector('meta[name="color-scheme"]')?.setAttribute("content", theme);
+        };
+
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY) || DEFAULT_THEME;
+          const resolved =
+            saved === "system"
+              ? window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light"
+              : normalizeResolvedTheme(saved);
+          const finalTheme = resolved === "dark" ? "dark" : "light";
+          document.documentElement.setAttribute("data-zcode-bootstrap-theme", finalTheme);
+          syncBrowserThemeSurface(finalTheme);
+          if (finalTheme === "dark") {
+            document.documentElement.classList.add("dark");
+          }
+        } catch {
+          document.documentElement.setAttribute("data-zcode-bootstrap-theme", "dark");
+          syncBrowserThemeSurface("dark");
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
+    <style>
+      html,
+      body,
+      #root {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        background: var(--zcode-bootstrap-bg, var(--color-background, #0f172a));
+        color: var(--zcode-bootstrap-fg, var(--color-foreground, #e2e8f0));
+        font-family:
+          Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      html[data-zcode-bootstrap-theme="light"] body {
+        background: var(--zcode-bootstrap-bg, var(--color-background, #f8fafc));
+        color: var(--zcode-bootstrap-fg, var(--color-foreground, #334155));
+      }
+
+      html[data-zcode-browser-theme-surface],
+      html[data-zcode-browser-theme-surface] body,
+      html[data-zcode-browser-theme-surface] #root {
+        /* 共享 UI 样式为 Electron vibrancy 强制透明根背景；浏览器入口必须用语义背景
+           覆盖该桌面专属行为，否则浏览器工具栏、overscroll 和页面画布会回退为系统白色。 */
+        background: var(--color-background, var(--zcode-bootstrap-bg, #161616)) !important;
+      }
+
+      html[data-zcode-browser-theme-surface="light"],
+      html[data-zcode-browser-theme-surface="light"] body,
+      html[data-zcode-browser-theme-surface="light"] #root {
+        background: var(--color-background, var(--zcode-bootstrap-bg, #f8f8f8)) !important;
+      }
+
+      .zcode-boot-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        /* UI 全局样式会把 body/#root 置为透明，预渲染壳必须自己承接主题背景，否则深色主题会露出浏览器白底。*/
+        background: var(--zcode-bootstrap-bg, var(--color-background, #0f172a));
+        color: var(--zcode-bootstrap-fg, var(--color-foreground, #e2e8f0));
+      }
+
+      html[data-zcode-bootstrap-theme="light"] .zcode-boot-loading {
+        background: var(--zcode-bootstrap-bg, var(--color-background, #f8fafc));
+        color: var(--zcode-bootstrap-fg, var(--color-foreground, #334155));
+      }
+
+      .zcode-boot-loading__logo-shell {
+        position: relative;
+        display: flex;
+        width: 96px;
+        height: 96px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 24px;
+        background: linear-gradient(180deg, #000000 0%, #151718 100%);
+        box-shadow:
+          0 20px 25px -5px rgb(0 0 0 / 0.2),
+          0 8px 10px -6px rgb(0 0 0 / 0.2);
+      }
+
+      .zcode-boot-loading__logo-shell::before {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        content: "";
+        /* 启动 logo 壳是固定深色底，边框不能跟随浅色主题 token，否则首屏边框过重。*/
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: inherit;
+      }
+
+      .zcode-boot-loading__logo {
+        width: 56px;
+        height: auto;
+        color: #ffffff;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <!-- 远程控制跨 workspace 时会整页跳转；在 JS 入口执行前先给出 loading 壳，避免出现白屏空档。-->
+      <div
+        class="zcode-boot-loading"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        aria-label="Loading..."
+      >
+        <div class="zcode-boot-loading__logo-shell">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="118px"
+            height="100px"
+            fill="none"
+            viewBox="0 0 256 218"
+            class="zcode-boot-loading__logo"
+            aria-hidden="true"
+          >
+            <path fill="currentColor" d="M0 8H56L128 158L200 8H256L158 210H98Z">
+              <animate
+                attributeName="opacity"
+                dur="1.5s"
+                repeatCount="indefinite"
+                values="1;0.3;1"
+              />
+            </path>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

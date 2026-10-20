@@ -1,0 +1,6 @@
+<!-- Derived from Codeg src/components/agent-icon.tsx at 932ac543532c86186a851ffada83dc1ccab9515c. Apache-2.0.
+Modified by ZCode: Converted JSX to standalone SVG; removed layout props and used document-local gradient IDs. -->
+<svg fill="currentColor" fill-rule="evenodd" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" >
+<title>OpenCode</title>
+<path d="M16 6H8v12h8V6zm4 16H4V2h16v20z" />
+</svg>

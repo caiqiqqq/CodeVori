@@ -1,0 +1,1179 @@
+# Maintainer contract: docs/skills/feature-boundary-graph.md
+# Search aliases and IDs first; read only the relevant nodes and one-hop relationships.
+schemaVersion: 1
+graphId: zcode-feature-relationships
+purpose:
+  Curated source discovery seeds, not an exhaustive feature catalog or a product authority. Verify
+  matched nodes and relationships against the current checkout.
+rules:
+  semanticExpansion:
+    Load matched nodes and one meaningful semantic hop; expand only for unresolved owners
+    or callers.
+  driftPolicy:
+    Report missing paths, symbols or changed semantics as graph-drift-candidate; do not infer
+    product rules from reachability.
+  stableIdPolicy:
+    Keep existing IDs when the semantic boundary is unchanged; use aliases for terminology
+    changes.
+  persistencePolicy:
+    Impact-only reports proposed graph changes. Planning or implementation may update
+    verified entries within the requested scope.
+  relationRanks:
+    - must-inspect
+    - should-inspect
+    - conditional
+    - invariant-only
+    - evidence-only
+nodes:
+  - id: capability.model-selection
+    kind: capability
+    label: Model selection
+    aliases:
+      - select model
+      - model switch
+      - model picker
+      - 选择模型
+      - 模型选择
+      - 切换模型
+    codeSeeds:
+      - file: packages/provider/src/facades.ts
+        symbol: ModelSelectionFacade
+      - file: packages/ui/src/hooks/useModelSelectionView.ts
+        symbol: useModelSelectionView
+    invariants:
+      - "Shared model controls do not share commit effects: conversation commands, automation records
+        and Subagent configuration have separate owners."
+  - id: surface.conversation-model-control
+    kind: ui-surface
+    label: Conversation composer model control
+    codeSeeds:
+      - file: packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+        symbol: V4ComposerModelControlsImpl
+      - file: packages/ui/src/v4/SessionPane.tsx
+        symbol: handleSelectModel
+  - id: surface.automation-edit
+    kind: ui-surface
+    label: Automation edit model control
+    codeSeeds:
+      - file: packages/ui/src/settings/AutomationEditView.tsx
+        symbol: AutomationEditView
+      - file: packages/ui/src/settings/AutomationsSection.tsx
+        symbol: handleEditSubmit
+  - id: surface.user-subagent-form
+    kind: ui-surface
+    label: User Subagent form model control
+    codeSeeds:
+      - symbol: SubagentForm
+        file: packages/ui/src/settings/SubagentsSection.tsx
+  - id: surface.builtin-subagent-model
+    kind: ui-surface
+    label: Built-in and plugin Subagent model override
+    codeSeeds:
+      - symbol: SubagentModelOverrideControl
+        file: packages/ui/src/settings/SubagentsSection.tsx
+  - id: shared-ui.model-config-select
+    kind: shared-ui
+    label: ModelConfigSelect
+    codeSeeds:
+      - symbol: ModelConfigSelect
+        file: packages/ui/src/ModelConfigSelect.tsx
+  - id: shared-ui.model-select-groups
+    kind: shared-ui
+    label: Model selection option builder
+    codeSeeds:
+      - symbol: buildRegistryModelSelectGroups
+        file: packages/ui/src/lib/modelSelectionGroups.ts
+  - id: state.renderer-model-selection-read
+    kind: state-owner
+    label: Renderer target-host model selection read lifecycle
+    codeSeeds:
+      - symbol: useModelSelectionServiceView
+        file: packages/ui/src/hooks/useModelSelectionView.ts
+      - symbol: useModelSelectionView
+        file: packages/ui/src/hooks/useModelSelectionView.ts
+  - id: service.host-model-selection
+    kind: service
+    label: Target Workspace Host model selection service
+    codeSeeds:
+      - file: packages/services/src/model-provider/providerFacadeServices.ts
+        symbol: IModelSelectionService
+      - file: packages/ui/src/hooks/useWorkspaceServices.tsx
+        symbol: useWorkspaceServicesResolution
+  - id: capability.automations
+    kind: capability
+    label: Scheduled automations
+    aliases:
+      - automation
+      - scheduled task
+      - cron
+      - 自动化
+      - 定时任务
+    codeSeeds:
+      - file: packages/services/src/session/automationService.ts
+        symbol: AutomationService
+  - id: state.automation-form-draft
+    kind: state-owner
+    label: Automation edit React draft
+    codeSeeds:
+      - symbol: AutomationEditView
+        file: packages/ui/src/settings/AutomationEditView.tsx
+  - id: service.automation
+    kind: service
+    label: Automation service
+    codeSeeds:
+      - symbol: AutomationService
+        file: packages/services/src/session/automationService.ts
+  - id: persistence.automation-record
+    kind: persistence
+    label: Persisted automation record
+    codeSeeds:
+      - file: packages/services/src/session/automationRepo.ts
+        symbol: AutomationRepo
+  - id: capability.subagents
+    kind: capability
+    label: Subagents
+    aliases:
+      - subagent
+      - agent profile
+      - 子代理
+      - 智能体配置
+    codeSeeds:
+      - file: packages/ui/src/settings/SubagentsSection.tsx
+        symbol: SubagentsSection
+      - file: apps/zcode-cli/packages/core/src/tool/handlers/agent.ts
+        symbol: agentHandler
+  - id: state.subagent-form-draft
+    kind: state-owner
+    label: Subagent form draft
+    codeSeeds:
+      - symbol: SubagentForm
+        file: packages/ui/src/settings/SubagentsSection.tsx
+  - id: service.subagents
+    kind: service
+    label: Subagents service
+    codeSeeds:
+      - file: packages/services/src/subagents/subagents.ts
+        symbol: ISubagentsService
+      - file: packages/services/src/subagents/subagentsService.ts
+        symbol: createSubagentsService
+  - id: persistence.subagent-markdown
+    kind: persistence
+    label: User agent Markdown, built-in and plugin agent overrides
+    codeSeeds:
+      - file: packages/services/src/subagents/subagentsService.ts
+        symbol: createSubagentsService
+      - file: packages/services/src/subagents/subagentStorage.ts
+        symbol: resolveSubagentStateFile
+  - id: capability.conversation-archive
+    kind: capability
+    label: Archived conversations, restore and permanent removal
+    aliases: [conversation archive, archived conversations, 已归档对话, 恢复对话, 彻底删除]
+    codeSeeds:
+      - file: packages/ui/src/settings/ConversationArchiveSection.tsx
+        symbol: ConversationArchiveSection
+      - file: packages/ui/src/WorkspaceArchivedTasksFlatSection.tsx
+        symbol: WorkspaceArchivedTasksFlatSection
+      - file: packages/services/src/session/taskIndexRepo.ts
+        symbol: TaskIndexRepo
+      - file: packages/services/src/acp/acpServiceImpl.ts
+        symbol: createAcpService
+      - file: apps/zcode-cli/packages/bootstrap/src/zcode-protocol/session-purge.ts
+        symbol: purgeSession
+    invariants:
+      - Restore preserves session identity and contents; pending cleanup permits only explicit deletion retry.
+      - Permanent removal refuses accepted work and never removes project files, worktrees or independent children.
+      - Native membership and purge intent belong to the Host task index; ACP membership belongs to its Host snapshot.
+  - id: capability.conversation-runtime
+    kind: capability
+    label: Conversation and session runtime
+    aliases:
+      - conversation
+      - chat
+      - session
+      - turn steer
+      - guide
+      - follow-up queue
+      - 对话
+      - 会话
+      - 引导
+      - 消息队列
+    codeSeeds:
+      - file: apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/v4-gateway.ts
+        symbol: ConversationV4Gateway
+      - file: apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-flow.ts
+        symbol: sendText
+  - id: state.conversation-projection
+    kind: state-owner
+    label: Client conversation projection and pending optimistic overlay
+    codeSeeds:
+      - file: packages/ui/src/v4/conversationProjectionStore.ts
+        symbol: ConversationProjectionStore
+    invariants:
+      - Snapshots replace state; only contiguous deltas apply. Gaps require resync, and pending optimistic
+        commands are not accepted runtime facts.
+  - id: capability.workspace-identity
+    kind: capability
+    label: Workspace identity and remote runtime isolation
+    aliases:
+      - workspace identity
+      - remote workspace
+      - SSH
+      - WSL
+      - Docker
+      - 工作区隔离
+    codeSeeds:
+      - file: packages/ui/src/lib/remoteWorkspaceHistory.ts
+        symbol: buildRemoteWorkspaceIdentity
+      - file: packages/services/src/zcode-agent/zcodeAgentConnectionScope.ts
+        symbol: workspaceKey
+  - id: service.workspace-identity-builder
+    kind: service
+    label: Remote workspace identity builder
+    codeSeeds:
+      - symbol: buildRemoteWorkspaceIdentity
+        file: packages/ui/src/lib/remoteWorkspaceHistory.ts
+  - id: boundary.workspace-key
+    kind: delivery-boundary
+    label: workspaceIdentity fallback isolation key
+    codeSeeds:
+      - file: packages/ui/src/lib/remoteWorkspaceHistory.ts
+        symbol: buildWorkspaceSessionKey
+      - file: packages/services/src/session/taskIndexRepo.ts
+        symbol: workspaceKey
+    invariants:
+      - Use workspaceIdentity?.trim() || workspacePath for isolation; workspacePath remains the execution
+        and display path.
+  - id: persistence.task-index
+    kind: persistence
+    label: Task sqlite index
+    codeSeeds:
+      - symbol: TaskIndexRepo
+        file: packages/services/src/session/taskIndexRepo.ts
+  - id: service.zcode-agent-connection-scope
+    kind: service
+    label: Host-trusted ZCode Agent attachment connection scope
+    codeSeeds:
+      - symbol: createZCodeAgentConnectionScope
+        file: packages/services/src/zcode-agent/zcodeAgentConnectionScope.ts
+  - id: boundary.desktop-continuous
+    kind: delivery-boundary
+    label: Desktop continuous delivery
+    codeSeeds:
+      - file: packages/shared/src/zcode-protocol-v4/core.ts
+        symbol: DELIVERY_PROFILES
+      - file: packages/services/src/zcode-agent/zcodeAgentConnectionScope.ts
+        symbol: ZCodeAgentV4ClientMode
+  - id: boundary.web-remote-replayable
+    kind: delivery-boundary
+    label: Web remote replayable delivery
+    codeSeeds:
+      - file: packages/shared/src/zcode-protocol-v4/core.ts
+        symbol: DELIVERY_PROFILES
+      - file: packages/services/src/zcode-agent/zcodeAgentConnectionScope.ts
+        symbol: ZCodeAgentV4ClientMode
+  - id: service.desktop-lan-gateway
+    kind: service
+    label: Authenticated LAN attachment to an existing desktop Window Host
+    aliases:
+      - LAN phone access
+      - 局域网手机访问
+    codeSeeds:
+      - file: packages/server/src/desktopLanGateway.ts
+        symbol: createDesktopLanGateway
+      - file: packages/desktop/src/main/desktopLanAccess.ts
+        symbol: registerDesktopLanAccess
+      - file: packages/ui/src/settings/DesktopLanAccessSection.tsx
+        symbol: DesktopLanAccessSection
+  - id: projection.desktop-window-session
+    kind: state-owner
+    label: Host versioned window workspace membership and sidebar preference projection
+    codeSeeds:
+      - file: packages/desktop/src/host/windowWorkspaceProjection.ts
+        symbol: createWindowWorkspaceProjection
+      - file: packages/ui/src/root/useDesktopWindowSession.ts
+        symbol: useDesktopWindowSession
+      - file: packages/web/src/desktopWindowConnection.ts
+        symbol: createDesktopWindowFollower
+  - id: capability.composer-trigger-routing
+    kind: capability
+    label: Composer primary and compatibility trigger routing
+    aliases:
+      - composer prefix routing
+      - mention panel routing
+      - "@ and slash picker"
+      - 输入框候选分组
+      - 输入框触发器
+    codeSeeds:
+      - symbol: extractActivePromptInputTrigger
+        file: packages/ui/src/lib/promptInputTriggers.ts
+      - symbol: ChatPromptActionMenu
+        file: packages/ui/src/prompt-editor/ChatPromptActionMenu.tsx
+  - id: surface.composer-at-context-picker
+    kind: ui-surface
+    label: Composer @ context picker (Plugins, files, sessions, Whiteboards)
+    aliases:
+      - "@ context picker"
+      - "@ 面板"
+    codeSeeds:
+      - symbol: MentionPlugin
+        file: packages/ui/src/mentions/MentionPlugin.tsx
+      - symbol: useFileMentionProvider
+        file: packages/ui/src/mentions/providers/fileMentionProvider.ts
+      - symbol: useSessionsMentionProvider
+        file: packages/ui/src/mentions/providers/sessionsMentionProvider.ts
+      - symbol: useWhiteboardMentionProvider
+        file: packages/ui/src/mentions/providers/whiteboardMentionProvider.ts
+  - id: surface.composer-slash-capability-picker
+    kind: ui-surface
+    label: Composer slash picker (commands, Skills, Subagents)
+    aliases:
+      - slash capability picker
+      - / 面板
+    codeSeeds:
+      - symbol: SlashCommandPlugin
+        file: packages/ui/src/SlashCommandPlugin.tsx
+      - symbol: useSlashCommandMentionPanelSections
+        file: packages/ui/src/slashCommandPanelSections.tsx
+      - symbol: buildSlashApplyMentionPayload
+        file: packages/ui/src/lib/slashApplyMentionPayload.ts
+  - id: surface.composer-skill-compatibility-picker
+    kind: ui-surface
+    label: Composer compatible Skill picker ($ and Yen aliases)
+    aliases:
+      - $ Skills picker
+      - $ 面板
+      - ¥ 技能面板
+    codeSeeds:
+      - symbol: MentionPlugin
+        file: packages/ui/src/mentions/MentionPlugin.tsx
+      - symbol: useSkillsMentionProvider
+        file: packages/ui/src/mentions/providers/skillsMentionProvider.ts
+  - id: service.composer-host-file-search
+    kind: service
+    label: Host-owned bounded Composer file search
+    codeSeeds:
+      - symbol: createFileService
+        file: packages/services/src/file/fileService.ts
+  - id: service.conversation-command-inbox
+    kind: service
+    label: CLI serial command admission and idempotency
+    codeSeeds:
+      - file: apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/command-inbox.ts
+        symbol: CommandInbox
+    aliases:
+      - busy input
+      - running input
+      - 命令接纳
+      - 输入队列
+  - id: state.conversation-product-projection
+    kind: state-owner
+    label: CLI authoritative projection of runtime events
+    codeSeeds:
+      - file: apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+        symbol: ProductProjection
+  - id: service.conversation-topic-publisher
+    kind: service
+    label: CLI conversation delta publication and subscription recovery
+    codeSeeds:
+      - file: apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/conversation-topic-publisher.ts
+        symbol: ConversationTopicPublisher
+  - id: state.composer-submission-intent
+    kind: state-owner
+    label: Renderer model intent for the next submission
+    codeSeeds:
+      - file: packages/ui/src/v4/SessionPane.tsx
+        symbol: handleSelectModel
+      - file: packages/ui/src/v4/SessionPane.tsx
+        symbol: createComposerSubmissionConfig
+  - id: service.conversation-submission
+    kind: service
+    label: CLI sendText submission handling
+    codeSeeds:
+      - file: apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-flow.ts
+        symbol: sendText
+  - id: service.runtime-submission-execution
+    kind: service
+    label: Runtime applies the admitted submission selection at execution
+    codeSeeds:
+      - file: apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
+        symbol: applySubmissionExecutionState
+  - id: capability.acp-agent-sessions
+    kind: capability
+    label: Built-in ACP agent sessions
+    aliases:
+      - ACP
+      - Codex ACP
+      - Claude ACP
+      - Codeg built-in agents
+      - 智能体设置
+      - Codex 原生配置
+      - Codex 官方模型目录
+      - 外部 Agent 会话
+      - ACP 调用轨迹
+      - ACP 执行轨迹
+      - ACP 思考
+      - ACP 计划
+      - ACP 状态面板
+      - ACP 结构化提问
+      - ACP 表单交互
+    codeSeeds:
+      - file: packages/services/src/acp/acpServiceImpl.ts
+        symbol: createAcpService
+      - file: packages/services/src/acp/acpStdioConnection.ts
+        symbol: connectAcpAgent
+      - file: packages/shared/src/zcode-protocol/acp.ts
+        symbol: ACP_AGENT_CATALOG
+      - file: packages/shared/src/zcode-protocol/acp.ts
+        symbol: acpDiagnosticEventSchema
+      - file: packages/services/src/acp/acpAgentManager.ts
+        symbol: createAcpAgentManager
+      - file: packages/services/src/acp/acpCodexConfig.ts
+        symbol: updateCodexNativeConfig
+      - file: packages/services/src/acp/acpCodexModels.ts
+        symbol: listCodexOfficialModels
+      - file: packages/services/src/mcp-sync/mcpSyncService.ts
+        symbol: createMcpSyncService
+      - file: packages/services/src/skills/skillsService.ts
+        symbol: createSkillsService
+    invariants:
+      - The target Host owns ACP mapping and transcript; the ACP Agent owns model context.
+      - Composer submitPrompt waits for durable Host acceptance independently of live notifications; prompt retains whole-turn semantics for internal callers.
+      - ZCode and API Provider sessions use the existing V4 command path.
+      - Codex native credentials and model choices are owned by the target Host's Codex files and apply to new ACP connections.
+      - ACP new and load use enabled MCP settings on the target Host; unsupported authentication and transports fail before session admission.
+      - ACP explicitly named skills use the current settings owner; API and ZCode keep the native runtime catalog.
+      - ACP tool details belong to the existing session snapshot; diagnostics contain only bounded correlated metadata and continue after log rotation.
+      - Trace subscriptions use the target workspace identity and do not create, authenticate or reconnect an Agent.
+      - Auxiliary summaries use a separate text run with the source conversation model; Codex uses an ephemeral read-only native CLI and Claude disables tools at creation. Source sessions, queues, modes and task admission are untouched; unsupported adapters fail without API fallback.
+      - Reported ACP thoughts and full plans belong to Host snapshots; transcript replay does not duplicate them.
+      - ACP session-scoped form elicitation shares the Host blocking queue with tool permissions; answers are validated before adapter receipt and are not persisted.
+  - id: surface.acp-conversation
+    kind: ui-surface
+    label: ACP conversation target inside the existing pane
+    codeSeeds:
+      - file: packages/ui/src/v4/acpConversationRows.ts
+        symbol: buildAcpConversationRows
+      - file: packages/ui/src/v4/ConversationPlanRowView.tsx
+        symbol: ConversationPlanRowView
+      - file: packages/ui/src/v4/acpStatusPanel.ts
+        symbol: projectAcpStatusPanel
+      - file: packages/ui/src/v4/AcpConversationContent.tsx
+        symbol: AcpConversationStatus
+      - file: packages/ui/src/v4/SessionPane.tsx
+        symbol: SessionPane
+      - file: packages/ui/src/v4/ConversationComposer.tsx
+        symbol: ConversationComposer
+      - file: packages/ui/src/v4/composer/acpModelSelection.ts
+        symbol: buildAcpModelSelectGroup
+      - file: packages/ui/src/v4/acpPromptAdmission.ts
+        symbol: waitForAcpPromptAdmission
+      - file: packages/ui/src/v4/useAcpQueueEditing.ts
+        symbol: useAcpQueueEditing
+      - file: packages/ui/src/WorkspaceTimelineTasksSection.tsx
+        symbol: WorkspaceTimelineTasksSection
+      - file: packages/ui/src/TaskList.tsx
+        symbol: TaskList
+      - file: packages/ui/src/hooks/useAcpSidebarSessions.ts
+        symbol: useAcpSidebarSessions
+      - file: packages/ui/src/v4/workbenchSessionPlacement.ts
+        symbol: buildPrimaryWorkbenchSessionBinding
+      - file: packages/ui/src/v4/V4WorkspaceChatArea.tsx
+        symbol: V4WorkspaceChatArea
+      - file: packages/ui/src/app-shell/WorkspaceShellLayout.tsx
+        symbol: handleSelectAcpSession
+      - file: packages/ui/src/AcpExecutionTracePane.tsx
+        symbol: AcpExecutionTracePane
+    invariants:
+      - Cross-workspace split placement captures the visible ACP identity before native shell navigation; group/layout stores retain pane bindings and drafts.
+      - ACP queue editing withdraws through Host admission before restoring the current composer, matching API editing; frozen attachments are read before conditional deletion and late ACKs cannot restore a different target.
+      - Selecting a grouped ACP session focuses its existing pane; temporary secondary selection clears native navigation without starting a new draft or resetting layout.
+      - Cross-workspace panes read Git status through scoped hooks; review requests activate the matching workspace before opening the existing Git pane without replacing session bindings.
+  - id: capability.work-tasks
+    kind: capability
+    label: Project work tasks
+    aliases:
+      - Work Tasks
+      - Codeg work tasks
+      - 待办任务
+      - 代办任务
+      - 项目待办
+      - 失败任务新会话重新开始
+    codeSeeds:
+      - file: packages/shared/src/work-task.ts
+        symbol: workTaskSchema
+      - file: packages/services/src/session/contract.ts
+        symbol: IWorkTaskService
+    invariants:
+      - The target Host owns accepted task state; UI drafts and board projections are not another queue.
+      - Starting and local task merging are explicit; ordinary completion and archive never write Git or delete a worktree or session.
+      - A failed task with a bound session may explicitly enqueue with a fresh session request while retaining the task and worktree; ordinary retry retains the binding.
+      - The first phase executes local Git projects only; remote targets cannot fall back to local execution.
+  - id: surface.work-tasks-board
+    kind: ui-surface
+    label: Work tasks board and list in the existing workspace shell
+    aliases: [来源议题, 关联议题入口]
+    codeSeeds:
+      - file: packages/ui/src/work-tasks/WorkTasksPanel.tsx
+        symbol: WorkTasksPanel
+      - file: packages/ui/src/hooks/useWorkTasks.ts
+        symbol: useWorkTasks
+      - file: packages/ui/src/hooks/workTaskReadModel.ts
+        symbol: getWorkTaskReadModel
+      - file: packages/ui/src/work-tasks/WorkTaskSourceLink.tsx
+        symbol: WorkTaskSourceLink
+      - file: packages/ui/src/work-tasks/WorkTaskConversationPane.tsx
+        symbol: WorkTaskConversationPane
+      - file: packages/ui/src/app-shell/WorkspaceShellLayout.tsx
+        symbol: handleOpenWorkTaskConversation
+    invariants:
+      - Project options wait for Git worktree relationships; same-name independent identities stay distinct.
+      - Board and sidebar share one read projection and event subscription per Service and scope; Host owns task facts.
+      - Source badges, conversation headers and details read only the selected task's persisted source; opening its validated external URL does not select or mutate a task.
+  - id: surface.work-task-editor
+    kind: ui-surface
+    label: Work task shared composer draft, attachments and saved API or ACP configuration
+    aliases:
+      - 任务描述
+      - 任务附件
+      - 任务输入框
+    codeSeeds:
+      - file: packages/ui/src/work-tasks/WorkTaskEditor.tsx
+        symbol: WorkTaskEditor
+      - file: packages/ui/src/work-tasks/WorkTaskExecutionControls.tsx
+        symbol: WorkTaskExecutionControls
+      - file: packages/ui/src/hooks/useWorkTaskModels.ts
+        symbol: useWorkTaskModels
+      - file: packages/ui/src/work-tasks/WorkTaskPromptField.tsx
+        symbol: WorkTaskPromptField
+      - file: packages/ui/src/hooks/useWorkTaskPromptAssets.ts
+        symbol: useWorkTaskPromptAssets
+    invariants:
+      - Selecting an Agent or creating a task only saves configuration; it does not create or prompt an Agent session.
+      - Existing task session bindings cannot switch execution kind or ACP Agent on retry.
+      - File collection and mentions never create, prewarm or authenticate an Agent; failed saves preserve the independent draft.
+      - Work task execution controls reuse the shared prompt editor's left icon toolbar and right executor slot; the task editor owns per-executor drafts and never changes conversation configuration or submission semantics.
+  - id: shared-ui.chat-prompt-editor
+    kind: shared-ui
+    label: Existing shared chat prompt editor and attachment collection
+    codeSeeds:
+      - file: packages/ui/src/prompt-editor/ChatPromptEditor.tsx
+        symbol: ChatPromptEditor
+      - file: packages/ui/src/v4/composer/useComposerAttachments.ts
+        symbol: useComposerAttachments
+  - id: persistence.work-task-attachments
+    kind: persistence
+    label: Host-owned immutable work task attachment snapshots
+    codeSeeds:
+      - file: packages/services/src/session/workTaskAttachmentStore.ts
+        symbol: WorkTaskAttachmentStore
+    invariants:
+      - Task records store scoped file references, not base64; saving uses bounded attachment transactions independent of Agent sessions.
+      - Removing an attachment from a draft never deletes content already referenced by a conversation.
+  - id: surface.work-task-review
+    kind: ui-surface
+    label: Work task review, follow-up, ordinary completion and selected-branch merge
+    aliases: [合并并完成, 完成方式, AI 填写, 结果评论, 修改记录, 处理中]
+    codeSeeds:
+      - file: packages/ui/src/work-tasks/WorkTaskDetail.tsx
+        symbol: WorkTaskDetail
+      - file: packages/ui/src/work-tasks/WorkTaskCompletionDialog.tsx
+        symbol: WorkTaskCompletionDialog
+      - file: packages/ui/src/lib/workTaskBoard.ts
+        symbol: canCompleteWorkTask
+      - file: packages/ui/src/work-tasks/WorkTaskMergeControls.tsx
+        symbol: WorkTaskMergeControls
+      - file: packages/ui/src/hooks/useWorkTaskMergeTarget.ts
+        symbol: useWorkTaskMergeTarget
+      - file: packages/ui/src/hooks/useWorkTaskAcceptance.ts
+        symbol: useWorkTaskAcceptance
+      - file: packages/ui/src/hooks/useWorkTaskResultDraft.ts
+        symbol: useWorkTaskResultDraft
+      - file: packages/services/src/session/workTaskResultCoordinator.ts
+        symbol: WorkTaskResultCoordinator
+      - file: packages/services/src/work-task/workTaskResult.ts
+        symbol: createWorkTaskResult
+      - file: packages/services/src/acp/acpTextGeneration.ts
+        symbol: AcpTextGeneration
+      - file: packages/ui/src/work-tasks/WorkTasksPanel.tsx
+        symbol: WorkTasksBoard
+      - file: packages/ui/src/app-shell/AnimatedSidePanePanel.tsx
+        symbol: AnimatedSidePanePanel
+    invariants:
+      - Merge controls project into the existing Git review tab while retaining the branch draft in the board subtree; no additional task subscription is created.
+      - Closing the side pane or review tab preserves the branch and conversation drafts; changing task resets the branch draft.
+      - Header and task-row acceptance share one task-id-scoped board confirmation with an explicit merge or ordinary complete choice; details do not own another dialog. Ordinary complete never writes Git or replaces a conversation.
+      - Result drafts resolve the bound conversation current agent/model, show the source, and fence late results when task run or conversation configuration changes.
+      - The acceptance dialog and review pane reuse the scoped merge-target draft and branch selector. Read-only worktree checks recommend a mode; the Host still admits the original merge/complete commands and owns durable results.
+  - id: service.work-task-merge
+    kind: service
+    label: Owner-admitted local merge with isolated API or ACP conflict resolution
+    codeSeeds:
+      - file: packages/services/src/work-task/workTaskMerge.ts
+        symbol: createWorkTaskMerge
+      - file: packages/services/src/git/repo/gitTaskMergeRepo.ts
+        symbol: createGitTaskMergeRepo
+      - file: packages/services/src/git/repo/gitTaskMergePublish.ts
+        symbol: publishCheckedOutTaskMerge
+      - file: packages/services/src/git/repo/gitWorktreeChanges.ts
+        symbol: hasGitWorktreeChanges
+    invariants:
+      - Commit only the verified task worktree and publish to the selected local target with an expected-old ref update; never push automatically.
+      - Resolve text conflicts in an isolated worktree using saved task settings; preserve the original session and refuse busy resolver or source sessions.
+      - Same repository target merges share SQLite admission, owner leases and runSeq; late runs cannot complete a newer task.
+      - Status presence checks drain stdout while retaining only its first byte and wait for successful exit; untracked directories remain dirty and query failures never bypass merge protection.
+  - id: service.work-task-owner
+    kind: service
+    label: Host work task state and scheduler owner
+    codeSeeds:
+      - file: packages/services/src/session/workTaskService.ts
+        symbol: WorkTaskService
+      - file: packages/services/src/session/workTask.ts
+        symbol: IWorkTaskService
+    invariants:
+      - Fresh-session retry clears the failed task binding and renews its creation request in the same SQLite admission transaction; owner, lease and runSeq fence stale work.
+  - id: persistence.work-task-record
+    kind: persistence
+    label: Shared local task SQLite records, atomic claims and legacy settings
+    codeSeeds:
+      - file: packages/services/src/session/workTaskRepo.ts
+        symbol: WorkTaskRepo
+      - file: packages/services/src/session/workTaskDatabase.ts
+        symbol: openWorkTaskDatabase
+    invariants:
+      - Legacy project concurrency values remain readable and writable but never block independent admitted tasks.
+      - Atomic claims and owner leases prevent duplicate execution across Hosts; runSeq fences late results.
+      - Recovery interrupts expired owners, not other live Hosts, and never silently resends unknown prompts.
+  - id: service.work-task-execution
+    kind: service
+    label: Work task adapter to existing native and ACP admission
+    codeSeeds:
+      - file: packages/services/src/work-task/workTaskExecution.ts
+        symbol: createWorkTaskExecution
+      - file: packages/services/src/work-task/workTaskExecutionState.ts
+        symbol: commitWorkTaskExecution
+    invariants:
+      - Save worktree and session bindings before prompt; execute saved task configuration, not the current composer selection.
+      - Native admission waits for an authoritative snapshot and refuses busy sessions; stop targets only an observed foreground execution.
+  - id: boundary.composer-worktree
+    kind: delivery-boundary
+    label: New conversation worktree source selection and first-send handoff
+    aliases: [新建工作树来源分支, 派生工作树, composer worktree source]
+    codeSeeds:
+      - file: packages/ui/src/GitBranchSwitcher.tsx
+        symbol: GitBranchSwitcher
+      - file: packages/ui/src/app-shell/WorkspaceShellLayout.tsx
+        symbol: WorkspaceShellLayout
+      - file: packages/ui/src/hooks/useWorktreeDraftSelection.ts
+        symbol: useWorktreeDraftSelection
+      - file: packages/ui/src/v4/composer/worktreeDraftIntent.tsx
+        symbol: WorktreeDraftSelection
+      - file: packages/ui/src/v4/ConversationComposer.tsx
+        symbol: ConversationComposer
+      - file: packages/services/src/git/repo/gitCliRepo.ts
+        symbol: createGitCliRepo
+    invariants:
+      - Source selection only edits the workspace and draft-generation scoped intent; never switch the original branch or create before send.
+      - A source checked out elsewhere is valid for derivation; resolve the local branch at send and freeze its commit across allocation retries.
+      - Missing explicit sources never fall back to HEAD; legacy requests without the optional field retain HEAD semantics.
+      - Transfer the original draft to the exact new local workspace and reuse the existing one-shot API or ACP send path.
+  - id: boundary.work-task-worktree
+    kind: delivery-boundary
+    label: Work task isolated worktree and conversation binding
+    codeSeeds:
+      - file: packages/services/src/work-task/workTaskWorktree.ts
+        symbol: prepareWorkTaskWorktree
+      - file: packages/shared/src/worktree.ts
+        symbol: resolveWorktreeRootPath
+      - file: packages/services/src/git/repo/gitCliRepo.ts
+        symbol: createGitCliRepo
+      - file: packages/services/src/zcode-agent/zcodeAgentProcessManager.ts
+        symbol: ZCodeAgentProcessManager
+    invariants:
+      - Allocate under the configured Worktrees root; retry reuses only a verified project and branch binding.
+      - Resolve the selected local source branch only at first allocation and persist its base commit; retries never follow later branch movement.
+      - Use canonical filesystem paths for ownership; do not touch an unrelated directory or branch.
+      - Explicit archive-and-remove holds the local Agent startup barrier through runtime disposal and final Git removal; normal archive never deletes files.
+  - id: capability.agent-delegation
+    kind: capability
+    label: Cross-agent delegation from an existing conversation
+    aliases: [智能体委派, 跨智能体协作, agent delegation, ACP subagent]
+    codeSeeds:
+      - file: packages/shared/src/agent-delegation.ts
+        symbol: delegationCreateSchema
+      - file: packages/services/src/delegation/contract.ts
+        symbol: IAgentDelegationService
+    invariants:
+      - Delegation does not switch the main model or replace native API subagents.
+      - Local execution only; remote identity must never fall back to local cwd.
+  - id: surface.agent-delegation
+    kind: ui-surface
+    label: Delegation panel, shared chat editor and agent settings
+    codeSeeds:
+      - file: packages/ui/src/delegation/AgentDelegationPanel.tsx
+        symbol: AgentDelegationPanel
+      - file: packages/ui/src/delegation/DelegationTaskRow.tsx
+        symbol: DelegationTaskRow
+      - file: packages/ui/src/delegation/delegationTurnPlacement.ts
+        symbol: partitionDelegationTasksByTurn
+      - file: packages/ui/src/delegation/DelegationEditor.tsx
+        symbol: DelegationEditor
+      - file: packages/ui/src/hooks/useAgentDelegation.ts
+        symbol: useAgentDelegation
+  - id: service.agent-delegation-owner
+    kind: service
+    label: Durable delegation task, attempt, lease and outbox owner
+    codeSeeds:
+      - file: packages/services/src/delegation/agentDelegationService.ts
+        symbol: AgentDelegationService
+      - file: packages/services/src/delegation/delegationRepository.ts
+        symbol: DelegationRepository
+    invariants:
+      - Child session bindings are durable across retry and scoped by workspace identity, path and execution kind.
+      - Ordinary API and ACP list/search projections exclude children; exact reads remain available through the delegation row.
+  - id: boundary.agent-delegation-mcp
+    kind: boundary
+    label: Session capability bridge and native reverse protocol
+    codeSeeds:
+      - file: packages/services/src/delegation/delegationMcp.ts
+        symbol: createDelegationMcp
+      - file: apps/zcode-cli/packages/bootstrap/src/zcode-protocol/delegation-lifecycle.ts
+        symbol: pauseHostDelegations
+    invariants:
+      - Tokens are ephemeral; child result submission checks the current command and lease.
+      - Stop must validate foreground identity before pausing delegation.
+edges:
+  - from: service.desktop-lan-gateway
+    to: projection.desktop-window-session
+    type: attaches-through
+    rank: must-inspect
+    condition: Authenticated phones follow the selected existing desktop window and its ordered workspace snapshot.
+  - from: service.desktop-lan-gateway
+    to: boundary.web-remote-replayable
+    type: preserves
+    rank: invariant-only
+    condition: Main always attaches phone service ports with web-remote-replayable; it never starts another runtime.
+  - from: capability.agent-delegation
+    to: surface.agent-delegation
+    type: renders-in
+    rank: must-inspect
+  - from: surface.agent-delegation
+    to: service.agent-delegation-owner
+    type: sends-commands-to
+    rank: must-inspect
+  - from: boundary.agent-delegation-mcp
+    to: service.agent-delegation-owner
+    type: scopes-admission-to
+    rank: must-inspect
+  - from: service.agent-delegation-owner
+    to: service.work-task-execution
+    type: reuses-conversation-executor
+    rank: must-inspect
+  - from: service.agent-delegation-owner
+    to: service.host-model-selection
+    type: reads-api-target-registry-from
+    rank: must-inspect
+  - from: service.agent-delegation-owner
+    to: boundary.work-task-worktree
+    type: reuses-worktree-allocation
+    rank: conditional
+    condition: Edit tasks use the configured managed worktree root; analysis shares the project.
+  - from: service.agent-delegation-owner
+    to: persistence.work-task-attachments
+    type: reuses-managed-attachments
+    rank: must-inspect
+  - from: boundary.agent-delegation-mcp
+    to: service.conversation-command-inbox
+    type: requires-native-result-admission-through
+    rank: must-inspect
+  - from: surface.composer-at-context-picker
+    to: capability.agent-delegation
+    type: discovers-targets-without-connecting
+    rank: conditional
+    condition: Agent mentions preserve the current conversation selection.
+  - from: capability.work-tasks
+    to: surface.work-tasks-board
+    type: renders-in
+    rank: must-inspect
+  - from: surface.work-tasks-board
+    to: surface.work-task-editor
+    type: edits-through
+    rank: must-inspect
+  - from: surface.work-tasks-board
+    to: surface.work-task-review
+    type: reviews-through
+    rank: must-inspect
+  - from: surface.work-task-editor
+    to: shared-ui.model-config-select
+    type: shares-component
+    rank: must-inspect
+    condition: API and ACP selections save a task draft without changing the active conversation.
+  - from: surface.work-task-editor
+    to: shared-ui.chat-prompt-editor
+    type: shares-component
+    rank: must-inspect
+    condition: Embedded task descriptions and attachments reuse the existing input shell without an Agent session; labeled execution controls stay outside the shell.
+  - from: surface.work-task-editor
+    to: service.composer-host-file-search
+    type: options-from
+    rank: must-inspect
+    condition: The task-only @ and add menu query project file candidates; Agent catalogs and capabilities are disabled.
+  - from: surface.work-task-editor
+    to: service.work-task-owner
+    type: commands-through
+    rank: must-inspect
+    condition: Attachments are saved before the existing create or update command; Enter only inserts a newline.
+  - from: surface.work-tasks-board
+    to: service.work-task-owner
+    type: commands-through
+    rank: must-inspect
+  - from: surface.work-task-review
+    to: service.work-task-owner
+    type: commands-through
+    rank: must-inspect
+  - from: service.work-task-owner
+    to: persistence.work-task-record
+    type: persists-through
+    rank: must-inspect
+  - from: service.work-task-owner
+    to: persistence.work-task-attachments
+    type: persists-through
+    rank: must-inspect
+    condition: Local imports and binary chunks become immutable, scope-validated Host snapshots for API and ACP task execution.
+  - from: service.work-task-owner
+    to: service.work-task-execution
+    type: executes-through
+    rank: must-inspect
+  - from: service.work-task-owner
+    to: service.work-task-merge
+    type: executes-through
+    rank: must-inspect
+    condition: Explicit merge commands share the existing owner queue and persist operation phases before publication.
+  - from: service.work-task-merge
+    to: service.work-task-execution
+    type: admitted-by
+    rank: must-inspect
+    condition: Text conflicts use existing V4 or ACP conversation admission, binding before prompt with saved settings and without original attachments.
+  - from: service.work-task-merge
+    to: boundary.work-task-worktree
+    type: isolated-by
+    rank: must-inspect
+    condition: Git validates registered original and integration worktrees, conflict content, ancestry and target cleanliness before local publication.
+  - from: service.work-task-execution
+    to: boundary.work-task-worktree
+    type: isolated-by
+    rank: must-inspect
+  - from: service.work-task-execution
+    to: service.conversation-command-inbox
+    type: admitted-by
+    rank: must-inspect
+    condition: API and ZCode tasks use existing native V4 createSession, sendText and stop commands.
+  - from: service.work-task-execution
+    to: capability.acp-agent-sessions
+    type: admitted-by
+    rank: must-inspect
+    condition: ACP tasks use target Host create, saved config, prompt and stop admission.
+  - from: surface.work-tasks-board
+    to: surface.acp-conversation
+    type: opens-conversation-in
+    rank: conditional
+    condition: Linked ACP tasks open their bound session through the existing SessionPane.
+  - from: surface.work-tasks-board
+    to: capability.conversation-runtime
+    type: opens-conversation-in
+    rank: conditional
+    condition: Linked API and ZCode tasks open their bound session through existing task navigation.
+  - from: capability.work-tasks
+    to: boundary.workspace-key
+    type: isolated-by
+    rank: must-inspect
+  - from: service.work-task-execution
+    to: service.zcode-agent-connection-scope
+    type: attaches-through
+    rank: conditional
+    condition: Native task execution owns a background attachment released after completion or failure.
+  - from: capability.work-tasks
+    to: boundary.desktop-continuous
+    type: preserves
+    rank: invariant-only
+    condition: Linked desktop conversations retain the existing continuous stream semantics.
+  - from: capability.work-tasks
+    to: boundary.web-remote-replayable
+    type: preserves
+    rank: invariant-only
+    condition: Mobile linked conversations retain replayable snapshots; task projections reread Host records on reconnect.
+  - from: capability.acp-agent-sessions
+    to: surface.acp-conversation
+    type: renders-in
+    rank: must-inspect
+  - from: surface.acp-conversation
+    to: surface.conversation-model-control
+    type: switches-through
+    rank: must-inspect
+    condition: The existing composer model dropdown selects an ACP Agent or an API model; each keeps its own runtime session.
+  - from: capability.acp-agent-sessions
+    to: boundary.workspace-key
+    type: isolated-by
+    rank: must-inspect
+  - from: capability.acp-agent-sessions
+    to: capability.conversation-runtime
+    type: coexists-with
+    rank: invariant-only
+    condition: ACP and V4 ZCode or API model Provider sessions have independent owners and commands.
+  - from: capability.model-selection
+    to: surface.conversation-model-control
+    type: renders-in
+    rank: must-inspect
+  - from: surface.conversation-model-control
+    to: shared-ui.model-config-select
+    type: shares-component
+    rank: must-inspect
+  - from: capability.model-selection
+    to: surface.automation-edit
+    type: renders-in
+    rank: must-inspect
+  - from: surface.automation-edit
+    to: shared-ui.model-config-select
+    type: shares-component
+    rank: must-inspect
+  - from: capability.model-selection
+    to: surface.user-subagent-form
+    type: renders-in
+    rank: must-inspect
+  - from: surface.user-subagent-form
+    to: shared-ui.model-config-select
+    type: shares-component
+    rank: must-inspect
+  - from: capability.model-selection
+    to: surface.builtin-subagent-model
+    type: renders-in
+    rank: must-inspect
+  - from: surface.builtin-subagent-model
+    to: shared-ui.model-config-select
+    type: shares-component
+    rank: must-inspect
+  - from: surface.conversation-model-control
+    to: shared-ui.model-select-groups
+    type: options-from
+    rank: should-inspect
+  - from: surface.user-subagent-form
+    to: shared-ui.model-select-groups
+    type: options-from
+    rank: should-inspect
+  - from: surface.builtin-subagent-model
+    to: shared-ui.model-select-groups
+    type: options-from
+    rank: should-inspect
+  - from: capability.model-selection
+    to: service.host-model-selection
+    type: reads-candidates-from
+    rank: must-inspect
+  - from: service.host-model-selection
+    to: state.renderer-model-selection-read
+    type: is-read-through
+    rank: must-inspect
+  - from: state.renderer-model-selection-read
+    to: boundary.workspace-key
+    type: isolated-by
+    rank: must-inspect
+    condition:
+      Read the selected workspace service; remote-waiting remains unavailable and must not use
+      a local fallback.
+  - from: capability.automations
+    to: surface.automation-edit
+    type: renders-in
+    rank: must-inspect
+  - from: surface.automation-edit
+    to: state.automation-form-draft
+    type: owns-draft
+    rank: must-inspect
+  - from: surface.automation-edit
+    to: state.renderer-model-selection-read
+    type: reads-target-options-through
+    rank: should-inspect
+  - from: state.automation-form-draft
+    to: service.automation
+    type: commits-to
+    rank: must-inspect
+    condition:
+      Trace onSubmit through AutomationsSection and the automation management store to the selected
+      service; editing a field alone does not mutate a conversation.
+  - from: service.automation
+    to: persistence.automation-record
+    type: persists-to
+    rank: must-inspect
+  - from: capability.subagents
+    to: surface.user-subagent-form
+    type: renders-in
+    rank: must-inspect
+  - from: capability.subagents
+    to: surface.builtin-subagent-model
+    type: renders-in
+    rank: must-inspect
+  - from: surface.user-subagent-form
+    to: state.subagent-form-draft
+    type: owns-draft
+    rank: must-inspect
+  - from: state.subagent-form-draft
+    to: service.subagents
+    type: commits-to
+    rank: must-inspect
+    condition: The form saves through createAgent or updateAgent.
+  - from: surface.builtin-subagent-model
+    to: service.subagents
+    type: commits-to
+    rank: must-inspect
+    condition: Built-in and plugin overrides use setBuiltInModelOverride and setPluginAgentModelOverride.
+  - from: service.subagents
+    to: persistence.subagent-markdown
+    type: persists-to
+    rank: must-inspect
+    condition:
+      User/workspace definitions use Markdown; built-in/plugin overrides use the agent state
+      file. Neither is a live conversation model switch.
+  - from: capability.conversation-runtime
+    to: service.conversation-command-inbox
+    type: admits-commands-through
+    rank: must-inspect
+  - from: capability.conversation-runtime
+    to: state.conversation-product-projection
+    type: projects-runtime-events-through
+    rank: must-inspect
+  - from: state.conversation-product-projection
+    to: service.conversation-topic-publisher
+    type: publishes-deltas-through
+    rank: must-inspect
+  - from: service.conversation-topic-publisher
+    to: state.conversation-projection
+    type: delivers-snapshot-and-deltas-to
+    rank: must-inspect
+  - from: capability.conversation-runtime
+    to: service.zcode-agent-connection-scope
+    type: attaches-through
+    rank: must-inspect
+  - from: service.conversation-topic-publisher
+    to: boundary.desktop-continuous
+    type: uses-delivery-policy
+    rank: conditional
+    condition: For Desktop continuous attachments.
+  - from: service.zcode-agent-connection-scope
+    to: boundary.desktop-continuous
+    type: injects-trusted-client-mode
+    rank: conditional
+    condition: For Desktop continuous attachments.
+  - from: service.conversation-topic-publisher
+    to: boundary.web-remote-replayable
+    type: uses-delivery-policy
+    rank: conditional
+    condition: For replayable Web remote and mobile attachments.
+  - from: service.zcode-agent-connection-scope
+    to: boundary.web-remote-replayable
+    type: injects-trusted-client-mode
+    rank: conditional
+    condition: For replayable Web remote and mobile attachments.
+  - from: boundary.web-remote-replayable
+    to: boundary.desktop-continuous
+    type: must-remain-isolated-from
+    rank: invariant-only
+  - from: state.conversation-projection
+    to: service.conversation-command-inbox
+    type: must-not-duplicate-admission-of
+    rank: invariant-only
+    condition:
+      The client may display pending optimistic commands; accepted input order and idempotency
+      remain CLI-owned.
+  - from: capability.workspace-identity
+    to: service.workspace-identity-builder
+    type: implemented-by
+    rank: must-inspect
+  - from: service.workspace-identity-builder
+    to: boundary.workspace-key
+    type: supplies-identity-for
+    rank: must-inspect
+  - from: service.zcode-agent-connection-scope
+    to: boundary.workspace-key
+    type: isolated-by
+    rank: must-inspect
+  - from: persistence.task-index
+    to: boundary.workspace-key
+    type: isolated-by
+    rank: must-inspect
+  - from: persistence.task-index
+    to: state.conversation-product-projection
+    type: must-not-replace
+    rank: invariant-only
+    condition: Task index metadata is distinct from canonical conversation content and runtime state.
+  - from: capability.composer-trigger-routing
+    to: surface.composer-at-context-picker
+    type: renders-in
+    rank: must-inspect
+  - from: capability.composer-trigger-routing
+    to: surface.composer-slash-capability-picker
+    type: renders-in
+    rank: must-inspect
+  - from: capability.composer-trigger-routing
+    to: surface.composer-skill-compatibility-picker
+    type: renders-in
+    rank: must-inspect
+  - from: surface.composer-at-context-picker
+    to: service.composer-host-file-search
+    type: options-from
+    rank: conditional
+    condition:
+      Only file candidates use bounded Host file search; other mention providers keep their own
+      option sources.
+  - from: service.composer-host-file-search
+    to: boundary.workspace-key
+    type: isolated-by
+    rank: must-inspect
+  - from: capability.composer-trigger-routing
+    to: capability.conversation-runtime
+    type: preserves-canonical-input-for
+    rank: invariant-only
+    condition:
+      Changing candidate discovery or grouping must preserve the selected item representation
+      submitted to the conversation.
+  - from: surface.conversation-model-control
+    to: state.composer-submission-intent
+    type: edits-draft
+    rank: must-inspect
+    condition:
+      The menu updates the next submission intent even for an existing conversation; it does
+      not immediately switch the running model.
+  - from: state.composer-submission-intent
+    to: service.conversation-submission
+    type: submits-selection-to
+    rank: must-inspect
+    condition: Sending captures modelSelection in the submission; subsequent menu edits affect later sends.
+  - from: service.conversation-submission
+    to: service.conversation-command-inbox
+    type: requires-admission-through
+    rank: must-inspect
+    condition: V4 commands pass through CommandInbox before the gateway dispatches their handlers.
+  - from: service.conversation-submission
+    to: service.runtime-submission-execution
+    type: schedules-selection-for
+    rank: must-inspect
+    condition:
+      CLI applies admitted configuration when execution starts, or when a Guide reaches the next
+      model step.
+  - from: service.runtime-submission-execution
+    to: state.conversation-product-projection
+    type: emits-model-selection-for
+    rank: must-inspect
+    condition: Applied runtime model selection is projected through ModelSelected events.
+
+  - from: capability.conversation-archive
+    to: persistence.task-index
+    type: persists-through
+    rank: must-inspect
+    condition: Native archive membership and durable purge intent are written before Agent cleanup.
+  - from: capability.conversation-archive
+    to: capability.conversation-runtime
+    type: requires-idle-owner
+    rank: must-inspect
+    condition: Permanent cleanup shares command admission and cold activation ownership.
+  - from: capability.conversation-archive
+    to: capability.acp-agent-sessions
+    type: requires-host-snapshot
+    rank: must-inspect
+    condition: ACP archive and conditional removal use the scoped Host snapshot and queue gate.

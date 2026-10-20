@@ -1,0 +1,53 @@
+diff --git a/dist/index.js b/dist/index.js
+index 2087d670495a7664b83f0a910dbd09727a0b5679..6ec9c2f23f243ec61837ff9118c9cfcb2bade8b3 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -125,6 +125,8 @@ var DropdownMenuTrigger = React.forwardRef(
+     const { __scopeDropdownMenu, disabled = false, ...triggerProps } = props;
+     const context = useDropdownMenuContext(TRIGGER_NAME, __scopeDropdownMenu);
+     const menuScope = useMenuScope(__scopeDropdownMenu);
++    // 嵌套 Tooltip 时，临时 ref 会反复更新锚点状态并造成渲染循环，必须稳定组合引用。
++    const composedRefs = (0, import_react_compose_refs.useComposedRefs)(forwardedRef, context.triggerRef);
+     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MenuPrimitive.Anchor, { asChild: true, ...menuScope, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+       import_react_primitive.Primitive.button,
+       {
+@@ -137,7 +139,7 @@ var DropdownMenuTrigger = React.forwardRef(
+         "data-disabled": disabled ? "" : void 0,
+         disabled,
+         ...triggerProps,
+-        ref: (0, import_react_compose_refs.composeRefs)(forwardedRef, context.triggerRef),
++        ref: composedRefs,
+         onPointerDown: (0, import_primitive.composeEventHandlers)(props.onPointerDown, (event) => {
+           if (!disabled && event.button === 0 && event.ctrlKey === false) {
+             context.onOpenToggle();
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 1799d5816f33aee1c512953bdd2acff61e91dd54..ed800160c65f79959827bd24c7719f1a74f07cc5 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -3,7 +3,7 @@
+ // src/dropdown-menu.tsx
+ import * as React from "react";
+ import { composeEventHandlers } from "@radix-ui/primitive";
+-import { composeRefs } from "@radix-ui/react-compose-refs";
++import { useComposedRefs } from "@radix-ui/react-compose-refs";
+ import { createContextScope } from "@radix-ui/react-context";
+ import { useControllableState } from "@radix-ui/react-use-controllable-state";
+ import { Primitive } from "@radix-ui/react-primitive";
+@@ -58,6 +58,8 @@ var DropdownMenuTrigger = React.forwardRef(
+     const { __scopeDropdownMenu, disabled = false, ...triggerProps } = props;
+     const context = useDropdownMenuContext(TRIGGER_NAME, __scopeDropdownMenu);
+     const menuScope = useMenuScope(__scopeDropdownMenu);
++    // 嵌套 Tooltip 时，临时 ref 会反复更新锚点状态并造成渲染循环，必须稳定组合引用。
++    const composedRefs = useComposedRefs(forwardedRef, context.triggerRef);
+     return /* @__PURE__ */ jsx(MenuPrimitive.Anchor, { asChild: true, ...menuScope, children: /* @__PURE__ */ jsx(
+       Primitive.button,
+       {
+@@ -70,7 +72,7 @@ var DropdownMenuTrigger = React.forwardRef(
+         "data-disabled": disabled ? "" : void 0,
+         disabled,
+         ...triggerProps,
+-        ref: composeRefs(forwardedRef, context.triggerRef),
++        ref: composedRefs,
+         onPointerDown: composeEventHandlers(props.onPointerDown, (event) => {
+           if (!disabled && event.button === 0 && event.ctrlKey === false) {
+             context.onOpenToggle();

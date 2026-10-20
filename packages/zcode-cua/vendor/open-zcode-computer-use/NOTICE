@@ -1,0 +1,13 @@
+Open ZCode Computer Use
+
+The OpenComputerUseKit sources in native/Sources/OpenComputerUseKit are adapted
+from open-codex-computer-use:
+
+  https://github.com/iFurySt/open-codex-computer-use
+  commit 3c1a938dcfef2cb2e9b0ddb8c7cac316c6c2bdbe
+
+That code is used under the MIT License included in this directory.
+
+ZCode is a separate product. Its proprietary JavaScript bundles and native
+binaries were inspected for interoperability research but are not redistributed
+in this project.

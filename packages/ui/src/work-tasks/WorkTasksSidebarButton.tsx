@@ -1,0 +1,153 @@
+import { useCallback, useLayoutEffect, useMemo, useState } from "react";
+import { Clock3, ListTodo, Play } from "lucide-react";
+import type { WorkTaskScope } from "@zcode/shared";
+import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+import { Button } from "@/components/ui/button.js";
+import { cn } from "@/components/lib/utils.js";
+import { useWorkTasks } from "@/hooks/useWorkTasks.js";
+import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { countWorkTasks, workTaskSidebarScopes } from "@/lib/workTaskSidebarCounts.js";
+
+interface CountProjection {
+  running: number | null;
+  waiting: number | null;
+  loading: boolean;
+}
+
+function ProjectCounts({
+  scope,
+  scopeKey,
+  onChange,
+}: {
+  scope: WorkTaskScope;
+  scopeKey: string;
+  onChange(key: string, projection: CountProjection | null): void;
+}) {
+  const { board, loading, error } = useWorkTasks(scope, false);
+  const counts = board && !loading && !error ? countWorkTasks(board.tasks) : null;
+  const running = counts?.running ?? null;
+  const waiting = counts?.waiting ?? null;
+  // 只发布计数投影；服务切换时在绘制前撤销旧数量，不复制任务或执行状态。
+  useLayoutEffect(() => {
+    onChange(scopeKey, { running, waiting, loading });
+  }, [scopeKey, onChange, running, waiting, loading]);
+  useLayoutEffect(() => () => onChange(scopeKey, null), [scopeKey, onChange]);
+  return null;
+}
+
+export function WorkTasksSidebarButton({
+  projects,
+  active = false,
+  projectsLoading = false,
+  onClick,
+}: {
+  projects: Parameters<typeof workTaskSidebarScopes>[0];
+  active?: boolean;
+  projectsLoading?: boolean;
+  onClick?: () => void;
+}) {
+  const { intl } = useZCodeIntl();
+  const scopes = useMemo(() => workTaskSidebarScopes(projects), [projects]);
+  const [projections, setProjections] = useState<Record<string, CountProjection>>({});
+  const onChange = useCallback((key: string, projection: CountProjection | null) => {
+    setProjections((previous) => {
+      if (!projection) {
+        if (!(key in previous)) return previous;
+        const next = { ...previous };
+        delete next[key];
+        return next;
+      }
+      const old = previous[key];
+      if (
+        old?.running === projection.running &&
+        old?.waiting === projection.waiting &&
+        old?.loading === projection.loading
+      )
+        return previous;
+      return { ...previous, [key]: projection };
+    });
+  }, []);
+  let running = 0;
+  let waiting = 0;
+  let available = !projectsLoading;
+  let loading = projectsLoading;
+  for (const { key } of scopes) {
+    const projection = projections[key];
+    loading ||= !projection || projection.loading;
+    if (projection?.running == null || projection.waiting == null) available = false;
+    else {
+      running += projection.running;
+      waiting += projection.waiting;
+    }
+  }
+  // 零计数连同图标隐藏；未知数量仍保留占位，不能误报为没有任务。
+  const showRunning = !available || running > 0;
+  const showWaiting = !available || waiting > 0;
+  const title = intl.formatMessage({ id: "workTasks.title" });
+  const summary = intl.formatMessage(
+    {
+      id: available
+        ? "workTasks.sidebar.summary"
+        : loading
+          ? "workTasks.sidebar.loading"
+          : "workTasks.sidebar.unavailable",
+    },
+    { running, waiting },
+  );
+  return (
+    <>
+      {scopes.map(({ key, scope }) => (
+        <ProjectCounts key={key} scopeKey={key} scope={scope} onChange={onChange} />
+      ))}
+      <ControlHintTooltip title={summary}>
+        <Button
+          variant="ghost"
+          onClick={onClick}
+          data-icon="inline-start"
+          data-testid="work-tasks-sidebar-open"
+          size="lg"
+          aria-label={title}
+          aria-description={summary}
+          aria-pressed={active}
+          className={cn(
+            "w-full min-w-0 justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
+            active && "bg-selected text-foreground",
+          )}
+        >
+          <ListTodo className="size-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate text-left">{title}</span>
+          {showRunning || showWaiting ? (
+            <span
+              aria-hidden="true"
+              data-testid="work-tasks-sidebar-counts"
+              className="flex shrink-0 items-center gap-2 whitespace-nowrap text-ui-xs tabular-nums"
+            >
+              {showRunning ? (
+                <span className="flex items-center gap-1 text-icon-blue">
+                  <Play
+                    data-testid="work-tasks-sidebar-running-icon"
+                    className="size-3! shrink-0"
+                  />
+                  <span data-testid="work-tasks-sidebar-running" className="min-w-3 text-right">
+                    {available ? running : "-"}
+                  </span>
+                </span>
+              ) : null}
+              {showWaiting ? (
+                <span className="flex items-center gap-1 text-warning">
+                  <Clock3
+                    data-testid="work-tasks-sidebar-waiting-icon"
+                    className="size-3! shrink-0"
+                  />
+                  <span data-testid="work-tasks-sidebar-waiting" className="min-w-3 text-right">
+                    {available ? waiting : "-"}
+                  </span>
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+        </Button>
+      </ControlHintTooltip>
+    </>
+  );
+}
