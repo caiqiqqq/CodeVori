@@ -150,6 +150,9 @@ export const acpAgentInfoSchema = z.object({
   /** Target release requirement; absent/null on old Hosts or when not declared/checked. */
   nodeVersionRange: z.string().max(512).nullable().optional(),
   nodeVersionCompatible: z.boolean().nullable().optional(),
+  /** Capability flag: old Hosts must not receive install-runtime. */
+  nodeInstallSupported: z.boolean().optional(),
+  nodeRuntimeSource: z.enum(["managed", "system", "missing"]).optional(),
 });
 export type AcpAgentInfo = z.infer<typeof acpAgentInfoSchema>;
 
@@ -222,7 +225,7 @@ export type AcpCodexModel = z.infer<typeof acpCodexModelSchema>;
 
 export const acpAgentManagementSchema = z.object({
   agent: acpAgentSchema,
-  action: z.enum(["install", "upgrade", "uninstall"]),
+  action: z.enum(["install", "upgrade", "uninstall", "install-runtime"]),
   operationId: z.string().uuid(),
   expectedVersion: z.string().min(1).max(128).optional(),
 });

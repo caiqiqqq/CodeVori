@@ -105,6 +105,11 @@ export async function installAcpBinary(
   directory: string,
   url: string,
   release: AcpBinaryRelease,
+  options: {
+    skipArchiveLinks?: boolean;
+    validate?: (directory: string) => Promise<void>;
+    onProgress?: (bytes: number, total: number | null) => void;
+  } = {},
 ): Promise<void> {
   const staging = `${directory}.${randomUUID()}.tmp`;
   const backup = `${directory}.${randomUUID()}.backup`;
@@ -116,6 +121,7 @@ export async function installAcpBinary(
     if (!response.ok || !response.body)
       throw new Error(`ACP download failed: HTTP ${response.status}`);
     let bytes = 0;
+    const total = Number(response.headers.get("content-length")) || null;
     const hash = createHash("sha256");
     await pipeline(
       Readable.fromWeb(response.body as import("node:stream/web").ReadableStream<Uint8Array>),
@@ -123,6 +129,7 @@ export async function installAcpBinary(
         transform(chunk: Buffer, _encoding, done) {
           bytes += chunk.length;
           hash.update(chunk);
+          options.onProgress?.(bytes, total);
           done(bytes > 750_000_000 ? new Error("ACP archive exceeds size limit") : null, chunk);
         },
       }),
@@ -136,16 +143,33 @@ export async function installAcpBinary(
     if (url.endsWith(".zip")) {
       await extractZipArchive(archive, extracted);
     } else {
+      let extractionError: Error | undefined;
       await extractTar({
         file: archive,
         cwd: extracted,
         filter(path, entry) {
-          safePath(extracted, path);
-          if ("type" in entry && entry.type !== "File" && entry.type !== "Directory")
-            throw new Error("ACP archive contains an unsupported entry type");
-          return true;
+          if (extractionError) return false;
+          try {
+            safePath(extracted, path);
+            // Node 发行包的 npm 链接由运行环境安装器按已知目标重建，不信任归档链接。
+            if (
+              options.skipArchiveLinks &&
+              "type" in entry &&
+              ["SymbolicLink", "Link"].includes(entry.type)
+            )
+              return false;
+            if ("type" in entry && entry.type !== "File" && entry.type !== "Directory")
+              throw new Error("ACP archive contains an unsupported entry type");
+            return true;
+          } catch (error) {
+            // tar 的 filter 在流回调中执行；直接 throw 会变成未捕获异常而非安装失败。
+            // 拒绝后续条目，待流结束统一拒绝发布，确保旧版本与 Host 进程保持可用。
+            extractionError = error instanceof Error ? error : new Error("Invalid ACP archive");
+            return false;
+          }
         },
       });
+      if (extractionError) throw extractionError;
     }
     await rm(archive, { force: true });
     for (const path of [release.entry, ...(release.sibling ? [release.sibling] : [])]) {
@@ -154,6 +178,7 @@ export async function installAcpBinary(
       await checkedFile(extracted, path);
     }
     await writeFile(join(extracted, "release.json"), release.version, { mode: 0o600 });
+    await options.validate?.(extracted);
     try {
       await rename(directory, backup);
       movedOld = true;

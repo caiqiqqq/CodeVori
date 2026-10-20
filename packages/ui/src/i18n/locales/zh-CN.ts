@@ -4061,8 +4061,12 @@ const zhCN: Record<string, string> = {
   "settings.acpAgents.nodeInstallHint":
     "目标 Host 的 Node.js / npm 缺失或 Node.js 版本不兼容，请安装或升级后重试。",
   "settings.acpAgents.nodeHostHint":
-    "请在实际运行智能体的目标 Host 安装兼容版本的 Node.js（包含 npm），重启该 Host 后刷新检查。远程 Host 需要在远程机器安装。",
+    "在实际运行智能体的目标 Host 安装兼容的 Node.js（包含 npm）。一键安装仅供本软件使用，安装后立即生效；手动修改系统环境时可能需要重启 Host。",
   "settings.acpAgents.installNode": "前往安装 Node.js",
+  "settings.acpAgents.installNodeRuntime": "一键安装 Node.js / npm",
+  "settings.acpAgents.nodeManagedInstallHint":
+    "从国内镜像安装到目标 Host 的软件专用目录，不覆盖系统 Node.js、不修改全局 npm 配置。",
+  "settings.acpAgents.nodeManagedSource": "当前使用软件专用 Node.js / npm。",
   "settings.acpAgents.checkPass": "通过",
   "settings.acpAgents.checkWarn": "注意",
   "settings.acpAgents.checkFail": "缺失",

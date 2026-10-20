@@ -113,7 +113,7 @@ export function createAcpReleaseRegistry(
   const npmTarget = async (meta: BuiltinRelease, version: string) => {
     const value = npmReleaseSchema.parse(
       await request(
-        `https://registry.npmjs.org/${encodeURIComponent(meta.packageName)}/${version}`,
+        `https://registry.npmmirror.com/${encodeURIComponent(meta.packageName)}/${version}`,
       ),
     );
     if (value.name !== meta.packageName || (version !== "latest" && value.version !== version))

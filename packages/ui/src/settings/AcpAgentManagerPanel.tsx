@@ -150,7 +150,14 @@ export function AcpAgentManagerPanel({
         ) : agentInfo ? (
           <>
             {agentInfo.distribution !== "binary" ? (
-              <AcpNodeEnvironment info={agentInfo} notice />
+              <AcpNodeEnvironment
+                info={agentInfo}
+                notice
+                busy={management.busy || !serviceAvailable}
+                onInstall={() =>
+                  void management.manage(agent, "install-runtime", agentInfo.registryVersion)
+                }
+              />
             ) : null}
             <section className="space-y-2" aria-label={label("diagnostics")}>
               <div className="flex flex-wrap items-center justify-between gap-2">

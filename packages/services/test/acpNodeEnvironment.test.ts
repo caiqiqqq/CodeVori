@@ -143,7 +143,7 @@ test("未检查的安装目标查询精确版本；无 engines 不伪造要求�
   releaseOld();
   assert.equal((await resolving).nodeVersionRange, ">=20");
   assert.equal(registry.target("openclaw").version, "2.0.0");
-  assert.ok(requested.includes("https://registry.npmjs.org/openclaw/1.0.0"));
+  assert.ok(requested.includes("https://registry.npmmirror.com/openclaw/1.0.0"));
 });
 
 test("ACP 目录版本使用同包精确 npm 元数据；错误需求不能替换已知版本和范围", async () => {

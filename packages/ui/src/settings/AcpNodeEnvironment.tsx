@@ -8,9 +8,13 @@ import { AcpCheckFact } from "@/settings/AcpAgentCheckRow.js";
 export function AcpNodeEnvironment({
   info,
   notice = false,
+  busy = false,
+  onInstall,
 }: {
   info: AcpAgentInfo;
   notice?: boolean;
+  busy?: boolean;
+  onInstall?: () => void;
 }) {
   const platform = usePlatform();
   const { intl } = useZCodeIntl();
@@ -40,10 +44,16 @@ export function AcpNodeEnvironment({
           type="button"
           size="sm"
           variant="outline"
-          onClick={() => void platform.openExternal("https://nodejs.org/en/download")}
+          disabled={busy}
+          onClick={
+            info.nodeInstallSupported && onInstall
+              ? onInstall
+              : () => void platform.openExternal("https://nodejs.org/en/download")
+          }
         >
-          {label("installNode")}
+          {label(info.nodeInstallSupported && onInstall ? "installNodeRuntime" : "installNode")}
         </Button>
+        {info.nodeInstallSupported ? <p>{label("nodeManagedInstallHint")}</p> : null}
       </div>
     );
   }
@@ -51,6 +61,7 @@ export function AcpNodeEnvironment({
     <div className="min-w-0 space-y-2">
       <AcpCheckFact label="Node.js" value={info.nodeVersion ?? label("missing")} technical />
       <AcpCheckFact label="npm" value={info.npmVersion ?? label("missing")} technical />
+      {info.nodeRuntimeSource === "managed" ? <p>{label("nodeManagedSource")}</p> : null}
       <AcpCheckFact
         label={label("nodeVersionRange")}
         value={info.nodeVersionRange ?? label("nodeRequirementUnknown")}
