@@ -918,7 +918,7 @@ test("ACP goal persists while prompt blocks and attachment bytes never enter the
     assert.equal(received.length, 1);
     assert.deepEqual(
       received[0]?.map((block) => block.type),
-      ["text", "text", "resource_link", "image"],
+      ["text", "text", "resource_link", "image", "text"],
     );
     assert.deepEqual(received[0]?.[0], {
       type: "text",
@@ -931,11 +931,17 @@ test("ACP goal persists while prompt blocks and attachment bytes never enter the
     if (entry?.kind !== "user") throw new Error("missing input");
     const ref = entry.attachments?.[0]?.ref;
     assert.match(ref ?? "", /^acp-attachment:[0-9a-f-]{36}\/0$/i);
+    const attachmentContext = received[0]?.at(-1);
+    assert.ok(attachmentContext?.type === "text");
+    assert.ok(attachmentContext.text.includes(ref!));
+    assert.match(attachmentContext.text, /ReadAttachment/);
+    assert.doesNotMatch(attachmentContext.text, /cG5n/);
     assert.deepEqual(snapshot.entries[0], {
       id: "user:one",
       kind: "user",
       text: "Read the image and notes",
       createdAt: snapshot.entries[0]?.createdAt,
+      endedAt: snapshot.entries[0]?.endedAt,
       attachmentNames: ["pixel.png", "notes.txt"],
       attachments: [{ ref, fileName: "pixel.png", mime: "image/png", bytes: 3 }],
     });
@@ -947,7 +953,14 @@ test("ACP goal persists while prompt blocks and attachment bytes never enter the
     );
     await restarted.setGoal({ ...target, id: session.id, goal: null });
     await restarted.prompt({ ...target, id: session.id, commandId: "two", text: "continue" });
-    assert.deepEqual(received[1], [{ type: "text", text: "continue" }]);
+    assert.deepEqual(received[1]?.[0], { type: "text", text: "continue" });
+    assert.deepEqual(
+      received[1]?.map((block) => block.type),
+      ["text", "text"],
+    );
+    const recoveredContext = received[1]?.[1];
+    assert.ok(recoveredContext?.type === "text");
+    assert.ok(recoveredContext.text.includes(ref!));
     service.disposeAll();
     restarted.disposeAll();
   } finally {
