@@ -29,11 +29,14 @@ try {
       import {useConfirmDialogStore} from "../../../ui/src/store/confirmDialogStore.ts";
       import "../../../ui/src/styles.css";
       const initial = {agent:'gemini',command:'gemini',args:['--acp'],distribution:'npm',platformSupported:true,packageName:'@google/gemini-cli',registryVersion:'0.59.0',enabled:true,env:{},source:'system',ready:true,installedVersion:'0.59.0',managedVersion:null,executablePath:'/fake/gemini',nativeCommand:'',nativePath:null,nodeVersion:'24.14.0',npmVersion:'10.33.2',nodeVersionRange:'>=20',nodeVersionCompatible:true,updateCheck:{status:'unchecked',source:'builtin',checkedAt:null}};
-      const state:any = {pending:[],operations:[],calls:[],mode:'normal',environment:{},external:[],runtimePending:[],listeners:{}};
+      const state:any = {pending:[],operations:[],calls:[],mode:'normal',environment:{},external:[],runtimePending:[],listeners:{},snapshots:{A:{ownerId:'123e4567-e89b-42d3-a456-426614174001',sequence:0,operation:null},B:{ownerId:'123e4567-e89b-42d3-a456-426614174002',sequence:0,operation:null}},snapshotListeners:{},cancels:[]};
       window.__updates = state;
       state.confirmPending = () => Boolean(useConfirmDialogStore.getState().pendingRequest);
       state.confirm = () => useConfirmDialogStore.getState().settleConfirmation(true);
       const makeHost = (host:string) => ({
+        async readAgentManagement(){if(state.deferSnapshotRead){state.deferSnapshotRead=false;return new Promise(resolve=>{state.snapshotRead={host,resolve,value:structuredClone(state.snapshots[host])}})}return structuredClone(state.snapshots[host])},
+        onDynamicAgentManagement(){return (listener:any)=>{state.snapshotListeners[host]=listener;return {dispose(){delete state.snapshotListeners[host]}}}},
+        async cancelAgentOperation(input:any){state.cancels.push({host,...input});state.pushSnapshot(host,{...state.snapshots[host].operation,status:'cancelling',cancellable:false})},
         async listAgents(options?:any) {
           state.calls.push({host,options});
           if (!options?.checkUpdates) return [{...initial,...state.environment,source:host==='B'?'managed':'system',managedVersion:host==='B'?'0.59.0':null,registryVersion:host==='B'?'0.62.0':'0.59.0'}];
@@ -45,6 +48,7 @@ try {
         async listGeminiProviders(){return {version:'fake',providers:[]}},
       });
       const hosts={A:makeHost('A'),B:makeHost('B')};
+      state.pushSnapshot=(host:string,operation:any)=>{const value={...state.snapshots[host],sequence:state.snapshots[host].sequence+1,operation};state.snapshots[host]=value;state.snapshotListeners[host]?.(structuredClone(value))};
       state.finish = (host:string, error=false) => {
         const item=state.pending.findIndex(x=>x.host===host);
         if(item<0) throw new Error('Missing pending Host');
@@ -52,8 +56,10 @@ try {
       };
       function Fixture(){
         const [host,setHost]=useState<'A'|'B'>('A');
+        const [revision,setRevision]=useState(0);
         state.switchHost=setHost;
-        return <Panel key={host} host={host}/>;
+        state.reopen=()=>setRevision(value=>value+1);
+        return <Panel key={host+revision} host={host}/>;
       }
       function Panel({host}:{host:'A'|'B'}){
         const management=useAcpAgentManagement(hosts[host] as any);
@@ -155,6 +161,111 @@ try {
   assert.match(await warning.textContent(), /22\.17\.0/);
   assert.match(await warning.textContent(), /24\.16\.0/);
   assert.equal(await page.getByTestId("acp-upgrade").isDisabled(), true);
+  // 新 Host 恢复后台操作，取消不能在清理完成之前让按钮重新可用。
+  const testOperationRecovery = async () => {
+    await refreshEnvironment({
+      agentManagementSupported: true,
+      nodeVersion: "24.19.0",
+      npmVersion: "11.0.0",
+      nodeVersionCompatible: true,
+    });
+    await page.waitForFunction(() => Boolean(window.__updates.snapshotListeners.B));
+    const operationId = "123e4567-e89b-42d3-a456-426614174000";
+    await page.evaluate((id) => {
+      window.__updates.pushSnapshot("B", {
+        operationId: id,
+        agent: "hermes",
+        action: "install",
+        status: "running",
+        busy: true,
+        cancellable: true,
+        log: ["Hermes: 正在下载 Python"],
+      });
+      window.__updates.reopen();
+    }, operationId);
+    await page.getByRole("log").getByText("Hermes: 正在下载 Python", { exact: true }).waitFor();
+    await page.waitForFunction(() => window.__updates.pending.some((item) => item.host === "B"));
+    await page.evaluate(() => window.__updates.finish("B"));
+    assert.equal(await page.getByTestId("acp-upgrade").isDisabled(), true);
+    const cancel = page.getByRole("button", { name: "取消安装", exact: true });
+    await cancel.click();
+    const cancelling = page.getByRole("button", { name: "正在取消…", exact: true });
+    await cancelling.waitFor();
+    assert.equal(await cancelling.isDisabled(), true);
+    assert.deepEqual(await page.evaluate(() => window.__updates.cancels), [
+      { host: "B", operationId },
+    ]);
+    assert.equal(await page.getByTestId("acp-upgrade").isDisabled(), true);
+    await page.evaluate(() => {
+      window.__updates.staleSnapshotListener = window.__updates.snapshotListeners.B;
+      window.__updates.switchHost("A");
+    });
+    await page.waitForFunction(() => window.__updates.pending.some((item) => item.host === "A"));
+    await page.evaluate(() => {
+      window.__updates.finish("A");
+      window.__updates.staleSnapshotListener({
+        ownerId: window.__updates.snapshots.B.ownerId,
+        sequence: 999,
+        operation: { ...window.__updates.snapshots.B.operation, log: ["旧 Host 不应显示"] },
+      });
+    });
+    assert.equal(await page.getByText("旧 Host 不应显示", { exact: true }).count(), 0);
+    await page.evaluate(() => {
+      const state = window.__updates;
+      state.pushSnapshot("B", {
+        ...state.snapshots.B.operation,
+        status: "failed",
+        busy: false,
+        cancellable: false,
+        log: ["安装已取消"],
+      });
+      state.switchHost("B");
+    });
+    await page.waitForFunction(() => window.__updates.pending.some((item) => item.host === "B"));
+    await page.evaluate(() => window.__updates.finish("B"));
+    await page.getByRole("log").getByText("安装已取消", { exact: true }).waitFor();
+    await page.waitForFunction(
+      () => !document.querySelector('[data-testid="acp-upgrade"]')?.disabled,
+    );
+    assert.equal(await page.getByRole("button", { name: "取消安装", exact: true }).count(), 0);
+    await page.evaluate(() => {
+      window.__updates.deferSnapshotRead = true;
+    });
+    await page.waitForFunction(() => Boolean(window.__updates.snapshotRead));
+    await page.evaluate(() => {
+      const state = window.__updates;
+      state.pushSnapshot("B", {
+        ...state.snapshots.B.operation,
+        status: "running",
+        busy: true,
+        cancellable: false,
+        log: ["新进度"],
+      });
+      state.snapshotRead.resolve(state.snapshotRead.value);
+    });
+    await page.getByRole("log").getByText("新进度", { exact: true }).waitFor();
+    assert.equal(await page.getByTestId("acp-upgrade").isDisabled(), true, "旧读取不能覆盖新事件");
+    await page.evaluate(() => {
+      const state = window.__updates;
+      const old = structuredClone(state.snapshots.B);
+      state.snapshots.B = {
+        ownerId: "123e4567-e89b-42d3-a456-426614174003",
+        sequence: 0,
+        operation: null,
+      };
+      state.snapshotListeners.B(state.snapshots.B);
+      state.snapshotListeners.B({ ...old, sequence: 999 });
+    });
+    await page.getByRole("log").waitFor({ state: "detached" });
+    await page.waitForFunction(
+      () => !document.querySelector('[data-testid="acp-upgrade"]')?.disabled,
+    );
+    assert.ok(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    );
+  };
   assert.equal(
     await page.getByRole("button", { name: "卸载托管适配器", exact: true }).isEnabled(),
     true,
@@ -274,9 +385,10 @@ try {
       () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
     ),
   );
+  await testOperationRecovery();
   assert.deepEqual(errors, []);
   process.stdout.write(
-    "PASS: background update, force refresh, actions, stale Host isolation, Node requirements, legacy link, runtime install progress/failure/retry/recovery, late Host result isolation and mobile layout.\n",
+    "PASS: update/runtime legacy compatibility; operation reopen/cancel, stale Host/sequence isolation, Host restart, and mobile layout.\n",
   );
 } finally {
   await browser?.close();

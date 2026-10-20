@@ -7,6 +7,8 @@ import {
   type AcpAgentListOptions,
   type AcpAgentConfigSnapshot,
   type AcpAgentManagement,
+  type AcpAgentManagementSnapshot,
+  type AcpAgentOperationCancel,
   type AcpAgentOperationEvent,
   type AcpAgentUpdate,
   type AcpCodexConfig,
@@ -73,6 +75,9 @@ export interface IAcpService {
   listGeminiProviders(): Promise<AcpGeminiProviders>;
   updateGeminiProviders(input: AcpGeminiProvidersUpdate): Promise<AcpGeminiProviders>;
   manageAgent(input: AcpAgentManagement): Promise<AcpAgentInfo>;
+  readAgentManagement(): Promise<AcpAgentManagementSnapshot>;
+  cancelAgentOperation(input: AcpAgentOperationCancel): Promise<void>;
+  onDynamicAgentManagement(): Event<AcpAgentManagementSnapshot>;
   onDynamicAgentOperation(operationId: string): Event<AcpAgentOperationEvent>;
   list(workspace: AcpWorkspace): Promise<AcpSession[]>;
   /** UI metadata only; never ships the conversation history. */

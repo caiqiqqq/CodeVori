@@ -205,6 +205,7 @@ function diagnosticToolStatus(status?: string): AcpDiagnosticEvent["status"] {
 export function createAcpService(
   options: {
     directory?: string;
+    resolveInstallEnv?: () => Promise<Record<string, string>>;
     /** Same Host policy as the management page and API session tools. */
     resolveDynamicWorkflowClientConfig?: () => Promise<DynamicWorkflowClientConfig>;
     /** Projection-only membership; exact read and internal execution keep child access. */
@@ -247,6 +248,7 @@ export function createAcpService(
     options.agentManager ??
     createAcpAgentManager({
       directory: options.directory ? join(options.directory, "agent-settings") : undefined,
+      resolveInstallEnv: options.resolveInstallEnv,
     });
   const sessions = new Map<string, AcpSession>();
   const streamDiagnostics = new AcpStreamDiagnostics();
@@ -2244,6 +2246,9 @@ export function createAcpService(
     updateCodexConfig: (input) => agentManager.updateCodexConfig(input),
     listCodexModels: () => agentManager.listCodexModels(),
     manageAgent: (input) => agentManager.manageAgent(input),
+    readAgentManagement: async () => agentManager.readAgentManagement(),
+    cancelAgentOperation: async (input) => agentManager.cancelAgentOperation(input),
+    onDynamicAgentManagement: () => agentManager.onAgentManagement,
     onDynamicAgentOperation(operationId) {
       return (listener) =>
         agentManager.onAgentOperation((event) => {
