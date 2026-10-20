@@ -1,9 +1,12 @@
 import type { ConfigContext, ExpoConfig } from "expo/config";
 import { PRODUCT_NAME } from "@zcode/shared/product-brand";
+import rootPackage from "../../package.json";
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: PRODUCT_NAME,
+  // 手机与桌面共用根版本，避免 Release 文件名和安装后显示的版本不一致。
+  version: rootPackage.version,
   slug: config.slug ?? "zcode-lan-mobile",
   ios: {
     ...config.ios,
