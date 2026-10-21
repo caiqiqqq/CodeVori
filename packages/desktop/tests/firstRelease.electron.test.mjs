@@ -11,7 +11,7 @@ const { version: expectedVersion } = JSON.parse(
 );
 
 test(
-  "packaged release opens without login or official updates",
+  "packaged release opens without login or upstream force-update gate",
   { skip: !appPath, timeout: 90_000 },
   async () => {
     const profile = await mkdtemp(join(tmpdir(), "codevori-release-smoke-"));
@@ -51,26 +51,9 @@ test(
       await window.getByRole("textbox").first().waitFor({ timeout: 30_000 });
       assert.equal(await window.locator('[data-testid="login-api-key-input"]').count(), 0);
       const state = await window.evaluate(() => window.zcode.getUpdateState());
-      assert.equal(state.enabled, false);
-      assert.equal(state.kind, "idle");
-      const check = await window.evaluate(
-        () =>
-          new Promise((resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error("update result missing")), 5_000);
-            const dispose = window.zcode.onUpdateCheckResult((result) => {
-              clearTimeout(timer);
-              dispose();
-              resolve(result);
-            });
-            window.zcode.executeDesktopCommand("checkForUpdates").catch(reject);
-          }),
-      );
-      assert.equal(check.kind, "dev-skipped");
-      await window.evaluate(() => window.zcode.syncAppSettings({ receivePreviewUpdates: true }));
-      assert.deepEqual(await window.evaluate(() => window.zcode.getUpdateState()), {
-        kind: "idle",
-        enabled: false,
-      });
+      // 正式产品现已接入自有更新源；检查中暂时禁用按钮不等于禁用更新器。
+      // 网络和 IPC 的确定性场景由 desktopUpdateSource.electron.test.mjs 单独验证。
+      assert.notDeepEqual(state, { kind: "idle", enabled: false });
       assert.equal(await window.title(), "CodeVori");
       if (process.env.CODEVORI_RELEASE_SCREENSHOT) {
         await window.screenshot({ path: process.env.CODEVORI_RELEASE_SCREENSHOT });
