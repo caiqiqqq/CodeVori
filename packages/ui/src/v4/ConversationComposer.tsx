@@ -30,6 +30,7 @@ import {
 import { cn } from "@/components/lib/utils.js";
 import { ACP_HOST_UPGRADE_REQUIRED } from "@/v4/acpPromptAdmission.js";
 import {
+  DIRECTORY_ATTACHMENT_MIME,
   TID_CHAT_ATTACHMENT_BUTTON,
   TID_CHAT_ATTACHMENT_MENU_ITEM,
   TID_V4_COMPOSER,
@@ -54,6 +55,7 @@ import type {
 import {
   ArrowUpIcon,
   ClipboardPenLineIcon,
+  FolderIcon,
   InfoIcon,
   RotateCcwIcon,
   SquareIcon,
@@ -2137,6 +2139,7 @@ function ConversationComposerImpl({
           >
             {orderedComposerAttachments.map((attachment) => {
               const isClipboardTextAttachment = attachment.sourceKind === "clipboard-text";
+              const isDirectoryAttachment = attachment.mimeType === DIRECTORY_ATTACHMENT_MIME;
               const isMediaAttachment = isMediaChatComposerAttachment(attachment);
               const isVideoAttachment = isVideoChatComposerAttachment(attachment);
               const isPdfAttachment = isPdfChatComposerAttachment(attachment);
@@ -2174,13 +2177,15 @@ function ConversationComposerImpl({
                   key={attachment.id}
                   variant={isMediaAttachment ? "grid" : "inline"}
                   data-composer-attachment-kind={
-                    isVideoAttachment
-                      ? "video"
-                      : isMediaAttachment
-                        ? "image"
-                        : isPdfAttachment
-                          ? "pdf"
-                          : "file"
+                    isDirectoryAttachment
+                      ? "directory"
+                      : isVideoAttachment
+                        ? "video"
+                        : isMediaAttachment
+                          ? "image"
+                          : isPdfAttachment
+                            ? "pdf"
+                            : "file"
                   }
                   data-testid={testId(TID_V4_ATTACHMENT, attachment.id)}
                   data-upload-status={attachment.uploadStatus}
@@ -2259,7 +2264,9 @@ function ConversationComposerImpl({
                         isMediaAttachment ? "size-full rounded-none" : "size-9 rounded-md",
                       )}
                       fallbackIcon={
-                        isClipboardTextAttachment ? (
+                        isDirectoryAttachment ? (
+                          <FolderIcon className="size-4 text-icon-blue" />
+                        ) : isClipboardTextAttachment ? (
                           <ClipboardPenLineIcon className="size-3.5 text-muted-foreground" />
                         ) : (
                           <FileDisplayIcon
@@ -2327,7 +2334,12 @@ function ConversationComposerImpl({
                           {attachment.filename}
                         </span>
                         <span className="block truncate text-ui-sm font-normal text-foreground-subtle">
-                          {getComposerAttachmentTypeLabel(attachment.filename, attachment.mimeType)}
+                          {isDirectoryAttachment
+                            ? intl.formatMessage({ id: "chat.attachments.directory" })
+                            : getComposerAttachmentTypeLabel(
+                                attachment.filename,
+                                attachment.mimeType,
+                              )}
                         </span>
                       </div>
                     )
