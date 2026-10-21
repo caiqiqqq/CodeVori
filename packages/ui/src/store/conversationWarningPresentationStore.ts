@@ -2,13 +2,12 @@ import { create } from "zustand";
 
 interface WarningPresentation {
   initialActivity: string;
-  expiresAt: number;
   dismissed: boolean;
 }
 
 interface WarningPresentationState {
   presentations: Record<string, WarningPresentation>;
-  begin: (key: string, activity: string, running: boolean, now?: number) => void;
+  begin: (key: string, activity: string, running: boolean) => void;
   dismiss: (key: string) => void;
 }
 
@@ -36,17 +35,17 @@ export function conversationNoticePresentationKey({
   ]);
 }
 
-// 修复依据：组件卸载会丢失本地 expired 状态；展示期限和消失记录必须跨窗格重挂载保留。
+// 修复依据：异常尚未恢复时不能按时间隐藏；展示状态和消失记录必须跨窗格重挂载保留。
 // 这里只保存当前 renderer 的展示状态，不修改 Host 诊断，也不把 logEpoch 回放当成新提示。
 export const useConversationWarningPresentationStore = create<WarningPresentationState>((set) => ({
   presentations: {},
-  begin: (key, activity, running, now = Date.now()) =>
+  begin: (key, activity, running) =>
     set((state) => {
       if (state.presentations[key]) return state;
       return {
         presentations: {
           ...state.presentations,
-          [key]: { initialActivity: activity, expiresAt: now + 5000, dismissed: !running },
+          [key]: { initialActivity: activity, dismissed: !running },
         },
       };
     }),
