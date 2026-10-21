@@ -13,6 +13,8 @@
 import type { TurnAttachment } from "@zcode/core";
 import type { AttachmentRef } from "@zcode/shared/zcode-protocol-v4";
 import type { ZCodeApp } from "../../app/types.js";
+import { DIRECTORY_ATTACHMENT_MIME } from "@zcode/shared";
+import { isAbsolute } from "node:path";
 
 const URI_REF_PATTERN = /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//;
 const INLINE_TEXT_ATTACHMENT_MAX_BYTES = 64 * 1024;
@@ -83,6 +85,14 @@ async function mapAttachmentRef(app: ZCodeApp, ref: AttachmentRef): Promise<Turn
   if (isPdfRef(ref)) {
     // PDF URI ref 必须保留 durable URI，交给 core 读取 data URL；不能按 UTF-8 文本解码。
     return { content: ref.ref, path: ref.fileName, type: "pdf", ...displayMeta };
+  }
+  if (ref.mime === DIRECTORY_ATTACHMENT_MIME) {
+    // 撤回的目录引用经 File/上传恢复为 artifact，正文仍是 Host 路径而不是文件内容。
+    const artifact = await app.readToolResultArtifact(ref.ref);
+    const path = decodeDataUrlText(artifact.content);
+    if (!path || !isAbsolute(path))
+      throw new Error("Directory attachment requires an absolute Host path");
+    return { path, type: "file", ...displayMeta };
   }
   // 非图片 URI ref：按旧 decodeTextProtocolAttachment 语义还原 ≤64KiB 文本内容。
   if (ref.bytes > INLINE_TEXT_ATTACHMENT_MAX_BYTES) {

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
 import { AcpAttachmentStore } from "../src/acp/acpAttachmentStore.js";
+import { buildAcpPromptBlocks } from "../src/acp/acpPromptBlocks.js";
 
 const workspace = { workspacePath: "/fixture/images", workspaceIdentity: "remote:images" };
 const image = Buffer.from("sent-image".repeat(18000));
@@ -18,6 +19,102 @@ function gate() {
 }
 
 const inline = [{ fileName: "x.png", mimeType: "image/png", dataBase64: "cG5n" }];
+
+test("ACP busy queue admits and drains a directory reference through the existing owner", async () => {
+  const root = await mkdtemp(join(tmpdir(), "acp-directory-queue-"));
+  const started = gate();
+  const release = gate();
+  const drained = gate();
+  const prompts: unknown[] = [];
+  const service = createAcpService({
+    directory: join(root, "sessions"),
+    connect: async () => ({
+      sessionId: "native-directory",
+      async prompt(_text, blocks) {
+        prompts.push(blocks);
+        if (prompts.length === 1) {
+          started.resolve();
+          await release.promise;
+        } else drained.resolve();
+      },
+      async cancel() {
+        release.resolve();
+      },
+      close() {},
+    }),
+  });
+  try {
+    const target = { workspacePath: root };
+    const session = await service.create({ ...target, agent: "codex" });
+    const first = service.prompt({ ...target, id: session.id, commandId: "first", text: "hold" });
+    await started.promise;
+    const queued = await service.prompt({
+      ...target,
+      id: session.id,
+      commandId: "directory",
+      text: "browse",
+      attachments: [{ path: root, fileName: "project", mimeType: "application/octet-stream" }],
+    });
+    assert.equal(queued.queue.items[0]?.attachments[0]?.mime, "inode/directory");
+    release.resolve();
+    await first;
+    await drained.promise;
+    assert.match(JSON.stringify(prompts[1]), /inode\/directory/);
+    assert.match(JSON.stringify(prompts[1]), /directory reference/);
+  } finally {
+    release.resolve();
+    service.disposeAll();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("ACP opaque saved refs restore directories and immutable files after restart and withdrawal", async () => {
+  const root = await mkdtemp(join(tmpdir(), "acp-directory-store-"));
+  const directory = join(root, "project.txt");
+  const file = join(root, "notes.txt");
+  const id = "11111111-1111-4111-8111-111111111111";
+  try {
+    await mkdir(directory);
+    await writeFile(file, "original");
+    const inputs = [
+      { path: directory, fileName: "project.txt", mimeType: "text/plain" },
+      { path: file, fileName: "notes.txt", mimeType: "text/plain" },
+    ];
+    const base = { text: "inspect", workspacePath: root, workspaceFiles: [] };
+    const blocks = await buildAcpPromptBlocks({ ...base, attachments: inputs });
+    const store = new AcpAttachmentStore(join(root, "saved"));
+    const saved = await store.save(id, inputs, blocks.slice(1));
+    assert.equal(saved.attachments[0]?.mime, "inode/directory");
+    assert.doesNotMatch(JSON.stringify(saved), new RegExp(directory));
+    await writeFile(file, "changed");
+    const restarted = new AcpAttachmentStore(join(root, "saved"));
+    const restored = await restarted.promptInputs(id, saved.attachments);
+    const replayed = await buildAcpPromptBlocks({ ...base, attachments: restored });
+    assert.deepEqual(replayed[1], blocks[1]);
+    const directoryRef = saved.attachments[0]!;
+    const read = await restarted.read(id, directoryRef, 0, directoryRef.bytes);
+    // 撤回队列会把保存字节恢复为 File；再次发送必须仍是目录引用。
+    const withdrawn = await buildAcpPromptBlocks({
+      ...base,
+      attachments: [
+        { fileName: directoryRef.fileName, mimeType: read.mediaType, dataBase64: read.dataBase64 },
+      ],
+    });
+    assert.deepEqual(withdrawn[1], blocks[1]);
+    const frozen = saved.attachments[1]!;
+    assert.equal(
+      Buffer.from(
+        (await restarted.read(id, frozen, 0, frozen.bytes)).dataBase64,
+        "base64",
+      ).toString(),
+      "original",
+    );
+    await rm(directory, { recursive: true });
+    await assert.rejects(buildAcpPromptBlocks({ ...base, attachments: [restored[0]!] }));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 function connection(
   onPrompt: (blocks: unknown) => void = () => {},

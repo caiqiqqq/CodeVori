@@ -6350,6 +6350,7 @@ const enUS: Record<string, string> = {
   "chat.attachments.maxFiles": "You can attach up to {count} attachments",
   "chat.attachments.maxFileSize": "Attachments must be {sizeMb} MB or smaller",
   "chat.attachments.readFailed": "Failed to read attachment: {message}",
+  "chat.attachments.directory": "Folder",
   "chat.attachments.missingInlineImageContent":
     "Image attachment {filename} is missing its file content. Please add it again.",
   "chat.attachments.missingInlinePdfContent":

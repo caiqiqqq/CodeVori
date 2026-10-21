@@ -334,7 +334,7 @@ export const acpSetConfigOptionInputSchema = acpWorkspaceSchema
   .strict();
 export type AcpSetConfigOptionInput = z.infer<typeof acpSetConfigOptionInputSchema>;
 
-/** Renderer 的附件草稿；内容只在本次 RPC 中流过，不进入会话快照。 */
+/** Renderer 草稿；inode/directory 的内联字节只保存 Host 绝对路径，目录内容不内联。 */
 export const acpPromptAttachmentSchema = z
   .object({
     fileName: z.string().min(1).max(255),
