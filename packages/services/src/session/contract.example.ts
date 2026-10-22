@@ -3,11 +3,19 @@ import type {
   WorkTaskCreate,
   WorkTaskResultRequest,
   WorkTaskRename,
+  RepositoryIssueProject,
 } from "@zcode/shared";
 import type { IWorkTaskService } from "./contract.js";
 
 export async function renameWorkTask(service: IWorkTaskService, request: WorkTaskRename) {
   return service.rename(request);
+}
+
+export async function readUnhandledRepositoryIssues(
+  service: IWorkTaskService,
+  projects: RepositoryIssueProject[],
+) {
+  return service.getRepositoryIssueSummary({ projects });
 }
 
 export async function generateEditableResult(

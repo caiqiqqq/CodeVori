@@ -1,3 +1,5 @@
+import { DIRECTORY_ATTACHMENT_MIME } from "@zcode/shared";
+
 const SPREADSHEET_CLIPBOARD_HTML_PATTERN =
   /(?:<table\b|urn:schemas-microsoft-com:office:excel|\bExcel\.Sheet\b|\bMicrosoft\s+Excel\b|\bmso-(?:number-format|displayed-decimal-separator)\b)/iu;
 
@@ -66,6 +68,7 @@ export function inferAttachmentMimeType(filename: string): string {
 
 export function isTextLikeAttachment(attachment: { filename: string; mimeType: string }): boolean {
   const mimeType = attachment.mimeType || inferAttachmentMimeType(attachment.filename);
+  if (mimeType === DIRECTORY_ATTACHMENT_MIME) return true;
   if (mimeType.startsWith("text/")) {
     return true;
   }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppUsageRange,
   AppUsageSnapshot,
@@ -13,6 +13,7 @@ import { logger } from "@/logger.js";
 import { useServices } from "@/hooks/useServices.js";
 import { useStableAccountAccess } from "@/hooks/useStableAccountAccess.js";
 import { USAGE_ENTITLEMENT_ACCESS_REFRESH_MS } from "@/lib/usageEntitlementRefreshPolicy.js";
+import { getCachedAppUsageSnapshot, readAppUsageSnapshot } from "@/store/appUsageSnapshotCache.js";
 
 interface UsageStatsState {
   snapshot: UsageStatsSnapshot | null;
@@ -190,54 +191,75 @@ export function useUsageStats(
 
 export function useAppUsageStats(range: AppUsageRange) {
   const { usageStatsService } = useServices();
-  const [state, setState] = useState<AppUsageStatsState>({
-    snapshot: null,
-    loading: false,
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const scope = useMemo(
+    () => ({ service: usageStatsService, request: { range, timeZone } }),
+    [range, timeZone, usageStatsService],
+  );
+  const [state, setState] = useState<AppUsageStatsState & { scope: typeof scope }>(() => ({
+    scope,
+    snapshot: getCachedAppUsageSnapshot(scope.service, scope.request),
+    loading: true,
     error: null,
-  });
+  }));
   const requestVersionRef = useRef(0);
 
   const refresh = useCallback(async () => {
     const requestVersion = requestVersionRef.current + 1;
     requestVersionRef.current = requestVersion;
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     setState((current) => ({
-      snapshot: current.snapshot,
+      scope,
+      snapshot:
+        current.scope === scope
+          ? current.snapshot
+          : getCachedAppUsageSnapshot(scope.service, scope.request),
       loading: true,
       error: null,
     }));
     try {
-      const snapshot = await usageStatsService.getAppUsageSnapshot({
-        range,
-        timeZone,
-      });
+      const snapshot = await readAppUsageSnapshot(scope.service, scope.request);
       if (requestVersionRef.current !== requestVersion) {
         return;
       }
-      setState({ snapshot, loading: false, error: null });
+      setState({ scope, snapshot, loading: false, error: null });
     } catch (error) {
       if (requestVersionRef.current !== requestVersion) {
         return;
       }
       const message = getErrorMessage(error);
       logger.warn("[useAppUsageStats] 读取本地使用统计失败", {
-        range,
-        timeZone,
+        ...scope.request,
         error: message,
       });
       setState((current) => ({
-        snapshot: current.snapshot,
+        scope,
+        snapshot:
+          current.scope === scope
+            ? current.snapshot
+            : getCachedAppUsageSnapshot(scope.service, scope.request),
         loading: false,
         error: message,
       }));
     }
-  }, [range, usageStatsService]);
+  }, [scope]);
 
   useEffect(() => {
     void refresh();
+    // 修复原因：切换 Host/范围或卸载后，旧请求只能更新原 scope 的缓存，不能回写新页面。
+    return () => {
+      requestVersionRef.current += 1;
+    };
   }, [refresh]);
 
-  return { ...state, refresh };
+  const visible =
+    state.scope === scope
+      ? state
+      : {
+          snapshot: getCachedAppUsageSnapshot(scope.service, scope.request),
+          loading: true,
+          error: null,
+        };
+  return { snapshot: visible.snapshot, loading: visible.loading, error: visible.error, refresh };
 }
 
 export function useCodingPlanUsageStats(

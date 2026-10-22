@@ -2735,6 +2735,7 @@ export function createLocalServices(options: {
   const workTaskService = new WorkTaskService({
     repo: workTaskRepo,
     forge: gitService,
+    repositoryIssues: gitService,
     result: createWorkTaskResult({
       ...workTaskExecutionDependencies,
     }),

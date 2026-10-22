@@ -63,6 +63,14 @@ modules:
   - id: zcode-cli
     roots: [apps/zcode-cli]
     managed: false
+  - id: device-bridge
+    roots: [apps/device-bridge]
+    managed: true
+    requires: [shared]
+    publicEntrypoints: [apps/device-bridge/contract.ts]
+    layers: { domain: internal/policy, adapters: internal/bridge }
+    layerOrder: [domain, adapters]
+    owner: device-connectivity
 
 global:
   maxFileLines: 400

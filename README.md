@@ -32,6 +32,42 @@ CodeVori 是面向日常开发的 AI 编程工作台。你可以在同一个工�
 
 智能体的可用能力取决于对应适配器、安装环境和账号配置；安装适配器后仍可能需要登录或配置模型服务。手机端复用电脑上已有的 Host 与会话，电脑需要保持运行且网络可达。
 
+## 界面展示
+
+### 桌面端
+
+工作区首页：选择项目，与智能体开始对话。
+
+<p align="center">
+  <img src=".github/assets/screenshots/desktop-home.webp" alt="CodeVori 桌面端工作区首页" width="1000" />
+</p>
+
+| 自动化与定时任务 | 待办任务面板 |
+| --- | --- |
+| <img src=".github/assets/screenshots/desktop-automation.webp" alt="CodeVori 自动化与定时任务模板" width="500" /> | <img src=".github/assets/screenshots/desktop-tasks.webp" alt="CodeVori 待办、处理中、等待处理与已完成任务分栏" width="500" /> |
+
+### 手机端
+
+通过手机浏览器连接电脑上的 CodeVori，查看项目、发送消息和查看工作流结果。以下为 iPhone 模拟器中的手机 Web 实际界面；电脑需要保持运行并开启局域网手机访问。
+
+| 对话首页 | 项目与会话导航 | 工作流结果 |
+| --- | --- | --- |
+| <img src=".github/assets/screenshots/mobile-home.webp" alt="手机 Web 对话首页与模型选择" width="260" /> | <img src=".github/assets/screenshots/mobile-projects.webp" alt="手机 Web 项目与会话侧边栏，实际名称已遮盖" width="260" /> | <img src=".github/assets/screenshots/mobile-workflow.webp" alt="手机 Web 查看已完成的工作流及 JSON 结果" width="260" /> |
+
+<details>
+<summary>更多手机端截图：App 连接页与侧边面板</summary>
+
+左图为原生 App 的连接页，右图为手机 Web 的侧边面板。连接页截图保留了当前模拟器包的配置读取报错，不代表已成功配对；当前 iOS 发行包仅供模拟器使用，不能安装到 iPhone。
+
+<p align="center">
+  <img src=".github/assets/screenshots/mobile-pairing.webp" alt="iOS 模拟器 App 连接页，显示读取本机连接失败提示" width="260" />
+  <img src=".github/assets/screenshots/mobile-split-view.webp" alt="手机 Web 对话与审查、终端侧边面板" width="260" />
+</p>
+
+</details>
+
+展示图片已压缩，手机 Web 截图已裁去包含连接地址的浏览器底栏，实际项目与会话名称已遮盖。
+
 ## 文档导航
 
 - [手机端连接与开发](apps/mobile/README.md)
@@ -191,11 +227,19 @@ pnpm bundle:desktop -- --help
 
 默认目标为 macOS arm64，默认输出目录为 `packages/desktop/dist/`。`--os` 支持 `mac`、`win`、`linux`，`--arch` 支持 `x64`、`arm64`；实际打包与签名需要目标平台对应的工具和配置。
 
-macOS 安装：打开构建产物 DMG，将 CodeVori 拖入“应用程序”。签名与公证状态取决于构建配置；对于自行构建且已确认来源的应用，如果被系统隔离属性拦截，可移除其隔离属性：
+macOS 安装：打开构建产物 DMG，将 CodeVori 拖入“应用程序”。签名与公证状态取决于构建配置。
+
+#### macOS 提示“App 已损坏，无法打开”
+
+未经 Apple 公证的应用可能被 macOS 安全检查拦截，并提示“App 已损坏，无法打开”。仅在确认应用来自本项目的 [GitHub Releases](https://github.com/caiqiqqq/CodeVori/releases)、并已核对 `SHA256SUMS` 中的校验值后，才可在终端移除应用的隔离属性，再重新打开：
 
 ```bash
-sudo xattr -rd com.apple.quarantine /Applications/CodeVori.app
+xattr -d com.apple.quarantine "/Applications/CodeVori.app"
 ```
+
+如果仍被隔离属性拦截，可使用 `xattr -rd com.apple.quarantine "/Applications/CodeVori.app"` 递归处理应用包内文件；若提示权限不足，再在命令前加 `sudo`。安装位置不同时，请替换为实际路径。
+
+此操作会移除下载隔离标记，不会修复真正损坏的文件。来源不明、校验不一致或处理后仍无法打开时，请勿继续绕过安全检查，应重新下载或反馈问题。
 
 ### CodeVori 命令行版
 

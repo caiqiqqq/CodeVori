@@ -2,7 +2,11 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ContentBlock, PromptCapabilities } from "@agentclientprotocol/sdk";
-import type { AcpPromptAttachment } from "@zcode/shared";
+import {
+  DIRECTORY_ATTACHMENT_MIME,
+  buildDirectoryAttachmentText,
+  type AcpPromptAttachment,
+} from "@zcode/shared";
 
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const MAX_TOTAL_INLINE_BYTES = 40 * 1024 * 1024;
@@ -47,10 +51,28 @@ export async function buildAcpPromptBlocks(input: {
   for (const attachment of input.attachments) {
     let bytes: Buffer | undefined;
     let path: string | undefined;
-    if (attachment.path) {
-      if (!isAbsolute(attachment.path)) throw new Error("ACP attachment path must be absolute");
-      path = await realpath(attachment.path);
+    // 修复原因：目录可从粘贴路径或撤回队列的引用字节恢复，必须先按 Host 实际类型分流。
+    const directoryPath =
+      attachment.mimeType === DIRECTORY_ATTACHMENT_MIME && attachment.dataBase64
+        ? decodeBase64(attachment.dataBase64).toString("utf8")
+        : undefined;
+    const sourcePath = attachment.path ?? directoryPath;
+    if (sourcePath) {
+      if (!isAbsolute(sourcePath)) throw new Error("ACP attachment path must be absolute");
+      path = await realpath(sourcePath);
       const details = await stat(path);
+      if (details.isDirectory()) {
+        blocks.push({
+          type: "resource_link",
+          uri: pathToFileURL(path).href,
+          name: attachment.fileName,
+          mimeType: DIRECTORY_ATTACHMENT_MIME,
+          description: buildDirectoryAttachmentText(path),
+        });
+        continue;
+      }
+      if (attachment.mimeType === DIRECTORY_ATTACHMENT_MIME)
+        throw new Error("ACP directory reference must be a directory");
       if (!details.isFile()) throw new Error("ACP attachment must be a file");
       if (details.size > MAX_ATTACHMENT_BYTES) throw new Error("ACP attachment exceeds 20 MiB");
       if (attachment.mimeType.startsWith("image/")) {

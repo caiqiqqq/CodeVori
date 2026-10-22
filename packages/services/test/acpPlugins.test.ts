@@ -6,6 +6,7 @@ import test from "node:test";
 import type { AcpWorkspace, SkillSummary, ZCodePluginsAcpCapabilitiesResult } from "@zcode/shared";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
 import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
+import { createSkillsService } from "../src/skills/skillsService.js";
 
 const workspace = {
   workspacePath: "/tmp/acp-plugin-test",
@@ -64,6 +65,79 @@ const connection = (prompt: (text: string, blocks?: ContentBlock[]) => Promise<v
   prompt,
   async cancel() {},
   close() {},
+});
+
+test("ordinary ACP turns receive live marketplace skill catalogs from their target Host without changing history", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "zcode-acp-skill-catalog-"));
+  const thirdParty: SkillSummary = {
+    ...skills[0]!,
+    id: "plugin:custom:review",
+    name: "review",
+    pluginId: "custom@third-party",
+    path: "/remote/plugins/custom/review/SKILL.md",
+  };
+  const catalogs = new Map<string, SkillSummary[]>([
+    [workspace.workspaceIdentity, [...skills, thirdParty]],
+    ["remote:plugin-b", [thirdParty]],
+  ]);
+  const skillsService = createSkillsService({ isDesktopRuntime: true });
+  t.mock.method(skillsService, "list", async (target) => ({
+    skills: catalogs.get(target.workspaceIdentity ?? "") ?? [],
+    diagnostics: [],
+    capability: { userScopeAvailable: true },
+  }));
+  const received: ContentBlock[][] = [];
+  const service = createAcpService({
+    directory,
+    skillsService,
+    connect: async () =>
+      connection(async (_text, blocks) => {
+        received.push(blocks ?? []);
+      }),
+  });
+  const send = (id: string, identity: string, text: string) =>
+    service.prompt({
+      ...workspace,
+      workspaceIdentity: identity,
+      id,
+      text,
+      commandId: crypto.randomUUID(),
+      attachments: [],
+      workspaceFiles: [],
+    });
+  const promptText = (index: number) =>
+    received[index]?.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n") ??
+    "";
+  try {
+    const first = await service.create({ ...workspace, agent: "codex" });
+    const second = await service.create({
+      ...workspace,
+      workspaceIdentity: "remote:plugin-b",
+      agent: "claude",
+    });
+    await send(first.id, workspace.workspaceIdentity, "查看这个议题");
+    assert.match(promptText(0), /name="inspect"/);
+    assert.match(promptText(0), /name="review" plugin="custom@third-party"/);
+    assert.doesNotMatch(promptText(0), /private skill body|<activated_skill/);
+    await send(second.id, "remote:plugin-b", "检查当前项目");
+    assert.match(promptText(1), /name="review"/);
+    assert.doesNotMatch(promptText(1), /name="inspect"/);
+    catalogs.set(workspace.workspaceIdentity, []);
+    await send(first.id, workspace.workspaceIdentity, "继续");
+    assert.match(promptText(2), /<available_plugin_skills>/);
+    assert.doesNotMatch(promptText(2), /<skill |name="inspect"|name="review"/);
+    const persisted = await readFile(join(directory, `${first.id}.json`), "utf8");
+    assert.deepEqual(
+      JSON.parse(persisted)
+        .entries.filter((entry: { kind: string }) => entry.kind === "user")
+        .map((entry: { text: string }) => entry.text),
+      ["查看这个议题", "继续"],
+    );
+    assert.doesNotMatch(persisted, /available_plugin_skills|private skill body|\/remote\/plugins/);
+  } finally {
+    await service.disposeAllAndWait();
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("ACP supplies target plugin MCP, keeps original history and rejects disabled references before admission", async () => {

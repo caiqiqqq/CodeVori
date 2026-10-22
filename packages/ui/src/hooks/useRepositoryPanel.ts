@@ -12,6 +12,7 @@ import { useWorkspaceServicesResolution } from "./useWorkspaceServices.js";
 import { forgeErrorId } from "@/lib/forgePanel.js";
 import { useForgeMutation } from "./useForgeMutation.js";
 import { repositoryNavigationStore } from "@/store/repositoryNavigationStore.js";
+import { repositoryIssueRefreshStore } from "@/store/repositoryIssueRefreshStore.js";
 
 export function useRepositoryPanel(
   scope: { workspacePath: string; workspaceIdentity?: string; remoteSessionId?: string },
@@ -195,7 +196,10 @@ export function useRepositoryPanel(
       alive = false;
     };
   }, [gitService, target, revision]);
-  const refresh = useCallback(() => setRevision((value) => value + 1), []);
+  const refresh = useCallback(() => {
+    repositoryIssueRefreshStore.getState().invalidate();
+    setRevision((value) => value + 1);
+  }, []);
   const mutation = useForgeMutation(target);
   const createIssue = async (draft: ForgeIssueDraft) => {
     if (!target) return null;

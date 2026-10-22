@@ -8,7 +8,6 @@ import {
   workTaskArchiveSchema,
   workTaskConcurrencySchema,
   workTaskCreateSchema,
-  workTaskListSchema,
   workTaskScopeSchema,
   workTaskStartSchema,
   workTaskTargetSchema,
@@ -24,7 +23,6 @@ import {
   type WorkTaskAttachmentChunk,
   type WorkTaskAttachmentTarget,
   type WorkTask,
-  type WorkTaskBoard,
   type WorkTaskCreate,
   type WorkTaskScope,
   type WorkTaskStart,
@@ -40,6 +38,7 @@ import type { IWorkTaskService, WorkTaskConversationEvent } from "./workTask.js"
 import { WorkTaskForgeCoordinator } from "./workTaskForgeCoordinator.js";
 import { archiveWorkTask, type WorkTaskCleanupRun } from "./workTaskArchive.js";
 import type { WorkTaskRun as Run, WorkTaskServiceOptions } from "./workTaskServiceOptions.js";
+import { createWorkTaskReads } from "./workTaskReads.js";
 const LEASE_MS = 30_000;
 const logger = createServiceLogger("work-tasks");
 
@@ -53,6 +52,8 @@ export class WorkTaskService implements IWorkTaskService {
   readonly getResultSource: IWorkTaskService["getResultSource"];
   readonly cancelResult: IWorkTaskService["cancelResult"];
   readonly complete: IWorkTaskService["complete"];
+  readonly getRepositoryIssueSummary: IWorkTaskService["getRepositoryIssueSummary"];
+  readonly list: IWorkTaskService["list"];
   private readonly cleaning = new Map<string, WorkTaskCleanupRun>();
   private initialized: Promise<void> | null = null;
   private ticking: Promise<void> | null = null;
@@ -61,6 +62,9 @@ export class WorkTaskService implements IWorkTaskService {
   private closed = false;
   private disposal: Promise<void> | null = null;
   constructor(private readonly options: WorkTaskServiceOptions) {
+    const reads = createWorkTaskReads(options, () => this.ready());
+    this.getRepositoryIssueSummary = reads.getRepositoryIssueSummary;
+    this.list = reads.list;
     const changed = () => this.publish();
     const closed = () => this.closed;
     const ready = () => this.ready();
@@ -237,14 +241,6 @@ export class WorkTaskService implements IWorkTaskService {
     } finally {
       this.finishRun(run, error);
     }
-  }
-  async list(input: WorkTaskScope & { includeArchived?: boolean }): Promise<WorkTaskBoard> {
-    const scope = workTaskListSchema.parse(input);
-    await this.ready();
-    return {
-      tasks: this.options.repo.list(scope, scope.includeArchived),
-      concurrency: this.options.repo.concurrency(scope),
-    };
   }
   async create(input: WorkTaskCreate) {
     const parsed = workTaskCreateSchema.parse(input);

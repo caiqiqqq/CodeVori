@@ -718,6 +718,10 @@ export interface IPlatformService {
   /** 同步当前窗口所有 tab 的 workspace 路径到 main 进程（用于跨窗口去重） */
   syncWindowTabs(paths: string[]): void;
   getDesktopLanAccess?(): Promise<import("./desktopWindow.js").DesktopLanAccessState>;
+  getDeviceBridgeState?(): Promise<import("./deviceBridge.js").DeviceBridgeState>;
+  executeDeviceBridgeCommand?(
+    command: import("./deviceBridge.js").DeviceBridgeCommand,
+  ): Promise<import("./deviceBridge.js").DeviceBridgeState>;
   setDesktopLanAccessEnabled?(
     enabled: boolean,
   ): Promise<import("./desktopWindow.js").DesktopLanAccessState>;

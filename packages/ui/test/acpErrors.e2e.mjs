@@ -44,6 +44,7 @@ try {
         const [subscription,setSubscription]=useState(false);
         const [away,setAway]=useState(false);
         window.__errors={
+          warnMany:()=>setSnapshot(s=>({...s,status:'running',entries:s.entries.map(e=>e.kind==='user'?{...e,failures:[1,2,3].map(n=>({...failure,id:'retry-'+n,severity:'warning',title:'Reconnecting... '+n+'/5'+(n===3?' '+ 'Waiting for provider connection to recover. '.repeat(8):'')}))}:e)})),
           leave:()=>setAway(true),
           enter:()=>setAway(false),
           subscription:()=>setSubscription(true),
@@ -97,6 +98,29 @@ try {
       );
       assert.equal(await page.locator("[data-conversation-notice]").count(), 0);
       await page.clock.install();
+      // 复现截图：不同 ID 的同类重连消息只能留下最新状态，不能堆叠为可复制的错误卡片。
+      await page.evaluate(() => window.__errors.warnMany());
+      const retryStatus = page.locator('[data-notice-severity="warning"]');
+      await retryStatus.waitFor();
+      assert.equal(await retryStatus.count(), 1);
+      assert.match(await retryStatus.innerText(), /Reconnecting\.\.\. 3\/5/);
+      assert.equal(await retryStatus.getAttribute("role"), "status");
+      assert.equal(await retryStatus.locator("button").count(), 0);
+      assert.equal(await retryStatus.locator("[data-error-code]").count(), 0);
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
+        false,
+      );
+      const warningBox = await retryStatus.boundingBox();
+      assert.ok(warningBox && warningBox.height > 24, "long status wraps instead of truncating");
+      await page.screenshot({
+        path: join(artifacts, `warning-${width}-${theme}.png`),
+        animations: "disabled",
+      });
+      await page.evaluate(() => window.__errors.render());
+      assert.equal(await retryStatus.count(), 1, "snapshot replay must not duplicate status");
+      await page.evaluate(() => window.__errors.finish());
+      await retryStatus.waitFor({ state: "detached" });
       await page.evaluate(() => window.__errors.warn());
       const warning = page.locator('[data-notice-severity="warning"]');
       await warning.waitFor();
@@ -105,9 +129,20 @@ try {
       await page.evaluate(() => window.__errors.render());
       await warning.waitFor();
       await page.clock.fastForward(2100);
-      await warning.waitFor({ state: "detached" });
+      await warning.waitFor();
+      await page.clock.fastForward(60_000);
       await page.evaluate(() => window.__errors.render());
-      assert.equal(await warning.count(), 0, "unrelated render must not resurrect warning");
+      await warning.waitFor();
+      // 未恢复时，跨窗格重挂载和 running 快照回放都不能隐藏提示。
+      await page.evaluate(() => window.__errors.leave());
+      await warning.waitFor({ state: "detached" });
+      await page.clock.fastForward(60_000);
+      await page.evaluate(() => window.__errors.enter());
+      await warning.waitFor();
+      await page.evaluate(() => window.__errors.render());
+      await warning.waitFor();
+      await page.evaluate(() => window.__errors.progress());
+      await warning.waitFor({ state: "detached" });
       // 观察 DOM 插入，防止先闪现再由 effect 隐藏，普通 count 检查会漏掉这种回归。
       await page.evaluate(() => {
         window.__warningInsertions = 0;
@@ -135,7 +170,7 @@ try {
           if (replay) window.__errors.replay();
           window.__errors.enter();
         }, replay);
-        await page.getByText("Partial answer", { exact: true }).waitFor();
+        await page.getByText("Partial answer resumed", { exact: true }).waitFor();
         assert.equal(await warning.count(), 0, "re-entry must not resurrect warning");
         assert.equal(
           await page.evaluate(() => window.__warningInsertions),
@@ -145,7 +180,7 @@ try {
       };
       await reenterWithoutWarning();
       await reenterWithoutWarning(true);
-      // 新事件即使文案相同仍展示；在离开期间到期不能重启五秒计时。
+      // 新事件即使文案相同仍展示；离开期间不按时间过期。
       await page.evaluate(() => window.__errors.warn(undefined, "next-incident"));
       await warning.waitFor();
       await page.clock.fastForward(3000);
@@ -155,19 +190,18 @@ try {
       await page.evaluate(() => window.__errors.enter());
       await warning.waitFor();
       await page.clock.fastForward(1100);
-      await warning.waitFor({ state: "detached" });
-      await page.evaluate(() => window.__errors.warn("Away deadline", "away-incident"));
       await warning.waitFor();
       await page.evaluate(() => window.__errors.leave());
       await warning.waitFor({ state: "detached" });
       await page.clock.fastForward(5100);
-      await reenterWithoutWarning();
+      await page.evaluate(() => window.__errors.enter());
+      await warning.waitFor();
       await page.evaluate(() => window.__errors.warn("Reconnecting... 1/5"));
       await warning.waitFor();
       await page.evaluate(() => window.__errors.progress());
       await warning.waitFor({ state: "detached" });
       await page.evaluate(() => window.__errors.replay());
-      await page.getByText("Partial answer resumed", { exact: true }).waitFor();
+      await page.getByText("Partial answer resumed resumed", { exact: true }).waitFor();
       assert.equal(await warning.count(), 0, "recovery dismissal survives replay");
       await page.evaluate(() => window.__errors.warn("Reconnecting... 2/5"));
       await warning.waitFor();
