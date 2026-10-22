@@ -10,6 +10,45 @@ import {
 
 import { codexUsageKey, type CodexUsageHistory } from "./acpNativeUsage.js";
 
+function createNativeTurnLookup(turns: CodexUsageHistory["turns"], until: number) {
+  // 修复原因：逐条用户消息 filter 整份原生轮次会产生平方级扫描；局部索引
+  // 保留乱序、缺时间和未完成边界的原规则，不修改 Host 持有的事实。
+  const dated = turns
+    .flatMap((turn) =>
+      turn.startedAt !== null && turn.startedAt <= until
+        ? [
+            {
+              time: turn.startedAt,
+              measured:
+                turn.complete &&
+                turn.measured &&
+                turn.finishedAt !== null &&
+                turn.finishedAt <= until,
+            },
+          ]
+        : [],
+    )
+    .sort((a, b) => a.time - b.time);
+  const unknown = [0];
+  for (const turn of dated) unknown.push(unknown[unknown.length - 1]! + (turn.measured ? 0 : 1));
+  const lowerBound = (time: number) => {
+    let low = 0;
+    let high = dated.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (dated[mid]!.time < time) low = mid + 1;
+      else high = mid;
+    }
+    return low;
+  };
+  return (from: number | undefined, to: number) => {
+    if (from === undefined) return false;
+    const start = lowerBound(from);
+    const end = lowerBound(to);
+    return end > start && unknown[end] === unknown[start];
+  };
+}
+
 /** A missing or discontinuous cumulative report changes the baseline, never a past turn. */
 export function recordAcpPromptUsage(
   session: AcpSession,
@@ -100,6 +139,16 @@ export function summarizeAcpUsage(
     const entries = session.entries.filter(
       (entry) => entry.kind === "user" && entry.id.startsWith("user:"),
     );
+    const measuredNativeTurn = history ? createNativeTurnLookup(history.turns, until) : null;
+    const nextTimes: number[] = [];
+    if (history) {
+      let next = Infinity;
+      for (let index = entries.length - 1; index >= 0; index--) {
+        nextTimes[index] = next;
+        const time = entries[index]!.createdAt;
+        if (time !== undefined) next = time;
+      }
+    }
     const facts = new Map(session.usageTurns.map((fact) => [fact.commandId, fact]));
     const seen = new Set<string>();
     let included = false;
@@ -126,30 +175,7 @@ export function summarizeAcpUsage(
       if (history) {
         // 修复原因：请求 Token 可以按时间补回，但用户轮次仅能关联到真实完成边界；
         // 缺日期、计数重置和未完成的原生轮次不能声称为整轮已计量。
-        const next =
-          entries.slice(index + 1).find((item) => item.createdAt !== undefined)?.createdAt ??
-          Infinity;
-        const turns =
-          entry.createdAt === undefined
-            ? []
-            : history.turns.filter(
-                (turn) =>
-                  turn.startedAt !== null &&
-                  turn.startedAt >= entry.createdAt! &&
-                  turn.startedAt < next &&
-                  turn.startedAt <= until,
-              );
-        if (
-          turns.length &&
-          turns.every(
-            (turn) =>
-              turn.complete &&
-              turn.measured &&
-              turn.finishedAt !== null &&
-              turn.finishedAt <= until,
-          )
-        )
-          group.measuredTurns++;
+        if (measuredNativeTurn!(entry.createdAt, nextTimes[index]!)) group.measuredTurns++;
         else group.unknownTurns++;
       } else {
         const fact = facts.get(commandId);

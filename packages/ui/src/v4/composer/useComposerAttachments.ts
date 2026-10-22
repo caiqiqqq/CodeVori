@@ -44,6 +44,7 @@ import {
   type ComposerAttachmentUploadStatus,
 } from "@/store/composerAttachmentUploadStore.js";
 import { uploadComposerAttachment, type AttachmentPutFn } from "@/v4/composer/attachmentUpload.js";
+import { classifyPathAttachment } from "./classifyPathAttachment.js";
 
 const COMPOSER_ATTACHMENT_UPLOAD_CONCURRENCY = 2;
 const COMPOSER_ATTACHMENT_AUTO_RETRY_DELAY_MS = 500;
@@ -216,7 +217,7 @@ export function useComposerAttachments(
     listenAddToChatEvents = true,
   } = options;
   const platform = usePlatform();
-  const { promptAttachmentTransferService } = useServices();
+  const { promptAttachmentTransferService, fileService } = useServices();
   const { intl } = useZCodeIntl();
   const scopeKey = buildScopeKey(workspacePath, workspaceIdentity, scopeId);
   exposeComposerAttachmentScopeKeyForE2E(scopeKey);
@@ -778,9 +779,38 @@ export function useComposerAttachments(
       if (selectedAttachments.length > remainingSlots) showAttachmentLimitWarning();
       for (const item of items) {
         if (item.uploadStatus === "queued") enqueueUpload(scopeKey, item.id);
+        if (item.localPath && !isRemoteAttachmentTarget(target ?? {})) {
+          // 修复原因：系统粘贴的目录会伪装成 File，按扩展名推断会显示 OCTET-STREAM 或图片。
+          // 仅更新当前 scope 中仍存在的同一路径，迟到结果不能恢复已删除附件或覆盖另一个草稿。
+          void classifyPathAttachment(item, fileService)
+            .then((classified) => {
+              if (classified.mimeType === item.mimeType) return;
+              updateItem(scopeKey, item.id, (current) =>
+                current.localPath === item.localPath
+                  ? {
+                      ...current,
+                      mimeType: classified.mimeType,
+                      sizeBytes: classified.sizeBytes,
+                      ...(current.attachmentRef && current.attachmentRef.ref === item.localPath
+                        ? {
+                            attachmentRef: {
+                              ...current.attachmentRef,
+                              mime: classified.mimeType,
+                              bytes: 0,
+                            },
+                          }
+                        : {}),
+                    }
+                  : current,
+              );
+            })
+            .catch((error) =>
+              logger.debug("[v4-composer-attachments] 路径类型查询失败，发送时由 Host 校验", error),
+            );
+        }
       }
     },
-    [commitScope, enqueueUpload, scopeKey, showAttachmentLimitWarning],
+    [commitScope, enqueueUpload, fileService, scopeKey, showAttachmentLimitWarning, updateItem],
   );
 
   const addAttachmentFiles = useCallback(

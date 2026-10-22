@@ -69,3 +69,41 @@ test("ACP validates capabilities and target workspace before admitting a turn", 
     await rm(outside, { recursive: true, force: true });
   }
 });
+
+test("ACP sends directory paths as references, including restored inline references", async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "acp-directory.png-")));
+  const file = join(directory, "notes.txt");
+  try {
+    await writeFile(file, "ordinary file");
+    const base = { text: "inspect", workspacePath: directory, workspaceFiles: [] };
+    for (const attachment of [
+      { fileName: "directory.png", mimeType: "image/png", path: directory },
+      {
+        fileName: "directory.png",
+        mimeType: "inode/directory",
+        dataBase64: Buffer.from(directory).toString("base64"),
+      },
+    ]) {
+      const blocks = await buildAcpPromptBlocks({ ...base, attachments: [attachment] });
+      assert.equal(blocks[1]?.type, "resource_link");
+      assert.equal(blocks[1]?.uri, pathToFileURL(directory).href);
+      assert.equal(blocks[1]?.mimeType, "inode/directory");
+    }
+    for (const path of ["relative/directory", file]) {
+      await assert.rejects(
+        buildAcpPromptBlocks({
+          ...base,
+          attachments: [
+            {
+              fileName: "directory",
+              mimeType: "inode/directory",
+              dataBase64: Buffer.from(path).toString("base64"),
+            },
+          ],
+        }),
+      );
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

@@ -1,0 +1,19 @@
+[Unit]
+Description=Mirror CodeVori GitHub releases and publish manifests
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=codevori-update
+Group=codevori-update
+WorkingDirectory=/opt/codevori-manifest
+ExecStart=/usr/bin/python3 /opt/codevori-manifest/sync-github-releases.py
+TimeoutStartSec=2h
+UMask=0022
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/codevori-update
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

@@ -83,7 +83,15 @@ export function buildAcpConversationRows(
         failures
           ?.filter((failure) => {
             // 修复原因：已保存的警告不是持续错误；结束或历史回放不能把重连中等临时提示再次挂到轮尾。
-            return failure.severity === "error" || (isLastTurn && status === "running");
+            if (failure.severity === "error") return true;
+            if (!isLastTurn || status !== "running") return false;
+            // 同类重连可能每次使用不同 id；只投影最后一条状态，避免错误卡片堆叠。
+            // 确认失败后同类警告失效，但 Host 的完整诊断仍原样保存。
+            return (
+              !failures.some(
+                (item) => item.category === failure.category && item.severity === "error",
+              ) && failures.findLast((item) => item.category === failure.category) === failure
+            );
           })
           .map((failure) => ({
             id: failure.id,

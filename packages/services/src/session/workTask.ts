@@ -30,6 +30,12 @@ import {
   type WorkTaskResultSource,
   type WorkTaskResultSourceRequest,
   type WorkTaskChangeRecord,
+  type RepositoryIssueSummaryRequest,
+  type RepositoryIssueSummary,
+  type ForgeRepositoryRequest,
+  type ForgeRepositoryInfo,
+  type ForgeListRequest,
+  type ForgeItemList,
 } from "@zcode/shared";
 import type {
   V4AttachmentBeginResult,
@@ -40,6 +46,8 @@ import type { Event, IDisposable } from "@zcode/rpc";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IWorkTaskService {
+  /** Host 派生只读数量；议题状态归 Forge，任务关联归 WorkTaskRepo。 */
+  getRepositoryIssueSummary(input: RepositoryIssueSummaryRequest): Promise<RepositoryIssueSummary>;
   getResultSource(input: WorkTaskResultSourceRequest): Promise<WorkTaskResultSource>;
   generateResult(input: WorkTaskResultRequest): Promise<WorkTaskResultDraft>;
   cancelResult(input: WorkTaskResultCancel): Promise<void>;
@@ -113,6 +121,11 @@ export interface WorkTaskForgePort {
   listForgeComments(input: ForgePageRequest): Promise<ForgePage<ForgeComment>>;
   createForgeComment(input: ForgeCommentRequest): Promise<void>;
   setForgeItemState(input: ForgeStateRequest): Promise<void>;
+}
+
+export interface WorkTaskRepositoryIssuesPort {
+  getForgeRepository(input: ForgeRepositoryRequest): Promise<ForgeRepositoryInfo>;
+  listForgeItems(input: ForgeListRequest): Promise<ForgeItemList>;
 }
 
 /** Host-injected read-only evidence and text generation; never sends task conversation input. */

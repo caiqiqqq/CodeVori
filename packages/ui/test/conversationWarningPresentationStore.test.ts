@@ -7,19 +7,19 @@ import {
 
 test("warning admission is idempotent and dismissal survives re-entry", () => {
   const store = useConversationWarningPresentationStore;
-  store.getState().begin("re-entry", "initial", true, 1000);
+  store.getState().begin("re-entry", "initial", true);
   const original = store.getState().presentations["re-entry"];
-  assert.equal(original?.expiresAt, 6000);
-  store.getState().begin("re-entry", "progress", true, 4000);
+  assert.equal(original?.dismissed, false);
+  store.getState().begin("re-entry", "progress", true);
   assert.equal(store.getState().presentations["re-entry"], original);
   store.getState().dismiss("re-entry");
   const dismissed = store.getState().presentations["re-entry"];
-  store.getState().begin("re-entry", "progress", true, 9000);
+  store.getState().begin("re-entry", "progress", true);
   assert.equal(store.getState().presentations["re-entry"], dismissed);
   assert.equal(dismissed?.dismissed, true);
-  store.getState().begin("new-incident", "progress", true, 9000);
+  store.getState().begin("new-incident", "progress", true);
   assert.equal(store.getState().presentations["new-incident"]?.dismissed, false);
-  store.getState().begin("historical", "", false, 9000);
+  store.getState().begin("historical", "", false);
   assert.equal(store.getState().presentations["historical"]?.dismissed, true);
 });
 

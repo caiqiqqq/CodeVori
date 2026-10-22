@@ -93,6 +93,12 @@ import { buildAcpPromptBlocks } from "./acpPromptBlocks.js";
 import type { ProjectMemoryContext } from "../memory/projectMemoryContext.js";
 import { AcpQueueGate } from "./acpQueueGate.js";
 import { AcpAttachmentStore } from "./acpAttachmentStore.js";
+import {
+  ACP_ATTACHMENTS_MCP_NAME,
+  acpAttachmentMcpEndpoint,
+  acpAttachmentPromptContext,
+  sentAcpAttachments,
+} from "./acpSessionAttachments.js";
 import { projectAcpPluginMcpServers } from "./acpMcpServers.js";
 import { createAcpWorkflowMcp } from "./acpWorkflowMcp.js";
 import { AcpWorkflowHost } from "./acpWorkflowHost.js";
@@ -320,6 +326,7 @@ export function createAcpService(
   const workflowMcp = createAcpWorkflowMcp(directory);
   const workflowRegistrations = new Map<string, { revoke(): void }>();
   const issuesRegistrations = new Map<string, { revoke(): void }>();
+  const attachmentRegistrations = new Map<string, { revoke(): void }>();
   const interactionQueues = new Map<
     string,
     Array<{
@@ -954,6 +961,8 @@ export function createAcpService(
     delegationRegistrations.delete(id);
     issuesRegistrations.get(id)?.revoke();
     issuesRegistrations.delete(id);
+    attachmentRegistrations.get(id)?.revoke();
+    attachmentRegistrations.delete(id);
     connections.get(id)?.close();
     connections.delete(id);
     connecting.delete(id);
@@ -979,6 +988,7 @@ export function createAcpService(
     let receivedContextUsage = false;
     let updatedModeId: string | undefined;
     let issuesRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
+    let attachmentRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
     // 修复原因：若仅在设置页检查启用/安装状态，create 与 session/load 仍会从旧静态命令
     // 启动禁用的 Agent。每次新连接都向同一个 Host 设置所有者重新解析，复用连接不重启。
     const connectionTask = (async () => {
@@ -1025,6 +1035,34 @@ export function createAcpService(
         throw new Error("ACP session closed while registering issues MCP");
       }
       if (issuesRegistration) issuesRegistrations.set(session.id, issuesRegistration);
+      // 首次握手就提供恢复工具；同一轮内部压缩后不依赖 Host 再次发送提示。
+      attachmentRegistration = await workflowMcp.register(
+        ACP_ATTACHMENTS_MCP_NAME,
+        acpAttachmentMcpEndpoint({
+          assertActive() {
+            if (disposed || generations.get(session.id) !== generation || removed.has(session.id))
+              throw new Error("ACP attachment connection is no longer active");
+          },
+          list: () => sentAcpAttachments(session),
+          read: (ref, offset) =>
+            service.readAttachment({
+              workspacePath: session.workspacePath,
+              ...(session.workspaceIdentity
+                ? { workspaceIdentity: session.workspaceIdentity }
+                : {}),
+              ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
+              id: session.id,
+              ref,
+              offset,
+            }),
+        }),
+      );
+      if (disposed || generations.get(session.id) !== generation || removed.has(session.id)) {
+        attachmentRegistration.revoke();
+        if (disposed) workflowMcp.dispose();
+        throw new Error("ACP session closed while registering attachments MCP");
+      }
+      attachmentRegistrations.set(session.id, attachmentRegistration);
       return connect({
         agent: session.agent,
         workspacePath: session.workspacePath,
@@ -1034,6 +1072,7 @@ export function createAcpService(
           ...(workflowRegistration ? [workflowRegistration.record] : []),
           ...(delegationRegistration ? [delegationRegistration.record] : []),
           ...(issuesRegistration ? [issuesRegistration.record] : []),
+          attachmentRegistration.record,
         ],
         ...(plugins ? { pluginServers: plugins.servers } : {}),
         ...(launch ? { launch } : {}),
@@ -1247,6 +1286,8 @@ export function createAcpService(
           workflowRegistrations.delete(session.id);
           issuesRegistrations.get(session.id)?.revoke();
           issuesRegistrations.delete(session.id);
+          attachmentRegistrations.get(session.id)?.revoke();
+          attachmentRegistrations.delete(session.id);
           // Adapter root 已退出仍需回收其进程组内可能存活的 App Server 后代。
           connections.get(session.id)?.close();
           connections.delete(session.id);
@@ -1404,6 +1445,13 @@ export function createAcpService(
       if (issuesRegistration && issuesRegistrations.get(session.id) === issuesRegistration) {
         issuesRegistration.revoke();
         issuesRegistrations.delete(session.id);
+      }
+      if (
+        attachmentRegistration &&
+        attachmentRegistrations.get(session.id) === attachmentRegistration
+      ) {
+        attachmentRegistration.revoke();
+        attachmentRegistrations.delete(session.id);
       }
       throw error;
     } finally {
@@ -1895,6 +1943,9 @@ export function createAcpService(
       if (!admitted || !ownsRun() || removed.has(session.id)) {
         return structuredClone(session);
       }
+      // admission 已接受本轮附件后再派生清单；不改用户历史，也不反复发送历史图片字节。
+      const attachmentContext = acpAttachmentPromptContext(session);
+      if (attachmentContext) blocks.push({ type: "text", text: attachmentContext });
       const usage = await port.prompt(prompt.text, blocks);
       const completedAt = Date.now();
       if (ownsRun()) await cancelInteractions(session, (item) => !item.runId);

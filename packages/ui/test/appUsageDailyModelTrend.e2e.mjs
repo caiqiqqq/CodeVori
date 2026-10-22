@@ -102,7 +102,20 @@ try {
       }, theme);
       const trend = page.getByTestId("app-usage-daily-trend");
       await trend.getByRole("button", { name: "small-5", exact: true }).waitFor();
-      assert.equal(await trend.getByRole("button").count(), 8);
+      assert.equal(await trend.getByRole("button").count(), 9);
+      const total = trend.getByRole("button", { name: "总量", exact: true });
+      assert.equal(await total.getAttribute("aria-pressed"), "true");
+      assert.equal(await trend.locator('button[aria-pressed="true"]').count(), 1);
+      await trend.locator(".recharts-line-dot").first().waitFor();
+      assert.equal(await trend.locator(".recharts-line").count(), 1);
+      await trend.scrollIntoViewIfNeeded();
+      await trend.locator(".recharts-line-dot").first().hover();
+      const totalTooltip = trend.locator(".recharts-tooltip-wrapper");
+      await totalTooltip.getByText("总量", { exact: true }).waitFor();
+      assert.match(await totalTooltip.innerText(), /16万/, "all eight models contribute to total");
+      // 模型与总量可独立开关；恢复模型视图后继续验证零点和缩放。
+      for (const id of ids) await trend.getByRole("button", { name: id, exact: true }).click();
+      await total.click();
       const lines = trend.locator(".recharts-line");
       await trend.locator(".recharts-line-dot").first().waitFor();
       const dots = trend.locator(".recharts-line-dots");
@@ -149,20 +162,21 @@ try {
       await trend.locator(".recharts-line-dot").waitFor();
       const sources = page.getByTestId("app-usage-sources");
       await sources.getByRole("tab", { name: /\/ API$/ }).click();
-      assert.equal(await trend.locator('button[aria-pressed="true"]').count(), 8);
-      // Keyboard operates the same legend; changing range restores all visible.
+      assert.equal(await trend.locator('button[aria-pressed="true"]').count(), 1);
+      assert.equal(await total.getAttribute("aria-pressed"), "true");
+      // Keyboard operates the same legend; changing range restores total only.
       await trend.getByRole("button", { name: ids[0], exact: true }).focus();
       await page.keyboard.press("Space");
       assert.equal(
         await trend.getByRole("button", { name: ids[0], exact: true }).getAttribute("aria-pressed"),
-        "false",
+        "true",
       );
       await page.getByRole("tab", { name: "近 30 日", exact: true }).click();
       await page.waitForFunction(
         () =>
           document.querySelectorAll(
             '[data-testid="app-usage-daily-trend"] button[aria-pressed="true"]',
-          ).length === 8,
+          ).length === 1,
       );
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

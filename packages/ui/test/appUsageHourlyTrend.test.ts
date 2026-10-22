@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createAppUsageHourlyAccumulator, appUsageHourlyModelUsageSchema } from "@zcode/shared";
 import { projectAppUsageCharts } from "../src/settings/usage-stats/appUsageSources.js";
-import { buildAppUsageDailyModelChartViewModel } from "../src/settings/usage-stats/AppUsageDailyModelTrendChart.js";
+import { buildAppUsageDailyModelChartViewModel } from "../src/settings/usage-stats/appUsageTrendChartViewModel.js";
 import { appUsageSnapshotSchema } from "@zcode/shared";
 
 test("today uses local midnight, excludes missing/future dates and combines model facts", () => {
@@ -138,7 +138,8 @@ test("hourly chart uses today's models and visible point peak rather than lifeti
     locale: "en",
     snapshot: value,
     granularity: "hourly",
-    hiddenModelIds: new Set(["Codex ACP · model"]),
+    showTotal: false,
+    selectedModelIds: new Set(["model"]),
   });
   assert.equal(view.chartData.length, 24);
   assert.equal(view.topModels[0]?.totalTokens, 20);
@@ -147,4 +148,29 @@ test("hourly chart uses today's models and visible point peak rather than lifeti
   assert.equal(view.chartData[12]?.total, 10);
   assert.equal(view.maxTokens, 10);
   assert.equal(view.chartData[0]?.model1, null);
+});
+
+test("hourly total combines native and ACP facts and skips empty hours", () => {
+  const value = projectAppUsageCharts(snapshot(), "all");
+  const view = buildAppUsageDailyModelChartViewModel({
+    intl: { formatMessage: () => "Total" } as never,
+    locale: "en",
+    snapshot: value,
+    granularity: "hourly",
+  });
+  assert.deepEqual(
+    view.visibleSeriesKeys.map((series) => series.key),
+    ["totalUsage"],
+  );
+  assert.equal(view.chartData[12]?.totalUsage, 30);
+  assert.equal(view.chartData[0]?.totalUsage, null);
+  assert.equal(view.maxTokens, 30);
+  assert.equal(view.chartData[12]?.total, 30);
+  const native = buildAppUsageDailyModelChartViewModel({
+    intl: { formatMessage: () => "Total" } as never,
+    locale: "en",
+    snapshot: projectAppUsageCharts(snapshot(), "native"),
+    granularity: "hourly",
+  });
+  assert.equal(native.maxTokens, 10);
 });
