@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** 仅承载已提交内容引用与展示元信息；内容本体不进入 command/topic frame。 */
+/** 已提交引用与展示元信息；inode/directory 表示 Host 目录引用，artifact 正文仅为绝对路径。 */
 export const attachmentRefSchema = z
   .object({
     ref: z.string(),
