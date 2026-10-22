@@ -1,17 +1,31 @@
 import base64
 from copy import deepcopy
 import hashlib
+from http.client import IncompleteRead
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import io
 import json
 from pathlib import Path
 import tempfile
+from threading import Thread
 import unittest
 from unittest.mock import patch
+from urllib.request import Request, urlopen
 
 SPEC = importlib.util.spec_from_file_location("release_sync", Path(__file__).with_name("sync-github-releases.py"))
 sync = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(sync)
+
+
+class Response(io.BytesIO):
+    def __init__(self, body, status=200, headers=None):
+        super().__init__(body)
+        self.status = status
+        self.headers = headers or {"Content-Length": str(len(body))}
+
+    def getheader(self, key, default=""):
+        return self.headers.get(key, default)
 
 
 class MirrorTests(unittest.TestCase):
@@ -25,6 +39,9 @@ class MirrorTests(unittest.TestCase):
         self.patcher = patch.object(sync, "open_url", self.open_url)
         self.patcher.start()
         self.addCleanup(self.patcher.stop)
+        sleeper = patch.object(sync.time, "sleep")
+        sleeper.start()
+        self.addCleanup(sleeper.stop)
 
     def fixture(self, tag, mobile=False, preview=False):
         names = [name for group in sync.installer_groups(tag[1:]).values() for name in group]
@@ -48,7 +65,7 @@ class MirrorTests(unittest.TestCase):
 
     def open_url(self, url, headers=None):
         self.requests.append(url)
-        return io.BytesIO(self.contents[url])
+        return Response(self.contents[url])
 
     def run_sync(self, release=None):
         return sync.sync_release(self.root, sync.REPOSITORY, release or self.release)
@@ -91,8 +108,8 @@ class MirrorTests(unittest.TestCase):
         old = (self.root / "manifests" / "stable").readlink()
         newer = self.fixture("v0.0.4")
         name = newer["assets"][0]["name"]
-        self.contents[sync.download_url(sync.REPOSITORY, "v0.0.4", newer["assets"][0])] = b"tampered"
-        with self.assertRaisesRegex(ValueError, "mismatch"):
+        self.contents[sync.download_url(sync.REPOSITORY, "v0.0.4", newer["assets"][0])] = b"x" * newer["assets"][0]["size"]
+        with self.assertRaisesRegex(OSError, "checksum mismatch"):
             self.run_sync(newer)
         self.assertEqual((self.root / "manifests" / "stable").readlink(), old)
         self.assertEqual(list((self.root / ".incoming").iterdir()), [])
@@ -170,23 +187,146 @@ class MirrorTests(unittest.TestCase):
         incoming = self.root / ".incoming"
         incoming.mkdir()
         partial = incoming / f"{checksum}-{asset['name']}.part"
-        class Response(io.BytesIO):
-            status = 206
-            def getheader(self, key, default=""):
-                return f"bytes 5-{len(body) - 1}/{len(body)}"
         for status in [206, 200]:
             partial.write_bytes(body[:5])
             def response(url, headers):
                 self.assertEqual(headers, {"Accept": "application/octet-stream", "Range": "bytes=5-"})
-                result = Response(body[5:] if status == 206 else body)
-                result.status = status
-                return result
+                return Response(body[5:] if status == 206 else body, status, {
+                    "Content-Range": f"bytes 5-{len(body) - 1}/{len(body)}",
+                })
             with patch.object(sync, "open_url", response):
                 info = sync.mirror_asset(self.root, sync.REPOSITORY, "v0.0.3", asset, checksum)
             destination = self.root / info["url"].lstrip("/")
             self.assertEqual(destination.read_bytes(), body)
             destination.unlink()
             self.assertFalse(partial.exists())
+
+    def download_fixture(self):
+        asset = self.release["assets"][0]
+        checksum = asset["digest"][7:]
+        body = self.contents[sync.download_url(sync.REPOSITORY, "v0.0.3", asset)]
+        partial = self.root / ".incoming" / f"{checksum}-{asset['name']}.part"
+        return asset, checksum, body, partial
+
+    def mirror(self, asset, checksum):
+        return sync.mirror_asset(self.root, sync.REPOSITORY, "v0.0.3", asset, checksum)
+
+    def test_short_eof_resumes_immediately_without_discarding_bytes(self):
+        asset, checksum, body, partial = self.download_fixture()
+        calls = []
+        def response(url, headers):
+            calls.append(headers)
+            if len(calls) == 1:
+                return Response(body[:5], headers={"Content-Length": str(len(body))})
+            self.assertEqual(partial.read_bytes(), body[:5])
+            self.assertEqual(headers["Range"], "bytes=5-")
+            return Response(body[5:], 206, {"Content-Range": f"bytes 5-{len(body)-1}/{len(body)}"})
+        with patch.object(sync, "open_url", response):
+            info = self.mirror(asset, checksum)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual((self.root / info["url"].lstrip("/")).read_bytes(), body)
+
+    def test_exhausted_short_download_keeps_offset_for_next_run(self):
+        asset, checksum, body, partial = self.download_fixture()
+        def response(url, headers):
+            offset = partial.stat().st_size if partial.exists() else 0
+            return Response(body[offset:offset+2], 206, {
+                "Content-Range": f"bytes {offset}-{len(body)-1}/{len(body)}",
+            })
+        with patch.object(sync, "open_url", response), self.assertRaisesRegex(OSError, "Incomplete download.*actual=6"):
+            self.mirror(asset, checksum)
+        self.assertEqual(partial.read_bytes(), body[:6])
+        def resume(url, headers):
+            self.assertEqual(headers["Range"], "bytes=6-")
+            return Response(body[6:], 206, {"Content-Range": f"bytes 6-{len(body)-1}/{len(body)}"})
+        with patch.object(sync, "open_url", resume):
+            self.mirror(asset, checksum)
+
+    def test_incomplete_read_preserves_exception_bytes_and_resumes(self):
+        asset, checksum, body, partial = self.download_fixture()
+        class Interrupted(Response):
+            def read(self, amount):
+                raise IncompleteRead(body[:5], len(body)-5)
+        def response(url, headers):
+            if not partial.exists():
+                return Interrupted(body)
+            self.assertEqual(partial.read_bytes(), body[:5])
+            self.assertEqual(headers["Range"], "bytes=5-")
+            return Response(body[5:], 206, {"Content-Range": f"bytes 5-{len(body)-1}/{len(body)}"})
+        with patch.object(sync, "open_url", response):
+            self.mirror(asset, checksum)
+
+    def test_complete_checksum_mismatch_retries_from_zero_with_diagnostics(self):
+        asset, checksum, body, partial = self.download_fixture()
+        calls = []
+        def response(url, headers):
+            calls.append(headers)
+            self.assertNotIn("Range", headers)
+            self.assertFalse(partial.exists())
+            return Response(b"x" * len(body) if len(calls) == 1 else body)
+        with patch.object(sync, "open_url", response), patch("builtins.print") as log:
+            self.mirror(asset, checksum)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(any("actual_sha256=" in str(c) and "expected_sha256=" in str(c) for c in log.call_args_list))
+
+    def test_wrong_range_start_or_total_never_appends_to_partial(self):
+        asset, checksum, body, partial = self.download_fixture()
+        partial.parent.mkdir()
+        for value in [f"bytes 0-{len(body)-1}/{len(body)}", f"bytes 5-{len(body)-1}/{len(body)+1}", "invalid"]:
+            partial.write_bytes(body[:5])
+            with patch.object(sync, "open_url", lambda *args: Response(body[5:], 206, {"Content-Range": value})):
+                with self.assertRaisesRegex(OSError, "Invalid resume response"):
+                    self.mirror(asset, checksum)
+            self.assertEqual(partial.read_bytes(), body[:5])
+
+    def test_unsolicited_partial_response_is_validated(self):
+        asset, checksum, body, partial = self.download_fixture()
+        with patch.object(sync, "open_url", lambda *args: Response(body[5:], 206, {
+            "Content-Range": f"bytes 5-{len(body)-1}/{len(body)}",
+        })), self.assertRaisesRegex(OSError, "Invalid resume response"):
+            self.mirror(asset, checksum)
+        self.assertFalse(partial.exists())
+
+    def test_oversized_download_is_deleted_and_never_published(self):
+        asset, checksum, body, partial = self.download_fixture()
+        with patch.object(sync, "open_url", lambda *args: Response(body+b"extra")), self.assertRaisesRegex(OSError, "Oversized download"):
+            self.mirror(asset, checksum)
+        self.assertFalse(partial.exists())
+        self.assertFalse((self.root / "manifests").exists())
+
+    def test_real_http_short_content_length_recovers_using_range(self):
+        asset, checksum, body, partial = self.download_fixture()
+        requests = []
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                value = self.headers.get("Range")
+                requests.append(value)
+                offset = int(value.removeprefix("bytes=").removesuffix("-")) if value else 0
+                self.send_response(206 if value else 200)
+                self.send_header("Content-Length", str(len(body)-offset))
+                if value:
+                    self.send_header("Content-Range", f"bytes {offset}-{len(body)-1}/{len(body)}")
+                self.end_headers()
+                # 首次连接宣称完整长度后提前关闭，走真实 urllib/HTTPResponse 的短 EOF 路径。
+                self.wfile.write(body[offset:] if value else body[:5])
+
+            def log_message(self, *args):
+                pass
+
+        with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+            worker = Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            try:
+                def local_response(url, headers):
+                    return urlopen(Request(f"http://127.0.0.1:{server.server_port}/asset", headers=headers), timeout=5)
+                with patch.object(sync, "open_url", local_response):
+                    info = self.mirror(asset, checksum)
+            finally:
+                server.shutdown()
+                worker.join()
+        self.assertEqual(requests, [None, "bytes=5-"])
+        self.assertEqual((self.root / info["url"].lstrip("/")).read_bytes(), body)
+        self.assertFalse(partial.exists())
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import fcntl
 import hashlib
+from http.client import IncompleteRead
 import json
 import os
 from pathlib import Path
@@ -59,6 +60,7 @@ def retry(operation):
                 raise
             if attempt == 2:
                 raise
+            print(f"Retry {attempt + 1}/2 after {type(error).__name__}: {error}", flush=True)
             time.sleep(2 ** attempt)
 
 
@@ -132,39 +134,60 @@ def mirror_asset(root, repository, tag, asset, checksum):
         incoming = root / ".incoming"
         incoming.mkdir(exist_ok=True)
         temporary = incoming / f"{checksum}-{name}.part"
-        try:
-            offset = temporary.stat().st_size if temporary.exists() else 0
-            if offset > asset["size"]:
-                temporary.unlink()
-                offset = 0
-            if offset < asset["size"]:
-                headers = {"Accept": "application/octet-stream"}
-                if offset:
-                    headers["Range"] = f"bytes={offset}-"
-                with open_url(download_url(repository, tag, asset), headers) as source:
-                    # CDN 忽略 Range 时必须重写文件，不能把整包追加到旧内容。
-                    if offset and source.status != 206:
-                        offset = 0
-                    if offset and not source.getheader("Content-Range", "").startswith(f"bytes {offset}-"):
-                        raise ValueError(f"Invalid resume response: {name}")
-                    with temporary.open("ab" if offset else "wb") as output:
-                        size = offset
-                        while chunk := source.read(1024 * 1024):
-                            size += len(chunk)
-                            if size > asset["size"]:
-                                raise ValueError(f"Oversized download: {name}")
-                            output.write(chunk)
-            actual, sha512, size = file_info(temporary)
-            if actual != checksum or size != asset["size"]:
-                raise ValueError(f"Downloaded checksum/size mismatch: {name}")
-            os.chmod(temporary, 0o644)
-            os.replace(temporary, destination)
-            print(f"Mirrored {name} ({size} bytes)", flush=True)
-            return {"url": "/" + str(destination.relative_to(root)), "sha512": sha512, "size": size}
-        except ValueError:
+        offset = temporary.stat().st_size if temporary.exists() else 0
+        if offset > asset["size"]:
             temporary.unlink(missing_ok=True)
-            raise
-        # 网络错误/服务重启保留这个资产的已下载部分，下一次从断点继续。
+            offset = 0
+        if offset < asset["size"]:
+            headers = {"Accept": "application/octet-stream"}
+            if offset:
+                headers["Range"] = f"bytes={offset}-"
+            with open_url(download_url(repository, tag, asset), headers) as source:
+                # CDN 忽略 Range 时必须重写文件，不能把整包追加到旧内容。
+                if source.status == 200:
+                    offset = 0
+                elif source.status == 206:
+                    value = source.getheader("Content-Range", "")
+                    match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)", value)
+                    if (not match or int(match[1]) != offset or
+                            not offset <= int(match[2]) < asset["size"] or int(match[3]) != asset["size"]):
+                        raise OSError(f"Invalid resume response: {name}, offset={offset}, Content-Range={value}")
+                else:
+                    raise OSError(f"Unexpected download status: {name}, status={source.status}")
+                print(f"Downloading {name}: offset={offset}, expected={asset['size']}, "
+                      f"status={source.status}, Content-Length={source.getheader('Content-Length', '')}, "
+                      f"Content-Range={source.getheader('Content-Range', '')}", flush=True)
+                with temporary.open("ab" if offset else "wb") as output:
+                    size = offset
+                    while True:
+                        interrupted = None
+                        try:
+                            chunk = source.read(256 * 1024)
+                        except IncompleteRead as error:
+                            # HTTP 提前断流携带的字节尚未写盘，保留后才能正确按断点续传。
+                            chunk, interrupted = error.partial, error
+                        if size + len(chunk) > asset["size"]:
+                            output.close()
+                            temporary.unlink(missing_ok=True)
+                            raise OSError(f"Oversized download: {name}, actual={size + len(chunk)}, expected={asset['size']}")
+                        output.write(chunk)
+                        size += len(chunk)
+                        if interrupted:
+                            raise OSError(f"Interrupted download: {name}, actual={size}, expected={asset['size']}") from interrupted
+                        if not chunk:
+                            break
+        actual, sha512, size = file_info(temporary)
+        # urllib.read(amt) 遇到提前 EOF 不一定抛异常；短文件必须保留并重试，不能当成坏包删除。
+        if size < asset["size"]:
+            raise OSError(f"Incomplete download: {name}, actual={size}, expected={asset['size']}")
+        if actual != checksum:
+            temporary.unlink(missing_ok=True)
+            raise OSError(f"Downloaded checksum mismatch: {name}, actual={size}, expected={asset['size']}, "
+                          f"actual_sha256={actual}, expected_sha256={checksum}")
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, destination)
+        print(f"Mirrored {name} ({size} bytes)", flush=True)
+        return {"url": "/" + str(destination.relative_to(root)), "sha512": sha512, "size": size}
     return retry(download)
 
 
