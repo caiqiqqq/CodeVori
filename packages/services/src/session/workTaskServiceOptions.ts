@@ -5,10 +5,18 @@ import type {
   WorkTaskRepositoryIssuesPort,
   WorkTaskResultPort,
   WorkTaskConversationPort,
+  WorkTaskConversationEvent,
   WorkTaskMergePort,
 } from "./workTask.js";
 import type { WorkTaskRepo } from "./workTaskRepo.js";
 import type { WorkTaskAttachmentStore } from "./workTaskAttachmentStore.js";
+
+export interface WorkTaskRun {
+  task: WorkTask;
+  abort: AbortController;
+  promise: Promise<void>;
+  conversation?: (event: WorkTaskConversationEvent) => void;
+}
 
 export interface WorkTaskServiceOptions {
   repo: WorkTaskRepo;

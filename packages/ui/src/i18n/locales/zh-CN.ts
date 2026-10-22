@@ -105,6 +105,8 @@ const zhCN: Record<string, string> = {
   "workTasks.create": "新建任务",
   "workTasks.edit": "编辑任务",
   "workTasks.save": "保存",
+  "workTasks.sessionIdCopied": "已复制会话 ID",
+  "workTasks.copySessionIdFailed": "复制会话 ID 失败",
   "workTasks.saveAndStart": "保存并重新开始",
   "workTasks.close": "取消",
   "workTasks.prompt": "任务描述",

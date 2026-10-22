@@ -12,6 +12,7 @@ import {
   workTaskStartSchema,
   workTaskTargetSchema,
   workTaskUpdateSchema,
+  workTaskRenameSchema,
   workTaskAttachmentImportSchema,
   workTaskAttachmentBeginSchema,
   workTaskAttachmentChunkSchema,
@@ -27,6 +28,7 @@ import {
   type WorkTaskStart,
   type WorkTaskTarget,
   type WorkTaskUpdate,
+  type WorkTaskRename,
   type WorkTaskMergeRequest,
   type WorkTaskArchive,
 } from "@zcode/shared";
@@ -35,15 +37,8 @@ import { assertWorkTaskLocal } from "./workTask.js";
 import type { IWorkTaskService, WorkTaskConversationEvent } from "./workTask.js";
 import { WorkTaskForgeCoordinator } from "./workTaskForgeCoordinator.js";
 import { archiveWorkTask, type WorkTaskCleanupRun } from "./workTaskArchive.js";
-import type { WorkTaskServiceOptions } from "./workTaskServiceOptions.js";
+import type { WorkTaskRun as Run, WorkTaskServiceOptions } from "./workTaskServiceOptions.js";
 import { createWorkTaskReads } from "./workTaskReads.js";
-
-interface Run {
-  task: WorkTask;
-  abort: AbortController;
-  promise: Promise<void>;
-  conversation?: (event: WorkTaskConversationEvent) => void;
-}
 const LEASE_MS = 30_000;
 const logger = createServiceLogger("work-tasks");
 
@@ -261,6 +256,12 @@ export class WorkTaskService implements IWorkTaskService {
     await this.ready();
     await this.validateAttachments(parsed, parsed.attachments);
     const task = this.options.repo.update(parsed);
+    this.publish();
+    return task;
+  }
+  async rename(input: WorkTaskRename) {
+    await this.ready();
+    const task = this.options.repo.rename(workTaskRenameSchema.parse(input));
     this.publish();
     return task;
   }

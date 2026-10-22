@@ -79,78 +79,82 @@ export function WorkTaskBoardView({
                 {columns[key].length ? (
                   <div className="flex min-w-0 flex-col gap-1 pb-3">
                     {columns[key].map((task) => (
-                      <article
+                      <WorkTaskActions
                         key={workTaskSelectionKey(task)}
-                        data-testid="work-task-card"
-                        data-task-id={task.id}
-                        data-workspace-key={workTaskSelectionKey(task)}
-                        className={cn(
-                          "relative flex h-9 min-w-0 items-center gap-1 rounded-md border px-1",
-                          taskKey(task) === selectedId
-                            ? "border-icon-blue bg-accent hover:bg-accent"
-                            : "border-card-border bg-card hover:bg-hover",
-                        )}
-                        data-selected={taskKey(task) === selectedId}
+                        task={task}
+                        panel={panelForTask?.(task) ?? panel}
+                        menu
+                        onOpenConversation={onOpenConversation}
+                        onEdit={onEdit}
+                        onDetails={onDetails}
+                        onComplete={onComplete}
                       >
-                        {/* Zai 主题的选中底色与普通卡片相同；用强调底色、边框和不占位标记明确当前任务，悬停时保持选中。 */}
-                        {taskKey(task) === selectedId ? (
-                          <span
-                            aria-hidden="true"
-                            data-testid="work-task-selection-marker"
-                            className="pointer-events-none absolute inset-y-1.5 left-0 w-1 rounded-r-sm bg-icon-blue"
-                          />
-                        ) : null}
-                        {/* 多行卡片占用过多空间；固定单行且菜单独立，长正文和错误留在右侧及详情。 */}
-                        <button
-                          type="button"
-                          onClick={() => onSelect(taskKey(task))}
-                          aria-label={task.title}
-                          aria-pressed={taskKey(task) === selectedId}
-                          title={
-                            projectOptions ? `${task.title} · ${task.workspacePath}` : task.title
-                          }
-                          className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm px-1 text-left whitespace-nowrap focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <WorkTaskAgent task={task} iconOnly />
-                          <span
-                            data-testid="work-task-card-title"
-                            className="min-w-0 flex-1 truncate text-ui-base font-medium"
+                        {(menu) => (
+                          <article
+                            data-testid="work-task-card"
+                            data-task-id={task.id}
+                            data-workspace-key={workTaskSelectionKey(task)}
+                            className={cn(
+                              "relative flex h-9 min-w-0 items-center gap-1 rounded-md border px-1",
+                              taskKey(task) === selectedId
+                                ? "border-icon-blue bg-accent hover:bg-accent"
+                                : "border-card-border bg-card hover:bg-hover",
+                            )}
+                            data-selected={taskKey(task) === selectedId}
                           >
-                            {task.title}
-                          </span>
-                          {projectOptions ? (
-                            <span
-                              data-testid="work-task-card-project"
-                              className="max-w-20 truncate text-ui-xs text-foreground-subtle"
-                              title={task.workspacePath}
+                            {/* Zai 主题的选中底色与普通卡片相同；用强调底色、边框和不占位标记明确当前任务，悬停时保持选中。 */}
+                            {taskKey(task) === selectedId ? (
+                              <span
+                                aria-hidden="true"
+                                data-testid="work-task-selection-marker"
+                                className="pointer-events-none absolute inset-y-1.5 left-0 w-1 rounded-r-sm bg-icon-blue"
+                              />
+                            ) : null}
+                            {/* 多行卡片占用过多空间；固定单行且菜单独立，长正文和错误留在右侧及详情。 */}
+                            <button
+                              type="button"
+                              onClick={() => onSelect(taskKey(task))}
+                              aria-label={task.title}
+                              aria-pressed={taskKey(task) === selectedId}
+                              title={
+                                projectOptions
+                                  ? `${task.title} · ${task.workspacePath}`
+                                  : task.title
+                              }
+                              className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm px-1 text-left whitespace-nowrap focus-visible:ring-2 focus-visible:ring-ring"
                             >
-                              {projectOptions.find(
-                                ({ tab }) =>
-                                  workTaskSelectionKey({ ...tab, id: task.id }) ===
-                                  workTaskSelectionKey(task),
-                              )?.label ?? task.workspacePath}
-                            </span>
-                          ) : null}
-                          <WorkTaskStatus task={task} />
-                          {task.archived ? (
-                            <span className="shrink-0 text-ui-xs text-foreground-subtlest">
-                              {t("archived")}
-                            </span>
-                          ) : null}
-                        </button>
-                        <WorkTaskSourceLink task={task} compact />
-                        <div className="shrink-0">
-                          <WorkTaskActions
-                            task={task}
-                            panel={panelForTask?.(task) ?? panel}
-                            menu
-                            onOpenConversation={onOpenConversation}
-                            onEdit={onEdit}
-                            onDetails={onDetails}
-                            onComplete={onComplete}
-                          />
-                        </div>
-                      </article>
+                              <WorkTaskAgent task={task} iconOnly />
+                              <span
+                                data-testid="work-task-card-title"
+                                className="min-w-0 flex-1 truncate text-ui-base font-medium"
+                              >
+                                {task.title}
+                              </span>
+                              {projectOptions ? (
+                                <span
+                                  data-testid="work-task-card-project"
+                                  className="max-w-20 truncate text-ui-xs text-foreground-subtle"
+                                  title={task.workspacePath}
+                                >
+                                  {projectOptions.find(
+                                    ({ tab }) =>
+                                      workTaskSelectionKey({ ...tab, id: task.id }) ===
+                                      workTaskSelectionKey(task),
+                                  )?.label ?? task.workspacePath}
+                                </span>
+                              ) : null}
+                              <WorkTaskStatus task={task} />
+                              {task.archived ? (
+                                <span className="shrink-0 text-ui-xs text-foreground-subtlest">
+                                  {t("archived")}
+                                </span>
+                              ) : null}
+                            </button>
+                            <WorkTaskSourceLink task={task} compact />
+                            <div className="shrink-0">{menu}</div>
+                          </article>
+                        )}
+                      </WorkTaskActions>
                     ))}
                   </div>
                 ) : (
