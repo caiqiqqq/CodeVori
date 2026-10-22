@@ -2344,6 +2344,8 @@ const zhCN: Record<string, string> = {
   "taskList.forkedUntitled": "新任务",
   "taskList.noTasks": "暂无任务",
   "taskList.noArchivedTasks": "暂无已归档对话",
+  "taskList.archiveLocalProject": "本地项目",
+  "taskList.archiveRemoteProject": "远程项目",
   "taskList.loading": "正在获取任务...",
   "taskList.syncingRemoteWorkspaces": "正在加载远端任务...",
   "taskList.showMore": "显示更多",

@@ -97,6 +97,21 @@ try {
       assert.equal(await localGroup.getByTestId("archive-project-count").textContent(), "6");
       assert.equal(await otherGroup.getByTestId("archive-project-count").textContent(), "2");
       assert.equal(await nestedGroup.getByRole("heading", { name: /closed-project/ }).count(), 1);
+      // 同名项目必须直接展示路径；只在 title 里提供路径无法覆盖手机与无悬停操作。
+      for (const [target, path, source] of [
+        [localGroup, "/fixture/closed-project", "本地项目"],
+        [nestedGroup, "/fixture/nested/closed-project", "本地项目"],
+        [group("remote:offline"), "/fixture/closed-project", "远程项目"],
+      ]) {
+        const projectPath = target.getByTestId("archive-project-path");
+        assert.equal(await projectPath.textContent(), path);
+        assert.equal(await projectPath.isVisible(), true);
+        assert.equal(await target.getByText(source, { exact: true }).isVisible(), true);
+        assert.equal(
+          await projectPath.evaluate((element) => element.scrollWidth <= element.clientWidth),
+          true,
+        );
+      }
       assert.deepEqual(await groupRows(group("remote:offline")), [
         "archived-native-task-native-offline",
       ]);

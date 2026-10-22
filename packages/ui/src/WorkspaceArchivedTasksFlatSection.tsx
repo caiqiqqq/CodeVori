@@ -162,26 +162,48 @@ export function WorkspaceArchivedTasksFlatSection({
           const workspace = firstEntry.kind === "acp" ? firstEntry.session : firstEntry.task;
           const label =
             workspaceLabelByKey.get(workspaceKey) ?? getPathLeaf(workspace.workspacePath);
+          const isRemote = Boolean(workspace.workspaceIdentity?.trim());
           return (
-            <section key={workspaceKey} data-testid="archive-project-group">
+            <section
+              key={workspaceKey}
+              data-testid="archive-project-group"
+              className="min-w-0 rounded-xl border border-border p-2"
+            >
+              {/* 短名称会重名，且手机没有悬停；路径必须常显，项目标题独立于对话正文。 */}
               <h3
                 data-workspace-key={workspaceKey}
-                className="flex min-w-0 items-center gap-2 px-2.5 py-2 text-ui-base font-medium text-foreground"
+                className="flex min-w-0 items-start gap-2 px-2.5 pt-2 text-ui-base font-semibold text-foreground"
                 title={workspace.workspacePath}
               >
-                {workspace.workspaceIdentity?.trim() ? (
-                  <Cloud aria-hidden="true" className="size-4 shrink-0 text-foreground-subtle" />
+                {isRemote ? (
+                  <Cloud
+                    aria-hidden="true"
+                    className="mt-0.5 size-4 shrink-0 text-foreground-subtle"
+                  />
                 ) : (
-                  <Folder aria-hidden="true" className="size-4 shrink-0 text-foreground-subtle" />
+                  <Folder
+                    aria-hidden="true"
+                    className="mt-0.5 size-4 shrink-0 text-foreground-subtle"
+                  />
                 )}
-                <span className="min-w-0 truncate">{label}</span>
+                <span className="min-w-0 flex-1 wrap-anywhere">{label}</span>
                 <span
                   data-testid="archive-project-count"
-                  className="shrink-0 text-ui-xs font-normal text-foreground-subtlest"
+                  className="shrink-0 text-ui-sm font-normal text-foreground-subtle"
                 >
                   {entries.length.toLocaleString(locale)}
                 </span>
               </h3>
+              <div className="mx-2.5 mt-1 mb-2 space-y-1 border-b border-border pb-3 text-ui-sm text-foreground-subtle">
+                <p>
+                  {intl.formatMessage({
+                    id: isRemote ? "taskList.archiveRemoteProject" : "taskList.archiveLocalProject",
+                  })}
+                </p>
+                <p data-testid="archive-project-path" className="font-mono wrap-anywhere">
+                  {workspace.workspacePath}
+                </p>
+              </div>
               <ul className="space-y-1">
                 {entries.map((entry) => {
                   if (entry.kind === "acp") {

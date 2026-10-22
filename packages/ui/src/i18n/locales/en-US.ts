@@ -2554,6 +2554,8 @@ const enUS: Record<string, string> = {
   "taskList.forkedUntitled": "New task",
   "taskList.noTasks": "No tasks yet",
   "taskList.noArchivedTasks": "No archived conversations",
+  "taskList.archiveLocalProject": "Local project",
+  "taskList.archiveRemoteProject": "Remote project",
   "taskList.loading": "Loading tasks...",
   "taskList.syncingRemoteWorkspaces": "Loading remote tasks...",
   "taskList.showMore": "Show more",
