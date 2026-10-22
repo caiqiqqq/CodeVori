@@ -3,12 +3,22 @@ import { createServer, type Server } from "node:http";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { NativeMcpServerRecord } from "@zcode/shared";
+import type { ContentBlock } from "@agentclientprotocol/sdk";
 
-export interface WorkflowMcpEndpoint {
+interface McpEndpointTools {
   names: readonly string[];
   tools?: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
-  call(name: string, args: Record<string, unknown>): Promise<unknown>;
 }
+
+// 图片恢复必须返回 MCP image，不能被通用 JSON 包装退化成大段 base64 文本。
+export type WorkflowMcpEndpoint = McpEndpointTools &
+  (
+    | { call(name: string, args: Record<string, unknown>): Promise<unknown>; callTool?: never }
+    | {
+        call?: never;
+        callTool(name: string, args: Record<string, unknown>): Promise<{ content: ContentBlock[] }>;
+      }
+  );
 
 const proxySource = `import { createInterface } from "node:readline";
 const input = createInterface({ input: process.stdin });
@@ -67,7 +77,7 @@ function toolInputSchema(name: string): Record<string, unknown> {
 
 /** Host-local, capability-bound MCP server. No bearer is ever saved in a session snapshot. */
 export function createAcpWorkflowMcp(directory: string) {
-  const endpoints = new Map<string, WorkflowMcpEndpoint>();
+  const endpoints = new Map<string, { name: string; endpoint: WorkflowMcpEndpoint }>();
   let server: Server | undefined;
   let port = 0;
   let starting: Promise<void> | undefined;
@@ -82,11 +92,12 @@ export function createAcpWorkflowMcp(directory: string) {
       const instance = createServer((req, res) => {
         void (async () => {
           const token = req.headers.authorization?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
-          const endpoint = token ? endpoints.get(token) : undefined;
-          if (!endpoint || req.method !== "POST" || req.url !== "/mcp") {
+          const registered = token ? endpoints.get(token) : undefined;
+          if (!registered || req.method !== "POST" || req.url !== "/mcp") {
             res.writeHead(403).end();
             return;
           }
+          const { endpoint } = registered;
           let body = "";
           for await (const chunk of req) {
             body += String(chunk);
@@ -106,7 +117,7 @@ export function createAcpWorkflowMcp(directory: string) {
               result = {
                 protocolVersion: "2024-11-05",
                 capabilities: { tools: {} },
-                serverInfo: { name: "zcode-workflows", version: "1.0.0" },
+                serverInfo: { name: registered.name, version: "1.0.0" },
               };
               break;
             case "ping":
@@ -127,8 +138,12 @@ export function createAcpWorkflowMcp(directory: string) {
               const name = rpc.params?.name;
               if (!name || !endpoint.names.includes(name)) throw new Error("Unknown workflow tool");
               try {
-                const value = await endpoint.call(name, rpc.params?.arguments ?? {});
-                result = { content: [{ type: "text", text: JSON.stringify(value) }] };
+                if (endpoint.callTool) {
+                  result = await endpoint.callTool(name, rpc.params?.arguments ?? {});
+                } else {
+                  const value = await endpoint.call(name, rpc.params?.arguments ?? {});
+                  result = { content: [{ type: "text", text: JSON.stringify(value) }] };
+                }
               } catch (error) {
                 result = {
                   content: [
@@ -191,7 +206,7 @@ export function createAcpWorkflowMcp(directory: string) {
     ): Promise<{ record: NativeMcpServerRecord; revoke(): void }> {
       await start();
       const token = randomBytes(32).toString("hex");
-      endpoints.set(token, endpoint);
+      endpoints.set(token, { name, endpoint });
       return {
         record: {
           source: "zcodeagentmcp",

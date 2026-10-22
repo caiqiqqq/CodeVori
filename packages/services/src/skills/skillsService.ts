@@ -28,7 +28,7 @@ import type {
 import { DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS } from "@zcode/shared";
 import type { ISkillsService } from "./skills.js";
 import { SKILL_FILE_NAME, walkSkillMarkdownPaths } from "./skillDiscoveryWalk.js";
-import { buildSkillsPromptContext, hasExplicitSkillReference } from "./skillsPromptContext.js";
+import { buildSkillsPromptContext } from "./skillsPromptContext.js";
 import { readInstalledPluginRoots } from "#src/plugins/installedPluginRoots.js";
 
 interface DiscoverResult {
@@ -1054,10 +1054,7 @@ export function createSkillsService(options?: SkillsServiceOptions): ISkillsServ
       provider?: ZCodeProvider;
       prompt: string;
     }): Promise<SkillsPromptContext> {
-      if (!hasExplicitSkillReference(params.prompt)) {
-        return { prompt: params.prompt, activatedSkillNames: [] };
-      }
-
+      // 修复依据：普通 ACP 请求也要读取目标 Host 最新启用目录，覆盖停用或卸载前的旧目录。
       const { skills } = await this.list({
         workspacePath: params.workspacePath,
         workspaceIdentity: params.workspaceIdentity,
@@ -1068,8 +1065,7 @@ export function createSkillsService(options?: SkillsServiceOptions): ISkillsServ
         return context;
       }
 
-      // 技能目录是可见资源，但不能在每次 session 发送时全量注入。
-      // 只有用户在 prompt 中显式提到且当前启用的技能才进入上下文，避免技能状态从 UI 列表泄漏到 agent 核心 session。
+      // 目录只包含插件技能元信息；显式选择的正文与审计继续沿用原路径，不改写历史或原生配置。
       await appendSkillsAuditLog({
         workspacePath: params.workspacePath,
         workspaceIdentity: params.workspaceIdentity,

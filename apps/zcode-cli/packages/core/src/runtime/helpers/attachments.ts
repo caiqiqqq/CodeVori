@@ -1,5 +1,6 @@
 import { basename, resolvePath } from "../deps.js";
 import { READ_DEFAULT_MAX_LINES, READ_MAX_FILE_SIZE_BYTES } from "@zcode/contracts";
+import { DIRECTORY_ATTACHMENT_MIME } from "@zcode/shared";
 import type {
   FilePartSource,
   FileSystemPort,
@@ -28,6 +29,7 @@ import {
   isTextLikePath,
   resolvedInlineTextAttachment,
   resolvedPathReferenceAttachment,
+  resolvedDirectoryAttachment,
 } from "./attachment-path-reference.js";
 
 type ResolveAttachmentOptions = {
@@ -222,6 +224,16 @@ async function resolveLocalFileAttachment(
       { path: absolutePath, trace: options.traceContext },
       { signal: options.abortSignal },
     );
+    // 目录附件只交付路径供工具按需浏览，不预读目录，也不降级成附件失败占位。
+    if (stat.kind === "directory") return resolvedDirectoryAttachment(attachment, absolutePath);
+    if (attachment.mimeType === DIRECTORY_ATTACHMENT_MIME) {
+      return resolvedPlaceholderAttachment(
+        attachment,
+        attachment.path!,
+        "attachment_not_directory",
+        { filename, mime: DIRECTORY_ATTACHMENT_MIME },
+      );
+    }
     if (stat.kind !== "file") {
       return resolvedPlaceholderAttachment(attachment, attachment.path!, "attachment_not_file", {
         filename,

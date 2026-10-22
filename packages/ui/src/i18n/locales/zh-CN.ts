@@ -2348,6 +2348,8 @@ const zhCN: Record<string, string> = {
   "taskList.forkedUntitled": "新任务",
   "taskList.noTasks": "暂无任务",
   "taskList.noArchivedTasks": "暂无已归档对话",
+  "taskList.archiveLocalProject": "本地项目",
+  "taskList.archiveRemoteProject": "远程项目",
   "taskList.loading": "正在获取任务...",
   "taskList.syncingRemoteWorkspaces": "正在加载远端任务...",
   "taskList.showMore": "显示更多",
@@ -6032,6 +6034,7 @@ const zhCN: Record<string, string> = {
   "chat.attachments.maxFiles": "最多只能添加 {count} 个附件",
   "chat.attachments.maxFileSize": "附件不能超过 {sizeMb} MB",
   "chat.attachments.readFailed": "读取附件失败：{message}",
+  "chat.attachments.directory": "文件夹",
   "chat.attachments.missingInlineImageContent": "图片附件 {filename} 缺少文件内容，请重新添加。",
   "chat.attachments.missingInlinePdfContent": "PDF 附件 {filename} 缺少文件内容，请重新添加。",
   "chat.attachments.oversizedInlineImage":

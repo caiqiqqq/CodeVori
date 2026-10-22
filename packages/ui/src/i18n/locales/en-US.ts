@@ -2558,6 +2558,8 @@ const enUS: Record<string, string> = {
   "taskList.forkedUntitled": "New task",
   "taskList.noTasks": "No tasks yet",
   "taskList.noArchivedTasks": "No archived conversations",
+  "taskList.archiveLocalProject": "Local project",
+  "taskList.archiveRemoteProject": "Remote project",
   "taskList.loading": "Loading tasks...",
   "taskList.syncingRemoteWorkspaces": "Loading remote tasks...",
   "taskList.showMore": "Show more",
@@ -6354,6 +6356,7 @@ const enUS: Record<string, string> = {
   "chat.attachments.maxFiles": "You can attach up to {count} attachments",
   "chat.attachments.maxFileSize": "Attachments must be {sizeMb} MB or smaller",
   "chat.attachments.readFailed": "Failed to read attachment: {message}",
+  "chat.attachments.directory": "Folder",
   "chat.attachments.missingInlineImageContent":
     "Image attachment {filename} is missing its file content. Please add it again.",
   "chat.attachments.missingInlinePdfContent":
