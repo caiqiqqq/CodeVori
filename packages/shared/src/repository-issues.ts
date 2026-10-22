@@ -1,0 +1,26 @@
+import { z } from "zod";
+import { forgeRepositoryRequestSchema } from "./forge.js";
+import { workTaskScopeSchema } from "./work-task.js";
+
+export const repositoryIssueProjectSchema = workTaskScopeSchema
+  .extend({
+    remoteName: forgeRepositoryRequestSchema.shape.remoteName,
+  })
+  .strict();
+export type RepositoryIssueProject = z.infer<typeof repositoryIssueProjectSchema>;
+
+/** Host RPC 只读查询，不属于 Agent 命令或任务 admission。 */
+export const repositoryIssueSummaryRequestSchema = z
+  .object({
+    projects: z.array(repositoryIssueProjectSchema).max(200),
+    force: z.boolean().optional(),
+  })
+  .strict();
+export type RepositoryIssueSummaryRequest = z.infer<typeof repositoryIssueSummaryRequestSchema>;
+export const repositoryIssueSummarySchema = z
+  .object({
+    pending: z.number().int().nonnegative(),
+    checkedAt: z.number().int().nonnegative(),
+  })
+  .strict();
+export type RepositoryIssueSummary = z.infer<typeof repositoryIssueSummarySchema>;

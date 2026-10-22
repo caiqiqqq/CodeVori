@@ -318,6 +318,7 @@ export * from "./pluginStoreOrdering.js";
 export * from "./session-debug.js";
 export { redactFeedbackText } from "./feedbackPrivacy.js";
 export * from "./work-task.js";
+export * from "./repository-issues.js";
 export * from "./work-task-result.js";
 export * from "./worktree.js";
 export { isAbsoluteFilePath, joinFilePath } from "./file-path.js";

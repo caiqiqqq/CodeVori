@@ -19,7 +19,6 @@ import {
   Cloud,
   Folder,
   FolderOpen,
-  GitFork,
   Hash,
   ListFilter,
   LoaderCircle,
@@ -84,6 +83,7 @@ import { useSidebarConversationSelection } from "@/hooks/useSidebarConversationS
 import { isWorkspaceReadOnly, isWorkspaceTab, type WorkspaceTabState } from "@/store/tabStore.js";
 import { useWorkspaceTaskLists } from "@/hooks/useWorkspaceTaskLists.js";
 import { useWorktreeProjectGroupsResolution } from "@/hooks/useWorktreeProjectGroups.js";
+import { RepositorySidebarButton } from "@/repository-panel/RepositorySidebarButton.js";
 import {
   persistSidebarTaskPreferences,
   readSidebarTaskPreferences,
@@ -1405,21 +1405,12 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
               active={workTasksActive}
               onClick={onOpenWorkTasks}
             />
-            <Button
-              variant="ghost"
+            <RepositorySidebarButton
+              projects={workTaskProjects}
+              projectsLoading={projectGroupsLoading}
               onClick={onOpenRepository}
-              data-icon="inline-start"
-              data-testid="repository-sidebar-open"
-              size="lg"
-              aria-pressed={repositoryActive}
-              className={cn(
-                "w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
-                repositoryActive && "bg-selected text-foreground",
-              )}
-            >
-              <GitFork className="size-4" />
-              {intl.formatMessage({ id: "repositoryPanel.title" })}
-            </Button>
+              active={repositoryActive}
+            />
           </div>
 
           <div className="relative flex min-h-0 flex-1 flex-col">

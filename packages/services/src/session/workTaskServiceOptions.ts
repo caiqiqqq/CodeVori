@@ -2,6 +2,7 @@ import type { WorkTask } from "@zcode/shared";
 import type {
   WorkTaskExecutionContext,
   WorkTaskForgePort,
+  WorkTaskRepositoryIssuesPort,
   WorkTaskResultPort,
   WorkTaskConversationPort,
   WorkTaskMergePort,
@@ -13,6 +14,7 @@ export interface WorkTaskServiceOptions {
   repo: WorkTaskRepo;
   attachments?: WorkTaskAttachmentStore;
   forge?: WorkTaskForgePort;
+  repositoryIssues?: WorkTaskRepositoryIssuesPort;
   result?: WorkTaskResultPort;
   execute(task: WorkTask, context: WorkTaskExecutionContext): Promise<void>;
   merge?: WorkTaskMergePort;
