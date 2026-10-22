@@ -3839,6 +3839,7 @@ const zhCN: Record<string, string> = {
   "settings.usage.heatmap.range.weekly": "每周",
   "settings.usage.heatmap.range.cumulative": "累计",
   "settings.usage.dailyChartTitle": "每日 Token 趋势图",
+  "settings.usage.trendTotal": "总量",
   "settings.usage.hourlyChartTitle": "今日每小时 Token 趋势图",
   "settings.usage.hourlyUnavailable": "当前数据源暂不提供小时统计",
   "settings.usage.dailyChartDescription": "按天展示 Token 用量变化，共 {days} 天。",

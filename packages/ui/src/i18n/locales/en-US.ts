@@ -4119,6 +4119,7 @@ const enUS: Record<string, string> = {
   "settings.usage.heatmap.range.weekly": "Weekly",
   "settings.usage.heatmap.range.cumulative": "Cumulative",
   "settings.usage.dailyChartTitle": "Daily token trend chart",
+  "settings.usage.trendTotal": "Total",
   "settings.usage.hourlyChartTitle": "Today's hourly token trend",
   "settings.usage.hourlyUnavailable": "This data source does not provide hourly usage yet",
   "settings.usage.dailyChartDescription": "Token usage trend by day across {days} days.",
