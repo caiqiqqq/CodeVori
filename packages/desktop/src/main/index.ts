@@ -98,6 +98,7 @@ import {
   syncPostUpdateReleaseNotesToWindow,
   syncReadyUpdateToWindow,
 } from "./autoUpdater.js";
+import { resolveDesktopUpdatePolicy } from "./desktopUpdatePolicy.js";
 import { BroadcastHub } from "./broadcastHub.js";
 import { TaskRealtimeBus } from "./taskRealtimeBus.js";
 import { createAppLaunchGate } from "./appLaunchGate.js";
@@ -864,9 +865,8 @@ let startupOpenWorkspaceRequest: ExplicitStartupWorkspaceRequest | null =
 
 let forceUpdateMainWindowCreationBlocked = false;
 
-// CodeVori 使用独立版本号，官方最低版本会误拦首版，官方更新也会覆盖本分支功能。
-// 与已移除的升级入口一致：Main 同时禁用轮询和启动强更，适配器升级不受影响。
-const officialDesktopUpdatesEnabled = false;
+// 自有更新与上游最低版本检查分开：启用 CodeVori 更新不能被上游版本号误拦启动。
+const desktopUpdatePolicy = resolveDesktopUpdatePolicy(ZCODE_PRODUCT_FLAVOR);
 
 function resolveExternalWorkspaceConfirmationCopy() {
   const effectiveLocale =
@@ -2044,9 +2044,9 @@ app.whenReady().then(async () => {
   await hydratePendingPostUpdateReleaseNotes(mainSettingService);
   logWindowsBundledRuntimeIntegrityDiagnostic();
 
-  // 复用 updater 的禁用状态，手动检查入口同样不访问官方发布源。
+  // 正式产品通过现有 updater 读取自有源；Preview 身份继续保持禁用。
   void initAutoUpdater({
-    enabled: officialDesktopUpdatesEnabled,
+    enabled: desktopUpdatePolicy.enabled,
     onBeforeQuitAndInstall: async () => {
       notifyStabilityLifecycle("update_install");
       await prepareAppQuit("auto-update quitAndInstall", "update-install");
@@ -2281,10 +2281,10 @@ app.whenReady().then(async () => {
   });
   registerDesktopNetworkTelemetry(logger);
 
-  // CodeVori 的正式版与开发版都跳过官方升级；保留未打包运行时的原有边界。
+  // CodeVori 始终跳过上游强更；保留未打包运行时的原有边界。
   const skipForceUpdateForLocalDevRuntime = !app.isPackaged;
   const forceUpdateGuardResult =
-    officialDesktopUpdatesEnabled &&
+    desktopUpdatePolicy.checkOfficialMinimumVersion &&
     ZCODE_PRODUCT_FLAVOR === "production" &&
     !skipForceUpdateForLocalDevRuntime
       ? await maybeBlockStartupForForceUpdate({
@@ -2296,7 +2296,7 @@ app.whenReady().then(async () => {
           },
         })
       : { blocked: false };
-  if (!officialDesktopUpdatesEnabled) {
+  if (!desktopUpdatePolicy.checkOfficialMinimumVersion) {
     logger.info("[force-update] CodeVori 跳过官方强制升级检查");
   } else if (ZCODE_PRODUCT_FLAVOR !== "production") {
     logger.info("[force-update] Preview 跳过远端强制升级检查");

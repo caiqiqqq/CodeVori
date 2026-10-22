@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
 import {
   ACP_ATTACHMENT_MAX_BYTES,
+  DIRECTORY_ATTACHMENT_MIME,
   type AcpAttachmentRef,
   type AcpAttachmentReadResult,
   type AcpPromptAttachment,
@@ -49,9 +51,12 @@ export class AcpAttachmentStore {
       await mkdir(directory, { recursive: true, mode: 0o700 });
       for (const [index, input] of inputs.entries()) {
         const block = blocks[index];
+        const isDirectory =
+          block?.type === "resource_link" && block.mimeType === DIRECTORY_ATTACHMENT_MIME;
         // 修复依据：图片保存已经校验并发给 Agent 的同一字节，不再次读取可变化的源文件。
-        const bytes =
-          block?.type === "image"
+        const bytes = isDirectory
+          ? Buffer.from(fileURLToPath(block.uri), "utf8")
+          : block?.type === "image"
             ? Buffer.from(block.data, "base64")
             : block?.type === "resource" && "blob" in block.resource
               ? Buffer.from(block.resource.blob, "base64")
@@ -64,7 +69,7 @@ export class AcpAttachmentStore {
         attachments.push({
           ref: `acp-attachment:${group}/${index}`,
           fileName: input.fileName,
-          mime: input.mimeType,
+          mime: isDirectory ? DIRECTORY_ATTACHMENT_MIME : input.mimeType,
           bytes: bytes.length,
         });
       }
@@ -89,6 +94,15 @@ export class AcpAttachmentStore {
   ): Promise<AcpPromptAttachment[]> {
     return Promise.all(
       attachments.map(async (attachment) => {
+        if (attachment.mime === DIRECTORY_ATTACHMENT_MIME) {
+          // 目录保存的是引用本身；排队恢复不能把保存引用的普通文件当成用户目录。
+          const saved = await this.read(id, attachment, 0, attachment.bytes);
+          return {
+            fileName: attachment.fileName,
+            mimeType: attachment.mime,
+            dataBase64: saved.dataBase64,
+          };
+        }
         // 修复原因：排队不能重读可变源文件；同会话引用先校验，再使用 Host 冻结副本。
         await this.read(id, attachment, 0, 0);
         return {

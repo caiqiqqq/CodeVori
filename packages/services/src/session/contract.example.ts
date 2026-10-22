@@ -2,8 +2,16 @@ import type {
   WorkTaskAttachmentImport,
   WorkTaskCreate,
   WorkTaskResultRequest,
+  RepositoryIssueProject,
 } from "@zcode/shared";
 import type { IWorkTaskService } from "./contract.js";
+
+export async function readUnhandledRepositoryIssues(
+  service: IWorkTaskService,
+  projects: RepositoryIssueProject[],
+) {
+  return service.getRepositoryIssueSummary({ projects });
+}
 
 export async function generateEditableResult(
   service: IWorkTaskService,

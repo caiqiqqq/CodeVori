@@ -26,6 +26,21 @@ function escapeXmlAttribute(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
+function pluginSkillCatalog(skills: readonly SkillSummary[]): string {
+  return [
+    "<available_plugin_skills>",
+    "This is the current enabled plugin skill catalog from the target Host. It replaces earlier plugin catalogs, including when empty.",
+    "For tasks matching a skill description, read its SKILL.md at the listed path and follow it; explicit selection is not required. Read skill bodies only when needed.",
+    ...skills
+      .filter((skill) => skill.enabled && skill.scope === "plugin")
+      .map(
+        (skill) =>
+          `<skill name="${escapeXmlAttribute(skill.name)}" plugin="${escapeXmlAttribute(skill.pluginId ?? skill.pluginName ?? "")}" path="${escapeXmlAttribute(skill.path)}">${escapeXmlAttribute(skill.description)}</skill>`,
+      ),
+    "</available_plugin_skills>",
+  ].join("\n");
+}
+
 export function buildSkillsPromptContext(
   prompt: string,
   skills: readonly SkillSummary[],
@@ -40,24 +55,24 @@ export function buildSkillsPromptContext(
     if (!previous || priority[skill.scope] < priority[previous.scope]) selected.set(key, skill);
   }
   const activated = [...selected.values()];
-  if (!activated.length) return { prompt, activatedSkillNames: [] };
-  const block = [
-    "<available_skills>",
-    ...activated.map((skill) =>
-      [
-        `<activated_skill name="${escapeXmlAttribute(skill.name)}" path="${escapeXmlAttribute(skill.path)}">`,
-        skill.body,
-        "</activated_skill>",
-      ].join("\n"),
-    ),
-    "</available_skills>",
-  ].join("\n");
+  // 修复依据：ACP 也需要已启用插件的技能目录才能按自然语言任务发现技能；
+  // 每轮发送当前目录（包括空目录），正文仍只随显式引用注入，其余由 Agent 按需读取。
+  const catalog = pluginSkillCatalog(skills);
+  const block = activated.length
+    ? [
+        "<available_skills>",
+        ...activated.map((skill) =>
+          [
+            `<activated_skill name="${escapeXmlAttribute(skill.name)}" path="${escapeXmlAttribute(skill.path)}">`,
+            skill.body,
+            "</activated_skill>",
+          ].join("\n"),
+        ),
+        "</available_skills>",
+      ].join("\n")
+    : undefined;
   return {
-    prompt: `${prompt}\n\n${block}`,
+    prompt: [prompt, catalog, ...(block ? [block] : [])].join("\n\n"),
     activatedSkillNames: activated.map((skill) => skill.name),
   };
-}
-
-export function hasExplicitSkillReference(prompt: string): boolean {
-  return collectMentionedSkillNames(prompt).size > 0;
 }
