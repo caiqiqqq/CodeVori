@@ -1,6 +1,47 @@
 /** English translations */
 import { PRODUCT_NAME } from "@zcode/shared";
 const enUS: Record<string, string> = {
+  "settings.devices.title": "Devices & connections",
+  "settings.devices.description":
+    "Connect other computers to use their desktop, browser and command tools in new local conversations. Networking uses the official Tailscale service.",
+  "settings.devices.account": "Tailscale account",
+  "settings.devices.stopped": "Networking is stopped. Start to authorize this computer.",
+  "settings.devices.authorized":
+    "Connected to your network. Device presence and executor availability are shown separately.",
+  "settings.devices.needsApproval": "Waiting for Tailscale administrator approval.",
+  "settings.devices.needsLogin":
+    "Connecting. Complete login in your browser when authorization becomes available.",
+  "settings.devices.login": "Authorize with Tailscale",
+  "settings.devices.start": "Connect to Tailscale",
+  "settings.devices.stop": "Stop networking",
+  "settings.devices.logout": "Log out",
+  "settings.devices.thisComputer": "This computer",
+  "settings.devices.devices": "Devices on your network",
+  "settings.devices.addDescription":
+    "To add a computer, open this page on it, join the same network, then allow your device to control it. Start Windows-MCP on Windows as well.",
+  "settings.devices.refresh": "Refresh",
+  "settings.devices.empty":
+    "No devices are visible. After login, computers permitted by your network policy appear here.",
+  "settings.devices.online": "Online",
+  "settings.devices.offline": "Offline",
+  "settings.devices.enabled": "Tool connection enabled",
+  "settings.devices.notConnected": "Tools not connected",
+  "settings.devices.checked": "Last check found {count} tools",
+  "settings.devices.allowed": "This device may access this computer’s executor",
+  "settings.devices.connect": "Connect & check",
+  "settings.devices.disconnect": "Disconnect tools",
+  "settings.devices.check": "Check tools",
+  "settings.devices.authorize": "Allow control of this computer",
+  "settings.devices.revoke": "Revoke control access",
+  "settings.devices.component": "Connection component",
+  "settings.devices.componentDescription":
+    "Select the connection component for this operating system. Stop networking before replacing it.",
+  "settings.devices.selectComponent": "Choose file",
+  "settings.devices.lifecycle":
+    "Connections stay active when you leave settings. Newly connected tools are available in new local conversations. Quitting the app or stopping networking closes connections. Check the target state before continuing after an interruption.",
+  "settings.devices.working": "Working…",
+  "settings.devices.error":
+    "The operation did not complete. Check the connection component, network authorization, and the target computer’s executor and access permissions, then retry.",
   "settings.desktopLan.title": "Phone access over LAN",
   "settings.desktopLan.description":
     "Connect your phone to this desktop window and its projects, conversations and running sessions. Your choice is remembered: access is restored for the main window after updates or restarts, until you disable it.",

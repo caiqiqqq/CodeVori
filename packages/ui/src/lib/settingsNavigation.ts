@@ -4,6 +4,7 @@ import { logger } from "@/logger.js";
 export type SettingsSectionId =
   | "general"
   | "desktopLan"
+  | "devices"
   | "appearance"
   | "migration"
   | "browser"
@@ -70,6 +71,7 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
   return (
     value === "general" ||
     value === "desktopLan" ||
+    value === "devices" ||
     value === "appearance" ||
     value === "migration" ||
     value === "browser" ||

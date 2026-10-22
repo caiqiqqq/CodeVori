@@ -74,6 +74,7 @@ import { PluginsSection } from "@/settings/PluginsSection.js";
 import { HooksSection } from "@/settings/HooksSection.js";
 import { WorkspaceFileSearchSection } from "@/settings/WorkspaceFileSearchSection.js";
 import { MemorySettingsSection } from "@/settings/MemorySettingsSection.js";
+import { DeviceBridgeSettingsSection } from "@/settings/DeviceBridgeSettingsSection.js";
 import { BrowserSettingsSection } from "@/settings/BrowserSettingsSection.js";
 import { ComputerUseSection } from "@/settings/ComputerUseSection.js";
 import { ShortcutSettingsSection } from "@/settings/ShortcutSettingsSection.js";
@@ -310,6 +311,9 @@ export function SettingsPage({
     platform.setDesktopLanAccessEnabled &&
     platform.saveDesktopLanAccessConfiguration,
   );
+  const supportsDeviceBridge = Boolean(
+    platform.getDeviceBridgeState && platform.executeDeviceBridgeCommand,
+  );
   const { settingsSectionGroups, settingsSections } = useMemo(
     () =>
       createSettingsPageConfig({
@@ -317,8 +321,9 @@ export function SettingsPage({
         isMacDesktop: Boolean(isMacDesktop),
         isWindowsDesktop: Boolean(isWindowsDesktop),
         supportsDesktopLanAccess,
+        supportsDeviceBridge,
       }),
-    [isDesktop, isMacDesktop, isWindowsDesktop, supportsDesktopLanAccess],
+    [isDesktop, isMacDesktop, isWindowsDesktop, supportsDesktopLanAccess, supportsDeviceBridge],
   );
   const isLinuxDesktop = Boolean(isDesktop && !isMacDesktop && !isWindowsDesktop);
   const usesInlineWindowControls = Boolean(isWindowsDesktop || isLinuxDesktop);
@@ -1791,6 +1796,8 @@ export function SettingsPage({
                               handleAskUserQuestionAutoResolutionEnabledChange
                             }
                           />
+                        ) : activeSection === "devices" ? (
+                          <DeviceBridgeSettingsSection />
                         ) : activeSection === "desktopLan" ? (
                           <DesktopLanAccessSection />
                         ) : activeSection === "appearance" ? (

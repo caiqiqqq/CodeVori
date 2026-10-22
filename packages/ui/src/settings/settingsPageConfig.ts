@@ -24,6 +24,7 @@ import {
   GitBranch,
   MessageSquareText,
   Smartphone,
+  Network,
 } from "lucide-react";
 import { isSettingsSectionEnabled, type SettingsSectionId } from "@/lib/settingsNavigation.js";
 import type { Theme } from "@/useTheme.js";
@@ -67,6 +68,7 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     titleId: "settings.systemTitle",
     groupId: "basics",
   },
+  { id: "devices", icon: Network, titleId: "settings.devices.title", groupId: "basics" },
   {
     id: "desktopLan",
     icon: Smartphone,
@@ -212,6 +214,7 @@ export const SETTINGS_SECTIONS = BASE_SETTINGS_SECTIONS.filter(
   (section) =>
     section.id !== "computerUse" &&
     section.id !== "desktopLan" &&
+    section.id !== "devices" &&
     isSettingsSectionEnabled(section.id),
 );
 
@@ -220,6 +223,7 @@ interface SettingsPageConfigOptions {
   isMacDesktop?: boolean;
   isWindowsDesktop?: boolean;
   supportsDesktopLanAccess?: boolean;
+  supportsDeviceBridge?: boolean;
 }
 
 export function createSettingsPageConfig({
@@ -227,10 +231,12 @@ export function createSettingsPageConfig({
   isMacDesktop = false,
   isWindowsDesktop = false,
   supportsDesktopLanAccess = false,
+  supportsDeviceBridge = false,
 }: SettingsPageConfigOptions = {}) {
   const isDesktopPlatform = isDesktop || isMacDesktop || isWindowsDesktop;
   const settingsSections = BASE_SETTINGS_SECTIONS.filter((section) => {
     if (section.id === "computerUse" && !isDesktopPlatform) return false;
+    if (section.id === "devices" && !(isDesktopPlatform && supportsDeviceBridge)) return false;
     if (section.id === "desktopLan" && !(isDesktopPlatform && supportsDesktopLanAccess))
       return false;
     return isSettingsSectionEnabled(section.id);
