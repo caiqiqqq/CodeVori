@@ -1,4 +1,5 @@
 export * from "./acp-plan.js";
+export * from "./deviceBridge.js";
 export * from "./acp-elicitation.js";
 export type {
   FileBinaryPreview,

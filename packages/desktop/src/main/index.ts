@@ -202,6 +202,7 @@ import {
 import { createDesktopHelpConfigReader } from "./desktopHelpConfig.js";
 import { registerPlatformIpcHandlers } from "./desktopMainIpcPlatform.js";
 import { registerDesktopLanAccess } from "./desktopLanAccess.js";
+import { registerDeviceBridgeSettings } from "./deviceBridgeSettings.js";
 import {
   loadCliMcpFromUserDirectory,
   migrateLegacyCommonMcp,
@@ -1944,6 +1945,7 @@ app.on("second-instance", (_event, argv, _workingDirectory, additionalData) => {
 });
 
 app.whenReady().then(async () => {
+  registerDeviceBridgeSettings(windowHostProcessMap);
   desktopLanAccess = registerDesktopLanAccess({
     hosts: windowHostProcessMap,
     preference: {

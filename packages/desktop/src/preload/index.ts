@@ -338,6 +338,9 @@ contextBridge.exposeInMainWorld("zcode", {
   /** 同步当前窗口所有 tab 的 workspace 路径到 main 进程 */
   syncWindowTabs: (paths: string[]) => ipcRenderer.send(PlatformChannels.SyncWindowTabs, paths),
   getDesktopLanAccess: () => ipcRenderer.invoke(PlatformChannels.GetDesktopLanAccess),
+  getDeviceBridgeState: () => ipcRenderer.invoke(PlatformChannels.GetDeviceBridgeState),
+  executeDeviceBridgeCommand: (command: import("@zcode/shared").DeviceBridgeCommand) =>
+    ipcRenderer.invoke(PlatformChannels.ExecuteDeviceBridgeCommand, command),
   setDesktopLanAccessEnabled: (enabled: boolean) =>
     ipcRenderer.invoke(PlatformChannels.SetDesktopLanAccessEnabled, enabled),
   saveDesktopLanAccessConfiguration: (
