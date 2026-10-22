@@ -9,6 +9,7 @@ export function createSharedServiceRead<T>(
   read: () => Promise<T>,
   observe?: (changed: () => void) => { dispose(): void },
   errorMessage: (error: unknown) => string = String,
+  options: { retainErrorUntilSuccess?: boolean } = {},
 ) {
   const empty = (): SharedReadSnapshot<T> => ({ data: null, error: null, loading: true });
   let snapshot = empty();
@@ -29,7 +30,12 @@ export function createSharedServiceRead<T>(
     const requestedRevision = ++revision;
     const owner = generation;
     // 已有投影只做后台重读，不能让事件刷新清空看板和当前选择。
-    publish({ ...snapshot, loading: snapshot.data === null, error: null });
+    publish({
+      ...snapshot,
+      loading: snapshot.data === null,
+      // 计数重试期间仍是上次投影，不能仅因发出请求就撤销“未更新”提示。
+      error: options.retainErrorUntilSuccess ? snapshot.error : null,
+    });
     pending = (async () => {
       try {
         const data = await read();
