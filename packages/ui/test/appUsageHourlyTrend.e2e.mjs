@@ -130,12 +130,16 @@ try {
         const large = chart.getByRole("button", { name: "Codex ACP · large-model", exact: true });
         await large.waitFor();
         await chart.locator(".recharts-bar-rectangle").first().waitFor();
-        assert.equal(await chart.getByRole("button").count(), 2);
-        assert.equal(await chart.locator(".recharts-bar-rectangle").count(), 4);
+        assert.equal(await chart.getByRole("button").count(), 3);
+        const totalLabel = locale === "zh-CN" ? "总量" : "Total";
+        const total = chart.getByRole("button", { name: totalLabel, exact: true });
+        assert.equal(await total.getAttribute("aria-pressed"), "true");
+        assert.equal(await large.getAttribute("aria-pressed"), "false");
+        assert.equal(await chart.locator(".recharts-bar-rectangle").count(), 2);
         assert.equal(await chart.locator(".recharts-line").count(), 0);
         const daily = page.getByTestId("app-usage-daily-trend");
         await daily.locator(".recharts-line-dot").first().waitFor();
-        assert.equal(await daily.locator(".recharts-line").count(), 2);
+        assert.equal(await daily.locator(".recharts-line").count(), 1);
         assert.equal(await daily.locator(".recharts-bar").count(), 0);
         assert.equal(await chart.getByText("00:00", { exact: true }).count(), 1);
         assert.equal(await chart.getByText("23:00", { exact: true }).count(), 1);
@@ -158,9 +162,18 @@ try {
         await page.mouse.move(point.x + point.width / 2, point.y + point.height / 2);
         await chart
           .locator(".recharts-tooltip-wrapper")
-          .getByText("Codex ACP · large-model", { exact: true })
+          .getByText(totalLabel, { exact: true })
           .waitFor();
         assert.match(await chart.locator(".recharts-tooltip-wrapper").innerText(), /^08:00 - /);
+        const tooltipText = await chart.locator(".recharts-tooltip-wrapper").innerText();
+        assert.match(tooltipText, locale === "zh-CN" ? /1万/ : /10K/);
+        assert.match(tooltipText, /tokens/);
+        await large.click();
+        await chart.getByRole("button", { name: "small-model", exact: true }).click();
+        assert.equal(await chart.locator(".recharts-bar-rectangle").count(), 6);
+        // 总量保持独立序列，关闭后继续验证模型缩放和单模型 tooltip。
+        await total.click();
+        assert.equal(await chart.locator(".recharts-bar-rectangle").count(), 4);
         const requests = await page.evaluate(() => window.__requests);
         await large.focus();
         await page.keyboard.press("Space");
@@ -187,13 +200,17 @@ try {
         await chart.locator(".recharts-bar-rectangle").first().waitFor();
         const sources = page.getByTestId("app-usage-sources");
         await sources.getByRole("tab", { name: /\/ API$/ }).click();
-        assert.equal(await chart.getByRole("button").count(), 1);
+        assert.equal(await chart.getByRole("button").count(), 2);
+        assert.equal(await total.getAttribute("aria-pressed"), "true");
         assert.equal(
           await chart.getByRole("button", { name: "small-model" }).getAttribute("aria-pressed"),
-          "true",
+          "false",
         );
         await sources.getByRole("tab", { name: "Codex ACP", exact: true }).click();
-        assert.equal(await chart.getByRole("button").count(), 1);
+        assert.equal(await chart.getByRole("button").count(), 2);
+        assert.equal(await total.getAttribute("aria-pressed"), "true");
+        await large.click();
+        await total.click();
         // 独立 ACP 来源本身只有一个模型，复现用户截图中的缺时间场景。
         await chart.locator(".recharts-bar-rectangle").first().waitFor();
         // 来源切换后点坐标可能相同，需要先移开再 hover 新挂载的图表。
@@ -209,6 +226,8 @@ try {
           .click();
         await chart.locator(".recharts-bar-rectangle").first().waitFor();
         assert.equal(await chart.locator(".recharts-bar-rectangle").count(), 2);
+        assert.equal(await total.getAttribute("aria-pressed"), "true");
+        assert.equal(await large.getAttribute("aria-pressed"), "false");
         assert.equal(
           await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
           true,
