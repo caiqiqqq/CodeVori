@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { InfoIcon } from "lucide-react";
 import type { TurnHeaderRow } from "@zcode/shared/zcode-protocol-v4";
 import { ChatErrorBanner } from "@/ChatErrorBanner.js";
 import { useConversationWarningPresentationStore } from "@/store/conversationWarningPresentationStore.js";
@@ -52,17 +53,29 @@ export function ConversationTurnNotice({
   return (
     <div
       role={warning ? "status" : "alert"}
-      className="mt-4"
+      className={
+        warning ? "mt-2 flex min-w-0 items-start gap-2 text-ui-sm text-foreground-subtle" : "mt-4"
+      }
       data-conversation-notice={notice.id}
       data-notice-severity={notice.severity}
     >
-      <ChatErrorBanner
-        error={{
-          code: notice.code,
-          message: notice.message,
-          ...(notice.detail ? { detail: notice.detail } : {}),
-        }}
-      />
+      {/* 修复原因：自动恢复中的 warning 不是失败，不能复用带复制按钮的整宽错误卡片。 */}
+      {warning ? (
+        <>
+          <InfoIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+          <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+            {notice.message}
+          </span>
+        </>
+      ) : (
+        <ChatErrorBanner
+          error={{
+            code: notice.code,
+            message: notice.message,
+            ...(notice.detail ? { detail: notice.detail } : {}),
+          }}
+        />
+      )}
     </div>
   );
 }
