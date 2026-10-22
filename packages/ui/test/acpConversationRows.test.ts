@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { acpEntrySchema, type AcpSession } from "@zcode/shared";
+import { acpEntrySchema, type AcpSession, type AcpSessionFailure } from "@zcode/shared";
 import { conversationRowSchema } from "@zcode/shared/zcode-protocol-v4";
 import {
   ACP_DISPLAY_TOOL_NAME,
@@ -91,6 +91,38 @@ test("warnings project only on the current running turn; saved diagnostics remai
   );
   assert.equal(next[0]?.kind === "turnHeader" && next[0].notices, undefined);
   assert.deepEqual(entries, before);
+});
+
+test("same-category warnings coalesce without changing diagnostics or hiding confirmed errors", () => {
+  const warning = (id: string, category = "connection") => ({
+    id,
+    revision: 1,
+    category,
+    severity: "warning" as const,
+    title: id,
+    actions: [],
+  });
+  const failures: AcpSessionFailure[] = [
+    warning("retry-1"),
+    warning("quota", "quota"),
+    warning("retry-2"),
+    warning("retry-3"),
+  ];
+  const entries: AcpSession["entries"] = [
+    { id: "user:cmd", kind: "user", text: "question", failures },
+  ];
+  const before = structuredClone(entries);
+  const noticeIds = () => {
+    const header = buildAcpConversationRows(session(structuredClone(entries), "running"))[0];
+    return header?.kind === "turnHeader" ? header.notices?.map((notice) => notice.id) : [];
+  };
+  assert.deepEqual(noticeIds(), ["quota", "retry-3"]);
+  assert.deepEqual(noticeIds(), ["quota", "retry-3"], "snapshot replay is stable");
+  assert.deepEqual(entries, before, "projection must not mutate Host diagnostics");
+  failures.push({ ...warning("failed"), severity: "error" });
+  failures.push(warning("late-retry"));
+  failures.push({ ...warning("failed-again"), severity: "error" });
+  assert.deepEqual(noticeIds(), ["quota", "failed", "failed-again"]);
 });
 
 test("ACP failure notices stay with the failed turn after later success and legacy trace errors remain visible", () => {

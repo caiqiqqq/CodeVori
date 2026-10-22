@@ -44,6 +44,7 @@ try {
         const [subscription,setSubscription]=useState(false);
         const [away,setAway]=useState(false);
         window.__errors={
+          warnMany:()=>setSnapshot(s=>({...s,status:'running',entries:s.entries.map(e=>e.kind==='user'?{...e,failures:[1,2,3].map(n=>({...failure,id:'retry-'+n,severity:'warning',title:'Reconnecting... '+n+'/5'+(n===3?' '+ 'Waiting for provider connection to recover. '.repeat(8):'')}))}:e)})),
           leave:()=>setAway(true),
           enter:()=>setAway(false),
           subscription:()=>setSubscription(true),
@@ -97,6 +98,29 @@ try {
       );
       assert.equal(await page.locator("[data-conversation-notice]").count(), 0);
       await page.clock.install();
+      // 复现截图：不同 ID 的同类重连消息只能留下最新状态，不能堆叠为可复制的错误卡片。
+      await page.evaluate(() => window.__errors.warnMany());
+      const retryStatus = page.locator('[data-notice-severity="warning"]');
+      await retryStatus.waitFor();
+      assert.equal(await retryStatus.count(), 1);
+      assert.match(await retryStatus.innerText(), /Reconnecting\.\.\. 3\/5/);
+      assert.equal(await retryStatus.getAttribute("role"), "status");
+      assert.equal(await retryStatus.locator("button").count(), 0);
+      assert.equal(await retryStatus.locator("[data-error-code]").count(), 0);
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
+        false,
+      );
+      const warningBox = await retryStatus.boundingBox();
+      assert.ok(warningBox && warningBox.height > 24, "long status wraps instead of truncating");
+      await page.screenshot({
+        path: join(artifacts, `warning-${width}-${theme}.png`),
+        animations: "disabled",
+      });
+      await page.evaluate(() => window.__errors.render());
+      assert.equal(await retryStatus.count(), 1, "snapshot replay must not duplicate status");
+      await page.evaluate(() => window.__errors.finish());
+      await retryStatus.waitFor({ state: "detached" });
       await page.evaluate(() => window.__errors.warn());
       const warning = page.locator('[data-notice-severity="warning"]');
       await warning.waitFor();
