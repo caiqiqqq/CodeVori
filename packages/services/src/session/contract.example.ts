@@ -2,8 +2,13 @@ import type {
   WorkTaskAttachmentImport,
   WorkTaskCreate,
   WorkTaskResultRequest,
+  WorkTaskRename,
 } from "@zcode/shared";
 import type { IWorkTaskService } from "./contract.js";
+
+export async function renameWorkTask(service: IWorkTaskService, request: WorkTaskRename) {
+  return service.rename(request);
+}
 
 export async function generateEditableResult(
   service: IWorkTaskService,

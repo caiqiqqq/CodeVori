@@ -56,6 +56,90 @@ async function eventually(check: () => Promise<boolean>) {
   assert.fail("task state did not settle");
 }
 
+for (const kind of ["api", "acp"] as const) {
+  test(`${kind} rename only changes the durable title while execution retains its lease`, async () => {
+    let context: WorkTaskExecutionContext | undefined;
+    let finish!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const f = await fixture(async (_task, run) => {
+      context = run;
+      await run.update({ session: { kind, id: `${kind}-session` } });
+      await gate;
+    });
+    try {
+      const service = f.makeService();
+      const task = await service.create({
+        ...draft,
+        execution: kind === "api" ? draft.execution : { kind, agent: "codex", config: [] },
+      });
+      const target = { ...workspace, id: task.id };
+      await service.rename({ ...target, title: " Draft title " });
+      await service.start(target);
+      await eventually(
+        async () => !!context && !!(await service.list(workspace)).tasks[0]?.session,
+      );
+      const before = (await service.list(workspace)).tasks[0]!;
+      const renamed = await service.rename({ ...target, title: " Running title " });
+      const { title: _old, updatedAt: _time, ...prior } = before;
+      const { title, updatedAt: _newTime, ...after } = renamed;
+      assert.equal(title, "Running title");
+      assert.deepEqual(after, prior);
+      const events = await service.getEvents(target);
+      await service.rename({ ...target, title });
+      assert.deepEqual(await service.getEvents(target), events, "same title is a no-op");
+      for (const invalid of [" ", "a".repeat(201)])
+        await assert.rejects(service.rename({ ...target, title: invalid }));
+      await assert.rejects(
+        service.rename({ ...target, workspacePath: "/other", title: "wrong" }),
+        /work-task.not-found/,
+      );
+      await assert.rejects(
+        service.rename({ ...target, workspaceIdentity: "other-host", title: "wrong" }),
+        /work-task.not-found/,
+      );
+      await assert.rejects(service.rename({ ...target, title, prompt: "changed" } as never));
+      assert.equal(
+        await context!.update({ status: "awaiting_input" }),
+        true,
+        "rename preserves active lease",
+      );
+      finish();
+      await eventually(async () => (await service.list(workspace)).tasks[0]?.status === "review");
+      assert.equal(
+        (await service.list(workspace)).tasks[0]?.title,
+        title,
+        "late run cannot overwrite rename",
+      );
+      await service.complete(target);
+      await service.archive({ ...target, archived: true });
+      await service.rename({ ...target, title: "Completed title" });
+      const repo = new WorkTaskRepo(f.dbPath);
+      await repo.ready();
+      const canceled = repo.create(draft);
+      const canceledTarget = { ...workspace, id: canceled.id };
+      repo.enqueue(workspace, canceled.id);
+      repo.cancel(workspace, canceled.id);
+      repo.close();
+      assert.equal(
+        (await service.rename({ ...canceledTarget, title: "Canceled title" })).status,
+        "canceled",
+      );
+      await service.disposeAllAndWait();
+      assert.equal(
+        (await f.makeService().list({ ...workspace, includeArchived: true })).tasks.find(
+          (t) => t.id === task.id,
+        )?.title,
+        "Completed title",
+      );
+    } finally {
+      finish();
+      await f.cleanup();
+    }
+  });
+}
+
 test("creating and editing only persist drafts, survive restart and isolate workspaces", async () => {
   let executions = 0;
   const f = await fixture(async () => {
@@ -568,6 +652,8 @@ test("the public task RPC contract carries drafts, commands and scoped change no
     disposeListener = () => listener.dispose();
     const task = await client.create(draft);
     assert.equal(task.status, "todo");
+    const renamed = await client.rename({ ...workspace, id: task.id, title: "RPC title" });
+    assert.equal(renamed.title, "RPC title");
     assert.equal(executions, 0);
     assert.ok(changes > 0);
     await client.setConcurrency({ ...workspace, concurrency: 2 });

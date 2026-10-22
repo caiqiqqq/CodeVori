@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import {
   Archive,
   ArchiveRestore,
   Check,
+  Copy,
   Info,
   MessageSquare,
   MoreHorizontal,
@@ -18,6 +19,15 @@ import { canReviewWorkTaskCompletion } from "@/lib/workTaskBoard.js";
 import { WorkTaskIconButton, useWorkTaskMessages } from "./WorkTaskParts.js";
 import { Button } from "@/components/ui/button.js";
 import { WorkTaskArchiveWorktreeDialog } from "./WorkTaskArchiveWorktreeDialog.js";
+import { WorkTaskRenameDialog } from "./WorkTaskRenameDialog.js";
+import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { toast } from "@/components/ui/toast.js";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu.js";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +44,7 @@ export function WorkTaskActions({
   onDetails,
   showConversation = true,
   menu = false,
+  children,
 }: {
   task: WorkTask;
   panel: WorkTaskPanel;
@@ -43,9 +54,12 @@ export function WorkTaskActions({
   onDetails?(task: WorkTask): void;
   showConversation?: boolean;
   menu?: boolean;
+  children?: (menu: ReactNode) => ReactElement;
 }) {
   const t = useWorkTaskMessages();
+  const { intl } = useZCodeIntl();
   const [confirmCleanup, setConfirmCleanup] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const active = WORK_TASK_ACTIVE_STATUSES.includes(task.status) || task.status === "queued";
   const startable = ["todo", "failed", "canceled"].includes(task.status) && !task.archived;
   const disabled = panel.busy || task.stopPending || task.worktreeCleanup?.phase === "running";
@@ -57,6 +71,31 @@ export function WorkTaskActions({
     disabled?: boolean;
     run(): void;
   }[] = [];
+  if (menu)
+    actions.push(
+      {
+        label: intl.formatMessage({ id: "appHeader.copySessionId" }),
+        Icon: Copy,
+        disabled: !task.session?.id,
+        run: async () => {
+          // ID 属于被操作卡片的持久化绑定，与当前选中卡片及合并会话无关。
+          const id = task.session?.id;
+          if (!id) return;
+          try {
+            await navigator.clipboard.writeText(id);
+            toast(t("sessionIdCopied"));
+          } catch {
+            toast(t("copySessionIdFailed"));
+          }
+        },
+      },
+      {
+        label: intl.formatMessage({ id: "taskList.rename" }),
+        Icon: Pencil,
+        disabled: panel.busy,
+        run: () => setRenaming(true),
+      },
+    );
   if (canReviewWorkTaskCompletion(task))
     actions.push({
       label: t(task.status === "done" ? "retryForge" : "complete"),
@@ -127,46 +166,57 @@ export function WorkTaskActions({
       disabled: disabled || !panel.executable || syncing,
       run: () => setConfirmCleanup(true),
     });
+  const items = (Item: typeof DropdownMenuItem | typeof ContextMenuItem) =>
+    actions.map(({ label, hint, Icon, disabled, run }) => (
+      <Item key={label} disabled={disabled} onSelect={run}>
+        <Icon className="size-4" />
+        {hint ? (
+          <span className="min-w-0">
+            {label}
+            <span className="block max-w-64 whitespace-normal text-ui-xs">{hint}</span>
+          </span>
+        ) : (
+          label
+        )}
+      </Item>
+    ));
+  const controls = menu ? (
+    // 菜单内会打开独立弹窗，双重模态锁可能在关闭后残留 body pointer-events:none。
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("taskActions")}
+          title={t("taskActions")}
+        >
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">{items(DropdownMenuItem)}</DropdownMenuContent>
+    </DropdownMenu>
+  ) : (
+    <div className="flex shrink-0 items-center gap-0.5">
+      {actions.map(({ label, Icon, disabled, run }) => (
+        <WorkTaskIconButton key={label} label={label} disabled={disabled} onClick={run}>
+          <Icon className="size-4" />
+        </WorkTaskIconButton>
+      ))}
+    </div>
+  );
   return (
     <>
-      {menu ? (
-        // 菜单内会打开独立弹窗，双重模态锁可能在关闭后残留 body pointer-events:none。
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("taskActions")}
-              title={t("taskActions")}
-            >
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {actions.map(({ label, hint, Icon, disabled, run }) => (
-              <DropdownMenuItem key={label} disabled={disabled} onSelect={run}>
-                <Icon className="size-4" />
-                {hint ? (
-                  <span className="min-w-0">
-                    {label}
-                    <span className="block max-w-64 whitespace-normal text-ui-xs">{hint}</span>
-                  </span>
-                ) : (
-                  label
-                )}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {children ? (
+        <ContextMenu modal={false}>
+          <ContextMenuTrigger asChild>{children(controls)}</ContextMenuTrigger>
+          <ContextMenuContent>{items(ContextMenuItem)}</ContextMenuContent>
+        </ContextMenu>
       ) : (
-        <div className="flex shrink-0 items-center gap-0.5">
-          {actions.map(({ label, Icon, disabled, run }) => (
-            <WorkTaskIconButton key={label} label={label} disabled={disabled} onClick={run}>
-              <Icon className="size-4" />
-            </WorkTaskIconButton>
-          ))}
-        </div>
+        controls
       )}
+      {renaming ? (
+        <WorkTaskRenameDialog task={task} panel={panel} onClose={() => setRenaming(false)} />
+      ) : null}
       {confirmCleanup ? (
         <WorkTaskArchiveWorktreeDialog
           task={task}

@@ -16,6 +16,7 @@ import {
   type ForgeComment,
   type ForgePage,
   type WorkTaskUpdate,
+  type WorkTaskRename,
   type WorkTaskMerge,
   type WorkTaskMergeRequest,
   type WorkTaskAttachment,
@@ -51,6 +52,8 @@ export interface IWorkTaskService {
   list(input: WorkTaskScope & { includeArchived?: boolean }): Promise<WorkTaskBoard>;
   create(input: WorkTaskCreate): Promise<WorkTask>;
   update(input: WorkTaskUpdate): Promise<WorkTask>;
+  /** 元数据改名适用于运行中任务，仅改标题，不编辑或重新执行草稿。 */
+  rename(input: WorkTaskRename): Promise<WorkTask>;
   start(input: WorkTaskStart): Promise<WorkTask>;
   startAll(input: WorkTaskScope): Promise<void>;
   cancel(input: WorkTaskTarget): Promise<WorkTask>;

@@ -51,7 +51,10 @@ export {
   exerciseWorkTaskConcurrentExecution,
   exerciseWorkTaskCompletion,
 };
+import { exerciseWorkTaskCardActions } from "./workTaskCardActionsAssertions.mjs";
+
 export const workTaskScenarios = {
+  "card-actions": exerciseWorkTaskCardActions,
   "http-attachments": exerciseWorkTaskHttpAttachments,
   "new-session": exerciseWorkTaskNewSession,
   "cleanup-sync": exerciseWorkTaskCleanupSync,
