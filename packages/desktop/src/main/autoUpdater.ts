@@ -20,6 +20,7 @@ import pkg, { CancellationToken } from "electron-updater";
 import semver from "semver";
 import { logger } from "./logger.js";
 import { getElectronReleasePlatform, ManifestUpdateProvider } from "./manifestUpdateProvider.js";
+import { CODEVORI_DESKTOP_MANIFEST_URL } from "./desktopUpdatePolicy.js";
 const { autoUpdater } = pkg;
 
 export const CHECK_FOR_UPDATE_MENU_ID = "check-for-update";
@@ -752,12 +753,13 @@ async function syncAutoUpdateCheckChannelFromSettings(
 }
 
 function applyManifestUpdateProvider(options: InitAutoUpdaterOptions): void {
-  const manifestUrl = options.updateFeedSource?.url.trim();
+  // 自有更新源必须独立于业务后端；缺少开发覆盖时不能回退到上游 ZCode 安装包。
+  const manifestUrl = options.updateFeedSource?.url.trim() || CODEVORI_DESKTOP_MANIFEST_URL;
   autoUpdater.setFeedURL({
     provider: "custom",
     updateProvider: ManifestUpdateProvider,
     endpointOrigin: DEFAULT_ZCODE_ENDPOINT_ORIGIN,
-    ...(manifestUrl ? { manifestUrl } : {}),
+    manifestUrl,
     releasePlatform: getElectronReleasePlatform(),
     deviceMid: options.deviceMid,
     resolveEndpointOrigin:
@@ -768,9 +770,7 @@ function applyManifestUpdateProvider(options: InitAutoUpdaterOptions): void {
     },
   });
   logger.info(
-    manifestUrl
-      ? `[auto-update] service manifest provider applied platform=${getElectronReleasePlatform()} manifestUrl=${redactUpdateFeedUrlForLog(manifestUrl)}`
-      : `[auto-update] service manifest provider applied platform=${getElectronReleasePlatform()}`,
+    `[auto-update] service manifest provider applied platform=${getElectronReleasePlatform()} manifestUrl=${redactUpdateFeedUrlForLog(manifestUrl)}`,
   );
 }
 

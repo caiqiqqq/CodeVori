@@ -275,6 +275,7 @@ export * from "./versionControl.js";
 export * from "./forge.js";
 export * from "./forge-issues-mcp.js";
 export { forgeAttachmentDownloadUrl } from "./forgeAttachment.js";
+export { DIRECTORY_ATTACHMENT_MIME, buildDirectoryAttachmentText } from "./directoryAttachment.js";
 export * from "./bots.js";
 export * from "./assistant-message-parts.js";
 export * from "./zcodePersistedMessageMerge.js";

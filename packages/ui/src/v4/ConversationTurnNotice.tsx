@@ -30,14 +30,10 @@ export function ConversationTurnNotice({
       return;
     }
     if (presentation.dismissed) return;
-    const remaining = presentation.expiresAt - Date.now();
-    if (!running || activity !== presentation.initialActivity || remaining <= 0) {
+    // 重连耗时无法预估；仅以本轮恢复输出或结束作为清除依据，不能用固定超时伪装恢复。
+    if (!running || activity !== presentation.initialActivity) {
       dismiss(presentationKey);
-      return;
     }
-    // 重挂载只能使用原截止时间的剩余时长，不能重新给同一提示五秒。
-    const timer = setTimeout(() => dismiss(presentationKey), remaining);
-    return () => clearTimeout(timer);
   }, [warning, presentationKey, presentation, activity, running]);
 
   // 修复原因：effect 在绘制后执行；首帧就读取消失记录，避免重进会话时旧提示闪现。
@@ -46,7 +42,6 @@ export function ConversationTurnNotice({
     (!running ||
       !presentation ||
       presentation.dismissed ||
-      Date.now() >= presentation.expiresAt ||
       activity !== presentation.initialActivity)
   )
     return null;

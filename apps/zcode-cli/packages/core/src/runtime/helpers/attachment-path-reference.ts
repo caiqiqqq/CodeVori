@@ -3,8 +3,10 @@ import type { FilePartSource, TurnAttachment } from "../deps.js";
 import type { ResolvedTurnAttachment } from "../types.js";
 import { safeAttachmentOriginalRef } from "./attachment-artifacts.js";
 import { inferVideoMimeFromPath } from "./attachment-video.js";
+import { DIRECTORY_ATTACHMENT_MIME, buildDirectoryAttachmentText } from "@zcode/shared";
 
 type PathReferenceReason =
+  | "directory"
   | "binary_file"
   | "deferred_clipboard_text"
   | "image_too_large"
@@ -50,11 +52,14 @@ export function resolvedPathReferenceAttachment(
 ): ResolvedTurnAttachment {
   const mime =
     options.mime ?? (attachment.type === "image" ? "image/*" : "application/octet-stream");
-  const content = [
-    `Attached ${mime}: ${placeholder}`,
-    `The file was sent by local path because ${formatPathReferenceReason(options.reason)}.`,
-    "Use the available file reading tools if you need to inspect the file contents.",
-  ].join("\n");
+  const content =
+    options.reason === "directory"
+      ? buildDirectoryAttachmentText(placeholder)
+      : [
+          `Attached ${mime}: ${placeholder}`,
+          `The file was sent by local path because ${formatPathReferenceReason(options.reason)}.`,
+          "Use the available file reading tools if you need to inspect the file contents.",
+        ].join("\n");
   return {
     contentBlock: { type: "text", text: content },
     filename: options.filename,
@@ -68,6 +73,17 @@ export function resolvedPathReferenceAttachment(
     source: options.source,
     url: attachment.path ?? attachment.content ?? "",
   };
+}
+
+export function resolvedDirectoryAttachment(
+  attachment: TurnAttachment,
+  absolutePath: string,
+): ResolvedTurnAttachment {
+  return resolvedPathReferenceAttachment(attachment, absolutePath, {
+    filename: basename(absolutePath),
+    mime: DIRECTORY_ATTACHMENT_MIME,
+    reason: "directory",
+  });
 }
 
 export function isDataOrArtifactUrl(content: string): boolean {
