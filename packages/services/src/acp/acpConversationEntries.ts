@@ -1,4 +1,4 @@
-import type { AcpPlanStep, AcpSession } from "@zcode/shared";
+import type { AcpPlanStep, AcpSession, AcpStopReason } from "@zcode/shared";
 
 export type AcpConversationUpdate =
   | { kind: "text"; text: string; messageId?: string }
@@ -9,12 +9,17 @@ export function finishAcpTurn(
   session: Pick<AcpSession, "entries">,
   commandId: string | undefined,
   receivedAt: number,
+  stopReason?: AcpStopReason,
 ): void {
   if (!commandId) return;
   const entry = session.entries.find((candidate) => candidate.id === `user:${commandId}`);
   // 修复原因：会话终态没有轮次时间，ACP 曾永久隐藏耗时；只写精确接纳行的首次结束，
   // 不把无用户行的后台通知、未接纳输入或停止后的迟到结果算进上一轮。
-  if (entry?.kind === "user" && entry.endedAt === undefined) entry.endedAt = receivedAt;
+  if (entry?.kind === "user" && entry.endedAt === undefined) {
+    entry.endedAt = receivedAt;
+    // 修复原因：历史队列暂停会跨轮保留，通知必须使用本轮事实；首次结算后迟到结果不能改写原因。
+    if (stopReason !== undefined) entry.stopReason = stopReason;
+  }
 }
 
 export function finishAcpThoughts(

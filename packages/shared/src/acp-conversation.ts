@@ -41,6 +41,7 @@ export function summarizeAcpSession(session: AcpSession): AcpSessionSummary {
               text: user.text.slice(0, 512),
               ...(user.createdAt === undefined ? {} : { createdAt: user.createdAt }),
               ...(user.endedAt === undefined ? {} : { endedAt: user.endedAt }),
+              ...(user.stopReason === undefined ? {} : { stopReason: user.stopReason }),
             },
           ]
         : [],
