@@ -42,11 +42,15 @@ try {
       getDeviceBridgeState:async()=>structuredClone(state.snapshot),
       executeDeviceBridgeCommand:async(command:any)=>{
         state.calls.push(command);if(state.hold){state.hold=false;await new Promise(resolve=>state.release=resolve)}
+        if(command.action==='start' && state.startError){
+          Object.assign(state.snapshot,{phase:'error',error:state.startError});
+          throw new Error("Error invoking remote method 'zcode:execute-device-bridge-command': Error: "+state.startError);
+        }
         if(state.fail){state.fail=false;throw new Error('Synthetic device failure')}
         const s=state.snapshot,p=s.peers.find((p:any)=>p.nodeId===command.nodeId);
         switch(command.action){
-          case 'configure':s.binaryPath=command.binaryPath;break;
-          case 'start':Object.assign(s,{phase:'running',backendState:'NeedsLogin',canLogin:true});break;
+          case 'configure':s.binaryPath=command.binaryPath;s.phase='stopped';delete s.error;break;
+          case 'start':Object.assign(s,{phase:'running',backendState:'NeedsLogin',canLogin:true});delete s.error;break;
           case 'connect':Object.assign(p,{connected:true,toolCount:7,checkedAt:'2026-10-22T00:00:00Z'});break;
           case 'disconnect':p.connected=false;delete p.toolCount;delete p.checkedAt;break;
           case 'authorize':p.allowed=command.allowed;s.exposing=p.allowed;break;
@@ -99,6 +103,57 @@ try {
   await navigation.click();
   await ready();
   assert.equal(await navigation.getAttribute("aria-current"), "page");
+  const failures = [
+    ["device_bridge_component_missing", "未找到连接组件", "was not found"],
+    ["device_bridge_component_not_executable", "没有执行权限", "cannot be executed"],
+    ["device_bridge_start_failed", "启动失败", "could not start"],
+    ["device_bridge_process_closed", "意外退出", "exited unexpectedly"],
+    ["synthetic-private-token-and-auth-url", "连接操作未完成", "operation did not complete"],
+  ];
+  for (const [locale, language] of [
+    ["zh-CN", 1],
+    ["en-US", 2],
+  ]) {
+    await page.evaluate((locale) => window.__devices.setLocale(locale), locale);
+    await ready();
+    for (const failure of failures) {
+      await page.evaluate((code) => {
+        window.__devices.startError = code;
+      }, failure[0]);
+      await panel.getByTestId("device-bridge-start").click();
+      await ready();
+      const alert = panel.getByRole("alert");
+      assert.ok((await alert.textContent()).includes(failure[language]));
+      assert.ok(!(await alert.textContent()).includes("synthetic-private"));
+      await panel.getByTestId("device-bridge-refresh").click();
+      await ready();
+      assert.ok((await alert.textContent()).includes(failure[language]));
+      await general.click();
+      await navigation.click();
+      await ready();
+      assert.ok((await panel.getByRole("alert").textContent()).includes(failure[language]));
+      await page.evaluate(() => {
+        window.__devices.startError = null;
+      });
+      await panel.getByTestId("device-bridge-select-component").click();
+      await ready();
+      assert.equal(await panel.getByRole("alert").count(), 0);
+    }
+  }
+  // 成功重试也必须清除 Main 的错误投影和 hook 的暂态错误。
+  await page.evaluate(() => {
+    window.__devices.startError = "device_bridge_component_missing";
+  });
+  await panel.getByTestId("device-bridge-start").click();
+  await ready();
+  await page.evaluate(() => {
+    window.__devices.startError = null;
+  });
+  await panel.getByTestId("device-bridge-start").click();
+  await ready();
+  assert.equal(await panel.getByRole("alert").count(), 0);
+  await panel.getByTestId("device-bridge-stop").click();
+  await ready();
   await panel.getByTestId("device-bridge-select-component").click();
   await ready();
   assert.ok((await panel.textContent()).includes("/synthetic/replacement-device-bridge"));
@@ -192,7 +247,7 @@ try {
   assert.equal(await general.getAttribute("aria-current"), "page");
   assert.deepEqual(errors, []);
   process.stdout.write(
-    `PASS: real SettingsPage; component selection, login, health failure/retry, pending controls, explicit grant/revoke, page lifetime, disconnect/logout, capability gating, zh/en, light/dark, 320/375/1280px. Screenshots: ${artifacts}\n`,
+    `PASS: real SettingsPage; specific safe startup errors, refresh/remount/retry recovery, component selection, login, health failure/retry, pending controls, explicit grant/revoke, page lifetime, disconnect/logout, capability gating, zh/en, light/dark, 320/375/1280px. Screenshots: ${artifacts}\n`,
   );
 } catch (error) {
   await page?.screenshot({ path: join(artifacts, "failure.png") }).catch(() => {});

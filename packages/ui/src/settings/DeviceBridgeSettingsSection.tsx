@@ -1,4 +1,5 @@
 import { Network, RefreshCw } from "lucide-react";
+import { getDeviceBridgeErrorCode } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useDeviceBridgeSettings } from "@/hooks/useDeviceBridgeSettings.js";
@@ -218,7 +219,7 @@ export function DeviceBridgeSettingsSection() {
       ) : null}
       {error || state?.error ? (
         <p role="alert" className="text-ui-sm text-destructive" data-testid="device-bridge-error">
-          {t("error")}
+          {t(getDeviceBridgeErrorCode(state?.error ?? error))}
         </p>
       ) : null}
     </section>

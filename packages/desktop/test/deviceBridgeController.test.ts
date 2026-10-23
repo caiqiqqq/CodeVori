@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { DeviceBridgeConfiguration, DeviceBridgeWorkerState } from "@zcode/shared";
+import type {
+  DeviceBridgeConfiguration,
+  DeviceBridgeWorkerState,
+  DeviceBridgeErrorCode,
+} from "@zcode/shared";
 import { createDeviceBridgeController } from "../src/main/deviceBridgeController.js";
 
 function fixture() {
@@ -27,19 +31,29 @@ function fixture() {
     ],
   };
   const writes: unknown[] = [];
-  let exits = 0,
-    onExit = () => {};
+  let exits = 0;
+  let onExit: (reason?: DeviceBridgeErrorCode) => void = () => {};
+  let startError: Error | undefined;
+  let holdStart: Promise<void> | undefined;
+  let releaseStart: (() => void) | undefined;
+  let holdConfiguration: Promise<void> | undefined;
+  let releaseConfiguration: (() => void) | undefined;
   let failCheck = false,
     failLogout = false;
   let holdCheck: Promise<void> | undefined;
   let releaseCheck: (() => void) | undefined;
   const controller = createDeviceBridgeController({
-    readConfiguration: async () => configuration,
+    readConfiguration: async () => {
+      if (holdConfiguration) await holdConfiguration;
+      return configuration;
+    },
     writeConfiguration: async (value) => {
       configuration = value;
     },
-    startSession: (exit) => {
+    startSession: async (exit) => {
       onExit = exit;
+      if (holdStart) await holdStart;
+      if (startError) throw startError;
       return {
         request: async (method, fields) => {
           if (method === "logout" && failLogout) throw new Error("logout failed");
@@ -85,6 +99,21 @@ function fixture() {
     controller,
     writes,
     worker,
+    setStartError: (code?: string) => {
+      startError = code ? new Error(code) : undefined;
+    },
+    holdStart: () => {
+      holdStart = new Promise((resolve) => {
+        releaseStart = resolve;
+      });
+    },
+    releaseStart: () => releaseStart?.(),
+    holdConfiguration: () => {
+      holdConfiguration = new Promise((resolve) => {
+        releaseConfiguration = resolve;
+      });
+    },
+    releaseConfiguration: () => releaseConfiguration?.(),
     failLogout: () => {
       failLogout = true;
     },
@@ -113,6 +142,56 @@ test("failed account logout still closes listeners and removes published tools",
   assert.equal((await f.controller.read()).phase, "stopped");
   assert.equal(f.exits, 1);
   assert.equal((f.writes.at(-1) as { action: string }).action, "delete");
+});
+
+test("startup errors survive reads and clear after a successful retry or configure", async () => {
+  const f = fixture();
+  for (const code of [
+    "device_bridge_component_missing",
+    "device_bridge_component_not_executable",
+    "device_bridge_start_failed",
+  ]) {
+    f.setStartError(code);
+    await assert.rejects(f.controller.execute({ action: "start" }), { message: code });
+    const failed = await f.controller.read();
+    assert.equal(failed.phase, "error");
+    assert.equal(failed.error, code);
+    assert.equal(failed.peers.length, 0);
+    assert.equal(
+      (await f.controller.execute({ action: "configure", binaryPath: "/synthetic/retry" })).error,
+      undefined,
+    );
+  }
+  f.setStartError();
+  assert.equal((await f.controller.execute({ action: "start" })).error, undefined);
+});
+
+test("stop during async component preparation closes the late session", async () => {
+  const f = fixture();
+  f.holdStart();
+  const starting = f.controller.execute({ action: "start" });
+  const rejected = assert.rejects(starting, /device_bridge_process_closed/);
+  await new Promise((resolve) => setImmediate(resolve));
+  const stopped = f.controller.execute({ action: "stop" });
+  f.releaseStart();
+  await rejected;
+  assert.equal((await stopped).phase, "stopped");
+  assert.equal(f.exits, 1);
+});
+
+test("stop while reading configuration cancels startup before spawning", async () => {
+  const f = fixture();
+  f.holdConfiguration();
+  const rejected = assert.rejects(
+    f.controller.execute({ action: "start" }),
+    /device_bridge_process_closed/,
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  const stopped = f.controller.execute({ action: "stop" });
+  f.releaseConfiguration();
+  await rejected;
+  assert.equal((await stopped).phase, "stopped");
+  assert.equal(f.exits, 0);
 });
 
 test("reading settings does not start a network node; connect checks MCP before publication", async () => {

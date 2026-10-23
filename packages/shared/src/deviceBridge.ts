@@ -19,6 +19,24 @@ export const deviceBridgeConfigurationSchema = z
   .strict();
 export type DeviceBridgeConfiguration = z.infer<typeof deviceBridgeConfigurationSchema>;
 
+const deviceBridgeErrorCodes = [
+  "device_bridge_component_missing",
+  "device_bridge_component_not_executable",
+  "device_bridge_start_failed",
+  "device_bridge_process_closed",
+  "device_bridge_operation_failed",
+] as const;
+export type DeviceBridgeErrorCode = (typeof deviceBridgeErrorCodes)[number];
+
+/** Only allowlisted codes cross into user-facing diagnostics, including Electron's IPC prefix. */
+export function getDeviceBridgeErrorCode(error: unknown): DeviceBridgeErrorCode {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return (
+    deviceBridgeErrorCodes.find((code) => message === code || message.endsWith(`: ${code}`)) ??
+    "device_bridge_operation_failed"
+  );
+}
+
 const peerSchema = z
   .object({
     nodeId,
@@ -74,5 +92,5 @@ export interface DeviceBridgeState {
   tailnet: string;
   exposing: boolean;
   peers: DeviceBridgePeer[];
-  error?: string;
+  error?: DeviceBridgeErrorCode;
 }

@@ -35,13 +35,21 @@ const enUS: Record<string, string> = {
   "settings.devices.revoke": "Revoke control access",
   "settings.devices.component": "Connection component",
   "settings.devices.componentDescription":
-    "Select the connection component for this operating system. Stop networking before replacing it.",
+    "The app includes a connection component. To use a custom version, stop networking and choose a file.",
   "settings.devices.selectComponent": "Choose file",
   "settings.devices.lifecycle":
     "Connections stay active when you leave settings. Newly connected tools are available in new local conversations. Quitting the app or stopping networking closes connections. Check the target state before continuing after an interruption.",
   "settings.devices.working": "Working…",
-  "settings.devices.error":
-    "The operation did not complete. Check the connection component, network authorization, and the target computer’s executor and access permissions, then retry.",
+  "settings.devices.device_bridge_component_missing":
+    "The connection component was not found. Reinstall the complete app or choose a valid component file.",
+  "settings.devices.device_bridge_component_not_executable":
+    "The connection component cannot be executed or access is blocked. Check its file permissions or reinstall the complete app.",
+  "settings.devices.device_bridge_start_failed":
+    "The connection component could not start. Check that it matches this operating system and architecture, or reinstall the complete app and retry.",
+  "settings.devices.device_bridge_process_closed":
+    "The connection component exited unexpectedly. Reconnect; if it keeps failing, reinstall the complete app.",
+  "settings.devices.device_bridge_operation_failed":
+    "The operation did not complete. Retry, then check network authorization and the target computer’s executor and access permissions if it still fails.",
   "settings.desktopLan.title": "Phone access over LAN",
   "settings.desktopLan.description":
     "Connect your phone to this desktop window and its projects, conversations and running sessions. Your choice is remembered: access is restored for the main window after updates or restarts, until you disable it.",

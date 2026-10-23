@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { chmod, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -25,7 +25,7 @@ test(
       `process.stdin.once('data',()=>{process.stdout.write('synthetic-private-output\\n')});`,
       async (binaryPath) => {
         let exits = 0;
-        const session = startDeviceBridgeProcess({
+        const session = await startDeviceBridgeProcess({
           binaryPath,
           stateDir: "/synthetic",
           hostname: "synthetic",
@@ -54,7 +54,7 @@ test(
       `process.stdin.resume();process.stdin.on('end',()=>process.exit(0));`,
       async (binaryPath) => {
         let exits = 0;
-        const session = startDeviceBridgeProcess({
+        const session = await startDeviceBridgeProcess({
           binaryPath,
           stateDir: "/synthetic",
           hostname: "synthetic",
@@ -66,6 +66,88 @@ test(
         await session.stop();
         await waiting;
         assert.equal(exits, 1);
+      },
+    );
+  },
+);
+
+test("bridge preflight rejects missing files and directories with safe errors", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "bridge-preflight-"));
+  try {
+    for (const binaryPath of [join(directory, "missing"), directory]) {
+      await assert.rejects(
+        startDeviceBridgeProcess({
+          binaryPath,
+          stateDir: directory,
+          hostname: "test",
+          onExit() {},
+        }),
+        { message: "device_bridge_component_missing" },
+      );
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test(
+  "bridge reports permission and launch failures without raw OS output",
+  {
+    skip: process.platform === "win32",
+  },
+  async () => {
+    await fakeBinary("process.exit(1)", async (binaryPath) => {
+      await chmod(binaryPath, 0o600);
+      await assert.rejects(
+        startDeviceBridgeProcess({
+          binaryPath,
+          stateDir: "/synthetic",
+          hostname: "test",
+          onExit() {},
+        }),
+        { message: "device_bridge_component_not_executable" },
+      );
+      await chmod(binaryPath, 0o700);
+      const reasons: string[] = [];
+      const session = await startDeviceBridgeProcess({
+        binaryPath,
+        stateDir: "/synthetic",
+        hostname: "test",
+        onExit: (reason) => reasons.push(reason),
+      });
+      await assert.rejects(session.request("status"), { message: "device_bridge_start_failed" });
+      await assert.rejects(session.request("status"), { message: "device_bridge_start_failed" });
+      assert.deepEqual(reasons, ["device_bridge_start_failed"]);
+      await session.stop();
+    });
+  },
+);
+
+test(
+  "a bridge that exits after a valid response is a runtime failure",
+  { skip: process.platform === "win32" },
+  async () => {
+    await fakeBinary(
+      `process.stdin.once('data', data => {
+    process.stdout.write(JSON.stringify({version:1,id:JSON.parse(data).id})+'\\n',()=>process.exit(1));
+  });`,
+      async (binaryPath) => {
+        let exited!: () => void;
+        const exit = new Promise<void>((resolve) => {
+          exited = resolve;
+        });
+        const session = await startDeviceBridgeProcess({
+          binaryPath,
+          stateDir: "/synthetic",
+          hostname: "test",
+          onExit: exited,
+        });
+        await session.request("status");
+        await exit;
+        await assert.rejects(session.request("status"), {
+          message: "device_bridge_process_closed",
+        });
+        await session.stop();
       },
     );
   },
