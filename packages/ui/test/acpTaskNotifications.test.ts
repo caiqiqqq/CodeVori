@@ -76,6 +76,59 @@ test("failed turns notify but explicit stops and interrupted unknown outcomes do
   }
 });
 
+test("this turn's end_turn notifies despite a historical stopped or error queue", () => {
+  for (const pauseReason of ["stopped", "error"] as const) {
+    const queue = { items: [], autoDrain: false, pauseReason };
+    const running = snapshot({ queue });
+    const completed = snapshot({
+      status: "idle",
+      revision: 2,
+      queue,
+      entries: [
+        { kind: "user", id: "user:one", text: "work", endedAt: 10, stopReason: "end_turn" },
+      ],
+    });
+    assert.equal(collect(running, completed)?.status, "completed");
+    assert.equal(collect(completed, completed), null);
+    assert.equal(collect(undefined, completed), null);
+    assert.equal(collect(running, { ...completed, error: "structured failure" })?.status, "failed");
+  }
+});
+
+test("current cancellation and non-success reasons stay silent even with auto-drain enabled", () => {
+  for (const stopReason of ["cancelled", "max_tokens", "max_turn_requests", "refusal"] as const) {
+    assert.equal(
+      collect(
+        snapshot(),
+        snapshot({
+          status: "idle",
+          revision: 2,
+          entries: [{ kind: "user", id: "user:one", text: "work", endedAt: 10, stopReason }],
+        }),
+      ),
+      null,
+    );
+  }
+});
+
+test("a previous user row's outcome cannot complete the current turn", () => {
+  assert.equal(
+    collect(
+      snapshot(),
+      snapshot({
+        status: "idle",
+        revision: 2,
+        queue: { items: [], autoDrain: false, pauseReason: "stopped" },
+        entries: [
+          { kind: "user", id: "user:old", text: "old", endedAt: 1, stopReason: "end_turn" },
+          { kind: "user", id: "user:one", text: "new" },
+        ],
+      }),
+    ),
+    null,
+  );
+});
+
 test("provisional, archived and superseded snapshots cannot notify", () => {
   for (const patch of [
     { provisional: true },

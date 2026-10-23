@@ -1,4 +1,4 @@
-import type { AcpSession, TaskNotificationPayload } from "@zcode/shared";
+import type { AcpSession, AcpStopReason, TaskNotificationPayload } from "@zcode/shared";
 import type {
   ConversationSnapshot,
   PendingInteraction,
@@ -82,7 +82,10 @@ export const ACP_TASK_NOTIFICATION_PREFIX = "acp:";
 export type AcpTaskNotificationState = Pick<
   AcpSession,
   "id" | "revision" | "status" | "title" | "error" | "provisional" | "archived" | "supersededBy"
-> & { pauseReason: AcpSession["queue"]["pauseReason"] };
+> & {
+  pauseReason: AcpSession["queue"]["pauseReason"];
+  stopReason?: AcpStopReason;
+};
 
 export function toAcpTaskNotificationState(session: AcpSession): AcpTaskNotificationState {
   return {
@@ -95,6 +98,7 @@ export function toAcpTaskNotificationState(session: AcpSession): AcpTaskNotifica
     archived: session.archived,
     supersededBy: session.supersededBy,
     pauseReason: session.queue.pauseReason,
+    stopReason: session.entries.findLast((entry) => entry.kind === "user")?.stopReason,
   };
 }
 
@@ -115,10 +119,14 @@ export function getAcpTerminalTaskNotificationPayload(
   ) {
     return null;
   }
-  // 修复依据：ACP stop 也会写 idle，必须结合 Host 的队列停止事实，不能把停止当成功。
+  // 修复原因：队列 stopped/error 会跨轮保留，不能阻止后续正常完成通知。
+  // 优先使用 Host 写入本轮用户行的结束原因；旧快照才沿用队列判断，主动停止仍保持静默。
   const status = next.error
     ? "failed"
-    : next.status === "idle" && next.pauseReason !== "stopped" && next.pauseReason !== "error"
+    : next.status === "idle" &&
+        (next.stopReason === undefined
+          ? next.pauseReason !== "stopped" && next.pauseReason !== "error"
+          : next.stopReason === "end_turn")
       ? "completed"
       : null;
   return status
