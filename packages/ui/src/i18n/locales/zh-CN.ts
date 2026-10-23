@@ -31,13 +31,22 @@ const zhCN: Record<string, string> = {
   "settings.devices.authorize": "允许控制本机",
   "settings.devices.revoke": "撤销控制授权",
   "settings.devices.component": "连接组件",
-  "settings.devices.componentDescription": "选择与本机系统匹配的连接组件。更换前请停止网络连接。",
+  "settings.devices.componentDescription":
+    "应用已内置连接组件。如需使用自定义版本，可停止网络连接后选择文件。",
   "settings.devices.selectComponent": "选择文件",
   "settings.devices.lifecycle":
     "离开设置页后连接仍会保留。新连接的工具可在新的本机对话中使用；应用退出或停止网络会关闭连接。断线后请先检查目标状态，再继续操作。",
   "settings.devices.working": "正在处理…",
-  "settings.devices.error":
-    "连接操作未完成。请检查连接组件、网络授权，以及目标电脑的执行器和控制授权，再重试。",
+  "settings.devices.device_bridge_component_missing":
+    "未找到连接组件。请重新安装包含此组件的完整应用，或选择有效的连接组件文件。",
+  "settings.devices.device_bridge_component_not_executable":
+    "连接组件没有执行权限或被系统阻止访问。请检查文件权限，或重新安装完整应用。",
+  "settings.devices.device_bridge_start_failed":
+    "连接组件启动失败。请确认组件适用于本机系统与架构，或重新安装完整应用后重试。",
+  "settings.devices.device_bridge_process_closed":
+    "连接组件意外退出。请重新连接；若仍失败，请重新安装完整应用。",
+  "settings.devices.device_bridge_operation_failed":
+    "连接操作未完成，请重试。若仍失败，请检查网络授权及目标电脑的执行器和控制授权。",
   "settings.desktopLan.title": "局域网手机访问",
   "settings.desktopLan.description":
     "让手机连接当前桌面窗口，查看同一项目、会话和运行状态。开启后会记住选择，更新或重启后自动为主窗口恢复；手动关闭后不再恢复。",

@@ -4,15 +4,20 @@ import type {
   DeviceBridgeConfiguration,
   DeviceBridgeState,
   DeviceBridgeWorkerState,
+  DeviceBridgeErrorCode,
   SaveCliMcpToUserDirectoryRequest,
 } from "@zcode/shared";
+import { getDeviceBridgeErrorCode } from "@zcode/shared";
 import type { DeviceBridgeSession } from "./deviceBridgeProcess.js";
 
 type Endpoint = { nodeId: string; url: string; token: string };
 export function createDeviceBridgeController(ports: {
   readConfiguration(): Promise<DeviceBridgeConfiguration>;
   writeConfiguration(value: DeviceBridgeConfiguration): Promise<void>;
-  startSession(onExit: () => void, configuration: DeviceBridgeConfiguration): DeviceBridgeSession;
+  startSession(
+    onExit: (reason?: DeviceBridgeErrorCode) => void,
+    configuration: DeviceBridgeConfiguration,
+  ): Promise<DeviceBridgeSession>;
   saveMcp(request: SaveCliMcpToUserDirectoryRequest): Promise<void>;
   checkMcp(endpoint: Endpoint): Promise<number>;
   openLogin(url: string): Promise<void>;
@@ -20,6 +25,7 @@ export function createDeviceBridgeController(ports: {
   let session: DeviceBridgeSession | undefined;
   let worker: DeviceBridgeWorkerState | undefined;
   let phase: DeviceBridgeState["phase"] = "stopped";
+  let failure: DeviceBridgeErrorCode | undefined;
   let generation = 0,
     restored = false;
   let operations: Promise<unknown> = Promise.resolve();
@@ -70,7 +76,7 @@ export function createDeviceBridgeController(ports: {
       tailnet: worker?.tailnet ?? "",
       exposing: worker?.exposing ?? false,
       peers: worker?.peers.map((peer) => ({ ...peer, ...checks.get(peer.nodeId) })) ?? [],
-      ...(phase === "error" ? { error: "device_bridge_process_closed" } : {}),
+      ...(phase === "error" ? { error: failure ?? "device_bridge_process_closed" } : {}),
     };
   };
   const refresh = async () => {
@@ -92,6 +98,7 @@ export function createDeviceBridgeController(ports: {
     session = undefined;
     worker = undefined;
     phase = "stopped";
+    failure = undefined;
     restored = false;
     await previous?.stop();
   };
@@ -104,29 +111,40 @@ export function createDeviceBridgeController(ports: {
           throw new Error("device_bridge_invalid_configuration");
         const config = await ports.readConfiguration();
         await ports.writeConfiguration({ ...config, binaryPath: command.binaryPath });
+        phase = "stopped";
+        failure = undefined;
         break;
       }
       case "start": {
         if (session) return refresh();
-        const config = await ports.readConfiguration();
-        if (!config.binaryPath || !isAbsolute(config.binaryPath))
-          throw new Error("device_bridge_component_missing");
-        await clearMcp();
         const epoch = ++generation;
         phase = "starting";
-        session = ports.startSession(() => {
-          if (generation !== epoch) return;
-          // 旧进程结果不能复活新连接；退出后的投影立即清空。
-          generation++;
-          session = undefined;
-          worker = undefined;
-          phase = "error";
-          restored = false;
-          checks.clear();
-          endpoints.clear();
-          void enqueue(clearMcp).catch(() => {});
-        }, config);
+        failure = undefined;
         try {
+          const config = await ports.readConfiguration();
+          await clearMcp();
+          if (generation !== epoch) throw new Error("device_bridge_process_closed");
+          if (!config.binaryPath || !isAbsolute(config.binaryPath))
+            throw new Error("device_bridge_component_missing");
+          const started = await ports.startSession((reason) => {
+            if (generation !== epoch) return;
+            // 旧进程结果不能复活新连接；退出后的投影立即清空。
+            generation++;
+            session = undefined;
+            worker = undefined;
+            phase = "error";
+            failure = reason ?? "device_bridge_process_closed";
+            restored = false;
+            checks.clear();
+            endpoints.clear();
+            void enqueue(clearMcp).catch(() => {});
+          }, config);
+          // 预检是异步 IO；停止命令可抢先失效代次，迟到的进程必须关闭，不能恢复 running。
+          if (generation !== epoch) {
+            await started.stop();
+            throw new Error("device_bridge_process_closed");
+          }
+          session = started;
           await request("status");
           phase = "running";
           return refresh();
@@ -134,6 +152,7 @@ export function createDeviceBridgeController(ports: {
           if (generation === epoch) {
             await stopProcess();
             phase = "error";
+            failure = getDeviceBridgeErrorCode(error);
           }
           throw error;
         }

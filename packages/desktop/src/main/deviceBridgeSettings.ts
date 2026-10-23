@@ -21,7 +21,13 @@ export function registerDeviceBridgeSettings(hosts: Map<number, UtilityProcess>)
   const binary = `device-bridge${process.platform === "win32" ? ".exe" : ""}`;
   const defaultBinary = app.isPackaged
     ? join(process.resourcesPath, "device-bridge", binary)
-    : resolve(app.getAppPath(), "../../.tmp/device-bridge", binary);
+    : resolve(
+        app.getAppPath(),
+        "bundled-tools",
+        `${process.platform}-${process.arch}`,
+        "device-bridge",
+        binary,
+      );
   const readConfiguration = async (): Promise<DeviceBridgeConfiguration> => {
     try {
       return deviceBridgeConfigurationSchema.parse(JSON.parse(await readFile(file, "utf8")));

@@ -16,6 +16,7 @@ import {
 } from "./scripts/node-pty-package-assets.mjs";
 import { cleanupPackagedSourcemaps } from "./scripts/packaged-sourcemap-cleanup.mjs";
 import { getTargetPlatform } from "./scripts/target-platform.mjs";
+import { deviceBridgeAsset, verifyPackagedDeviceBridge } from "./scripts/device-bridge-assets.mjs";
 import {
   resolveDesktopArtifactSuffix,
   resolveDesktopProductIdentity,
@@ -544,6 +545,18 @@ export default {
     await stageElectronNotices(context.appOutDir, resources, framework.version);
   },
   afterPack: async (context) => {
+    // extraResources 缺失时 builder 可能只警告；签名前必须拦住漏包和构建机/目标架构混用。
+    const actualBridgeTarget = {
+      os: context.electronPlatformName,
+      arch: ELECTRON_BUILDER_ARCH[context.arch],
+    };
+    if (
+      actualBridgeTarget.os !== targetPlatform.os ||
+      actualBridgeTarget.arch !== targetPlatform.arch
+    ) {
+      throw new Error("Device bridge packaging target does not match configured target");
+    }
+    await verifyPackagedDeviceBridge(resolvePackagedResourcesDir(context), actualBridgeTarget);
     const actualWindowsTarget =
       context.electronPlatformName === "win32"
         ? resolveElectronBuilderWindowsTarget({
@@ -571,6 +584,10 @@ export default {
     }
   },
   extraResources: [
+    {
+      from: deviceBridgeAsset(desktopPackageRoot, targetPlatform).binaryPath,
+      to: `device-bridge/${deviceBridgeAsset(desktopPackageRoot, targetPlatform).name}`,
+    },
     { from: resolve(workspaceRoot, noticesFileName), to: noticesFileName },
     ...(targetPlatform.os === "darwin"
       ? [

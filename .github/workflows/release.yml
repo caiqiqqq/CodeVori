@@ -88,6 +88,10 @@ jobs:
       - name: Install Linux packaging tools
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y rpm libarchive-tools zstd
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/device-bridge/go.mod
+          cache-dependency-path: apps/device-bridge/go.sum
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prod=false
       - name: Prepare runtime and compile desktop app

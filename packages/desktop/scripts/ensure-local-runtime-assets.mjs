@@ -37,6 +37,9 @@ const shouldRequireWindowsBrowserImportHelper =
 // 缺 Xcode CLT 时 build 脚本自身 warn 后 exit 0，这里仍保持 not ready，至多每次 dev 多跑一次秒级脚本。
 const shouldRequireMacosWindowBounds = target.os === "darwin";
 
+// bridge 源码随工作区变化，交给 Go 增量缓存准备，不能只判断旧二进制是否存在。
+runCommand(pnpmCommand, ["prepare:device-bridge"], { cwd: desktopRoot, env: process.env });
+
 function isNativeSearchReady() {
   if (!nativeSearchBuildPlan) return true;
   const requiredPaths = nativeSearchReleasePlan.runtimeToolIds.map(

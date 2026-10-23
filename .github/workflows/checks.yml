@@ -36,6 +36,10 @@ jobs:
       - name: Build workflow type declarations for a clean checkout
         run: pnpm --filter @zcode/dynamic-workflow-runtime... build
       - run: node --test scripts/github-release.test.mjs
+      - name: Device bridge packaging and lifecycle regressions
+        run: |
+          pnpm exec tsx --test packages/desktop/test/deviceBridge*.test.*
+          pnpm exec tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/deviceBridgeSettingsNavigation.test.ts
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm architecture:check --changed
