@@ -31,14 +31,14 @@ try {
     import {applyTheme} from '../../../ui/src/useTheme.ts';
     import '../../../ui/src/styles.css';
     applyTheme('zai-light');
-    const state:any={calls:[],listeners:{A:new Set(),B:new Set()},counts:{A:2,B:6},fail:false,delay:false,pending:[],open:false};
+    const state:any={calls:[],listeners:{A:new Set(),B:new Set()},counts:{A:0,B:6},fail:true,delay:true,pending:[],open:false};
     const hosts:any={};
     for(const host of ['A','B'])hosts[host]={workTaskService:{
       async getRepositoryIssueSummary(input:any){
         state.calls.push({host,...input});
         const value={pending:state.counts[host],checkedAt:Date.now()};
-        if(state.fail)throw new Error('FORGE_FORBIDDEN');
         if(state.delay){state.delay=false;await new Promise(resolve=>state.pending.push(resolve));}
+        if(state.fail)throw new Error('FORGE_FORBIDDEN');
         return value;
       },
       onDynamicChanged:()=>listener=>{state.listeners[host].add(listener);return{dispose:()=>state.listeners[host].delete(listener)}}
@@ -53,11 +53,12 @@ try {
       const [projects,setProjects]=useState<any[]>([project,{...project}]);
       const [shown,setShown]=useState(true);
       const [open,setOpen]=useState(false);
+      const [projectsLoading,setProjectsLoading]=useState(false);
       const {setLocale}=useZCodeIntl();
       state.switchRemote=()=>{connect();setProjects([remote])};
       return <div className='flex min-h-dvh gap-4 bg-background p-3 text-foreground'>
         <aside className='w-60 min-w-0 shrink-0'>
-          {shown?<RepositorySidebarButton projects={projects} onClick={()=>setOpen(true)} active={open}/>:null}
+          {shown?<RepositorySidebarButton projects={projects} projectsLoading={projectsLoading} onClick={()=>setOpen(true)} active={open}/>:null}
         </aside>
         <main className='min-w-0 flex-1 space-y-2'>
           <h1>{open?'仓库视图':'聊天视图'}</h1>
@@ -65,7 +66,8 @@ try {
             <button onClick={()=>state.counts.A++}>新增议题</button>
             <button onClick={state.task}>接入处理</button>
             <button onClick={()=>{state.fail=true}}>模拟失败</button>
-            <button onClick={()=>{state.fail=false}}>恢复</button>
+            <button onClick={()=>{state.fail=false;repositoryIssueRefreshStore.getState().invalidate()}}>恢复</button>
+            <button onClick={()=>setProjectsLoading(value=>!value)}>切换项目加载</button>
             <button onClick={()=>{state.counts.A=0;repositoryIssueRefreshStore.getState().invalidate()}}>关闭议题</button>
             <button onClick={()=>{state.counts.A=120;repositoryIssueRefreshStore.getState().invalidate()}}>大量议题</button>
             <button onClick={()=>setLocale('en-US')}>English</button>
@@ -103,6 +105,46 @@ try {
       String(count),
     );
   };
+  const expectNoBadge = async () => {
+    await page.clock.runFor(20);
+    await badge.waitFor({ state: "detached" });
+    assert.equal(await page.getByTestId("repository-sidebar-stale").count(), 0);
+    assert.equal(await page.getByTestId("repository-sidebar-issue").count(), 0);
+    assert.equal(await entry.isVisible(), true);
+  };
+  // 首次加载与首次失败都没有可用正数，不能用警告图标和横线制造待处理提示。
+  await page.waitForFunction(() => window.__counts?.pending.length === 1);
+  await expectNoBadge();
+  assert.match(await entry.getAttribute("aria-description"), /正在获取/);
+  await page.evaluate(() => window.__counts.finish());
+  await page.waitForFunction(() =>
+    document
+      .querySelector('[data-testid="repository-sidebar-open"]')
+      ?.getAttribute("aria-description")
+      ?.includes("暂不可用"),
+  );
+  await expectNoBadge();
+  await page.getByRole("button", { name: "恢复", exact: true }).click();
+  await page.waitForFunction(() =>
+    document
+      .querySelector('[data-testid="repository-sidebar-open"]')
+      ?.getAttribute("aria-description")
+      ?.startsWith("0"),
+  );
+  await expectNoBadge();
+  await page.getByRole("button", { name: "模拟失败", exact: true }).click();
+  await page.clock.runFor(60_000);
+  await expectNoBadge();
+  assert.match(await entry.getAttribute("aria-description"), /未能更新/);
+  await page.getByRole("button", { name: "恢复", exact: true }).click();
+  await page.getByRole("button", { name: "新增议题", exact: true }).click();
+  await page.getByRole("button", { name: "新增议题", exact: true }).click();
+  await page.clock.runFor(60_000);
+  await expectCount(2);
+  assert.equal(await page.getByTestId("repository-sidebar-issue").isVisible(), true);
+  await page.getByRole("button", { name: "切换项目加载", exact: true }).click();
+  await expectNoBadge();
+  await page.getByRole("button", { name: "切换项目加载", exact: true }).click();
   await expectCount(2);
   assert.equal(await page.getByRole("heading", { name: "聊天视图" }).count(), 1);
   assert.equal(
@@ -129,7 +171,7 @@ try {
   );
   await page.getByRole("button", { name: "关闭议题", exact: true }).click();
   await page.clock.runFor(20);
-  await badge.waitFor({ state: "detached" });
+  await expectNoBadge();
   await page.getByRole("button", { name: "大量议题", exact: true }).click();
   await expectCount("99+");
   await page.getByRole("button", { name: "English", exact: true }).click();
@@ -171,7 +213,7 @@ try {
     () => window.__counts.calls.filter((call) => call.host === "A").length,
   );
   await page.getByRole("button", { name: "断开远端", exact: true }).click();
-  await expectCount("—");
+  await expectNoBadge();
   await page.clock.runFor(60_000);
   assert.equal(
     await page.evaluate(() => window.__counts.calls.filter((call) => call.host === "A").length),
