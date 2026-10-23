@@ -43,6 +43,7 @@ import {
   type WorkTaskEvent,
   type WorkTaskScope,
   type WorkTaskUpdate,
+  type WorkTaskRename,
   type WorkTaskMerge,
   type WorkTaskChangeRecord,
   type WorkTaskMergeRequest,
@@ -169,6 +170,14 @@ export class WorkTaskRepo {
         },
         "edited",
       );
+    });
+  }
+  rename(input: WorkTaskRename): WorkTask {
+    return this.transaction(() => {
+      const task = this.get(input, input.id);
+      if (task.title === input.title) return task;
+      // 运行中不能复用草稿 update；从最新记录仅改标题，保留队列、绑定与 owner/lease。
+      return this.write({ ...task, title: input.title, updatedAt: Date.now() }, "renamed");
     });
   }
   private enqueueInside(scope: WorkTaskScope, id: string, feedback?: string, fresh = false) {

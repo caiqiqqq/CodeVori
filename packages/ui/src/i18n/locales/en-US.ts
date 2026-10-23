@@ -120,6 +120,8 @@ const enUS: Record<string, string> = {
   "workTasks.create": "New task",
   "workTasks.edit": "Edit task",
   "workTasks.save": "Save",
+  "workTasks.sessionIdCopied": "Session ID copied",
+  "workTasks.copySessionIdFailed": "Failed to copy session ID",
   "workTasks.saveAndStart": "Save and restart",
   "workTasks.close": "Cancel",
   "workTasks.prompt": "Description",

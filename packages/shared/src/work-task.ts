@@ -293,6 +293,10 @@ export function workTaskExecutionPath(task: WorkTask): string | undefined {
 }
 export const workTaskTargetSchema = workTaskScopeSchema.extend({ id: z.string().min(1) }).strict();
 export type WorkTaskTarget = z.infer<typeof workTaskTargetSchema>;
+export const workTaskRenameSchema = workTaskTargetSchema
+  .extend({ title: workTaskSchema.shape.title })
+  .strict();
+export type WorkTaskRename = z.infer<typeof workTaskRenameSchema>;
 export const workTaskResultRequestSchema = workTaskTargetSchema
   .extend({
     requestId: z.string().uuid(),

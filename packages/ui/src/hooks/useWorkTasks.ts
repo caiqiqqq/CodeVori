@@ -32,6 +32,8 @@ function commands(scope: WorkTaskScope, run: Run) {
     scope,
     create: (draft: Omit<WorkTaskCreate, keyof WorkTaskScope>) =>
       run(scope, (target) => target.create({ ...scope, ...draft })),
+    rename: (id: string, title: string, onError?: (error: string) => void) =>
+      run(scope, (target) => target.rename({ ...scope, id, title }), onError),
     update: (draft: Omit<WorkTaskUpdate, keyof WorkTaskScope>, startAfterSave = false) =>
       run(scope, async (target) => {
         // 保存与入队共用一次忙碌操作，避免两次请求之间恢复按钮或使用尚未保存的描述。
