@@ -21,6 +21,7 @@ export function createDeviceBridgeController(ports: {
   saveMcp(request: SaveCliMcpToUserDirectoryRequest): Promise<void>;
   checkMcp(endpoint: Endpoint): Promise<number>;
   openLogin(url: string): Promise<void>;
+  removeDevice(apiKey: string, nodeId: string, signal: AbortSignal): Promise<void>;
 }) {
   let session: DeviceBridgeSession | undefined;
   let worker: DeviceBridgeWorkerState | undefined;
@@ -29,6 +30,11 @@ export function createDeviceBridgeController(ports: {
   let generation = 0,
     restored = false;
   let operations: Promise<unknown> = Promise.resolve();
+  let managementKey = "";
+  let managementRevision = 0;
+  let removal: AbortController | undefined;
+  // 控制面删除已确认后，滞后的 tsnet 快照不能重新发布设备或恢复授权。
+  const removed = new Set<string>();
   const endpoints = new Map<string, Endpoint>();
   const installed = new Set<string>();
   const checks = new Map<string, { toolCount: number; checkedAt: string }>();
@@ -75,7 +81,11 @@ export function createDeviceBridgeController(ports: {
       loginName: worker?.loginName ?? "",
       tailnet: worker?.tailnet ?? "",
       exposing: worker?.exposing ?? false,
-      peers: worker?.peers.map((peer) => ({ ...peer, ...checks.get(peer.nodeId) })) ?? [],
+      managementConfigured: Boolean(managementKey),
+      peers:
+        worker?.peers
+          .filter((peer) => !removed.has(peer.nodeId))
+          .map((peer) => ({ ...peer, ...checks.get(peer.nodeId) })) ?? [],
       ...(phase === "error" ? { error: failure ?? "device_bridge_process_closed" } : {}),
     };
   };
@@ -85,7 +95,9 @@ export function createDeviceBridgeController(ports: {
       if (!restored && worker?.backendState === "Running") {
         const config = await ports.readConfiguration();
         const visible = new Set(worker.peers.map((p) => p.nodeId));
-        const allowedNodes = config.allowedNodes.filter((id) => visible.has(id));
+        const allowedNodes = config.allowedNodes.filter(
+          (id) => visible.has(id) && !removed.has(id),
+        );
         if (allowedNodes.length) await request("expose", { allowedNodes });
         restored = true;
       }
@@ -93,6 +105,7 @@ export function createDeviceBridgeController(ports: {
     return snapshot();
   };
   const stopProcess = async () => {
+    removal?.abort();
     const previous = session;
     generation++;
     session = undefined;
@@ -102,8 +115,66 @@ export function createDeviceBridgeController(ports: {
     restored = false;
     await previous?.stop();
   };
+  const removeGrants = async () => {
+    const config = await ports.readConfiguration();
+    const allowedNodes = config.allowedNodes.filter((id) => !removed.has(id));
+    if (allowedNodes.length !== config.allowedNodes.length)
+      await ports.writeConfiguration({ ...config, allowedNodes });
+    return allowedNodes;
+  };
+  const removeDevice = async (nodeId: string) => {
+    if (!managementKey) throw new Error("device_bridge_management_required");
+    const epoch = generation;
+    const revision = managementRevision;
+    await request("status");
+    assertCurrent(epoch);
+    if (!managementKey || revision !== managementRevision)
+      throw new Error("device_bridge_management_required");
+    if (
+      worker?.backendState !== "Running" ||
+      nodeId === worker.nodeId ||
+      removed.has(nodeId) ||
+      !worker.peers.some((peer) => peer.nodeId === nodeId)
+    )
+      throw new Error("device_bridge_invalid_device");
+    const pending = new AbortController();
+    removal = pending;
+    try {
+      await ports.removeDevice(managementKey, nodeId, pending.signal);
+    } finally {
+      if (removal === pending) removal = undefined;
+    }
+    removed.add(nodeId);
+    try {
+      const allowedNodes = await removeGrants();
+      if (generation === epoch && session) {
+        const visible = new Set(worker?.peers.map((peer) => peer.nodeId));
+        await request("expose", { allowedNodes: allowedNodes.filter((id) => visible.has(id)) });
+        await request("disconnect", { nodeId });
+      }
+      await deleteMcp(nodeId);
+    } catch {
+      // 远端删除不可回滚；本地清理失败时关闭全部监听，并在下次启动前重试。
+      await stopProcess().catch(() => {});
+      await clearMcp().catch(() => {});
+      phase = "error";
+      failure = "device_bridge_removal_cleanup_failed";
+      throw new Error(failure);
+    }
+  };
   const perform = async (command: DeviceBridgeCommand): Promise<DeviceBridgeState> => {
+    if ("nodeId" in command && removed.has(command.nodeId))
+      throw new Error("device_bridge_invalid_device");
     switch (command.action) {
+      case "configure-management":
+        managementKey = command.apiKey;
+        break;
+      case "clear-management":
+        managementKey = "";
+        break;
+      case "remove":
+        await removeDevice(command.nodeId);
+        break;
       case "refresh":
         return refresh();
       case "configure": {
@@ -121,6 +192,7 @@ export function createDeviceBridgeController(ports: {
         phase = "starting";
         failure = undefined;
         try {
+          await removeGrants();
           const config = await ports.readConfiguration();
           await clearMcp();
           if (generation !== epoch) throw new Error("device_bridge_process_closed");
@@ -130,6 +202,7 @@ export function createDeviceBridgeController(ports: {
             if (generation !== epoch) return;
             // 旧进程结果不能复活新连接；退出后的投影立即清空。
             generation++;
+            removal?.abort();
             session = undefined;
             worker = undefined;
             phase = "error";
@@ -161,6 +234,7 @@ export function createDeviceBridgeController(ports: {
         await clearMcp();
         break;
       case "logout": {
+        managementKey = "";
         // 账号服务失败不能留下仍可控制本机的监听；保留错误供界面报告。
         try {
           if (session) await request("logout");
@@ -238,7 +312,8 @@ export function createDeviceBridgeController(ports: {
         const allowedNodes = [...ids];
         // 已移除或暂不可见的旧设备不应阻塞当前设备的撤销授权。
         const visible = new Set(worker?.peers.map((peer) => peer.nodeId));
-        const activeNodes = (nodes: string[]) => nodes.filter((id) => visible.has(id));
+        const activeNodes = (nodes: string[]) =>
+          nodes.filter((id) => visible.has(id) && !removed.has(id));
         await request("expose", { allowedNodes: activeNodes(allowedNodes) });
         try {
           await ports.writeConfiguration({ ...config, allowedNodes });
@@ -254,6 +329,13 @@ export function createDeviceBridgeController(ports: {
   return {
     read: () => enqueue(refresh),
     execute(command: DeviceBridgeCommand) {
+      const revision = managementRevision;
+      const epoch = generation;
+      if (command.action === "logout" || command.action === "clear-management") {
+        managementRevision++;
+        managementKey = "";
+        removal?.abort();
+      }
       if (command.action === "stop") {
         const stopped = stopProcess();
         return enqueue(async () => {
@@ -261,11 +343,23 @@ export function createDeviceBridgeController(ports: {
           return perform(command);
         });
       }
-      return enqueue(() => perform(command));
+      return enqueue(() => {
+        if (command.action === "remove" && epoch !== generation)
+          throw new Error("device_bridge_process_closed");
+        // 清密钥/退出须取消尚在队列或 status IO 中的删除，不能由更早排队的配置复活。
+        if (command.action === "remove" && revision !== managementRevision)
+          throw new Error("device_bridge_management_required");
+        return perform(command);
+      });
     },
     async dispose() {
+      managementRevision++;
+      managementKey = "";
       await stopProcess();
-      await enqueue(clearMcp);
+      await enqueue(async () => {
+        managementKey = "";
+        await clearMcp();
+      });
     },
   };
 }
