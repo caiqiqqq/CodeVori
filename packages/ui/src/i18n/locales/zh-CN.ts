@@ -1,33 +1,44 @@
 /** 中文翻译 */
 import { PRODUCT_NAME } from "@zcode/shared";
 const zhCN: Record<string, string> = {
+  "settings.devices.inspect.open": "查看电脑",
+  "settings.devices.inspect.title": "{name} · 电脑详情",
+  "settings.devices.inspect.description": "CPU、内存和进程每 5 秒刷新。关闭详情后停止读取。",
+  "settings.devices.inspect.unavailable": "不可用",
+  "settings.devices.inspect.loading": "正在读取…",
+  "settings.devices.inspect.refresh": "刷新系统信息",
+  "settings.devices.inspect.sampledAt": "采集时间：{time}",
+  "settings.devices.inspect.receivedAt": "画面接收时间：{time}",
+  "settings.devices.inspect.cores": "{count} 核",
+  "settings.devices.inspect.cpu": "CPU 使用率",
+  "settings.devices.inspect.memory": "内存",
+  "settings.devices.inspect.memoryUsed": "已用 {used} / 总计 {total}",
+  "settings.devices.inspect.memoryAvailable": "可用：{value}",
+  "settings.devices.inspect.processes": "进程",
+  "settings.devices.inspect.coverage":
+    "按内存排序显示 {shown} 个，已读取 {inspected} 个，系统共 {total} 个进程。",
+  "settings.devices.inspect.partial": "部分进程无法读取，列表可能不完整。",
+  "settings.devices.inspect.processName": "进程名",
+  "settings.devices.inspect.rss": "驻留内存",
+  "settings.devices.inspect.cpuTime": "累计 CPU 时间",
+  "settings.devices.inspect.screen": "屏幕画面",
+  "settings.devices.inspect.screenDescription":
+    "点击获取当前截图；画面不会自动刷新。需要目标电脑的截屏权限。",
+  "settings.devices.inspect.capture": "刷新画面",
+  "settings.devices.inspect.screenAlt": "{name} 的屏幕截图",
+  "settings.devices.inspect.systemError":
+    "无法读取系统信息。请确认电脑在线、已允许此主端，并已更新到支持电脑详情的 Node 版本。",
+  "settings.devices.inspect.screenError":
+    "无法获取画面。请检查目标电脑的截屏权限，或等待桌面操作结束后重试。",
+  "settings.devices.device_bridge_inspection_unavailable":
+    "无法读取系统信息。请确认电脑在线、已允许此主端，并已更新到支持电脑详情的 Node 版本。",
   "settings.devices.node.title": "添加执行电脑",
   "settings.devices.node.description":
-    "选择目标电脑的系统，生成专属安装链接。对方安装后，这里会自动显示连接状态。",
+    "下载目标系统的客户端，在目标电脑安装并登录同一 Tailscale 网络。在 Node 状态页允许此主端后，从下方网络成员中连接。macOS 和 Linux 下载后需先赋予可执行权限。",
   "settings.devices.node.platform": "目标电脑系统",
-  "settings.devices.node.add": "添加电脑",
-  "settings.devices.node.share":
-    "把此链接发到目标电脑，下载后打开安装。链接在 15 分钟内有效，仅用于此次配对。",
-  "settings.devices.node.link": "专属安装链接",
-  "settings.devices.node.download": "下载安装程序",
-  "settings.devices.node.waiting": "等待安装并上线",
-  "settings.devices.node.offline": "电脑离线，正在等待连接",
-  "settings.devices.node.checking": "已上线，正在检查工具",
-  "settings.devices.node.ready": "已连接，可用工具 {count} 个",
-  "settings.devices.node.expired": "安装链接已过期，请移除此项后重新添加",
-  "settings.devices.node.disabled": "已停用任务连接",
-  "settings.devices.node.error": "暂时无法连接，正在等待恢复",
-  "settings.devices.node.disable": "停用",
-  "settings.devices.node.enable": "启用",
-  "settings.devices.node.remove": "移除电脑",
-  "settings.devices.node.removeTitle": "移除此电脑？",
-  "settings.devices.node.removeDescription":
-    "撤销配对后，这台电脑将无法继续接收任务。再次使用需要重新安装配对。",
-  "settings.devices.device_bridge_pairing_unavailable":
-    "配对服务暂不可用，请检查服务和安装包是否已部署。",
+  "settings.devices.node.download": "下载客户端",
   "settings.devices.title": "设备与连接",
-  "settings.devices.description": "添加用于执行命令与桌面操作的电脑，安装轻量执行端后自动连接。",
-  "settings.devices.advanced": "高级网络连接（Tailscale）",
+  "settings.devices.description": "通过 Tailscale 连接网络中的电脑，执行命令和桌面操作。",
   "settings.devices.account": "Tailscale 账号",
   "settings.devices.stopped": "网络连接已停止。已有登录状态会保留，点击连接可恢复。",
   "settings.devices.authorized": "已加入网络。设备在线状态与执行器可用性会分别显示。",
@@ -41,7 +52,7 @@ const zhCN: Record<string, string> = {
   "settings.devices.nodeId": "节点 ID",
   "settings.devices.devices": "网络中的设备",
   "settings.devices.addDescription":
-    "目标电脑可运行独立轻量执行节点，加入同一网络并授权本机节点 ID。也可在完整客户端的同一设置页连接；此方式需要另行启动执行器。",
+    "登录同一网络后，目标电脑会显示在这里。请先在目标 Node 的状态页允许本机节点 ID，然后点击“连接并检查”。",
   "settings.devices.refresh": "刷新",
   "settings.devices.empty": "暂无可见设备。登录后，这里会显示当前网络权限允许访问的电脑。",
   "settings.devices.online": "网络在线",

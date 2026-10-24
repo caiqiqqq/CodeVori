@@ -19,3 +19,8 @@ export const executionNodeInfo: DeviceExecutionNodeInfo = {
   desktopTools: [],
   desktopUnavailableReason: "wayland_not_supported",
 };
+
+export const inspectConnectedDevice: import("./contract").DeviceInspectionRequest = {
+  nodeId: "example-member-id",
+  kind: "system",
+};

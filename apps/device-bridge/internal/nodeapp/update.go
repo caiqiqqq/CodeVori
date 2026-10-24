@@ -17,12 +17,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"zcode.local/device-bridge/internal/pairing"
 )
 
 // These values belong to the independent client release, not the desktop application.
-var Version = "0.0.6"
+var Version = "0.0.9"
 var UpdateManifestURL = "https://aimodetest.cn/codevori-node/clients/latest.json"
 var errNoUpdate = errors.New("node_already_latest")
 var releaseVersion = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
@@ -79,7 +77,7 @@ func updateHTTP(ctx context.Context, address string) (*http.Response, error) {
 func checkUpdate(ctx context.Context, address, service, platform, current string) (updateManifest, updateFile, error) {
 	var manifest updateManifest
 	var file updateFile
-	if pairing.ValidateURL(address) != nil {
+	if validateUpdateURL(address) != nil {
 		return manifest, file, errors.New("invalid_update_source")
 	}
 	response, err := updateHTTP(ctx, address)
@@ -96,7 +94,7 @@ func checkUpdate(ctx context.Context, address, service, platform, current string
 	if strings.HasPrefix(platform, "win32-") {
 		name += ".exe"
 	}
-	if _, ok := pairing.Platforms[platform]; !ok {
+	if !validUpdatePlatform(platform) {
 		return manifest, file, errors.New("invalid_update_platform")
 	}
 	expected := *base
@@ -108,7 +106,7 @@ func checkUpdate(ctx context.Context, address, service, platform, current string
 			continue
 		}
 		found++
-		if entry.Name != name || entry.URL != expected.String() || entry.Bytes <= 0 || entry.Bytes > 32<<20 || !releaseHash.MatchString(entry.SHA256) {
+		if entry.Name != name || entry.URL != expected.String() || entry.Bytes <= 0 || entry.Bytes > 128<<20 || !releaseHash.MatchString(entry.SHA256) {
 			return manifest, file, errors.New("invalid_update_manifest")
 		}
 		file = entry
@@ -161,14 +159,14 @@ func CheckForUpdate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	c, err := readConfig(dir)
-	if err != nil || c.ServiceURL != ServiceURL {
+	_, err = readConfig(dir)
+	if err != nil {
 		return errors.New("invalid_update_source")
 	}
 	platform := runtime.GOOS + "-" + runtime.GOARCH
 	platform = strings.Replace(platform, "windows-", "win32-", 1)
 	platform = strings.Replace(platform, "-amd64", "-x64", 1)
-	manifest, file, err := checkUpdate(ctx, UpdateManifestURL, c.ServiceURL, platform, Version)
+	manifest, file, err := checkUpdate(ctx, UpdateManifestURL, ServiceURL, platform, Version)
 	if errors.Is(err, errNoUpdate) {
 		notify("CodeVori Node", "当前已是最新版本："+Version)
 		return nil
@@ -176,7 +174,7 @@ func CheckForUpdate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if !confirm("更新 CodeVori Node", fmt.Sprintf("当前版本 %s，可更新至 %s。更新会短暂断开连接，并保留已有配对。是否下载并更新？", Version, manifest.Version)) {
+	if !confirm("更新 CodeVori Node", fmt.Sprintf("当前版本 %s，可更新至 %s。更新会短暂断开连接，并保留 Tailscale 身份和控制授权。是否下载并更新？", Version, manifest.Version)) {
 		return nil
 	}
 	directory := filepath.Join(dir, "updates")
@@ -199,8 +197,8 @@ func ApplyUpdate(ctx context.Context, expectedHash string) error {
 	if err != nil {
 		return err
 	}
-	c, err := readConfig(dir)
-	if err != nil || c.ServiceURL != ServiceURL {
+	_, err = readConfig(dir)
+	if err != nil {
 		return errors.New("invalid_update_source")
 	}
 	executable, err := os.Executable()
@@ -296,7 +294,7 @@ func replaceNodeExecutable(source, binary string, start func() error) error {
 		return err
 	}
 	// 实例锁只代表 agent 已释放；Windows 还会短暂持有旧更新进程的映像句柄。
-	// 仅重试该系统文件占用，不重放任何 MCP 请求或改写配对状态。
+	// 仅重试该系统文件占用，不重放任何 MCP 请求或改写网络身份。
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		err = os.Rename(binary, backup)
@@ -320,4 +318,19 @@ func replaceNodeExecutable(source, binary string, start func() error) error {
 	}
 	_ = os.Remove(backup)
 	return nil
+}
+
+func validateUpdateURL(address string) error {
+	u, err := url.Parse(address)
+	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1"))) {
+		return errors.New("invalid_update_source")
+	}
+	return nil
+}
+func validUpdatePlatform(platform string) bool {
+	switch platform {
+	case "win32-x64", "win32-arm64", "darwin-x64", "darwin-arm64", "linux-x64", "linux-arm64":
+		return true
+	}
+	return false
 }

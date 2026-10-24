@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -56,7 +57,7 @@ func TestUpdateManifestPinsPlatformOriginVersionAndSize(t *testing.T) {
 		"wrong filename":    func(m *updateManifest) { m.Files[0].Name = "anything" },
 		"traversal":         func(m *updateManifest) { m.Files[0].URL = base + "/clients/0.0.7/../CodeVoriNode-linux-x64" },
 		"missing hash":      func(m *updateManifest) { m.Files[0].SHA256 = "bad" },
-		"oversize":          func(m *updateManifest) { m.Files[0].Bytes = 33 << 20 },
+		"oversize":          func(m *updateManifest) { m.Files[0].Bytes = 129 << 20 },
 		"bad version":       func(m *updateManifest) { m.Version = "../evil" },
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -143,8 +144,15 @@ func TestExecutableUpdatePreservesIdentityAndRollsBackFailedStart(t *testing.T) 
 		binary, source := filepath.Join(dir, "node"), filepath.Join(dir, "staged")
 		_ = os.WriteFile(binary, []byte("old"), 0755)
 		_ = os.WriteFile(source, []byte("new"), 0755)
-		c := config{ServiceURL: ServiceURL, ID: strings.Repeat("a", 43), Token: strings.Repeat("b", 43)}
+		c := config{Version: 1, Hostname: "node", AllowedNodes: []string{"controller"}}
 		_ = writeJSON(filepath.Join(dir, "connection.json"), c)
+		identity := filepath.Join(dir, "tailnet", "tailscaled.state")
+		if err := os.MkdirAll(filepath.Dir(identity), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(identity, []byte("persisted-network-identity"), 0600); err != nil {
+			t.Fatal(err)
+		}
 		starts := 0
 		err := replaceNodeExecutable(source, binary, func() error {
 			starts++
@@ -168,8 +176,11 @@ func TestExecutableUpdatePreservesIdentityAndRollsBackFailedStart(t *testing.T) 
 			t.Fatal("replacement or rollback lost executable")
 		}
 		got, err := readConfig(dir)
-		if err != nil || got != c {
-			t.Fatal("update replaced pairing identity", err)
+		if err != nil || !reflect.DeepEqual(got, c) {
+			t.Fatal("update replaced tailnet authorization", err)
+		}
+		if got, err := os.ReadFile(identity); err != nil || string(got) != "persisted-network-identity" {
+			t.Fatal("update replaced Tailscale identity", err)
 		}
 	}
 }

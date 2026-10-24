@@ -12,6 +12,7 @@ func (s *Server) tools() []any {
 	}
 	list := []any{
 		tool("node_info", "Read this node's actual OS, architecture, CPU count, command capacity and desktop backend availability.", map[string]any{}, nil),
+		tool("node_status", "Read CPU usage sampled over 300ms, memory and up to 100 processes ordered by resident memory. Process CPU is cumulative seconds. Missing measurements are null; partial process coverage is explicit. No shell execution.", map[string]any{}, nil),
 		tool("command_run", "Execute a command on THIS remote device using its platform shell (PowerShell on Windows, /bin/sh elsewhere). Requires an explicit absolute cwd. No automatic retry. Nonzero exitCode is a completed process result. Cancellation may leave the outcome unknown.", map[string]any{"command": property("string", "Command/script; maximum 16384 bytes"), "cwd": property("string", "Absolute working directory on THIS device"), "timeoutSeconds": map[string]any{"type": "integer", "minimum": 1, "maximum": 600, "description": "Default 60 seconds"}}, []string{"command", "cwd"}),
 	}
 	for _, name := range []string{"desktop_screenshot", "desktop_click", "desktop_type", "desktop_key", "desktop_scroll"} {

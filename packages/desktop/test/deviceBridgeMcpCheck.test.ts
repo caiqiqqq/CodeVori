@@ -75,7 +75,7 @@ test("health check refuses arbitrary upstream URLs and reports no credentials", 
     );
 });
 
-test("relay check is restricted to the configured origin, base path and pair route", async () => {
+test("former relay routes are never accepted as MCP gateways", async () => {
   for (const url of [
     "https://other.test/device-node/v1/pairs/" + "a".repeat(43) + "/mcp",
     "https://example.test/other/v1/pairs/" + "a".repeat(43) + "/mcp",
@@ -83,7 +83,7 @@ test("relay check is restricted to the configured origin, base path and pair rou
     "https://user:secret@example.test/device-node/v1/pairs/" + "a".repeat(43) + "/mcp",
   ])
     await assert.rejects(
-      checkDeviceBridgeMcp({ url, token: "private" }, "https://example.test/device-node"),
+      checkDeviceBridgeMcp({ url, token: "private" }),
       /device_bridge_invalid_endpoint/,
     );
 });

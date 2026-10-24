@@ -34,5 +34,12 @@ export interface DeviceExecutionNodeInfo {
 /** Desktop manage mode uses the validated public wire schemas from @zcode/shared. */
 export type { DeviceBridgeWorkerResponse, DeviceBridgeWorkerState } from "@zcode/shared";
 
-/** Installation/online projection only. Long-lived enrollment capabilities remain private to Main. */
-export type { DeviceNodeCommand, DeviceNodePlatform, DeviceNodeView } from "@zcode/shared";
+/** Static installer download request. Execution uses the existing tailnet member contract. */
+export type { DeviceNodeCommand, DeviceNodePlatform } from "@zcode/shared";
+
+/** Read-only device inspection over the existing authenticated member MCP endpoint. */
+export type {
+  DeviceSystemStatus,
+  DeviceInspectionRequest,
+  DeviceInspectionResult,
+} from "@zcode/shared";

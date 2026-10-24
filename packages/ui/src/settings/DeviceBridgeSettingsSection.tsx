@@ -1,6 +1,8 @@
+import { DeviceInspectionDialog } from "./DeviceInspectionDialog.js";
+import { usePlatform } from "@/hooks/usePlatform.js";
 import { DeviceNodeEnrollment } from "./DeviceNodeEnrollment.js";
 import { Network, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getDeviceBridgeErrorCode } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
@@ -14,6 +16,17 @@ export function DeviceBridgeSettingsSection() {
   const { state, busy, error, run, selectComponent, openManagementKeys } =
     useDeviceBridgeSettings();
   const confirm = useConfirmDialog();
+  const platform = usePlatform();
+  const [inspectedNode, setInspectedNode] = useState<string | null>(null);
+  const inspectedPeer =
+    state?.phase === "running" && state.backendState === "Running"
+      ? state.peers.find(
+          (p) => p.nodeId === inspectedNode && p.online && p.connected && p.checkedAt,
+        )
+      : undefined;
+  useEffect(() => {
+    if (inspectedNode && !inspectedPeer) setInspectedNode(null);
+  }, [inspectedNode, inspectedPeer]);
   const [apiKey, setApiKey] = useState("");
   const t = (name: string, values?: Record<string, string | number>) =>
     intl.formatMessage({ id: `settings.devices.${name}` }, values);
@@ -35,11 +48,8 @@ export function DeviceBridgeSettingsSection() {
       aria-busy={busy || !state}
     >
       <p className="text-ui-sm leading-5 text-foreground-subtle">{t("description")}</p>
-      <DeviceNodeEnrollment nodes={state?.nodes ?? []} busy={busy || !state} run={run} />
-      <details className="space-y-4" data-testid="device-bridge-advanced">
-        <summary className="cursor-pointer text-ui-sm text-foreground-subtle">
-          {t("advanced")}
-        </summary>
+      <DeviceNodeEnrollment busy={busy || !state} run={run} />
+      <div className="space-y-4" data-testid="device-bridge-network">
         <SettingsGroupCard>
           <SettingsRow
             label={t("account")}
@@ -164,6 +174,17 @@ export function DeviceBridgeSettingsSection() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    {platform.inspectDeviceBridge && peer.connected ? (
+                      <Button
+                        className={buttonClass}
+                        variant="outline"
+                        disabled={busy || !authorized || !peer.online || !peer.checkedAt}
+                        onClick={() => setInspectedNode(peer.nodeId)}
+                        data-testid={`device-bridge-inspect-${peer.nodeId}`}
+                      >
+                        {t("inspect.open")}
+                      </Button>
+                    ) : null}
                     <Button
                       className={buttonClass}
                       variant="outline"
@@ -319,7 +340,15 @@ export function DeviceBridgeSettingsSection() {
           ) : null}
         </SettingsGroupCard>
         <p className="text-ui-sm leading-5 text-foreground-subtle">{t("lifecycle")}</p>
-      </details>
+      </div>
+      {inspectedPeer ? (
+        <DeviceInspectionDialog
+          key={inspectedPeer.nodeId}
+          nodeId={inspectedPeer.nodeId}
+          name={inspectedPeer.name}
+          onClose={() => setInspectedNode(null)}
+        />
+      ) : null}
       {busy ? (
         <p role="status" className="text-ui-sm text-foreground-subtle">
           {t("working")}

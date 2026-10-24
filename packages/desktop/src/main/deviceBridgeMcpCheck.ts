@@ -1,29 +1,17 @@
-/** Read-only MCP handshake. A bound bridge socket alone is not executor health. */
-export async function checkDeviceBridgeMcp(
+/** Shared bounded MCP session for native health and fixed read-only inspection tools. */
+export async function withDeviceBridgeMcp<T>(
   endpoint: {
     url: string;
     token: string;
   },
-  allowedRelayBase?: string,
-): Promise<number> {
+  operation: (call: (message: Record<string, unknown>) => Promise<unknown>) => Promise<T>,
+  maxBytes = 2_000_000,
+): Promise<T> {
   const url = new URL(endpoint.url);
-  const relay = allowedRelayBase ? new URL(allowedRelayBase) : undefined;
-  const validRelay =
-    relay &&
-    url.origin === relay.origin &&
-    url.pathname.startsWith(relay.pathname.replace(/\/$/, "") + "/v1/pairs/") &&
-    /^[A-Za-z0-9_-]{43}\/mcp$/.test(
-      url.pathname.slice((relay.pathname.replace(/\/$/, "") + "/v1/pairs/").length),
-    );
   if (
-    (!validRelay &&
-      (url.protocol !== "http:" ||
-        url.hostname !== "127.0.0.1" ||
-        url.pathname !== "/mcp" ||
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash)) ||
+    url.protocol !== "http:" ||
+    url.hostname !== "127.0.0.1" ||
+    url.pathname !== "/mcp" ||
     url.username ||
     url.password ||
     url.search ||
@@ -47,13 +35,17 @@ export async function checkDeviceBridgeMcp(
       signal: abort,
       redirect: "error",
     });
-    if (!response.ok) throw new Error("device_bridge_mcp_unavailable");
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error("device_bridge_mcp_unavailable");
+    }
     session = response.headers.get("mcp-session-id") ?? session;
     if (message.id === undefined) {
       await response.body?.cancel();
       return undefined;
     }
     let result: unknown;
+    let received = 0;
     if (response.headers.get("content-type")?.includes("text/event-stream")) {
       const reader = response.body?.getReader();
       if (!reader) throw new Error("device_bridge_mcp_unavailable");
@@ -63,9 +55,11 @@ export async function checkDeviceBridgeMcp(
         while (true) {
           const chunk = await reader.read();
           if (chunk.done) break;
+          received += chunk.value.byteLength;
+          if (received > maxBytes) throw new Error("device_bridge_mcp_unavailable");
           // TCP 可以把 CRLF 拆成两片；先拼接再归一化，避免漏掉事件分隔符。
           buffer = (buffer + decoder.decode(chunk.value, { stream: true })).replace(/\r\n/g, "\n");
-          if (buffer.length > 2_000_000) throw new Error("device_bridge_mcp_unavailable");
+          if (buffer.length > maxBytes) throw new Error("device_bridge_mcp_unavailable");
           let split: number;
           while ((split = buffer.indexOf("\n\n")) >= 0) {
             const event = buffer.slice(0, split);
@@ -88,7 +82,21 @@ export async function checkDeviceBridgeMcp(
         await reader.cancel();
       }
     } else {
-      result = await response.json();
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("device_bridge_mcp_unavailable");
+      const parts: Uint8Array[] = [];
+      try {
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          received += chunk.value.byteLength;
+          if (received > maxBytes) throw new Error("device_bridge_mcp_unavailable");
+          parts.push(chunk.value);
+        }
+        result = JSON.parse(Buffer.concat(parts).toString("utf8"));
+      } finally {
+        await reader.cancel();
+      }
     }
     if (
       !result ||
@@ -120,15 +128,7 @@ export async function checkDeviceBridgeMcp(
     )
       throw new Error("device_bridge_mcp_unavailable");
     await call({ jsonrpc: "2.0", method: "notifications/initialized" });
-    const listed = await call({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
-    if (
-      !listed ||
-      typeof listed !== "object" ||
-      !("tools" in listed) ||
-      !Array.isArray(listed.tools)
-    )
-      throw new Error("device_bridge_mcp_unavailable");
-    return listed.tools.length;
+    return await operation(call);
   } catch {
     throw new Error("device_bridge_mcp_unavailable");
   } finally {
@@ -142,4 +142,22 @@ export async function checkDeviceBridgeMcp(
         .then((r) => r.body?.cancel())
         .catch(() => {});
   }
+}
+
+/** A bound socket alone is not executor health: handshake and list tools before publication. */
+export async function checkDeviceBridgeMcp(endpoint: {
+  url: string;
+  token: string;
+}): Promise<number> {
+  return withDeviceBridgeMcp(endpoint, async (call) => {
+    const listed = await call({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+    if (
+      !listed ||
+      typeof listed !== "object" ||
+      !("tools" in listed) ||
+      !Array.isArray(listed.tools)
+    )
+      throw new Error("device_bridge_mcp_unavailable");
+    return listed.tools.length;
+  });
 }

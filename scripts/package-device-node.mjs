@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { executionNodeTargets, executionNodeZip } from "./package-execution-node.mjs";
+import { executionNodeTargets } from "./package-execution-node.mjs";
 
 const exec = promisify(execFile);
 const root = resolve(import.meta.dirname, "..");
@@ -12,12 +12,7 @@ export function deviceNodeBuildPlan(version, output = join(root, "output/device-
   // Go 构建在模块目录执行；先转绝对路径，避免相对 --output 写入模块后读取失败。
   return {
     clients: resolve(output, "clients", version),
-    services: resolve(output, "service", version),
     clientTargets: executionNodeTargets,
-    serviceTargets: [
-      { os: "linux", arch: "x64" },
-      { os: "linux", arch: "arm64" },
-    ],
   };
 }
 export function validateBuildServiceUrl(serviceUrl, local = false) {
@@ -49,13 +44,14 @@ export function deviceNodeReleaseManifest({
     version,
     source,
     dirty,
+    // Legacy update compatibility only: clients >=0.0.8 do not connect to this service.
     serviceUrl,
+    transport: "tailscale",
     files: files.map((file) => ({ ...file, url: `${assetsBaseUrl}/${version}/${file.name}` })),
   };
 }
 export async function buildDeviceNodes({
   clients = true,
-  services = true,
   local = false,
   output,
   serviceUrl: configuredUrl,
@@ -87,6 +83,7 @@ export async function buildDeviceNodes({
     await mkdir(resolve(destination, ".."), { recursive: true });
     const flags = ["-s", "-w"];
     if (command === "codevori-node") {
+      // 仅作为旧更新清单的来源标识；运行时不会连接此地址。
       flags.push(`-X=zcode.local/device-bridge/internal/nodeapp.ServiceURL=${serviceUrl}`);
       flags.push(`-X=zcode.local/device-bridge/internal/nodeapp.Version=${version}`);
       flags.push(
@@ -143,39 +140,13 @@ export async function buildDeviceNodes({
     );
     await writeFile(join(plan.clients, "LICENSE.txt"), await readFile(join(root, "LICENSE")));
   }
-  if (services) {
-    await mkdir(plan.services, { recursive: true });
-    for (const target of plan.serviceTargets) {
-      const name = `codevori-pairing-${target.os}-${target.arch}`;
-      await build(target, "codevori-pairing", join(plan.services, name));
-      const binary = await readFile(join(plan.services, name));
-      // Explicit service allowlist: never include client binaries, archives or the clients directory.
-      const archive = executionNodeZip([
-        { name: "codevori-pairing", data: binary, executable: true },
-        { name: "LICENSE.txt", data: await readFile(join(root, "LICENSE")) },
-        {
-          name: "manifest.json",
-          data: Buffer.from(
-            JSON.stringify({
-              version,
-              source,
-              dirty,
-              target,
-              sha256: createHash("sha256").update(binary).digest("hex"),
-            }),
-          ),
-        },
-      ]);
-      await writeFile(join(plan.services, `${name}.zip`), archive);
-      process.stdout.write(`service ${name}.zip: ${archive.length} bytes\n`);
-    }
-  }
   return plan;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (process.argv.includes("--service-only"))
+    throw new Error("Execution relay builds are retired; build the Tailscale clients instead");
   await buildDeviceNodes({
-    clients: !process.argv.includes("--service-only"),
-    services: !process.argv.includes("--clients-only"),
+    clients: true,
     local: process.argv.includes("--local"),
     output: process.argv.find((arg) => arg.startsWith("--output="))?.slice(9),
   });

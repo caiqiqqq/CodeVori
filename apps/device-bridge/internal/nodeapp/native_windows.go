@@ -43,22 +43,14 @@ func autostart(binary string, enabled bool) error {
 	if e := runHidden("reg.exe", "add", run, "/v", "CodeVoriNode", "/t", "REG_SZ", "/d", `"`+binary+`" agent`, "/f"); e != nil {
 		return e
 	}
-	for _, args := range [][]string{
-		{"add", protocol, "/ve", "/t", "REG_SZ", "/d", "URL:CodeVori Node", "/f"},
-		{"add", protocol, "/v", "URL Protocol", "/t", "REG_SZ", "/d", "", "/f"},
-		{"add", protocol + `\shell\open\command`, "/ve", "/t", "REG_SZ", "/d", `"` + binary + `" link "%1"`, "/f"},
-	} {
-		if e := runHidden("reg.exe", args...); e != nil {
-			return e
-		}
-	}
+	_ = runHidden("reg.exe", "delete", protocol, "/f")
 	values := map[string]string{"DisplayName": "CodeVori Node", "Publisher": "CodeVori", "InstallLocation": filepath.Dir(binary), "UninstallString": `"` + binary + `" uninstall`}
 	for key, value := range values {
 		if e := runHidden("reg.exe", "add", uninstall, "/v", key, "/t", "REG_SZ", "/d", value, "/f"); e != nil {
 			return e
 		}
 	}
-	// 快捷方式只包含固定安装路径，不拼入邀请或设备凭据。
+	// 快捷方式只包含固定安装路径，不拼入网络凭据。
 	menu := filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs", "CodeVori Node.lnk")
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 	script := `$s=(New-Object -ComObject WScript.Shell).CreateShortcut(` + quote(menu) + `);$s.TargetPath=` + quote(binary) + `;$s.Save()`

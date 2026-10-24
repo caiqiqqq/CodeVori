@@ -3,64 +3,81 @@ package nodeapp
 import (
 	"context"
 	"errors"
-	"github.com/coder/websocket"
+	"net"
 	"net/http"
 	"path/filepath"
-	"strings"
 	"time"
+
+	"zcode.local/device-bridge/internal/bridge"
 	"zcode.local/device-bridge/internal/executor"
-	"zcode.local/device-bridge/internal/pairing"
 )
 
 func Run(ctx context.Context) error {
-	dir, _, e := paths()
-	if e != nil {
-		return e
+	dir, _, err := paths()
+	if err != nil {
+		return err
 	}
 	return run(ctx, dir, true)
 }
 func run(ctx context.Context, dir string, installed bool) error {
-	c, e := readConfig(dir)
-	if e != nil {
-		return e
-	}
-	release, e := lock(filepath.Join(dir, "instance.lock"))
-	if e != nil {
+	release, err := lock(filepath.Join(dir, "instance.lock"))
+	if err != nil {
 		return errors.New("node_already_running")
 	}
 	defer release()
+	// 迁移也会写配置，必须在持有实例锁后执行，避免并发启动争抢同一个临时文件。
+	c, err := readConfig(dir)
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	status := newLocalStatus(dir, cancel)
 	status.canUninstall = installed
-	if e = status.start(); e != nil {
-		return e
+	if err = status.start(); err != nil {
+		return err
 	}
 	defer status.close()
-	handler, e := executor.New(2)
-	if e != nil {
-		return e
-	}
 	startTray(ctx, dir, cancel)
-	for ctx.Err() == nil {
-		status.set("正在连接")
-		dialCtx, stop := context.WithTimeout(ctx, 20*time.Second)
-		conn, response, err := websocket.Dial(dialCtx, strings.TrimRight(c.ServiceURL, "/")+"/v1/pairs/"+c.ID+"/socket", &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": []string{"Bearer " + c.Token}}})
+	network, err := newTailnetNetwork(dir, c.Hostname)
+	if err != nil {
+		status.set("Tailscale 启动失败，请重新启动 CodeVori Node")
+		<-ctx.Done()
+		return nil
+	}
+	defer network.server.Close()
+	owner := newNetworkController(dir, c, network)
+	status.mu.Lock()
+	status.network = owner
+	status.mu.Unlock()
+	handler, err := executor.New(2)
+	if err != nil {
+		return err
+	}
+	// 执行器仅监听组网地址；不再拨号到应用配对服务器或注册 WebSocket 中继。
+	listener, err := network.server.Listen("tcp", ":8743")
+	if err != nil {
+		return err
+	}
+	server := &http.Server{Handler: bridge.Endpoint(owner.authorize(handler)), ReadHeaderTimeout: 10 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
+	defer server.Close()
+	served := make(chan error, 1)
+	go func() { served <- server.Serve(listener) }()
+	timer := time.NewTicker(3 * time.Second)
+	defer timer.Stop()
+	for {
+		poll, stop := context.WithTimeout(ctx, 5*time.Second)
+		_ = owner.refresh(poll)
 		stop()
-		if err == nil {
-			status.set("已连接")
-			_ = pairing.ServeExecutor(ctx, conn, handler)
-		} else if response != nil && (response.StatusCode == 401 || response.StatusCode == 404) {
-			status.set("绑定已撤销，请在主端重新添加电脑")
-			<-ctx.Done()
-			return nil
-		}
-		status.set("连接中断，正在重连")
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(3 * time.Second):
+		case err := <-served:
+			if errors.Is(err, http.ErrServerClosed) {
+				return nil
+			}
+			return err
+		case <-timer.C:
 		}
 	}
-	return nil
 }

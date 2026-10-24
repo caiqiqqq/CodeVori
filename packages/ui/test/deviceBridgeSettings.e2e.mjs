@@ -37,7 +37,6 @@ try {
   const navigation = page.getByRole("button", { name: /^(设备与连接|Devices & connections)$/ });
   const general = page.getByRole("button", { name: /^(常规|General)$/ });
   const panel = page.getByTestId("device-bridge-settings");
-  let legacy = false;
   const ready = async () => {
     await page.waitForFunction(
       () =>
@@ -45,57 +44,28 @@ try {
           .querySelector('[data-testid="device-bridge-settings"]')
           ?.getAttribute("aria-busy") === "false",
     );
-    if (legacy)
-      await panel.getByTestId("device-bridge-advanced").evaluate((el) => (el.open = true));
   };
   await navigation.waitFor();
   assert.equal(await panel.count(), 0);
   assert.deepEqual(await page.evaluate(() => window.__devices.calls), []);
   await navigation.click();
   await ready();
-  assert.equal(await panel.getByTestId("device-bridge-advanced").evaluate((el) => el.open), false);
-  await panel.getByTestId("device-node-create").click();
-  await ready();
-  assert.match(await panel.getByTestId("device-node-link").inputValue(), /\/win32-x64$/);
-  assert.match(await panel.getByTestId("device-node-status").textContent(), /等待/);
-  await page.screenshot({
-    path: join(artifacts, "one-click-enrollment.png"),
-    animations: "disabled",
-  });
+  await panel.getByTestId("device-bridge-start").waitFor({ state: "visible" });
+  assert.equal(await panel.getByTestId("device-node-create").count(), 0);
+  assert.equal(await panel.getByTestId("device-node-link").count(), 0);
+  assert.equal(await panel.getByTestId("device-bridge-peer-windows").count(), 0);
   await panel.getByTestId("device-node-download").click();
-  assert.equal((await page.evaluate(() => window.__devices.externalUrls)).length, 1);
+  await ready();
+  assert.deepEqual(await page.evaluate(() => window.__devices.calls.at(-1)), {
+    action: "download-node",
+    platform: "win32-x64",
+  });
+  assert.deepEqual(await page.evaluate(() => window.__devices.externalUrls), [
+    "https://aimodetest.cn/codevori-node/clients/current/CodeVoriNode-win32-x64.exe",
+  ]);
   await page.evaluate(() => {
     window.__devices.externalUrls = [];
-    Object.assign(window.__devices.snapshot.nodes[0], {
-      status: "ready",
-      toolCount: 7,
-      installationUrl: undefined,
-    });
   });
-  await page.waitForFunction(() =>
-    document.querySelector('[data-testid="device-node-status"]')?.textContent?.includes("7"),
-  );
-  await panel.getByTestId("device-node-toggle").click();
-  await ready();
-  assert.match(await panel.getByTestId("device-node-status").textContent(), /停用/);
-  await panel.getByTestId("device-node-toggle").click();
-  await ready();
-  await page.evaluate(() =>
-    Object.assign(window.__devices.snapshot.nodes[0], {
-      status: "waiting",
-      installationUrl:
-        "https://example.test/device-node/v1/install/" + "i".repeat(43) + "/win32-x64",
-    }),
-  );
-  await panel.getByTestId("device-node-remove").click();
-  const nodeDialog = page.getByRole("dialog");
-  await nodeDialog.getByRole("button", { name: /移除电脑/ }).click();
-  await ready();
-  assert.equal(await panel.getByTestId("device-node-status").count(), 0);
-  await panel.getByTestId("device-node-create").click();
-  await ready();
-  legacy = true;
-  await ready();
   const settingsUrl = page.url();
   await panel.getByTestId("device-bridge-management-get-key").click();
   assert.deepEqual(await page.evaluate(() => window.__devices.externalUrls), [
@@ -238,6 +208,68 @@ try {
   await ready();
   assert.equal(await panel.getByRole("alert").count(), 0);
   assert.ok((await panel.getByTestId("device-bridge-check-result").textContent()).includes("7"));
+  const details = page.getByTestId("device-inspection");
+  const openDetails = async () => {
+    await panel.getByTestId("device-bridge-inspect-windows").click();
+    await details.getByTestId("device-inspection-system").waitFor();
+  };
+  const closeDetails = async () => {
+    await details.getByRole("button", { name: "Close", exact: true }).click();
+    await details.waitFor({ state: "detached" });
+  };
+  await openDetails();
+  assert.match(await details.textContent(), /Synthetic CPU/);
+  assert.match(await details.getByTestId("device-inspection-processes").textContent(), /example-/);
+  assert.equal(await details.getByTestId("device-inspection-screen").count(), 0);
+  assert.equal(
+    await page.evaluate(() => window.__devices.inspections.some((r) => r.kind === "screen")),
+    false,
+  );
+  await details.getByTestId("device-inspection-screen-refresh").click();
+  await details.getByTestId("device-inspection-screen").waitFor();
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="device-inspection-screen"]')?.naturalWidth === 1,
+  );
+  await page.evaluate(() => {
+    window.__devices.inspectionError = true;
+  });
+  await details.getByTestId("device-inspection-refresh").click();
+  await details.getByTestId("device-inspection-error").waitFor();
+  assert.equal(await details.getByTestId("device-inspection-system").count(), 0);
+  assert.ok(!(await details.textContent()).includes("synthetic-private"));
+  await details.getByTestId("device-inspection-screen-refresh").click();
+  await details.getByTestId("device-inspection-screen").waitFor({ state: "detached" });
+  await page.evaluate(() => {
+    window.__devices.inspectionError = false;
+  });
+  await details.getByTestId("device-inspection-refresh").click();
+  await details.getByTestId("device-inspection-system").waitFor();
+  await closeDetails();
+  // 关闭后迟到的观察结果不能恢复已关闭详情或泄漏至下一次打开。
+  await page.evaluate(() => {
+    window.__devices.holdInspection = true;
+  });
+  await panel.getByTestId("device-bridge-inspect-windows").click();
+  await page.waitForFunction(() => Boolean(window.__devices.releaseInspection));
+  await closeDetails();
+  await page.evaluate(() => {
+    window.__devices.releaseInspection();
+    delete window.__devices.releaseInspection;
+  });
+  assert.equal(await details.count(), 0);
+  await openDetails();
+  assert.equal(await details.getByTestId("device-inspection-screen").count(), 0);
+  // 网络投影变为断开时自动关闭详情；重新连接后需要用户重新打开。
+  await page.evaluate(() => {
+    const p = window.__devices.snapshot.peers[0];
+    p.connected = false;
+    delete p.checkedAt;
+    delete p.toolCount;
+  });
+  await details.waitFor({ state: "detached" });
+  await panel.getByTestId("device-bridge-connect-windows").click();
+  await ready();
+  assert.equal(await details.count(), 0);
   await panel.getByTestId("device-bridge-authorize-windows").click();
   await ready();
   assert.equal(await page.evaluate(() => window.__devices.snapshot.peers[0].allowed), true);
@@ -249,7 +281,6 @@ try {
   assert.equal(await page.evaluate(() => window.__devices.snapshot.peers[0].connected), true);
   await navigation.click();
   await ready();
-  await panel.getByTestId("device-bridge-advanced").evaluate((el) => (el.open = true));
   await panel.getByTestId("device-bridge-check-windows").click();
   await ready();
   for (const locale of ["zh-CN", "en-US"]) {
@@ -271,6 +302,18 @@ try {
             `${locale}/${theme}/${width}: ${await button.textContent()} must stay inside panel`,
           );
         }
+        await openDetails();
+        assert.ok(
+          await details.evaluate((el) => el.scrollWidth <= el.clientWidth),
+          "Computer details must fit the viewport",
+        );
+        await details.getByTestId("device-inspection-screen-refresh").click();
+        await details.getByTestId("device-inspection-screen").waitFor();
+        await page.screenshot({
+          path: join(artifacts, `inspection-${locale}-${theme}-${width}.png`),
+          animations: "disabled",
+        });
+        await closeDetails();
         await panel.getByTestId("device-bridge-management-key").scrollIntoViewIfNeeded();
         await page.screenshot({
           path: join(artifacts, `${locale}-${theme}-${width}.png`),
@@ -336,7 +379,7 @@ try {
   assert.equal(await general.getAttribute("aria-current"), "page");
   assert.deepEqual(errors, []);
   process.stdout.write(
-    `PASS: real SettingsPage; one-click enrollment, invitation download, automatic online/check projection, disable/enable/remove, advanced connection disclosure; specific safe startup errors, refresh/remount/retry recovery, component selection, login, health failure/retry, pending controls, management key lifecycle, cancel/confirm removal and failure, explicit grant/revoke, page lifetime, stop/reconnect without signing in again, logout requires sign-in, capability gating, zh/en, light/dark, 320/375/1280px. Screenshots: ${artifacts}\n`,
+    `PASS: real SettingsPage; generic client download, visible Tailscale network flow, member discovery, CPU/memory/process details, manual PNG screen, safe failure clearing, close/disconnect stale reads, responsive details; specific safe startup errors, refresh/remount/retry recovery, component selection, login, health failure/retry, pending controls, management key lifecycle, cancel/confirm removal and failure, explicit grant/revoke, page lifetime, stop/reconnect without signing in again, logout requires sign-in, capability gating, zh/en, light/dark, 320/375/1280px. Screenshots: ${artifacts}\n`,
   );
 } catch (error) {
   await page?.screenshot({ path: join(artifacts, "failure.png") }).catch(() => {});

@@ -82,6 +82,7 @@ export function createDesktopPlatform(options: {
       }),
     syncWindowTabs: (paths) => window.zcode.syncWindowTabs(paths),
     getDesktopLanAccess: () => window.zcode.getDesktopLanAccess!(),
+    inspectDeviceBridge: (request) => window.zcode.inspectDeviceBridge!(request),
     getDeviceBridgeState: () => window.zcode.getDeviceBridgeState!(),
     executeDeviceBridgeCommand: (command) => window.zcode.executeDeviceBridgeCommand!(command),
     setDesktopLanAccessEnabled: (enabled) => window.zcode.setDesktopLanAccessEnabled!(enabled),

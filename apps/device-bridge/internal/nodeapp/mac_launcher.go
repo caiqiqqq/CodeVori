@@ -10,14 +10,9 @@ import (
 const macLauncherSource = `on run
 set runner to (POSIX path of (path to me)) & "Contents/MacOS/CodeVoriNode"
 do shell script (quoted form of runner) & " open >/dev/null 2>&1 &"
-end run
-on open location linkURL
-set runner to (POSIX path of (path to me)) & "Contents/MacOS/CodeVoriNode"
-do shell script (quoted form of runner) & " link " & (quoted form of linkURL) & " >/dev/null 2>&1 &"
-end open location`
+end run`
 
-// AppleScript's native URL event handler hands links to the Go process as an argument.
-// A plain Go .app does not receive an "open location" AppleEvent through os.Args.
+// Native launcher opens the private local status page.
 func installMacLauncher(binary string) error {
 	appDir := filepath.Dir(filepath.Dir(filepath.Dir(binary)))
 	temp, e := os.MkdirTemp(filepath.Dir(appDir), ".codevori-launcher-")
@@ -63,8 +58,6 @@ func installMacLauncher(binary string) error {
 	commands := []string{
 		"Delete :CFBundleIdentifier", "Add :CFBundleIdentifier string app.codevori.node",
 		"Delete :LSUIElement", "Add :LSUIElement bool true",
-		"Add :CFBundleURLTypes array", "Add :CFBundleURLTypes:0 dict",
-		"Add :CFBundleURLTypes:0:CFBundleURLSchemes array", "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string codevori-node",
 	}
 	for _, command := range commands {
 		err := exec.Command("/usr/libexec/PlistBuddy", "-c", command, plist).Run()
@@ -82,7 +75,7 @@ func installMacLauncher(binary string) error {
 		return e
 	}
 	_ = os.RemoveAll(backup)
-	// Register immediately; do not require a manual first launch for the URL handler.
+	// 更新 LaunchServices 中的本地应用入口，替换旧版 URL handler 注册。
 	_ = exec.Command("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", "-f", appDir).Run()
 	return nil
 }
