@@ -1,17 +1,22 @@
+import {
+  createDeviceBridgeInspector,
+  type DeviceBridgeInspectionReader,
+} from "./deviceBridgeInspection.js";
 import { isAbsolute } from "node:path";
-import type {
-  DeviceBridgeCommand,
-  DeviceBridgeConfiguration,
-  DeviceBridgeState,
-  DeviceBridgeWorkerState,
-  DeviceBridgeErrorCode,
-  SaveCliMcpToUserDirectoryRequest,
+import {
+  getDeviceBridgeErrorCode,
+  type DeviceBridgeCommand,
+  type DeviceBridgeConfiguration,
+  type DeviceBridgeState,
+  type DeviceBridgeWorkerState,
+  type DeviceBridgeErrorCode,
+  type SaveCliMcpToUserDirectoryRequest,
 } from "@zcode/shared";
-import { getDeviceBridgeErrorCode } from "@zcode/shared";
 import type { DeviceBridgeSession } from "./deviceBridgeProcess.js";
 
 type Endpoint = { nodeId: string; url: string; token: string };
 export function createDeviceBridgeController(ports: {
+  inspectMcp?: DeviceBridgeInspectionReader<Endpoint>;
   readConfiguration(): Promise<DeviceBridgeConfiguration>;
   writeConfiguration(value: DeviceBridgeConfiguration): Promise<void>;
   startSession(
@@ -352,6 +357,19 @@ export function createDeviceBridgeController(ports: {
         }
       }));
     },
+    inspect: createDeviceBridgeInspector({
+      read: ports.inspectMcp,
+      connection(nodeId) {
+        const endpoint = endpoints.get(nodeId);
+        return session &&
+          worker?.backendState === "Running" &&
+          endpoint &&
+          checks.has(nodeId) &&
+          !removed.has(nodeId)
+          ? { endpoint, generation }
+          : undefined;
+      },
+    }),
     read: () => enqueue(refresh),
     execute(command: DeviceBridgeCommand) {
       const revision = managementRevision;

@@ -17,6 +17,7 @@ import (
 )
 
 type Server struct {
+	statusBusy  chan struct{}
 	commands    chan struct{}
 	desktopBusy chan struct{}
 	desktop     desktopDriver
@@ -26,7 +27,7 @@ func New(commandSlots int) (*Server, error) {
 	if commandSlots < 1 || commandSlots > 16 {
 		return nil, errors.New("command_slots_must_be_1_to_16")
 	}
-	return &Server{make(chan struct{}, commandSlots), make(chan struct{}, 1), newDesktop(runtime.GOOS, exec.LookPath, os.Getenv)}, nil
+	return &Server{commands: make(chan struct{}, commandSlots), desktopBusy: make(chan struct{}, 1), statusBusy: make(chan struct{}, 1), desktop: newDesktop(runtime.GOOS, exec.LookPath, os.Getenv)}, nil
 }
 
 func decode(raw []byte, v any) error {
@@ -161,6 +162,16 @@ func textResult(value any) []any {
 
 func (s *Server) call(ctx context.Context, name string, raw json.RawMessage) ([]any, error) {
 	switch name {
+	case "node_status":
+		var args struct{}
+		if decode(raw, &args) != nil {
+			return nil, errors.New("invalid_arguments")
+		}
+		result, err := s.sampleStatus(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return textResult(result), nil
 	case "node_info":
 		var args struct{}
 		if decode(raw, &args) != nil {

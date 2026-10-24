@@ -22,16 +22,17 @@ test("update manifest pins versioned client URLs independently of the desktop ve
     manifest.files[0].url,
     "https://files.test/clients/0.0.6/CodeVoriNode-win32-x64.exe",
   );
+  assert.equal(manifest.transport, "tailscale");
   assert.equal(manifest.serviceUrl, "https://service.test/nodes");
   assert.throws(() => deviceNodeReleaseManifest({ version: "../other", files: [] }));
 });
 
-test("client and service distributions use disjoint roots and platform matrices", () => {
+test("Tailscale clients cover all six platforms without relay service assets", () => {
   const plan = deviceNodeBuildPlan("0.0.5", "/artifacts");
   assert.equal(plan.clients, "/artifacts/clients/0.0.5");
-  assert.equal(plan.services, "/artifacts/service/0.0.5");
+  assert.equal("services" in plan, false);
   assert.equal(plan.clientTargets.length, 6);
-  assert.equal(plan.serviceTargets.length, 2);
+  assert.equal("serviceTargets" in plan, false);
   assert.equal(
     deviceNodeBuildPlan("0.0.7", "output/ci").clients,
     resolve("output/ci/clients/0.0.7"),

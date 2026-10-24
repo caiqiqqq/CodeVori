@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
+  DeviceInspectionRequest,
+  DeviceInspectionResult,
   DeviceBridgeConfiguration,
   DeviceBridgeWorkerState,
   DeviceBridgeErrorCode,
@@ -14,6 +16,10 @@ function fixture(
     signal: AbortSignal,
   ) => Promise<void> = async () => {},
   initialConfiguration?: DeviceBridgeConfiguration,
+  inspectMcp?: (
+    endpoint: { url: string; token: string },
+    input: DeviceInspectionRequest,
+  ) => Promise<DeviceInspectionResult>,
 ) {
   let configuration: DeviceBridgeConfiguration = initialConfiguration ?? {
     binaryPath: "/synthetic/bridge",
@@ -55,6 +61,7 @@ function fixture(
   let holdCheck: Promise<void> | undefined;
   let releaseCheck: (() => void) | undefined;
   const controller = createDeviceBridgeController({
+    inspectMcp,
     readConfiguration: async () => {
       if (holdConfiguration) {
         configurationRead?.();
@@ -576,4 +583,39 @@ test("restored nodes still report expired authorization from the native backend"
   assert.equal(state.backendState, "NeedsLogin");
   assert.equal(state.canLogin, true);
   assert.equal(state.loginName, "");
+});
+
+test("inspection requires a checked connection, rejects duplicate reads and invalidates late results on disconnect or stop", async () => {
+  for (const action of ["disconnect", "stop"] as const) {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const result: DeviceInspectionResult = {
+      kind: "screen",
+      nodeId: "windows",
+      sampledAt: "2026-10-25T00:00:00Z",
+      mimeType: "image/png",
+      data: "iVBORw0KGgo=",
+    };
+    let calls = 0;
+    const f = fixture(undefined, undefined, async () => {
+      calls++;
+      await gate;
+      return result;
+    });
+    await assert.rejects(f.controller.inspect({ nodeId: "windows", kind: "screen" }));
+    await f.controller.execute({ action: "start" });
+    await assert.rejects(f.controller.inspect({ nodeId: "windows", kind: "screen" }));
+    await f.controller.execute({ action: "connect", nodeId: "windows" });
+    const pending = f.controller.inspect({ nodeId: "windows", kind: "screen" });
+    await assert.rejects(f.controller.inspect({ nodeId: "windows", kind: "screen" }));
+    assert.equal(calls, 1);
+    await f.controller.execute(
+      action === "stop" ? { action: "stop" } : { action: "disconnect", nodeId: "windows" },
+    );
+    release();
+    await assert.rejects(pending);
+    await f.controller.dispose();
+  }
 });

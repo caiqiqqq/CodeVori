@@ -4,10 +4,10 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -15,12 +15,12 @@ import (
 
 func TestInstallationIdentityAndPrivateConfig(t *testing.T) {
 	dir := t.TempDir()
-	c := config{ServiceURL: "https://example.test/device-node", ID: strings.Repeat("a", 43), Token: strings.Repeat("b", 43)}
+	c := config{Version: 1, Hostname: "node", AllowedNodes: []string{"controller"}}
 	if e := writeJSON(filepath.Join(dir, "connection.json"), c); e != nil {
 		t.Fatal(e)
 	}
 	got, e := readConfig(dir)
-	if e != nil || got != c {
+	if e != nil || !reflect.DeepEqual(got, c) {
 		t.Fatal("configuration lost", e)
 	}
 	info, _ := os.Stat(filepath.Join(dir, "connection.json"))
@@ -36,17 +36,8 @@ func TestInstallationIdentityAndPrivateConfig(t *testing.T) {
 		unlock()
 		t.Fatal("duplicate node admitted")
 	}
-	key := strings.Repeat("c", 43)
-	for _, name := range []string{"CodeVoriSetup-" + key + ".exe", "CodeVoriSetup-" + key + " (1).exe"} {
-		i, e := loadInvitation(filepath.Join(dir, name))
-		if e != nil || i.Invitation != key {
-			t.Fatal("download filename lost invitation", name, e)
-		}
-	}
-	if _, e := loadInvitation(filepath.Join(dir, "CodeVoriSetup-bad.exe")); e == nil {
-		t.Fatal("unbound installer accepted")
-	}
 }
+
 func TestLocalStatusRequiresPrivateCapabilityAndRejectsOtherOrigins(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -99,19 +90,6 @@ func TestLocalStatusRequiresPrivateCapabilityAndRejectsOtherOrigins(t *testing.T
 	}
 }
 
-func TestApplicationLinkIsBoundToConfiguredService(t *testing.T) {
-	key := strings.Repeat("a", 43)
-	good := "codevori-node://enroll?service=" + url.QueryEscape(ServiceURL) + "&invitation=" + key
-	if i, e := parseAppLink(good); e != nil || i.Invitation != key {
-		t.Fatal(e)
-	}
-	for _, bad := range []string{strings.Replace(good, "codevori-node:", "https:", 1), strings.Replace(good, url.QueryEscape(ServiceURL), url.QueryEscape("https://attacker.test"), 1), good + "&invitation=" + key} {
-		if _, e := parseAppLink(bad); e == nil {
-			t.Fatal("untrusted app link accepted")
-		}
-	}
-}
-
 func TestMacLauncherCompilesWithoutLaunching(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("macOS compiler only")
@@ -123,21 +101,13 @@ func TestMacLauncherCompilesWithoutLaunching(t *testing.T) {
 	}
 }
 
-func TestExplicitAgentDirectoryIsLocalOnly(t *testing.T) {
+func TestExplicitAgentDirectoryRequiresAbsolutePath(t *testing.T) {
 	for _, dir := range []string{"", "relative"} {
 		if err := runLocal(context.Background(), dir); err == nil {
 			t.Fatal("relative state directory accepted")
 		}
 	}
-	dir := t.TempDir()
-	c := config{ServiceURL: "https://example.test/device-node", ID: strings.Repeat("a", 43), Token: strings.Repeat("b", 43)}
-	if err := writeJSON(filepath.Join(dir, "connection.json"), c); err != nil {
-		t.Fatal(err)
-	}
-	if err := runLocal(context.Background(), dir); err == nil {
-		t.Fatal("remote explicit-directory agent accepted")
-	}
-	for _, args := range [][]string{{"agent", "--state-dir"}, {"agent", "--unknown", dir}} {
+	for _, args := range [][]string{{"agent", "--state-dir"}, {"agent", "--unknown", t.TempDir()}} {
 		if err := Main(args); err == nil {
 			t.Fatal("invalid agent arguments accepted")
 		}

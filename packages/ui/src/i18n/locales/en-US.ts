@@ -1,35 +1,46 @@
 /** English translations */
 import { PRODUCT_NAME } from "@zcode/shared";
 const enUS: Record<string, string> = {
+  "settings.devices.inspect.open": "View computer",
+  "settings.devices.inspect.title": "{name} · Computer details",
+  "settings.devices.inspect.description":
+    "CPU, memory and processes refresh every 5 seconds while these details are open.",
+  "settings.devices.inspect.unavailable": "Unavailable",
+  "settings.devices.inspect.loading": "Reading…",
+  "settings.devices.inspect.refresh": "Refresh system information",
+  "settings.devices.inspect.sampledAt": "Sampled at {time}",
+  "settings.devices.inspect.receivedAt": "Screen received at {time}",
+  "settings.devices.inspect.cores": "{count} cores",
+  "settings.devices.inspect.cpu": "CPU usage",
+  "settings.devices.inspect.memory": "Memory",
+  "settings.devices.inspect.memoryUsed": "Used {used} / Total {total}",
+  "settings.devices.inspect.memoryAvailable": "Available: {value}",
+  "settings.devices.inspect.processes": "Processes",
+  "settings.devices.inspect.coverage":
+    "Showing {shown} by resident memory; inspected {inspected} of {total} system processes.",
+  "settings.devices.inspect.partial": "Some processes could not be read; coverage is partial.",
+  "settings.devices.inspect.processName": "Process",
+  "settings.devices.inspect.rss": "Resident memory",
+  "settings.devices.inspect.cpuTime": "CPU time",
+  "settings.devices.inspect.screen": "Screen",
+  "settings.devices.inspect.screenDescription":
+    "Capture a current screenshot on demand. The image does not refresh automatically. Screen capture permission is required on the target.",
+  "settings.devices.inspect.capture": "Capture screen",
+  "settings.devices.inspect.screenAlt": "Screenshot of {name}",
+  "settings.devices.inspect.systemError":
+    "System information is unavailable. Check the connection, controller authorization and that Node supports computer details.",
+  "settings.devices.inspect.screenError":
+    "Screen capture is unavailable. Check capture permission on the target, or retry after other desktop operations finish.",
+  "settings.devices.device_bridge_inspection_unavailable":
+    "System information is unavailable. Check the connection, controller authorization and that Node supports computer details.",
   "settings.devices.node.title": "Add execution computer",
   "settings.devices.node.description":
-    "Choose the target system and create an installation link. The computer connects automatically after installation.",
+    "Install the client on the target and sign in to the same Tailscale network. Allow this controller on the Node status page, then connect from the network members below. On macOS and Linux, make the downloaded binary executable first.",
   "settings.devices.node.platform": "Target computer system",
-  "settings.devices.node.add": "Add computer",
-  "settings.devices.node.share":
-    "Send this link to the target computer, then download and open the installer. The invitation expires in 15 minutes.",
-  "settings.devices.node.link": "Installation link",
-  "settings.devices.node.download": "Download installer",
-  "settings.devices.node.waiting": "Waiting for installation and connection",
-  "settings.devices.node.offline": "Computer offline; waiting for connection",
-  "settings.devices.node.checking": "Online; checking tools",
-  "settings.devices.node.ready": "Connected · {count} tools available",
-  "settings.devices.node.expired":
-    "Installation link expired. Remove this entry and add the computer again.",
-  "settings.devices.node.disabled": "Task connection disabled",
-  "settings.devices.node.error": "Connection unavailable; waiting to recover",
-  "settings.devices.node.disable": "Disable",
-  "settings.devices.node.enable": "Enable",
-  "settings.devices.node.remove": "Remove computer",
-  "settings.devices.node.removeTitle": "Remove this computer?",
-  "settings.devices.node.removeDescription":
-    "Revoking this pairing stops the computer from receiving tasks. Pair it again to reconnect.",
-  "settings.devices.device_bridge_pairing_unavailable":
-    "The pairing service is unavailable. Check that the service and installers are deployed.",
+  "settings.devices.node.download": "Download client",
   "settings.devices.title": "Devices & connections",
   "settings.devices.description":
-    "Add computers for commands and desktop actions. They connect automatically after installing the lightweight execution app.",
-  "settings.devices.advanced": "Advanced networking (Tailscale)",
+    "Connect to computers in your Tailscale network for commands and desktop actions.",
   "settings.devices.account": "Tailscale account",
   "settings.devices.stopped": "Networking is stopped. Existing sign-in is kept; connect to resume.",
   "settings.devices.authorized":
@@ -45,7 +56,7 @@ const enUS: Record<string, string> = {
   "settings.devices.nodeId": "Node ID",
   "settings.devices.devices": "Devices on your network",
   "settings.devices.addDescription":
-    "Run a standalone lightweight execution node on the target, join the same network, and authorize this computer's node ID. You can also connect through the full client's settings; that route needs a separately started executor.",
+    "Targets appear here after joining the same network. Allow this computer's node ID on the target Node status page, then select Connect & check.",
   "settings.devices.refresh": "Refresh",
   "settings.devices.empty":
     "No devices are visible. After login, computers permitted by your network policy appear here.",

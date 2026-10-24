@@ -25,6 +25,7 @@ type localStatus struct {
 	canUninstall bool
 	mu           sync.Mutex
 	message      string
+	network      *networkController
 	dir          string
 	cancel       context.CancelFunc
 	state        localState
@@ -68,13 +69,16 @@ func (s *localStatus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", 403)
 		return
 	}
+	if r.Method == "POST" && r.Header.Get("Origin") != "" && r.Header.Get("Origin") != s.state.Address {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if s.networkAction(w, r) {
+		return
+	}
 	if r.URL.Path == "/"+s.state.Token+"/update" && r.Method == "POST" {
 		if !s.canUninstall {
 			http.NotFound(w, r)
-			return
-		}
-		if r.Header.Get("Origin") != "" && r.Header.Get("Origin") != s.state.Address {
-			http.Error(w, "forbidden", 403)
 			return
 		}
 		_, binary, err := paths()
@@ -94,10 +98,6 @@ func (s *localStatus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		if r.Header.Get("Origin") != "" && r.Header.Get("Origin") != s.state.Address {
-			http.Error(w, "forbidden", 403)
-			return
-		}
 		_, binary, err := paths()
 		if err == nil {
 			err = startDetached(binary, "uninstall")
@@ -110,10 +110,6 @@ func (s *localStatus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/"+s.state.Token+"/stop" && r.Method == "POST" {
-		if r.Header.Get("Origin") != "" && r.Header.Get("Origin") != s.state.Address {
-			http.Error(w, "forbidden", 403)
-			return
-		}
 		w.WriteHeader(202)
 		_, _ = io.WriteString(w, "连接已停止。关闭本页即可。再次打开 CodeVori Node 可重新连接。")
 		s.cancel()
@@ -125,13 +121,18 @@ func (s *localStatus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	message := s.message
+	network := s.network
 	s.mu.Unlock()
+	networkHTML := ""
+	if network != nil {
+		message, networkHTML = renderNetwork(network.snapshot(), s.state.Token)
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	uninstall := ""
 	if s.canUninstall {
-		uninstall = `<form method="post" action="/` + s.state.Token + `/update"><button>检查更新</button></form><p>更新会保留已有配对。</p><form method="post" action="/` + s.state.Token + `/uninstall"><button>卸载</button></form><p>卸载会移除此电脑上的连接配置。</p>`
+		uninstall = `<form method="post" action="/` + s.state.Token + `/update"><button>检查更新</button></form><p>更新会保留 Tailscale 身份和控制授权。</p><form method="post" action="/` + s.state.Token + `/uninstall"><button>卸载</button></form><p>卸载会移除此电脑上的连接配置。</p>`
 	}
-	_, _ = io.WriteString(w, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="refresh" content="5"><title>CodeVori Node</title><style>body{font:16px system-ui;max-width:36rem;padding:2rem;margin:auto;background:#f7f7f8;color:#222}button{font:inherit;padding:.6rem 1rem}p{line-height:1.6}</style><h1>CodeVori Node</h1><p>版本 `+html.EscapeString(Version)+`</p><p>`+html.EscapeString(message)+`</p><p>此电脑可以接收配对主端的命令与桌面操作。请保持用户登录。</p><form method="post" action="/`+s.state.Token+`/stop"><button>停止连接</button></form>`+uninstall+`</html>`)
+	_, _ = io.WriteString(w, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="refresh" content="5"><title>CodeVori Node</title><style>body{font:16px system-ui;max-width:36rem;padding:2rem;margin:auto;background:#f7f7f8;color:#222;overflow-wrap:anywhere}button{font:inherit;padding:.6rem 1rem}p{line-height:1.6}li{margin:1rem 0}form{margin:.5rem 0}</style><h1>CodeVori Node</h1><p>版本 `+html.EscapeString(Version)+`</p><p>`+html.EscapeString(message)+`</p><p>请加入主端所在的 Tailscale 网络，再允许对应主端控制此电脑。执行命令和桌面操作需要保持用户登录。</p>`+networkHTML+`<form method="post" action="/`+s.state.Token+`/stop"><button>停止连接</button></form>`+uninstall+`</html>`)
 }
 func local(dir string) (localState, error) {
 	var s localState

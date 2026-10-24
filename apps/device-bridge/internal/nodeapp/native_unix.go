@@ -101,11 +101,7 @@ func autostart(binary string, enabled bool) error {
 	if e = os.WriteFile(filepath.Join(appDir, "codevori-node.desktop"), []byte(strings.Replace(data, " agent\n", " open\n", 1)), 0644); e != nil {
 		return e
 	}
-	protocol := strings.Replace(data, " agent\n", " link %u\n", 1) + "NoDisplay=true\nMimeType=x-scheme-handler/codevori-node;\n"
-	if e = os.WriteFile(filepath.Join(appDir, "codevori-node-link.desktop"), []byte(protocol), 0644); e != nil {
-		return e
-	}
-	_ = exec.Command("xdg-mime", "default", "codevori-node-link.desktop", "x-scheme-handler/codevori-node").Run()
+	_ = os.Remove(filepath.Join(appDir, "codevori-node-link.desktop"))
 	return nil
 }
 func lock(path string) (func(), error) {

@@ -1,17 +1,19 @@
 import { join, resolve } from "node:path";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { app, ipcMain, shell, type UtilityProcess } from "electron";
-import { deviceBridgeCommandSchema, PlatformChannels } from "@zcode/shared";
+import {
+  deviceBridgeCommandSchema,
+  deviceInspectionRequestSchema,
+  deviceInspectionResultSchema,
+  PlatformChannels,
+} from "@zcode/shared";
 import { createDeviceBridgeController } from "./deviceBridgeController.js";
 import { createDeviceBridgeConfigurationStore } from "./deviceBridgeConfiguration.js";
 import { startDeviceBridgeProcess } from "./deviceBridgeProcess.js";
 import { checkDeviceBridgeMcp } from "./deviceBridgeMcpCheck.js";
-import {
-  createDeviceNodeConnections,
-  requestDeviceNodeService,
-  validateDeviceNodeServiceUrl,
-} from "./deviceNodeConnections.js";
+import { inspectDeviceBridgeMcp } from "./deviceBridgeInspection.js";
+import { retireDeviceNodeRelay } from "./deviceNodeLegacy.js";
 import { removeTailscaleDevice } from "./deviceBridgeManagement.js";
 import { saveCliMcpToUserDirectory } from "./mcpUserDirectory/index.js";
 
@@ -28,38 +30,22 @@ export function registerDeviceBridgeSettings(hosts: Map<number, UtilityProcess>)
         "device-bridge",
         binary,
       );
-  const nodeServiceUrl = validateDeviceNodeServiceUrl(
-    process.env.CODEVORI_NODE_SERVICE_URL || "https://aimodetest.cn/device-node",
-  );
   const nodeFile = join(directory, "execution-nodes.json");
-  const nodes = createDeviceNodeConnections({
-    serviceUrl: nodeServiceUrl,
-    name: hostname().slice(0, 100),
-    async readRecords() {
-      let text: string;
+  const migration = retireDeviceNodeRelay({
+    async read() {
       try {
-        text = await readFile(nodeFile, "utf8");
+        return JSON.parse(await readFile(nodeFile, "utf8")) as unknown;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
         throw error;
       }
-      const value = JSON.parse(text);
-      if (value.serviceUrl !== nodeServiceUrl || !Array.isArray(value.records))
-        throw new Error("device_bridge_pairing_unavailable");
-      return value.records;
     },
-    async writeRecords(records) {
-      await mkdir(directory, { recursive: true, mode: 0o700 });
-      await writeFile(nodeFile + ".tmp", JSON.stringify({ serviceUrl: nodeServiceUrl, records }), {
-        mode: 0o600,
-      });
-      await rename(nodeFile + ".tmp", nodeFile);
-    },
-    request: requestDeviceNodeService,
-    checkMcp: (endpoint) => checkDeviceBridgeMcp(endpoint, nodeServiceUrl),
-    saveMcp: saveCliMcpToUserDirectory,
+    removeMcp: (name) =>
+      saveCliMcpToUserDirectory({ action: "delete", source: "zcodeagentmcp", name }),
+    removeBindings: () => unlink(nodeFile),
   });
-  nodes.start();
+  // 注册拒绝处理器，避免启动恢复前的迁移失败成为未处理拒绝；IPC 仍会返回真实失败。
+  void migration.catch(() => {});
   const controller = createDeviceBridgeController({
     ...createDeviceBridgeConfigurationStore(directory, defaultBinary),
     startSession: (onExit, configuration) =>
@@ -76,6 +62,7 @@ export function registerDeviceBridgeSettings(hosts: Map<number, UtilityProcess>)
       }),
     saveMcp: saveCliMcpToUserDirectory,
     checkMcp: checkDeviceBridgeMcp,
+    inspectMcp: inspectDeviceBridgeMcp,
     openLogin: async (url) => shell.openExternal(url),
     removeDevice: removeTailscaleDevice,
   });
@@ -83,30 +70,32 @@ export function registerDeviceBridgeSettings(hosts: Map<number, UtilityProcess>)
     if (!hosts.has(event.sender.id) || event.senderFrame !== event.sender.mainFrame)
       throw new Error("device_bridge_untrusted_sender");
   };
+  ipcMain.handle(PlatformChannels.InspectDeviceBridge, async (event, input: unknown) => {
+    checkSender(event);
+    const request = deviceInspectionRequestSchema.parse(input);
+    await migration;
+    return deviceInspectionResultSchema.parse(await controller.inspect(request));
+  });
   ipcMain.handle(PlatformChannels.GetDeviceBridgeState, (event) => {
     checkSender(event);
-    return controller.read().then(async (state) => ({ ...state, nodes: await nodes.read() }));
+    return migration.then(() => controller.read());
   });
   ipcMain.handle(PlatformChannels.ExecuteDeviceBridgeCommand, (event, input: unknown) => {
     checkSender(event);
     const command = deviceBridgeCommandSchema.parse(input);
-    if (
-      command.action === "node-create" ||
-      command.action === "node-remove" ||
-      command.action === "node-enable"
-    )
-      return nodes
-        .execute(command)
-        .then(async () => ({ ...(await controller.read()), nodes: await nodes.read() }));
-    return controller
-      .execute(command)
-      .then(async (state) => ({ ...state, nodes: await nodes.read() }));
+    return migration.then(async () => {
+      if (command.action === "download-node") {
+        const file = `CodeVoriNode-${command.platform}${command.platform.startsWith("win32-") ? ".exe" : ""}`;
+        await shell.openExternal(`https://aimodetest.cn/codevori-node/clients/current/${file}`);
+        return controller.read();
+      }
+      return controller.execute(command);
+    });
   });
   app.once("will-quit", () => {
-    void nodes.dispose().catch(() => {});
     void controller.dispose().catch(() => {});
   });
   // 更新/退出只关闭进程，不撤销节点授权；启动时恢复上次启用的连接，错误由状态页呈现。
-  void controller.restore().catch(() => {});
+  void migration.then(() => controller.restore()).catch(() => {});
   return controller;
 }

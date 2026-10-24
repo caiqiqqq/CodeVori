@@ -208,6 +208,7 @@ export const PlatformChannels = {
   /** Renderer → Main：同步当前窗口所有 tab 的 workspace 路径 */
   SyncWindowTabs: "zcode:sync-window-tabs",
   GetDesktopLanAccess: "zcode:get-desktop-lan-access",
+  InspectDeviceBridge: "zcode:inspect-device-bridge",
   GetDeviceBridgeState: "zcode:get-device-bridge-state",
   ExecuteDeviceBridgeCommand: "zcode:execute-device-bridge-command",
   SetDesktopLanAccessEnabled: "zcode:set-desktop-lan-access-enabled",
