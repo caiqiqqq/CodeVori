@@ -1,3 +1,4 @@
+import { DeviceNodeEnrollment } from "./DeviceNodeEnrollment.js";
 import { Network, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { getDeviceBridgeErrorCode } from "@zcode/shared";
@@ -34,272 +35,291 @@ export function DeviceBridgeSettingsSection() {
       aria-busy={busy || !state}
     >
       <p className="text-ui-sm leading-5 text-foreground-subtle">{t("description")}</p>
-      <SettingsGroupCard>
-        <SettingsRow
-          label={t("account")}
-          description={t(status)}
-          controlLayout="wide"
-          control={
-            <div className="flex flex-wrap gap-2">
-              {active ? (
-                <>
-                  {state?.canLogin ? (
-                    <Button
-                      className={buttonClass}
-                      disabled={busy}
-                      onClick={() => void run({ action: "open-login" })}
-                      data-testid="device-bridge-login"
-                    >
-                      {t("login")}
-                    </Button>
-                  ) : null}
-                  <Button
-                    className={buttonClass}
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void run({ action: "stop" })}
-                    data-testid="device-bridge-stop"
-                  >
-                    {t("stop")}
-                  </Button>
-                  {authorized ? (
+      <DeviceNodeEnrollment nodes={state?.nodes ?? []} busy={busy || !state} run={run} />
+      <details className="space-y-4" data-testid="device-bridge-advanced">
+        <summary className="cursor-pointer text-ui-sm text-foreground-subtle">
+          {t("advanced")}
+        </summary>
+        <SettingsGroupCard>
+          <SettingsRow
+            label={t("account")}
+            description={t(status)}
+            controlLayout="wide"
+            control={
+              <div className="flex flex-wrap gap-2">
+                {active ? (
+                  <>
+                    {state?.canLogin ? (
+                      <Button
+                        className={buttonClass}
+                        disabled={busy}
+                        onClick={() => void run({ action: "open-login" })}
+                        data-testid="device-bridge-login"
+                      >
+                        {t("login")}
+                      </Button>
+                    ) : null}
                     <Button
                       className={buttonClass}
                       variant="outline"
                       disabled={busy}
-                      onClick={() => void run({ action: "logout" })}
-                      data-testid="device-bridge-logout"
+                      onClick={() => void run({ action: "stop" })}
+                      data-testid="device-bridge-stop"
                     >
-                      {t("logout")}
+                      {t("stop")}
                     </Button>
-                  ) : null}
-                </>
-              ) : (
-                <Button
-                  className={buttonClass}
-                  disabled={busy || !state}
-                  onClick={() => void run({ action: "start" })}
-                  data-testid="device-bridge-start"
-                >
-                  {t("start")}
-                </Button>
-              )}
-            </div>
-          }
-        />
-        {authorized ? (
-          <div className="space-y-1 border-t border-border px-4 py-3 text-ui-sm">
-            <p className="break-all" data-testid="device-bridge-account">
-              {state?.loginName || state?.tailnet}
-            </p>
-            <p className="break-all text-foreground-subtle">
-              {t("thisComputer")}: {state?.dnsName}
-            </p>
-          </div>
-        ) : null}
-      </SettingsGroupCard>
-      <SettingsGroupCard>
-        <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <div className="min-w-0 space-y-1">
-            <h3 className="text-ui-base font-medium">{t("devices")}</h3>
-            <p className="text-ui-sm leading-5 text-foreground-subtle">{t("addDescription")}</p>
-          </div>
-          <Button
-            className={buttonClass}
-            variant="outline"
-            disabled={busy || !state}
-            onClick={() => void run({ action: "refresh" })}
-            data-testid="device-bridge-refresh"
-          >
-            <RefreshCw className="size-4" />
-            {t("refresh")}
-          </Button>
-        </div>
-        {!state?.peers.length ? (
-          <p
-            className="border-t border-border p-4 text-ui-sm text-foreground-subtle"
-            data-testid="device-bridge-empty"
-          >
-            {t("empty")}
-          </p>
-        ) : (
-          <ul className="divide-y divide-border border-t border-border">
-            {state.peers.map((peer) => (
-              <li
-                key={peer.nodeId}
-                className="min-w-0 space-y-3 p-4"
-                data-testid={`device-bridge-peer-${peer.nodeId}`}
-              >
-                <div className="flex min-w-0 items-start gap-3">
-                  <Network className="mt-0.5 size-4 shrink-0 text-foreground-subtle" />
-                  <div className="min-w-0 space-y-1">
-                    <h4 className="break-all text-ui-base font-medium">{peer.name}</h4>
-                    <p className="text-ui-sm text-foreground-subtle">
-                      {peer.os} · {t(peer.online ? "online" : "offline")} ·{" "}
-                      {t(peer.connected ? "enabled" : "notConnected")}
-                    </p>
-                    {peer.checkedAt && peer.toolCount !== undefined ? (
-                      <p
-                        className="text-ui-sm text-foreground-subtle"
-                        data-testid="device-bridge-check-result"
+                    {authorized ? (
+                      <Button
+                        className={buttonClass}
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => void run({ action: "logout" })}
+                        data-testid="device-bridge-logout"
                       >
-                        {t("checked", { count: peer.toolCount })}
+                        {t("logout")}
+                      </Button>
+                    ) : null}
+                  </>
+                ) : (
+                  <Button
+                    className={buttonClass}
+                    disabled={busy || !state}
+                    onClick={() => void run({ action: "start" })}
+                    data-testid="device-bridge-start"
+                  >
+                    {t("start")}
+                  </Button>
+                )}
+              </div>
+            }
+          />
+          {authorized ? (
+            <div className="space-y-1 border-t border-border px-4 py-3 text-ui-sm">
+              <p className="break-all" data-testid="device-bridge-account">
+                {state?.loginName || state?.tailnet}
+              </p>
+              <p className="break-all text-foreground-subtle">
+                {t("thisComputer")}: {state?.dnsName}
+              </p>
+              <p
+                className="select-text break-all text-foreground-subtle"
+                data-testid="device-bridge-node-id"
+              >
+                {t("nodeId")}: {state?.nodeId}
+              </p>
+            </div>
+          ) : null}
+        </SettingsGroupCard>
+        <SettingsGroupCard>
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="min-w-0 space-y-1">
+              <h3 className="text-ui-base font-medium">{t("devices")}</h3>
+              <p className="text-ui-sm leading-5 text-foreground-subtle">{t("addDescription")}</p>
+            </div>
+            <Button
+              className={buttonClass}
+              variant="outline"
+              disabled={busy || !state}
+              onClick={() => void run({ action: "refresh" })}
+              data-testid="device-bridge-refresh"
+            >
+              <RefreshCw className="size-4" />
+              {t("refresh")}
+            </Button>
+          </div>
+          {!state?.peers.length ? (
+            <p
+              className="border-t border-border p-4 text-ui-sm text-foreground-subtle"
+              data-testid="device-bridge-empty"
+            >
+              {t("empty")}
+            </p>
+          ) : (
+            <ul className="divide-y divide-border border-t border-border">
+              {state.peers.map((peer) => (
+                <li
+                  key={peer.nodeId}
+                  className="min-w-0 space-y-3 p-4"
+                  data-testid={`device-bridge-peer-${peer.nodeId}`}
+                >
+                  <div className="flex min-w-0 items-start gap-3">
+                    <Network className="mt-0.5 size-4 shrink-0 text-foreground-subtle" />
+                    <div className="min-w-0 space-y-1">
+                      <h4 className="break-all text-ui-base font-medium">{peer.name}</h4>
+                      <p className="text-ui-sm text-foreground-subtle">
+                        {peer.os} · {t(peer.online ? "online" : "offline")} ·{" "}
+                        {t(peer.connected ? "enabled" : "notConnected")}
                       </p>
-                    ) : null}
-                    {peer.allowed ? (
-                      <p className="text-ui-sm text-foreground-subtle">{t("allowed")}</p>
-                    ) : null}
+                      {peer.checkedAt && peer.toolCount !== undefined ? (
+                        <p
+                          className="text-ui-sm text-foreground-subtle"
+                          data-testid="device-bridge-check-result"
+                        >
+                          {t("checked", { count: peer.toolCount })}
+                        </p>
+                      ) : null}
+                      {peer.allowed ? (
+                        <p className="text-ui-sm text-foreground-subtle">{t("allowed")}</p>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      className={buttonClass}
+                      variant="outline"
+                      disabled={busy || !authorized || (!peer.online && !peer.connected)}
+                      onClick={() =>
+                        void run({
+                          action: peer.connected ? "disconnect" : "connect",
+                          nodeId: peer.nodeId,
+                        })
+                      }
+                      data-testid={`device-bridge-connect-${peer.nodeId}`}
+                    >
+                      {t(peer.connected ? "disconnect" : "connect")}
+                    </Button>
+                    {peer.connected ? (
+                      <Button
+                        className={buttonClass}
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => void run({ action: "check", nodeId: peer.nodeId })}
+                        data-testid={`device-bridge-check-${peer.nodeId}`}
+                      >
+                        {t("check")}
+                      </Button>
+                    ) : null}
+                    <Button
+                      className={buttonClass}
+                      variant="outline"
+                      disabled={busy || !authorized || !state.managementConfigured}
+                      onClick={async () => {
+                        if (
+                          await confirm({
+                            title: t("removeTitle"),
+                            description: t("removeDescription", {
+                              name: peer.name,
+                              id: peer.nodeId,
+                            }),
+                            confirmLabel: t("remove"),
+                            confirmVariant: "destructive",
+                            showKeyboardHints: false,
+                          })
+                        )
+                          await run({ action: "remove", nodeId: peer.nodeId });
+                      }}
+                      data-testid={`device-bridge-remove-${peer.nodeId}`}
+                    >
+                      {t("remove")}
+                    </Button>
+                    <Button
+                      className={buttonClass}
+                      variant="outline"
+                      disabled={busy || !authorized}
+                      onClick={() =>
+                        void run({
+                          action: "authorize",
+                          nodeId: peer.nodeId,
+                          allowed: !peer.allowed,
+                        })
+                      }
+                      data-testid={`device-bridge-authorize-${peer.nodeId}`}
+                    >
+                      {t(peer.allowed ? "revoke" : "authorize")}
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SettingsGroupCard>
+        <SettingsGroupCard>
+          <SettingsRow
+            label={t("management")}
+            description={t("managementDescription")}
+            controlLayout="wide"
+            control={
+              <div className="w-full min-w-0 space-y-2">
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={4096}
+                  value={apiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                  aria-label={t("managementKey")}
+                  placeholder={t("managementKey")}
+                  disabled={busy || !state}
+                  data-testid="device-bridge-management-key"
+                />
                 <div className="flex flex-wrap gap-2">
                   <Button
                     className={buttonClass}
                     variant="outline"
-                    disabled={busy || !authorized || (!peer.online && !peer.connected)}
-                    onClick={() =>
-                      void run({
-                        action: peer.connected ? "disconnect" : "connect",
-                        nodeId: peer.nodeId,
-                      })
-                    }
-                    data-testid={`device-bridge-connect-${peer.nodeId}`}
+                    onClick={openManagementKeys}
+                    data-testid="device-bridge-management-get-key"
                   >
-                    {t(peer.connected ? "disconnect" : "connect")}
+                    {t("managementGetKey")}
                   </Button>
-                  {peer.connected ? (
-                    <Button
-                      className={buttonClass}
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => void run({ action: "check", nodeId: peer.nodeId })}
-                      data-testid={`device-bridge-check-${peer.nodeId}`}
-                    >
-                      {t("check")}
-                    </Button>
-                  ) : null}
                   <Button
                     className={buttonClass}
                     variant="outline"
-                    disabled={busy || !authorized || !state.managementConfigured}
-                    onClick={async () => {
-                      if (
-                        await confirm({
-                          title: t("removeTitle"),
-                          description: t("removeDescription", { name: peer.name, id: peer.nodeId }),
-                          confirmLabel: t("remove"),
-                          confirmVariant: "destructive",
-                          showKeyboardHints: false,
-                        })
-                      )
-                        await run({ action: "remove", nodeId: peer.nodeId });
+                    disabled={busy || !state || !/^[A-Za-z0-9_-]+$/.test(apiKey.trim())}
+                    onClick={() => {
+                      // 草稿提交即清空；Main 只返回是否配置，不把管理密钥放进快照或持久化。
+                      const value = apiKey.trim();
+                      setApiKey("");
+                      void run({ action: "configure-management", apiKey: value });
                     }}
-                    data-testid={`device-bridge-remove-${peer.nodeId}`}
+                    data-testid="device-bridge-management-save"
                   >
-                    {t("remove")}
+                    {t("managementSave")}
                   </Button>
                   <Button
                     className={buttonClass}
                     variant="outline"
-                    disabled={busy || !authorized}
-                    onClick={() =>
-                      void run({ action: "authorize", nodeId: peer.nodeId, allowed: !peer.allowed })
-                    }
-                    data-testid={`device-bridge-authorize-${peer.nodeId}`}
+                    disabled={busy || !state?.managementConfigured}
+                    onClick={() => {
+                      setApiKey("");
+                      void run({ action: "clear-management" });
+                    }}
+                    data-testid="device-bridge-management-clear"
                   >
-                    {t(peer.allowed ? "revoke" : "authorize")}
+                    {t("managementClear")}
                   </Button>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </SettingsGroupCard>
-      <SettingsGroupCard>
-        <SettingsRow
-          label={t("management")}
-          description={t("managementDescription")}
-          controlLayout="wide"
-          control={
-            <div className="w-full min-w-0 space-y-2">
-              <Input
-                type="password"
-                autoComplete="off"
-                spellCheck={false}
-                maxLength={4096}
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                aria-label={t("managementKey")}
-                placeholder={t("managementKey")}
-                disabled={busy || !state}
-                data-testid="device-bridge-management-key"
-              />
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  className={buttonClass}
-                  variant="outline"
-                  onClick={openManagementKeys}
-                  data-testid="device-bridge-management-get-key"
-                >
-                  {t("managementGetKey")}
-                </Button>
-                <Button
-                  className={buttonClass}
-                  variant="outline"
-                  disabled={busy || !state || !/^[A-Za-z0-9_-]+$/.test(apiKey.trim())}
-                  onClick={() => {
-                    // 草稿提交即清空；Main 只返回是否配置，不把管理密钥放进快照或持久化。
-                    const value = apiKey.trim();
-                    setApiKey("");
-                    void run({ action: "configure-management", apiKey: value });
-                  }}
-                  data-testid="device-bridge-management-save"
-                >
-                  {t("managementSave")}
-                </Button>
-                <Button
-                  className={buttonClass}
-                  variant="outline"
-                  disabled={busy || !state?.managementConfigured}
-                  onClick={() => {
-                    setApiKey("");
-                    void run({ action: "clear-management" });
-                  }}
-                  data-testid="device-bridge-management-clear"
-                >
-                  {t("managementClear")}
-                </Button>
+                <p className="text-ui-sm text-foreground-subtle" role="status">
+                  {t(state?.managementConfigured ? "managementConfigured" : "managementMissing")}
+                </p>
               </div>
-              <p className="text-ui-sm text-foreground-subtle" role="status">
-                {t(state?.managementConfigured ? "managementConfigured" : "managementMissing")}
-              </p>
-            </div>
-          }
-        />
-      </SettingsGroupCard>
-      <SettingsGroupCard>
-        <SettingsRow
-          label={t("component")}
-          description={t("componentDescription")}
-          controlLayout="wide"
-          control={
-            <Button
-              className={buttonClass}
-              variant="outline"
-              disabled={busy || active || !state}
-              onClick={() => void selectComponent()}
-              data-testid="device-bridge-select-component"
-            >
-              {t("selectComponent")}
-            </Button>
-          }
-        />
-        {state?.binaryPath ? (
-          <p className="break-all border-t border-border px-4 py-3 font-mono text-ui-sm text-foreground-subtle">
-            {state.binaryPath}
-          </p>
-        ) : null}
-      </SettingsGroupCard>
-      <p className="text-ui-sm leading-5 text-foreground-subtle">{t("lifecycle")}</p>
+            }
+          />
+        </SettingsGroupCard>
+        <SettingsGroupCard>
+          <SettingsRow
+            label={t("component")}
+            description={t("componentDescription")}
+            controlLayout="wide"
+            control={
+              <Button
+                className={buttonClass}
+                variant="outline"
+                disabled={busy || active || !state}
+                onClick={() => void selectComponent()}
+                data-testid="device-bridge-select-component"
+              >
+                {t("selectComponent")}
+              </Button>
+            }
+          />
+          {state?.binaryPath ? (
+            <p className="break-all border-t border-border px-4 py-3 font-mono text-ui-sm text-foreground-subtle">
+              {state.binaryPath}
+            </p>
+          ) : null}
+        </SettingsGroupCard>
+        <p className="text-ui-sm leading-5 text-foreground-subtle">{t("lifecycle")}</p>
+      </details>
       {busy ? (
         <p role="status" className="text-ui-sm text-foreground-subtle">
           {t("working")}
@@ -307,7 +327,7 @@ export function DeviceBridgeSettingsSection() {
       ) : null}
       {error || state?.error ? (
         <p role="alert" className="text-ui-sm text-destructive" data-testid="device-bridge-error">
-          {t(getDeviceBridgeErrorCode(state?.error ?? error))}
+          {t(getDeviceBridgeErrorCode(error ?? state?.error))}
         </p>
       ) : null}
     </section>

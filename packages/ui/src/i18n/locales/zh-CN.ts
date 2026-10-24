@@ -1,11 +1,35 @@
 /** 中文翻译 */
 import { PRODUCT_NAME } from "@zcode/shared";
 const zhCN: Record<string, string> = {
+  "settings.devices.node.title": "添加执行电脑",
+  "settings.devices.node.description":
+    "选择目标电脑的系统，生成专属安装链接。对方安装后，这里会自动显示连接状态。",
+  "settings.devices.node.platform": "目标电脑系统",
+  "settings.devices.node.add": "添加电脑",
+  "settings.devices.node.share":
+    "把此链接发到目标电脑，下载后打开安装。链接在 15 分钟内有效，仅用于此次配对。",
+  "settings.devices.node.link": "专属安装链接",
+  "settings.devices.node.download": "下载安装程序",
+  "settings.devices.node.waiting": "等待安装并上线",
+  "settings.devices.node.offline": "电脑离线，正在等待连接",
+  "settings.devices.node.checking": "已上线，正在检查工具",
+  "settings.devices.node.ready": "已连接，可用工具 {count} 个",
+  "settings.devices.node.expired": "安装链接已过期，请移除此项后重新添加",
+  "settings.devices.node.disabled": "已停用任务连接",
+  "settings.devices.node.error": "暂时无法连接，正在等待恢复",
+  "settings.devices.node.disable": "停用",
+  "settings.devices.node.enable": "启用",
+  "settings.devices.node.remove": "移除电脑",
+  "settings.devices.node.removeTitle": "移除此电脑？",
+  "settings.devices.node.removeDescription":
+    "撤销配对后，这台电脑将无法继续接收任务。再次使用需要重新安装配对。",
+  "settings.devices.device_bridge_pairing_unavailable":
+    "配对服务暂不可用，请检查服务和安装包是否已部署。",
   "settings.devices.title": "设备与连接",
-  "settings.devices.description":
-    "连接其他电脑，在新的本地会话中调用它们的桌面、网页和命令执行能力。网络连接使用 Tailscale 官方服务。",
+  "settings.devices.description": "添加用于执行命令与桌面操作的电脑，安装轻量执行端后自动连接。",
+  "settings.devices.advanced": "高级网络连接（Tailscale）",
   "settings.devices.account": "Tailscale 账号",
-  "settings.devices.stopped": "网络连接已停止。启动后可授权登录。",
+  "settings.devices.stopped": "网络连接已停止。已有登录状态会保留，点击连接可恢复。",
   "settings.devices.authorized": "已加入网络。设备在线状态与执行器可用性会分别显示。",
   "settings.devices.needsApproval": "等待 Tailscale 管理员批准此设备。",
   "settings.devices.needsLogin": "正在连接。出现授权入口后，在浏览器中完成登录。",
@@ -14,9 +38,10 @@ const zhCN: Record<string, string> = {
   "settings.devices.stop": "停止网络连接",
   "settings.devices.logout": "退出账号",
   "settings.devices.thisComputer": "本机",
+  "settings.devices.nodeId": "节点 ID",
   "settings.devices.devices": "网络中的设备",
   "settings.devices.addDescription":
-    "添加电脑：在目标电脑打开同一设置页并授权加入同一网络，再允许你的设备控制它。Windows 上还需启动 Windows-MCP 执行器。",
+    "目标电脑可运行独立轻量执行节点，加入同一网络并授权本机节点 ID。也可在完整客户端的同一设置页连接；此方式需要另行启动执行器。",
   "settings.devices.refresh": "刷新",
   "settings.devices.empty": "暂无可见设备。登录后，这里会显示当前网络权限允许访问的电脑。",
   "settings.devices.online": "网络在线",
@@ -63,7 +88,7 @@ const zhCN: Record<string, string> = {
     "应用已内置连接组件。如需使用自定义版本，可停止网络连接后选择文件。",
   "settings.devices.selectComponent": "选择文件",
   "settings.devices.lifecycle":
-    "离开设置页后连接仍会保留。新连接的工具可在新的本机对话中使用；应用退出或停止网络会关闭连接。断线后请先检查目标状态，再继续操作。",
+    "启用连接后，更新或重启应用会自动恢复；主动停止或退出账号后不再自动恢复。登录过期或授权被撤销时需要重新登录。新连接的工具可在新的本机对话中使用。断线后请先检查目标状态，再继续操作。",
   "settings.devices.working": "正在处理…",
   "settings.devices.device_bridge_component_missing":
     "未找到连接组件。请重新安装包含此组件的完整应用，或选择有效的连接组件文件。",

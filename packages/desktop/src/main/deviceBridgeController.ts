@@ -30,6 +30,7 @@ export function createDeviceBridgeController(ports: {
   let generation = 0,
     restored = false;
   let operations: Promise<unknown> = Promise.resolve();
+  let restoration: Promise<void> | undefined;
   let managementKey = "";
   let managementRevision = 0;
   let removal: AbortController | undefined;
@@ -194,6 +195,7 @@ export function createDeviceBridgeController(ports: {
         try {
           await removeGrants();
           const config = await ports.readConfiguration();
+          await ports.writeConfiguration({ ...config, networkingEnabled: true });
           await clearMcp();
           if (generation !== epoch) throw new Error("device_bridge_process_closed");
           if (!config.binaryPath || !isAbsolute(config.binaryPath))
@@ -230,20 +232,26 @@ export function createDeviceBridgeController(ports: {
           throw error;
         }
       }
-      case "stop":
-        await clearMcp();
+      case "stop": {
+        try {
+          const config = await ports.readConfiguration();
+          await ports.writeConfiguration({ ...config, networkingEnabled: false });
+        } finally {
+          await clearMcp();
+        }
         break;
+      }
       case "logout": {
         managementKey = "";
         // 账号服务失败不能留下仍可控制本机的监听；保留错误供界面报告。
         try {
+          const config = await ports.readConfiguration();
+          await ports.writeConfiguration({ ...config, allowedNodes: [], networkingEnabled: false });
           if (session) await request("logout");
         } finally {
           await stopProcess();
           await clearMcp();
         }
-        const config = await ports.readConfiguration();
-        await ports.writeConfiguration({ ...config, allowedNodes: [] });
         break;
       }
       case "open-login": {
@@ -327,6 +335,23 @@ export function createDeviceBridgeController(ports: {
     return snapshot();
   };
   return {
+    restore(): Promise<void> {
+      const epoch = generation;
+      return (restoration ??= enqueue(async () => {
+        try {
+          const config = await ports.readConfiguration();
+          // 停止可抢先失效代次；迟到的磁盘读取不能覆盖用户刚做出的停止选择。
+          if (generation === epoch && config.networkingEnabled && !session)
+            await perform({ action: "start" });
+        } catch (error) {
+          if (generation === epoch) {
+            phase = "error";
+            failure = getDeviceBridgeErrorCode(error);
+          }
+          throw error;
+        }
+      }));
+    },
     read: () => enqueue(refresh),
     execute(command: DeviceBridgeCommand) {
       const revision = managementRevision;

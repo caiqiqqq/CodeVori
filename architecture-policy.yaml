@@ -68,7 +68,7 @@ modules:
     managed: true
     requires: [shared]
     publicEntrypoints: [apps/device-bridge/contract.ts]
-    layers: { domain: internal/policy, adapters: internal/bridge }
+    layers: { domain: internal/policy, adapters: internal }
     layerOrder: [domain, adapters]
     owner: device-connectivity
 
