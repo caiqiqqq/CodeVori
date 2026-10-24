@@ -36,6 +36,10 @@ jobs:
       - name: Build workflow type declarations for a clean checkout
         run: pnpm --filter @zcode/dynamic-workflow-runtime... build
       - run: node --test scripts/github-release.test.mjs
+      - name: Execution client release and server mirror regressions
+        run: |
+          node --test scripts/package-device-node.test.mjs scripts/github-device-node-release.test.mjs
+          python3 -m unittest discover -s scripts -p 'test_sync*.py'
       - name: Device bridge packaging and lifecycle regressions
         run: |
           pnpm exec tsx --test packages/desktop/test/deviceBridge*.test.*

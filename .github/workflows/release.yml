@@ -1,4 +1,4 @@
-name: Release desktop installers
+name: Release desktop and execution clients
 
 on:
   release:
@@ -108,8 +108,45 @@ jobs:
           compression-level: 0
           retention-days: 7
 
+  build-device-node:
+    needs: prepare
+    name: Build six execution clients
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.14.0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/device-bridge/go.mod
+          cache-dependency-path: apps/device-bridge/go.sum
+      - name: Test execution client and release packaging
+        run: |
+          (cd apps/device-bridge && go test -race ./...)
+          node --test scripts/package-device-node.test.mjs scripts/github-device-node-release.test.mjs
+          python3 -m unittest discover -s scripts -p 'test_sync*.py'
+      - name: Build independent clients and collect release assets
+        run: |
+          node scripts/package-device-node.mjs --clients-only
+          node scripts/github-device-node-release.mjs collect
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: device-node-clients
+          path: dist-device-node/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
   publish:
-    needs: [prepare, build]
+    needs: [prepare, build, build-device-node]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:
@@ -131,5 +168,15 @@ jobs:
           pattern: installers-*
           path: dist-release
           merge-multiple: true
-      - name: Verify all installers and upload to GitHub Release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: device-node-clients
+          path: dist-device-node
+      - name: Verify both distributions before publishing
+        run: |
+          node scripts/github-release.mjs verify
+          node scripts/github-device-node-release.mjs verify
+      - name: Upload desktop installers to GitHub Release
         run: node scripts/github-release.mjs publish
+      - name: Upload immutable clients and completion manifest to GitHub Release
+        run: node scripts/github-device-node-release.mjs publish

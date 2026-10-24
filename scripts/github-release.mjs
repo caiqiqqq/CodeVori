@@ -150,18 +150,7 @@ export async function publishAssets(
   if (!context.tag) throw new Error("Publishing requires a release tag");
   const files = await verifyAssets(directory, context, targets);
   const gh = (...args) => exec("gh", args, { cwd: root, maxBuffer: 1024 * 1024 });
-  // 再核对远端标签，避免构建期间标签被移动后仍向同名 Release 上传旧源码产物。
-  const { stdout } = await gh(
-    "api",
-    `repos/${process.env.GITHUB_REPOSITORY}/git/ref/tags/${context.tag}`,
-  );
-  let object = JSON.parse(stdout).object;
-  if (object.type === "tag")
-    object = JSON.parse(
-      (await gh("api", `repos/${process.env.GITHUB_REPOSITORY}/git/tags/${object.sha}`)).stdout,
-    ).object;
-  if (object.type !== "commit" || object.sha !== context.commit)
-    throw new Error("Remote release tag changed during build");
+  await assertRemoteReleaseSource(context, gh);
   await writeFile(
     resolve(directory, checksumName),
     files.map((file) => `${file.sha256}  ${file.name}\n`).join(""),
@@ -191,6 +180,21 @@ export async function publishAssets(
   );
 }
 
+export async function assertRemoteReleaseSource(context, gh) {
+  // 再核对远端标签，避免构建期间标签被移动后仍向同名 Release 上传旧源码产物。
+  const { stdout } = await gh(
+    "api",
+    `repos/${process.env.GITHUB_REPOSITORY}/git/ref/tags/${context.tag}`,
+  );
+  let object = JSON.parse(stdout).object;
+  if (object.type === "tag")
+    object = JSON.parse(
+      (await gh("api", `repos/${process.env.GITHUB_REPOSITORY}/git/tags/${object.sha}`)).stdout,
+    ).object;
+  if (object.type !== "commit" || object.sha !== context.commit)
+    throw new Error("Remote release tag changed during build");
+}
+
 async function main() {
   const context = await validateSource();
   switch (process.argv[2]) {
@@ -204,11 +208,14 @@ async function main() {
     case "collect":
       await collectAssets(context);
       break;
+    case "verify":
+      await verifyAssets(assetsDirectory, context);
+      break;
     case "publish":
       await publishAssets(context);
       break;
     default:
-      throw new Error("Usage: node scripts/github-release.mjs validate|collect|publish");
+      throw new Error("Usage: node scripts/github-release.mjs validate|collect|verify|publish");
   }
   console.log(`Release ${process.argv[2]} succeeded: ${context.tag} (${context.commit})`);
 }

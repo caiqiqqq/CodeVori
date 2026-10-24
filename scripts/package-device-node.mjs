@@ -9,9 +9,10 @@ import { executionNodeTargets, executionNodeZip } from "./package-execution-node
 const exec = promisify(execFile);
 const root = resolve(import.meta.dirname, "..");
 export function deviceNodeBuildPlan(version, output = join(root, "output/device-node")) {
+  // Go 构建在模块目录执行；先转绝对路径，避免相对 --output 写入模块后读取失败。
   return {
-    clients: join(output, "clients", version),
-    services: join(output, "service", version),
+    clients: resolve(output, "clients", version),
+    services: resolve(output, "service", version),
     clientTargets: executionNodeTargets,
     serviceTargets: [
       { os: "linux", arch: "x64" },
@@ -34,6 +35,24 @@ export function validateBuildServiceUrl(serviceUrl, local = false) {
     throw new Error("Use HTTPS for releases or explicit --local with a loopback HTTP URL");
   return parsed.toString().replace(/\/$/, "");
 }
+export function deviceNodeReleaseManifest({
+  version,
+  source,
+  dirty,
+  serviceUrl,
+  assetsBaseUrl,
+  files,
+}) {
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version))
+    throw new Error("Invalid independent client version");
+  return {
+    version,
+    source,
+    dirty,
+    serviceUrl,
+    files: files.map((file) => ({ ...file, url: `${assetsBaseUrl}/${version}/${file.name}` })),
+  };
+}
 export async function buildDeviceNodes({
   clients = true,
   services = true,
@@ -41,7 +60,9 @@ export async function buildDeviceNodes({
   output,
   serviceUrl: configuredUrl,
 } = {}) {
-  const version = JSON.parse(await readFile(join(root, "package.json"), "utf8")).version;
+  const version = JSON.parse(
+    await readFile(join(root, "scripts/device-node-version.json"), "utf8"),
+  ).version;
   const plan = deviceNodeBuildPlan(
     version,
     output ?? join(root, local ? "output/device-node-local" : "output/device-node"),
@@ -52,6 +73,11 @@ export async function buildDeviceNodes({
       (local ? "http://127.0.0.1:18081" : "https://aimodetest.cn/device-node"),
     local,
   );
+  const assetsBaseUrl = validateBuildServiceUrl(
+    process.env.CODEVORI_NODE_ASSETS_BASE_URL ??
+      (local ? "http://127.0.0.1:18081/clients" : "https://aimodetest.cn/codevori-node/clients"),
+    local,
+  );
   const source = (await exec("git", ["rev-parse", "HEAD"], { cwd: root })).stdout.trim();
   const dirty = Boolean(
     (await exec("git", ["status", "--porcelain"], { cwd: root })).stdout.trim(),
@@ -60,12 +86,26 @@ export async function buildDeviceNodes({
   const build = async (target, command, destination) => {
     await mkdir(resolve(destination, ".."), { recursive: true });
     const flags = ["-s", "-w"];
-    if (command === "codevori-node")
+    if (command === "codevori-node") {
       flags.push(`-X=zcode.local/device-bridge/internal/nodeapp.ServiceURL=${serviceUrl}`);
+      flags.push(`-X=zcode.local/device-bridge/internal/nodeapp.Version=${version}`);
+      flags.push(
+        `-X=zcode.local/device-bridge/internal/nodeapp.UpdateManifestURL=${assetsBaseUrl}/latest.json`,
+      );
+    }
     if (target.os === "win32") flags.push("-H=windowsgui");
     await exec(
       go,
-      ["build", "-trimpath", `-ldflags=${flags.join(" ")}`, "-o", destination, `./cmd/${command}`],
+      // 来源由 manifest 记录；避免主程序提交变化写进 Go VCS 信息，导致同版客户端负载漂移。
+      [
+        "build",
+        "-trimpath",
+        "-buildvcs=false",
+        `-ldflags=${flags.join(" ")}`,
+        "-o",
+        destination,
+        `./cmd/${command}`,
+      ],
       {
         cwd: join(root, "apps/device-bridge"),
         maxBuffer: 4_000_000,
@@ -95,7 +135,11 @@ export async function buildDeviceNodes({
     }
     await writeFile(
       join(plan.clients, "manifest.json"),
-      JSON.stringify({ version, source, dirty, serviceUrl, files }, null, 2) + "\n",
+      JSON.stringify(
+        deviceNodeReleaseManifest({ version, source, dirty, serviceUrl, assetsBaseUrl, files }),
+        null,
+        2,
+      ) + "\n",
     );
     await writeFile(join(plan.clients, "LICENSE.txt"), await readFile(join(root, "LICENSE")));
   }
