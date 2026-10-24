@@ -72,5 +72,9 @@ export function useDeviceBridgeSettings() {
       if (live.current) setError(getDeviceBridgeErrorCode(error));
     }
   }, [platform, run]);
-  return { state, busy, error, run, selectComponent };
+  const openManagementKeys = useCallback(() => {
+    // 只打开官方固定地址，不把密钥草稿、账号或状态拼入浏览器 URL。
+    platform.openExternal("https://console.tailscale.com/admin/settings/keys");
+  }, [platform]);
+  return { state, busy, error, run, selectComponent, openManagementKeys };
 }

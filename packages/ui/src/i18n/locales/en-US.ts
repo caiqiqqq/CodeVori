@@ -33,6 +33,38 @@ const enUS: Record<string, string> = {
   "settings.devices.check": "Check tools",
   "settings.devices.authorize": "Allow control of this computer",
   "settings.devices.revoke": "Revoke control access",
+  "settings.devices.remove": "Remove from network",
+  "settings.devices.removeTitle": "Remove this device from Tailscale?",
+  "settings.devices.removeDescription":
+    "Remove {name} ({id}) from the entire Tailscale network. This also disconnects its tools and revokes its access to this computer. The device must log in again to rejoin.",
+  "settings.devices.management": "Device management access",
+  "settings.devices.managementDescription":
+    "To remove devices, enter a Tailscale API key with device deletion permission (not an auth key). Create one in the Tailscale admin console under Settings → Keys. It stays in memory for this app session and is cleared on logout or app exit.",
+  "settings.devices.managementKey": "Tailscale management API key",
+  "settings.devices.managementGetKey": "Get API key",
+  "settings.devices.managementSave": "Set management key",
+  "settings.devices.managementClear": "Clear key",
+  "settings.devices.managementConfigured":
+    "Management key configured; Tailscale checks its permissions.",
+  "settings.devices.managementMissing": "Set a management key to remove devices from the network.",
+  "settings.devices.device_bridge_management_required":
+    "Set a management API key with device deletion permission first.",
+  "settings.devices.device_bridge_management_unauthorized":
+    "The management key is invalid or expired. Set a new key.",
+  "settings.devices.device_bridge_management_forbidden":
+    "The management key cannot delete this device. Check its Tailscale permissions.",
+  "settings.devices.device_bridge_management_failed":
+    "The management request did not complete. Check your network and management permissions before retrying.",
+  "settings.devices.device_bridge_device_missing":
+    "This device is no longer on the network. Refresh the device list.",
+  "settings.devices.device_bridge_device_external":
+    "Devices shared from another network cannot be removed here. Contact their network administrator.",
+  "settings.devices.device_bridge_invalid_device":
+    "The device has changed or is this computer. Refresh the list before retrying.",
+  "settings.devices.device_bridge_removal_unconfirmed":
+    "The removal result is unconfirmed. Check whether the device still exists in the Tailscale admin console before retrying.",
+  "settings.devices.device_bridge_removal_cleanup_failed":
+    "The device was removed from the network, but local cleanup is incomplete. Networking was stopped. Check configuration write permissions and reconnect to finish cleanup.",
   "settings.devices.component": "Connection component",
   "settings.devices.componentDescription":
     "The app includes a connection component. To use a custom version, stop networking and choose a file.",

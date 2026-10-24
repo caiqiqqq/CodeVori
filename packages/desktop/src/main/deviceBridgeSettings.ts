@@ -12,6 +12,7 @@ import {
 import { createDeviceBridgeController } from "./deviceBridgeController.js";
 import { startDeviceBridgeProcess } from "./deviceBridgeProcess.js";
 import { checkDeviceBridgeMcp } from "./deviceBridgeMcpCheck.js";
+import { removeTailscaleDevice } from "./deviceBridgeManagement.js";
 import { saveCliMcpToUserDirectory } from "./mcpUserDirectory/index.js";
 
 /** Native connection configuration and process lifetime only; no task/session ownership. */
@@ -60,6 +61,7 @@ export function registerDeviceBridgeSettings(hosts: Map<number, UtilityProcess>)
     saveMcp: saveCliMcpToUserDirectory,
     checkMcp: checkDeviceBridgeMcp,
     openLogin: async (url) => shell.openExternal(url),
+    removeDevice: removeTailscaleDevice,
   });
   const checkSender = (event: Electron.IpcMainInvokeEvent) => {
     if (!hosts.has(event.sender.id) || event.senderFrame !== event.sender.mainFrame)
