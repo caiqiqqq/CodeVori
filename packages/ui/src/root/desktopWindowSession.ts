@@ -4,14 +4,20 @@ import {
   type DesktopWindowSessionSnapshot,
 } from "@zcode/shared";
 import { isWorkspaceTab, type TabStore } from "@/store/tabStore.js";
+import type { DesktopWindowNavigationRestore } from "@/lib/desktopWindowNavigation.js";
 
 /** 仅为 Host 快照的 UI 投影，不拥有服务端会话或已接纳命令。 */
 export const useDesktopWindowView = create<{
   following: boolean;
   snapshot: DesktopWindowSessionSnapshot | null;
-}>(() => ({ following: false, snapshot: null }));
+  navigationRestore: DesktopWindowNavigationRestore | null;
+}>(() => ({ following: false, snapshot: null, navigationRestore: null }));
 
-export function applyDesktopWindowSession(store: TabStore, input: unknown) {
+export function applyDesktopWindowSession(
+  store: TabStore,
+  input: unknown,
+  restore?: DesktopWindowNavigationRestore | null,
+) {
   const snapshot = desktopWindowSessionSnapshotSchema.parse(input);
   const previous = useDesktopWindowView.getState().snapshot;
   if (previous?.epoch === snapshot.epoch && previous.revision >= snapshot.revision) return;
@@ -36,10 +42,17 @@ export function applyDesktopWindowSession(store: TabStore, input: unknown) {
   const extraTabs = state.tabs.filter((tab) => !isWorkspaceTab(tab));
   const tabs = [...workspaces, ...extraTabs];
   const retainedActive = tabs.find((tab) => tab.id === state.activeTabId);
-  // #180：窗口成员顺序不代表手机的启动目标。只自动进入已有本地对话工作区，
+  // #180：窗口成员顺序不代表手机的启动目标。无有效页面记录时只进入已有本地对话工作区，
   // 没有对话工作区时保留未选择态，不能打开第一个项目或隐式创建新 runtime。
   const active =
     retainedActive ??
+    (restore
+      ? workspaces.find(
+          (tab) =>
+            workspaceKey(tab) === workspaceKey(restore.workspace) &&
+            tab.workspacePath === restore.workspace.workspacePath,
+        )
+      : undefined) ??
     workspaces.find(
       (tab) =>
         tab.workspacePurpose === "conversation" &&
@@ -59,6 +72,18 @@ export function applyDesktopWindowSession(store: TabStore, input: unknown) {
         .map((tab) => tab.workspacePath),
     ),
   });
-  useDesktopWindowView.setState({ following: true, snapshot });
+  const pending = restore ?? useDesktopWindowView.getState().navigationRestore;
+  useDesktopWindowView.setState({
+    following: true,
+    snapshot,
+    navigationRestore:
+      pending &&
+      active &&
+      isWorkspaceTab(active) &&
+      workspaceKey(active) === workspaceKey(pending.workspace) &&
+      active.availability !== "unavailable-local-directory"
+        ? pending
+        : null,
+  });
   return !retainedActive && active && isWorkspaceTab(active) ? active : undefined;
 }

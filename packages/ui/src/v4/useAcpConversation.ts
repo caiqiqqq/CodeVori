@@ -460,6 +460,7 @@ export function useAcpConversation(
               requestId,
               deferPersistence: true,
               usePermissionPreference: true,
+              useModelPreference: true,
             }),
           );
           if (
@@ -794,6 +795,7 @@ export function useAcpConversation(
           configId,
           value,
           rememberPermission: true,
+          rememberModel: true,
         });
       } catch (cause) {
         // 修复原因：切换同 Agent 的历史会话后，旧请求迟到的错误不能显示在新会话上。

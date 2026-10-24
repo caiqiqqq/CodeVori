@@ -87,6 +87,8 @@ import { OperationDiagnostics } from "@zcode/rpc";
 import { getZCodeDataRootDir } from "../paths.js";
 import type { IMcpSyncService } from "../mcp-sync/mcpSync.js";
 import type { ISkillsService } from "../skills/skills.js";
+import type { IComposerPreferenceService } from "../composer-preference/contract.js";
+import type { ComposerPreference } from "@zcode/shared";
 import type { IAcpService } from "./acpService.js";
 import { AcpSessionLoadError, connectAcpAgent } from "./acpStdioConnection.js";
 import { buildAcpPromptBlocks } from "./acpPromptBlocks.js";
@@ -222,6 +224,7 @@ function diagnosticToolStatus(status?: string): AcpDiagnosticEvent["status"] {
 export function createAcpService(
   options: {
     directory?: string;
+    composerPreferenceService?: IComposerPreferenceService;
     resolveInstallEnv?: () => Promise<Record<string, string>>;
     /** Same Host policy as the management page and API session tools. */
     resolveDynamicWorkflowClientConfig?: () => Promise<DynamicWorkflowClientConfig>;
@@ -258,6 +261,7 @@ export function createAcpService(
   const permissionPreferences = new AcpPermissionPreferences(
     join(directory, "permission-preferences"),
   );
+  const initialModelPreferences = new Map<string, ComposerPreference["acpModels"][AcpAgent]>();
   const attachmentStore = new AcpAttachmentStore(join(directory, "attachments"));
   const attachmentWrites = new Map<string, Set<Promise<void>>>();
   const connect = options.connect ?? connectAcpAgent;
@@ -1358,8 +1362,34 @@ export function createAcpService(
         };
         const initialConfig = receivedConfig ? pendingConfigOptions : (port.configOptions ?? []);
         // 新默认值只用于全新会话；重连必须恢复该会话原有的模型，不能套用新的全局偏好。
-        const selections =
-          !session.acpSessionId && !savedConfigOptions.length && configuredDefaultModel
+        const rememberedModel =
+          !session.acpSessionId && !savedConfigOptions.length
+            ? initialModelPreferences.get(session.id)
+            : undefined;
+        const initialModel = rememberedModel
+          ? initialConfig.find(
+              (item) =>
+                item.id === rememberedModel.configId &&
+                item.type === "select" &&
+                (item.category === "model" || item.id === "model"),
+            )
+          : undefined;
+        const rememberedSelection =
+          rememberedModel &&
+          initialModel?.type === "select" &&
+          acpConfigValues(initialModel).includes(rememberedModel.value)
+            ? [{ ...initialModel, currentValue: rememberedModel.value }]
+            : undefined;
+        // 新任务偏好不是会话执行事实；目录移除模型时允许打开菜单重新选择，保留原偏好供用户修复。
+        if (rememberedModel && !rememberedSelection)
+          logger.warn(
+            undefined,
+            "ACP composer model preference is unavailable in the current catalog",
+            { agent: session.agent },
+          );
+        const selections = rememberedSelection
+          ? rememberedSelection
+          : !session.acpSessionId && !savedConfigOptions.length && configuredDefaultModel
             ? defaultAcpModelSelection(initialConfig, configuredDefaultModel)
             : savedConfigOptions;
         const restoredConfig = await restoreAcpConfigOptions(
@@ -2622,8 +2652,14 @@ export function createAcpService(
     },
     async create(input) {
       if (disposed) throw new Error("ACP service closed");
-      const { agent, requestId, deferPersistence, usePermissionPreference, ...target } =
-        acpCreateInputSchema.parse(input);
+      const {
+        agent,
+        requestId,
+        deferPersistence,
+        usePermissionPreference,
+        useModelPreference,
+        ...target
+      } = acpCreateInputSchema.parse(input);
       const key = requestId
         ? JSON.stringify([workspaceKey(target), target.workspacePath, agent, requestId])
         : null;
@@ -2688,7 +2724,11 @@ export function createAcpService(
           // 空草稿不落会话历史，但显式权限偏好由 Host 独立持久化；内部 create 不继承它。
           if (usePermissionPreference)
             session.permissionSelection = await permissionPreferences.read(target, agent);
-          const port = await attach(session);
+          if (useModelPreference && options.composerPreferenceService) {
+            const preference = await options.composerPreferenceService.get(target);
+            initialModelPreferences.set(id, preference.acpModels[agent]);
+          }
+          const port = await attach(session).finally(() => initialModelPreferences.delete(id));
           if (!session.provisional && session.acpSessionId) {
             // 修复原因：新连接中途失去的累计报告无法恢复，首份需重建基线。
             session.usageBaselineKnown = false;
@@ -2925,6 +2965,26 @@ export function createAcpService(
             });
           }
         } else throw new Error("ACP config option is not available");
+        if (
+          input.rememberModel &&
+          options.composerPreferenceService &&
+          option?.type === "select" &&
+          (option.category === "model" || option.id === "model") &&
+          typeof input.value === "string"
+        ) {
+          // 修复原因：ACP 模型只存在会话内，新任务和手机无法继承；Agent 确认成功后才记录共享偏好。
+          if (
+            session.configOptions.find((item) => item.id === option.id)?.currentValue !==
+            input.value
+          )
+            throw new Error("ACP Agent did not apply the selected model");
+          await options.composerPreferenceService.update({
+            workspacePath: session.workspacePath,
+            workspaceIdentity: session.workspaceIdentity,
+            commandId: randomUUID(),
+            acpModel: { agent: session.agent, configId: option.id, value: input.value },
+          });
+        }
         const isPermission = option ? isAcpPermissionOption(option) : input.configId === "mode";
         if (isPermission && typeof input.value === "string") {
           const selection = sessionPermissionSelection(session, input.configId);

@@ -85,6 +85,7 @@ import { useWorkspaceHomePath } from "@/hooks/useWorkspaceHomePath.js";
 import { prepareWorkspaceWithZCodeSessionService } from "@/hooks/useWorkspacePrepare.js";
 import { decodeCustomModelValue, encodeCustomModelValue } from "@/lib/zcodeCustomModelValue.js";
 import { parseModelPickerValue } from "@/lib/zcodeSessionProjection.js";
+import { useComposerPreference } from "@/hooks/useComposerPreference.js";
 import { captureComposerRecentSubmission } from "@/lib/composerRecent.js";
 import { resolveProviderLabel } from "@/lib/registryProviderView.js";
 import {
@@ -607,6 +608,8 @@ export function SessionPane({
     zcodeSessionService,
     zcodeTaskService,
   } = useServices();
+  const composerPreference = useComposerPreference(workspacePath, workspaceIdentity);
+  const explicitExecutorChoice = useRef<string | null>(null);
   const [acpAgent, setAcpAgent] = useState<AcpAgent | null>(null);
   const handleAcpSessionArchived = useCallback(
     (archivedSessionId: string) => {
@@ -755,9 +758,23 @@ export function SessionPane({
       if (worktreeAutoSend && agent !== worktreeAutoSend.agent) {
         worktreeDraftIntent?.consumeAutoSend(worktreeAutoSend.requestId);
       }
+      explicitExecutorChoice.current = JSON.stringify([
+        workspaceIdentity?.trim() || workspacePath,
+        sessionId,
+        draftFocusVersion,
+      ]);
       setAcpAgent(agent);
+      composerPreference.select({ kind: "acp", agent });
     },
-    [worktreeAutoSend, worktreeDraftIntent],
+    [
+      worktreeAutoSend,
+      worktreeDraftIntent,
+      workspaceIdentity,
+      workspacePath,
+      sessionId,
+      draftFocusVersion,
+      composerPreference.select,
+    ],
   );
   const acpOpenScopeKey = JSON.stringify([
     workspaceIdentity?.trim() || workspacePath,
@@ -1575,7 +1592,48 @@ export function SessionPane({
     sessionConfig: snapshot?.sessionId === sessionId ? snapshot.config : null,
     agentStartupAllowed: draftAgentStartupAllowed,
     modelSelectionService,
+    preference: composerPreference,
+    hasComposerContent: composerDraftStateRef.current.hasContent,
   });
+  useEffect(() => {
+    const key = JSON.stringify([
+      workspaceIdentity?.trim() || workspacePath,
+      sessionId,
+      draftFocusVersion,
+    ]);
+    if (
+      !focused ||
+      sessionId ||
+      acpBoundSessionId ||
+      pendingAcpTabOpenRequest ||
+      worktreeAutoSend ||
+      readOnly ||
+      selectionSideChat ||
+      !composerPreference.ready ||
+      composerDraftStateRef.current.hasContent ||
+      composerDraft.text.trim() ||
+      composerDraft.mention ||
+      composerDraft.modelSelectionEdited ||
+      explicitExecutorChoice.current === key
+    )
+      return;
+    const target = composerPreference.snapshot?.target;
+    if (target) setAcpAgent(target.kind === "acp" ? target.agent : null);
+  }, [
+    workspacePath,
+    workspaceIdentity,
+    sessionId,
+    draftFocusVersion,
+    acpBoundSessionId,
+    pendingAcpTabOpenRequest,
+    worktreeAutoSend,
+    readOnly,
+    selectionSideChat,
+    focused,
+    composerPreference.ready,
+    composerPreference.snapshot,
+    composerDraft,
+  ]);
   const modelSelectionView =
     modelSelectionRead.state.status === "ready" ? modelSelectionRead.state.view : null;
   const draftModelSelectionRevisionRef = useRef<number | null>(null);
@@ -3873,9 +3931,21 @@ export function SessionPane({
         model,
         branch: "composer-submission-intent",
       });
+      explicitExecutorChoice.current = JSON.stringify([
+        workspaceIdentity?.trim() || workspacePath,
+        sessionId,
+        draftFocusVersion,
+      ]);
       handleDraftSelectModel(resolvedProvider, model);
     },
-    [draftConfigRef, handleDraftSelectModel],
+    [
+      draftConfigRef,
+      handleDraftSelectModel,
+      workspaceIdentity,
+      workspacePath,
+      sessionId,
+      draftFocusVersion,
+    ],
   );
 
   const handleSelectNativeModel = useCallback(
@@ -4500,6 +4570,14 @@ export function SessionPane({
   });
   const composerError =
     draftModelReadinessError ??
+    (composerPreference.error
+      ? {
+          code: "MODEL_PREFERENCE_SYNC_FAILED",
+          message: intl.formatMessage({
+            id: `chat.modelPreference.${composerPreference.error}Failed`,
+          }),
+        }
+      : null) ??
     sendSubmissionError ??
     (quotaBanner.takesOverError ? null : projectedComposerError);
   useEffect(() => {

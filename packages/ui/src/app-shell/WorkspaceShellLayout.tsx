@@ -41,6 +41,8 @@ import {
   selectWorkbenchSession,
 } from "@/v4/workbenchSessionPlacement.js";
 import { usePaneSessionPersistence } from "@/v4/usePaneSessionPersistence.js";
+import { useDesktopWindowNavigation } from "@/hooks/useDesktopWindowNavigation.js";
+import { useDesktopWindowView } from "@/root/desktopWindowSession.js";
 import { requestV4ComposerDraftWorkspaceTransfer } from "@/v4/composer/composerDraftWorkspaceTransfer.js";
 import {
   WorktreeDraftIntentContext,
@@ -429,9 +431,12 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   const [acpSessionProjection, setAcpSessionProjection] = useState<{
     workspaceKey: string;
     taskId: string | null;
+    draftFocusVersion: number;
     session: AcpConversationProjection;
   } | null>(null);
-  const [acpOpenRequest, setAcpOpenRequest] = useState<AcpConversationOpenRequest | null>(null);
+  const [acpOpenRequest, setAcpOpenRequest] = useState<
+    (AcpConversationOpenRequest & { draftFocusVersion: number }) | null
+  >(null);
   const acpOpenRequestIdRef = useRef(0);
   const fileTreeOpenRequestIdRef = useRef(0);
   const [fileTreeOpenRequest, setFileTreeOpenRequest] = useState<SidebarFileTreeOpenRequest | null>(
@@ -439,29 +444,39 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   );
   const [isSidebarFileTreeOpen, setIsSidebarFileTreeOpen] = useState(false);
   const workspaceKey = workspaceIdentity?.trim() || workspaceAbsPath;
+  const followingDesktopWindow = useDesktopWindowView((state) => state.following);
   const handlePrimaryAcpSessionChange = useCallback(
     (session: AcpConversationProjection | null) => {
       setAcpSessionProjection((previous) => {
         if (!session) {
-          return previous?.workspaceKey === workspaceKey && previous.taskId === activeTaskId
+          return previous?.workspaceKey === workspaceKey &&
+            previous.taskId === activeTaskId &&
+            previous.draftFocusVersion === workspaceShellZCodeState.draftFocusVersion
             ? null
             : previous;
         }
         if (
           previous?.workspaceKey === workspaceKey &&
           previous.taskId === activeTaskId &&
+          previous.draftFocusVersion === workspaceShellZCodeState.draftFocusVersion &&
           previous.session.id === session.id &&
           previous.session.title === session.title
         )
           return previous;
-        return { workspaceKey, taskId: activeTaskId, session };
+        return {
+          workspaceKey,
+          taskId: activeTaskId,
+          draftFocusVersion: workspaceShellZCodeState.draftFocusVersion,
+          session,
+        };
       });
     },
-    [activeTaskId, workspaceKey],
+    [activeTaskId, workspaceKey, workspaceShellZCodeState.draftFocusVersion],
   );
   const visibleAcpSession =
     acpSessionProjection?.workspaceKey === workspaceKey &&
-    acpSessionProjection.taskId === activeTaskId
+    acpSessionProjection.taskId === activeTaskId &&
+    acpSessionProjection.draftFocusVersion === workspaceShellZCodeState.draftFocusVersion
       ? acpSessionProjection.session
       : null;
   const handlePrimaryAcpSessionArchived = useCallback(
@@ -496,6 +511,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     workspaceKey,
     activeSessionId: activeTaskId,
     draftFocusVersion: workspaceShellZCodeState.draftFocusVersion,
+    enabled: !followingDesktopWindow,
     selectSession: (sessionId) => handleSelectTask(workspaceAbsPath, sessionId, workspaceIdentity),
   });
   const workspaceShellRef = useRef<HTMLDivElement | null>(null);
@@ -1459,7 +1475,14 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       } else {
         showChatMainView();
       }
-      setAcpOpenRequest({ requestId: ++acpOpenRequestIdRef.current, session });
+      setAcpOpenRequest({
+        requestId: ++acpOpenRequestIdRef.current,
+        session,
+        // 显式新建可从快捷键进入；旧 ACP 请求不能被保存成这次新草稿的导航目标。
+        draftFocusVersion: useZCodeSessionStore
+          .getState()
+          .getWorkspaceState(session.workspacePath, session.workspaceIdentity).draftFocusVersion,
+      });
     },
     [
       activeTaskId,
@@ -1495,6 +1518,23 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     },
     [handleSelectAcpSession, handleSelectTaskInChat, tabStoreApi],
   );
+  useDesktopWindowNavigation({
+    workspacePath: workspaceAbsPath,
+    workspaceIdentity,
+    activeSessionId: activeTaskId,
+    acpSession:
+      visibleAcpSession ??
+      (acpOpenRequest &&
+      acpOpenRequest.draftFocusVersion === workspaceShellZCodeState.draftFocusVersion &&
+      (acpOpenRequest.session.workspaceIdentity?.trim() || acpOpenRequest.session.workspacePath) ===
+        workspaceKey
+        ? acpOpenRequest.session
+        : null),
+    chatVisible: workspaceMainView === "chat",
+    draftFocusVersion: workspaceShellZCodeState.draftFocusVersion,
+    selectApi: handleSelectTaskInChat,
+    selectAcp: handleSelectAcpSession,
+  });
   useWorktreeSettingsConversation({
     selectAcp: handleSelectAcpSession,
     selectApi: handleSelectTaskInChat,

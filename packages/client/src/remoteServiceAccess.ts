@@ -14,6 +14,7 @@ import {
   IZCodeAgentService,
   IZCodeSessionService,
   IAcpService,
+  IComposerPreferenceService,
   IWorkTaskService,
   IAgentDelegationService,
   ICuaPermissionService,
@@ -67,6 +68,7 @@ export class RemoteServiceAccess implements IServiceAccessor {
   readonly zcodeAgentService: IZCodeAgentService;
   readonly zcodeSessionService: IZCodeSessionService;
   readonly acpService: IAcpService;
+  readonly composerPreferenceService: IComposerPreferenceService;
   readonly workTaskService: IWorkTaskService;
   readonly agentDelegationService: IAgentDelegationService;
   // cuaPermissionService 在 IServiceAccessor 上是可选（远端/bots host 不提供），但桌面 renderer
@@ -143,6 +145,9 @@ export class RemoteServiceAccess implements IServiceAccessor {
     );
     this.zcodeSessionService = ProxyChannel.toService<IZCodeSessionService>(
       channelClient.getChannel(IZCodeSessionService.channelName),
+    );
+    this.composerPreferenceService = ProxyChannel.toService<IComposerPreferenceService>(
+      channelClient.getChannel(IComposerPreferenceService.channelName),
     );
     this.acpService = ProxyChannel.toService<IAcpService>(
       channelClient.getChannel(IAcpService.channelName),

@@ -14,6 +14,7 @@ import {
   IZCodeAgentService,
   IZCodeSessionService,
   IAcpService,
+  IComposerPreferenceService,
   IWorkTaskService,
   IAgentDelegationService,
   IConversationShareService,
@@ -328,6 +329,7 @@ export function createRemoteWorkspaceServiceCollection(params: {
     .register(IZCodeAgentService, params.connectionServices.zcodeAgentService)
     .register(IZCodeSessionService, remoteZCodeSessionService)
     .register(IAcpService, params.connectionServices.acpService)
+    .register(IComposerPreferenceService, params.connectionServices.composerPreferenceService)
     .register(IConversationShareService, conversationShareService)
     .register(
       IBotsService,

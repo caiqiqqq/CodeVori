@@ -5,6 +5,7 @@ import { applyComposerPermissionGrant } from "@/v4/composer/composerPermissionGr
 //
 // Workspace presentation 水合只提供 mode 与 slash commands；模型候选、能力和首选值
 // 统一来自目标 Host ModelSelectionView。
+import type { ComposerPreferenceRead } from "@/hooks/useComposerPreference.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ZCODE_AGENT_PROVIDER, resolveExecutionState } from "@zcode/shared";
 import { applyComposerPlanTransition } from "@/v4/composer/composerPlanTransition.js";
@@ -114,6 +115,8 @@ export function useDraftConfigControl(params: {
   /** provider registry 已通过 renderer readiness 门禁后才允许拉起 Agent。 */
   agentStartupAllowed?: boolean;
   modelSelectionService: IModelSelectionService | null;
+  preference?: ComposerPreferenceRead;
+  hasComposerContent?: boolean;
 }): DraftConfigControl {
   const {
     workspacePath,
@@ -125,6 +128,8 @@ export function useDraftConfigControl(params: {
     sessionConfig,
     agentStartupAllowed = true,
     modelSelectionService,
+    preference,
+    hasComposerContent = false,
   } = params;
   const workspaceKey = workspaceIdentity?.trim() || workspacePath;
   const displayProvider = provider ?? ZCODE_AGENT_PROVIDER;
@@ -158,7 +163,12 @@ export function useDraftConfigControl(params: {
   const modelSelectionView =
     modelSelectionRead.state.status === "ready" ? modelSelectionRead.state.view : null;
   const initializeAsNewTask = sessionId === null || draft.initializeFromNewTask === true;
-  if (!draft.mode && (initializeAsNewTask ? modelSelectionView !== null : sessionConfig != null)) {
+  if (
+    !draft.mode &&
+    (initializeAsNewTask
+      ? modelSelectionView !== null && preference?.ready !== false
+      : sessionConfig != null)
+  ) {
     const mode = submissionModeSchema.safeParse(sessionConfig?.mode);
     // Recent 是初始化原意图，不先按旧 Provider 是否仍在候选中删掉；下一次输入读取
     // 由同一解析入口对应当前账号，或暂时留空。否则冷启动会绕过统一账号对应规则。
@@ -172,6 +182,21 @@ export function useDraftConfigControl(params: {
             planEnabled: resolveExecutionState(sessionConfig ?? {}).planEnabled,
             modelSelection: sessionConfig?.modelSelection,
           };
+  }
+  const preferredTarget = preference?.snapshot?.target;
+  // 修复原因：本地 Recent 无法跨端同步。Host 偏好只初始化空白新任务，不覆盖正在编辑的意图。
+  if (
+    sessionId === null &&
+    !composerScopeId &&
+    preference?.ready &&
+    preferredTarget?.kind === "api" &&
+    !hasComposerContent &&
+    !draft.text.trim() &&
+    !draft.mention &&
+    !draft.modelSelectionEdited &&
+    JSON.stringify(draft.modelSelection) !== JSON.stringify(preferredTarget.selection)
+  ) {
+    draft = { ...draft, modelSelection: preferredTarget.selection };
   }
   if (sessionConfig) {
     draft = applyComposerPlanTransition(draft, sessionConfig.planTransition);
@@ -245,8 +270,10 @@ export function useDraftConfigControl(params: {
       const mode = submissionModeSchema.safeParse(next.mode);
       updateComposerDraft((current) => ({
         ...current,
-        mode: mode.success ? mode.data : current.mode,
+        // 修复原因：偏好首读尚未完成时也可点击模型；必须标记已初始化，避免迟到默认值覆盖显式选择。
+        mode: mode.success ? mode.data : (current.mode ?? "build"),
         modelSelection: next.modelSelection,
+        modelSelectionEdited: true,
         // 用户已经显式改选，不能再由导入时等待的默认初始化覆盖。
         ...(current.initializeFromNewTask
           ? { mode: mode.success ? mode.data : "build", initializeFromNewTask: undefined }
@@ -434,8 +461,9 @@ export function useDraftConfigControl(params: {
         workspaceIdentity: workspaceIdentity ?? null,
       });
       updateDraftConfig((current) => applyDraftModelSelection(current, modelSelection));
+      preference?.select({ kind: "api", selection: modelSelection });
     },
-    [modelSelectionView, updateDraftConfig, workspaceIdentity, workspacePath],
+    [modelSelectionView, updateDraftConfig, workspaceIdentity, workspacePath, preference?.select],
   );
 
   const handleDraftSelectThought = useCallback(
@@ -462,8 +490,10 @@ export function useDraftConfigControl(params: {
           thought,
         };
       });
+      const selection = draftConfigRef.current.modelSelection;
+      if (selection) preference?.select({ kind: "api", selection });
     },
-    [updateDraftConfig],
+    [updateDraftConfig, preference?.select],
   );
 
   const handleDraftSwitchMode = useCallback(

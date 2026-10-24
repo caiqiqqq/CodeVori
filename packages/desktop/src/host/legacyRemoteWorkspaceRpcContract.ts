@@ -23,6 +23,7 @@ const LEGACY_REMOTE_WORKSPACE_RPC_CHANNELS = [
   "commandsService",
   "hooksService",
   "modelSelectionService",
+  "composerPreferenceService",
   "providerSettingsService",
 ] as const satisfies readonly (keyof IServiceAccessor)[];
 
