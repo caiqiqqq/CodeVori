@@ -6243,6 +6243,8 @@ const zhCN: Record<string, string> = {
   "chat.error.collapseDetails": "收起详情",
   "chat.error.noAvailableModel": "当前没有可用模型。请开通编程套餐或配置自定义模型。",
   "acp.hostUpgradeRequired": "目标 Host 版本过旧，请升级后再发送。当前草稿已保留。",
+  "chat.modelPreference.readFailed": "读取模型偏好失败，请重新连接后重试。",
+  "chat.modelPreference.writeFailed": "模型选择已保留在当前草稿，但同步失败，请重新选择以重试。",
   "chat.error.sendFailed": "发送失败，请稍后重试。",
   "chat.error.modelSettings": "模型设置",
   "chat.error.setModels": "配置",

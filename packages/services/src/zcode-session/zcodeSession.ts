@@ -56,6 +56,8 @@ export interface ZCodeSessionResumeParams extends ZCodeTaskTarget {
 }
 
 export interface ZCodeSessionListParams extends ZCodeSessionWorkspaceTarget {
+  /** 精确校验导航目标；透传既有索引查询，不依赖列表截断或激活会话运行时。 */
+  sessionIds?: string[];
   includeArchived?: boolean;
   limit?: number;
 }
