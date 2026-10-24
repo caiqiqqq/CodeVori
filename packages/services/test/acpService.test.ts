@@ -942,6 +942,7 @@ test("ACP goal persists while prompt blocks and attachment bytes never enter the
       text: "Read the image and notes",
       createdAt: snapshot.entries[0]?.createdAt,
       endedAt: snapshot.entries[0]?.endedAt,
+      stopReason: "end_turn",
       attachmentNames: ["pixel.png", "notes.txt"],
       attachments: [{ ref, fileName: "pixel.png", mime: "image/png", bytes: 3 }],
     });
@@ -1621,6 +1622,7 @@ test("stop cancels permission, closes the old process, and ignores late updates"
     assert.equal(result.status, "idle");
     assert.equal(result.pendingPermission, null);
     assert.equal(result.entries.length, 1);
+    assert.equal(result.entries[0]?.kind === "user" && result.entries[0].stopReason, "cancelled");
     service.disposeAll();
   } finally {
     await rm(dir, { recursive: true, force: true });

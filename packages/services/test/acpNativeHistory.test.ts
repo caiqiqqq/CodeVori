@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import {
   appendFile,
   mkdtemp,
   mkdir,
   rename,
+  readFile,
   rm,
   stat,
   symlink,
+  truncate,
   utimes,
   writeFile,
 } from "node:fs/promises";
@@ -173,9 +177,9 @@ test("Host caches isolate roots, readers, registered sessions and canonical work
     assert.equal((await reader.read([linked], root)).size, 0);
   }));
 
-test("bounded Host cache evicts history without omitting registered usage", async () =>
+test("Host cache retains more than 128 histories and evicts only beyond its file budget", async () =>
   fixture(async (root, cwd) => {
-    const values = Array.from({ length: 129 }, () => ({
+    const values = Array.from({ length: 1025 }, () => ({
       ...session(cwd),
       acpSessionId: crypto.randomUUID(),
     }));
@@ -190,14 +194,145 @@ test("bounded Host cache evicts history without omitting registered usage", asyn
       ),
     );
     const reader = createCodexUsageHistoryReader();
+    const retained = await reader.read(values.slice(0, 216), root);
+    const repeated = await reader.read(values.slice(0, 216), root);
+    assert.strictEqual(
+      repeated.get(codexUsageKey(values[0]!)),
+      retained.get(codexUsageKey(values[0]!)),
+    );
     const first = await reader.read(values, root);
-    assert.equal(first.size, 129);
+    assert.equal(first.size, 1025);
     const again = await reader.read([values[0]!], root);
     assert.notStrictEqual(
       again.get(codexUsageKey(values[0]!)),
       first.get(codexUsageKey(values[0]!)),
     );
     assert.equal(again.get(codexUsageKey(values[0]!))?.usage.totalTokens, 120);
+  }));
+
+test("restart reuses validated numeric checkpoint without opening unchanged native logs", async (t) =>
+  fixture(async (root, cwd, file) => {
+    const cacheFile = join(root, "host-cache", "codex-history.json");
+    const value = session(cwd);
+    const key = codexUsageKey(value);
+    await writeFile(
+      file,
+      jsonl(cwd, ...start(recent, "gpt-codex"), token(100, 20, recent), done(recent)),
+    );
+    const open = t.mock.method(fs, "createReadStream");
+    syncBuiltinESMExports();
+    t.after(() => {
+      open.mock.restore();
+      syncBuiltinESMExports();
+    });
+    const read = async () => {
+      const reader = createCodexUsageHistoryReader(cacheFile);
+      try {
+        return await reader.read([value], root);
+      } finally {
+        reader.dispose();
+      }
+    };
+    const first = await read();
+    assert.equal(open.mock.callCount(), 1);
+    assert.deepEqual(await read(), first);
+    assert.equal(open.mock.callCount(), 1, "restart must not reparse unchanged JSONL");
+    const stored = await readFile(cacheFile, "utf8");
+    assert.ok(!stored.includes('"session_meta"'));
+    await appendFile(file, JSON.stringify(token(200, 40, recent)) + "\n");
+    assert.equal((await read()).get(key)?.usage.totalTokens, 240);
+    assert.equal(open.mock.callCount(), 2);
+    const before = await stat(file);
+    await writeFile(file, jsonl(cwd, token(300, 60, recent)));
+    await utimes(file, before.atime, before.mtime);
+    assert.equal((await read()).get(key)?.usage.totalTokens, 360);
+    assert.equal(open.mock.callCount(), 3);
+    const replacement = join(root, "replacement.jsonl");
+    await writeFile(replacement, jsonl(cwd, token(400, 80, recent)));
+    await rename(replacement, file);
+    assert.equal((await read()).get(key)?.usage.totalTokens, 480);
+    assert.equal(open.mock.callCount(), 4);
+    await writeFile(
+      join(root, "sessions", `duplicate-${id}.jsonl`),
+      jsonl(cwd, token(900, 90, recent)),
+    );
+    assert.equal((await read()).size, 0);
+    assert.equal(open.mock.callCount(), 4);
+    await rm(join(root, "sessions", `duplicate-${id}.jsonl`));
+    assert.equal((await read()).size, 1);
+    await rm(file);
+    assert.equal((await read()).size, 0);
+  }));
+
+test("restart validates root, file, workspace and native ID before trusting a checkpoint", async () =>
+  fixture(async (root, cwd, file) => {
+    const cacheFile = join(root, "cache.json");
+    const value = session(cwd);
+    const read = async () => {
+      const reader = createCodexUsageHistoryReader(cacheFile);
+      try {
+        return await reader.read([value], root);
+      } finally {
+        reader.dispose();
+      }
+    };
+    await writeFile(file, jsonl(cwd, token(100, 20, recent)));
+    await read();
+    const original = JSON.parse(await readFile(cacheFile, "utf8"));
+    for (const field of ["root", "file", "workspace", "nativeSessionId"]) {
+      const checkpoint = structuredClone(original);
+      const entry = checkpoint.entries[0][1];
+      // 故意污染旧投影；身份不匹配时必须重读原始日志，不能显示 999。
+      entry.history.usage.totalTokens = 999;
+      if (field === "nativeSessionId") entry.history.nativeSessionId = crypto.randomUUID();
+      else entry[field] = join(root, "different");
+      await writeFile(cacheFile, JSON.stringify(checkpoint));
+      assert.equal((await read()).get(codexUsageKey(value))?.usage.totalTokens, 120);
+    }
+    const alias = join(root, "alias");
+    await symlink(cwd, alias, "dir");
+    const reader = createCodexUsageHistoryReader(cacheFile);
+    assert.equal((await reader.read([{ ...value, workspacePath: alias }], root)).size, 1);
+    reader.dispose();
+    await rm(alias);
+    await symlink(root, alias, "dir");
+    const restarted = createCodexUsageHistoryReader(cacheFile);
+    assert.equal((await restarted.read([{ ...value, workspacePath: alias }], root)).size, 0);
+    restarted.dispose();
+  }));
+
+test("invalid, incompatible and unwritable checkpoints fall back to native facts", async () =>
+  fixture(async (root, cwd, file) => {
+    const cacheFile = join(root, "cache.json");
+    const value = session(cwd);
+    await writeFile(file, jsonl(cwd, token(100, 20, recent)));
+    for (const content of [
+      "invalid",
+      '{"version":999,"entries":[]}',
+      '{"version":1,"entries":[{}]}',
+    ]) {
+      await writeFile(cacheFile, content);
+      const reader = createCodexUsageHistoryReader(cacheFile);
+      assert.equal(
+        (await reader.read([value], root)).get(codexUsageKey(value))?.usage.totalTokens,
+        120,
+      );
+      reader.dispose();
+    }
+    await truncate(cacheFile, 32 * 1024 * 1024 + 1);
+    const oversized = createCodexUsageHistoryReader(cacheFile);
+    assert.equal(
+      (await oversized.read([value], root)).get(codexUsageKey(value))?.usage.totalTokens,
+      120,
+    );
+    oversized.dispose();
+    // 普通文件不能作为缓存父目录；写缓存失败也必须返回真实用量。
+    const reader = createCodexUsageHistoryReader(join(file, "cache.json"));
+    assert.equal(
+      (await reader.read([value], root)).get(codexUsageKey(value))?.usage.totalTokens,
+      120,
+    );
+    reader.dispose();
   }));
 
 test("numeric cache budget bounds retained requests without truncating query results", async () =>
@@ -233,15 +368,17 @@ test("numeric cache budget bounds retained requests without truncating query res
     assert.equal(again.get(codexUsageKey(values[0]!))?.usage.totalTokens, 70_000);
   }));
 
-test("disposing a Host reader during IO prevents late results and cache reuse", async () =>
+test("disposing a Host reader during IO prevents late results and cache publication", async () =>
   fixture(async (root, cwd, file) => {
     await writeFile(file, jsonl(cwd, token(100, 20, recent)));
-    const reader = createCodexUsageHistoryReader();
+    const cacheFile = join(root, "cache.json");
+    const reader = createCodexUsageHistoryReader(cacheFile);
     const value = session(cwd);
     const pending = reader.read([value], root);
     reader.dispose();
     assert.equal((await pending).size, 0);
     assert.equal((await reader.read([value], root)).size, 0);
+    await assert.rejects(readFile(cacheFile), { code: "ENOENT" });
     assert.equal((await createCodexUsageHistoryReader().read([value], root)).size, 1);
   }));
 
@@ -340,7 +477,7 @@ test("invalid log metadata cannot replace verified ACP turn facts", async () =>
     );
   }));
 
-test("statistics restores saved disconnected history repeatedly without Agent launch or snapshot mutation", async () =>
+test("statistics restores saved disconnected history after Host restart without Agent launch or snapshot mutation", async (t) =>
   fixture(async (root, cwd, file) => {
     const { createAcpService } = await import("../src/acp/acpServiceImpl.js");
     const { createAcpAgentManager } = await import("../src/acp/acpAgentManager.js");
@@ -356,12 +493,19 @@ test("statistics restores saved disconnected history repeatedly without Agent la
       directory: join(root, "settings"),
       env: { CODEX_HOME: root },
     });
-    const service = createAcpService({
+    const options = {
       directory,
       agentManager: manager,
       connect: async () => {
         throw Error("statistics must not launch an Agent");
       },
+    };
+    let service = createAcpService(options);
+    const open = t.mock.method(fs, "createReadStream");
+    syncBuiltinESMExports();
+    t.after(() => {
+      open.mock.restore();
+      syncBuiltinESMExports();
     });
     try {
       for (let i = 0; i < 2; i++) {
@@ -369,6 +513,12 @@ test("statistics restores saved disconnected history repeatedly without Agent la
         assert.equal(result[0]?.totalTokens, 120);
         assert.equal(result[0]?.models[0]?.modelId, "gpt-codex");
       }
+      assert.equal(open.mock.callCount(), 1);
+      service.disposeAll();
+      service = createAcpService(options);
+      const restored = await service.getUsageStats({ range: "all", timeZone: "Asia/Shanghai" });
+      assert.equal(restored[0]?.totalTokens, 120);
+      assert.equal(open.mock.callCount(), 1, "Host restart must reuse the durable projection");
       assert.equal((await service.read({ ...value, id: value.id })).revision, value.revision);
       await service.remove({ ...value, id: value.id });
       assert.deepEqual(

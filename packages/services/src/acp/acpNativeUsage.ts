@@ -5,6 +5,14 @@ import { isAbsolute, join, resolve } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { z } from "zod";
 import type { AcpSession, AcpTokenUsage } from "@zcode/shared";
+import {
+  AcpUsageHistoryCheckpoint,
+  MAX_CACHED_FILES,
+  MAX_CACHED_FACTS,
+  type CodexUsageHistory,
+  type HistoryCacheEntry,
+} from "./acpUsageHistoryCheckpoint.js";
+export type { CodexUsageHistory } from "./acpUsageHistoryCheckpoint.js";
 
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const rawUsage = z.object({
@@ -16,43 +24,33 @@ const rawUsage = z.object({
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
 const MAX_LINE_BYTES = 8 * 1024 * 1024;
 const MAX_ENTRIES = 30_000;
-const MAX_CACHED_FILES = 128;
-const MAX_CACHED_FACTS = 100_000;
-
-export type CodexUsageHistory = {
-  nativeSessionId: string;
-  usage: AcpTokenUsage;
-  records: Array<{ timestamp: number | null; modelId: string | null; usage: AcpTokenUsage }>;
-  turns: Array<{
-    startedAt: number | null;
-    complete: boolean;
-    measured: boolean;
-    finishedAt: number | null;
-  }>;
-};
 const validId = (id: string) => /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id);
 export const codexUsageKey = (session: Pick<AcpSession, "acpSessionId" | "workspacePath">) =>
   JSON.stringify([session.acpSessionId, session.workspacePath]);
-
-interface HistoryCacheEntry {
-  root: string;
-  file: string;
-  workspace: string;
-  version: string;
-  history: CodexUsageHistory;
-}
 
 interface HistoryReaderState {
   entries: Map<string, HistoryCacheEntry>;
   disposed: boolean;
 }
 
-/** 缓存由 owning ACP Host 持有；只复用数值解析，不持久化另一份用量事实。 */
-export function createCodexUsageHistoryReader() {
+/** 缓存由 owning ACP Host 持有；持久化的仅是可重建的数值解析投影。 */
+export function createCodexUsageHistoryReader(cacheFile?: string) {
   const state: HistoryReaderState = { entries: new Map(), disposed: false };
+  const checkpoint = cacheFile ? new AcpUsageHistoryCheckpoint(cacheFile) : undefined;
+  let hydration: Promise<void> | undefined;
   return {
-    read: (sessions: readonly AcpSession[], root: string) =>
-      readUsageHistories(sessions, root, state),
+    async read(sessions: readonly AcpSession[], root: string) {
+      if (state.disposed) return new Map<string, CodexUsageHistory>();
+      if (checkpoint) {
+        hydration ??= checkpoint.load().then((entries) => {
+          if (!state.disposed) state.entries = entries;
+        });
+        await hydration;
+      }
+      const result = await readUsageHistories(sessions, root, state);
+      await checkpoint?.save(state.entries, () => state.disposed);
+      return state.disposed ? new Map<string, CodexUsageHistory>() : result;
+    },
     dispose() {
       state.disposed = true;
       state.entries.clear();
@@ -98,7 +96,8 @@ async function readCachedRollout(
       cached?.root === root &&
       cached.file === file &&
       cached.workspace === workspace &&
-      cached.version === version
+      cached.version === version &&
+      cached.history.nativeSessionId === session.acpSessionId
     ) {
       retainHistory(state, key, cached);
       return cached.history;

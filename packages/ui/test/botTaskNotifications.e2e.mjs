@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { createServer } from "vite";
+import { verifyPausedAcpTurnNotifications } from "./botTaskNotificationScenarios.mjs";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const root = join(repo, "packages/desktop/src/renderer");
@@ -354,6 +355,7 @@ try {
         await page.evaluate(() => window.__fixture.sent.at(-1).workspacePath),
         "/linked",
       );
+      await verifyPausedAcpTurnNotifications(page, 11);
       const testLabel = locale === "zh-CN" ? "发送测试通知" : "Send test notification";
       await page.getByRole("button", { name: testLabel, exact: true }).click();
       await page

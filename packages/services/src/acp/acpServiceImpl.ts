@@ -375,7 +375,9 @@ export function createAcpService(
     manager: agentManager,
     customConnect: !!options.connect && !options.agentManager,
   });
-  const usageHistoryReader = createCodexUsageHistoryReader();
+  const usageHistoryReader = createCodexUsageHistoryReader(
+    join(directory, "usage-cache", "codex-history-v1.json"),
+  );
   let usageHistoryRead: Promise<Map<string, CodexUsageHistory>> | null = null;
 
   const file = (id: string): string => {
@@ -1952,7 +1954,7 @@ export function createAcpService(
       await queueGate.run(session.id, async () => {
         if (ownsRun() && connections.get(session.id) === port && !disposed) {
           await mutate(session, () => {
-            finishAcpTurn(session, commandId, completedAt);
+            finishAcpTurn(session, commandId, completedAt, port.lastStopReason ?? "end_turn");
             recordAcpPromptUsage(session, commandId, usage);
             recordNativeUsage(session, port);
             // 修复原因：Codex 的结构化失败也返回 end_turn；不能以 RPC 成功判断本轮成功。
@@ -2078,7 +2080,7 @@ export function createAcpService(
       if (!hadActive) return;
       settleInteractions(session.id, stoppedAt);
       await mutate(session, () => {
-        finishAcpTurn(session, commandId, stoppedAt);
+        finishAcpTurn(session, commandId, stoppedAt, "cancelled");
         finishAcpThoughts(session, "interrupted", stoppedAt);
         session.status = "idle";
         session.usageBaselineKnown = false;

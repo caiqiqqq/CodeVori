@@ -1,4 +1,4 @@
-import { GitFork, TriangleAlert } from "lucide-react";
+import { CircleDot, GitFork, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/components/lib/utils.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
@@ -19,6 +19,8 @@ export function RepositorySidebarButton({
   const { intl } = useZCodeIntl();
   const { count, loading, stale } = useRepositoryIssueCounts(projects);
   const available = !projectsLoading && count !== null;
+  // 只有已知的正数才表示有待处理议题；加载、失败或过期的 0 不应产生侧栏提醒。
+  const showPending = available && count > 0;
   const title = intl.formatMessage({ id: "repositoryPanel.title" });
   const summary = intl.formatMessage(
     {
@@ -50,19 +52,17 @@ export function RepositorySidebarButton({
       >
         <GitFork className="size-4 shrink-0" />
         <span className="min-w-0 flex-1 truncate text-left">{title}</span>
-        {!available || count > 0 || stale ? (
+        {showPending ? (
           <span
             aria-hidden="true"
             className="flex shrink-0 items-center gap-1 text-ui-xs tabular-nums text-warning"
           >
             {stale ? (
               <TriangleAlert data-testid="repository-sidebar-stale" className="size-3!" />
-            ) : null}
-            {!available || count > 0 ? (
-              <span data-testid="repository-sidebar-count">
-                {available ? (count > 99 ? "99+" : count) : "—"}
-              </span>
-            ) : null}
+            ) : (
+              <CircleDot data-testid="repository-sidebar-issue" className="size-3!" />
+            )}
+            <span data-testid="repository-sidebar-count">{count > 99 ? "99+" : count}</span>
           </span>
         ) : null}
       </Button>
