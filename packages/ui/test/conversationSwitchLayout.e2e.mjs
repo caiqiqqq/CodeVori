@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import { assertTimelineTouchScroll } from "./conversationTouchScrollAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__conversation-switch-${process.pid}`;
@@ -47,23 +48,31 @@ function rows(kind,offset=0,count=12){
   return buildAcpConversationRows({entries,status:'idle'}).map(row=>({...row,rowId:row.rowId+offset*4}));
 }
 const projections={short:rows('short'),tall:rows('tall'),largeShort:rows('short',0,120),
-  largeTall:rows('long',0,120),shifted:rows('tall',20),
+  largeTall:rows('long',0,120),largeMedium:rows('tall',0,120),shifted:rows('tall',20),
   prepend:rows('tall',18,14),running:buildAcpConversationRows({entries:[
     {id:'user:0',kind:'user',text:'Running question'},
     {id:'assistant:0',kind:'assistant',text:'Running answer'}],status:'running'})};
 function Fixture(){
   const [view,setView]=useState({session:'draft',kind:'empty',rows:[]});
   const [allowOlder,setAllowOlder]=useState(false);
+  const [loadingOlder,setLoadingOlder]=useState(false);
   const [theme,setTheme]=useState('zai-light');
   const rowContext=useMemo(()=>({...context,theme}),[theme]);
   window.__applyFixtureTheme=theme=>{applyTheme(theme);setTheme(theme)};
   window.__allowOlder=()=>setAllowOlder(true);
+  window.__deferOlder=false;
+  const loadOlder=()=>{
+    if(window.__deferOlder){setLoadingOlder(true);window.__commitOlder=()=>{
+      setLoadingOlder(false);setView({...view,kind:'prepend',rows:projections.prepend});
+    };return;}
+    setView({...view,kind:'prepend',rows:projections.prepend});
+  };
   window.__switchView=(session,kind)=>{setAllowOlder(false);setView({session,kind,rows:projections[kind]??[]})};
   return <div className="h-screen flex flex-col bg-background text-foreground"
     data-ready="true" data-session={view.session} data-kind={view.kind} data-allow-older={allowOlder}>
     <ConversationTimeline sessionKey={view.session} scrollMemoryKey={view.session==='draft'?null:'fixture:'+view.session}
       rows={view.rows} totalCount={view.rows.length} rowContext={rowContext} hideTurnNavigator
-      canLoadOlder={allowOlder && view.kind==='shifted'} onLoadOlder={()=>setView({...view,kind:'prepend',rows:projections.prepend})}
+      loadingOlder={loadingOlder} canLoadOlder={allowOlder && view.kind==='shifted'} onLoadOlder={loadOlder}
       workDurationAvailable={false} bottomDock={<textarea data-testid="persistent-composer" defaultValue="retained draft"/>}/>
   </div>;
 }
@@ -76,7 +85,11 @@ createRoot(document.getElementById('root')!).render(<PlatformProvider platform={
   browser = await chromium.launch({ headless: true });
   for (const width of [1280, 375]) {
     for (const theme of ["zai-light", "zai-dark"]) {
-      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      const page = await browser.newPage({
+        viewport: { width, height: 900 },
+        hasTouch: true,
+        isMobile: width < 768,
+      });
       const errors = [];
       page.on("pageerror", (error) => {
         errors.push(error.message);
@@ -228,6 +241,7 @@ createRoot(document.getElementById('root')!).render(<PlatformProvider platform={
         Math.abs(anchorTop - anchor.top) <= 2,
         `Prepend preserves visible turn anchor: ${anchor.top} -> ${anchorTop}`,
       );
+      await assertTimelineTouchScroll({ page, width, switchView });
       await switchView("running", "running");
       await switchView("running", "tall");
       // Issue #50: restoring to the bottom mounts a different window while isScrolling.
