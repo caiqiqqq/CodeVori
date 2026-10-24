@@ -76,6 +76,11 @@ function isAssistantTextRow(row: ConversationRow): row is AssistantTextRow {
   return row.kind === "assistantText";
 }
 
+function isCollapsibleWorkRow(row: AssistantWorkRow): boolean {
+  // 修复依据：Host 显式标记的独立正文不受最终答复锚点影响，工具到来后仍留在原位。
+  return row.kind !== "assistantText" || row.presentation !== "standalone";
+}
+
 function isAssistantWorkRow(row: ConversationRow): row is AssistantWorkRow {
   return row.kind !== "turnHeader" && row.kind !== "userInput";
 }
@@ -166,13 +171,17 @@ export function buildConversationTurnWorkSegments(options: {
     const visibleAssistantIndex = visibleAssistantTextRow
       ? segmentFlowRows.findIndex((row) => row.rowId === visibleAssistantTextRow.rowId)
       : -1;
-    const segmentHistoryRows = options.timelineOnly
-      ? []
-      : visibleAssistantIndex < 0
-        ? segmentFlowRows
-        : segmentFlowRows.slice(0, visibleAssistantIndex);
+    const segmentHistoryRows = (
+      options.timelineOnly
+        ? []
+        : visibleAssistantIndex < 0
+          ? segmentFlowRows
+          : segmentFlowRows.slice(0, visibleAssistantIndex)
+    ).filter(isCollapsibleWorkRow);
     const segmentFollowingRows =
-      visibleAssistantIndex < 0 ? [] : segmentFlowRows.slice(visibleAssistantIndex + 1);
+      visibleAssistantIndex < 0
+        ? []
+        : segmentFlowRows.slice(visibleAssistantIndex + 1).filter(isCollapsibleWorkRow);
     const segmentRunning = segmentIndex === visualDrafts.length - 1 && options.isRunning;
     const segmentDurationMs =
       options.workDurationAvailable === false
@@ -222,7 +231,7 @@ export function buildConversationTurnWorkSegments(options: {
         (options.forceOpenHistory ||
           (options.isLastTurn && segmentWorkStatus?.state === "running") ||
           (visualDrafts.length === 1 &&
-            visibleAssistantTextRow === undefined &&
+            !flowItems.some((item) => item.kind === "assistantText") &&
             segmentFlowRows.length > 0)),
       ...(segmentWorkStatus ? { workStatus: segmentWorkStatus } : {}),
     };
