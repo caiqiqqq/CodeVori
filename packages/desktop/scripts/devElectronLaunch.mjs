@@ -12,12 +12,30 @@ export function createDevElectronLaunch({
   env = process.env,
 }) {
   const useLaunchServices = platform === "darwin" && Boolean(appPath);
+  // LaunchServices 不继承 shell 环境；本地执行端地址与隔离目录必须显式传入，且不能转发凭据。
+  const forwarded = [
+    "CODEVORI_NODE_SERVICE_URL",
+    "ZCODE_DATA_BASE_DIR",
+    "ZCODE_DESKTOP_APPLICATION_NAME",
+    "ZCODE_DESKTOP_USER_DATA_DIR",
+    "ZCODE_DESKTOP_SESSION_DATA_DIR",
+  ].flatMap((key) => (env[key] ? ["--env", `${key}=${env[key]}`] : []));
   return {
     command: useLaunchServices ? "/usr/bin/open" : executablePath,
     // 直接 spawn Electron 会继承编辑器的 TCC responsibility，必须通过 LaunchServices 重建主体。
     // LaunchServices 不继承父进程的管道描述符，重定向到 /dev/stdout 会导致 -10810；沿用应用文件日志。
     args: useLaunchServices
-      ? ["-n", "-W", "-a", appPath, "--env", `ELECTRON_RENDERER_URL=${rendererUrl}`, "--args", cwd]
+      ? [
+          "-n",
+          "-W",
+          "-a",
+          appPath,
+          "--env",
+          `ELECTRON_RENDERER_URL=${rendererUrl}`,
+          ...forwarded,
+          "--args",
+          cwd,
+        ]
       : ["."],
     env: { ...env, ELECTRON_RENDERER_URL: rendererUrl },
     executablePath,

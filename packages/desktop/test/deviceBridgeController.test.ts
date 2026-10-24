@@ -13,10 +13,12 @@ function fixture(
     nodeId: string,
     signal: AbortSignal,
   ) => Promise<void> = async () => {},
+  initialConfiguration?: DeviceBridgeConfiguration,
 ) {
-  let configuration: DeviceBridgeConfiguration = {
+  let configuration: DeviceBridgeConfiguration = initialConfiguration ?? {
     binaryPath: "/synthetic/bridge",
     allowedNodes: [],
+    networkingEnabled: false,
   };
   const worker: DeviceBridgeWorkerState = {
     backendState: "Running",
@@ -38,12 +40,14 @@ function fixture(
   };
   const writes: unknown[] = [];
   let exits = 0;
+  let starts = 0;
   let onExit: (reason?: DeviceBridgeErrorCode) => void = () => {};
   let startError: Error | undefined;
   let holdStart: Promise<void> | undefined;
   let releaseStart: (() => void) | undefined;
   let holdConfiguration: Promise<void> | undefined;
   let releaseConfiguration: (() => void) | undefined;
+  let configurationRead: (() => void) | undefined;
   let failCheck = false,
     failLogout = false;
   let failWrite = false;
@@ -52,7 +56,10 @@ function fixture(
   let releaseCheck: (() => void) | undefined;
   const controller = createDeviceBridgeController({
     readConfiguration: async () => {
-      if (holdConfiguration) await holdConfiguration;
+      if (holdConfiguration) {
+        configurationRead?.();
+        await holdConfiguration;
+      }
       return configuration;
     },
     writeConfiguration: async (value) => {
@@ -60,6 +67,7 @@ function fixture(
       configuration = value;
     },
     startSession: async (exit) => {
+      starts++;
       onExit = exit;
       if (holdStart) await holdStart;
       if (startError) throw startError;
@@ -146,6 +154,9 @@ function fixture(
       holdConfiguration = new Promise((resolve) => {
         releaseConfiguration = resolve;
       });
+      return new Promise<void>((resolve) => {
+        configurationRead = resolve;
+      });
     },
     releaseConfiguration: () => releaseConfiguration?.(),
     failLogout: () => {
@@ -163,6 +174,9 @@ function fixture(
     releaseCheck: () => releaseCheck?.(),
     get exits() {
       return exits;
+    },
+    get starts() {
+      return starts;
     },
   };
 }
@@ -481,4 +495,85 @@ test("stop invalidates a queued removal even if an earlier queued start creates 
   await rejected;
   await stopped;
   assert.equal(deletes, 0);
+});
+
+test("app restart restores the same saved node after explicit connect; disposal keeps the connection choice", async () => {
+  const first = fixture();
+  await first.controller.restore();
+  assert.equal(first.starts, 0);
+  await first.controller.execute({ action: "start" });
+  assert.equal(first.configuration().networkingEnabled, true);
+  await first.controller.dispose();
+  assert.equal(first.configuration().networkingEnabled, true);
+  const restarted = fixture(undefined, first.configuration());
+  await restarted.controller.restore();
+  await restarted.controller.restore();
+  const state = await restarted.controller.read();
+  assert.equal(restarted.starts, 1);
+  assert.equal(state.backendState, "Running");
+  assert.equal(state.canLogin, false);
+  assert.equal(state.nodeId, "mac");
+  await restarted.controller.execute({ action: "stop" });
+  const stopped = fixture(undefined, restarted.configuration());
+  await stopped.controller.restore();
+  assert.equal(stopped.starts, 0);
+});
+
+test("logout disables restoration even when account service fails", async () => {
+  const f = fixture();
+  await f.controller.execute({ action: "start" });
+  f.failLogout();
+  await assert.rejects(f.controller.execute({ action: "logout" }));
+  assert.equal(f.configuration().networkingEnabled, false);
+  const restart = fixture(undefined, f.configuration());
+  await restart.controller.restore();
+  assert.equal(restart.starts, 0);
+});
+
+test("stop invalidates a restoration still reading configuration", async () => {
+  const f = fixture(undefined, {
+    binaryPath: "/synthetic/bridge",
+    allowedNodes: [],
+    networkingEnabled: true,
+  });
+  const entered = f.holdConfiguration();
+  const restoring = f.controller.restore();
+  await entered;
+  const stopped = f.controller.execute({ action: "stop" });
+  f.releaseConfiguration();
+  await restoring;
+  await stopped;
+  assert.equal(f.starts, 0);
+  assert.equal(f.configuration().networkingEnabled, false);
+});
+
+test("failed restoration stays visible and does not retry on settings reads", async () => {
+  const f = fixture(undefined, {
+    binaryPath: "/synthetic/bridge",
+    allowedNodes: [],
+    networkingEnabled: true,
+  });
+  f.setStartError("device_bridge_component_missing");
+  await assert.rejects(f.controller.restore());
+  assert.equal((await f.controller.read()).error, "device_bridge_component_missing");
+  await f.controller.read();
+  assert.equal(f.starts, 1);
+  assert.equal(f.configuration().networkingEnabled, true);
+});
+
+test("restored nodes still report expired authorization from the native backend", async () => {
+  const f = fixture(undefined, {
+    binaryPath: "/synthetic/bridge",
+    allowedNodes: [],
+    networkingEnabled: true,
+  });
+  f.worker.backendState = "NeedsLogin";
+  f.worker.authUrl = "https://login.tailscale.com/a/synthetic";
+  f.worker.loginName = "";
+  f.worker.peers = [];
+  await f.controller.restore();
+  const state = await f.controller.read();
+  assert.equal(state.backendState, "NeedsLogin");
+  assert.equal(state.canLogin, true);
+  assert.equal(state.loginName, "");
 });

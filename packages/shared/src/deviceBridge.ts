@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { deviceNodeCommandSchema, type DeviceNodeView } from "./deviceNode.js";
 
 const nodeId = z.string().trim().min(1).max(256);
 const managementNodeId = z.string().regex(/^[A-Za-z0-9_-]{1,256}$/);
 export const deviceBridgeCommandSchema = z.discriminatedUnion("action", [
+  ...deviceNodeCommandSchema.options,
   z
     .object({ action: z.literal("configure"), binaryPath: z.string().trim().min(1).max(4096) })
     .strict(),
@@ -29,11 +31,13 @@ export const deviceBridgeConfigurationSchema = z
   .object({
     binaryPath: z.string(),
     allowedNodes: z.array(nodeId).max(256),
+    networkingEnabled: z.boolean().default(false),
   })
   .strict();
 export type DeviceBridgeConfiguration = z.infer<typeof deviceBridgeConfigurationSchema>;
 
 const deviceBridgeErrorCodes = [
+  "device_bridge_pairing_unavailable",
   "device_bridge_component_missing",
   "device_bridge_component_not_executable",
   "device_bridge_start_failed",
@@ -103,8 +107,9 @@ export interface DeviceBridgePeer extends z.infer<typeof peerSchema> {
   checkedAt?: string;
 }
 
-/** No bearer or authentication URL crosses this UI boundary. */
+/** Long-lived bearers never cross into UI. A short-lived installation invitation may be shared. */
 export interface DeviceBridgeState {
+  nodes?: DeviceNodeView[];
   binaryPath: string;
   phase: "stopped" | "starting" | "running" | "error";
   backendState: string;

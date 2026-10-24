@@ -1,11 +1,37 @@
 /** English translations */
 import { PRODUCT_NAME } from "@zcode/shared";
 const enUS: Record<string, string> = {
+  "settings.devices.node.title": "Add execution computer",
+  "settings.devices.node.description":
+    "Choose the target system and create an installation link. The computer connects automatically after installation.",
+  "settings.devices.node.platform": "Target computer system",
+  "settings.devices.node.add": "Add computer",
+  "settings.devices.node.share":
+    "Send this link to the target computer, then download and open the installer. The invitation expires in 15 minutes.",
+  "settings.devices.node.link": "Installation link",
+  "settings.devices.node.download": "Download installer",
+  "settings.devices.node.waiting": "Waiting for installation and connection",
+  "settings.devices.node.offline": "Computer offline; waiting for connection",
+  "settings.devices.node.checking": "Online; checking tools",
+  "settings.devices.node.ready": "Connected · {count} tools available",
+  "settings.devices.node.expired":
+    "Installation link expired. Remove this entry and add the computer again.",
+  "settings.devices.node.disabled": "Task connection disabled",
+  "settings.devices.node.error": "Connection unavailable; waiting to recover",
+  "settings.devices.node.disable": "Disable",
+  "settings.devices.node.enable": "Enable",
+  "settings.devices.node.remove": "Remove computer",
+  "settings.devices.node.removeTitle": "Remove this computer?",
+  "settings.devices.node.removeDescription":
+    "Revoking this pairing stops the computer from receiving tasks. Pair it again to reconnect.",
+  "settings.devices.device_bridge_pairing_unavailable":
+    "The pairing service is unavailable. Check that the service and installers are deployed.",
   "settings.devices.title": "Devices & connections",
   "settings.devices.description":
-    "Connect other computers to use their desktop, browser and command tools in new local conversations. Networking uses the official Tailscale service.",
+    "Add computers for commands and desktop actions. They connect automatically after installing the lightweight execution app.",
+  "settings.devices.advanced": "Advanced networking (Tailscale)",
   "settings.devices.account": "Tailscale account",
-  "settings.devices.stopped": "Networking is stopped. Start to authorize this computer.",
+  "settings.devices.stopped": "Networking is stopped. Existing sign-in is kept; connect to resume.",
   "settings.devices.authorized":
     "Connected to your network. Device presence and executor availability are shown separately.",
   "settings.devices.needsApproval": "Waiting for Tailscale administrator approval.",
@@ -16,9 +42,10 @@ const enUS: Record<string, string> = {
   "settings.devices.stop": "Stop networking",
   "settings.devices.logout": "Log out",
   "settings.devices.thisComputer": "This computer",
+  "settings.devices.nodeId": "Node ID",
   "settings.devices.devices": "Devices on your network",
   "settings.devices.addDescription":
-    "To add a computer, open this page on it, join the same network, then allow your device to control it. Start Windows-MCP on Windows as well.",
+    "Run a standalone lightweight execution node on the target, join the same network, and authorize this computer's node ID. You can also connect through the full client's settings; that route needs a separately started executor.",
   "settings.devices.refresh": "Refresh",
   "settings.devices.empty":
     "No devices are visible. After login, computers permitted by your network policy appear here.",
@@ -70,7 +97,7 @@ const enUS: Record<string, string> = {
     "The app includes a connection component. To use a custom version, stop networking and choose a file.",
   "settings.devices.selectComponent": "Choose file",
   "settings.devices.lifecycle":
-    "Connections stay active when you leave settings. Newly connected tools are available in new local conversations. Quitting the app or stopping networking closes connections. Check the target state before continuing after an interruption.",
+    "Enabled networking resumes after app updates or restarts. Stopping networking or signing out disables automatic restoration. Expired or revoked authorization requires signing in again. Newly connected tools are available in new local conversations. Check the target state before continuing after an interruption.",
   "settings.devices.working": "Working…",
   "settings.devices.device_bridge_component_missing":
     "The connection component was not found. Reinstall the complete app or choose a valid component file.",

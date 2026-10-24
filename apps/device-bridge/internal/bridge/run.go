@@ -23,6 +23,7 @@ type Config struct {
 	Mode, StateDir, Hostname, Target, Listen, Peer, PeerNode string
 	AllowedNodes                                             []string
 	Port                                                     int
+	CommandSlots                                             int
 	LocalToken, TargetToken                                  string
 }
 
@@ -36,7 +37,10 @@ func (c Config) Validate() error {
 	}
 	switch c.Mode {
 	case "identity", "manage":
-	case "serve":
+	case "serve", "node":
+		if c.Mode == "node" && (c.CommandSlots < 1 || c.CommandSlots > 16) {
+			return errors.New("command-slots must be 1..16")
+		}
 		if _, err := policy.Target(c.Target); err != nil {
 			return err
 		}
@@ -127,7 +131,7 @@ func Run(ctx context.Context, c Config, stdout, stderr io.Writer) error {
 	var handler http.Handler
 	var transport *http.Transport
 	var endpoint string
-	if c.Mode == "serve" {
+	if c.Mode == "serve" || c.Mode == "node" {
 		listener, err = s.Listen("tcp", ":"+strconv.Itoa(c.Port))
 		if err != nil {
 			return errors.New("cannot bind tailnet listener")

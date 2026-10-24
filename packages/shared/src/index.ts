@@ -339,3 +339,5 @@ export * from "./acp-conversation-rows.js";
 export * from "./acp-conversation.js";
 export * from "./acp-status-panel.js";
 export * from "./desktopWindow.js";
+
+export * from "./deviceNode.js";

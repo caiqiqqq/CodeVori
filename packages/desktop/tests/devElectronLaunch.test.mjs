@@ -34,6 +34,23 @@ test("Windows and Linux keep direct Electron launch", () => {
   }
 });
 
+test("macOS explicitly forwards local node configuration and isolated data paths", () => {
+  const env = {
+    ...options.env,
+    CODEVORI_NODE_SERVICE_URL: "http://127.0.0.1:18081",
+    ZCODE_DATA_BASE_DIR: "/local/data",
+    ZCODE_DESKTOP_USER_DATA_DIR: "/local/main",
+  };
+  const launch = createDevElectronLaunch({ ...options, env });
+  for (const key of [
+    "CODEVORI_NODE_SERVICE_URL",
+    "ZCODE_DATA_BASE_DIR",
+    "ZCODE_DESKTOP_USER_DATA_DIR",
+  ])
+    assert.ok(launch.args.includes(`${key}=${env[key]}`));
+  assert.ok(!launch.args.join(" ").includes("not-for-argv"));
+});
+
 test("LaunchServices launch does not redirect through parent process file descriptors", () => {
   const launch = createDevElectronLaunch(options);
   for (const argument of ["--stdout", "--stderr", "/dev/stdout", "/dev/stderr"]) {

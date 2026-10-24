@@ -18,6 +18,9 @@ func TestParseBeforeAnyNetworkOrStateIO(t *testing.T) {
 	}{
 		{"identity", append([]string{"identity"}, base...), "", true},
 		{"serve", append(append([]string{"serve"}, base...), "--allow-node", "client-node"), "", true},
+		{"builtin node", append(append([]string{"node"}, base...), "--allow-node", "client-node", "--command-slots", "2"), "", true},
+		{"node without authorization", append([]string{"node"}, base...), "", false},
+		{"node invalid capacity", append(append([]string{"node"}, base...), "--allow-node", "client-node", "--command-slots", "0"), "", false},
 		{"missing allowlist", append([]string{"serve"}, base...), "", false},
 		{"connect", append(append([]string{"connect"}, base...), "--peer", "windows.example.ts.net:8743", "--peer-node", "server-node"), strings.Repeat("x", 32), true},
 		{"missing token", append(append([]string{"connect"}, base...), "--peer", "windows:8743", "--peer-node", "server-node"), "", false},

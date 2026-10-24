@@ -20,12 +20,12 @@ func (v *nodeFlags) Set(s string) error { *v = append(*v, s); return nil }
 
 func parse(args []string, stderr io.Writer, getenv func(string) string) (bridge.Config, error) {
 	var c bridge.Config
-	if len(args) == 0 || (args[0] != "manage" && args[0] != "identity" && args[0] != "serve" && args[0] != "connect") {
-		fmt.Fprintln(stderr, "usage: device-bridge <manage|identity|serve|connect> --state-dir <absolute> --hostname <name> [options]\nRun device-bridge serve --help or connect --help for options.")
+	if len(args) == 0 || (args[0] != "node" && args[0] != "manage" && args[0] != "identity" && args[0] != "serve" && args[0] != "connect") {
+		fmt.Fprintln(stderr, "usage: device-bridge <node|manage|identity|serve|connect> --state-dir <absolute> --hostname <name> [options]\nRun device-bridge node --help, serve --help or connect --help for options.")
 		if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 			return c, flag.ErrHelp
 		}
-		return c, errors.New("manage, identity, serve or connect is required")
+		return c, errors.New("node, manage, identity, serve or connect is required")
 	}
 	c.Mode = args[0]
 	flags := flag.NewFlagSet(c.Mode, flag.ContinueOnError)
@@ -34,11 +34,16 @@ func parse(args []string, stderr io.Writer, getenv func(string) string) (bridge.
 	flags.StringVar(&c.Hostname, "hostname", "", "unique tailnet node name")
 	var allowed nodeFlags
 	var targetTokenEnv string
-	if c.Mode == "serve" {
+	if c.Mode == "serve" || c.Mode == "node" {
 		flags.IntVar(&c.Port, "port", 8743, "tailnet listening port")
-		flags.StringVar(&c.Target, "target", "http://127.0.0.1:8000/mcp", "fixed local HTTP MCP endpoint")
 		flags.Var(&allowed, "allow-node", "authorized stable client node ID (repeat for multiple clients)")
-		flags.StringVar(&targetTokenEnv, "target-token-env", "", "environment variable holding upstream MCP bearer token")
+		c.Target = "http://127.0.0.1:8000/mcp"
+		if c.Mode == "node" {
+			flags.IntVar(&c.CommandSlots, "command-slots", 2, "maximum concurrent commands (1..16); desktop operations are exclusive")
+		} else {
+			flags.StringVar(&c.Target, "target", c.Target, "fixed local HTTP MCP endpoint")
+			flags.StringVar(&targetTokenEnv, "target-token-env", "", "environment variable holding upstream MCP bearer token")
+		}
 	} else if c.Mode == "connect" {
 		flags.StringVar(&c.Listen, "listen", "127.0.0.1:18743", "local IPv4 loopback address; port 0 selects a free port")
 		flags.StringVar(&c.Peer, "peer", "", "tailnet endpoint host:port")
@@ -74,6 +79,13 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if c.Mode == "node" {
+		if err := runNode(ctx, c, os.Stdout, os.Stderr); err != nil && ctx.Err() == nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if c.Mode == "manage" {
 		if err := bridge.Manage(ctx, c, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)

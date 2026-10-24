@@ -1,13 +1,29 @@
 /** Read-only MCP handshake. A bound bridge socket alone is not executor health. */
-export async function checkDeviceBridgeMcp(endpoint: {
-  url: string;
-  token: string;
-}): Promise<number> {
+export async function checkDeviceBridgeMcp(
+  endpoint: {
+    url: string;
+    token: string;
+  },
+  allowedRelayBase?: string,
+): Promise<number> {
   const url = new URL(endpoint.url);
+  const relay = allowedRelayBase ? new URL(allowedRelayBase) : undefined;
+  const validRelay =
+    relay &&
+    url.origin === relay.origin &&
+    url.pathname.startsWith(relay.pathname.replace(/\/$/, "") + "/v1/pairs/") &&
+    /^[A-Za-z0-9_-]{43}\/mcp$/.test(
+      url.pathname.slice((relay.pathname.replace(/\/$/, "") + "/v1/pairs/").length),
+    );
   if (
-    url.protocol !== "http:" ||
-    url.hostname !== "127.0.0.1" ||
-    url.pathname !== "/mcp" ||
+    (!validRelay &&
+      (url.protocol !== "http:" ||
+        url.hostname !== "127.0.0.1" ||
+        url.pathname !== "/mcp" ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash)) ||
     url.username ||
     url.password ||
     url.search ||
