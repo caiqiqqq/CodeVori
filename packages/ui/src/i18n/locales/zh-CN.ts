@@ -30,6 +30,34 @@ const zhCN: Record<string, string> = {
   "settings.devices.check": "检查工具",
   "settings.devices.authorize": "允许控制本机",
   "settings.devices.revoke": "撤销控制授权",
+  "settings.devices.remove": "从网络移除",
+  "settings.devices.removeTitle": "从 Tailscale 网络移除设备？",
+  "settings.devices.removeDescription":
+    "即将移除 {name}（{id}）。这会将设备从整个 Tailscale 网络移除，并断开本机工具连接、撤销本机授权。设备重新加入需要再次登录。",
+  "settings.devices.management": "设备管理权限",
+  "settings.devices.managementDescription":
+    "如需移除设备，请填写有设备删除权限的 Tailscale API key（不是入网 auth key），可在 Tailscale 管理后台 Settings → Keys 创建。密钥仅在本次应用运行期间保留；退出账号或应用后清除。",
+  "settings.devices.managementKey": "Tailscale 管理 API key",
+  "settings.devices.managementGetKey": "获取 API key",
+  "settings.devices.managementSave": "设置管理密钥",
+  "settings.devices.managementClear": "清除密钥",
+  "settings.devices.managementConfigured": "已配置管理密钥；实际权限由 Tailscale 校验。",
+  "settings.devices.managementMissing": "未配置管理密钥，暂不能从网络移除设备。",
+  "settings.devices.device_bridge_management_required": "请先设置具有设备删除权限的管理 API key。",
+  "settings.devices.device_bridge_management_unauthorized": "管理密钥无效或已过期，请重新设置。",
+  "settings.devices.device_bridge_management_forbidden":
+    "管理密钥没有删除该设备的权限，请检查 Tailscale 权限。",
+  "settings.devices.device_bridge_management_failed":
+    "管理请求未完成，请检查网络和管理权限后重试。",
+  "settings.devices.device_bridge_device_missing": "该设备已不在网络中，请刷新设备列表。",
+  "settings.devices.device_bridge_device_external":
+    "不能移除其他网络共享给你的设备，请联系设备所属网络管理员。",
+  "settings.devices.device_bridge_invalid_device":
+    "设备状态已变化，或不能在此移除本机。请刷新列表后重试。",
+  "settings.devices.device_bridge_removal_unconfirmed":
+    "删除结果尚未确认。请先在 Tailscale 管理后台核对设备是否仍然存在，再决定是否重试。",
+  "settings.devices.device_bridge_removal_cleanup_failed":
+    "设备已从网络移除，但本地清理未完成，连接已停止。请检查配置写入权限，再重新连接以完成清理。",
   "settings.devices.component": "连接组件",
   "settings.devices.componentDescription":
     "应用已内置连接组件。如需使用自定义版本，可停止网络连接后选择文件。",

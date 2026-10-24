@@ -49,3 +49,21 @@ test("device commands reject executable arguments and arbitrary login destinatio
   ])
     assert.equal(deviceBridgeCommandSchema.safeParse(value).success, false);
 });
+
+test("management commands accept only bounded credentials and a stable node ID", () => {
+  for (const value of [
+    { action: "configure-management", apiKey: "tskey-api-synthetic" },
+    { action: "clear-management" },
+    { action: "remove", nodeId: "n123CNTRL" },
+  ])
+    assert.equal(deviceBridgeCommandSchema.safeParse(value).success, true);
+  for (const value of [
+    { action: "configure-management", apiKey: "" },
+    { action: "configure-management", apiKey: "a:b" },
+    { action: "configure-management", apiKey: "key\r\nheader" },
+    { action: "configure-management", apiKey: "a".repeat(4097) },
+    { action: "remove", nodeId: "../other" },
+    { action: "remove", nodeId: "id", url: "https://evil.test" },
+  ])
+    assert.equal(deviceBridgeCommandSchema.safeParse(value).success, false);
+});

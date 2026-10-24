@@ -7,7 +7,13 @@ import type {
 } from "@zcode/shared";
 import { createDeviceBridgeController } from "../src/main/deviceBridgeController.js";
 
-function fixture() {
+function fixture(
+  removeDevice: (
+    apiKey: string,
+    nodeId: string,
+    signal: AbortSignal,
+  ) => Promise<void> = async () => {},
+) {
   let configuration: DeviceBridgeConfiguration = {
     binaryPath: "/synthetic/bridge",
     allowedNodes: [],
@@ -40,6 +46,8 @@ function fixture() {
   let releaseConfiguration: (() => void) | undefined;
   let failCheck = false,
     failLogout = false;
+  let failWrite = false;
+  let statusGate: { arrived(): void; wait: Promise<void> } | undefined;
   let holdCheck: Promise<void> | undefined;
   let releaseCheck: (() => void) | undefined;
   const controller = createDeviceBridgeController({
@@ -48,6 +56,7 @@ function fixture() {
       return configuration;
     },
     writeConfiguration: async (value) => {
+      if (failWrite) throw new Error("synthetic disk failure");
       configuration = value;
     },
     startSession: async (exit) => {
@@ -56,6 +65,12 @@ function fixture() {
       if (startError) throw startError;
       return {
         request: async (method, fields) => {
+          if (method === "status" && statusGate) {
+            const gate = statusGate;
+            statusGate = undefined;
+            gate.arrived();
+            await gate.wait;
+          }
           if (method === "logout" && failLogout) throw new Error("logout failed");
           if (method === "connect") {
             worker.peers[0]!.connected = true;
@@ -94,11 +109,30 @@ function fixture() {
       return 7;
     },
     openLogin: async () => {},
+    removeDevice,
   });
   return {
     controller,
     writes,
     worker,
+    holdStatus: () => {
+      let release!: () => void;
+      let arrived!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        arrived = resolve;
+      });
+      statusGate = {
+        arrived,
+        wait: new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+      };
+      return { entered, release };
+    },
+    configuration: () => configuration,
+    failWrite: (value: boolean) => {
+      failWrite = value;
+    },
     setStartError: (code?: string) => {
       startError = code ? new Error(code) : undefined;
     },
@@ -261,4 +295,190 @@ test("stop invalidates an in-flight health check before it can publish MCP confi
   await rejected;
   assert.equal((await stopped).phase, "stopped");
   assert.equal(f.writes.length, 0);
+});
+
+test("remove requires key and a fresh non-self inventory target; successful removal cleans grants/MCP despite stale inventory", async () => {
+  const calls: string[] = [];
+  const f = fixture(async (key, id) => {
+    assert.equal(key, "synthetic-key");
+    calls.push(id);
+  });
+  await f.controller.execute({ action: "start" });
+  await assert.rejects(
+    f.controller.execute({ action: "remove", nodeId: "windows" }),
+    /management_required/,
+  );
+  await f.controller.execute({ action: "configure-management", apiKey: "synthetic-key" });
+  for (const id of ["mac", "absent"])
+    await assert.rejects(f.controller.execute({ action: "remove", nodeId: id }), /invalid_device/);
+  await f.controller.execute({ action: "authorize", nodeId: "windows", allowed: true });
+  await f.controller.execute({ action: "connect", nodeId: "windows" });
+  const state = await f.controller.execute({ action: "remove", nodeId: "windows" });
+  assert.deepEqual(calls, ["windows"]);
+  assert.equal(state.managementConfigured, true);
+  assert.equal(JSON.stringify(state).includes("synthetic-key"), false);
+  assert.deepEqual(f.configuration().allowedNodes, []);
+  assert.equal(f.worker.peers[0]!.allowed, false);
+  assert.equal(f.worker.peers[0]!.connected, false);
+  assert.equal((f.writes.at(-1) as { action: string }).action, "delete");
+  assert.deepEqual((await f.controller.read()).peers, []);
+  for (const action of ["remove", "connect", "check", "authorize"] as const)
+    await assert.rejects(
+      f.controller.execute(
+        action === "authorize"
+          ? { action, nodeId: "windows", allowed: true }
+          : { action, nodeId: "windows" },
+      ),
+    );
+  assert.deepEqual(calls, ["windows"]);
+  await f.controller.execute({ action: "stop" });
+  await f.controller.execute({ action: "start" });
+  assert.deepEqual((await f.controller.read()).peers, []);
+});
+
+test("permission failure preserves grants, connections and visible inventory", async () => {
+  const f = fixture(async () => {
+    throw new Error("device_bridge_management_forbidden");
+  });
+  await f.controller.execute({ action: "start" });
+  await f.controller.execute({ action: "configure-management", apiKey: "synthetic-key" });
+  await f.controller.execute({ action: "authorize", nodeId: "windows", allowed: true });
+  await f.controller.execute({ action: "connect", nodeId: "windows" });
+  await assert.rejects(
+    f.controller.execute({ action: "remove", nodeId: "windows" }),
+    /management_forbidden/,
+  );
+  const state = await f.controller.read();
+  assert.equal(state.peers[0]!.connected, true);
+  assert.deepEqual(f.configuration().allowedNodes, ["windows"]);
+});
+
+test("remote success with local write failure stops networking and retries cleanup before restart", async () => {
+  const f = fixture();
+  await f.controller.execute({ action: "start" });
+  await f.controller.execute({ action: "configure-management", apiKey: "synthetic-key" });
+  await f.controller.execute({ action: "authorize", nodeId: "windows", allowed: true });
+  f.failWrite(true);
+  await assert.rejects(
+    f.controller.execute({ action: "remove", nodeId: "windows" }),
+    /removal_cleanup_failed/,
+  );
+  assert.equal((await f.controller.read()).phase, "error");
+  await assert.rejects(f.controller.execute({ action: "start" }));
+  f.failWrite(false);
+  await f.controller.execute({ action: "start" });
+  assert.deepEqual(f.configuration().allowedNodes, []);
+  assert.deepEqual((await f.controller.read()).peers, []);
+});
+
+test("stop cancels in-flight removal; logout/clear/dispose erase in-memory management key", async () => {
+  for (const action of ["stop", "logout", "clear-management", "dispose"] as const) {
+    let started!: () => void;
+    const dispatched = new Promise<void>((resolve) => (started = resolve));
+    const f = fixture(async (_key, _id, signal) => {
+      started();
+      await new Promise<void>((_resolve, reject) => {
+        signal.addEventListener(
+          "abort",
+          () => reject(new Error("device_bridge_removal_unconfirmed")),
+          { once: true },
+        );
+      });
+    });
+    await f.controller.execute({ action: "start" });
+    await f.controller.execute({ action: "configure-management", apiKey: "synthetic-key" });
+    const removing = f.controller.execute({ action: "remove", nodeId: "windows" });
+    const rejected = assert.rejects(removing, /removal_unconfirmed/);
+    await dispatched;
+    const stopping =
+      action === "dispose" ? f.controller.dispose() : f.controller.execute({ action });
+    await rejected;
+    await stopping;
+    assert.equal((await f.controller.read()).managementConfigured, action === "stop");
+  }
+});
+
+test("clearing credentials during inventory refresh prevents destructive dispatch", async () => {
+  let deletes = 0;
+  const f = fixture(async () => {
+    deletes++;
+  });
+  await f.controller.execute({ action: "start" });
+  await f.controller.execute({ action: "configure-management", apiKey: "synthetic" });
+  const gate = f.holdStatus();
+  const removing = f.controller.execute({ action: "remove", nodeId: "windows" });
+  const rejected = assert.rejects(removing, /management_required/);
+  await gate.entered;
+  const clearing = f.controller.execute({ action: "clear-management" });
+  gate.release();
+  await rejected;
+  await clearing;
+  assert.equal(deletes, 0);
+});
+
+test("queued credential configuration cannot revive a removal cancelled by logout", async () => {
+  let deletes = 0;
+  const f = fixture(async () => {
+    deletes++;
+  });
+  await f.controller.execute({ action: "start" });
+  const gate = f.holdStatus();
+  const read = f.controller.read();
+  await gate.entered;
+  const configure = f.controller.execute({ action: "configure-management", apiKey: "synthetic" });
+  const removing = f.controller.execute({ action: "remove", nodeId: "windows" });
+  const rejected = assert.rejects(removing, /management_required/);
+  const logout = f.controller.execute({ action: "logout" });
+  gate.release();
+  await read;
+  await configure;
+  await rejected;
+  await logout;
+  assert.equal(deletes, 0);
+  assert.equal((await f.controller.read()).managementConfigured, false);
+});
+
+test("a successful response arriving after stop still commits the deletion and local cleanup", async () => {
+  let arrive!: () => void, release!: () => void;
+  const entered = new Promise<void>((resolve) => (arrive = resolve));
+  const pending = new Promise<void>((resolve) => (release = resolve));
+  const f = fixture(async () => {
+    arrive();
+    await pending;
+  });
+  await f.controller.execute({ action: "start" });
+  await f.controller.execute({ action: "configure-management", apiKey: "synthetic" });
+  await f.controller.execute({ action: "authorize", nodeId: "windows", allowed: true });
+  await f.controller.execute({ action: "connect", nodeId: "windows" });
+  const removing = f.controller.execute({ action: "remove", nodeId: "windows" });
+  await entered;
+  const stopped = f.controller.execute({ action: "stop" });
+  release();
+  await removing;
+  await stopped;
+  assert.deepEqual(f.configuration().allowedNodes, []);
+  assert.equal((f.writes.at(-1) as { action: string }).action, "delete");
+});
+
+test("stop invalidates a queued removal even if an earlier queued start creates a new process", async () => {
+  let deletes = 0;
+  const f = fixture(async () => {
+    deletes++;
+  });
+  await f.controller.execute({ action: "start" });
+  await f.controller.execute({ action: "configure-management", apiKey: "synthetic" });
+  const gate = f.holdStatus();
+  const reading = f.controller.read();
+  const readRejected = assert.rejects(reading, /process_closed/);
+  await gate.entered;
+  const starting = f.controller.execute({ action: "start" });
+  const removing = f.controller.execute({ action: "remove", nodeId: "windows" });
+  const rejected = assert.rejects(removing, /process_closed/);
+  const stopped = f.controller.execute({ action: "stop" });
+  gate.release();
+  await readRejected;
+  await starting;
+  await rejected;
+  await stopped;
+  assert.equal(deletes, 0);
 });

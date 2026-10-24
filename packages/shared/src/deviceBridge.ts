@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const nodeId = z.string().trim().min(1).max(256);
+const managementNodeId = z.string().regex(/^[A-Za-z0-9_-]{1,256}$/);
 export const deviceBridgeCommandSchema = z.discriminatedUnion("action", [
   z
     .object({ action: z.literal("configure"), binaryPath: z.string().trim().min(1).max(4096) })
@@ -8,6 +9,19 @@ export const deviceBridgeCommandSchema = z.discriminatedUnion("action", [
   z.object({ action: z.enum(["start", "stop", "logout", "open-login", "refresh"]) }).strict(),
   z.object({ action: z.enum(["connect", "disconnect", "check"]), nodeId }).strict(),
   z.object({ action: z.literal("authorize"), nodeId, allowed: z.boolean() }).strict(),
+  z
+    .object({
+      action: z.literal("configure-management"),
+      apiKey: z
+        .string()
+        .trim()
+        .min(1)
+        .max(4096)
+        .regex(/^[A-Za-z0-9_-]+$/),
+    })
+    .strict(),
+  z.object({ action: z.literal("clear-management") }).strict(),
+  z.object({ action: z.literal("remove"), nodeId: managementNodeId }).strict(),
 ]);
 export type DeviceBridgeCommand = z.infer<typeof deviceBridgeCommandSchema>;
 
@@ -25,6 +39,15 @@ const deviceBridgeErrorCodes = [
   "device_bridge_start_failed",
   "device_bridge_process_closed",
   "device_bridge_operation_failed",
+  "device_bridge_management_required",
+  "device_bridge_management_unauthorized",
+  "device_bridge_management_forbidden",
+  "device_bridge_management_failed",
+  "device_bridge_device_missing",
+  "device_bridge_device_external",
+  "device_bridge_invalid_device",
+  "device_bridge_removal_unconfirmed",
+  "device_bridge_removal_cleanup_failed",
 ] as const;
 export type DeviceBridgeErrorCode = (typeof deviceBridgeErrorCodes)[number];
 
@@ -91,6 +114,7 @@ export interface DeviceBridgeState {
   loginName: string;
   tailnet: string;
   exposing: boolean;
+  managementConfigured: boolean;
   peers: DeviceBridgePeer[];
   error?: DeviceBridgeErrorCode;
 }

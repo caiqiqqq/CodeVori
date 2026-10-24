@@ -25,6 +25,7 @@ try {
     `
     import React,{useState} from 'react';
     import {createRoot} from 'react-dom/client';
+    import {ConfirmDialogHost} from '../../../ui/src/ConfirmDialog.tsx';
     import {SettingsPage} from '../../../ui/src/SettingsPage.tsx';
     import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
     import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
@@ -35,10 +36,11 @@ try {
     import {setPendingSettingsSectionIntent} from '../../../ui/src/lib/settingsNavigation.ts';
     import {applyTheme} from '../../../ui/src/useTheme.ts';
     import '../../../ui/src/styles.css';
-    const state:any={calls:[],fail:false,hold:false,snapshot:{binaryPath:'/synthetic/device-bridge',phase:'stopped',backendState:'Stopped',canLogin:false,nodeId:'',dnsName:'',loginName:'',tailnet:'',exposing:false,peers:[]}};
+    const state:any={calls:[],fail:false,hold:false,snapshot:{binaryPath:'/synthetic/device-bridge',phase:'stopped',backendState:'Stopped',canLogin:false,nodeId:'',dnsName:'',loginName:'',tailnet:'',exposing:false,managementConfigured:false,peers:[]}};
     window.__devices=state;state.setTheme=applyTheme;state.intent=setPendingSettingsSectionIntent;
     state.authorize=()=>Object.assign(state.snapshot,{backendState:'Running',canLogin:false,nodeId:'mac',dnsName:'mac.example.ts.net',loginName:'synthetic@example.test',tailnet:'synthetic',peers:[{nodeId:'windows',name:'Windows workstation '+ 'long-name-'.repeat(12),os:'windows',online:true,connected:false,allowed:false},{nodeId:'offline',name:'Offline workstation',os:'windows',online:false,connected:false,allowed:false}]});
     const platform:any={
+      openExternal:(url:string)=>{(state.externalUrls??=[]).push(url)},
       getDeviceBridgeState:async()=>structuredClone(state.snapshot),
       executeDeviceBridgeCommand:async(command:any)=>{
         state.calls.push(command);if(state.hold){state.hold=false;await new Promise(resolve=>state.release=resolve)}
@@ -46,9 +48,12 @@ try {
           Object.assign(state.snapshot,{phase:'error',error:state.startError});
           throw new Error("Error invoking remote method 'zcode:execute-device-bridge-command': Error: "+state.startError);
         }
-        if(state.fail){state.fail=false;throw new Error('Synthetic device failure')}
+        if(state.fail){state.fail=false;throw new Error(state.failCode || 'Synthetic device failure')}
         const s=state.snapshot,p=s.peers.find((p:any)=>p.nodeId===command.nodeId);
         switch(command.action){
+          case 'configure-management':s.managementConfigured=true;break;
+          case 'clear-management':s.managementConfigured=false;break;
+          case 'remove':s.peers=s.peers.filter((p:any)=>p.nodeId!==command.nodeId);break;
           case 'configure':s.binaryPath=command.binaryPath;s.phase='stopped';delete s.error;break;
           case 'start':Object.assign(s,{phase:'running',backendState:'NeedsLogin',canLogin:true});delete s.error;break;
           case 'connect':Object.assign(p,{connected:true,toolCount:7,checkedAt:'2026-10-22T00:00:00Z'});break;
@@ -66,7 +71,7 @@ try {
     function Fixture(){
       const [mode,setMode]=useState('desktop'),[locale,setLocale]=useState('zh-CN'),[generation,setGeneration]=useState(0);
       state.setMode=setMode;state.setLocale=setLocale;state.remount=()=>setGeneration(v=>v+1);
-      return <PlatformProvider platform={mode==='desktop'?platform:{onSettingsChanged:()=>()=>{}} as any}><ServiceProvider services={services}><StoreProvider broadcastService={broadcast}><TabStoreProvider><ZCodeIntlProvider key={locale} initialLocale={locale}><TooltipProvider><SettingsPage key={mode+generation} isDesktop={mode==='desktop'} isMacDesktop={mode==='desktop'}/></TooltipProvider></ZCodeIntlProvider></TabStoreProvider></StoreProvider></ServiceProvider></PlatformProvider>
+      return <PlatformProvider platform={mode==='desktop'?platform:{onSettingsChanged:()=>()=>{}} as any}><ServiceProvider services={services}><StoreProvider broadcastService={broadcast}><TabStoreProvider><ZCodeIntlProvider key={locale} initialLocale={locale}><TooltipProvider><ConfirmDialogHost/><SettingsPage key={mode+generation} isDesktop={mode==='desktop'} isMacDesktop={mode==='desktop'}/></TooltipProvider></ZCodeIntlProvider></TabStoreProvider></StoreProvider></ServiceProvider></PlatformProvider>
     }
     createRoot(document.getElementById('root')!).render(<Fixture/>);
   `,
@@ -102,6 +107,12 @@ try {
   assert.deepEqual(await page.evaluate(() => window.__devices.calls), []);
   await navigation.click();
   await ready();
+  const settingsUrl = page.url();
+  await panel.getByTestId("device-bridge-management-get-key").click();
+  assert.deepEqual(await page.evaluate(() => window.__devices.externalUrls), [
+    "https://console.tailscale.com/admin/settings/keys",
+  ]);
+  assert.equal(page.url(), settingsUrl);
   assert.equal(await navigation.getAttribute("aria-current"), "page");
   const failures = [
     ["device_bridge_component_missing", "未找到连接组件", "was not found"],
@@ -171,6 +182,53 @@ try {
     "synthetic@example.test",
   );
   assert.equal(await panel.getByTestId("device-bridge-connect-offline").isDisabled(), true);
+  assert.equal(await panel.getByTestId("device-bridge-remove-windows").isDisabled(), true);
+  const keyInput = panel.getByTestId("device-bridge-management-key");
+  assert.equal(await keyInput.getAttribute("type"), "password");
+  await keyInput.fill("synthetic-session-key");
+  await panel.getByTestId("device-bridge-management-get-key").click();
+  assert.equal(await keyInput.inputValue(), "synthetic-session-key");
+  assert.deepEqual(await page.evaluate(() => window.__devices.externalUrls), [
+    "https://console.tailscale.com/admin/settings/keys",
+    "https://console.tailscale.com/admin/settings/keys",
+  ]);
+  await panel.getByTestId("device-bridge-management-save").click();
+  await ready();
+  assert.equal(await keyInput.inputValue(), "");
+  await panel.getByTestId("device-bridge-remove-offline").click();
+  const dialog = page.getByRole("dialog");
+  await dialog.waitFor();
+  assert.ok((await dialog.textContent()).includes("Offline workstation"));
+  assert.ok((await dialog.textContent()).includes("offline"));
+  await dialog.getByRole("button", { name: /Cancel|取消/ }).click();
+  await dialog.waitFor({ state: "hidden" });
+  assert.equal(
+    await page.evaluate(() => window.__devices.calls.some((c) => c.action === "remove")),
+    false,
+  );
+  await panel.getByTestId("device-bridge-remove-offline").click();
+  await dialog.getByRole("button", { name: /Remove from network|从网络移除/ }).click();
+  await ready();
+  await panel.getByTestId("device-bridge-peer-offline").waitFor({ state: "detached" });
+  await panel.getByTestId("device-bridge-management-clear").click();
+  await ready();
+  assert.equal(await panel.getByTestId("device-bridge-remove-windows").isDisabled(), true);
+  await keyInput.fill("synthetic-session-key");
+  await panel.getByTestId("device-bridge-management-save").click();
+  await ready();
+  await page.evaluate(() => {
+    window.__devices.fail = true;
+    window.__devices.failCode = "device_bridge_management_forbidden";
+  });
+  await panel.getByTestId("device-bridge-remove-windows").click();
+  await dialog.getByRole("button", { name: /Remove from network|从网络移除/ }).click();
+  await ready();
+  await panel.getByRole("alert").waitFor();
+  assert.equal(await panel.getByTestId("device-bridge-peer-windows").count(), 1);
+  assert.match(await panel.getByRole("alert").textContent(), /cannot delete|没有删除/);
+  await page.evaluate(() => {
+    delete window.__devices.failCode;
+  });
   const connect = panel.getByTestId("device-bridge-connect-windows");
   await page.evaluate(() => {
     window.__devices.fail = true;
@@ -222,12 +280,30 @@ try {
             `${locale}/${theme}/${width}: ${await button.textContent()} must stay inside panel`,
           );
         }
+        await panel.getByTestId("device-bridge-management-key").scrollIntoViewIfNeeded();
         await page.screenshot({
           path: join(artifacts, `${locale}-${theme}-${width}.png`),
           animations: "disabled",
         });
       }
     }
+  }
+  for (const locale of ["zh-CN", "en-US"]) {
+    await page.evaluate((locale) => window.__devices.setLocale(locale), locale);
+    await ready();
+    await page.setViewportSize({ width: 320, height: 900 });
+    await panel.getByTestId("device-bridge-remove-windows").click();
+    await dialog.waitFor();
+    assert.ok(
+      await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth),
+      "Long device name must fit confirmation",
+    );
+    await page.screenshot({
+      path: join(artifacts, `${locale}-removal-confirmation-320.png`),
+      animations: "disabled",
+    });
+    await dialog.getByRole("button", { name: /Cancel|取消/ }).click();
+    await dialog.waitFor({ state: "hidden" });
   }
   await panel.getByTestId("device-bridge-connect-windows").click();
   await ready();
@@ -247,7 +323,7 @@ try {
   assert.equal(await general.getAttribute("aria-current"), "page");
   assert.deepEqual(errors, []);
   process.stdout.write(
-    `PASS: real SettingsPage; specific safe startup errors, refresh/remount/retry recovery, component selection, login, health failure/retry, pending controls, explicit grant/revoke, page lifetime, disconnect/logout, capability gating, zh/en, light/dark, 320/375/1280px. Screenshots: ${artifacts}\n`,
+    `PASS: real SettingsPage; specific safe startup errors, refresh/remount/retry recovery, component selection, login, health failure/retry, pending controls, management key lifecycle, cancel/confirm removal and failure, explicit grant/revoke, page lifetime, disconnect/logout, capability gating, zh/en, light/dark, 320/375/1280px. Screenshots: ${artifacts}\n`,
   );
 } catch (error) {
   await page?.screenshot({ path: join(artifacts, "failure.png") }).catch(() => {});

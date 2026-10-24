@@ -1,13 +1,19 @@
 import { Network, RefreshCw } from "lucide-react";
+import { useState } from "react";
 import { getDeviceBridgeErrorCode } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
+import { Input } from "@/components/ui/input.js";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useDeviceBridgeSettings } from "@/hooks/useDeviceBridgeSettings.js";
 import { SettingsGroupCard, SettingsRow } from "./SettingsPageParts.js";
 
 export function DeviceBridgeSettingsSection() {
   const { intl } = useZCodeIntl();
-  const { state, busy, error, run, selectComponent } = useDeviceBridgeSettings();
+  const { state, busy, error, run, selectComponent, openManagementKeys } =
+    useDeviceBridgeSettings();
+  const confirm = useConfirmDialog();
+  const [apiKey, setApiKey] = useState("");
   const t = (name: string, values?: Record<string, string | number>) =>
     intl.formatMessage({ id: `settings.devices.${name}` }, values);
   const active = state?.phase === "running" || state?.phase === "starting";
@@ -174,6 +180,26 @@ export function DeviceBridgeSettingsSection() {
                   <Button
                     className={buttonClass}
                     variant="outline"
+                    disabled={busy || !authorized || !state.managementConfigured}
+                    onClick={async () => {
+                      if (
+                        await confirm({
+                          title: t("removeTitle"),
+                          description: t("removeDescription", { name: peer.name, id: peer.nodeId }),
+                          confirmLabel: t("remove"),
+                          confirmVariant: "destructive",
+                          showKeyboardHints: false,
+                        })
+                      )
+                        await run({ action: "remove", nodeId: peer.nodeId });
+                    }}
+                    data-testid={`device-bridge-remove-${peer.nodeId}`}
+                  >
+                    {t("remove")}
+                  </Button>
+                  <Button
+                    className={buttonClass}
+                    variant="outline"
                     disabled={busy || !authorized}
                     onClick={() =>
                       void run({ action: "authorize", nodeId: peer.nodeId, allowed: !peer.allowed })
@@ -187,6 +213,68 @@ export function DeviceBridgeSettingsSection() {
             ))}
           </ul>
         )}
+      </SettingsGroupCard>
+      <SettingsGroupCard>
+        <SettingsRow
+          label={t("management")}
+          description={t("managementDescription")}
+          controlLayout="wide"
+          control={
+            <div className="w-full min-w-0 space-y-2">
+              <Input
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={4096}
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                aria-label={t("managementKey")}
+                placeholder={t("managementKey")}
+                disabled={busy || !state}
+                data-testid="device-bridge-management-key"
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  className={buttonClass}
+                  variant="outline"
+                  onClick={openManagementKeys}
+                  data-testid="device-bridge-management-get-key"
+                >
+                  {t("managementGetKey")}
+                </Button>
+                <Button
+                  className={buttonClass}
+                  variant="outline"
+                  disabled={busy || !state || !/^[A-Za-z0-9_-]+$/.test(apiKey.trim())}
+                  onClick={() => {
+                    // 草稿提交即清空；Main 只返回是否配置，不把管理密钥放进快照或持久化。
+                    const value = apiKey.trim();
+                    setApiKey("");
+                    void run({ action: "configure-management", apiKey: value });
+                  }}
+                  data-testid="device-bridge-management-save"
+                >
+                  {t("managementSave")}
+                </Button>
+                <Button
+                  className={buttonClass}
+                  variant="outline"
+                  disabled={busy || !state?.managementConfigured}
+                  onClick={() => {
+                    setApiKey("");
+                    void run({ action: "clear-management" });
+                  }}
+                  data-testid="device-bridge-management-clear"
+                >
+                  {t("managementClear")}
+                </Button>
+              </div>
+              <p className="text-ui-sm text-foreground-subtle" role="status">
+                {t(state?.managementConfigured ? "managementConfigured" : "managementMissing")}
+              </p>
+            </div>
+          }
+        />
       </SettingsGroupCard>
       <SettingsGroupCard>
         <SettingsRow
