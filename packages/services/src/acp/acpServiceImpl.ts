@@ -375,7 +375,9 @@ export function createAcpService(
     manager: agentManager,
     customConnect: !!options.connect && !options.agentManager,
   });
-  const usageHistoryReader = createCodexUsageHistoryReader();
+  const usageHistoryReader = createCodexUsageHistoryReader(
+    join(directory, "usage-cache", "codex-history-v1.json"),
+  );
   let usageHistoryRead: Promise<Map<string, CodexUsageHistory>> | null = null;
 
   const file = (id: string): string => {
