@@ -4,6 +4,8 @@ packages/zcode-cua/native-bin/
 dist/
 # zcode-server-cli 发行包 staging 输出，本地组装产物不入库。
 dist-release/
+# 独立执行客户端的 GitHub Release staging 产物。
+/dist-device-node/
 # macOS CI 按架构隔离 electron-builder 输出目录，这些仍是构建产物。
 packages/desktop/dist-*/
 out/

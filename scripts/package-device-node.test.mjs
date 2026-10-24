@@ -1,6 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deviceNodeBuildPlan, validateBuildServiceUrl } from "./package-device-node.mjs";
+import { resolve } from "node:path";
+import {
+  deviceNodeBuildPlan,
+  validateBuildServiceUrl,
+  deviceNodeReleaseManifest,
+} from "./package-device-node.mjs";
+
+test("update manifest pins versioned client URLs independently of the desktop version", () => {
+  const manifest = deviceNodeReleaseManifest({
+    version: "0.0.6",
+    source: "head",
+    dirty: false,
+    serviceUrl: "https://service.test/nodes",
+    assetsBaseUrl: "https://files.test/clients",
+    files: [
+      { platform: "win32-x64", name: "CodeVoriNode-win32-x64.exe", bytes: 123, sha256: "abc" },
+    ],
+  });
+  assert.equal(
+    manifest.files[0].url,
+    "https://files.test/clients/0.0.6/CodeVoriNode-win32-x64.exe",
+  );
+  assert.equal(manifest.serviceUrl, "https://service.test/nodes");
+  assert.throws(() => deviceNodeReleaseManifest({ version: "../other", files: [] }));
+});
 
 test("client and service distributions use disjoint roots and platform matrices", () => {
   const plan = deviceNodeBuildPlan("0.0.5", "/artifacts");
@@ -8,6 +32,10 @@ test("client and service distributions use disjoint roots and platform matrices"
   assert.equal(plan.services, "/artifacts/service/0.0.5");
   assert.equal(plan.clientTargets.length, 6);
   assert.equal(plan.serviceTargets.length, 2);
+  assert.equal(
+    deviceNodeBuildPlan("0.0.7", "output/ci").clients,
+    resolve("output/ci/clients/0.0.7"),
+  );
 });
 
 test("local builds require explicit loopback selection; release builds require HTTPS", () => {

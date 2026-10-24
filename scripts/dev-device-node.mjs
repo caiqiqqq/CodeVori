@@ -17,7 +17,9 @@ export const localNodeRoot = join(root, "output/device-node-local");
 export const localNodeUrl = "http://127.0.0.1:18081";
 
 export async function prepareLocalDeviceNode({ build = true, directory = localNodeRoot } = {}) {
-  const version = JSON.parse(await readFile(join(root, "package.json"), "utf8")).version;
+  const version = JSON.parse(
+    await readFile(join(root, "scripts/device-node-version.json"), "utf8"),
+  ).version;
   const plan = deviceNodeBuildPlan(version, directory);
   if (build)
     await buildDeviceNodes({

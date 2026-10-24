@@ -1,0 +1,19 @@
+[Unit]
+Description=Mirror independent CodeVori execution clients
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=codevori-node-update
+Group=codevori-node-update
+WorkingDirectory=/opt/codevori-node-update
+ExecStart=/usr/bin/python3 /opt/codevori-node-update/sync-device-node.py
+TimeoutStartSec=30min
+UMask=0022
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/codevori-node
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

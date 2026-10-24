@@ -79,8 +79,18 @@ func TestLocalStatusRequiresPrivateCapabilityAndRejectsOtherOrigins(t *testing.T
 	}
 	body, _ := io.ReadAll(response.Body)
 	response.Body.Close()
-	if !strings.Contains(string(body), "uninstall") {
-		t.Fatal("missing GUI uninstall")
+	if !strings.Contains(string(body), "uninstall") || !strings.Contains(string(body), "/update") || !strings.Contains(string(body), Version) {
+		t.Fatal("missing client status version, update or uninstall")
+	}
+	req, _ = http.NewRequest("POST", s.state.Address+"/"+s.state.Token+"/update", nil)
+	req.Header.Set("Origin", "https://attacker.test")
+	response, e = http.DefaultClient.Do(req)
+	if e != nil {
+		t.Fatal(e)
+	}
+	response.Body.Close()
+	if response.StatusCode != 403 {
+		t.Fatal("cross-origin update accepted")
 	}
 	select {
 	case <-ctx.Done():

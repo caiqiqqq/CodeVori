@@ -177,20 +177,10 @@ func installWithInvitation(ctx context.Context, executable string, i invitation)
 	}
 	var releasePrevious func()
 	if reinstall {
-		_ = stopLocal(dir)
-		var release func()
-		deadline := time.Now().Add(10 * time.Second)
-		for {
-			release, e = lock(filepath.Join(dir, "instance.lock"))
-			if e == nil {
-				break
-			}
-			if time.Now().After(deadline) {
-				return errors.New("previous_node_still_stopping")
-			}
-			time.Sleep(100 * time.Millisecond)
+		releasePrevious, e = stopAndLockNode(ctx, dir)
+		if e != nil {
+			return e
 		}
-		releasePrevious = release
 		defer func() {
 			if releasePrevious != nil {
 				releasePrevious()
@@ -285,6 +275,16 @@ func Main(args []string) error {
 	defer cancel()
 	if len(args) > 0 {
 		switch args[0] {
+		case "update":
+			if len(args) != 1 {
+				return errors.New("invalid_node_command")
+			}
+			return CheckForUpdate(ctx)
+		case "apply-update":
+			if len(args) != 2 {
+				return errors.New("invalid_node_command")
+			}
+			return ApplyUpdate(ctx, args[1])
 		case "link":
 			if len(args) != 2 {
 				return errors.New("invalid_installation_invitation")
@@ -330,6 +330,10 @@ func Main(args []string) error {
 func Report(err error) {
 	if err != nil {
 		messages := map[string]string{
+			"node_update_unavailable":                        "暂时无法检查更新，请稍后再试。",
+			"invalid_update_source":                          "此客户端的更新来源不匹配，请通过主端重新下载安装。",
+			"invalid_update_manifest":                        "更新信息无效，请稍后再试。",
+			"node_update_integrity_failed":                   "更新文件校验失败，已取消更新，原客户端仍可使用。",
 			"installation_invitation_missing":                "请通过主端生成的专属链接下载安装程序。",
 			"installation_invitation_expired_or_unavailable": "安装链接已过期或不可用，请在主端重新添加电脑。",
 			"pairing_service_unavailable":                    "暂时无法连接配对服务，请检查网络后再次打开安装程序。",

@@ -68,6 +68,27 @@ func (s *localStatus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", 403)
 		return
 	}
+	if r.URL.Path == "/"+s.state.Token+"/update" && r.Method == "POST" {
+		if !s.canUninstall {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("Origin") != "" && r.Header.Get("Origin") != s.state.Address {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+		_, binary, err := paths()
+		if err == nil {
+			err = startDetached(binary, "update")
+		}
+		if err != nil {
+			http.Error(w, "update_unavailable", 503)
+			return
+		}
+		w.Header().Set("Location", "/"+s.state.Token)
+		w.WriteHeader(http.StatusSeeOther)
+		return
+	}
 	if r.URL.Path == "/"+s.state.Token+"/uninstall" && r.Method == "POST" {
 		if !s.canUninstall {
 			http.NotFound(w, r)
@@ -108,9 +129,9 @@ func (s *localStatus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	uninstall := ""
 	if s.canUninstall {
-		uninstall = `<form method="post" action="/` + s.state.Token + `/uninstall"><button>卸载</button></form><p>卸载会移除此电脑上的连接配置。</p>`
+		uninstall = `<form method="post" action="/` + s.state.Token + `/update"><button>检查更新</button></form><p>更新会保留已有配对。</p><form method="post" action="/` + s.state.Token + `/uninstall"><button>卸载</button></form><p>卸载会移除此电脑上的连接配置。</p>`
 	}
-	_, _ = io.WriteString(w, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="refresh" content="5"><title>CodeVori Node</title><style>body{font:16px system-ui;max-width:36rem;padding:2rem;margin:auto;background:#f7f7f8;color:#222}button{font:inherit;padding:.6rem 1rem}p{line-height:1.6}</style><h1>CodeVori Node</h1><p>`+html.EscapeString(message)+`</p><p>此电脑可以接收配对主端的命令与桌面操作。请保持用户登录。</p><form method="post" action="/`+s.state.Token+`/stop"><button>停止连接</button></form>`+uninstall+`</html>`)
+	_, _ = io.WriteString(w, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="refresh" content="5"><title>CodeVori Node</title><style>body{font:16px system-ui;max-width:36rem;padding:2rem;margin:auto;background:#f7f7f8;color:#222}button{font:inherit;padding:.6rem 1rem}p{line-height:1.6}</style><h1>CodeVori Node</h1><p>版本 `+html.EscapeString(Version)+`</p><p>`+html.EscapeString(message)+`</p><p>此电脑可以接收配对主端的命令与桌面操作。请保持用户登录。</p><form method="post" action="/`+s.state.Token+`/stop"><button>停止连接</button></form>`+uninstall+`</html>`)
 }
 func local(dir string) (localState, error) {
 	var s localState
