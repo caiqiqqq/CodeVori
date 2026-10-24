@@ -16,6 +16,10 @@ import {
 } from "@/lib/assistantFileReferences.js";
 import { decodeFilePathUriEscapes, getPathLeaf, toFileUrl } from "@/lib/path.js";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
+import {
+  findMarkdownCodeRanges,
+  overlapsAssistantTextRanges,
+} from "@/lib/assistantDirectiveParser.js";
 
 export {
   extractAssistantFileReferences,
@@ -283,8 +287,13 @@ export function buildAssistantPreviewCardsFromReferences(
   const changedFilePaths = options.changedFilePaths ?? [];
   const positionedCards: PositionedCard[] = [];
   let hasLocalHttpPreview = false;
+  const codeRanges = findMarkdownCodeRanges(content);
 
   for (const match of content.matchAll(LOCALHOST_URL_RE)) {
+    // 排障命令里的 localhost/healthz 是代码示例，不是交付的网站；复用 Markdown
+    // 代码范围，避免回复完成或恢复时把代码块/行内代码中的地址误投影成网站卡片。
+    const start = match.index ?? 0;
+    if (overlapsAssistantTextRanges(start, start + match[0].length, codeRanges)) continue;
     const url = normalizeTrailingUrlText(match[0] ?? "");
     if (!isValidAssistantPreviewWebsiteUrl(url)) continue;
     // Web 远控没有本地端口转发或 HTML 运行环境；在候选上限前过滤，避免隐藏卡片占位。
