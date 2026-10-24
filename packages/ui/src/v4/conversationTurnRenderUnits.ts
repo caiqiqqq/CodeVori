@@ -402,29 +402,22 @@ function normalizeRenderUnitPosition(
 ): ConversationTurnRenderUnit {
   const isLastTurn = index === total - 1;
   const forceOpenHistory = shouldForceOpenAbnormalHistory(unit.header, options.sessionPhase);
+  // 最终操作锚点和可见正文是不同事实；ACP 正文后跟工具时也不能据此强制展开工作记录。
+  const hasVisibleAssistantText = unit.flowItems.some((item) => item.kind === "assistantText");
+  const lastSegment = unit.workSegments?.at(-1);
+  const workStatus = lastSegment ? lastSegment.workStatus : unit.workStatus;
   const assistantHistoryDefaultOpen =
-    unit.workSegments && unit.workSegments.length > 0
-      ? !unit.timelineOnly &&
-        (forceOpenHistory ||
-          (isLastTurn && unit.workSegments.at(-1)?.workStatus?.state === "running") ||
-          (unit.workSegments.length === 1 &&
-            unit.latestAssistantTextRow === undefined &&
-            unit.assistantWorkRows.length > 0))
-      : !unit.timelineOnly &&
-        (forceOpenHistory ||
-          (isLastTurn && unit.workStatus?.state === "running") ||
-          (unit.latestAssistantTextRow === undefined && unit.assistantWorkRows.length > 0));
+    !unit.timelineOnly &&
+    (forceOpenHistory ||
+      (isLastTurn && workStatus?.state === "running") ||
+      ((unit.workSegments?.length ?? 1) === 1 &&
+        !hasVisibleAssistantText &&
+        unit.assistantWorkRows.length > 0));
   const workSegments = unit.workSegments?.map((segment, segmentIndex, segments) =>
     segmentIndex === segments.length - 1
       ? {
           ...segment,
-          assistantHistoryDefaultOpen:
-            !unit.timelineOnly &&
-            (forceOpenHistory ||
-              (isLastTurn && segment.workStatus?.state === "running") ||
-              (segments.length === 1 &&
-                unit.latestAssistantTextRow === undefined &&
-                segment.assistantWorkRows.length > 0)),
+          assistantHistoryDefaultOpen,
         }
       : segment,
   );

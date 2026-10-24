@@ -172,6 +172,8 @@ export const assistantTextRowSchema = z.object({
   kind: z.literal("assistantText"),
   // 同一模型 response 的正文与工具共享此 ID；optional 兼容旧 snapshot。
   assistantResponseId: z.string().min(1).optional(),
+  // ACP 未区分过程说明与回复正文；独立正文始终原位可见，缺省沿用过程分组。
+  presentation: z.literal("standalone").optional(),
   text: z.string(),
   state: z.enum(["streaming", "complete", "interrupted", "failed"]),
   model: z.string().optional(),
