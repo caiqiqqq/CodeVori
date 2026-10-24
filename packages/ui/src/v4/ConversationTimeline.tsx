@@ -1326,13 +1326,15 @@ function ConversationTimelineImpl({
     // 视口预取，让桌面和手机 Web 共用的 renderer 在用户抵达边界前完成补页。
     const loadOlder = loadOlderRef.current;
     const triggerPx = historyPrefetchTriggerPx(element.clientHeight);
+    const shouldLoadOlder = shouldTriggerLoadOlder({
+      scrollTop: element.scrollTop,
+      canLoadOlder: loadOlder.canLoadOlder,
+      loadingOlder: loadOlder.loadingOlder,
+      triggerPx,
+    });
     if (
-      shouldTriggerLoadOlder({
-        scrollTop: element.scrollTop,
-        canLoadOlder: loadOlder.canLoadOlder,
-        loadingOlder: loadOlder.loadingOlder,
-        triggerPx,
-      })
+      shouldLoadOlder ||
+      (scrollSource === "user" && pendingPrependVirtualAnchorRef.current !== null)
     ) {
       // 前插超过 viewport + overscan 后旧可见 turn 会被卸载，DOM 不能作为跨
       // commit 锚点；这里保存 virtualizer 按稳定 turn key 维护的 measurement 起点。
@@ -1350,6 +1352,10 @@ function ConversationTimelineImpl({
               start: anchorMeasurement.start,
             }
           : null;
+      // 历史响应到达前用户仍可触摸/惯性滚动；持续更新同一个锚点，避免前插
+      // 恢复请求发起时的旧位置，把已经滑过的距离再次滚回去。
+    }
+    if (shouldLoadOlder) {
       logger.debug("[v4-timeline] 接近历史窗口顶部，自动预取更早行", {
         scrollTop: element.scrollTop,
         triggerPx,
