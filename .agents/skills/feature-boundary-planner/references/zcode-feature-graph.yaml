@@ -25,6 +25,64 @@ rules:
     - invariant-only
     - evidence-only
 nodes:
+  - id: surface.device-connections-settings
+    kind: ui-surface
+    label: Desktop device account and connection settings
+    aliases: [设备与连接, Tailscale, tsnet, Windows-MCP, 电脑详情, CPU, 内存, 进程, 屏幕画面]
+    codeSeeds:
+      - file: packages/ui/src/settings/DeviceBridgeSettingsSection.tsx
+        symbol: DeviceBridgeSettingsSection
+      - file: packages/ui/src/hooks/useDeviceBridgeSettings.ts
+        symbol: useDeviceBridgeSettings
+      - file: packages/shared/src/deviceBridge.ts
+        symbol: deviceBridgeCommandSchema
+      - file: packages/ui/src/settings/DeviceInspectionDialog.tsx
+        symbol: DeviceInspectionDialog
+      - file: packages/desktop/src/main/deviceBridgeInspection.ts
+        symbol: inspectDeviceBridgeMcp
+    invariants:
+      - Desktop native capability is required; UI never receives bridge bearers or login URLs.
+  - id: service.device-connections-native
+    kind: state-owner
+    label: Main bridge process lifecycle and native configuration
+    codeSeeds:
+      - file: packages/desktop/src/main/deviceBridgeController.ts
+        symbol: createDeviceBridgeController
+      - file: packages/desktop/src/main/deviceBridgeSettings.ts
+        symbol: registerDeviceBridgeSettings
+      - file: apps/device-bridge/contract.ts
+        symbol: DeviceBridgeWorkerResponse
+    invariants:
+      - Go manage owns live network listeners; Main serializes commands and invalidates stale generations.
+      - Tool discovery must pass before publication through the existing user MCP configuration.
+  - id: capability.device-execution-node
+    kind: capability
+    label: Standalone PC command and desktop executor
+    aliases:
+      [
+        轻量执行端,
+        执行节点,
+        命令调度,
+        Windows控制,
+        macOS控制,
+        Linux控制,
+        一键安装,
+        自动上线,
+        客户端独立分发,
+      ]
+    codeSeeds:
+      - file: apps/device-bridge/contract.ts
+        symbol: DeviceExecutionNodeInfo
+      - file: apps/device-bridge/module.ts
+        symbol: deviceBridgeModule
+      - file: apps/device-bridge/internal/nodeapp/network.go
+        symbol: networkController
+    invariants:
+      - Node owns bounded tool execution; main Runtime retains task admission and approvals.
+      - Desktop adapters advertise backend dependencies; native permissions and outcomes require actual operation evidence.
+      - Single desktop operations are exclusive, not a multi-step workflow lease or an automatic scheduler.
+      - Installed nodes persist their own tsnet identity and require explicit controller authorization; distribution is static.
+      - Main deviceBridgeController owns member connections and publishes tools only after a fresh MCP check.
   - id: capability.model-selection
     kind: capability
     label: Model selection
@@ -742,6 +800,16 @@ nodes:
       - Tokens are ephemeral; child result submission checks the current command and lease.
       - Stop must validate foreground identity before pausing delegation.
 edges:
+  - from: service.device-connections-native
+    to: capability.device-execution-node
+    type: discovers-tools-through
+    rank: conditional
+    condition: The selected peer runs node mode; existing tailnet identity checks and MCP initialize/tools/list remain authoritative.
+  - from: surface.device-connections-settings
+    to: service.device-connections-native
+    type: sends-platform-commands-to
+    rank: must-inspect
+    condition: IPlatformService routes through trusted top-level window IPC; no Host task state is introduced.
   - from: service.desktop-lan-gateway
     to: projection.desktop-window-session
     type: attaches-through
