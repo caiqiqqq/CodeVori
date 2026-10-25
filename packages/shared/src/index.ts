@@ -1,3 +1,4 @@
+export * from "./composer-preference.js";
 export * from "./acp-plan.js";
 export * from "./deviceBridge.js";
 export * from "./acp-elicitation.js";

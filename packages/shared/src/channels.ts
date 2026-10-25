@@ -112,6 +112,7 @@ export const ServiceChannels = {
   ProviderSettings: "provider-settings",
   /** 新 Provider Registry 的模型选择 Facade */
   ModelSelection: "model-selection",
+  ComposerPreference: "composer-preference",
   /** 远端 Environment 内部 Provider Provisioning target */
   ProviderProvisioningTarget: "provider-provisioning-target",
   /** 本地 usage 统计服务 */

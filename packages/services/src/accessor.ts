@@ -43,6 +43,8 @@ import type { IAcpService } from "./acp/acpService.js";
 import type { IWorkTaskService } from "./session/contract.js";
 import type { IAgentDelegationService } from "./delegation/contract.js";
 
+import type { IComposerPreferenceService } from "./composer-preference/contract.js";
+
 /** UI 层消费的统一服务接口 */
 export interface IServiceAccessor {
   readonly fileService: IFileService;
@@ -63,6 +65,7 @@ export interface IServiceAccessor {
   readonly zcodeSessionService: IZCodeSessionService;
   /** Target Environment's ACP Agent session owner. */
   readonly acpService: IAcpService;
+  readonly composerPreferenceService?: IComposerPreferenceService;
   readonly workTaskService?: IWorkTaskService;
   readonly agentDelegationService?: IAgentDelegationService;
   // CUA 是 opt-in 内测特性：local macOS host 提供，远端 等 host 没有。可选避免连锁必填。

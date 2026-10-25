@@ -305,6 +305,8 @@ import { IOnboardingRecordService } from "./onboarding/onboardingRecord.js";
 import { ICredentialService } from "./credential/credential.js";
 import { IBroadcastService } from "./broadcast/broadcast.js";
 import { IZCodeTaskService } from "./session/zcodeTaskService.js";
+import { IComposerPreferenceService } from "./composer-preference/contract.js";
+import { createComposerPreferenceService } from "./composer-preference/composerPreferenceService.js";
 import { IAcpService } from "./acp/acpService.js";
 import { IWorkTaskService } from "./session/contract.js";
 import { WorkTaskRepo } from "./session/workTaskRepo.js";
@@ -2426,7 +2428,9 @@ export function createLocalServices(options: {
     ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
     ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
   });
+  const composerPreferenceService = createComposerPreferenceService();
   const acpService = createAcpService({
+    composerPreferenceService,
     resolveInstallEnv: async () => {
       const settings = await settingService.get();
       const network =
@@ -2773,6 +2777,7 @@ export function createLocalServices(options: {
     .register(IZCodeAgentService, zcodeAgentService)
     .register(IZCodeSessionService, zcodeSessionService)
     .register(IAcpService, acpService)
+    .register(IComposerPreferenceService, composerPreferenceService)
     .register(IWorkTaskService, workTaskService)
     .register(IAgentDelegationService, agentDelegationService)
     .register(ICuaPermissionService, cuaPermissionService)

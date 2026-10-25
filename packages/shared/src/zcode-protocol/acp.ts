@@ -315,6 +315,8 @@ export const acpCreateInputSchema = acpWorkspaceSchema.extend({
   deferPersistence: z.boolean().optional(),
   /** Only composer drafts inherit the target Host's explicit permission preference. */
   usePermissionPreference: z.boolean().optional(),
+  /** Composer-only inheritance of the target Host model preference. */
+  useModelPreference: z.boolean().optional(),
 });
 export type AcpCreateInput = z.input<typeof acpCreateInputSchema>;
 
@@ -330,6 +332,7 @@ export const acpSetConfigOptionInputSchema = acpWorkspaceSchema
     value: z.union([z.string(), z.boolean()]),
     /** Explicit composer selection; internal callers omit this flag. */
     rememberPermission: z.boolean().optional(),
+    rememberModel: z.boolean().optional(),
   })
   .strict();
 export type AcpSetConfigOptionInput = z.infer<typeof acpSetConfigOptionInputSchema>;

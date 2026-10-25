@@ -11,6 +11,12 @@ import {
 } from "@/lib/sidebarTaskPreferences.js";
 import { applyDesktopWindowSession, useDesktopWindowView } from "./desktopWindowSession.js";
 import { logger } from "@/logger.js";
+import {
+  readDesktopWindowNavigation,
+  persistDesktopWindowNavigation,
+  validateDesktopWindowNavigation,
+} from "@/lib/desktopWindowNavigation.js";
+import { useRemoteWorkspaceSessionStore } from "@/store/remoteWorkspaceSessionStore.js";
 
 export interface DesktopWindowFollower {
   prepare: (snapshot: DesktopWindowSessionSnapshot) => Promise<void>;
@@ -76,7 +82,8 @@ export function useDesktopWindowSession({
     let revision = -1;
     let epoch: string | undefined;
     let chain = Promise.resolve();
-    useDesktopWindowView.setState({ following: true, snapshot: null });
+    let initialNavigation = true;
+    useDesktopWindowView.setState({ following: true, snapshot: null, navigationRestore: null });
     const fail = (error: unknown) => {
       if (live)
         setState({ loading: false, error: error instanceof Error ? error.message : String(error) });
@@ -98,15 +105,57 @@ export function useDesktopWindowSession({
           // Attach remote scopes before mounting consumers. No local fallback while prepare is pending.
           await follower.prepare(snapshot);
           if (!live || epoch !== snapshot.epoch || revision !== snapshot.revision) return;
-          const draftWorkspace = applyDesktopWindowSession(store, snapshot);
-          if (draftWorkspace) {
-            // #180：自动进入对话首页时复用新草稿入口，避免恢复手机上次的历史会话。
-            // 后续快照保留有效选择，不重复 startDraft 干扰当前输入/会话。
-            useZCodeSessionStore.getState().startDraft(draftWorkspace.workspacePath);
+          let restore = null;
+          if (initialNavigation) {
+            const saved = readDesktopWindowNavigation();
+            const tabsBefore = store.getState();
+            const sessionsBefore = saved
+              ? useZCodeSessionStore
+                  .getState()
+                  .getWorkspaceState(saved.workspacePath, saved.workspaceIdentity)
+              : null;
+            if (saved) {
+              restore = await validateDesktopWindowNavigation(saved, snapshot, (workspace) => {
+                if (!workspace.workspaceIdentity && !workspace.remoteSessionId) return services;
+                const remote = workspace.remoteSessionId
+                  ? useRemoteWorkspaceSessionStore.getState().sessionsById[
+                      workspace.remoteSessionId
+                    ]?.services
+                  : undefined;
+                if (!remote) throw new Error("Desktop workspace attachment is unavailable");
+                return remote;
+              });
+              // 修复原因：校验是异步的，旧快照或用户期间的新导航不能被恢复回包覆盖。
+              if (!live || epoch !== snapshot.epoch || revision !== snapshot.revision) return;
+              const sessionsNow = useZCodeSessionStore
+                .getState()
+                .getWorkspaceState(saved.workspacePath, saved.workspaceIdentity);
+              if (
+                store.getState().activeTabId !== tabsBefore.activeTabId ||
+                sessionsNow.activeTaskId !== sessionsBefore?.activeTaskId ||
+                sessionsNow.draftFocusVersion !== sessionsBefore?.draftFocusVersion
+              )
+                restore = null;
+              else if (!restore) persistDesktopWindowNavigation(null);
+            }
+            initialNavigation = false;
+          }
+          const draftWorkspace = applyDesktopWindowSession(store, snapshot, restore);
+          if (draftWorkspace && (!restore || restore.target.kind === "draft")) {
+            // 手机无有效页面记录时仍沿用安全草稿入口；后续快照不重置当前选择。
+            useZCodeSessionStore
+              .getState()
+              .startDraft(
+                draftWorkspace.workspacePath,
+                undefined,
+                draftWorkspace.workspaceIdentity,
+              );
           }
           setState({ loading: false, error: null });
         })
-        .catch(fail);
+        .catch((error) => {
+          if (epoch === snapshot.epoch && revision === snapshot.revision) fail(error);
+        });
     };
     if (!service?.getWorkspaceSession || !service.onDynamicWorkspaceSessionChanged) {
       fail(new Error("Desktop Host does not support window projection"));
@@ -118,7 +167,7 @@ export function useDesktopWindowSession({
     return () => {
       live = false;
       subscription.dispose();
-      useDesktopWindowView.setState({ following: false, snapshot: null });
+      useDesktopWindowView.setState({ following: false, snapshot: null, navigationRestore: null });
     };
   }, [follower, services, store]);
   return state;

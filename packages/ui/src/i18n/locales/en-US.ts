@@ -6604,6 +6604,9 @@ const enUS: Record<string, string> = {
   "chat.error.noAvailableModel": "No model available. Upgrade or set a custom model.",
   "acp.hostUpgradeRequired":
     "Upgrade the target Host before sending. Your draft has been preserved.",
+  "chat.modelPreference.readFailed": "Failed to load model preferences. Reconnect to retry.",
+  "chat.modelPreference.writeFailed":
+    "Your choice is saved in this draft, but sync failed. Select it again to retry.",
   "chat.error.sendFailed": "Failed to send. Try again later.",
   "chat.error.modelSettings": "Model settings",
   "chat.error.setModels": "Set",

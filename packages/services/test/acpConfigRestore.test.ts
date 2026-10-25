@@ -6,6 +6,7 @@ import test from "node:test";
 import type { AcpConfigOption } from "@zcode/shared";
 import { defaultAcpModelSelection, restoreAcpConfigOptions } from "../src/acp/acpConfigRestore.js";
 import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
+import { createComposerPreferenceService } from "../src/composer-preference/composerPreferenceService.js";
 
 const target = { workspacePath: "/fixture/config-restore", workspaceIdentity: "fixture:restore" };
 const select = (id: string, value: string, values: string[], category = id): AcpConfigOption => ({
@@ -160,6 +161,79 @@ async function setup() {
 
 const values = (options: AcpConfigOption[]) =>
   Object.fromEntries(options.map((option) => [option.id, option.currentValue]));
+
+test("Composer ACP model preference crosses clients and restart without changing history or internal creates", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "zcode-acp-model-preference-"));
+  const f = fixture();
+  const preferences = createComposerPreferenceService(join(directory, "preferences"));
+  const first = createAcpService({
+    directory,
+    connect: f.connect,
+    composerPreferenceService: preferences,
+  });
+  let second: ReturnType<typeof createAcpService> | undefined;
+  try {
+    const historical = await first.create({ ...target, agent: "codex" });
+    const selected = await first.create({ ...target, agent: "codex", useModelPreference: true });
+    await first.setConfigOption({
+      ...target,
+      id: selected.id,
+      configId: "model",
+      value: "6-sol",
+      rememberModel: true,
+    });
+    assert.equal((await preferences.get(target)).acpModels.codex?.value, "6-sol");
+    await first.disposeAllAndWait();
+    second = createAcpService({
+      directory,
+      connect: f.connect,
+      composerPreferenceService: createComposerPreferenceService(join(directory, "preferences")),
+    });
+    const inherited = await second.create({ ...target, agent: "codex", useModelPreference: true });
+    assert.equal(values(inherited.configOptions).model, "6-sol");
+    assert.equal(
+      values((await second.create({ ...target, agent: "codex" })).configOptions).model,
+      "5.6-sol",
+    );
+    assert.equal(
+      values((await second.refresh({ ...target, id: historical.id })).configOptions).model,
+      "5.6-sol",
+    );
+    f.control.reject = true;
+    await assert.rejects(
+      second.setConfigOption({
+        ...target,
+        id: inherited.id,
+        configId: "model",
+        value: "5.6-sol",
+        rememberModel: true,
+      }),
+    );
+    assert.equal((await preferences.get(target)).acpModels.codex?.value, "6-sol");
+    f.control.reject = false;
+    await preferences.update({
+      ...target,
+      commandId: crypto.randomUUID(),
+      acpModel: { agent: "codex", configId: "model", value: "removed" },
+    });
+    assert.equal(
+      values(
+        (await second.create({ ...target, agent: "codex", useModelPreference: true }))
+          .configOptions,
+      ).model,
+      "5.6-sol",
+    );
+    assert.equal(
+      (await preferences.get(target)).acpModels.codex?.value,
+      "removed",
+      "unavailable new-task hints remain repairable without overwriting the saved intent",
+    );
+  } finally {
+    await first.disposeAllAndWait();
+    await second?.disposeAllAndWait();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 const restoredCalls = [
   "model:6-sol",
   "collaboration_mode:plan",
