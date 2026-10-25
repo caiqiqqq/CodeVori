@@ -231,6 +231,9 @@ func ApplyUpdate(ctx context.Context, expectedHash string) error {
 		}
 	}()
 	err = replaceNodeExecutable(executable, binary, func() error {
+		if err := refreshInstalledNodeAppearance(binary); err != nil {
+			return err
+		}
 		if instance != nil {
 			instance()
 			instance = nil

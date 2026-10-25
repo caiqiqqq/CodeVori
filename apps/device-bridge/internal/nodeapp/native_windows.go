@@ -44,7 +44,12 @@ func autostart(binary string, enabled bool) error {
 		return e
 	}
 	_ = runHidden("reg.exe", "delete", protocol, "/f")
-	values := map[string]string{"DisplayName": "CodeVori Node", "Publisher": "CodeVori", "InstallLocation": filepath.Dir(binary), "UninstallString": `"` + binary + `" uninstall`}
+	return refreshInstalledNodeAppearance(binary)
+}
+
+func refreshInstalledNodeAppearance(binary string) error {
+	uninstall := `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\CodeVoriNode`
+	values := map[string]string{"DisplayName": "CodeVori Node", "Publisher": "CodeVori", "DisplayIcon": `"` + binary + `",0`, "InstallLocation": filepath.Dir(binary), "UninstallString": `"` + binary + `" uninstall`}
 	for key, value := range values {
 		if e := runHidden("reg.exe", "add", uninstall, "/v", key, "/t", "REG_SZ", "/d", value, "/f"); e != nil {
 			return e
@@ -53,7 +58,7 @@ func autostart(binary string, enabled bool) error {
 	// 快捷方式只包含固定安装路径，不拼入网络凭据。
 	menu := filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs", "CodeVori Node.lnk")
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
-	script := `$s=(New-Object -ComObject WScript.Shell).CreateShortcut(` + quote(menu) + `);$s.TargetPath=` + quote(binary) + `;$s.Save()`
+	script := `$s=(New-Object -ComObject WScript.Shell).CreateShortcut(` + quote(menu) + `);$s.TargetPath=` + quote(binary) + `;$s.IconLocation=` + quote(binary+",0") + `;$s.Save()`
 	return runHidden("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 }
 func lock(path string) (func(), error) {

@@ -38,7 +38,8 @@ func run(ctx context.Context, dir string, installed bool) error {
 		return err
 	}
 	defer status.close()
-	startTray(ctx, dir, cancel)
+	stopTray := startTray(ctx, dir, installed, cancel)
+	defer stopTray()
 	network, err := newTailnetNetwork(dir, c.Hostname)
 	if err != nil {
 		status.set("Tailscale 启动失败，请重新启动 CodeVori Node")
