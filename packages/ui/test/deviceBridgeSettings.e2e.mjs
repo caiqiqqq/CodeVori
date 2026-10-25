@@ -1,5 +1,8 @@
 // Real SettingsPage, synthetic native platform. No tailnet enrollment or real user credentials.
 import assert from "node:assert/strict";
+import { verifyRememberedManagementKey } from "./deviceBridgeManagement.scenarios.mjs";
+import { verifyDevicePeerStatus } from "./deviceBridgePeerStatus.scenarios.mjs";
+import { verifyInspectionTableScroll } from "./deviceInspectionScroll.scenarios.mjs";
 import { writeDeviceBridgeSettingsFixture } from "./deviceBridgeSettings.fixture.mjs";
 import { createRequire } from "node:module";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -143,6 +146,7 @@ try {
   assert.equal(await panel.getByTestId("device-bridge-connect-offline").isDisabled(), true);
   assert.match(await panel.getByTestId("device-bridge-node-id").textContent(), /mac/);
   assert.equal(await panel.getByTestId("device-bridge-remove-windows").isDisabled(), true);
+  await verifyDevicePeerStatus({ page, panel, ready });
   const keyInput = panel.getByTestId("device-bridge-management-key");
   assert.equal(await keyInput.getAttribute("type"), "password");
   await keyInput.fill("synthetic-session-key");
@@ -155,6 +159,7 @@ try {
   await panel.getByTestId("device-bridge-management-save").click();
   await ready();
   assert.equal(await keyInput.inputValue(), "");
+  await verifyRememberedManagementKey({ page, panel, ready, keyInput });
   await panel.getByTestId("device-bridge-remove-offline").click();
   const dialog = page.getByRole("dialog");
   await dialog.waitFor();
@@ -307,6 +312,11 @@ try {
           await details.evaluate((el) => el.scrollWidth <= el.clientWidth),
           "Computer details must fit the viewport",
         );
+        await verifyInspectionTableScroll({
+          page,
+          details,
+          screenshotPath: join(artifacts, `process-scroll-${locale}-${theme}-${width}.png`),
+        });
         await details.getByTestId("device-inspection-screen-refresh").click();
         await details.getByTestId("device-inspection-screen").waitFor();
         await page.screenshot({
@@ -379,7 +389,7 @@ try {
   assert.equal(await general.getAttribute("aria-current"), "page");
   assert.deepEqual(errors, []);
   process.stdout.write(
-    `PASS: real SettingsPage; generic client download, visible Tailscale network flow, member discovery, CPU/memory/process details, manual PNG screen, safe failure clearing, close/disconnect stale reads, responsive details; specific safe startup errors, refresh/remount/retry recovery, component selection, login, health failure/retry, pending controls, management key lifecycle, cancel/confirm removal and failure, explicit grant/revoke, page lifetime, stop/reconnect without signing in again, logout requires sign-in, capability gating, zh/en, light/dark, 320/375/1280px. Screenshots: ${artifacts}\n`,
+    `PASS: real SettingsPage; generic client download, visible Tailscale network flow, member discovery, CPU/memory/process details, opaque sticky process headings during vertical/horizontal scrolling, manual PNG screen, safe failure clearing, close/disconnect stale reads, responsive details; specific safe startup errors, refresh/remount/retry recovery, component selection, login, health failure/retry, pending controls, management key lifecycle, cancel/confirm removal and failure, explicit grant/revoke, page lifetime, stop/reconnect without signing in again, logout requires sign-in, capability gating, zh/en, light/dark, 320/375/1280px. Screenshots: ${artifacts}\n`,
   );
 } catch (error) {
   await page?.screenshot({ path: join(artifacts, "failure.png") }).catch(() => {});

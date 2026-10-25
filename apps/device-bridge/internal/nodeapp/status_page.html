@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="5" />
+    <meta name="color-scheme" content="light dark" />
+    <title>CodeVori Node</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --ui-font-size: 14px;
+        --color-background: #f8f8f8;
+        --color-card: #fff;
+        --color-surface: rgba(13, 13, 13, 0.03);
+        --color-hover: rgba(13, 13, 13, 0.05);
+        --color-border: rgba(13, 13, 13, 0.1);
+        --color-border-hover: rgba(13, 13, 13, 0.2);
+        --color-foreground: #262626;
+        --color-foreground-subtle: #666;
+        --color-primary: #000;
+        --color-primary-foreground: #fff;
+        --color-success: #1e8a3e;
+        --color-warning: #a85800;
+        --color-destructive: #c52b2b;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --color-background: #161616;
+          --color-card: #2b2b2b;
+          --color-surface: rgba(255, 255, 255, 0.05);
+          --color-hover: rgba(255, 255, 255, 0.08);
+          --color-border: rgba(255, 255, 255, 0.1);
+          --color-border-hover: rgba(255, 255, 255, 0.24);
+          --color-foreground: #e5e5e5;
+          --color-foreground-subtle: #adadad;
+          --color-primary: #fff;
+          --color-primary-foreground: #000;
+          --color-success: #46bf72;
+          --color-warning: #ffb26b;
+          --color-destructive: #ff7777;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      .text-ui-xl {
+        font-size: calc(var(--ui-font-size) + 4px);
+      }
+      .text-ui-lg {
+        font-size: calc(var(--ui-font-size) + 2px);
+      }
+      .text-ui-base {
+        font-size: var(--ui-font-size);
+      }
+      .text-ui-caption {
+        font-size: calc(var(--ui-font-size) - 1px);
+      }
+      .text-ui-sm {
+        font-size: calc(var(--ui-font-size) - 2px);
+      }
+      body {
+        margin: 0;
+        background: var(--color-background);
+        color: var(--color-foreground);
+        font-family:
+          "Segoe UI",
+          system-ui,
+          -apple-system,
+          "PingFang SC",
+          "Microsoft YaHei",
+          sans-serif;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      h1,
+      h2,
+      h3,
+      p,
+      dl,
+      dd {
+        margin: 0;
+      }
+      h1,
+      h2,
+      h3 {
+        font-weight: 600;
+        line-height: 1.4;
+      }
+      button,
+      a {
+        -webkit-tap-highlight-color: transparent;
+      }
+      button,
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 36px;
+        padding: 7px 14px;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        background: var(--color-card);
+        color: var(--color-foreground);
+        font: inherit;
+        line-height: 1.4;
+        text-decoration: none;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+      button:hover,
+      .button:hover {
+        background: var(--color-hover);
+        border-color: var(--color-border-hover);
+      }
+      button:focus-visible,
+      a:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 3px;
+      }
+      .button-primary {
+        background: var(--color-primary);
+        border-color: var(--color-primary);
+        color: var(--color-primary-foreground);
+      }
+      .button-primary:hover {
+        background: var(--color-primary);
+        opacity: 0.85;
+      }
+      .button-danger {
+        color: var(--color-destructive);
+      }
+      form {
+        margin: 0;
+      }
+      .app {
+        max-width: 880px;
+        padding: 40px 28px 24px;
+        margin: 0 auto;
+      }
+      .app-header,
+      .brand,
+      .section-heading,
+      .peer,
+      .peer-main,
+      .action-row,
+      .footer,
+      .status-heading {
+        display: flex;
+        align-items: center;
+      }
+      .app-header {
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 28px;
+      }
+      .brand {
+        gap: 12px;
+        min-width: 0;
+      }
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        flex: 0 0 auto;
+        border-radius: 12px;
+        background: var(--color-primary);
+        color: var(--color-primary-foreground);
+      }
+      .brand-mark svg {
+        width: 24px;
+        height: 24px;
+      }
+      .muted {
+        color: var(--color-foreground-subtle);
+      }
+      .mono {
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      }
+      .version,
+      .count {
+        border: 1px solid var(--color-border);
+        border-radius: 6px;
+        padding: 2px 8px;
+        color: var(--color-foreground-subtle);
+        white-space: nowrap;
+      }
+      .panel {
+        border: 1px solid var(--color-border);
+        border-radius: 12px;
+        background: var(--color-card);
+        margin-bottom: 16px;
+        overflow: hidden;
+      }
+      .panel-body {
+        padding: 24px;
+      }
+      .status-heading {
+        gap: 14px;
+      }
+      .status-heading > div:last-child {
+        min-width: 0;
+      }
+      .status-icon {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
+        border-radius: 12px;
+        background: color-mix(in srgb, currentColor 9%, transparent);
+      }
+      .status-icon svg {
+        width: 24px;
+        height: 24px;
+      }
+      .tone-success {
+        color: var(--color-success);
+      }
+      .tone-warning {
+        color: var(--color-warning);
+      }
+      .tone-neutral {
+        color: var(--color-foreground-subtle);
+      }
+      .status-copy {
+        margin-top: 16px;
+      }
+      .status-copy p {
+        color: var(--color-foreground-subtle);
+      }
+      .identity {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 18px 32px;
+        padding-top: 20px;
+        margin-top: 20px;
+        border-top: 1px solid var(--color-border);
+      }
+      .identity > div {
+        min-width: 0;
+      }
+      .identity .wide {
+        grid-column: 1 / -1;
+      }
+      .identity dt {
+        color: var(--color-foreground-subtle);
+        margin-bottom: 4px;
+      }
+      .identity dd {
+        overflow-wrap: anywhere;
+      }
+      .login-action {
+        margin-top: 16px;
+      }
+      .authorization {
+        border-top: 1px solid var(--color-border);
+        padding-top: 24px;
+        margin-top: 24px;
+      }
+      .section-heading {
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 8px;
+      }
+      .section-title {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .icon {
+        width: 18px;
+        height: 18px;
+        flex: 0 0 auto;
+      }
+      .section-description {
+        color: var(--color-foreground-subtle);
+        max-width: 62ch;
+      }
+      .peers {
+        list-style: none;
+        padding: 0;
+        margin: 20px 0 0;
+      }
+      .peer {
+        justify-content: space-between;
+        gap: 20px;
+        padding: 18px 0;
+        border-top: 1px solid var(--color-border);
+      }
+      .peer:last-child {
+        padding-bottom: 0;
+      }
+      .peer-main {
+        gap: 12px;
+        min-width: 0;
+      }
+      .device-icon {
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
+        width: 40px;
+        height: 40px;
+        border: 1px solid var(--color-border);
+        border-radius: 10px;
+        background: var(--color-surface);
+        color: var(--color-foreground-subtle);
+      }
+      .peer-info {
+        min-width: 0;
+      }
+      .peer-name {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .peer-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 10px;
+        margin-top: 3px;
+      }
+      .peer-id {
+        overflow-wrap: anywhere;
+        margin-top: 3px;
+        color: var(--color-foreground-subtle);
+      }
+      .peer-actions {
+        display: flex;
+        flex: 0 0 auto;
+        align-items: center;
+        gap: 12px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        white-space: nowrap;
+      }
+      .badge-authorized {
+        color: var(--color-success);
+      }
+      .dot {
+        width: 6px;
+        height: 6px;
+        background: currentColor;
+        border-radius: 50%;
+        flex: 0 0 auto;
+      }
+      .empty-state {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 20px;
+        border: 1px dashed var(--color-border);
+        border-radius: 8px;
+        color: var(--color-foreground-subtle);
+      }
+      .empty-state strong {
+        display: block;
+        color: var(--color-foreground);
+        margin-bottom: 4px;
+        font-weight: 500;
+      }
+      .maintenance .section-heading {
+        margin-bottom: 4px;
+      }
+      .action-row {
+        justify-content: space-between;
+        gap: 24px;
+        padding: 16px 0;
+      }
+      .action-row + .action-row {
+        border-top: 1px solid var(--color-border);
+      }
+      .action-row:last-child {
+        padding-bottom: 0;
+      }
+      .action-row > div {
+        min-width: 0;
+      }
+      .action-row form {
+        flex: 0 0 auto;
+      }
+      .action-row p {
+        color: var(--color-foreground-subtle);
+        margin-top: 2px;
+      }
+      .footer {
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px 20px;
+        color: var(--color-foreground-subtle);
+        padding: 4px 2px;
+      }
+      .footer-note {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      @media (max-width: 560px) {
+        .app {
+          padding: 24px 16px 20px;
+        }
+        .app-header {
+          margin-bottom: 20px;
+          gap: 10px;
+        }
+        .brand {
+          gap: 10px;
+        }
+        .panel-body {
+          padding: 20px;
+        }
+        .identity {
+          grid-template-columns: minmax(0, 1fr);
+          gap: 14px;
+        }
+        .identity .wide {
+          grid-column: auto;
+        }
+        .peer {
+          align-items: stretch;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .peer-actions {
+          justify-content: flex-end;
+        }
+        .section-heading {
+          align-items: flex-start;
+          gap: 8px;
+        }
+        .action-row {
+          gap: 12px;
+        }
+        .footer {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        button,
+        .button {
+          transition: none;
+        }
+      }
+      @media (forced-colors: active) {
+        .dot {
+          forced-color-adjust: none;
+          background: CanvasText;
+        }
+      }
+    </style>
+  </head>
+  <body class="text-ui-base">
+    <main class="app">
+      <header class="app-header">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="m8 7 8 5-8 5" />
+              <circle cx="6" cy="6" r="3" />
+              <circle cx="18" cy="12" r="3" />
+              <circle cx="6" cy="18" r="3" />
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-ui-xl">CodeVori Node</h1>
+            <p class="muted text-ui-caption">电脑连接与控制授权</p>
+          </div>
+        </div>
+        <span class="version mono text-ui-sm">v{{.Version}}</span>
+      </header>
+
+      <section class="panel" aria-labelledby="connection-title">
+        <div class="panel-body">
+          <div class="status-heading">
+            <div class="status-icon tone-{{.Tone}}" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                <rect x="3" y="3" width="18" height="13" rx="2" />
+                <path d="M8 21h8m-4-5v5" />
+                {{if eq .Tone "success"}}
+                <path d="m7 10 3 3 6-6" />
+                {{end}}
+              </svg>
+            </div>
+            <div>
+              <p class="muted text-ui-caption">连接状态</p>
+              <h2 id="connection-title" class="text-ui-xl">{{.Label}}</h2>
+            </div>
+          </div>
+          <div class="status-copy text-ui-caption"><p>{{.Message}}</p></div>
+          {{.Network}}
+        </div>
+      </section>
+
+      <section class="panel maintenance" aria-labelledby="maintenance-title">
+        <div class="panel-body">
+          <div class="section-heading">
+            <h2 id="maintenance-title" class="text-ui-lg">连接与维护</h2>
+          </div>
+          <div class="action-row">
+            <div>
+              <h3 class="text-ui-base">停止连接</h3>
+              <p class="text-ui-caption">停止后，主端将无法访问此电脑。</p>
+            </div>
+            <form method="post" action="/{{.Token}}/stop">
+              <button type="submit">停止连接</button>
+            </form>
+          </div>
+          {{if .CanUninstall}}
+          <div class="action-row">
+            <div>
+              <h3 class="text-ui-base">应用更新</h3>
+              <p class="text-ui-caption">更新会保留 Tailscale 身份和控制授权。</p>
+            </div>
+            <form method="post" action="/{{.Token}}/update">
+              <button type="submit">检查更新</button>
+            </form>
+          </div>
+          <div class="action-row">
+            <div>
+              <h3 class="text-ui-base">卸载应用</h3>
+              <p class="text-ui-caption">卸载会移除此电脑上的连接配置。</p>
+            </div>
+            <form method="post" action="/{{.Token}}/uninstall">
+              <button class="button-danger" type="submit">卸载</button>
+            </form>
+          </div>
+          {{end}}
+        </div>
+      </section>
+
+      <footer class="footer text-ui-sm">
+        <span class="footer-note"
+          ><svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            aria-hidden="true"
+          >
+            <path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z" />
+            <path d="m8 12 3 3 5-6" /></svg
+          >仅已授权的主端可以控制此电脑</span
+        >
+        <span>状态每 5 秒自动更新</span>
+      </footer>
+    </main>
+  </body>
+</html>

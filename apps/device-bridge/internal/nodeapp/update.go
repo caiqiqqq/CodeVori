@@ -20,7 +20,7 @@ import (
 )
 
 // These values belong to the independent client release, not the desktop application.
-var Version = "0.0.9"
+var Version = "0.0.10"
 var UpdateManifestURL = "https://aimodetest.cn/codevori-node/clients/latest.json"
 var errNoUpdate = errors.New("node_already_latest")
 var releaseVersion = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)

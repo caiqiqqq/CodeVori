@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"html"
+	"html/template"
 	"io"
 	"net"
 	"net/http"
@@ -63,7 +63,9 @@ func (s *localStatus) close() {
 }
 func (s *localStatus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Referrer-Policy", "no-referrer")
+	// no-referrer 会让浏览器表单 POST 携带 Origin: null，被本机来源校验拒绝。
+	// same-origin 保留本机表单的真实 Origin，同时禁止向外站泄漏私有能力路径。
+	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
 	if r.Host != strings.TrimPrefix(s.state.Address, "http://") {
 		http.Error(w, "forbidden", 403)
@@ -123,16 +125,18 @@ func (s *localStatus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	message := s.message
 	network := s.network
 	s.mu.Unlock()
-	networkHTML := ""
+	page := statusPageView{Version: Version, Token: s.state.Token, Message: message, Label: "正在启动", Tone: "neutral", CanUninstall: s.canUninstall}
 	if network != nil {
-		message, networkHTML = renderNetwork(network.snapshot(), s.state.Token)
+		view := network.snapshot()
+		presentation := describeNetwork(view.BackendState)
+		var networkHTML string
+		page.Message, networkHTML = renderNetwork(view, s.state.Token)
+		page.Label, page.Tone = presentation.label, presentation.tone
+		// 片段只由本包生成，网络成员与登录 URL 已在 renderNetwork 中转义和校验。
+		page.Network = template.HTML(networkHTML)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	uninstall := ""
-	if s.canUninstall {
-		uninstall = `<form method="post" action="/` + s.state.Token + `/update"><button>检查更新</button></form><p>更新会保留 Tailscale 身份和控制授权。</p><form method="post" action="/` + s.state.Token + `/uninstall"><button>卸载</button></form><p>卸载会移除此电脑上的连接配置。</p>`
-	}
-	_, _ = io.WriteString(w, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="refresh" content="5"><title>CodeVori Node</title><style>body{font:16px system-ui;max-width:36rem;padding:2rem;margin:auto;background:#f7f7f8;color:#222;overflow-wrap:anywhere}button{font:inherit;padding:.6rem 1rem}p{line-height:1.6}li{margin:1rem 0}form{margin:.5rem 0}</style><h1>CodeVori Node</h1><p>版本 `+html.EscapeString(Version)+`</p><p>`+html.EscapeString(message)+`</p><p>请加入主端所在的 Tailscale 网络，再允许对应主端控制此电脑。执行命令和桌面操作需要保持用户登录。</p>`+networkHTML+`<form method="post" action="/`+s.state.Token+`/stop"><button>停止连接</button></form>`+uninstall+`</html>`)
+	_ = renderStatusPage(w, page)
 }
 func local(dir string) (localState, error) {
 	var s localState

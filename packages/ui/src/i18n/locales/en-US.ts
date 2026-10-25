@@ -62,6 +62,12 @@ const enUS: Record<string, string> = {
     "No devices are visible. After login, computers permitted by your network policy appear here.",
   "settings.devices.online": "Online",
   "settings.devices.offline": "Offline",
+  "settings.devices.peerStatus": "Device status",
+  "settings.devices.networkDisconnected": "Network disconnected",
+  "settings.devices.toolsUnchecked": "Awaiting tool check",
+  "settings.devices.toolsUnavailable": "Tools unavailable",
+  "settings.devices.toolsEmpty": "No tools found",
+  "settings.devices.toolsReady": "Tool check passed",
   "settings.devices.enabled": "Tool connection enabled",
   "settings.devices.notConnected": "Tools not connected",
   "settings.devices.checked": "Last check found {count} tools",
@@ -77,13 +83,19 @@ const enUS: Record<string, string> = {
     "Remove {name} ({id}) from the entire Tailscale network. This also disconnects its tools and revokes its access to this computer. The device must log in again to rejoin.",
   "settings.devices.management": "Device management access",
   "settings.devices.managementDescription":
-    "To remove devices, enter a Tailscale API key with device deletion permission (not an auth key). Create one in the Tailscale admin console under Settings → Keys. It stays in memory for this app session and is cleared on logout or app exit.",
+    "To remove devices, enter a Tailscale API key with device deletion permission (not an auth key). Create one in the Tailscale admin console under Settings → Keys. It is encrypted on this computer for the current account and network, restored after restart, and deleted on logout or when cleared.",
   "settings.devices.managementKey": "Tailscale management API key",
   "settings.devices.managementGetKey": "Get API key",
-  "settings.devices.managementSave": "Set management key",
+  "settings.devices.managementSave": "Save and remember key",
   "settings.devices.managementClear": "Clear key",
   "settings.devices.managementConfigured":
-    "Management key configured; Tailscale checks its permissions.",
+    "Management key saved for this account and restored after restart; Tailscale checks its permissions.",
+  "settings.devices.managementConnectFirst":
+    "Connect your Tailscale account to restore its saved management key.",
+  "settings.devices.device_bridge_management_storage_unavailable":
+    "The management key could not be saved or read securely. Check your system's secure storage, or clear the key and save it again.",
+  "settings.devices.device_bridge_management_account_required":
+    "Connect your Tailscale account before saving its management key.",
   "settings.devices.managementMissing": "Set a management key to remove devices from the network.",
   "settings.devices.device_bridge_management_required":
     "Set a management API key with device deletion permission first.",

@@ -32,6 +32,13 @@ func TestPrivateStatusControlsLoginAndAuthorization(t *testing.T) {
 		return w.Code
 	}
 	base := "/" + s.state.Token
+	for _, origin := range []string{"null", "https://attacker.test", "http://127.0.0.1:1"} {
+		for _, action := range []string{"login", "authorize", "stop", "update", "uninstall"} {
+			if request(base+"/"+action, origin, "nodeId=controller&allowed=true") != 403 {
+				t.Fatalf("foreign/opaque origin accepted for %s", action)
+			}
+		}
+	}
 	for _, action := range []string{"login", "authorize"} {
 		if request(base+"/"+action, "https://attacker.test", "nodeId=controller&allowed=true") != 403 {
 			t.Fatal("cross-origin mutation accepted", action)
