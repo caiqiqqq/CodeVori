@@ -32,7 +32,7 @@ export async function writeDeviceBridgeSettingsFixture(html, moduleFile, name) {
         if(state.holdInspection){state.holdInspection=false;await new Promise(resolve=>state.releaseInspection=resolve)}
         if(state.inspectionError)throw Error('synthetic-private-observation-error');
         if(request.kind==='screen')return {kind:'screen',nodeId:request.nodeId,sampledAt:new Date().toISOString(),mimeType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jp1sAAAAASUVORK5CYII='};
-        return {kind:'system',nodeId:request.nodeId,status:{sampledAt:new Date().toISOString(),platform:'windows',architecture:'amd64',cpuCount:8,cpuModel:'Synthetic CPU',cpuPercent:25,memory:{totalBytes:17179869184,usedBytes:8589934592,availableBytes:8589934592},processCount:120,inspectedProcessCount:100,processesPartial:true,processes:[{pid:42,name:'example-'+ 'long-process-name-'.repeat(10)+'.exe',rssBytes:268435456,cpuSeconds:12.3}]}};
+        return {kind:'system',nodeId:request.nodeId,status:{sampledAt:new Date().toISOString(),platform:'windows',architecture:'amd64',cpuCount:8,cpuModel:'Synthetic CPU',cpuPercent:25,memory:{totalBytes:17179869184,usedBytes:8589934592,availableBytes:8589934592},processCount:120,inspectedProcessCount:100,processesPartial:true,processes:Array.from({length:100},(_,index)=>({pid:42+index,name:'example-'+(index===0?'long-process-name-'.repeat(10):'worker-'+index)+'.exe',rssBytes:268435456-index*1048576,cpuSeconds:12.3+index}))}};
       },
       executeDeviceBridgeCommand:async(command:any)=>{
         state.calls.push(command);if(state.hold){state.hold=false;await new Promise(resolve=>state.release=resolve)}

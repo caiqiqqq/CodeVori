@@ -1,7 +1,7 @@
 import { join, resolve } from "node:path";
 import { readFile, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
-import { app, ipcMain, shell, type UtilityProcess } from "electron";
+import { app, ipcMain, shell, safeStorage, type UtilityProcess } from "electron";
 import {
   deviceBridgeCommandSchema,
   deviceInspectionRequestSchema,
@@ -10,6 +10,7 @@ import {
 } from "@zcode/shared";
 import { createDeviceBridgeController } from "./deviceBridgeController.js";
 import { createDeviceBridgeConfigurationStore } from "./deviceBridgeConfiguration.js";
+import { createDeviceBridgeCredentialStore } from "./deviceBridgeCredentials.js";
 import { startDeviceBridgeProcess } from "./deviceBridgeProcess.js";
 import { checkDeviceBridgeMcp } from "./deviceBridgeMcpCheck.js";
 import { inspectDeviceBridgeMcp } from "./deviceBridgeInspection.js";
@@ -48,6 +49,13 @@ export function registerDeviceBridgeSettings(hosts: Map<number, UtilityProcess>)
   void migration.catch(() => {});
   const controller = createDeviceBridgeController({
     ...createDeviceBridgeConfigurationStore(directory, defaultBinary),
+    credentials: createDeviceBridgeCredentialStore(directory, {
+      isEncryptionAvailable: () =>
+        safeStorage.isEncryptionAvailable() &&
+        (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"),
+      encryptString: (value) => safeStorage.encryptString(value),
+      decryptString: (value) => safeStorage.decryptString(value),
+    }),
     startSession: (onExit, configuration) =>
       startDeviceBridgeProcess({
         binaryPath: configuration.binaryPath,

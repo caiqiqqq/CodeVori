@@ -131,10 +131,11 @@ export function DeviceInspectionDialog({
               </p>
               <div className="max-h-64 overflow-auto rounded-xl border border-border">
                 <table
-                  className="w-full min-w-[32rem] table-fixed text-ui-sm"
+                  className="w-full min-w-[32rem] table-fixed border-separate border-spacing-0 text-ui-sm"
                   data-testid="device-inspection-processes"
                 >
-                  <thead className="sticky top-0 bg-surface">
+                  {/* surface 是半透明色，滚动行会透过表头；使用不透明弹窗底色和独立层级，分离边框以保持吸顶分隔线。 */}
+                  <thead className="sticky top-0 z-10 bg-popover [&_th]:border-b [&_th]:border-border">
                     <tr>
                       <th className="w-14 p-2 text-left">PID</th>
                       <th className="p-2 text-left">{t("processName")}</th>
@@ -144,7 +145,10 @@ export function DeviceInspectionDialog({
                   </thead>
                   <tbody>
                     {system.processes.map((p) => (
-                      <tr key={p.pid} className="border-t border-border">
+                      <tr
+                        key={p.pid}
+                        className="[&:not(:first-child)>td]:border-t [&>td]:border-border"
+                      >
                         <td className="break-all p-2 align-top">{p.pid}</td>
                         <td className="break-all p-2 align-top">{p.name}</td>
                         <td className="break-words p-2 text-right align-top">

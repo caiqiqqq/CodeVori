@@ -1,4 +1,5 @@
 import { DeviceInspectionDialog } from "./DeviceInspectionDialog.js";
+import { DeviceBridgePeerStatus } from "./DeviceBridgePeerStatus.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { DeviceNodeEnrollment } from "./DeviceNodeEnrollment.js";
 import { Network, RefreshCw } from "lucide-react";
@@ -28,6 +29,9 @@ export function DeviceBridgeSettingsSection() {
     if (inspectedNode && !inspectedPeer) setInspectedNode(null);
   }, [inspectedNode, inspectedPeer]);
   const [apiKey, setApiKey] = useState("");
+  useEffect(() => {
+    setApiKey("");
+  }, [state?.nodeId, state?.loginName, state?.tailnet]);
   const t = (name: string, values?: Record<string, string | number>) =>
     intl.formatMessage({ id: `settings.devices.${name}` }, values);
   const active = state?.phase === "running" || state?.phase === "starting";
@@ -154,12 +158,17 @@ export function DeviceBridgeSettingsSection() {
                 >
                   <div className="flex min-w-0 items-start gap-3">
                     <Network className="mt-0.5 size-4 shrink-0 text-foreground-subtle" />
-                    <div className="min-w-0 space-y-1">
-                      <h4 className="break-all text-ui-base font-medium">{peer.name}</h4>
-                      <p className="text-ui-sm text-foreground-subtle">
-                        {peer.os} · {t(peer.online ? "online" : "offline")} ·{" "}
-                        {t(peer.connected ? "enabled" : "notConnected")}
-                      </p>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <h4 className="min-w-0 flex-1 break-all text-ui-base font-medium">
+                          {peer.name}
+                        </h4>
+                        <DeviceBridgePeerStatus
+                          peer={peer}
+                          networkReady={state.phase === "running" && authorized}
+                        />
+                      </div>
+                      <p className="text-ui-sm text-foreground-subtle">{peer.os}</p>
                       {peer.checkedAt && peer.toolCount !== undefined ? (
                         <p
                           className="text-ui-sm text-foreground-subtle"
@@ -285,9 +294,9 @@ export function DeviceBridgeSettingsSection() {
                   <Button
                     className={buttonClass}
                     variant="outline"
-                    disabled={busy || !state || !/^[A-Za-z0-9_-]+$/.test(apiKey.trim())}
+                    disabled={busy || !authorized || !/^[A-Za-z0-9_-]+$/.test(apiKey.trim())}
                     onClick={() => {
-                      // 草稿提交即清空；Main 只返回是否配置，不把管理密钥放进快照或持久化。
+                      // 草稿提交即清空；Main 加密保存，只返回配置状态，不回填密钥。
                       const value = apiKey.trim();
                       setApiKey("");
                       void run({ action: "configure-management", apiKey: value });
@@ -299,7 +308,7 @@ export function DeviceBridgeSettingsSection() {
                   <Button
                     className={buttonClass}
                     variant="outline"
-                    disabled={busy || !state?.managementConfigured}
+                    disabled={busy || !state}
                     onClick={() => {
                       setApiKey("");
                       void run({ action: "clear-management" });
@@ -310,7 +319,15 @@ export function DeviceBridgeSettingsSection() {
                   </Button>
                 </div>
                 <p className="text-ui-sm text-foreground-subtle" role="status">
-                  {t(state?.managementConfigured ? "managementConfigured" : "managementMissing")}
+                  {t(
+                    state?.managementStorageError
+                      ? "device_bridge_management_storage_unavailable"
+                      : state?.managementConfigured
+                        ? "managementConfigured"
+                        : !authorized
+                          ? "managementConnectFirst"
+                          : "managementMissing",
+                  )}
                 </p>
               </div>
             }

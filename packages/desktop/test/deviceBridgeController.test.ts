@@ -8,6 +8,7 @@ import type {
   DeviceBridgeErrorCode,
 } from "@zcode/shared";
 import { createDeviceBridgeController } from "../src/main/deviceBridgeController.js";
+import type { DeviceBridgeCredentialStore } from "../src/main/deviceBridgeCredentials.js";
 
 function fixture(
   removeDevice: (
@@ -20,6 +21,7 @@ function fixture(
     endpoint: { url: string; token: string },
     input: DeviceInspectionRequest,
   ) => Promise<DeviceInspectionResult>,
+  credentials?: DeviceBridgeCredentialStore,
 ) {
   let configuration: DeviceBridgeConfiguration = initialConfiguration ?? {
     binaryPath: "/synthetic/bridge",
@@ -61,6 +63,7 @@ function fixture(
   let holdCheck: Promise<void> | undefined;
   let releaseCheck: (() => void) | undefined;
   const controller = createDeviceBridgeController({
+    credentials,
     inspectMcp,
     readConfiguration: async () => {
       if (holdConfiguration) {
@@ -618,4 +621,82 @@ test("inspection requires a checked connection, rejects duplicate reads and inva
     await assert.rejects(pending);
     await f.controller.dispose();
   }
+});
+
+test("remembered management key survives app disposal, isolates accounts and clears on logout", async () => {
+  let saved: { scope: string; key: string } | undefined;
+  let failClear = false;
+  const store: DeviceBridgeCredentialStore = {
+    read: async (scope) => (saved?.scope === scope ? saved.key : undefined),
+    save: async (scope, key) => {
+      saved = { scope, key };
+    },
+    clear: async () => {
+      if (failClear) throw Error("synthetic-private-storage-error");
+      saved = undefined;
+    },
+  };
+  const first = fixture(undefined, undefined, undefined, store);
+  await first.controller.execute({ action: "start" });
+  await first.controller.execute({ action: "configure-management", apiKey: "synthetic-saved-key" });
+  assert.ok(saved);
+  assert.equal(
+    JSON.stringify(await first.controller.read()).includes("synthetic-saved-key"),
+    false,
+  );
+  await first.controller.dispose();
+  assert.ok(saved);
+  const next = fixture(undefined, first.configuration(), undefined, store);
+  await next.controller.restore();
+  assert.equal((await next.controller.read()).managementConfigured, true);
+  next.worker.loginName = "other@test.invalid";
+  assert.equal((await next.controller.read()).managementConfigured, false);
+  next.worker.loginName = "synthetic@example.test";
+  assert.equal((await next.controller.read()).managementConfigured, true);
+  await next.controller.execute({ action: "clear-management" });
+  assert.equal(saved, undefined);
+  await next.controller.execute({ action: "configure-management", apiKey: "synthetic-saved-key" });
+  await next.controller.execute({ action: "logout" });
+  assert.equal(saved, undefined);
+  await next.controller.execute({ action: "start" });
+  await next.controller.execute({ action: "configure-management", apiKey: "synthetic-saved-key" });
+  failClear = true;
+  await assert.rejects(
+    next.controller.execute({ action: "logout" }),
+    /management_storage_unavailable/,
+  );
+  assert.equal(next.configuration().networkingEnabled, false);
+  assert.equal((await next.controller.read()).phase, "stopped");
+  assert.equal((await next.controller.read()).managementConfigured, false);
+});
+
+test("clear during persisted-key restoration cannot republish the saved credential", async () => {
+  let entered!: () => void, release!: (value: string) => void;
+  const reading = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let stored = "synthetic-saved";
+  const store: DeviceBridgeCredentialStore = {
+    read: () => {
+      entered();
+      return new Promise<string>((resolve) => {
+        release = resolve;
+      });
+    },
+    save: async (_scope, key) => {
+      stored = key;
+    },
+    clear: async () => {
+      stored = "";
+    },
+  };
+  const f = fixture(undefined, undefined, undefined, store);
+  const start = f.controller.execute({ action: "start" });
+  await reading;
+  const clear = f.controller.execute({ action: "clear-management" });
+  release("synthetic-saved");
+  await start;
+  await clear;
+  assert.equal(stored, "");
+  assert.equal((await f.controller.read()).managementConfigured, false);
 });

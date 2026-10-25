@@ -44,6 +44,8 @@ const deviceBridgeErrorCodes = [
   "device_bridge_process_closed",
   "device_bridge_operation_failed",
   "device_bridge_management_required",
+  "device_bridge_management_storage_unavailable",
+  "device_bridge_management_account_required",
   "device_bridge_management_unauthorized",
   "device_bridge_management_forbidden",
   "device_bridge_management_failed",
@@ -119,6 +121,7 @@ export interface DeviceBridgeState {
   tailnet: string;
   exposing: boolean;
   managementConfigured: boolean;
+  managementStorageError?: boolean;
   peers: DeviceBridgePeer[];
   error?: DeviceBridgeErrorCode;
 }
