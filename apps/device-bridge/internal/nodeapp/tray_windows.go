@@ -41,41 +41,42 @@ type trayMessage struct {
 	Private        uint32
 }
 
-func startTray(ctx context.Context, dir string, cancel context.CancelFunc) {
+func startTray(ctx context.Context, dir string, installed bool, cancel context.CancelFunc) func() {
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 		shell32 := syscall.NewLazyDLL("shell32.dll")
 		name, _ := syscall.UTF16PtrFromString("CodeVoriNodeTray")
+		actions := newTrayActions(dir, installed, cancel)
+		taskbarName, _ := syscall.UTF16PtrFromString("TaskbarCreated")
+		taskbarCreated, _, _ := user32.NewProc("RegisterWindowMessageW").Call(uintptr(unsafe.Pointer(taskbarName)))
 		var data trayData
 		callback := syscall.NewCallback(func(window uintptr, msg uint32, wp, lp uintptr) uintptr {
+			// Explorer 重启会清空托盘；复用进程内图标和窗口，避免运行中入口丢失。
+			if taskbarCreated != 0 && uintptr(msg) == taskbarCreated && data.Window != 0 {
+				shell32.NewProc("Shell_NotifyIconW").Call(0, uintptr(unsafe.Pointer(&data)))
+				return 0
+			}
 			switch msg {
 			case 0x8001:
 				if lp == 0x203 {
-					go func() { _ = openStatus(dir) }()
+					invokeTrayAction(actions[0])
 				}
 				if lp == 0x205 {
 					menu, _, _ := user32.NewProc("CreatePopupMenu").Call()
-					for id, text := range map[uintptr]string{1: "打开状态", 2: "停止连接", 3: "卸载"} {
-						label, _ := syscall.UTF16PtrFromString(text)
-						user32.NewProc("AppendMenuW").Call(menu, 0, id, uintptr(unsafe.Pointer(label)))
+					for index, action := range actions {
+						label, _ := syscall.UTF16PtrFromString(action.label)
+						user32.NewProc("AppendMenuW").Call(menu, 0, uintptr(index+1), uintptr(unsafe.Pointer(label)))
 					}
 					var p point
 					user32.NewProc("GetCursorPos").Call(uintptr(unsafe.Pointer(&p)))
 					user32.NewProc("SetForegroundWindow").Call(window)
 					choice, _, _ := user32.NewProc("TrackPopupMenu").Call(menu, 0x102, uintptr(p.X), uintptr(p.Y), 0, window, 0)
 					user32.NewProc("DestroyMenu").Call(menu)
-					if choice == 1 {
-						go func() { _ = openStatus(dir) }()
-					}
-					if choice == 2 {
-						cancel()
-					}
-					if choice == 3 {
-						_, binary, e := paths()
-						if e == nil {
-							_ = startDetached(binary, "uninstall")
-						}
+					if choice > 0 && choice <= uintptr(len(actions)) {
+						invokeTrayAction(actions[choice-1])
 					}
 				}
 				return 0
@@ -91,14 +92,20 @@ func startTray(ctx context.Context, dir string, cancel context.CancelFunc) {
 			return ret
 		})
 		instance, _, _ := syscall.NewLazyDLL("kernel32.dll").NewProc("GetModuleHandleW").Call(0)
-		class := trayClass{Proc: callback, Instance: instance, Name: name}
+		// 使用安装包的多分辨率图标；开发时没有 PE 资源则从内嵌 ICO 解码。
+		icon := loadNodeTrayIcon(instance)
+		if icon == 0 {
+			return
+		}
+		defer user32.NewProc("DestroyIcon").Call(icon)
+		class := trayClass{Proc: callback, Instance: instance, Name: name, Icon: icon, SmallIcon: icon}
 		class.Size = uint32(unsafe.Sizeof(class))
 		user32.NewProc("RegisterClassExW").Call(uintptr(unsafe.Pointer(&class)))
+		defer user32.NewProc("UnregisterClassW").Call(uintptr(unsafe.Pointer(name)), instance)
 		window, _, _ := user32.NewProc("CreateWindowExW").Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(name)), 0, 0, 0, 0, 0, 0, 0, instance, 0)
 		if window == 0 {
 			return
 		}
-		icon, _, _ := user32.NewProc("LoadIconW").Call(0, 32512)
 		data = trayData{Window: window, ID: 1, Flags: 7, Message: 0x8001, Icon: icon}
 		data.Size = uint32(unsafe.Sizeof(data))
 		copy(data.Tip[:], syscall.StringToUTF16("CodeVori Node"))
@@ -114,4 +121,5 @@ func startTray(ctx context.Context, dir string, cancel context.CancelFunc) {
 			user32.NewProc("DispatchMessageW").Call(uintptr(unsafe.Pointer(&message)))
 		}
 	}()
+	return func() { cancel(); <-done }
 }

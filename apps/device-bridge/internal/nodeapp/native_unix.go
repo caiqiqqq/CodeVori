@@ -3,7 +3,6 @@
 package nodeapp
 
 import (
-	"context"
 	"encoding/xml"
 	"fmt"
 	"os"
@@ -36,8 +35,7 @@ func confirm(title, text string) bool {
 	}
 	return browserConfirm(title, text)
 }
-func startTray(context.Context, string, context.CancelFunc) {}
-func detach(cmd *exec.Cmd)                                  { cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} }
+func detach(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} }
 func openURL(url string) error {
 	tool := "xdg-open"
 	if runtime.GOOS == "darwin" {
@@ -90,7 +88,10 @@ func autostart(binary string, enabled bool) error {
 		return e
 	}
 	quote := strings.NewReplacer("\\", "\\\\", "\"", "\\\"", "%", "%%", "`", "\\`", "$", "\\$").Replace(binary)
-	data := "[Desktop Entry]\nType=Application\nName=CodeVori Node\nExec=\"" + quote + "\" agent\nTerminal=false\n"
+	if e = refreshNodeAppearance(binary); e != nil {
+		return e
+	}
+	data := "[Desktop Entry]\nType=Application\nName=CodeVori Node\nIcon=" + filepath.Join(filepath.Dir(binary), "icon.png") + "\nExec=\"" + quote + "\" agent\nTerminal=false\n"
 	if e = os.WriteFile(file, []byte(data), 0600); e != nil {
 		return e
 	}
@@ -114,6 +115,45 @@ func lock(path string) (func(), error) {
 		return nil, e
 	}
 	return func() { _ = f.Close() }, nil
+}
+
+// 旧版安装入口没有 Icon；更新时只刷新现存入口，不重新打开用户禁用的自启动。
+func refreshInstalledNodeAppearance(binary string) error {
+	if runtime.GOOS == "darwin" {
+		return configureMacLauncher(filepath.Dir(filepath.Dir(filepath.Dir(binary))))
+	}
+	if err := refreshNodeAppearance(binary); err != nil {
+		return err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	cfg, err := os.UserConfigDir()
+	if err != nil {
+		return err
+	}
+	for _, path := range []string{filepath.Join(home, ".local", "share", "applications", "codevori-node.desktop"), filepath.Join(cfg, "autostart", "codevori-node.desktop")} {
+		data, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		lines := strings.Split(string(data), "\n")
+		filtered := make([]string, 0, len(lines)+1)
+		for _, line := range lines {
+			if !strings.HasPrefix(line, "Icon=") {
+				filtered = append(filtered, line)
+			}
+		}
+		filtered = append(filtered, "Icon="+filepath.Join(filepath.Dir(binary), "icon.png"))
+		if err = os.WriteFile(path, []byte(strings.Join(filtered, "\n")+"\n"), 0600); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func removeInstallation(dir, binary string) error {
 	home, _ := os.UserHomeDir()

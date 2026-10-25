@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	err := nodeapp.Main(os.Args[1:])
+	err := runMain(os.Args[1:])
 	if err != nil && len(os.Args) > 1 && os.Args[1] == "agent" {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

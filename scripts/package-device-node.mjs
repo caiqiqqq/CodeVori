@@ -114,6 +114,13 @@ export async function buildDeviceNodes({
         },
       },
     );
+    if (target.os === "win32") {
+      await exec(
+        go,
+        ["run", "./cmd/node-resources", destination, "internal/nodeapp/assets/icon.ico"],
+        { cwd: join(root, "apps/device-bridge"), maxBuffer: 4_000_000 },
+      );
+    }
   };
   if (clients) {
     await mkdir(plan.clients, { recursive: true });

@@ -1,6 +1,7 @@
 package nodeapp
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -94,10 +95,22 @@ func TestMacLauncherCompilesWithoutLaunching(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("macOS compiler only")
 	}
-	cmd := exec.Command("osacompile", "-o", filepath.Join(t.TempDir(), "Node.app"))
+	app := filepath.Join(t.TempDir(), "Node.app")
+	cmd := exec.Command("osacompile", "-o", app)
 	cmd.Stdin = strings.NewReader(macLauncherSource)
 	if out, e := cmd.CombinedOutput(); e != nil {
 		t.Fatalf("native launcher source invalid: %v %s", e, out)
+	}
+	if err := configureMacLauncher(app); err != nil {
+		t.Fatal(err)
+	}
+	icon, err := os.ReadFile(filepath.Join(app, "Contents", "Resources", "applet.icns"))
+	if err != nil || !bytes.Equal(icon, nodeIconICNS) {
+		t.Fatal("launcher lacks branded ICNS", err)
+	}
+	value, err := exec.Command("/usr/libexec/PlistBuddy", "-c", "Print :CFBundleIconFile", filepath.Join(app, "Contents", "Info.plist")).Output()
+	if err != nil || strings.TrimSpace(string(value)) != "applet.icns" {
+		t.Fatal("launcher does not reference installed icon", err)
 	}
 }
 

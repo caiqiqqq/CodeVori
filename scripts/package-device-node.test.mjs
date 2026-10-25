@@ -1,11 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
 import {
   deviceNodeBuildPlan,
   validateBuildServiceUrl,
   deviceNodeReleaseManifest,
 } from "./package-device-node.mjs";
+
+test("standalone clients embed the same brand assets as the desktop application", async () => {
+  for (const [embedded, original] of [
+    ["icon.png", "icons/256x256.png"],
+    ["tray.png", "icons/32x32.png"],
+    ["icon.icns", "icon.icns"],
+    ["icon.ico", "icon.ico"],
+  ]) {
+    assert.deepEqual(
+      await readFile(
+        new URL(`../apps/device-bridge/internal/nodeapp/assets/${embedded}`, import.meta.url),
+      ),
+      await readFile(new URL(`../packages/desktop/build/${original}`, import.meta.url)),
+      `${embedded} drifted from the current desktop brand`,
+    );
+  }
+});
 
 test("update manifest pins versioned client URLs independently of the desktop version", () => {
   const manifest = deviceNodeReleaseManifest({
