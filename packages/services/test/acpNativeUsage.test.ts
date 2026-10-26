@@ -124,7 +124,7 @@ test("missing/malformed/truncated usage stays unknown; complete prior lines surv
   });
 });
 
-test("native scan limits reject oversized files and never read archived or symlinked candidates", async () => {
+test("on-demand native usage keeps its size and candidate safety limits", async () => {
   await fixture(async (root, cwd, file) => {
     const { truncate, rename, symlink } = await import("node:fs/promises");
     const input = { sessionId: id, workspacePath: cwd, env: { CODEX_HOME: root } };

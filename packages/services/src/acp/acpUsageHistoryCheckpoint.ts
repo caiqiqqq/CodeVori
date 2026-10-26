@@ -37,13 +37,19 @@ const entrySchema = z.object({
   file: z.string(),
   workspace: z.string(),
   version: z.string(),
+  identity: z.string(),
+  cursor: z.number().int().nonnegative(),
+  tailHash: z.string().regex(/^[a-f0-9]{64}$/),
+  turnIndex: z.number().int().nonnegative().nullable(),
+  modelId: z.string().max(256).nullable(),
+  turnIncomplete: z.boolean(),
   history: historySchema,
 });
 export type HistoryCacheEntry = z.infer<typeof entrySchema>;
 const checkpointSchema = z
   .object({
     // 修改解析语义时递增版本，旧投影必须从原始日志重新生成。
-    version: z.literal(1),
+    version: z.literal(2),
     entries: z.array(z.tuple([z.string(), entrySchema])).max(MAX_CACHED_FILES),
   })
   .refine(
@@ -93,7 +99,7 @@ export class AcpUsageHistoryCheckpoint {
     if (isDisposed() || identity === this.previous) return;
     // 修复原因：内存缓存更新重启即丢失；持久化经过版本核对的数值投影，
     // 避免每次更新都重扫数 GB 正文。原子替换允许多 Host 安全重建同一派生缓存。
-    const content = JSON.stringify({ version: 1, entries: [...entries] });
+    const content = JSON.stringify({ version: 2, entries: [...entries] });
     if (Buffer.byteLength(content) > MAX_CHECKPOINT_BYTES) return;
     const temporary = `${this.file}.${randomUUID()}.tmp`;
     try {
