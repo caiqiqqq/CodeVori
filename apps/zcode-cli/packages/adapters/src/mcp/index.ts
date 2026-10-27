@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { MCP_APP_META_KEY, readMcpAppResource } from "@zcode/shared";
 import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -671,6 +672,12 @@ class NodeMcpAdapter implements McpPort {
     timeoutMs: number,
     signal: AbortSignal | undefined,
   ): Promise<McpToolCallResult> {
+    // 在 await 前固定同一连接的描述符，重连后的新声明不能套用到旧客户端。
+    const record = this.records.get(request.serverName);
+    const resourceUri =
+      record?.client === client
+        ? record.tools.find((tool) => tool.toolName === request.toolName)?.uiResourceUri
+        : undefined;
     // 工具调用此前完全无日志：超时时既看不到预算是多少，也无法区分"服务端慢"与
     // "客户端预算太小"。这里记录预算与耗时，但只记参数的 key（值可能是用户输入）。
     const logBase = {
@@ -693,7 +700,7 @@ class NodeMcpAdapter implements McpPort {
         {
           name: request.toolName,
           arguments: request.arguments ?? {},
-          ...((request.trace || request.runtimeScope || request.workspaceKey || request.workspacePath)
+          ...(request.trace || request.runtimeScope || request.workspaceKey || request.workspacePath
             ? { _meta: mcpRequestMeta(request) }
             : {}),
         },
@@ -726,7 +733,27 @@ class NodeMcpAdapter implements McpPort {
         this.logger?.debug("MCP tool call completed", { ...outcome, status: "completed" });
       }
 
-      const meta = isRecord(result._meta) ? result._meta : undefined;
+      const meta = { ...(isRecord(result._meta) ? result._meta : {}) };
+      // 资源来自当前已授权 tool 的同一连接。HTML 只进入宿主 metadata，不能污染模型文本。
+      delete meta[MCP_APP_META_KEY];
+      if (resourceUri && !isError && !signal?.aborted) {
+        try {
+          const resource = readMcpAppResource(
+            resourceUri,
+            await client.readResource(
+              { uri: resourceUri },
+              { signal, timeout: Math.min(timeoutMs, 10_000) },
+            ),
+          );
+          if (resource) meta[MCP_APP_META_KEY] = resource;
+        } catch {
+          // App 资源失败不得把已成功执行的工具改成失败，也不能重试原工具副作用。
+          this.logger?.warn("MCP App resource unavailable", {
+            event: "mcp.app.resource_unavailable",
+            mcpServerName: request.serverName,
+          });
+        }
+      }
       return {
         content: Array.isArray(result.content)
           ? (result.content as McpContentBlock[])
@@ -1045,6 +1072,13 @@ class NodeMcpAdapter implements McpPort {
           version: this.clientVersion,
         },
         {
+          capabilities: {
+            extensions: {
+              "io.modelcontextprotocol/ui": {
+                mimeTypes: ["text/html;profile=mcp-app", "text/html"],
+              },
+            },
+          },
           versionNegotiation: resolveVersionNegotiation(config, timeoutMs),
         },
       );
@@ -1754,6 +1788,7 @@ function mcpRequestMeta(request: McpCallToolRequest): Record<string, unknown> {
     ...(request.trace?.spanId ? { span_id: request.trace.spanId } : {}),
     ...(request.trace?.parentSpanId ? { parent_span_id: request.trace.parentSpanId } : {}),
     ...(request.trace?.sessionId ? { session_id: request.trace.sessionId } : {}),
+    ...(request.trace?.rootSessionId ? { root_session_id: request.trace.rootSessionId } : {}),
     ...(request.trace?.turnId ? { turn_id: request.trace.turnId } : {}),
     ...(request.runtimeScope ? { runtime_scope: request.runtimeScope } : {}),
     ...(request.workspacePath ? { workspace_path: request.workspacePath } : {}),

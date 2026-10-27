@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { OFFICIAL_MCP_TOOL_ERROR_CODES } from "@zcode/shared";
+import {
+  OFFICIAL_MCP_TOOL_ERROR_CODES,
+  mcpAppToolDisplaySchema,
+  type McpAppToolDisplay,
+} from "@zcode/shared";
 
 import {
   CREATE_WORKFLOW_DISPLAY_MAX_DIAGNOSTICS,
@@ -186,6 +190,11 @@ export const nodeReplImageToolResultDisplayPayloadSchema = z
 export const mcpToolResultDisplayPayloadSchema = z
   .object({
     kind: z.literal("mcp_tool"),
+    // CLI contracts 使用 Zod 3，shared 使用 Zod 4；经值校验复用协议，不能混合两套 schema 实例。
+    app: z
+      .custom<McpAppToolDisplay>((value) => mcpAppToolDisplaySchema.safeParse(value).success)
+      .transform((value) => mcpAppToolDisplaySchema.parse(value))
+      .optional(),
     serverName: z.string().min(1).max(MCP_TOOL_DISPLAY_MAX_NAME_CHARS),
     toolName: z.string().min(1).max(MCP_TOOL_DISPLAY_MAX_NAME_CHARS),
     description: z.string().min(1).max(MCP_TOOL_DISPLAY_MAX_DESCRIPTION_CHARS).optional(),

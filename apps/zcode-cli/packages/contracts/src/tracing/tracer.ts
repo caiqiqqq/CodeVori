@@ -18,6 +18,8 @@ export interface TraceContext {
   parentSpanId?: string;
   parentId?: string;
   sessionId?: SessionId;
+  /** 文档上下文的根会话；执行归档和权限仍使用真实 sessionId。 */
+  rootSessionId?: SessionId;
   turnId?: TurnId;
   attributes?: Record<string, string | number | boolean>;
 }
@@ -214,6 +216,7 @@ export function createChildTraceContext(
   options: {
     queryId?: QueryId;
     sessionId?: SessionId;
+    rootSessionId?: SessionId;
     turnId?: TurnId;
     attributes?: Record<string, string | number | boolean>;
   } = {},
@@ -225,6 +228,9 @@ export function createChildTraceContext(
     parentSpanId: parent.spanId,
     parentId: parent.spanId,
     sessionId: options.sessionId ?? parent.sessionId,
+    ...(options.rootSessionId ?? parent.rootSessionId
+      ? { rootSessionId: options.rootSessionId ?? parent.rootSessionId }
+      : {}),
     turnId: options.turnId ?? parent.turnId,
     attributes: {
       ...parent.attributes,

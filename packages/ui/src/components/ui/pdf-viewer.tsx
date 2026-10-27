@@ -1,4 +1,9 @@
-"use client";
+import {
+  useDocumentViewState,
+  useDocumentScroll,
+  useDocumentViewScope,
+} from "@/lib/documentViewState.js";
+("use client");
 
 import type { HTMLAttributes, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -120,20 +125,26 @@ function normalizePdfSource(
 }
 
 export function PdfViewer({ source, labels, onLoadError, className, ...props }: PdfViewerProps) {
+  const viewScope = useDocumentViewScope();
   const mergedLabels = { ...DEFAULT_LABELS, ...labels };
   const [numPages, setNumPages] = useState<number | null>(null);
-  const [pageNumber, setPageNumber] = useState(1);
-  const [pageInput, setPageInput] = useState("1");
+  const [pageNumber, setPageNumber] = useDocumentViewState<number>("pdf:page", 1);
+  const [pageInput, setPageInput] = useState(String(pageNumber));
   // renderScale 是真正传给 <Page> 的值；displayScale 是用户看到的目标倍率，
   // 缩放手势期间只更新 displayScale（CSS transform 预览），停顿后再提交给 renderScale。
-  const [renderScale, setRenderScale] = useState(pdfZoom.DEFAULT_SCALE);
-  const [displayScale, setDisplayScale] = useState(pdfZoom.DEFAULT_SCALE);
+  // 立即记录用户目标倍率；重渲染 debounce 尚未触发就切任务也不能丢掉缩放。
+  const [displayScale, setDisplayScale] = useDocumentViewState<number>(
+    "pdf:scale",
+    pdfZoom.DEFAULT_SCALE,
+  );
+  const [renderScale, setRenderScale] = useState(displayScale);
   const [pageIntrinsicSize, setPageIntrinsicSize] = useState<pdfZoom.PdfPageSize | null>(null);
   const [rangeError, setRangeError] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  useDocumentScroll(scrollContainerRef, "pdf:scroll");
   const pendingScrollToTopRef = useRef(false);
-  const displayScaleRef = useRef(pdfZoom.DEFAULT_SCALE);
-  const renderScaleRef = useRef(pdfZoom.DEFAULT_SCALE);
+  const displayScaleRef = useRef(renderScale);
+  const renderScaleRef = useRef(renderScale);
   const pendingZoomAnchorRef = useRef<pdfZoom.PdfZoomAnchor | null>(null);
   const onLoadErrorRef = useRef(onLoadError);
   onLoadErrorRef.current = onLoadError;
@@ -165,18 +176,22 @@ export function PdfViewer({ source, labels, onLoadError, className, ...props }: 
 
   useEffect(() => {
     setNumPages(null);
-    setPageNumber(1);
-    setPageInput("1");
-    setRenderScale(pdfZoom.DEFAULT_SCALE);
-    setDisplayScale(pdfZoom.DEFAULT_SCALE);
+    // scope 内重建 transport 保留位置；独立使用的 viewer 切文件仍恢复默认状态。
+    if (!viewScope) {
+      setPageNumber(1);
+      setPageInput("1");
+      setRenderScale(pdfZoom.DEFAULT_SCALE);
+      setDisplayScale(pdfZoom.DEFAULT_SCALE);
+      displayScaleRef.current = pdfZoom.DEFAULT_SCALE;
+      renderScaleRef.current = pdfZoom.DEFAULT_SCALE;
+    }
     setPageIntrinsicSize(null);
     setRangeError(false);
-    displayScaleRef.current = pdfZoom.DEFAULT_SCALE;
-    renderScaleRef.current = pdfZoom.DEFAULT_SCALE;
+
     pendingScrollToTopRef.current = false;
     pendingZoomAnchorRef.current = null;
     clearZoomOverlay();
-  }, [clearZoomOverlay, file]);
+  }, [clearZoomOverlay, file, viewScope, setPageNumber, setRenderScale]);
 
   const goToPage = useCallback(
     (target: number) => {

@@ -3180,6 +3180,9 @@ const zhCN: Record<string, string> = {
     "启用 Browser Use 官方插件，让新会话可以通过内置浏览器访问和操作网页。",
   "settings.browser.control.enabledToast": "已开启内置浏览器控制",
   "settings.browser.control.disabledToast": "已关闭内置浏览器控制",
+  "chat.mcpApp.capacity": "后台插件页面已达上限，请关闭部分页面后重试。",
+  "chat.mcpApp.title": "交互工具结果",
+  "chat.mcpApp.openLink": "打开网页",
   "settings.browser.security.section": "安全",
   "settings.embeddedBrowserAllowInsecureCertificates": "忽略证书校验",
   "settings.embeddedBrowserAllowInsecureCertificatesDescription":

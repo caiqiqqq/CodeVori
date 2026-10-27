@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, relative, isAbsolute } from "node:path";
 import {
   ZCODE_OFFICIAL_PLUGIN_MARKETPLACE,
   ZCODE_PLUGIN_HOST_COMMAND,
@@ -64,8 +64,19 @@ export function writeOfficialPluginRuntimeManifest(input: OfficialRuntimeManifes
   for (const [serverKey, serverRaw] of Object.entries(mcpServers)) {
     const mcpServer = asRecord(serverRaw);
     const mcpServerEnv = isRecord(mcpServer.env) ? mcpServer.env : {};
+    const declaredEntry = Array.isArray(mcpServer.args)
+      ? mcpServer.args.findLast((arg): arg is string => typeof arg === "string" && /\.[cm]?js$/u.test(arg))
+      : undefined;
+    // 新文档插件使用 dist/server.mjs；固定改成旧入口会让共享进程在启动前就失败。
+    const entryPath = declaredEntry
+      ? resolve(input.rootPath, declaredEntry.replace(/^\$\{ZCODE_PLUGIN_ROOT\}[\\/]/u, ""))
+      : join(input.rootPath, ...MCP_SERVER_RELATIVE_PATH);
+    const entryRelative = relative(resolve(input.rootPath), entryPath);
+    if (entryRelative === ".." || entryRelative.startsWith("../") || entryRelative.startsWith("..\\") || isAbsolute(entryRelative)) {
+      throw new Error("Official plugin runtime entry escapes plugin root");
+    }
     mcpServer.command = process.execPath;
-    mcpServer.args = [...hostPrefixArgs, join(input.rootPath, ...MCP_SERVER_RELATIVE_PATH)];
+    mcpServer.args = [...hostPrefixArgs, entryPath];
     mcpServer.env = {
       ...mcpServerEnv,
       // 桌面打包态的 process.execPath 是 ZCode Helper。

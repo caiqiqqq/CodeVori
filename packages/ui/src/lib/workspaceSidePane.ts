@@ -581,7 +581,16 @@ export function normalizeWorkspaceSidePaneState(
   // 字段，直接参与 getNextSelectionSideChatOrdinal 会得到 NaN/undefined 并造成标题
   // 编号冲突。这里在状态边界按 parent 分组回填最小可用编号，保持既有编号不变。
   let migratedOrdinal = false;
+  const migratedIds = new Map<string, string>();
   const tabs = filteredTabs.map((tab, index, allTabs) => {
+    if (tab.type === "code-viewer" && tab.sourceKey) {
+      const id = codeViewerTabId(tab.sourceKey, tab.ownerTaskId);
+      if (id !== tab.id) {
+        // 旧 tab ID 未包含 owner；迁移时保持选中项，避免另一个会话打开同文件覆盖它。
+        migratedIds.set(tab.id, id);
+        return { ...tab, id };
+      }
+    }
     if (tab.type !== "selection-side-chat" || Number.isInteger(tab.ordinal)) {
       return tab;
     }
@@ -604,12 +613,14 @@ export function normalizeWorkspaceSidePaneState(
     return migrated;
   });
 
+  const requestedActiveId = migratedIds.get(current.activeTabId) ?? current.activeTabId;
   const activeTabId =
-    current.activeTabId === "" || tabs.some((tab) => tab.id === current.activeTabId)
-      ? current.activeTabId
+    requestedActiveId === "" || tabs.some((tab) => tab.id === requestedActiveId)
+      ? requestedActiveId
       : tabs[tabs.length - 1]!.id;
   if (
     !migratedOrdinal &&
+    migratedIds.size === 0 &&
     tabs.length === current.tabs.length &&
     activeTabId === current.activeTabId
   ) {
@@ -999,11 +1010,19 @@ function hashCodeViewerContent(content: string): string {
   return Math.abs(hash).toString(36);
 }
 
-function createCodeViewerSidePaneTab(source: CodeViewerSource): CodeViewerSidePaneTab {
+function codeViewerTabId(sourceKey: string, ownerTaskId?: string | null): string {
+  return `code-viewer:${JSON.stringify([sidePaneOwnerKey(ownerTaskId), sourceKey])}`;
+}
+
+function createCodeViewerSidePaneTab(
+  source: CodeViewerSource,
+  ownerTaskId?: string | null,
+): CodeViewerSidePaneTab {
   const normalizedSource = normalizeCodeViewerSource(source);
   const sourceKey = getCodeViewerTabSourceKey(normalizedSource);
   return {
-    id: sourceKey ? `code-viewer:${sourceKey}` : `code-viewer:${createUuid()}`,
+    id: sourceKey ? codeViewerTabId(sourceKey, ownerTaskId) : `code-viewer:${createUuid()}`,
+    ownerTaskId,
     type: "code-viewer",
     openedAt: Date.now(),
     source: normalizedSource,
@@ -1496,7 +1515,7 @@ export function openCodeViewerSidePane(
   // 同一个文件/图片在消息里被重复点击时，不能把右侧面板整块替换，
   // 用户刚在别的 pane 里看的内容会直接丢掉。这里按稳定 sourceKey 复用已有 code viewer tab，
   // 既避免重复开一排同名 tab，也能在再次打开时刷新到最新 source。
-  const nextTab = createCodeViewerSidePaneTab(source);
+  const nextTab = createCodeViewerSidePaneTab(source, ownerTaskId);
   if (!current || nextTab.sourceKey === null) {
     return activateSidePaneTab(current, nextTab);
   }

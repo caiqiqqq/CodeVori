@@ -1,3 +1,4 @@
+import { McpAppScopeContext } from "@/ToolCallBlocks/mcpAppPages.js";
 import { resolveSelectionSideInheritedModel } from "@/lib/selectionSideInheritedModel.js";
 import { useStartPlanRecommendation } from "@/hooks/useStartPlanRecommendation.js";
 import type { SessionCreateSource } from "@zcode/shared";
@@ -5234,7 +5235,7 @@ export function SessionPane({
       })
     : null;
 
-  return (
+  const sessionPaneContent = (
     <div
       data-testid={testId(TID_V4_SESSION_PANE, paneId)}
       data-session-id={sessionId ?? "draft"}
@@ -5577,5 +5578,21 @@ export function SessionPane({
         )}
       </div>
     </div>
+  );
+  const mcpAppSessionId = acpAgent ? acpBoundSessionId || acpConversation.selected?.id : sessionId;
+  return (
+    <McpAppScopeContext.Provider
+      value={
+        mcpAppSessionId
+          ? JSON.stringify([
+              workspaceIdentity?.trim() || workspacePath,
+              acpAgent ?? "native",
+              mcpAppSessionId,
+            ])
+          : null
+      }
+    >
+      {sessionPaneContent}
+    </McpAppScopeContext.Provider>
   );
 }

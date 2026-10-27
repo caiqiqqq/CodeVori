@@ -1,3 +1,4 @@
+import { mcpAppToolDisplaySchema } from "../mcp-app.js";
 // zcode-protocol-v4 toolCall 的展示层 schema。
 // 从 rows.ts 拆出：两侧增量叠加后 rows.ts 触发 oxlint max-lines(400)。
 // 本文件只含不依赖 rowBaseFields 的纯展示 union，rows.ts 单向依赖它，无循环。
@@ -120,6 +121,7 @@ const toolResultDisplaySchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("mcp_tool"),
+    app: mcpAppToolDisplaySchema.optional(),
     serverName: z.string().min(1).max(256),
     toolName: z.string().min(1).max(256),
     description: z
@@ -228,6 +230,7 @@ const toolCallRespondToCoordinatorDisplaySchema = z
 const toolCallMcpDisplaySchema = z
   .object({
     kind: z.literal("mcp_tool"),
+    app: mcpAppToolDisplaySchema.optional(),
     serverName: z.string().min(1).max(256),
     toolName: z.string().min(1).max(256),
     description: z
