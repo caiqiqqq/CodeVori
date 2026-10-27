@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useRef, type KeyboardEvent } from "react";
-import { XlsxViewer, setWasmSource, type XlsxViewerController } from "@extend-ai/react-xlsx";
+import { useDocumentViewState, useDocumentScroll } from "@/lib/documentViewState.js";
+import { useCallback, useEffect, useRef, type KeyboardEvent, type ComponentProps } from "react";
+import {
+  XlsxViewer,
+  useXlsxViewer,
+  setWasmSource,
+  type XlsxViewerController,
+} from "@extend-ai/react-xlsx";
 import xlsxWasmUrl from "@extend-ai/react-xlsx/duke_sheets_wasm_bg.wasm?url";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -37,12 +43,17 @@ function getNextSheetTabIndex({
 
 function XlsxSheetTabs({ controller, label }: { controller: XlsxViewerController; label: string }) {
   const { activeTabIndex, setActiveTabIndex, tabs } = controller;
+  const [savedSheet, saveSheet] = useDocumentViewState<number>("xlsx:sheet", 0);
+  useEffect(() => {
+    if (tabs.length) setActiveTabIndex(Math.min(savedSheet, tabs.length - 1));
+  }, [tabs.length]);
 
   if (tabs.length <= 1) {
     return null;
   }
 
   const selectTab = (tabIndex: number) => {
+    saveSheet(tabIndex);
     setActiveTabIndex(tabIndex);
     logger.debug("[PreviewPane] Excel 工作表已切换", {
       sheetIndex: tabIndex,
@@ -99,6 +110,36 @@ function XlsxSheetTabs({ controller, label }: { controller: XlsxViewerController
     </div>
   );
 }
+
+// 使用组件库公开的 scroller 入口；外层 overflow-hidden 容器并不拥有工作表滚动。
+function DocumentSheetScroller({
+  children,
+  viewportProps,
+}: Parameters<NonNullable<ComponentProps<typeof XlsxViewer>["renderScroller"]>>[0]) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const controller = useXlsxViewer();
+  useDocumentScroll(
+    ref,
+    `xlsx:scroll:${controller.activeTabIndex}:${controller.activeSheet?.name ?? ""}`,
+  );
+  const setRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      ref.current = element;
+      const target = viewportProps.ref;
+      if (typeof target === "function") return target(element);
+      if (target) target.current = element;
+    },
+    [viewportProps.ref],
+  );
+  return (
+    <div {...viewportProps} ref={setRef} data-document-sheet-scroller>
+      {children}
+    </div>
+  );
+}
+const renderDocumentScroller: NonNullable<ComponentProps<typeof XlsxViewer>["renderScroller"]> = (
+  props,
+) => <DocumentSheetScroller {...props} />;
 
 function XlsxPreviewError({
   error,
@@ -159,6 +200,7 @@ export function PreviewPaneOfficeXlsxContent({
       data-office-preview-kind="excel"
     >
       <XlsxViewer
+        renderScroller={renderDocumentScroller}
         file={buffer}
         fileName={sourcePath}
         height="100%"

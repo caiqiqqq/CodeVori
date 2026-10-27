@@ -28,7 +28,11 @@ import { createWorkflowObservationDisplay } from "./workflow-observation-display
 // 拆到 create-workflow-display.ts 后保持既有导出面（handlers/create-workflow.ts 仍从这里 import）。
 export { createCreateWorkflowDisplay } from "./create-workflow-display.js";
 import { isRecord } from "./utils.js";
-import { parseOfficialMcpToolError, type OfficialMcpToolErrorCode } from "@zcode/shared";
+import {
+  readMcpAppToolDisplay,
+  parseOfficialMcpToolError,
+  type OfficialMcpToolErrorCode,
+} from "@zcode/shared";
 import {
   CUA_REQUEST_ACCESS_STATUS_META_KEY,
   cuaRequestAccessStatusSchema,
@@ -60,8 +64,10 @@ export function createMcpToolDisplay(
     ? boundMcpDisplayText(metadata.description, MCP_TOOL_DISPLAY_MAX_DESCRIPTION_CHARS)
     : undefined;
   const unavailable = metadata.official ? readOfficialMcpUnavailable(output) : undefined;
+  const app = readMcpAppToolDisplay(output);
   return {
     kind: "mcp_tool",
+    ...(app ? { app } : {}),
     serverName,
     toolName,
     ...(description ? { description } : {}),

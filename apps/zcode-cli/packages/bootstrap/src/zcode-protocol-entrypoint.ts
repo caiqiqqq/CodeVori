@@ -281,10 +281,12 @@ export async function runZCodeProtocolAgent(
           ...(nodeReplBrowserBroker ? { nodeReplBrowserBroker } : {}),
           ...(mcpConnectionPool
             ? {
-                mcpPortFactory: () =>
+                mcpPortFactory: ({ workingDirectory }) =>
                   mcpConnectionPool!.acquireLease({
                     leaseId: appOptions.sessionId,
                     sessionId: appOptions.sessionId,
+                    workingDirectory,
+                    workspaceIdentity: appOptions.runtimeConfig?.memory?.workspaceIdentity,
                   }),
               }
             : {}),

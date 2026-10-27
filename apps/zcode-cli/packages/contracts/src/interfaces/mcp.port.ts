@@ -159,6 +159,7 @@ export const ZCODE_MCP_NODE_REPL_CUA_APP_META_KEY = "zcode/nodeReplCuaApp";
 export const ZCODE_MCP_SERVER_REQUEST_ID_META_KEY = "zcode/officialMcpServerRequestId";
 
 export interface McpToolDescriptor {
+  uiResourceUri?: string;
   serverName: string;
   toolName: string;
   name?: string;

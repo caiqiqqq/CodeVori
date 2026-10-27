@@ -1,4 +1,5 @@
-"use client";
+import { useDocumentViewState, useDocumentViewScope } from "@/lib/documentViewState.js";
+("use client");
 
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -452,15 +453,16 @@ export function PptxPreviewViewer({
   referenceNavigation?: PptxReferencePreviewNavigation;
   referenceNavigationReady?: boolean;
 }) {
+  const viewScope = useDocumentViewScope();
   const [presentation, setPresentation] = useState<{
     generation: number;
     document: PresentationPreviewDocument;
     sourceFingerprint: string;
   } | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [pageNumber, setPageNumber] = useState(1);
-  const [pageInput, setPageInput] = useState("1");
-  const [zoomPercent, setZoomPercent] = useState(100);
+  const [pageNumber, setPageNumber] = useDocumentViewState<number>("pptx:page", 1);
+  const [pageInput, setPageInput] = useState(String(pageNumber));
+  const [zoomPercent, setZoomPercent] = useDocumentViewState<number>("pptx:zoom", 100);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [thumbnailRoot, setThumbnailRoot] = useState<HTMLElement | null>(null);
   const [previewViewport, setPreviewViewport] = useState<HTMLElement | null>(null);
@@ -486,9 +488,12 @@ export function PptxPreviewViewer({
     let openedDocument: PresentationPreviewDocument | null = null;
     setPresentation(null);
     setLoadError(false);
-    setPageNumber(1);
-    setPageInput("1");
-    setZoomPercent(100);
+    // 有会话 scope 时恢复查看位置；无 scope 的独立 viewer 切文件保持原有重置语义。
+    if (!viewScope) {
+      setPageNumber(1);
+      setPageInput("1");
+      setZoomPercent(100);
+    }
     setSelectionMode(false);
     setSelectedElement(null);
     setAiEditDraft(null);
@@ -506,6 +511,12 @@ export function PptxPreviewViewer({
           nextDocument.dispose();
           return;
         }
+        const restoredPage = clampPresentationPageNumber(
+          viewScope ? pageNumber : 1,
+          nextDocument.pageCount,
+        );
+        setPageNumber(restoredPage);
+        setPageInput(String(restoredPage));
         setPresentation({
           generation,
           document: nextDocument,

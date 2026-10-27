@@ -1,3 +1,4 @@
+import { DocumentViewStateProvider } from "@/lib/documentViewState.js";
 import type { MarkdownSelectionTarget } from "@/lib/conversationSelectionReference.js";
 /* eslint-disable max-lines -- PreviewPane 当前同时承载文件读取、图片与 Office 预览、markdown/code 渲染和顶部路径面包屑；后续需按 header/body 边界继续拆分。 */
 import {
@@ -1728,75 +1729,83 @@ export function PreviewPane({
       </div>
       <div className="min-h-0 flex-1">
         {renderHeavyContent ? (
-          <PreviewPaneContent
-            source={pptxSource ?? imageSource ?? pdfSource ?? mediaSource ?? source}
-            filePreview={filePreview}
-            fileTooLarge={fileTooLarge}
-            loadingInitial={loadingInitial}
-            loadingImagePreview={loadingImagePreview}
-            imagePreview={imagePreview}
-            mediaSource={mediaSource}
-            loadingMediaPreview={loadingMediaPreview}
-            mediaPreviewUrl={mediaPreviewUrl}
-            onMediaError={handleMediaError}
-            onMediaLoadedMetadata={handleMediaLoadedMetadata}
-            loadingPdfPreview={loadingPdfPreview}
-            pdfViewerSource={pdfViewerSource}
-            pdfViewerLabels={pdfViewerLabels}
-            loadingOfficePreview={loadingOfficePreview}
-            officePreview={officePreview}
-            officePreviewKind={officePreviewKind}
-            loadingPptxPreview={loadingPptxPreview}
-            pptxPreviewData={pptxPreviewData}
-            pptxViewerLabels={pptxViewerLabels}
-            pptxReferenceSource={
-              pptxSource && sourceWorkspacePath
-                ? {
-                    workspacePath: sourceWorkspacePath,
-                    ...(pptxSource.workspaceIdentity
-                      ? { workspaceIdentity: pptxSource.workspaceIdentity }
-                      : {}),
-                    ...(pptxSource.workspaceRemoteSessionId
-                      ? { remoteSessionId: pptxSource.workspaceRemoteSessionId }
-                      : {}),
-                    sourcePath: pptxSource.path,
-                    sourceTitle: pptxSource.title,
-                  }
-                : null
-            }
-            pptxReferenceNavigation={pptxReferenceNavigation}
-            pptxReferenceNavigationReady={
-              pptxReferenceNavigation !== null &&
-              validatedPptxReferenceNavigationRequestId === pptxReferenceNavigation.requestId
-            }
-            error={error}
-            codePreviewSettings={codePreviewSettings}
-            codeTheme={codeTheme}
-            resolvedTheme={resolvedTheme}
-            theme={theme}
-            workspacePath={sourceWorkspacePath}
-            onOpenBrowserUrl={onOpenBrowserUrl}
-            markdownSelectionTarget={
-              markdownSelectionTarget &&
-              (source.workspaceIdentity?.trim() || sourceWorkspacePath) ===
-                markdownSelectionTarget.workspaceKey
-                ? markdownSelectionTarget
-                : undefined
-            }
-            markdownViewMode={markdownViewMode}
-            svgViewMode={svgViewMode}
-            wrapLongLines={wrapLongLines}
-            codeComments={codeComments}
-            enableCodeLineSelection={canCreateCodeComment}
-            enableCodeGutterUtility={canCreateCodeComment}
-            codeCommentLabels={codeCommentLabels}
-            onSubmitCodeComment={handleSubmitCodeComment}
-            onDeleteCodeComment={handleDeleteCodeComment}
-            // PreviewPane 外层只是 flex 壳，真实滚动发生在具体内容组件的 overflow 容器。
-            // 折叠侧边面板卸载重内容前必须保存该容器的位置。
-            onScroll={handlePreviewContentScroll}
-            scrollContainerRef={scrollContainerRef}
-          />
+          <DocumentViewStateProvider
+            stateKey={JSON.stringify([
+              source.workspaceIdentity?.trim() || source.workspacePath || workspacePath,
+              markdownSelectionTarget?.sessionId ?? "draft",
+              source.path ?? source.title,
+            ])}
+          >
+            <PreviewPaneContent
+              source={pptxSource ?? imageSource ?? pdfSource ?? mediaSource ?? source}
+              filePreview={filePreview}
+              fileTooLarge={fileTooLarge}
+              loadingInitial={loadingInitial}
+              loadingImagePreview={loadingImagePreview}
+              imagePreview={imagePreview}
+              mediaSource={mediaSource}
+              loadingMediaPreview={loadingMediaPreview}
+              mediaPreviewUrl={mediaPreviewUrl}
+              onMediaError={handleMediaError}
+              onMediaLoadedMetadata={handleMediaLoadedMetadata}
+              loadingPdfPreview={loadingPdfPreview}
+              pdfViewerSource={pdfViewerSource}
+              pdfViewerLabels={pdfViewerLabels}
+              loadingOfficePreview={loadingOfficePreview}
+              officePreview={officePreview}
+              officePreviewKind={officePreviewKind}
+              loadingPptxPreview={loadingPptxPreview}
+              pptxPreviewData={pptxPreviewData}
+              pptxViewerLabels={pptxViewerLabels}
+              pptxReferenceSource={
+                pptxSource && sourceWorkspacePath
+                  ? {
+                      workspacePath: sourceWorkspacePath,
+                      ...(pptxSource.workspaceIdentity
+                        ? { workspaceIdentity: pptxSource.workspaceIdentity }
+                        : {}),
+                      ...(pptxSource.workspaceRemoteSessionId
+                        ? { remoteSessionId: pptxSource.workspaceRemoteSessionId }
+                        : {}),
+                      sourcePath: pptxSource.path,
+                      sourceTitle: pptxSource.title,
+                    }
+                  : null
+              }
+              pptxReferenceNavigation={pptxReferenceNavigation}
+              pptxReferenceNavigationReady={
+                pptxReferenceNavigation !== null &&
+                validatedPptxReferenceNavigationRequestId === pptxReferenceNavigation.requestId
+              }
+              error={error}
+              codePreviewSettings={codePreviewSettings}
+              codeTheme={codeTheme}
+              resolvedTheme={resolvedTheme}
+              theme={theme}
+              workspacePath={sourceWorkspacePath}
+              onOpenBrowserUrl={onOpenBrowserUrl}
+              markdownSelectionTarget={
+                markdownSelectionTarget &&
+                (source.workspaceIdentity?.trim() || sourceWorkspacePath) ===
+                  markdownSelectionTarget.workspaceKey
+                  ? markdownSelectionTarget
+                  : undefined
+              }
+              markdownViewMode={markdownViewMode}
+              svgViewMode={svgViewMode}
+              wrapLongLines={wrapLongLines}
+              codeComments={codeComments}
+              enableCodeLineSelection={canCreateCodeComment}
+              enableCodeGutterUtility={canCreateCodeComment}
+              codeCommentLabels={codeCommentLabels}
+              onSubmitCodeComment={handleSubmitCodeComment}
+              onDeleteCodeComment={handleDeleteCodeComment}
+              // PreviewPane 外层只是 flex 壳，真实滚动发生在具体内容组件的 overflow 容器。
+              // 折叠侧边面板卸载重内容前必须保存该容器的位置。
+              onScroll={handlePreviewContentScroll}
+              scrollContainerRef={scrollContainerRef}
+            />
+          </DocumentViewStateProvider>
         ) : (
           <PreviewPaneDeferredHeavyContent style={deferredBodyStyle} />
         )}

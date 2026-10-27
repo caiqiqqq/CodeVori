@@ -1,3 +1,4 @@
+import { useDocumentScroll } from "@/lib/documentViewState.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { renderAsync, type Options } from "docx-preview";
 import {
@@ -59,6 +60,9 @@ export function PreviewPaneOfficeDocxContent({
   sourcePath: string;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // fit viewport 负责测宽，外层 overflow-auto 才拥有滚动，不能把两种状态混用。
+  useDocumentScroll(scrollRef, "docx:scroll");
   const contentRef = useRef<HTMLDivElement | null>(null);
   const renderContainerRef = useRef<HTMLDivElement | null>(null);
   const [previewClassName] = useState(createDocxPreviewClassName);
@@ -207,6 +211,7 @@ export function PreviewPaneOfficeDocxContent({
         </div>
       ) : null}
       <div
+        ref={scrollRef}
         className={
           renderState === "error"
             ? "hidden"

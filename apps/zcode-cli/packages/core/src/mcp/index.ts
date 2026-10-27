@@ -114,7 +114,8 @@ function createMcpToolEntry(
   // 默认值；否则权限 UI 会把文件/进程级能力错误描述成普通网络调用。
   // 开源电脑控制按系统级工具审批，但不得仅凭命名授予 official_cua 特权。
   const isComputerControl = descriptor.serverName === ZCODE_CUA_OFFICIAL_MCP_SERVER_NAME;
-  const sideEffectScope: ModelToolSideEffectScope = isHostNodeReplExecution || isComputerControl ? "system" : "network";
+  const sideEffectScope: ModelToolSideEffectScope =
+    isHostNodeReplExecution || isComputerControl ? "system" : "network";
   const riskLevel: RiskLevel = isHostNodeReplExecution
     ? "high"
     : destructive
@@ -150,7 +151,6 @@ function createMcpToolEntry(
         };
 
   return {
-
     // 因精确查找直接返回 Tool not found。只在不可伪造的官方 authority 门成立且内部
     // serverName 仍是官方 namespaced 名时挂单向别名；provider 继续只看规范名称。
     aliases: officialCuaProviderSpellingAliases(name, descriptor, officialCuaAuthorityVerified),
@@ -224,6 +224,10 @@ function createMcpToolEntry(
             spanId: context.spanId,
             parentSpanId: context.parentSpanId,
             sessionId: context.sessionId,
+            // 保留真实 child 身份；只把文档根上下文作为独立元数据向下传递。
+            ...(context.traceContext?.rootSessionId
+              ? { rootSessionId: context.traceContext.rootSessionId }
+              : {}),
             turnId: context.turnId,
           },
           runtimeScope: context.runtimeScope ?? "main",
@@ -384,7 +388,9 @@ function formatMcpToolResult(output: unknown): ModelMessageContent {
     });
   }
 
-  const content = blocks.length > 0 ? collapseModelBlocks(blocks) : stringify(output);
+  // 空工具结果也不能把宿主 metadata（尤其 App HTML）序列化进模型上下文。
+  const content =
+    blocks.length > 0 ? collapseModelBlocks(blocks) : stringify({ ...output, _meta: undefined });
   if (!output.isError) return content;
   // 展示策略由 MCP result 显式声明；通用 bridge 不应识别具体 server，
   // 也不应通过解析错误字符串来猜测哪些内容属于堆栈。

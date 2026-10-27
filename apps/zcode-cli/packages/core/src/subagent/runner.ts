@@ -824,6 +824,8 @@ function createSubagentLifecycle(
   });
   const childTraceContext = createChildTraceContext(runTraceContext, {
     sessionId: childSessionId,
+    // 官方文档插件以 root_session_id 隔离打开状态，不能把子会话误当成全新文档会话。
+    rootSessionId: runTraceContext.rootSessionId ?? request.sessionId,
     turnId: request.turnId,
     attributes: {
       agentId,
@@ -874,6 +876,7 @@ function createSubagentLifecycleFromTask(
   });
   const childTraceContext = createChildTraceContext(runTraceContext, {
     sessionId: childSessionId,
+    rootSessionId: runTraceContext.rootSessionId ?? request.sessionId,
     turnId: request.turnId,
     attributes: {
       agentId,

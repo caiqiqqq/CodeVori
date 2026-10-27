@@ -37,7 +37,7 @@ export interface McpConnectionPoolOptions {
 }
 
 export interface McpConnectionPool {
-  acquireLease(options?: { leaseId?: string; sessionId?: string }): McpPort;
+  acquireLease(options?: { leaseId?: string; sessionId?: string; workingDirectory?: string; workspaceIdentity?: string }): McpPort;
   close(): Promise<void>;
   stats(): { activeConnections: number; pendingCloseConnections: number };
 }
@@ -159,7 +159,7 @@ export function createMcpConnectionPool(options: McpConnectionPoolOptions): McpC
     await entry.revalidating;
   };
 
-  const acquireLease = (leaseOptions: { leaseId?: string; sessionId?: string } = {}): McpPort => {
+  const acquireLease = (leaseOptions: { leaseId?: string; sessionId?: string; workingDirectory?: string; workspaceIdentity?: string } = {}): McpPort => {
     if (closed) throw new Error("MCP connection pool is closed");
     const leaseId = `${++leaseSequence}:${leaseOptions.leaseId ?? "lease"}`;
     const sessionId = leaseOptions.sessionId?.trim() || undefined;
@@ -202,6 +202,12 @@ export function createMcpConnectionPool(options: McpConnectionPoolOptions): McpC
       config: McpServerConfig,
       connectOptions: McpConnectOptions = {},
     ): Promise<McpServerStatus> => {
+      // 会话 lease 固定 endpoint 身份；自动连接未显式传 cwd 时也不能把不同工作区合并为空 scope。
+      connectOptions = {
+        ...connectOptions,
+        workingDirectory: connectOptions.workingDirectory?.trim() || leaseOptions.workingDirectory,
+        workspaceIdentity: connectOptions.workspaceIdentity?.trim() || leaseOptions.workspaceIdentity,
+      };
       const key = connectionKey({
         config,
         connectOptions,
@@ -447,7 +453,7 @@ function connectionKey(input: {
   // 默认 session isolation；只有明确声明 workspace 的无状态 server 才允许跨 session 复用。
   const scope =
     input.config.isolation === "workspace"
-      ? (resolveWorkspaceKey(input.connectOptions) ?? "")
+      ? (resolveWorkspaceKey(input.connectOptions) ?? input.leaseId)
       : input.leaseId;
   return [input.serverName, scope, stableStringify(input.config)].join("\u0000");
 }

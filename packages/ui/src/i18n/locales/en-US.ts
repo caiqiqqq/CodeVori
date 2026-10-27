@@ -3439,6 +3439,9 @@ const enUS: Record<string, string> = {
     "Enable the official Browser Use plugin so new sessions can access and control web pages in the built-in browser.",
   "settings.browser.control.enabledToast": "Built-in browser control enabled",
   "settings.browser.control.disabledToast": "Built-in browser control disabled",
+  "chat.mcpApp.capacity": "Plugin page capacity reached. Close some pages and try again.",
+  "chat.mcpApp.title": "Interactive tool result",
+  "chat.mcpApp.openLink": "Open website",
   "settings.browser.security.section": "Security",
   "settings.embeddedBrowserAllowInsecureCertificates": "Ignore certificate errors",
   "settings.embeddedBrowserAllowInsecureCertificatesDescription":

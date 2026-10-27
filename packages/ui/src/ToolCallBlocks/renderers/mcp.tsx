@@ -1,3 +1,9 @@
+import {
+  readMcpAppFromOutput,
+  mcpAppToolDisplaySchema,
+  type McpAppToolDisplay,
+} from "@zcode/shared";
+import { McpAppFrame } from "@/ToolCallBlocks/McpAppFrame.js";
 import { ChevronRightIcon, PlugIcon } from "lucide-react";
 import { useCallback } from "react";
 import {
@@ -24,6 +30,7 @@ interface McpToolPresentation {
   serverName?: string;
   toolName: string;
   description?: string;
+  app?: McpAppToolDisplay;
 }
 
 const MCP_TOOL_ICON = <PlugIcon className="size-4 shrink-0 text-foreground-subtle" />;
@@ -172,7 +179,17 @@ export function McpToolCallBlock(context: ToolCallBlockRenderContext) {
   const descriptionLabel = intl.formatMessage({ id: "chat.toolCall.mcp.description" });
   const parametersLabel = intl.formatMessage({ id: "chat.toolCall.mcp.parameters" });
   const hasCallDetails = Boolean(presentation?.description || toolCall.input !== undefined);
-  const resultText = stringifyMcpResult(toolCall.output);
+  const displayApp = mcpAppToolDisplaySchema.safeParse(presentation?.app);
+  // 正式 V4 行只携带格式化文本；App 必须从持久化 display 恢复，不能依赖 raw output。
+  const appOutput = displayApp.success
+    ? { ...displayApp.data.result, _meta: { "zcode/mcpApp": displayApp.data.resource } }
+    : toolCall.output;
+  const app = readMcpAppFromOutput(appOutput);
+  const resultForDisplay =
+    app && toolCall.output && typeof toolCall.output === "object"
+      ? { ...toolCall.output, _meta: undefined }
+      : toolCall.output;
+  const resultText = stringifyMcpResult(resultForDisplay);
   const visibleError =
     toolCall.status === "failed" ? (toolCall.error ?? context.errorText) : undefined;
   const hasPrimaryResult = Boolean(resultText || visibleError);
@@ -197,6 +214,13 @@ export function McpToolCallBlock(context: ToolCallBlockRenderContext) {
       // MCP 详情之前先展示 description 和参数，用户展开后仍像 API 调试器。
       // 参考 BUA，把结果作为一级内容；调用元数据收进透明的二级折叠区。
       <div className="mb-2 space-y-3 py-1" data-testid="mcp-expanded-content">
+        <McpAppFrame
+          instanceId={toolCall.toolId}
+          busy={context.isRunning}
+          output={appOutput}
+          input={toolCall.input}
+          onOpenBrowserUrl={context.onOpenBrowserUrl}
+        />
         {visibleError ? (
           <section className="space-y-1.5">
             <h4 className="text-ui-base font-medium text-destructive">{resultLabel}</h4>
@@ -308,6 +332,7 @@ export function McpToolCallBlock(context: ToolCallBlockRenderContext) {
       </div>
     ),
     [
+      appOutput,
       callDetailsLabel,
       copyResultLabel,
       context,
@@ -336,6 +361,7 @@ export function McpToolCallBlock(context: ToolCallBlockRenderContext) {
       // 即使父层请求 forceOpen，也必须遵守这两个生命周期的 summary-only 语义。
       canToggle={!isSummaryOnlyLifecycle && (context.canToggle ?? true)}
       forceOpen={!isSummaryOnlyLifecycle && (context.forceOpen ?? false)}
+      autoOpen={!!app}
       kindLabel="MCP"
       kindDetail={
         serverLabel ? <span className="text-foreground-subtle">{serverLabel}</span> : undefined
