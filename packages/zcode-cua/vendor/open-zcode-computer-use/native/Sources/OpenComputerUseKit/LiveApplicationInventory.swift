@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import Darwin
 import Foundation
@@ -36,9 +37,9 @@ import Foundation
 /// succeeds, the process exists, and the poll in `AppDiscovery.resolve` searches a
 /// list that will never contain it until the executor is restarted.
 ///
-/// Cost, measured at ~600 processes and ~95 applications: 1.1 ms for the whole
-/// list, 2.1 ms for the frontmost owner. The cached reads were 0.5 ms and 0.0 ms,
-/// so this is the same order of magnitude, not one slower.
+/// Running process enumeration remains kernel-backed. Foreground identity now
+/// uses system-wide AX focus: the earlier layer-0 window heuristic misidentified
+/// the active application when its window was floating.
 enum LiveApplicationInventory {
     private struct CoalitionInfo {
         var resource: UInt64 = 0
@@ -150,32 +151,18 @@ enum LiveApplicationInventory {
         return String(decoding: bytes, as: UTF8.self)
     }
 
-    /// The pid that owns the frontmost ordinary window.
-    ///
-    /// Read from the window server's front-to-back list, for the reason above:
-    /// `frontmostApplication` answers with whatever was frontmost when the
-    /// process started. Layer 0 is the ordinary application layer, so menus,
-    /// the Dock and other chrome do not claim the foreground.
+    /// The active application's identity, read live without NSWorkspace's notification cache.
     static func frontmostApplicationPid() -> pid_t? {
-        guard let infoList = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements],
-            kCGNullWindowID
-        ) as? [[String: Any]] else {
-            return nil
-        }
-
-        for info in infoList {
-            guard
-                let layer = info[kCGWindowLayer as String] as? Int,
-                layer == 0,
-                let pid = info[kCGWindowOwnerPID as String] as? pid_t
-            else {
-                continue
-            }
-
-            return pid
-        }
-
-        return nil
+        // 最前的 layer-0 窗口不等于前台应用：浮动窗口属于其他层，按层推断会取消真实焦点。
+        // 系统级 AX 焦点直接提供活动应用；读取失败时保持未知，不能猜一个窗口的所有者。
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute as CFString, &focused
+        ) == .success,
+              let focused,
+              CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
+        var pid: pid_t = 0
+        guard AXUIElementGetPid(focused as! AXUIElement, &pid) == .success, pid > 0 else { return nil }
+        return pid
     }
 }

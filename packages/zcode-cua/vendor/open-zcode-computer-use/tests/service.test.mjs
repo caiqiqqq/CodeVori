@@ -124,6 +124,74 @@ function mockService() {
   return { host, service: new ComputerUseService({ host }) };
 }
 
+test("separate-instance launch resolves localized names natively and pins the returned bundle", async () => {
+  const { host } = mockService();
+  let launched = false;
+  host.responses["apps.list"] = () => ({
+    ok: true,
+    apps: launched ? [
+      { appId: "com.parallels.winapp.fixture", pid: 50, name: "计算器" },
+      { appId: "com.apple.calculator", pid: 51, name: "Calculator" },
+    ] : [],
+  });
+  const service = new ComputerUseService({
+    host,
+    nativeUtility: async (command, args) => {
+      assert.equal(command, "resolve-app");
+      assert.deepEqual(args, ["计算器"]);
+      return { bundle_id: "com.apple.calculator" };
+    },
+    runProcess: async (command, args) => {
+      assert.equal(command, "/usr/bin/open");
+      assert.deepEqual(args, ["-g", "-n", "-b", "com.apple.calculator"]);
+      launched = true;
+    },
+  });
+  await service.start();
+  const result = await service.callTool("open_application", { app: { name: "计算器" }, new_instance: true });
+  assert.equal(result.isError, undefined, JSON.stringify(result));
+  const app = JSON.parse(result.content[0].text);
+  assert.equal(app.bundle_id, "com.apple.calculator");
+  assert.equal(app.pid, 51);
+});
+
+test("PID-only activation reuses the exact process and refuses an unknown PID", async () => {
+  const { host } = mockService();
+  const activations = [];
+  const service = new ComputerUseService({
+    host,
+    nativeUtility: async (command, args) => {
+      assert.equal(command, "activate");
+      activations.push(args);
+      return { activated: true, active: true };
+    },
+  });
+  await service.start();
+  const result = await service.callTool("open_application", { app: { pid: 42 }, activate: true });
+  assert.equal(result.isError, undefined);
+  assert.equal(JSON.parse(result.content[0].text).pid, 42);
+  assert.deepEqual(activations, [["42"]]);
+  assert.equal(host.calls.some(call => call.method === "apps.launch"), false);
+  const missing = await service.callTool("open_application", { app: { pid: 999 }, activate: true });
+  assert.equal(missing.isError, true);
+  assert.equal(missing.structuredContent.action_sent, false);
+  assert.equal(activations.length, 1);
+});
+
+test("URL launch keeps the resolved bundle identity and stays in the background", async () => {
+  const { host } = mockService();
+  host.responses["apps.launch"] = { ok: true, pid: 42, appId: "com.apple.calculator", name: "计算器" };
+  const launches = [];
+  const service = new ComputerUseService({
+    host,
+    runProcess: async (command, args) => { launches.push({ command, args }); },
+  });
+  await service.start();
+  const result = await service.callTool("open_application", { app: { name: "计算器", url: "https://example.com/" } });
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(launches, [{ command: "/usr/bin/open", args: ["-g", "-b", "com.apple.calculator", "https://example.com/"] }]);
+});
+
 test("get_app_state maps native tokens into a session-local state id", async () => {
   const { service } = mockService();
   await service.start();

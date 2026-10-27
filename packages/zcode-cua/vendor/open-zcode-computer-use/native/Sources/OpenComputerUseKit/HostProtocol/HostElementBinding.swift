@@ -395,7 +395,11 @@ public func hostIsWebContentEquivalent(
     recorded: HostElementBinding,
     candidate: HostElementBinding
 ) -> Bool {
-    guard recorded.dispatchPid == recorded.pid else {
+    // Chromium 的 AXWebArea 后代本身就是页面控件，不能把它再当成 WebKit host 镜像转换。
+    // 否则候选会包含控件自身，而没有第二个 WebContent pid，所有有效操作都会被拒绝。
+    guard recorded.dispatchPid == recorded.pid,
+          recorded.digestInput.role != "AXWebArea",
+          !recorded.digestInput.ancestorRoles.contains("AXWebArea") else {
         return false
     }
     let rendererOwned =

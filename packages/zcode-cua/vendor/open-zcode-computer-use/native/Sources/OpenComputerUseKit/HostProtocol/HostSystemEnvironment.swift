@@ -148,7 +148,10 @@ public struct HostLiveEnvironment: HostSystemEnvironment {
         pid: pid_t,
         windowId: CGWindowID
     ) -> SkyLightSyntheticFocusContext? {
-        try? SkyLightSPI.shared.beginSyntheticTargetFocus(
+        // 前台窗口已有真实焦点；模拟激活的配对取消事件会让 Electron 丢失应用级焦点。
+        // 与原始点击路径一致，仅为后台目标创建需要配对释放的模拟焦点。
+        guard frontmostApplicationPid() != pid else { return nil }
+        return try? SkyLightSPI.shared.beginSyntheticTargetFocus(
             targetPID: pid,
             targetWindowID: windowId
         )
@@ -259,7 +262,21 @@ public struct HostLiveEnvironment: HostSystemEnvironment {
         case .move:
             try InputSimulation.moveGlobally(to: point)
         case .leftClick(let count):
-            try postClick(at: point, button: .left, count: count, pid: pid, path: path)
+            if path == .cgEventPid, (1...2).contains(count), HostAX.isChromiumApplication(pid: pid) {
+                // 裸 postToPid 缺少 Chromium 所需的窗口路由信息，回执成功也可能没有点击。
+                // 复用已有的窗口绑定派发器，一次派发；不在失败后重放或切到全局鼠标。
+                try InputSimulation.clickWithSkyLight(
+                    at: point,
+                    windowPoint: CGPoint(x: point.x - window.bounds.minX, y: point.y - window.bounds.minY),
+                    windowBounds: window.bounds,
+                    windowID: window.windowId,
+                    clickCount: count,
+                    pid: pid,
+                    postsPublicEvent: false
+                )
+            } else {
+                try postClick(at: point, button: .left, count: count, pid: pid, path: path)
+            }
         case .rightClick(let count):
             try postClick(at: point, button: .right, count: count, pid: pid, path: path)
         case .middleClick(let count):

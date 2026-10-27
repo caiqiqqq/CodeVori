@@ -10,6 +10,11 @@ let package = Package(
         .executable(name: "OpenZCodeFixture", targets: ["OpenZCodeFixture"]),
     ],
     targets: [
+        .testTarget(
+            name: "OpenComputerUseKitTests",
+            dependencies: ["OpenComputerUseKit"],
+            path: "Tests/OpenComputerUseKitTests"
+        ),
         .target(
             name: "OpenComputerUseKit",
             path: "Sources/OpenComputerUseKit"
