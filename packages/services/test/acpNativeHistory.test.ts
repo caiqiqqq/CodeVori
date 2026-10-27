@@ -117,6 +117,99 @@ test("Host reader reuses unchanged history across ranges and reparses appended c
     assert.equal((await reader.read([value], root)).size, 0);
   }));
 
+test("oversized Codex logs remain visible and restart reads only appended complete rows", async (t) =>
+  fixture(async (root, cwd, file) => {
+    const cacheFile = join(root, "host-cache", "codex-history.json");
+    const value = session(cwd);
+    const key = codexUsageKey(value);
+    const padding = JSON.stringify(row("response_item", { text: "x".repeat(1024 * 1024) })) + "\n";
+    await writeFile(
+      file,
+      jsonl(
+        cwd,
+        ...start(recent, "gpt-codex"),
+        token(100, 20, recent),
+        row("response_item", { text: "中文" }),
+      ),
+    );
+    for (let i = 0; i < 65; i++) await appendFile(file, padding);
+    await appendFile(file, JSON.stringify(token(140, 30, recent)) + "\n");
+    assert.ok((await stat(file)).size > 64 * 1024 * 1024);
+
+    const firstReader = createCodexUsageHistoryReader(cacheFile);
+    const first = (await firstReader.read([value], root)).get(key)!;
+    assert.equal(first.usage.totalTokens, 170);
+    assert.equal(first.records.length, 2);
+    firstReader.dispose();
+
+    const boundary = (await stat(file)).size;
+    await appendFile(file, JSON.stringify(token(200, 40, recent)).slice(0, -1));
+    const open = t.mock.method(fs, "createReadStream");
+    syncBuiltinESMExports();
+    t.after(() => {
+      open.mock.restore();
+      syncBuiltinESMExports();
+    });
+    const resumed = createCodexUsageHistoryReader(cacheFile);
+    assert.equal((await resumed.read([value], root)).get(key)?.usage.totalTokens, 170);
+    await appendFile(file, "}\n");
+    const updated = (await resumed.read([value], root)).get(key)!;
+    assert.equal(updated.usage.totalTokens, 240);
+    assert.equal(updated.records.length, 3);
+    assert.equal(open.mock.calls.length, 2);
+    for (const call of open.mock.calls) {
+      assert.equal((call.arguments[1] as { start?: number }).start, boundary);
+    }
+    const [usage] = summarizeAcpUsage(
+      [value],
+      { range: "7d", timeZone: "UTC" },
+      now,
+      new Map([[key, updated]]),
+    );
+    assert.equal(usage?.hourlyUsage?.hours[10]?.models[0]?.totalTokens, 240);
+    resumed.dispose();
+  }));
+
+test("an active log appended during a cold scan resumes from its verified prefix", async (t) =>
+  fixture(async (root, cwd, file) => {
+    const cacheFile = join(root, "host-cache", "codex-history.json");
+    const value = session(cwd);
+    await writeFile(file, jsonl(cwd, ...start(recent, "gpt-codex"), token(100, 20, recent)));
+    const boundary = (await stat(file)).size;
+    const nativeOpen = fs.createReadStream.bind(fs);
+    let appended = false;
+    const open = t.mock.method(fs, "createReadStream", (path, options) => {
+      const stream = nativeOpen(path, options);
+      if (!appended)
+        stream.once("data", () => {
+          appended = true;
+          fs.appendFileSync(file, JSON.stringify(token(140, 30, recent)) + "\n");
+        });
+      return stream;
+    });
+    syncBuiltinESMExports();
+    t.after(() => {
+      open.mock.restore();
+      syncBuiltinESMExports();
+    });
+
+    const firstReader = createCodexUsageHistoryReader(cacheFile);
+    assert.equal(
+      (await firstReader.read([value], root)).get(codexUsageKey(value))?.usage.totalTokens,
+      120,
+    );
+    assert.equal(appended, true);
+    firstReader.dispose();
+    const restarted = createCodexUsageHistoryReader(cacheFile);
+    assert.equal(
+      (await restarted.read([value], root)).get(codexUsageKey(value))?.usage.totalTokens,
+      170,
+    );
+    assert.equal(open.mock.calls.length, 2);
+    assert.equal((open.mock.calls[1]!.arguments[1] as { start?: number }).start, boundary);
+    restarted.dispose();
+  }));
+
 test("Host reader rejects stale cache after replacement, corruption, duplicate IDs and deletion", async () =>
   fixture(async (root, cwd, file) => {
     const reader = createCodexUsageHistoryReader();
