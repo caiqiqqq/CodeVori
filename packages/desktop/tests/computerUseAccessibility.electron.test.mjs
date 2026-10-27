@@ -21,14 +21,17 @@ const entry = join(artifacts, "fixture.cjs");
 const ready = join(artifacts, "ready.json");
 const outcome = join(artifacts, "outcome.json");
 const html = `<title>CUA regression fixture</title>
+  ${Array.from({ length: 16 }, (_, i) => `<section role="group" aria-label="Layer ${i}">`).join("")}
   <label>CUA test input<input aria-label="CUA test input" value="seed"></label>
   <button onclick="this.textContent='Pressed once'">CUA test button</button>
   <canvas width="240" height="120" aria-label="CUA canvas"></canvas>
+  ${"</section>".repeat(16)}
   <script>
-    const {ipcRenderer}=require('electron');let clicks=0;
+    const {ipcRenderer}=require('electron');let clicks=0, mutated=false;
     const input=document.querySelector('input'), canvas=document.querySelector('canvas');
     canvas.style.cssText='display:block;margin:30px;background:teal';
-    function report(){ipcRenderer.send('outcome',{text:input.value,clicks})}
+    function report(){ipcRenderer.send('outcome',{text:input.value,clicks,mutated})}
+    ipcRenderer.on('mutate',()=>{document.querySelector('button').textContent='Changed after snapshot';mutated=true;report()});
     canvas.onmousedown=()=>{clicks++;report()};input.oninput=report;input.focus();report();
   </script>`;
 await build({
@@ -38,6 +41,7 @@ await build({
     contents: `
       import {app,BrowserWindow,ipcMain} from 'electron';
       import {writeFile} from 'node:fs/promises';
+      import {createInterface} from 'node:readline';
       import {enableDesktopAccessibility} from './src/main/desktopAccessibility.ts';
       app.setPath('userData',${JSON.stringify(join(artifacts, "profile"))});
       app.whenReady().then(async()=>{
@@ -47,6 +51,7 @@ await build({
         ipcMain.on('outcome',(_,state)=>{persistence=persistence.then(()=>writeFile(${JSON.stringify(outcome)},JSON.stringify(state)))});
         await win.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(${JSON.stringify(html)}));
         win.show();
+        createInterface({input:process.stdin}).on('line',line=>{if(line==='mutate')win.webContents.send('mutate')});
         await writeFile(${JSON.stringify(ready)},JSON.stringify({pid:process.pid}));
       });
       app.on('window-all-closed',()=>app.quit());
@@ -67,7 +72,7 @@ const executable = resolve(
 );
 const initialFront = await runNativeUtility("frontmost", [], { executable });
 const child = spawn(requireDesktop("electron"), [entry], {
-  stdio: ["ignore", "pipe", "pipe"],
+  stdio: ["pipe", "pipe", "pipe"],
   env: { ...process.env, ELECTRON_RUN_AS_NODE: "" },
 });
 let diagnostics = "";
@@ -144,8 +149,19 @@ try {
     "Electron renderer AX tree",
   );
   const input = state.elements.find((e) => e.name === "CUA test input" && e.editable);
+  const cleared = payload(
+    await call("set_value", {
+      target: { type: "element", state_id: state.state_id, index: input.index },
+      value: "",
+    }),
+    "action_receipt",
+  );
+  assert.equal(cleared.action_receipt.effect, "confirmed", "empty AX text must be confirmed");
+  await until(readOutcome, (v) => v.text === "", "cleared renderer input");
+  state = await observe();
+  const clearedInput = state.elements.find((e) => e.name === "CUA test input" && e.editable);
   await call("set_value", {
-    target: { type: "element", state_id: state.state_id, index: input.index },
+    target: { type: "element", state_id: state.state_id, index: clearedInput.index },
     value: "中英文 CUA 123",
   });
   state = await observe();
@@ -176,6 +192,19 @@ try {
     x: Math.round((canvas.bounds[0] - state.window.bounds[0] + canvas.bounds[2] / 2) * imageScale),
     y: Math.round((canvas.bounds[1] - state.window.bounds[1] + canvas.bounds[3] / 2) * imageScale),
   };
+  // 截图后真正改变窗口内容必须拒绝；深树保持不变时则应正常派发。
+  child.stdin.write("mutate\n");
+  await until(readOutcome, (v) => v.mutated, "fixture changed after snapshot");
+  const changed = await service.callTool("left_click", { target: point, strategy: "event" });
+  assert.equal(changed.isError, true);
+  assert.equal(changed.structuredContent.action_receipt.action_sent, false);
+  assert.ok(
+    changed.content.some(
+      (item) => item.type === "text" && item.text.includes("no longer matches the snapshot"),
+    ),
+  );
+  assert.equal((await readOutcome()).clicks, 0);
+  state = await observe(true);
   const clicked = payload(
     await call("left_click", { target: point, strategy: "event" }),
     "action_receipt",
@@ -218,7 +247,7 @@ try {
   });
   await until(readOutcome, (v) => v.text === "keyboard测试", "keyboard input delivered");
   console.log(
-    `PASS: Electron AX controls, Chinese text, shortcuts, semantic click, one raw canvas click and stale-frame rejection. Artifacts: ${artifacts}`,
+    `PASS: Electron deep AX tree, empty-value receipt, Chinese text, shortcuts, semantic click, one raw canvas click, changed-window and stale-frame rejection. Artifacts: ${artifacts}`,
   );
 } finally {
   const front = await runNativeUtility("frontmost", [], { executable });

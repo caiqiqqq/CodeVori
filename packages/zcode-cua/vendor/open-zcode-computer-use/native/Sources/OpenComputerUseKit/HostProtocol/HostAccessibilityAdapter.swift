@@ -623,7 +623,8 @@ enum HostAX {
     /// read and the single read cannot disagree about what an `AXValue` means.
     static func stringLikeValue(_ value: CFTypeRef) -> String? {
         if let text = value as? String {
-            return text.isEmpty ? nil : text
+            // 空字符串是有效的 AXValue；丢弃它会让成功清空与无法回读无法区分。
+            return text
         }
 
         if CFGetTypeID(value) == CFBooleanGetTypeID() {

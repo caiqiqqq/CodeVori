@@ -17,6 +17,8 @@ test("computer control seed includes independent MCP, executable native and noti
     for (const path of definition.requiredSeedPaths!) await access(join(cached, path));
     assert.ok((await stat(join(cached, "dist/native/OpenZCodeNative"))).mode & 0o111);
     const manifest = JSON.parse(await readFile(join(cached, ".zcode-plugin/plugin.json"), "utf8"));
+    // 原生修复必须跟随缓存版本一起更新，不能让新执行器继续占用旧版本目录。
+    assert.equal(manifest.version, definition.version);
     assert.equal(manifest.mcpServers["computer-use"].command, process.execPath);
     assert.equal(manifest.mcpServers["computer-use"].env.ELECTRON_RUN_AS_NODE, "1");
     assert.equal(manifest.mcpServers["computer-use"].env.ZCODE_CUA_PLUGIN_AUTHORITY, undefined);

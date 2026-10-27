@@ -130,6 +130,9 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
             defer: false
         )
         window.title = "OpenComputerUseFixture"
+        if ProcessInfo.processInfo.environment["OPEN_COMPUTER_USE_FIXTURE_FLOATING"] == "1" {
+            window.level = .floating
+        }
         window.setAccessibilityIdentifier("fixture-window")
         window.delegate = self
 

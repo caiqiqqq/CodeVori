@@ -325,6 +325,29 @@ public func hostEffectFromValueReadback(
     )
 }
 
+/// Writes are not replayed: only the framework's asynchronous value readback is polled.
+func hostAwaitValueReadback(
+    requested: String,
+    previous: String?,
+    comparesNumerically: Bool = false,
+    sample: () -> String?,
+    now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+    sleep: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
+) -> String? {
+    let deadline = now() + 0.25
+    var value = sample()
+    // Electron 的 AX 写入可能先返回成功、稍后才更新值；只等待旧值/未知值，
+    // 第三方已写入其他值时立即交给回执判断，不覆盖、不重试写入。
+    while value.map({ hostValueReadbackEquals($0, requested, comparesNumerically: comparesNumerically) }) != true,
+          value == nil || value == previous {
+        let remaining = deadline - now()
+        guard remaining > 0.001 else { break }
+        sleep(min(0.05, remaining))
+        value = sample()
+    }
+    return value
+}
+
 private func hostValueReadbackEquals(
     _ lhs: String,
     _ rhs: String,
