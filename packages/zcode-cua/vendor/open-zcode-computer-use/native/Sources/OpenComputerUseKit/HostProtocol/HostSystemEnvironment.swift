@@ -262,9 +262,10 @@ public struct HostLiveEnvironment: HostSystemEnvironment {
         case .move:
             try InputSimulation.moveGlobally(to: point)
         case .leftClick(let count):
-            if path == .cgEventPid, (1...2).contains(count), HostAX.isChromiumApplication(pid: pid) {
-                // 裸 postToPid 缺少 Chromium 所需的窗口路由信息，回执成功也可能没有点击。
-                // 复用已有的窗口绑定派发器，一次派发；不在失败后重放或切到全局鼠标。
+            if path == .cgEventPid, (1...2).contains(count) {
+                // 裸 postToPid 在 AppKit 同样可能被接收但不命中窗口；统一走窗口绑定派发。
+                // 两类应用都只用 SkyLight；叠加 public 通道会重复 down/up 并破坏 AppKit 按钮跟踪。
+                // 这是派发前确定的配方，不在失败后重放或切到全局鼠标。
                 try InputSimulation.clickWithSkyLight(
                     at: point,
                     windowPoint: CGPoint(x: point.x - window.bounds.minX, y: point.y - window.bounds.minY),

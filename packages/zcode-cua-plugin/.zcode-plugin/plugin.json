@@ -1,6 +1,6 @@
 {
   "name": "computer-use",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "Control local macOS applications through accessibility, screenshots and scoped input using Open ZCode Computer Use.",
   "author": {
     "name": "Open ZCode Computer Use contributors",

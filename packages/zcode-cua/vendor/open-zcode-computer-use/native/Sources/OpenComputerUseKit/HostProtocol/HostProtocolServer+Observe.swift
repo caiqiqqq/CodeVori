@@ -903,7 +903,12 @@ extension HostProtocolServer {
                 return failed(.dispatchRefused, path: .none)
             }
 
-            let readback = HostAX.stringLikeValue(element, kAXValueAttribute)
+            let readback = hostAwaitValueReadback(
+                requested: write.requestedReadback,
+                previous: previous,
+                comparesNumerically: write.comparesNumerically,
+                sample: { HostAX.stringLikeValue(element, kAXValueAttribute) }
+            )
             return PerformedAction(
                 outcome: .ok,
                 path: .axAttribute,
