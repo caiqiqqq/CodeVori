@@ -1,11 +1,22 @@
 import {
   traceContextToLogContext,
+  type PermissionBrokerResult,
   type PermissionOptionsPolicy,
   type ToolResultDisplayPayload,
   type TraceContext,
 } from "@zcode/contracts";
 import type { ExecutableToolCall, ToolEntry } from "../types.js";
 import type { ToolExecutorDeps } from "./types.js";
+
+export function restrictApprovalGrants(
+  result: PermissionBrokerResult,
+  approvalMode: string | undefined,
+): PermissionBrokerResult {
+  // 一次性审批不能因客户端带回 grant 而升级成后续免确认；首次审批与改参复核共用此边界。
+  return approvalMode === "user-once"
+    ? { ...result, permissionUpdates: undefined, sessionPermissionUpdates: undefined }
+    : result;
+}
 
 interface ResolvedToolApproval {
   gate: "ask" | "proceed";

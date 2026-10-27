@@ -34,7 +34,7 @@ const entries: AcpSession["entries"] = [
   { id: "assistant:reply:closing", kind: "assistant", text: closing, createdAt: 105 },
 ];
 
-test("tool calls and a closing sentence cannot fold away earlier public reply text", () => {
+test("tool calls and a closing sentence retain earlier reply in expandable work history", () => {
   const before = structuredClone(entries);
   for (const status of ["running", "idle"] as const) {
     const rows = buildAcpConversationRows({ entries, status } as AcpSession);
@@ -43,13 +43,10 @@ test("tool calls and a closing sentence cannot fold away earlier public reply te
       const visibleText = unit.flowItems.flatMap((item) =>
         item.kind === "assistantText" ? [item.row.text] : [],
       );
-      assert.deepEqual(visibleText, [explanation, closing], status);
-      assert.ok(
-        unit.flowItems.every(
-          (item) =>
-            item.kind !== "assistantHistory" ||
-            item.rows.every((row) => row.kind !== "assistantText"),
-        ),
+      assert.deepEqual(visibleText, status === "idle" ? [closing] : [], status);
+      assert.equal(
+        unit.assistantHistoryRows.some((row) => row.kind === "assistantText"),
+        true,
       );
       assert.equal(unit.assistantHistoryRows.filter((row) => row.kind === "toolCall").length, 3);
       if (status === "idle") assert.equal(unit.latestAssistantTextRow?.text, closing);
@@ -89,10 +86,14 @@ test("native API rows preserve reply order while retaining the final action anch
   const visible = unit.flowItems.filter((item) => item.kind === "assistantText");
   assert.deepEqual(
     visible.map((item) => item.row.text),
-    [explanation, closing],
+    [closing],
   );
   assert.deepEqual(
     visible.map((item) => item.latest),
-    [false, true],
+    [true],
+  );
+  assert.equal(
+    unit.assistantHistoryRows.some((row) => row.kind === "assistantText"),
+    true,
   );
 });

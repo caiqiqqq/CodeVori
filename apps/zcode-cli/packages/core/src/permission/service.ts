@@ -45,6 +45,7 @@ export interface PermissionContext {
 }
 
 export interface PermissionToolCapability {
+  userApprovalRule?: string;
   allowedInPlanMode?: boolean;
   alwaysAsk?: boolean;
   readOnly?: boolean;
@@ -60,6 +61,7 @@ export interface PermissionToolCapability {
 export type PermissionBehavior = "allow" | "ask" | "deny";
 
 export interface PermissionDecisionResult {
+  approvalMode?: "user-once";
   decision: PermissionBehavior;
   allowed: boolean;
   reason?: string;
@@ -133,7 +135,19 @@ export class PermissionService {
     }
 
     const planEnabled = context.planEnabled ?? context.mode === "plan";
-    if (context.mode === "yolo" && !planEnabled) {
+    // guarded 的危险命令必须逐次由用户批准，项目/会话 allow 不能消除此门槛。
+    if (!planEnabled && context.mode === "guarded" && toolCapability?.userApprovalRule) {
+      return {
+        ...this.ask(
+          context,
+          capability,
+          toolCapability.userApprovalRule,
+          "Dangerous command requires approval for this execution",
+        ),
+        approvalMode: "user-once",
+      };
+    }
+    if ((context.mode === "yolo" || context.mode === "guarded") && !planEnabled) {
       return this.allow(context, capability, "mode.yolo", "Yolo mode bypasses permission prompts");
     }
 

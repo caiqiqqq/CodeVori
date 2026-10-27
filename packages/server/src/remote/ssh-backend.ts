@@ -18,7 +18,10 @@ import {
   normalizeRemotePlatform,
   resolveRemotePlatform,
 } from "@zcode/server/remote/detectEnv.js";
-import { createCloseEventController } from "@zcode/server/remote/closeEvent.js";
+import {
+  createCloseEventController,
+  resolveRemoteExitCode,
+} from "@zcode/server/remote/closeEvent.js";
 import {
   buildPosixShellExecCommand,
   quotePosixShellArg,
@@ -294,16 +297,16 @@ export class SSHBackend implements IRemoteBackend {
           if (code !== 0) {
             console.warn(`[ssh] exec channel failed: code=${code}`);
           }
-          onClose.fire(code ?? 0);
+          onClose.fire(code);
         };
 
         // ssh2 channels may fire 'exit' before 'close', or sometimes
         // only one of them. Listen to both to be safe.
-        channel.on("exit", (code: number | null) => {
-          fireOnce(code ?? 0);
+        channel.on("exit", (code: number | null, signal?: string) => {
+          fireOnce(resolveRemoteExitCode(code, signal));
         });
-        channel.on("close", () => {
-          fireOnce(0);
+        channel.on("close", (code?: number | null, signal?: string) => {
+          fireOnce(resolveRemoteExitCode(code, signal));
         });
 
         resolve({
@@ -337,43 +340,83 @@ export class SSHBackend implements IRemoteBackend {
   private execSimple(command: string): Promise<string> {
     this.assertNotDisposed();
     return new Promise((resolve, reject) => {
-      // execSimple 同样会执行 POSIX 片段（例如 `[ -r ... ]`、变量展开）。
-      // 这里和 exec 保持同一层 shell 策略，避免 detect/exists/readFile 在 fish 默认 shell 下先于部署失败。
-      this.client.exec(buildPosixShellExecCommand(command), (err, channel) => {
-        if (err) return reject(err);
-        let stdout = "";
-        let stderr = "";
-        let done = false;
-        let exitCode: number | null = null;
-
-        channel.on("data", (chunk: Buffer) => {
-          stdout += chunk.toString();
-        });
-        channel.stderr.on("data", (chunk: Buffer) => {
-          stderr += chunk.toString();
-        });
-
-        const finish = (code: number) => {
-          if (done) return;
-          done = true;
-          if (code !== 0) {
-            reject(new Error(`Command failed (code ${code}): ${stderr || stdout}`));
-          } else {
-            resolve(stdout);
+      let channel: import("ssh2").ClientChannel | undefined;
+      let stdout = "";
+      let stderr = "";
+      let done = false;
+      let exitCode: number | undefined;
+      let exitSignal: string | undefined;
+      const interrupted = () =>
+        Object.assign(
+          new Error(
+            exitSignal
+              ? `SSH command interrupted by signal ${exitSignal}`
+              : "SSH connection interrupted before command completion",
+          ),
+          { code: "ECONNRESET" },
+        );
+      const onData = (chunk: Buffer) => {
+        stdout += chunk.toString();
+      };
+      const onStderr = (chunk: Buffer) => {
+        stderr += chunk.toString();
+      };
+      const cleanup = () => {
+        this.client.off("error", fail);
+        this.client.off("end", onDisconnect);
+        this.client.off("close", onDisconnect);
+        channel?.off("data", onData);
+        channel?.stderr.off("data", onStderr);
+        channel?.off("exit", onExit);
+        channel?.off("close", onClose);
+        channel?.off("error", fail);
+      };
+      const fail = (error: unknown) => {
+        if (done) return;
+        done = true;
+        cleanup();
+        reject(normalizeUnknownError(error, "SSH command failed"));
+      };
+      const onDisconnect = () => fail(interrupted());
+      const onExit = (code: number | null, signal?: string) => {
+        exitCode = typeof code === "number" ? code : undefined;
+        exitSignal = signal;
+      };
+      const onClose = (code?: number | null) => {
+        if (done) return;
+        // 断网时 ssh2 可能不提供 exit-status；旧逻辑把 null/undefined 当作 0，
+        // 让空 uname 输出继续进入环境校验/部署。只接受明确成功，连接中断保留为网络错误。
+        const resolvedCode = exitCode ?? (typeof code === "number" ? code : undefined);
+        if (exitSignal || resolvedCode === undefined) return fail(interrupted());
+        if (resolvedCode !== 0)
+          return fail(new Error(`Command failed (code ${resolvedCode}): ${stderr || stdout}`));
+        done = true;
+        cleanup();
+        resolve(stdout);
+      };
+      // 连接可能在 exec 回调前断开，必须先监听连接，再打开 channel，避免永久等待回调。
+      this.client.on("error", fail);
+      this.client.on("end", onDisconnect);
+      this.client.on("close", onDisconnect);
+      try {
+        // 与 exec 保持同一 POSIX shell 策略，兼容 fish 等远端默认 shell。
+        this.client.exec(buildPosixShellExecCommand(command), (err, openedChannel) => {
+          if (done) {
+            openedChannel?.close();
+            return;
           }
-        };
-
-        // ssh2 在短命令场景下可能先发 exit，再异步派发 stdout data。
-        // 不能在 exit 事件直接 finish：会把后续 data 丢掉，导致 platform/arch 偶发识别为空。
-        // 这里改为只在 close 统一收尾，并优先使用 exit 记录的真实退出码，避免误判成功。
-        channel.on("exit", (code: number | null) => {
-          exitCode = code ?? 0;
+          if (err) return fail(err);
+          channel = openedChannel;
+          channel.on("data", onData);
+          channel.stderr.on("data", onStderr);
+          // 短命令可能先 exit 后 data，只记录状态，在 close 时读取完整 stdout。
+          channel.on("exit", onExit);
+          channel.on("close", onClose);
+          channel.on("error", fail);
         });
-        channel.on("close", (code: number | null) => {
-          const resolvedCode = exitCode ?? code ?? 0;
-          finish(resolvedCode);
-        });
-      });
+      } catch (error) {
+        fail(error);
+      }
     });
   }
 

@@ -65,6 +65,7 @@ interface OffPeakTaskServiceDeps {
 
 const VALID_CREATE_PERMISSION_MODES = new Set([
   "yolo",
+  "guarded",
   "plan",
   "edit",
   "auto",

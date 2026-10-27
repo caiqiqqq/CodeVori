@@ -83,6 +83,7 @@ export function registerPlatformIpcHandlers(options: {
   getDesktopSessionActivity: () => {
     runningAgentSessionCount: number;
   };
+  getCloseToTrayCapability: () => Promise<{ supported: boolean; gnomeLikeWithoutTray: boolean }>;
   getAutoUpdatePreferences: () => Promise<{
     autoDownloadAndInstallUpdates: boolean;
   }>;
@@ -109,6 +110,13 @@ export function registerPlatformIpcHandlers(options: {
       return null;
     }
     return result.filePaths[0];
+  });
+
+  ipcMain.handle(PlatformChannels.SelectDirectories, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory", "createDirectory", "multiSelections"],
+    });
+    return result.canceled ? [] : result.filePaths;
   });
 
   ipcMain.handle(PlatformChannels.SelectFile, async () => {
@@ -364,6 +372,9 @@ export function registerPlatformIpcHandlers(options: {
   );
   ipcMain.handle(PlatformChannels.GetDesktopSessionActivity, () =>
     options.getDesktopSessionActivity(),
+  );
+  ipcMain.handle(PlatformChannels.GetCloseToTrayCapability, () =>
+    options.getCloseToTrayCapability(),
   );
   ipcMain.handle(PlatformChannels.GetDesktopZoomLevel, (event) => {
     const senderWindow = BrowserWindow.fromWebContents(event.sender);

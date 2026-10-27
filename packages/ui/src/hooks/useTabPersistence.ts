@@ -123,7 +123,6 @@ export function useTabPersistence({
   buildPersistPatch?: (state: TabStoreState) => Partial<AppSettings>;
 }) {
   const store = useTabStoreApi();
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldRestoreSession = Boolean(settingService && restoreSession);
   const initialRestoreFullyCompletedRef = useRef(!shouldRestoreSession);
   const [restoreLifecycle, setRestoreLifecycle] = useState<TabPersistenceRestoreLifecycle>(() => ({
@@ -177,9 +176,12 @@ export function useTabPersistence({
     settingService
       .get()
       .then(async (settings) => {
+        // 旧窗口的异步读取可能在卸载后返回，不能重新恢复标签或补写最近项目。
+        if (cancelled) return;
         let restoreResult: TabPersistenceRestoreResult | void = undefined;
         if (restorePersistedSession) {
           restoreResult = await restorePersistedSession(settings);
+          if (cancelled) return;
         } else {
           const tabs = readPersistedWorkspaceSessionEntries(settings).flatMap((entry) =>
             entry.kind === "local"
@@ -258,7 +260,8 @@ export function useTabPersistence({
       .catch((err) => {
         logger.error("[useTabPersistence] 恢复标签页失败:", err);
         if (!cancelled) {
-          initialRestoreFullyCompletedRef.current = true;
+          // 读取失败时当前 tabs 不是完整磁盘快照；仅结束加载，禁止后续写入将旧会话抹掉。
+          initialRestoreFullyCompletedRef.current = false;
           setRestoreLifecycle({
             settingService,
             restoreSession,
@@ -278,27 +281,43 @@ export function useTabPersistence({
   useEffect(() => {
     if (!settingService || !persistSession) return;
 
-    const unsubscribe = store.subscribe((state) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pendingState: TabStoreState | null = null;
+    const flush = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      const state = pendingState;
+      pendingState = null;
+      if (!state) return;
+      // 只提交当前主窗口的最新投影，写入排序仍由 settingService 的既有队列负责。
+      settingService.update((buildPersistPatch ?? buildDefaultPersistPatch)(state)).catch((err) => {
+        logger.error("[useTabPersistence] 持久化失败:", err);
+      });
+    };
+    const unsubscribe = store.subscribe((state, previous) => {
       if (!initialRestoreFullyCompletedRef.current) {
         return;
       }
-      if (timerRef.current) clearTimeout(timerRef.current);
-
-      timerRef.current = setTimeout(() => {
-        // 新开的次级窗口如果也把自己的标签页写回全局设置，
-        // 会把主窗口真正想恢复的会话覆盖掉，导致下次启动恢复到错误窗口。
-        // 这里把“是否持久化会话”独立成开关，只让首个本地窗口负责写回。
-        settingService
-          .update((buildPersistPatch ?? buildDefaultPersistPatch)(state))
-          .catch((err) => {
-            logger.error("[useTabPersistence] 持久化失败:", err);
-          });
-      }, DEBOUNCE_MS);
+      if (timer !== null) clearTimeout(timer);
+      pendingState = state;
+      // 关闭本地项目后若在 debounce 前退出，旧实现会取消最后一次写入，重启便复活旧页。
+      // 远程关闭还需历史 owner 清理其快照，继续沿用该流程，不把隐藏远程项误判为关闭。
+      const removedLocalWorkspace = previous.tabs.some(
+        (tab) =>
+          isWorkspaceTab(tab) &&
+          !tab.workspaceIdentity?.trim() &&
+          !tab.remoteSessionId &&
+          !tab.remoteTarget &&
+          !state.tabs.some((current) => current.id === tab.id),
+      );
+      if (removedLocalWorkspace) flush();
+      else timer = setTimeout(flush, DEBOUNCE_MS);
     });
 
     return () => {
       unsubscribe();
-      if (timerRef.current) clearTimeout(timerRef.current);
+      // React 卸载/HMR 同样不能吞掉已排定的导航意图；这里只 flush 最新投影，不重放旧快照。
+      flush();
     };
   }, [buildPersistPatch, persistSession, store, settingService]);
 

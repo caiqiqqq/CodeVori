@@ -11,6 +11,7 @@ export function createDesktopPlatform(options: {
     createLocalMediaPreviewUrl: buildLocalMediaPreviewUrl,
     isLocalDevelopmentRuntime: options.isLocalDevelopmentRuntime,
     selectDirectory: () => window.zcode.selectDirectory(),
+    selectDirectories: () => window.zcode.selectDirectories?.() ?? Promise.resolve([]),
     selectFile: () => window.zcode.selectFile(),
     selectFiles: () => window.zcode.selectFiles?.() ?? Promise.resolve([]),
     createTempTextAttachment: (payload) => window.zcode.createTempTextAttachment(payload),
@@ -97,6 +98,22 @@ export function createDesktopPlatform(options: {
     onCloseActiveContextRequest: (handler) =>
       window.zcode.onCloseActiveContextRequest?.(handler) ?? (() => {}),
     onOpenBrowserUrl: (handler) => window.zcode.onOpenBrowserUrl?.(handler) ?? (() => {}),
+    onEmbeddedBrowserSitePermissionPrompt: (handler) =>
+      window.zcode.onEmbeddedBrowserSitePermissionPrompt?.(handler) ?? (() => {}),
+    onEmbeddedBrowserSitePermissionClosed: (handler) =>
+      window.zcode.onEmbeddedBrowserSitePermissionClosed?.(handler) ?? (() => {}),
+    onEmbeddedBrowserSitePermissionsChanged: (handler) =>
+      window.zcode.onEmbeddedBrowserSitePermissionsChanged?.(handler) ?? (() => {}),
+    resolveEmbeddedBrowserSitePermissionPrompt: (request) =>
+      window.zcode.resolveEmbeddedBrowserSitePermissionPrompt?.(request),
+    getEmbeddedBrowserSitePermissions: () =>
+      window.zcode.getEmbeddedBrowserSitePermissions?.() ?? Promise.resolve({}),
+    setEmbeddedBrowserSitePermission: (request) =>
+      window.zcode.setEmbeddedBrowserSitePermission?.(request) ?? Promise.resolve({}),
+    resetEmbeddedBrowserSitePermission: (origin) =>
+      window.zcode.resetEmbeddedBrowserSitePermission?.(origin) ?? Promise.resolve({}),
+    clearEmbeddedBrowserSitePermissions: () =>
+      window.zcode.clearEmbeddedBrowserSitePermissions?.() ?? Promise.resolve({}),
     onBrowserViewScreenshotSurfacePrepare: (handler) =>
       window.zcode.onBrowserViewScreenshotSurfacePrepare?.(handler) ?? (() => {}),
     onBrowserViewScreenshotSurfaceRelease: (handler) =>
@@ -126,6 +143,9 @@ export function createDesktopPlatform(options: {
       window.zcode.onWindowControlsOverlayChanged?.(handler) ?? (() => {}),
     getDesktopZoomLevel: () =>
       window.zcode.getDesktopZoomLevel?.() ?? Promise.resolve({ zoomLevel: 0 }),
+    getCloseToTrayCapability: () =>
+      window.zcode.getCloseToTrayCapability?.() ??
+      Promise.resolve({ supported: false, gnomeLikeWithoutTray: false }),
     onDesktopZoomLevelChanged: (handler) =>
       window.zcode.onDesktopZoomLevelChanged?.(handler) ?? (() => {}),
     onTaskNotificationClick: (handler) => window.zcode.onTaskNotificationClick(handler),

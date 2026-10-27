@@ -481,6 +481,8 @@ export interface AttachmentStorageMetadata {
   storageKind?: "inline" | "artifact" | "local_ref" | "remote_ref" | "metadata_only";
   artifactUri?: string;
   originalUrl?: string;
+  /** 已交给模型的路径引用说明；恢复时不重新读取文件或猜测降级原因。 */
+  pathReferenceText?: string;
   recoverability?: "provider_ready" | "rebuildable" | "preview_only" | "metadata_only" | "missing";
   preview?: {
     text?: string;

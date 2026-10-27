@@ -189,6 +189,7 @@ function seedBundledOfficialPlugins(input: {
         // 删不掉的遗留锁 + PID 复用会让接管长期不触发）。seeding 只是刷新缓存，超时必须
         // 走既有降级协议回退到可用缓存并告警，不能把会话恢复整体炸成 resumeFailed。
         isOfficialPluginSeedLockTimeoutError(error) ||
+        isCrossDeviceFsError(error) ||
         // 多个 workspace app 会并发 seed 同一份官方插件缓存。当前进程
         // 写 runtime manifest 时，并发赢家可能已经原子替换整个 targetRoot，连同本进程
         // 的临时文件一起移走，rename 因此返回 ENOENT。只在新 target 已由 marker 证明
@@ -450,7 +451,12 @@ function isSeedCurrent(targetRoot: string, plugin: OfficialPluginSeedPluginSourc
   if (!existsSync(markerPath)) return false;
   try {
     const marker = JSON.parse(readFileSync(markerPath, "utf8")) as ReturnType<typeof seedMarker>;
-    return marker.hash === plugin.hash && marker.pluginVersion === plugin.definition.version;
+    // marker 只证明版本，不能证明缓存文件仍在；丢失必需组件必须在 seed lock 内重建。
+    return (
+      marker.hash === plugin.hash &&
+      marker.pluginVersion === plugin.definition.version &&
+      isSeedUsable(targetRoot, plugin.definition)
+    );
   } catch {
     return false;
   }
@@ -525,7 +531,12 @@ function replaceSeedRoot(
       // 官方插件缓存由桌面窗口、协议与 CLI 入口共享。existsSync 之后，
       // 另一个进程可能先移走 target；此处只收敛这个 TOCTOU 的 ENOENT，随后继续
       // promote 或由 isSeedCurrent 识别并发赢家，其他缺失错误仍保持原有 fatal 语义。
-      if (!isNotFoundFsError(error)) throw error;
+      if (isCrossDeviceFsError(error)) {
+        // overlayfs 下层目录 rename 会返回 EXDEV。锁内先使旧标记失效再删除旧目录，
+        // 新缓存已完整写入同级 temporaryRoot，随后沿原提交路径 promote。
+        removeOfficialPluginCacheDirectory(join(targetRoot, SEED_MARKER_FILE), retryBudget);
+        removeOfficialPluginCacheDirectory(targetRoot, retryBudget);
+      } else if (!isNotFoundFsError(error)) throw error;
     }
   }
 
@@ -576,6 +587,11 @@ function isNotFoundFsError(error: unknown): error is NodeJS.ErrnoException {
     error !== null &&
     String((error as NodeJS.ErrnoException).code) === "ENOENT"
   );
+}
+
+function isCrossDeviceFsError(error: unknown): error is NodeJS.ErrnoException {
+  return typeof error === "object" && error !== null &&
+    String((error as NodeJS.ErrnoException).code) === "EXDEV";
 }
 
 function warnCacheDegraded(

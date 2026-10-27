@@ -1,3 +1,4 @@
+import { ImagePreviewDialog } from "@/components/ai-elements/image-preview-dialog.js";
 import type { CSSProperties, SyntheticEvent } from "react";
 import { useCallback, useMemo, useState } from "react";
 
@@ -31,6 +32,7 @@ export function ImagePreviewContent({
   imageSource,
   sourcePath,
 }: ImagePreviewContentProps) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [naturalSize, setNaturalSize] = useState<ImageNaturalSize | null>(null);
   const pixelRatio = useMemo(
     () => getImagePreviewPixelRatio(sourcePath ?? title),
@@ -77,12 +79,27 @@ export function ImagePreviewContent({
     <div
       className={`flex h-full min-h-0 items-center justify-center overflow-hidden p-10 ${IMAGE_PREVIEW_CHECKERBOARD_CLASS}`}
     >
-      <img
-        alt={title}
-        className={imageClassName}
-        onLoad={handleLoad}
-        src={imageSource}
-        style={imageStyle}
+      <button
+        type="button"
+        className="flex h-full min-h-0 w-full items-center justify-center"
+        aria-label={title}
+        onClick={() => setPreviewOpen(true)}
+      >
+        <img
+          alt={title}
+          className={imageClassName}
+          onLoad={handleLoad}
+          src={imageSource}
+          style={imageStyle}
+        />
+      </button>
+      <ImagePreviewDialog
+        initialIndex={0}
+        items={[
+          { alt: title, filename: sourcePath?.split(/[\\/]/).pop() || title, src: imageSource },
+        ]}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
       />
     </div>
   );

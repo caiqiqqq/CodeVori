@@ -7,6 +7,14 @@ const DEEP_LINK_ADDITIONAL_DATA_KEY = "deepLinkUrl";
 const OPEN_WORKSPACE_ADDITIONAL_DATA_KEY = "openWorkspacePath";
 const OPEN_WORKSPACE_ARG = "--open-workspace";
 
+export function deepLinkProtocolRegistrationArgs(
+  platform: NodeJS.Platform,
+  entry?: string,
+): string[] | undefined {
+  if (entry) return platform === "win32" ? [entry, "--"] : [entry];
+  return platform === "win32" ? ["--"] : undefined;
+}
+
 function normalizeOAuthCallbackPath(pathname: string): string {
   const withoutTrailingSlash = pathname.replace(/\/+$/, "");
   const normalized = withoutTrailingSlash === "" ? "/" : withoutTrailingSlash;

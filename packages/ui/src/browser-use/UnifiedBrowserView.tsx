@@ -10,6 +10,7 @@ import { useWebElementPicker } from "@/hooks/useWebElementPicker.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { logger } from "@/logger.js";
 import { BrowserToolbar } from "@/EmbeddedBrowserPaneParts.js";
+import { EmbeddedBrowserSitePermissionPrompt } from "@/browser-use/EmbeddedBrowserSitePermissionPrompt.js";
 import { BrowserViewportSurface } from "@/browser-use/BrowserViewportSurface.js";
 import { BrowserViewportToolbar } from "@/browser-use/BrowserViewportToolbar.js";
 import { useBrowserResizeOperationWarning } from "@/browser-use/useBrowserResizeOperationWarning.js";
@@ -223,6 +224,7 @@ export function UnifiedBrowserView({
     webContentsId: number;
     scopeFingerprint: string;
   } | null>(null);
+  const [permissionGuestWebContentsId, setPermissionGuestWebContentsId] = useState(0);
   const wasResponsiveModeRef = useRef(false);
   // guest 销毁归因打点：线上主进程 UAF（EXC_BAD_ACCESS at
   // 0x10，DevToolsSession 在途通知访问已析构 client）发生前，main 日志只能看到
@@ -304,6 +306,7 @@ export function UnifiedBrowserView({
       if (typeof webview.getWebContentsId !== "function") return;
       const webContentsId = safeWebviewCall(() => webview.getWebContentsId(), 0);
       if (webContentsId <= 0) return;
+      setPermissionGuestWebContentsId(webContentsId);
       const effectiveWorkspaceKey = workspaceKey ?? (workspaceIdentity?.trim() || workspacePath);
       const scopeFingerprint = JSON.stringify({
         active,
@@ -957,6 +960,7 @@ export function UnifiedBrowserView({
   } | null>(null);
   const handleWebviewRef = useCallback(
     (node: ElectronWebviewTag | null) => {
+      if (!node) setPermissionGuestWebContentsId(0);
       const current = faviconListenerRef.current;
       if (current?.node === node) return;
       if (current) {
@@ -1021,7 +1025,7 @@ export function UnifiedBrowserView({
       }
       className={cn(
         isVisible || shouldComposeSurface ? "flex" : "hidden",
-        "h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background",
+        "relative h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background",
       )}
     >
       <BrowserToolbar
@@ -1071,6 +1075,10 @@ export function UnifiedBrowserView({
         webviewGeneration={webviewGeneration}
         viewportSize={effectiveViewportSize}
         viewportZoom={effectiveViewportZoom}
+      />
+      <EmbeddedBrowserSitePermissionPrompt
+        key={permissionGuestWebContentsId}
+        guestWebContentsId={permissionGuestWebContentsId}
       />
     </div>
   );

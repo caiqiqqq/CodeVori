@@ -11,6 +11,7 @@ import { createStdioServer } from "./stdio.js";
 import { registerStdioProcessLifecycle } from "./stdio-lifecycle.js";
 import { createStdioServices } from "./stdioServices.js";
 import { ensureRemoteServerDeviceMid } from "./stdioDeviceMid.js";
+import { ensureSourceServerId } from "./sourceServerIdentity.js";
 import {
   materializeBundledZCodeBuiltinProviderConfig,
   readBundledZCodeBuiltinProviderConfig,
@@ -38,12 +39,14 @@ if (process.argv.includes("--version")) {
 
 async function main() {
   // Phase 1: Send hello message
+  const sourceServerId = await ensureSourceServerId(getAppConfigDir());
   const hello: HelloMessage = {
     type: "zcode-hello",
     version: ZCODE_VERSION,
     platform: process.platform,
     arch: process.arch,
     pid: process.pid,
+    sourceServerId,
   };
   process.stdout.write(JSON.stringify(hello) + "\n");
 

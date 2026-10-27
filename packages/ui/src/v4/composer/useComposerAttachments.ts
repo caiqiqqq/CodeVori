@@ -1,3 +1,4 @@
+import { useImageReferenceReceiver } from "@/hooks/useImageReference.js";
 /* oxlint-disable eslint(max-lines) -- 附件采集、分 scope 上传调度和生命周期必须在同一 hook 中原子收口。 */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast.js";
@@ -132,6 +133,7 @@ interface UseComposerAttachmentsOptions {
    * preventDefault 并各自注入附件，用户看不见的后台草稿被静默塞入画板内容。
    */
   listenAddToChatEvents?: boolean;
+  imageReferenceEnabled?: boolean;
 }
 
 const rejectAttachmentUpload: AttachmentPutFn = async () => {
@@ -215,6 +217,7 @@ export function useComposerAttachments(
     onRuntimeLifecycle,
     disabled = false,
     listenAddToChatEvents = true,
+    imageReferenceEnabled = listenAddToChatEvents,
   } = options;
   const platform = usePlatform();
   const { promptAttachmentTransferService, fileService } = useServices();
@@ -831,6 +834,20 @@ export function useComposerAttachments(
     },
     [addPreparedAttachments, platform],
   );
+
+  const receiveImageReference = useCallback(
+    (file: File) => {
+      const before = readComposerAttachmentScope(scopeKey).length;
+      addAttachmentFiles([file]);
+      return readComposerAttachmentScope(scopeKey).length > before;
+    },
+    [addAttachmentFiles, scopeKey],
+  );
+  useImageReferenceReceiver({
+    target: { workspaceKey: workspaceIdentity?.trim() || workspacePath, scopeId },
+    enabled: imageReferenceEnabled && !disabled,
+    receive: receiveImageReference,
+  });
 
   const addAttachmentLocalPaths = useCallback(
     (selectedPaths: string[]) => {

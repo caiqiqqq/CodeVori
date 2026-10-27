@@ -107,6 +107,7 @@ export const helloMessageSchema = z.object({
   platform: z.string(),
   arch: z.string(),
   pid: z.number().int(),
+  sourceServerId: z.string().uuid().optional(),
 });
 
 export const helloAckMessageSchema = z.object({
@@ -200,6 +201,7 @@ export const hostInitLocalMessageSchema = z.object({
 export const windowHostRemoteWorkspaceDescriptorSchema = z
   .object({
     remoteSessionId: nonEmptyStringSchema,
+    sourceServerId: z.string().uuid().optional(),
     target: remoteTargetSchema,
     workspacePath: nonEmptyStringSchema.optional(),
     workspaceIdentity: nonEmptyStringSchema.optional(),

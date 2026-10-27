@@ -1,3 +1,4 @@
+import { groupTopicKey } from "./groupTopic.js";
 /* eslint-disable max-lines -- Bots 服务仍复用原 RPC 文件名，先把鉴权、命令路由、ZCode Agent 桥接收口集中在同一服务内。 */
 import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
@@ -469,6 +470,7 @@ function createOutbound(
     provider: actor.provider,
     providerUserId: actor.chatId ?? actor.providerUserId,
     text,
+    ...(actor.threadRootMessageId ? { threadRootMessageId: actor.threadRootMessageId } : {}),
     ...(selection ? { selection } : {}),
     ...extras,
     ...(actor.providerContextToken ? { providerContextToken: actor.providerContextToken } : {}),
@@ -850,7 +852,7 @@ export function createBotsService(
         };
       }
     }
-    await repo.writeState(state);
+    if (state.bots[botId]) await repo.updateContext(state.bots[botId]);
   }
 
   async function readWeixinGetUpdatesBuf(botId: string): Promise<string | undefined> {
@@ -882,13 +884,18 @@ export function createBotsService(
         };
       }
     }
-    await repo.writeState(state);
+    if (state.bots[botId]) await repo.updateContext(state.bots[botId]);
   }
 
-  async function readContext(_actor: BotActor, bot: BotConfig): Promise<BotContextState | null> {
+  async function readContext(actor: BotActor, bot: BotConfig): Promise<BotContextState | null> {
     await ensureBotStorageMigrated();
     const state = await repo.readState();
-    const existing = state.bots[getContextKey(bot)];
+    const conversationKey =
+      actor.chatType === "group"
+        ? groupTopicKey(actor, await credentialFingerprint(bot), bot.feishuAppId)
+        : null;
+    if (actor.chatType === "group" && !conversationKey) return null;
+    const existing = state.bots[conversationKey ?? getContextKey(bot)];
     if (existing) {
       const latestWorkspaces = await listWorkspaceRefs();
       const canonicalWorkspace = resolveCanonicalContextWorkspace(existing, latestWorkspaces);
@@ -928,6 +935,7 @@ export function createBotsService(
     }
     return {
       botId: bot.id,
+      ...(conversationKey ? { conversationKey } : {}),
       workspacePath: workspace.workspacePath,
       workspaceIdentity: workspace.workspaceIdentity,
       workspaceId: workspace.id,
@@ -939,9 +947,7 @@ export function createBotsService(
   }
 
   async function writeContext(context: BotContextState): Promise<void> {
-    const state = await repo.readState();
-    state.bots[context.botId] = { ...context, updatedAt: Date.now() };
-    await repo.writeState(state);
+    await repo.updateContext(context);
   }
 
   async function writeDraftContext(
@@ -1853,7 +1859,13 @@ export function createBotsService(
   }
 
   function getActorContextKey(actor: BotActor): string {
-    return [actor.botId, actor.provider, actor.chatId?.trim() || actor.providerUserId].join("::");
+    return [
+      actor.botId,
+      actor.provider,
+      actor.chatId?.trim() || actor.providerUserId,
+      actor.threadRootMessageId ?? "",
+      actor.providerUserId,
+    ].join("::");
   }
 
   function clearPendingSelectionsForBot(botId: string): void {
@@ -3674,6 +3686,23 @@ export function createBotsService(
     if (streamSubscriptions.has(streamSubscriptionKey)) {
       return;
     }
+    const isTopicCurrent = async (): Promise<boolean> => {
+      if (actor.chatType !== "group") return true;
+      const currentBot = findAuthorizedBot(await repo.readConfig(), actor);
+      const currentContext = context.conversationKey
+        ? (await repo.readState()).bots[context.conversationKey]
+        : undefined;
+      // 凭据轮换、解绑或重置后，旧订阅不能再投递或写回话题状态。
+      return Boolean(
+        currentBot &&
+        findBoundUser(currentBot, actor) &&
+        currentBot.provider === bot.provider &&
+        currentBot.feishuAppId === bot.feishuAppId &&
+        context.conversationKey ===
+          groupTopicKey(actor, await credentialFingerprint(currentBot), currentBot.feishuAppId) &&
+        currentContext?.activeTaskId === context.activeTaskId,
+      );
+    };
     let assistantParts: ZCodeAssistantMessagePart[] = [];
     let assistantReplyBuffer = "";
     let sentAnyAssistantReply = false;
@@ -3800,7 +3829,8 @@ export function createBotsService(
       const adapter = providers[bot.provider];
       const locale = await readMessageLocale();
       const state = {
-        providerUserId: actor.providerUserId,
+        providerUserId: actor.chatId ?? actor.providerUserId,
+        threadRootMessageId: actor.threadRootMessageId,
         locale,
         blocks: buildStreamingCardBlocks(locale),
         status: streamingCardStatus,
@@ -3809,6 +3839,7 @@ export function createBotsService(
       streamingCardQueue = streamingCardQueue
         .catch(() => undefined)
         .then(async () => {
+          if (!(await isTopicCurrent())) return;
           let operation = streamingCardHandle ? "update" : "create";
           const requestController = new AbortController();
           streamingCardRequestControllers.add(requestController);
@@ -3923,6 +3954,12 @@ export function createBotsService(
       event: ZCodeStreamEvent | TaskStreamMirrorableEvent,
       shouldBroadcast = true,
     ): Promise<void> => {
+      if (!(await isTopicCurrent())) {
+        streamSubscriptions.get(streamSubscriptionKey)?.dispose();
+        streamSubscriptions.delete(streamSubscriptionKey);
+        stopTyping(context.activeTaskId!);
+        return;
+      }
       if (event.type === "task_stream_mirror_batch") {
         if (shouldBroadcast) {
           await broadcastTaskStreamEvent(context, event);
@@ -4488,7 +4525,14 @@ export function createBotsService(
         reply: [createOutbound(message.actor, msg(locale, "botDisabled"))],
       };
     }
-    if (message.actor.chatType !== "private") {
+    if (
+      message.actor.chatType !== "private" &&
+      !(
+        isFeishuBotProvider(message.actor.provider) &&
+        message.actor.chatId &&
+        message.actor.threadRootMessageId
+      )
+    ) {
       return {
         ok: false,
         reply: [createOutbound(message.actor, msg(locale, "privateChatOnly"))],
@@ -5351,9 +5395,7 @@ export function createBotsService(
         ...config,
         bots: config.bots.map((item) => (item.id === bot.id ? nextBot : item)),
       });
-      const state = await repo.readState();
-      delete state.bots[bot.id];
-      await repo.writeState(state);
+      await repo.removeContexts((context) => context.botId === bot.id);
       clearCandidateCaches();
       telegramRuntime.scheduleRefresh(savedConfig);
       weixinRuntime.scheduleRefresh(savedConfig);
@@ -5385,9 +5427,7 @@ export function createBotsService(
       clearCandidateCaches();
       telegramRuntime.scheduleRefresh();
       weixinRuntime.scheduleRefresh();
-      const state = await repo.readState();
-      delete state.bots[botId];
-      await repo.writeState(state);
+      await repo.removeContexts((context) => context.botId === botId);
       if (bot?.credentialRef) {
         await deps.credentialService.delete(bot.credentialRef);
       }
@@ -5455,15 +5495,30 @@ export function createBotsService(
       );
     },
     async resetBotState(contextKey: string) {
-      const state = await repo.readState();
-      delete state.bots[contextKey];
-      await repo.writeState(state);
+      await repo.removeContexts((_context, key) => key === contextKey);
     },
     watchAutomationRun,
     notifyTask,
     testTaskNotification: (botId) => testBotTaskNotification(botId, taskNotificationDeps),
     async handleInboundMessage(message: BotInboundMessage) {
       return enqueueInboundProcessing(message.actor, async () => {
+        if (message.actor.chatType === "group") {
+          const bot = findAuthorizedBot(await repo.readConfig(), message.actor);
+          if (
+            !bot ||
+            !findBoundUser(bot, message.actor) ||
+            !isFeishuBotProvider(message.actor.provider)
+          )
+            return [];
+          const key = groupTopicKey(
+            message.actor,
+            await credentialFingerprint(bot),
+            bot.feishuAppId,
+          );
+          if (!key) return [];
+          // 未唤醒的群消息不能创建上下文；只有已绑定的同一话题可免再次 @ 继续。
+          if (!message.actor.mentionedBot && !(await repo.readState()).bots[key]) return [];
+        }
         if (message.elicitationResponse) {
           return handleStructuredElicitationResponse(message, message.elicitationResponse);
         }

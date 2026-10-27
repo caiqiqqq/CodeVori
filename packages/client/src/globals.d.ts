@@ -87,6 +87,8 @@ declare global {
       log(level: "info" | "warn" | "error", args: unknown[]): void;
       /** 打开系统目录选择框，返回选中路径或 null */
       selectDirectory(): Promise<string | null>;
+      /** 打开系统多目录选择框；取消时返回空数组 */
+      selectDirectories?(): Promise<string[]>;
       /** 打开系统文件选择框，返回选中文件路径或 null */
       selectFile(): Promise<string | null>;
       /** 打开系统多文件选择框，返回选中文件路径；取消时返回空数组 */
@@ -179,6 +181,10 @@ declare global {
       ): () => void;
       /** 读取当前桌面窗口页面缩放档位 */
       getDesktopZoomLevel?(): Promise<DesktopZoomState>;
+      getCloseToTrayCapability?(): Promise<{
+        supported: boolean;
+        gnomeLikeWithoutTray: boolean;
+      }>;
       /** 订阅当前桌面窗口页面缩放档位变化 */
       onDesktopZoomLevelChanged?(handler: (state: DesktopZoomState) => void): () => void;
       /** 注册用户点击系统通知后跳转到对应任务的回调，返回 disposer */
@@ -260,6 +266,28 @@ declare global {
       ): Promise<ChromeBrowserDataImportResult>;
       /** 清理内置浏览器缓存或全部站点数据。 */
       clearEmbeddedBrowserData?(mode: "cache" | "all"): Promise<EmbeddedBrowserDataClearResult>;
+      onEmbeddedBrowserSitePermissionPrompt?(
+        handler: (event: import("@zcode/shared").EmbeddedBrowserSitePermissionPrompt) => void,
+      ): () => void;
+      onEmbeddedBrowserSitePermissionClosed?(handler: (requestId: string) => void): () => void;
+      onEmbeddedBrowserSitePermissionsChanged?(handler: () => void): () => void;
+      resolveEmbeddedBrowserSitePermissionPrompt?(request: {
+        requestId: string;
+        action: "allow-always" | "allow-session" | "dismiss" | "select";
+        selectionId?: string;
+      }): void;
+      getEmbeddedBrowserSitePermissions?(): Promise<
+        import("@zcode/shared").EmbeddedBrowserSitePermissionsSnapshot
+      >;
+      setEmbeddedBrowserSitePermission?(
+        request: import("@zcode/shared").EmbeddedBrowserSitePermissionUpdate,
+      ): Promise<import("@zcode/shared").EmbeddedBrowserSitePermissionsSnapshot>;
+      resetEmbeddedBrowserSitePermission?(
+        origin: string,
+      ): Promise<import("@zcode/shared").EmbeddedBrowserSitePermissionsSnapshot>;
+      clearEmbeddedBrowserSitePermissions?(): Promise<
+        import("@zcode/shared").EmbeddedBrowserSitePermissionsSnapshot
+      >;
       /** 注册新版本已下载完毕的回调，返回 disposer */
       onUpdateReady(callback: (version: string) => void): () => void;
       /** 注册"手动检查更新"结果的回调，返回 disposer */

@@ -407,10 +407,12 @@ export function useWorkspaceTaskLists(params: {
     });
     const activePending = pending.filter((config) => config.workspaceKey === activeWorkspaceKey);
     if (activePending.length > 0) {
-      // 冷启动时若一次性查询所有历史 workspace，会和当前 workspace 的模型 readState 抢资源，
-      // 导致输入框底部持续显示“管理模型/加载中”。这里先保证当前 workspace 的任务列表和模型状态完成，
-      // 其他 workspace 等当前缓存落盘后再后台补齐。
-      return activePending;
+      // 仅调整请求顺序，不能把其他 workspace 挡在当前 shard 成功之后。
+      // 当前远端持续失败时只返回 activePending 会让本地项目永远没有首次列表。
+      return [
+        ...activePending,
+        ...pending.filter((config) => config.workspaceKey !== activeWorkspaceKey),
+      ];
     }
     return pending;
   }, [activeWorkspaceKey, queryConfigs, resultsByQueryKey]);
@@ -516,53 +518,60 @@ export function useWorkspaceTaskLists(params: {
 
     try {
       const pendingConfigKeys = new Set(pendingConfigs.map((config) => config.queryKey));
-      const entries = (
-        await Promise.all(
-          endpointShards.map(async (shard) => {
-            const shardConfigs = shard.configs.filter((config) =>
-              pendingConfigKeys.has(config.queryKey),
-            );
-            if (shardConfigs.length === 0) {
-              return [];
-            }
+      const shardResults = await Promise.allSettled(
+        endpointShards.map(async (shard) => {
+          const shardConfigs = shard.configs.filter((config) =>
+            pendingConfigKeys.has(config.queryKey),
+          );
+          if (shardConfigs.length === 0) {
+            return [];
+          }
 
-            // 本机和 remote shard 都以各自 endpoint 的 tasks-index 行为集合，
-            // 再用同 endpoint/workspace 的 sessions-index activity/detail enrich。
-            const groupByWorkspaceKey = await buildWorkspaceGroupsFromSessions({
-              service: shard.services.zcodeTaskService,
-              scopes: shardConfigs.map((config) => config.scope),
-              sessions: sessionsForRequest,
-              sortBy: params.sortBy,
-              membershipCacheKey: `${membershipVersion}::workspace::${shard.shardKey}::${shardConfigs
-                .map((config) => `${config.workspaceKey}@${taskListVersionSignature}`)
-                .join("|")}`,
-            });
+          // 本机和 remote shard 都以各自 endpoint 的 tasks-index 行为集合，
+          // 再用同 endpoint/workspace 的 sessions-index activity/detail enrich。
+          const groupByWorkspaceKey = await buildWorkspaceGroupsFromSessions({
+            service: shard.services.zcodeTaskService,
+            scopes: shardConfigs.map((config) => config.scope),
+            sessions: sessionsForRequest,
+            sortBy: params.sortBy,
+            membershipCacheKey: `${membershipVersion}::workspace::${shard.shardKey}::${shardConfigs
+              .map((config) => `${config.workspaceKey}@${taskListVersionSignature}`)
+              .join("|")}`,
+          });
 
-            return shardConfigs.map((config) => {
-              const group = groupByWorkspaceKey.get(config.workspaceKey) ?? {
-                workspacePath: config.scope.workspacePath,
-                workspaceIdentity: config.scope.workspaceIdentity,
-                items: [],
-                total: 0,
-                hasMore: false,
-                unreadTaskKeys: [],
-              };
-              const visibleItems = group.items.slice(0, config.visibleLimit);
-              return {
-                queryKey: config.queryKey,
-                descriptor: config.descriptor,
-                items: visibleItems,
-                total: group.total,
-                hasMore: group.total > visibleItems.length,
-                unreadTaskKeys: group.unreadTaskKeys,
-                expectedInvalidationVersion: expectedInvalidationVersionByQueryKey.get(
-                  config.queryKey,
-                ),
-              };
-            });
-          }),
-        )
-      ).flat();
+          return shardConfigs.map((config) => {
+            const group = groupByWorkspaceKey.get(config.workspaceKey) ?? {
+              workspacePath: config.scope.workspacePath,
+              workspaceIdentity: config.scope.workspaceIdentity,
+              items: [],
+              total: 0,
+              hasMore: false,
+              unreadTaskKeys: [],
+            };
+            const visibleItems = group.items.slice(0, config.visibleLimit);
+            return {
+              queryKey: config.queryKey,
+              descriptor: config.descriptor,
+              items: visibleItems,
+              total: group.total,
+              hasMore: group.total > visibleItems.length,
+              unreadTaskKeys: group.unreadTaskKeys,
+              expectedInvalidationVersion: expectedInvalidationVersionByQueryKey.get(
+                config.queryKey,
+              ),
+            };
+          });
+        }),
+      );
+      // 远端索引读取失败不能吞掉同轮成功的本地结果；失败 shard 保留旧缓存，不写空列表。
+      const entries = shardResults.flatMap((result, index) => {
+        if (result.status === "fulfilled") return result.value;
+        logger.warn("[useWorkspaceTaskLists] endpoint task 列表读取失败", {
+          shardKey: endpointShards[index]?.shardKey,
+          error: result.reason,
+        });
+        return [];
+      });
 
       // 之前每个 workspace queryKey 都单独 set 一次 cache，
       // effect 又依赖整个 resultsByQueryKey，导致“刚写入第一组结果就判定还有缺失，再触发下一轮 refresh”。

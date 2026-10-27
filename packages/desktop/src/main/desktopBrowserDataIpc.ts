@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
 import { PlatformChannels, type ChromeBrowserDataImportOptions } from "@zcode/shared";
 import { clearEmbeddedBrowserData, importChromeBrowserData } from "./browserDataManager.js";
+import { getActiveEmbeddedBrowserSitePermissionController } from "./embeddedBrowserSitePermissionController.js";
 
 export function registerBrowserDataIpcHandlers(logger: {
   info: (...args: unknown[]) => void;
@@ -12,10 +13,13 @@ export function registerBrowserDataIpcHandlers(logger: {
     const allowElevatedChromeDecryption = requested?.allowElevatedChromeDecryption === true;
     return importChromeBrowserData({ allowElevatedChromeDecryption, logger });
   });
-  ipcMain.handle(PlatformChannels.ClearEmbeddedBrowserData, (_event, mode: unknown) => {
+  ipcMain.handle(PlatformChannels.ClearEmbeddedBrowserData, async (_event, mode: unknown) => {
     if (mode !== "cache" && mode !== "all") {
       return { success: false, error: "invalid_clear_mode" };
     }
-    return clearEmbeddedBrowserData({ logger, mode });
+    const result = await clearEmbeddedBrowserData({ logger, mode });
+    if (result.success && mode === "all")
+      await getActiveEmbeddedBrowserSitePermissionController()?.clear();
+    return result;
   });
 }

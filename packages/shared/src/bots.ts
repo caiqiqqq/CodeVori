@@ -202,6 +202,7 @@ export interface BotsConfigFile {
 
 export interface BotState {
   botId: string;
+  conversationKey?: string;
   workspacePath: string;
   workspaceIdentity?: string;
   workspaceId?: string;
@@ -245,6 +246,8 @@ export interface BotActor {
   displayName?: string;
   chatType: "private" | "group";
   chatId?: string;
+  threadRootMessageId?: string;
+  mentionedBot?: boolean;
   providerMessageId?: string;
   providerContextToken?: string;
 }
@@ -327,6 +330,7 @@ export interface BotInboundMessage {
 }
 
 export interface BotOutboundMessage {
+  threadRootMessageId?: string;
   botId: string;
   provider: BotProvider;
   providerUserId: string;
@@ -524,6 +528,7 @@ export const botsStateFileSchema = z
       z.string(),
       z.object({
         botId: z.string().min(1),
+        conversationKey: z.string().min(1).optional(),
         workspacePath: z.string().min(1),
         workspaceIdentity: z.string().min(1).optional(),
         workspaceId: z.string().min(1).optional(),

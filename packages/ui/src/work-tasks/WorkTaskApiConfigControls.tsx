@@ -29,7 +29,7 @@ export function WorkTaskApiConfigControls({
           category: "mode",
           type: "select",
           currentValue: execution.mode,
-          options: ["build", "edit", "plan", "yolo"].map((mode) => ({
+          options: ["build", "edit", "plan", "yolo", "guarded"].map((mode) => ({
             value: mode,
             name: t(`mode.${mode}`),
           })),

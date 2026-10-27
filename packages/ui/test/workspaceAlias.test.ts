@@ -91,3 +91,17 @@ test("restored and newly opened tabs read the current alias projection", () => {
   store.getState().applyWorkspaceAliases({ "C:\\projects\\frontend": "主站" });
   assert.equal(store.getState().tabs[0]!.label, "主站");
 });
+
+test("an explicitly opened local project replaces conversation classification at the same path", () => {
+  const store = createTabStore(null);
+  const path = "/projects/opened-locally";
+  const id = store.getState().addTab(path, { workspacePurpose: "conversation" });
+
+  const reopenedId = store.getState().addTab(path, { workspacePurpose: "project" });
+
+  assert.equal(reopenedId, id);
+  assert.equal(store.getState().tabs.length, 1);
+  const tab = store.getState().tabs[0];
+  assert.ok(tab && isWorkspaceTab(tab));
+  assert.equal(tab.workspacePurpose, "project");
+});

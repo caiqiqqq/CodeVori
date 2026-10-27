@@ -153,8 +153,6 @@ export function buildAcpConversationRows(
       rows.push({
         ...base,
         kind: "assistantText",
-        // 修复原因：工具后的简短补充不能把之前的 ACP 长回答降为折叠工作记录。
-        presentation: "standalone",
         text: entry.text,
         state:
           turnFailed && (!isLastTurn || status !== "running")

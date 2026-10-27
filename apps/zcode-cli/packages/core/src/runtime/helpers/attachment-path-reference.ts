@@ -68,6 +68,7 @@ export function resolvedPathReferenceAttachment(
       recoverability: "metadata_only",
       sizeBytes: options.sizeBytes,
       storageKind: "local_ref",
+      pathReferenceText: content,
     },
     mime,
     source: options.source,

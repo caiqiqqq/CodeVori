@@ -382,6 +382,7 @@ export interface ToolPersistedModelContentInput {
 }
 
 export interface ToolRuntimePermissionCapability {
+  userApprovalRule?: string;
   allowedInPlanMode?: boolean;
   destructive?: boolean;
   needsApproval?: boolean;
@@ -393,6 +394,8 @@ export interface ToolRuntimePermissionCapability {
 }
 
 export interface ToolRuntimePermissionCapabilityContext {
+  mode?: import("@zcode/contracts").CollaborationMode;
+  bashShellSelection?: ExecutionShellSelection;
   runtimeScope?: ToolRuntimeScope;
   workingDirectory?: string;
   workspaceRoot?: string;

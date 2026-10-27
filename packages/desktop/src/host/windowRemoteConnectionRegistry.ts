@@ -21,6 +21,7 @@ export interface WindowRemoteConnectionCloseEvent {
 }
 
 export interface WindowRemoteConnectionHandle<TServices, TCapabilities = never> {
+  sourceServerId?: string;
   services: TServices;
   capabilities?: TCapabilities;
   dispose(): void | Promise<void>;
@@ -37,6 +38,7 @@ type WindowRemoteConnectionState = "connecting" | "online" | "closing" | "failed
 
 interface WindowRemoteLogicalSessionSnapshot {
   remoteSessionId: string;
+  sourceServerId?: string;
   requestId: string;
   target: RemoteTarget;
   workspacePath?: string;
@@ -62,6 +64,7 @@ class WindowRemoteConnectionUnavailableError extends Error {
 
 interface ConnectionEntry<TServices, TCapabilities> {
   key: string;
+  sourceServerId?: string;
   target: RemoteTarget;
   state: WindowRemoteConnectionState;
   abortController: AbortController;
@@ -113,15 +116,14 @@ function normalizeWslSegment(value: string | undefined): string {
   return value?.trim() || "<default>";
 }
 
-function buildConnectionKey(target: RemoteTarget, remoteSessionId: string): string {
+function buildConnectionKey(target: RemoteTarget): string {
   switch (target.kind) {
     case "ssh":
       return `ssh:${buildSshRemoteHostKey(target)}`;
     case "wsl":
       return `wsl:${normalizeWslSegment(target.distro)}\0${normalizeWslSegment(target.user)}`;
     case "docker":
-      // Docker 保持现有 dedicated logical session 生命周期，不按 target 复用。
-      return `${target.kind}:dedicated:${remoteSessionId}`;
+      return `docker:${target.container}`;
   }
 }
 
@@ -130,6 +132,7 @@ function toSessionSnapshot<TServices, TCapabilities>(
 ): WindowRemoteLogicalSessionSnapshot {
   return {
     remoteSessionId: session.remoteSessionId,
+    ...(session.entry.sourceServerId ? { sourceServerId: session.entry.sourceServerId } : {}),
     requestId: session.requestId,
     target: stripRemoteTargetSecrets(session.target),
     ...(session.workspacePath ? { workspacePath: session.workspacePath } : {}),
@@ -151,6 +154,7 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
   wslIdleTtlMs?: number;
 }) {
   const entriesByKey = new Map<string, ConnectionEntry<TServices, TCapabilities>>();
+  const entriesBySourceServerId = new Map<string, ConnectionEntry<TServices, TCapabilities>>();
   const sessionsById = new Map<string, LogicalSession<TServices, TCapabilities>>();
   const pendingSessionsByRequestId = new Map<string, LogicalSession<TServices, TCapabilities>>();
   let disposed = false;
@@ -163,6 +167,15 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
     }
     clearTimeout(entry.idleTimer);
     entry.idleTimer = undefined;
+  }
+
+  function forgetEntry(entry: ConnectionEntry<TServices, TCapabilities>): void {
+    for (const [key, candidate] of entriesByKey) {
+      if (candidate === entry) entriesByKey.delete(key);
+    }
+    if (entry.sourceServerId && entriesBySourceServerId.get(entry.sourceServerId) === entry) {
+      entriesBySourceServerId.delete(entry.sourceServerId);
+    }
   }
 
   function hasRunningTasks(entry: ConnectionEntry<TServices, TCapabilities>): boolean {
@@ -354,9 +367,7 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
     entry.abortController.abort();
     entry.closeSubscription?.dispose();
     entry.closeSubscription = undefined;
-    if (entriesByKey.get(entry.key) === entry) {
-      entriesByKey.delete(entry.key);
-    }
+    forgetEntry(entry);
     entry.disposePromise = Promise.resolve(entry.handle?.dispose()).then(() => undefined);
     return entry.disposePromise;
   }
@@ -370,9 +381,7 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
     }
     entry.state = "disconnected";
     clearIdleTimer(entry);
-    if (entriesByKey.get(entry.key) === entry) {
-      entriesByKey.delete(entry.key);
-    }
+    forgetEntry(entry);
     for (const remoteSessionId of entry.sessions) {
       const session = sessionsById.get(remoteSessionId);
       if (!session) {
@@ -417,6 +426,40 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
           await disposeEntry(entry);
           return handle;
         }
+        const sourceServerId = handle.sourceServerId?.trim();
+        const existing = sourceServerId ? entriesBySourceServerId.get(sourceServerId) : undefined;
+        if (
+          existing &&
+          existing !== entry &&
+          !existing.disposed &&
+          existing.state === "online" &&
+          existing.handle
+        ) {
+          // 握手才可确认两条线路属于同一设备；丢弃新物理连接后再转移 logical owner。
+          await disposeEntry(entry);
+          if (
+            existing.disposed ||
+            existing.state !== "online" ||
+            entriesBySourceServerId.get(sourceServerId!) !== existing ||
+            (entriesByKey.has(entry.key) && entriesByKey.get(entry.key) !== entry)
+          ) {
+            throw new Error("Source Server connection changed during route join");
+          }
+          for (const remoteSessionId of entry.sessions) {
+            const session = sessionsById.get(remoteSessionId);
+            if (!session || session.cancelled) continue;
+            session.entry = existing;
+            existing.sessions.add(remoteSessionId);
+            if (session.workspaceKey) existing.workspaceKeys.add(session.workspaceKey);
+          }
+          entry.sessions.clear();
+          entriesByKey.set(entry.key, existing);
+          return existing.handle!;
+        }
+        if (sourceServerId) {
+          entry.sourceServerId = sourceServerId;
+          entriesBySourceServerId.set(sourceServerId, entry);
+        }
         entry.state = "online";
         entry.closeSubscription = handle.onDidClose?.((event) => {
           handleConnectionClosed(entry, event);
@@ -433,9 +476,7 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
       })
       .catch((error) => {
         entry.state = "failed";
-        if (entriesByKey.get(entry.key) === entry) {
-          entriesByKey.delete(entry.key);
-        }
+        forgetEntry(entry);
         for (const remoteSessionId of Array.from(entry.sessions)) {
           const session = sessionsById.get(remoteSessionId);
           if (!session) {
@@ -486,7 +527,7 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
     }
 
     const remoteSessionId = options.createId();
-    const key = buildConnectionKey(params.target, remoteSessionId);
+    const key = buildConnectionKey(params.target);
     const entry = resolveEntry({
       key,
       target: params.target,
@@ -524,13 +565,19 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
     try {
       await Promise.race([entry.ready, cancellation]);
       await Promise.race([prepareWorkspaceRuntime(session), cancellation]);
-      if (session.cancelled || !sessionsById.has(remoteSessionId)) {
+      if (
+        session.cancelled ||
+        !sessionsById.has(remoteSessionId) ||
+        session.entry.state !== "online" ||
+        !session.entry.handle
+      ) {
         throw new WindowRemoteConnectCancelledError();
       }
       session.state = "online";
       session.sourceAvailability = "online";
       return {
         remoteSessionId,
+        ...(session.entry.sourceServerId ? { sourceServerId: session.entry.sourceServerId } : {}),
         target: stripRemoteTargetSecrets(params.target),
         ...(session.workspacePath ? { workspacePath: session.workspacePath } : {}),
         ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
@@ -539,11 +586,14 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
     } catch (error) {
       if (sessionsById.get(remoteSessionId) === session) {
         sessionsById.delete(remoteSessionId);
-        entry.sessions.delete(remoteSessionId);
+        const owner = session.entry;
+        owner.sessions.delete(remoteSessionId);
         session.state = "failed";
         session.sourceAvailability = "offline";
-        if (entry.sessions.size === 0 && entry.target.kind === "docker") {
-          await disposeEntry(entry);
+        if (owner.sessions.size === 0 && owner.target.kind === "docker") {
+          await disposeEntry(owner);
+        } else if (owner.sessions.size === 0 && owner.target.kind === "wsl") {
+          scheduleWslIdleDispose(owner, "failed-logical-connect");
         }
       }
       throw error;
@@ -572,9 +622,12 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
     void workspaceRelease?.catch(() => undefined);
     session.rejectCancellation(new WindowRemoteConnectCancelledError());
     if (session.entry.sessions.size === 0) {
-      if (session.entry.target.kind === "ssh" && session.entry.state === "connecting") {
+      if (
+        (session.entry.target.kind === "ssh" || session.entry.target.kind === "docker") &&
+        session.entry.state === "connecting"
+      ) {
         // 最后一个 waiter 取消后，旧 entry 仍以 connecting 留在复用表；立即重连会
-        // 继续等待已经 aborted 的 readiness，并沿用上一次凭据。先按对象身份退休旧 entry，
+        // 继续等待已经 aborted 的 readiness。先按对象身份退休旧 entry，
         // 再触发底层取消；迟到的旧 completion 不能删除或复活同 key 的新连接。
         if (entriesByKey.get(session.entry.key) === session.entry) {
           entriesByKey.delete(session.entry.key);
@@ -721,7 +774,7 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
     },
     getStats(): { connectionCount: number; logicalSessionCount: number } {
       return {
-        connectionCount: entriesByKey.size,
+        connectionCount: new Set(entriesByKey.values()).size,
         logicalSessionCount: sessionsById.size,
       };
     },

@@ -77,28 +77,19 @@ try {
         theme,
       );
       const answer = page.locator('[data-row-id="6"]');
-      const assertRepliesVisible = async () => {
-        await answer.waitFor({ state: "visible" });
+      const assertFinalReplyVisible = async () => {
         await page
           .getByText("Saved fixture summary.", { exact: true })
           .waitFor({ state: "visible" });
-        assert.equal(await answer.locator("strong").innerText(), "fixture answer");
-        assert.equal(await answer.locator('[data-slot="collapsible-content"]').count(), 0);
-        assert.equal(await page.locator('[data-row-id="6"]').count(), 1);
-        assert.equal(
-          await page.evaluate(() => {
-            const row = document.querySelector('[data-row-id="6"]');
-            return Boolean(row?.closest('[data-testid^="chat-assistant-history-content-"]'));
-          }),
-          false,
-        );
+        await answer.waitFor({ state: "hidden" });
+        assert.equal(await answer.isVisible(), false);
       };
       await answer.waitFor({ state: "visible" });
       await page.evaluate(() => window.__replyVisibility.tools());
       await page.getByText("Read fixture memory", { exact: true }).waitFor();
       await answer.waitFor({ state: "visible" });
       await page.evaluate(() => window.__replyVisibility.reply());
-      await assertRepliesVisible();
+      await page.getByText("Saved fixture summary.", { exact: true }).waitFor();
       await page.evaluate(() => window.__replyVisibility.finish());
       const history = page.locator('[data-testid^="chat-assistant-history-trigger-"]').first();
       await page.waitForFunction(
@@ -107,19 +98,26 @@ try {
             .querySelector('[data-testid^="chat-assistant-history-trigger-"]')
             ?.getAttribute("data-history-open") === "false",
       );
-      await assertRepliesVisible();
+      await assertFinalReplyVisible();
       assert.equal(await page.getByText("Read fixture memory", { exact: true }).isVisible(), false);
       await history.click();
       await page.getByText("Read fixture memory", { exact: true }).waitFor({ state: "visible" });
-      await assertRepliesVisible();
+      await answer.waitFor({ state: "visible" });
+      assert.equal(await answer.locator("strong").innerText(), "fixture answer");
+      assert.equal(
+        await answer.evaluate((row) =>
+          Boolean(row.closest('[data-testid^="chat-assistant-history-content-"]')),
+        ),
+        true,
+      );
       await history.click();
-      await assertRepliesVisible();
+      await assertFinalReplyVisible();
       await page.evaluate(() => window.__replyVisibility.next());
       await page.getByText("Next fixture question", { exact: true }).waitFor();
-      await assertRepliesVisible();
+      await assertFinalReplyVisible();
       await page.evaluate(() => window.__replyVisibility.replay());
       await page.locator('[data-fixture-epoch="1"]').waitFor();
-      await assertRepliesVisible();
+      await assertFinalReplyVisible();
       assert.equal(await page.getByText("Read fixture memory", { exact: true }).isVisible(), false);
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),

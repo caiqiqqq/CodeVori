@@ -186,6 +186,7 @@ export async function executeTurnCommand(
       beginLocalTurnPreparation(turnTraceContext, "execution")();
       throwIfTurnAborted(turnAbortSignal);
       let admittedModel;
+      let creationFailure: { error: unknown } | undefined;
       try {
         admittedModel =
           rewindCommand === null
@@ -195,47 +196,56 @@ export async function executeTurnCommand(
               })
             : undefined;
       } catch (error) {
-        // 同步滞后/模型失效可在内层 Turn try 之前创建失败。只写日志会让已接纳输入
-        // 没有终态、桌面与手机都看不到错误；复用 outcome，不等待同步、不改原选择。
-        turnFailureHandled = true;
-        const coreError = createTurnFailureError(error, turnAbortSignal, "Model creation failed");
-        await appendTurnOutcomeEvent(this, {
-          coreError,
-          events,
-          durationMs: Date.now() - turnStartedAtMs,
-          turnPhase: "model_creation",
-          inputId: options?.inputId,
-          traceContext: turnTraceContext,
-          fallbackMessage: "Model creation failed",
-          logEvent: "turn.failed",
-          logLabel: "Turn",
-        });
-        throw coreError;
+        if (compactInstructions === null) {
+          // 模型注册表可能在接纳后失效；直接抛错会跳过输入落库，edit/retry 还可能已截断历史。
+          // 记录首因，复用普通轮的输入记录和统一收尾，不另建失败消息持久化路径。
+          creationFailure = { error };
+        } else {
+          // /compact 不产生用户消息，创建失败直接收尾。
+          turnFailureHandled = true;
+          const coreError = createTurnFailureError(error, turnAbortSignal, "Model creation failed");
+          await appendTurnOutcomeEvent(this, {
+            coreError,
+            events,
+            durationMs: Date.now() - turnStartedAtMs,
+            turnPhase: "model_creation",
+            inputId: options?.inputId,
+            traceContext: turnTraceContext,
+            fallbackMessage: "Model creation failed",
+            logEvent: "turn.failed",
+            logLabel: "Turn",
+          });
+          throw coreError;
+        }
       }
-      let phaseStartedAt = startTurnPhase("context_initialization");
-      if (this.contextInitialized) {
-        // 每个后续 model step 都按该步骤实际持有的 Model 重新投影 Context；
-        // Session Selection 只决定未来创建哪个 Model，不能充当执行事实。
-        rebuildContextPrefix(this, { model: admittedModel });
-      } else {
-        // 首轮初始化已经用 admitted Model 构造并安装完整 Context，随后再 rebuild
-        // 会把同一 Prefix 连续构造两次。未初始化与已初始化分支互斥，每个 model step 只构造一次。
-        await this.ensureContextInitialized(turnTraceContext, admittedModel);
+      let phaseStartedAt: number;
+      // 已知创建失败时跳过 Context 和一次性 SessionStart，避免二次 IO 覆盖首因或提前消费 hook。
+      if (!creationFailure) {
+        phaseStartedAt = startTurnPhase("context_initialization");
+        if (this.contextInitialized) {
+          // 每个后续 model step 都按该步骤实际持有的 Model 重新投影 Context；
+          // Session Selection 只决定未来创建哪个 Model，不能充当执行事实。
+          rebuildContextPrefix(this, { model: admittedModel });
+        } else {
+          // 首轮初始化已经用 admitted Model 构造并安装完整 Context，随后再 rebuild
+          // 会把同一 Prefix 连续构造两次。未初始化与已初始化分支互斥，每个 model step 只构造一次。
+          await this.ensureContextInitialized(turnTraceContext, admittedModel);
+        }
+        completeTurnPhase("context_initialization", phaseStartedAt);
+        throwIfTurnAborted(turnAbortSignal);
+        phaseStartedAt = startTurnPhase("session_start_hooks");
+        const sessionStartHookResult = await this.runSessionStartHooks(
+          "startup",
+          turnTraceContext,
+          turnAbortSignal,
+          admittedModel,
+        );
+        completeTurnPhase("session_start_hooks", phaseStartedAt);
+        this.injectHookAdditionalContextIntoMessageHistory(
+          HookEventName.SessionStart,
+          sessionStartHookResult.additionalContexts,
+        );
       }
-      completeTurnPhase("context_initialization", phaseStartedAt);
-      throwIfTurnAborted(turnAbortSignal);
-      phaseStartedAt = startTurnPhase("session_start_hooks");
-      const sessionStartHookResult = await this.runSessionStartHooks(
-        "startup",
-        turnTraceContext,
-        turnAbortSignal,
-        admittedModel,
-      );
-      completeTurnPhase("session_start_hooks", phaseStartedAt);
-      this.injectHookAdditionalContextIntoMessageHistory(
-        HookEventName.SessionStart,
-        sessionStartHookResult.additionalContexts,
-      );
 
       if (compactInstructions !== null) {
         const compactModel = await applySubmissionExecutionState(
@@ -265,7 +275,8 @@ export async function executeTurnCommand(
           options?.inputId,
         );
       }
-      activeTurn = this.beginActiveTurn(turnId, turnTraceContext, "regular", true, {
+      // 失败轮不进入模型循环，无法消费 guide；不可 steer 让新输入走原有队列。
+      activeTurn = this.beginActiveTurn(turnId, turnTraceContext, "regular", !creationFailure, {
         ...(options?.inputId === undefined ? {} : { inputId: options.inputId }),
       });
       this.logger?.info("Turn started", {
@@ -277,97 +288,105 @@ export async function executeTurnCommand(
       });
 
       turnMachine = new TurnMachineImpl(turnMachine.start());
-      phaseStartedAt = startTurnPhase("session_persistence");
-      await this.ensureSessionPersisted(displayInput, turnTraceContext);
-      // execution-scoped 临时 Provider（例如闲时任务）拥有本轮自己的模型，不改写
-      // Session Selection；普通 Submission 才在真正开跑时应用其原子选择。
-      const submissionModel = await applySubmissionExecutionState(
-        this,
-        options?.intent,
-        turnTraceContext,
-        options?.modelExecution,
-        admittedModel,
-      );
-      startedTarget = await this.readSessionTargetForContext(turnTraceContext);
-      completeTurnPhase("target_read", phaseStartedAt);
-      if (startedTarget?.status !== "active") {
-        startedTarget = null;
-      }
-      userMessageId =
-        options?.skipInputRecord === true
-          ? (options.recordedInputMessageId ?? createMessageId())
-          : createMessageId();
-      // 附件展示元信息随 TurnStarted 下发（v4 投影 → userInput row.attachments）。
-      // workspace checkpoint 挂在 user messageId 上；先生成 id 再发 TurnStarted，
-      // v4 投影才能用 turn rowId 找回该轮文件 checkpoint，避免摘要有计数但展开查空。
-      const attachmentMetas = summarizeTurnAttachmentsForEvent(attachments);
-      const turnStartedEvent = this.createEvent(
-        SessionEventType.TurnStarted,
-        {
-          executionStartedAt,
-          turnNumber: this.turnNumber,
-          input: displayInput,
-          messageId: userMessageId,
-          inputId: options?.inputId,
-          ...(options?.automationId
-            ? { automationId: options.automationId }
-            : options?.offPeakTaskId
-              ? {
-                  offPeakTaskId: options.offPeakTaskId,
-                  ...(options.offPeakRunType ? { offPeakRunType: options.offPeakRunType } : {}),
-                }
-              : {}),
-          foregroundExecutionId: this.activeForegroundExecution?.foregroundExecutionId,
-          queryId,
-          inputSource: options?.inputSource,
-          inputVisibility: options?.inputVisibility,
-          originMeta: options?.originMeta,
-          ...(options?.epilogueStart === undefined ? {} : { epilogueStart: options.epilogueStart }),
-          ...(options?.backgroundSource ? { backgroundSource: options.backgroundSource } : {}),
-          targetId: options?.targetId,
-          ...(options?.intent ? { intent: options.intent } : {}),
-          ...(attachmentMetas ? { attachments: attachmentMetas } : {}),
-        },
-        turnTraceContext,
-      );
-      phaseStartedAt = startTurnPhase("turn_started_event");
-      await this.appendEvent(turnStartedEvent, turnTraceContext);
-      completeTurnPhase("turn_started_event", phaseStartedAt);
-      events.push(turnStartedEvent);
-      phaseStartedAt = startTurnPhase("target_accounting");
-      startedTarget = await this.startTargetTurnAccounting({
-        inputID: targetRunInputID,
-        startedAtMs: turnStartedAtMs,
-        startedTarget,
-        traceContext: turnTraceContext,
-      });
-      completeTurnPhase("target_accounting", phaseStartedAt);
-      if (startedTarget && this.sessionStore?.heartbeatTargetRun) {
-        targetRunHeartbeat = setInterval(() => {
-          void this.trackResidencyBlockingWork(
-            this.heartbeatTargetTurnAccounting({
-              inputID: targetRunInputID,
-              seenAtMs: Date.now(),
-              startedTarget,
-              traceContext: turnTraceContext,
-            }),
-          );
-        }, TARGET_RUN_HEARTBEAT_MS);
-        if (typeof targetRunHeartbeat === "object" && "unref" in targetRunHeartbeat) {
-          targetRunHeartbeat.unref();
-        }
-      }
-
       try {
-        phaseStartedAt = startTurnPhase("user_prompt_hooks");
-        const userPromptHookResult: HookRunResult = options?.skipUserPromptSubmitHooks
-          ? { additionalContexts: [] }
-          : await this.runUserPromptSubmitHooks(
-              input,
-              attachments,
+        phaseStartedAt = startTurnPhase("session_persistence");
+        await this.ensureSessionPersisted(displayInput, turnTraceContext);
+        // execution-scoped 临时 Provider（例如闲时任务）拥有本轮自己的模型，不改写
+        // Session Selection；普通 Submission 才在真正开跑时应用其原子选择。
+        // 不重复建模、不改写选择/mode/plan，不占用目标轮次。
+        const submissionModel = creationFailure
+          ? undefined
+          : await applySubmissionExecutionState(
+              this,
+              options?.intent,
               turnTraceContext,
-              turnAbortSignal,
+              options?.modelExecution,
+              admittedModel,
             );
+        startedTarget = creationFailure
+          ? null
+          : await this.readSessionTargetForContext(turnTraceContext);
+        completeTurnPhase("target_read", phaseStartedAt);
+        if (startedTarget?.status !== "active") {
+          startedTarget = null;
+        }
+        userMessageId =
+          options?.skipInputRecord === true
+            ? (options.recordedInputMessageId ?? createMessageId())
+            : createMessageId();
+        // 附件展示元信息随 TurnStarted 下发（v4 投影 → userInput row.attachments）。
+        // workspace checkpoint 挂在 user messageId 上；先生成 id 再发 TurnStarted，
+        // v4 投影才能用 turn rowId 找回该轮文件 checkpoint，避免摘要有计数但展开查空。
+        const attachmentMetas = summarizeTurnAttachmentsForEvent(attachments);
+        const turnStartedEvent = this.createEvent(
+          SessionEventType.TurnStarted,
+          {
+            executionStartedAt,
+            turnNumber: this.turnNumber,
+            input: displayInput,
+            messageId: userMessageId,
+            inputId: options?.inputId,
+            ...(options?.automationId
+              ? { automationId: options.automationId }
+              : options?.offPeakTaskId
+                ? {
+                    offPeakTaskId: options.offPeakTaskId,
+                    ...(options.offPeakRunType ? { offPeakRunType: options.offPeakRunType } : {}),
+                  }
+                : {}),
+            foregroundExecutionId: this.activeForegroundExecution?.foregroundExecutionId,
+            queryId,
+            inputSource: options?.inputSource,
+            inputVisibility: options?.inputVisibility,
+            originMeta: options?.originMeta,
+            ...(options?.epilogueStart === undefined
+              ? {}
+              : { epilogueStart: options.epilogueStart }),
+            ...(options?.backgroundSource ? { backgroundSource: options.backgroundSource } : {}),
+            targetId: options?.targetId,
+            ...(options?.intent ? { intent: options.intent } : {}),
+            ...(attachmentMetas ? { attachments: attachmentMetas } : {}),
+          },
+          turnTraceContext,
+        );
+        phaseStartedAt = startTurnPhase("turn_started_event");
+        await this.appendEvent(turnStartedEvent, turnTraceContext);
+        completeTurnPhase("turn_started_event", phaseStartedAt);
+        events.push(turnStartedEvent);
+        phaseStartedAt = startTurnPhase("target_accounting");
+        startedTarget = await this.startTargetTurnAccounting({
+          inputID: targetRunInputID,
+          startedAtMs: turnStartedAtMs,
+          startedTarget,
+          traceContext: turnTraceContext,
+        });
+        completeTurnPhase("target_accounting", phaseStartedAt);
+        if (startedTarget && this.sessionStore?.heartbeatTargetRun) {
+          targetRunHeartbeat = setInterval(() => {
+            void this.trackResidencyBlockingWork(
+              this.heartbeatTargetTurnAccounting({
+                inputID: targetRunInputID,
+                seenAtMs: Date.now(),
+                startedTarget,
+                traceContext: turnTraceContext,
+              }),
+            );
+          }, TARGET_RUN_HEARTBEAT_MS);
+          if (typeof targetRunHeartbeat === "object" && "unref" in targetRunHeartbeat) {
+            targetRunHeartbeat.unref();
+          }
+        }
+
+        phaseStartedAt = startTurnPhase("user_prompt_hooks");
+        const userPromptHookResult: HookRunResult =
+          creationFailure || options?.skipUserPromptSubmitHooks
+            ? { additionalContexts: [] }
+            : await this.runUserPromptSubmitHooks(
+                input,
+                attachments,
+                turnTraceContext,
+                turnAbortSignal,
+              );
         completeTurnPhase("user_prompt_hooks", phaseStartedAt);
         if (userPromptHookResult.preventContinuation) {
           const response =
@@ -527,6 +546,12 @@ export async function executeTurnCommand(
                 : { epilogueStart: options.epilogueStart }),
             },
           );
+        }
+        if (creationFailure) {
+          // TurnStarted 与用户消息已按正常路径记录；失败轮不生成标题、不请求模型。
+          throw creationFailure.error;
+        }
+        if (options?.skipInputRecord !== true && options?.inputVisibility !== "model-only") {
           // 标题生成以前等主 turn 成功后才启动，用户 stop/cancel 首轮请求时
           // generated title 永远没有机会发起。首条 query 持久化后即可异步生成，避免被主链路取消拖死。
           const titleGenerationStarted = maybeStartSessionTitleGeneration.call(
@@ -714,7 +739,28 @@ export async function executeTurnCommand(
         return result;
       } catch (error) {
         turnFailureHandled = true;
-        const coreError = createTurnFailureError(error, turnAbortSignal, "Turn execution failed");
+        // 输入记录的二次错误不能掩盖模型创建首因；取消和宿主 fault 仍由既有分类器优先处理。
+        const reportedCreationFailure =
+          creationFailure && !isTurnCancellationError(error, turnAbortSignal)
+            ? creationFailure
+            : undefined;
+        if (reportedCreationFailure && error !== reportedCreationFailure.error) {
+          this.logger?.warn("Accepted input persistence failed after model creation failed", {
+            ...traceContextToLogContext(turnTraceContext),
+            errorMessage: error instanceof Error ? error.message : String(error),
+            event: "turn.model_creation.input_persistence_failed",
+            module: "core.runtime",
+            status: "failed",
+          });
+        }
+        const fallbackMessage = reportedCreationFailure
+          ? "Model creation failed"
+          : "Turn execution failed";
+        const coreError = createTurnFailureError(
+          reportedCreationFailure ? reportedCreationFailure.error : error,
+          turnAbortSignal,
+          fallbackMessage,
+        );
         const preserveQueueAutoDrainOnCancel =
           coreError.type === CoreErrorType.TurnCancelled &&
           this.activeForegroundExecution?.preserveQueueAutoDrainOnCancel === true;
@@ -771,10 +817,10 @@ export async function executeTurnCommand(
           coreError,
           events,
           durationMs: Date.now() - turnMachine.state.startedAt.getTime(),
-          turnPhase: turnMachine.state.phase,
+          turnPhase: reportedCreationFailure ? "model_creation" : turnMachine.state.phase,
           inputId: options?.inputId,
           traceContext: turnTraceContext,
-          fallbackMessage: "Turn execution failed",
+          fallbackMessage,
           logEvent: "turn.failed",
           logLabel: "Turn",
           preserveQueueAutoDrainOnCancel,

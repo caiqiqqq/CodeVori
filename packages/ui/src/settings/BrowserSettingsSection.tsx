@@ -26,6 +26,7 @@ import { SettingsGroupCard, SettingsRow } from "@/settings/SettingsPageParts.js"
 import { usePluginManagementStore } from "@/store/pluginManagementStore.js";
 import { useSkillStore } from "@/store/skillStore.js";
 import { formatImportSummary } from "./browserImportSummary.js";
+import { BrowserSitePermissions } from "./BrowserSitePermissions.js";
 
 const OFFICIAL_BROWSER_USE_PLUGIN_ID = "browser-use@zcode-plugins-official";
 
@@ -325,6 +326,7 @@ export function BrowserSettingsSection({
               }
             />
           </SettingsGroupCard>
+          <BrowserSitePermissions />
         </section>
       ) : null}
 

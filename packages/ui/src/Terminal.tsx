@@ -190,20 +190,7 @@ export function Terminal({
   const handleCloseSession = useCallback(
     (sessionId: string) => {
       const closeAction = getTerminalSessionCloseAction(panelState, sessionId);
-      if (closeAction === "close-panel") {
-        // 旧 UI 在只剩一个 tab 时直接隐藏关闭按钮，用户无法从 tab 完成关闭。
-        // 最后一个 tab 的关闭语义是收起整个面板并保活 session，与右上角关闭面板按钮保持一致。
-        logger.info("[Terminal] close terminal panel from last tab", {
-          terminalTabId: sessionId,
-          workspaceKey,
-        });
-        onClose();
-        return;
-      }
-
-      if (closeAction !== "close-session") {
-        return;
-      }
+      if (closeAction === "none") return;
 
       setPanelState((current) => {
         const session = current.sessions[sessionId];
@@ -218,6 +205,8 @@ export function Terminal({
         });
         return next;
       });
+      // 标签关闭先删除资源 owner，最后一个标签再收起面板；右上角收起按钮仍沿原路径保活。
+      if (closeAction === "close-panel") onClose();
     },
     [onClose, panelState, workspaceKey],
   );

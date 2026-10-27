@@ -29,6 +29,11 @@ const ZCODE_AGENT_MODE_OPTIONS = [
     description: "Inspect the code and present a plan before editing.",
   },
   {
+    id: "guarded",
+    name: "Autonomous with safety checks",
+    description: "Run automatically; ask before dangerous commands.",
+  },
+  {
     id: "yolo",
     name: "Full access",
     description: "Edit and run commands with fewer confirmations.",

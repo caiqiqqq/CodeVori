@@ -27,6 +27,8 @@ import {
   registerLocalMediaPreviewScheme,
 } from "./localMediaPreviewProtocol.js";
 import { createDesktopBrowserScreenshotSurfaceCoordinator } from "./browserView/browserScreenshotSurfaceCoordinatorWiring.js";
+import { installEmbeddedBrowserDeviceSelection } from "./embeddedBrowserDeviceSelection.js";
+import { desktopCapturer } from "electron";
 import { EMBEDDED_BROWSER_PARTITION } from "./browserDataManager.js";
 import { EmbeddedBrowserJavaScriptDialogController } from "./embeddedBrowserJavaScriptDialog.js";
 import {
@@ -135,7 +137,23 @@ import { resolveWindowsAppUserModelIdForFlavor } from "../../scripts/desktop-pro
 import type { DesktopWindowSize } from "./desktopWindowSize.js";
 import { maybeWarnArchitectureMismatch } from "./desktopArchitectureGuard.js";
 import { maybeBlockStartupForForceUpdate } from "./forceUpdateGuard.js";
-import { createWindowsDesktopTray, updateWindowsDesktopTrayMenu } from "./desktopTray.js";
+import {
+  createDesktopTray,
+  isDesktopTrayReady,
+  updateWindowsDesktopTrayMenu,
+} from "./desktopTray.js";
+import {
+  detectLinuxTraySupport,
+  resolveCloseToTrayBootstrapValue,
+  resolveCloseToTraySupported,
+} from "./desktopTraySupport.js";
+import { installEmbeddedBrowserPermissionBaseline } from "./embeddedBrowserPermissionBaseline.js";
+import {
+  createEmbeddedBrowserSitePermissionController,
+  setActiveEmbeddedBrowserSitePermissionController,
+} from "./embeddedBrowserSitePermissionController.js";
+import { createEmbeddedBrowserSitePermissionFile } from "./embeddedBrowserSitePermissionFile.js";
+import { registerEmbeddedBrowserSitePermissionIpc } from "./embeddedBrowserSitePermissionIpc.js";
 import { createWindowsCuaOperationIndicator } from "./windowsCuaOperationIndicator.js";
 import {
   configureDockMenu,
@@ -299,6 +317,9 @@ const linuxDesktopIntegrationIconPath =
     : iconPath;
 let currentApplicationLocale: Locale = DEFAULT_LOCALE;
 let closeToTrayOnWindows = true;
+let linuxTrayWatcherReady = false;
+let linuxTrayLastChecked = 0;
+let linuxTrayRefresh: Promise<boolean> | null = null;
 // keep-awake：全局开关 keepAwakeWhileRunning。打开后主进程持有
 // powerSaveBlocker("prevent-app-suspension")，阻止系统闲置休眠（防不了合盖/手动睡眠）。
 // 不再绑定闲时任务活跃计数——设置页「常规」与 Automations 入口镜像同一配置。
@@ -943,6 +964,44 @@ function markForceQuit(reason: string) {
 function markExplicitQuit(reason: string) {
   explicitQuitRef.current = true;
   logger.info(`[app-quit] explicit quit requested (${reason})`);
+}
+
+function ensureDesktopTray(): boolean {
+  if (process.platform === "linux" && !linuxTrayWatcherReady) return false;
+  createDesktopTray({
+    platform: process.platform,
+    getLocale: () => currentApplicationLocale,
+    showCurrentWindow: () =>
+      primaryWindowCoordinator.ensurePrimaryWindow("tray-show-current-window"),
+    executeDesktopCommand: executeDesktopCommandForApp,
+    quitApp: () => {
+      markExplicitQuit("tray-quit");
+      app.quit();
+    },
+    logger,
+  });
+  return isDesktopTrayReady();
+}
+
+function refreshLinuxTraySupport(): Promise<boolean> {
+  if (process.platform !== "linux") return Promise.resolve(false);
+  if (linuxTrayRefresh) return linuxTrayRefresh;
+  if (Date.now() - linuxTrayLastChecked < 10_000) {
+    return Promise.resolve(
+      resolveCloseToTraySupported("linux", isDesktopTrayReady(), linuxTrayWatcherReady),
+    );
+  }
+  linuxTrayRefresh = detectLinuxTraySupport()
+    .then((supported) => {
+      linuxTrayWatcherReady = supported;
+      linuxTrayLastChecked = Date.now();
+      if (supported) ensureDesktopTray();
+      return resolveCloseToTraySupported("linux", isDesktopTrayReady(), supported);
+    })
+    .finally(() => {
+      linuxTrayRefresh = null;
+    });
+  return linuxTrayRefresh;
 }
 
 function syncCloseToTrayOnWindows(value: unknown) {
@@ -1693,6 +1752,11 @@ function createWindowInstance(startupBootstrap: StartupWindowBootstrap = {}) {
         forceQuit: forceQuitRef.current,
         explicitQuitRequested: explicitQuitRef.current,
         closeToTrayOnWindows,
+        closeToTraySupported: resolveCloseToTraySupported(
+          process.platform,
+          isDesktopTrayReady(),
+          linuxTrayWatcherReady,
+        ),
         isLastWindow: getMainApplicationWindows().length === 1,
         label,
         logger,
@@ -1878,6 +1942,9 @@ function createWindowInstance(startupBootstrap: StartupWindowBootstrap = {}) {
     },
   });
   registerStabilityMainWindow(win);
+  if (process.platform === "win32" && windowUnreadCountMap.size > 0) {
+    syncApplicationUnreadBadge(windowUnreadCountMap);
+  }
   return win;
 }
 
@@ -1970,6 +2037,51 @@ app.whenReady().then(async () => {
   installBrowserRestoreBootstrapProtocol(
     session.fromPartition(EMBEDDED_BROWSER_PARTITION).protocol,
   );
+  const permissionFile = createEmbeddedBrowserSitePermissionFile(
+    join(app.getPath("userData"), "embedded-browser-site-permissions.json"),
+  );
+  const sitePermissionController = createEmbeddedBrowserSitePermissionController({
+    ...permissionFile,
+    onPromptClosed: (hostId, requestId) => {
+      const host = webContents.fromId(hostId);
+      if (host && !host.isDestroyed())
+        host.send(PlatformChannels.EmbeddedBrowserSitePermissionClosed, requestId);
+    },
+    onChanged: () => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed())
+          win.webContents.send(PlatformChannels.EmbeddedBrowserSitePermissionsChanged);
+      }
+    },
+    sendPrompt: (hostId, prompt) => {
+      const host = webContents.fromId(hostId);
+      if (!host || host.isDestroyed() || !BrowserWindow.fromWebContents(host)) return false;
+      host.send(PlatformChannels.EmbeddedBrowserSitePermissionPrompt, prompt);
+      return true;
+    },
+  });
+  await sitePermissionController.load();
+  setActiveEmbeddedBrowserSitePermissionController(sitePermissionController);
+  registerEmbeddedBrowserSitePermissionIpc(sitePermissionController);
+  installEmbeddedBrowserPermissionBaseline(
+    session.fromPartition(EMBEDDED_BROWSER_PARTITION),
+    logger,
+    sitePermissionController,
+  );
+  const deviceSelection = installEmbeddedBrowserDeviceSelection(
+    session.fromPartition(EMBEDDED_BROWSER_PARTITION),
+    sitePermissionController,
+    {
+      fromFrame: (frame) => webContents.fromFrame(frame),
+      getSources: () =>
+        desktopCapturer.getSources({
+          types: ["screen", "window"],
+          thumbnailSize: { width: 320, height: 180 },
+        }),
+      warn: (...args) => logger.warn(...args),
+    },
+  );
+  app.on("web-contents-created", (_event, contents) => deviceSelection.attachGuest(contents));
   // Bootstrap: 从设置文件读取自定义数据目录，在所有 host 进程启动前生效
   let loadedBootstrapLocale = false;
   let bootstrapSettings: AppSettings | undefined;
@@ -1982,7 +2094,24 @@ app.whenReady().then(async () => {
       loadedBootstrapLocale = true;
       currentApplicationLocale = bootstrapSettings.locale;
     }
-    closeToTrayOnWindows = bootstrapSettings.closeToTrayOnWindows ?? true;
+    const closeToTrayBootstrap = resolveCloseToTrayBootstrapValue(
+      process.platform,
+      bootstrapSettings.closeToTrayOnWindows,
+      bootstrapSettings.closeToTrayLinuxMigrationInitialized,
+    );
+    closeToTrayOnWindows = closeToTrayBootstrap.value;
+    if (closeToTrayBootstrap.needsMigration) {
+      try {
+        await mainSettingService.update({
+          closeToTrayOnWindows: false,
+          closeToTrayLinuxMigrationInitialized: true,
+        });
+      } catch (error) {
+        // 持久化失败时以磁盘值为准，避免 main 与设置页对开关状态产生分歧。
+        closeToTrayOnWindows = bootstrapSettings.closeToTrayOnWindows ?? true;
+        logger.warn("[desktop-tray] Linux setting migration failed", error);
+      }
+    }
     keepAwakeWhileRunning = bootstrapSettings.keepAwakeWhileRunning ?? false;
     currentDesktopZoomLevel = clampDesktopZoomLevel(bootstrapSettings.desktopZoomLevel ?? 0);
     currentDesktopWindowSize = bootstrapSettings.desktopWindowSize;
@@ -2079,19 +2208,24 @@ app.whenReady().then(async () => {
       ),
     () => showCurrentWindowFromDock(primaryWindowCoordinator),
   );
-  createWindowsDesktopTray({
-    getLocale: () => currentApplicationLocale,
-    showCurrentWindow: () =>
-      primaryWindowCoordinator.ensurePrimaryWindow("tray-show-current-window"),
-    executeDesktopCommand: executeDesktopCommandForApp,
-    quitApp: () => {
-      markExplicitQuit("tray-quit");
-      app.quit();
-    },
-    logger,
-  });
+  if (process.platform === "linux") void refreshLinuxTraySupport();
+  else ensureDesktopTray();
 
   registerPlatformIpcHandlers({
+    getCloseToTrayCapability: async () => {
+      if (process.platform === "linux") {
+        const supported = await refreshLinuxTraySupport();
+        const desktop = process.env.XDG_CURRENT_DESKTOP ?? process.env.XDG_SESSION_DESKTOP ?? "";
+        return {
+          supported,
+          gnomeLikeWithoutTray: !supported && desktop.toLowerCase().split(/[:;]/).includes("gnome"),
+        };
+      }
+      return {
+        supported: resolveCloseToTraySupported(process.platform, isDesktopTrayReady(), false),
+        gnomeLikeWithoutTray: false,
+      };
+    },
     fetchHelpConfig: readHelpConfig,
     logger,
     // CDP-on-guest pivot：renderer `<webview>` dom-ready 上报 guest webContentsId → attach。

@@ -20,12 +20,12 @@ export function useModelProviders(target: {
   workspaceIdentity?: string;
   /** 本地 Provider Settings 的连通性测试使用的本地 cwd；不复用远程激活路径。 */
   connectivityWorkspacePath?: string;
-  /** 远程激活时没有本地 cwd 必须 fail-closed，不能回退到远程 workspacePath。 */
+  /** 远程激活时只使用本地测试 cwd；缺失时由本地文件服务创建默认会话目录。 */
   connectivityWorkspaceRequired?: boolean;
   /** 没有本地 workspace 时展示给用户的本地化错误文案。 */
   connectivityUnavailableMessage?: string;
 }) {
-  const { providerSettingsService } = useServices();
+  const { providerSettingsService, fileService } = useServices();
   const providerSettingsRead = useProviderSettingsServiceView(providerSettingsService);
   const providerSettingsView =
     providerSettingsRead.state.status === "ready" ? providerSettingsRead.state.view : null;
@@ -181,27 +181,34 @@ export function useModelProviders(target: {
 
   const testModelConnectivity = useCallback(
     async (providerId: string, modelId: string): Promise<ModelConnectivityResult> => {
-      const connectivityWorkspacePath = target.connectivityWorkspacePath?.trim();
-      if (
-        !connectivityWorkspacePath &&
-        (target.connectivityWorkspaceRequired || target.workspaceIdentity?.trim())
-      ) {
-        return {
-          success: false,
-          error: {
-            message:
-              target.connectivityUnavailableMessage ??
-              "A local workspace is unavailable for connectivity testing.",
-          },
-        };
+      let connectivityWorkspacePath =
+        target.connectivityWorkspacePath?.trim() ||
+        (target.connectivityWorkspaceRequired || target.workspaceIdentity?.trim()
+          ? ""
+          : target.workspacePath.trim());
+      if (!connectivityWorkspacePath) {
+        try {
+          // 只有远程项目时也需要可用的本地 cwd；复用文件服务的默认目录，不把远程路径传给本地 Agent。
+          connectivityWorkspacePath = (await fileService.ensureConversationWorkspace()).path;
+        } catch {
+          return {
+            success: false,
+            error: {
+              message:
+                target.connectivityUnavailableMessage ??
+                "A local workspace is unavailable for connectivity testing.",
+            },
+          };
+        }
       }
       return providerSettingsService.testModelConnectivity({
-        workspacePath: connectivityWorkspacePath || target.workspacePath,
+        workspacePath: connectivityWorkspacePath,
         providerId,
         modelId,
       });
     },
     [
+      fileService,
       providerSettingsService,
       target.connectivityUnavailableMessage,
       target.connectivityWorkspacePath,

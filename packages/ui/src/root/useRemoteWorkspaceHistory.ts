@@ -581,6 +581,7 @@ async function selectRemoteWorkspaceProjectFromDialog({
     buildRemoteWorkspaceSessionMutation({
       remoteSessions: getRemoteSessions(),
       workspacePath: canonicalPath,
+      ...(remoteSession.sourceServerId ? { sourceServerId: remoteSession.sourceServerId } : {}),
       localWorkspacePath,
       workspaceIdentity,
       target: remoteTarget,

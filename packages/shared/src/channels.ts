@@ -41,6 +41,9 @@ import type {
   DesktopTitleBarTheme,
   DockerContainerInfo,
   EmbeddedBrowserOpenUrlRequest,
+  EmbeddedBrowserSitePermissionPrompt,
+  EmbeddedBrowserSitePermissionUpdate,
+  EmbeddedBrowserSitePermissionsSnapshot,
   EditorInfo,
   CreateTempTextAttachmentRequest,
   CreateTempTextAttachmentResult,
@@ -166,6 +169,8 @@ export type ServiceChannelName = (typeof ServiceChannels)[keyof typeof ServiceCh
 export const PlatformChannels = {
   /** 打开系统目录选择框 */
   SelectDirectory: "zcode:select-directory",
+  /** 打开系统多目录选择框 */
+  SelectDirectories: "zcode:select-directories",
   /** 打开系统文件选择框 */
   SelectFile: "zcode:select-file",
   /** 打开系统多文件选择框 */
@@ -379,6 +384,15 @@ export const PlatformChannels = {
   ImportChromeBrowserData: "zcode:import-chrome-browser-data",
   /** Renderer → Main：清理内置浏览器缓存或全部站点数据。 */
   ClearEmbeddedBrowserData: "zcode:clear-embedded-browser-data",
+  EmbeddedBrowserSitePermissionPrompt: "zcode:embedded-browser-site-permission-prompt",
+  EmbeddedBrowserSitePermissionClosed: "zcode:embedded-browser-site-permission-closed",
+  EmbeddedBrowserSitePermissionsChanged: "zcode:embedded-browser-site-permissions-changed",
+  ResolveEmbeddedBrowserSitePermissionPrompt:
+    "zcode:resolve-embedded-browser-site-permission-prompt",
+  GetEmbeddedBrowserSitePermissions: "zcode:get-embedded-browser-site-permissions",
+  SetEmbeddedBrowserSitePermission: "zcode:set-embedded-browser-site-permission",
+  ResetEmbeddedBrowserSitePermission: "zcode:reset-embedded-browser-site-permission",
+  ClearEmbeddedBrowserSitePermissions: "zcode:clear-embedded-browser-site-permissions",
   /** Main → Renderer：通知有新版本已下载完毕，可以重启安装 */
   UpdateReady: "zcode:update-ready",
   /** Main → Renderer：用户手动点击"检查更新"后的结果反馈（toast 用） */
@@ -401,6 +415,7 @@ export const PlatformChannels = {
   GetDesktopSessionActivity: "zcode:get-desktop-session-activity",
   /** Renderer → Main：读取当前窗口页面缩放档位 */
   GetDesktopZoomLevel: "zcode:get-desktop-zoom-level",
+  GetCloseToTrayCapability: "zcode:get-close-to-tray-capability",
   /** Main → Renderer：当前窗口页面缩放档位变化 */
   DesktopZoomLevelChanged: "zcode:desktop-zoom-level-changed",
   /** Renderer → Main：读取开发态 stdio tap proxy 开关状态 */
@@ -648,6 +663,10 @@ export interface PlatformChannelMap {
     request: void;
     response: string | null;
   };
+  [PlatformChannels.SelectDirectories]: {
+    request: void;
+    response: string[];
+  };
   [PlatformChannels.SelectFile]: {
     request: void;
     response: string | null;
@@ -787,6 +806,32 @@ export interface PlatformChannelMap {
   [PlatformChannels.OpenBrowserUrl]: {
     request: EmbeddedBrowserOpenUrlRequest;
     response: void;
+  };
+  [PlatformChannels.EmbeddedBrowserSitePermissionPrompt]: {
+    request: EmbeddedBrowserSitePermissionPrompt;
+    response: void;
+  };
+  [PlatformChannels.EmbeddedBrowserSitePermissionClosed]: { request: string; response: void };
+  [PlatformChannels.EmbeddedBrowserSitePermissionsChanged]: { request: void; response: void };
+  [PlatformChannels.ResolveEmbeddedBrowserSitePermissionPrompt]: {
+    request: { requestId: string; action: "allow-always" | "allow-session" | "dismiss" };
+    response: void;
+  };
+  [PlatformChannels.GetEmbeddedBrowserSitePermissions]: {
+    request: void;
+    response: EmbeddedBrowserSitePermissionsSnapshot;
+  };
+  [PlatformChannels.SetEmbeddedBrowserSitePermission]: {
+    request: EmbeddedBrowserSitePermissionUpdate;
+    response: EmbeddedBrowserSitePermissionsSnapshot;
+  };
+  [PlatformChannels.ResetEmbeddedBrowserSitePermission]: {
+    request: string;
+    response: EmbeddedBrowserSitePermissionsSnapshot;
+  };
+  [PlatformChannels.ClearEmbeddedBrowserSitePermissions]: {
+    request: void;
+    response: EmbeddedBrowserSitePermissionsSnapshot;
   };
   [PlatformChannels.BrowserViewReady]: {
     request: {
@@ -1089,6 +1134,10 @@ export interface PlatformChannelMap {
   [PlatformChannels.GetDesktopZoomLevel]: {
     request: void;
     response: DesktopZoomState;
+  };
+  [PlatformChannels.GetCloseToTrayCapability]: {
+    request: void;
+    response: { supported: boolean; gnomeLikeWithoutTray: boolean };
   };
   [PlatformChannels.DesktopZoomLevelChanged]: {
     request: DesktopZoomState;

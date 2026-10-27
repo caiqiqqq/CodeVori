@@ -45,6 +45,8 @@ export function buildConversationFlowItems(options: {
   assistantHistoryRows: readonly AssistantWorkRow[];
   assistantFollowingRows: readonly AssistantWorkRow[];
   assistantTailRows: readonly AssistantWorkRow[];
+  /** 本段唯一外露的助手正文；历史正文仍保留在有序 work flow。 */
+  visibleAssistantTextRow?: AssistantTextRow;
   /** 整个 product turn 唯一可挂 action 的最终正文。 */
   latestAssistantTextRow?: AssistantTextRow;
   timelineOnly: boolean;
@@ -64,11 +66,11 @@ export function buildConversationFlowItems(options: {
     // flowItems，renderer 会把它渲染在定时任务卡片、文件 summary 和消息操作栏之前。
     // 这里只保留真实 flow；boundary 由 TurnGroup 在全部 turn-local 附属 UI 之后统一收尾。
     if (tailRowIds.has(row.rowId)) continue;
-    // 工具后的收尾短句只是最终操作锚点，不能把先前用户可读正文变成折叠工作。
-    // 在有序 flow 投影处保持普通正文外露，兼容聚合仍保留原历史行；CUA response
-    // 随后继续按 assistantResponseId 聚合，不按相邻正文猜测或拆散分组。
+    // 修复原因：API/ACP 多次过程正文都外露会让完成轮无限增长；仅本段最终正文
+    // 留在折叠区外，早期正文仍按原序保存在 history 中供用户展开。
     if (
       isAssistantTextRow(row) &&
+      row.rowId === options.visibleAssistantTextRow?.rowId &&
       !followingRowIds.has(row.rowId) &&
       !tailRowIds.has(row.rowId) &&
       !options.timelineOnly

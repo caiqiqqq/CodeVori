@@ -1,4 +1,4 @@
-import { getVisibleTaskMetas } from "@/store/zcodeSessionStoreSelectors.js";
+import { getTaskUnreadIndicator, getVisibleTaskMetas } from "@/store/zcodeSessionStoreSelectors.js";
 import type { WorkspaceZCodeUIState } from "@/store/zcodeSessionStoreTypes.js";
 
 type WorkspaceUnreadState = Pick<
@@ -16,11 +16,12 @@ export function countAllUnreadTasks(workspaces: Record<string, WorkspaceUnreadSt
       continue;
     }
     visitedWorkspaceStates.add(workspace);
-    // 未读状态现在统一以 task meta.unreadAt 为准。
-    // Dock badge 必须和任务列表蓝点读取同一份元数据，不能再单独依赖旧的临时 map。
+    // 角标复用任务列表的未读判断，避免 meta 尚未到达时漏掉已完成任务。
     const visibleTasks = getVisibleTaskMetas(workspace);
+    const visibleTaskIds = new Set<string>();
     for (const task of visibleTasks) {
-      if (!task.unreadAt) {
+      visibleTaskIds.add(task.taskId);
+      if (!getTaskUnreadIndicator(workspace, task.taskId, task)) {
         continue;
       }
       countedTaskKeys.add(
@@ -28,13 +29,10 @@ export function countAllUnreadTasks(workspaces: Record<string, WorkspaceUnreadSt
       );
     }
 
-    if (visibleTasks.length > 0) {
-      continue;
-    }
-
-    // remote workspace 会同时保留 path key 和 workspaceIdentity key 的兼容状态。
-    // 这里按 workspaceKey + taskId 去重，并跳过相同对象引用，避免窗口未读角标把同一个远端 task 算两次。
-    for (const taskId of Object.keys(workspace.taskUnreadByTaskId ?? {})) {
+    // 兼容标记可能先于列表 meta 到达；即使已有其他可见任务，也必须计入尚未水合的未读任务。
+    // 已在列表里的任务通过上面的同一判断计一次，false 标记不产生角标。
+    for (const [taskId, unread] of Object.entries(workspace.taskUnreadByTaskId ?? {})) {
+      if (!unread || visibleTaskIds.has(taskId)) continue;
       countedTaskKeys.add(`${workspaceKey}::${taskId}`);
     }
   }

@@ -29,6 +29,16 @@ export interface ComputerUseRuntimeOptions {
   refreshMarkerPath?: string;
   ensureBrokerAvailable?: () => Promise<void>;
   env?: Record<string, string | undefined>;
+  platform?: NodeJS.Platform;
+  macOsVersion?: string;
+  createService?: (sessionKey: string) => {
+    callTool(
+      name: string,
+      args: Record<string, unknown>,
+      options?: { signal?: AbortSignal; runtimeScope?: "main" | "subagent" },
+    ): Promise<unknown>;
+    close(): Promise<void>;
+  };
 }
 
 export declare function createComputerUseRuntime(

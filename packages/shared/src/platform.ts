@@ -449,6 +449,26 @@ export interface EmbeddedBrowserOpenUrlRequest {
   sourceTabId?: string;
 }
 
+export interface EmbeddedBrowserSitePermissionPrompt {
+  requestId: string;
+  expiresAt: number;
+  origin: string;
+  permission: string;
+  guestWebContentsId: number;
+  mediaTypes?: string[];
+  choices?: { id: string; name: string; thumbnailDataUrl?: string }[];
+}
+
+export type EmbeddedBrowserSitePermissionsSnapshot = Record<
+  string,
+  Record<string, "allow" | "deny">
+>;
+export interface EmbeddedBrowserSitePermissionUpdate {
+  origin: string;
+  permission: string;
+  state: "allow" | "deny" | "ask";
+}
+
 export interface BotRemoteWorkspaceReconnectedEvent {
   sessionId: string;
   workspacePath: string;
@@ -535,6 +555,9 @@ export interface IPlatformService {
 
   /** 打开系统目录选择框，返回选中路径或 null */
   selectDirectory(): Promise<string | null>;
+
+  /** 打开系统多目录选择框；取消时返回空数组 */
+  selectDirectories?(): Promise<string[]>;
 
   /** 打开系统文件选择框，返回选中文件路径或 null */
   selectFile(): Promise<string | null>;
@@ -843,6 +866,9 @@ export interface IPlatformService {
   /** 同步读取当前桌面窗口页面缩放档位；Web fallback 可返回默认 0 */
   getDesktopZoomLevel?(): Promise<DesktopZoomState>;
 
+  /** Whether the desktop can keep a visible tray entry after its last window is hidden. */
+  getCloseToTrayCapability?(): Promise<{ supported: boolean; gnomeLikeWithoutTray: boolean }>;
+
   /** 注册当前桌面窗口页面缩放档位变化回调，返回 disposer */
   onDesktopZoomLevelChanged?(handler: (state: DesktopZoomState) => void): () => void;
 
@@ -900,6 +926,24 @@ export interface IPlatformService {
 
   /** 清理内置浏览器持久化分区；cache 模式保留认证数据，all 模式清理全部站点数据。 */
   clearEmbeddedBrowserData?(mode: "cache" | "all"): Promise<EmbeddedBrowserDataClearResult>;
+  onEmbeddedBrowserSitePermissionPrompt?(
+    handler: (event: EmbeddedBrowserSitePermissionPrompt) => void,
+  ): () => void;
+  onEmbeddedBrowserSitePermissionClosed?(handler: (requestId: string) => void): () => void;
+  onEmbeddedBrowserSitePermissionsChanged?(handler: () => void): () => void;
+  resolveEmbeddedBrowserSitePermissionPrompt?(request: {
+    requestId: string;
+    action: "allow-always" | "allow-session" | "dismiss" | "select";
+    selectionId?: string;
+  }): void;
+  getEmbeddedBrowserSitePermissions?(): Promise<EmbeddedBrowserSitePermissionsSnapshot>;
+  setEmbeddedBrowserSitePermission?(
+    request: EmbeddedBrowserSitePermissionUpdate,
+  ): Promise<EmbeddedBrowserSitePermissionsSnapshot>;
+  resetEmbeddedBrowserSitePermission?(
+    origin: string,
+  ): Promise<EmbeddedBrowserSitePermissionsSnapshot>;
+  clearEmbeddedBrowserSitePermissions?(): Promise<EmbeddedBrowserSitePermissionsSnapshot>;
 
   /** 注册新版本已下载完毕的回调，参数为新版本号，返回 disposer */
   onUpdateReady(callback: (version: string) => void): () => void;

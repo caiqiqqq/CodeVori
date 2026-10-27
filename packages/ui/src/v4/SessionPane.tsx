@@ -1,4 +1,5 @@
 import { McpAppScopeContext } from "@/ToolCallBlocks/mcpAppPages.js";
+import { ImageReferenceTargetProvider } from "@/hooks/useImageReference.js";
 import { resolveSelectionSideInheritedModel } from "@/lib/selectionSideInheritedModel.js";
 import { useStartPlanRecommendation } from "@/hooks/useStartPlanRecommendation.js";
 import type { SessionCreateSource } from "@zcode/shared";
@@ -4979,6 +4980,7 @@ export function SessionPane({
       centered={visibleEmptyDraft}
       blockingRequestId={acpAgent ? null : blockingInteractionId}
       listenAddToChatEvents={focused && !acpAgent}
+      imageReferenceEnabled={focused && !readOnly}
       externalTextInsertRequest={
         focused && !acpAgent && sessionId === null ? composerTextInsertRequest : null
       }
@@ -5234,6 +5236,17 @@ export function SessionPane({
         },
       })
     : null;
+
+  const imageReferenceTarget = useMemo(
+    () =>
+      focused && !readOnly
+        ? {
+            workspaceKey,
+            scopeId: composerScopeId ?? sessionId ?? V4_DRAFT_SCOPE_ROOT,
+          }
+        : null,
+    [composerScopeId, focused, readOnly, sessionId, workspaceKey],
+  );
 
   const sessionPaneContent = (
     <div
@@ -5592,7 +5605,9 @@ export function SessionPane({
           : null
       }
     >
-      {sessionPaneContent}
+      <ImageReferenceTargetProvider target={imageReferenceTarget}>
+        {sessionPaneContent}
+      </ImageReferenceTargetProvider>
     </McpAppScopeContext.Provider>
   );
 }

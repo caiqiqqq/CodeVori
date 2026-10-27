@@ -71,6 +71,8 @@ export function GeneralSectionContent({
   defaultHomeDir,
   isDesktop,
   isWindowsDesktop,
+  isLinuxDesktop,
+  platform,
   showIntegratedTerminalShell = false,
   setLocalePreference,
   setNotificationEnabled,
@@ -136,6 +138,7 @@ export function GeneralSectionContent({
   defaultHomeDir: string;
   isDesktop?: boolean;
   isWindowsDesktop?: boolean;
+  isLinuxDesktop?: boolean;
   showIntegratedTerminalShell?: boolean;
   platform?: IPlatformService;
   setLocalePreference: (locale: LocalePreference) => void;
@@ -180,6 +183,26 @@ export function GeneralSectionContent({
 }) {
   const { intl } = useZCodeIntl();
   const hasServices = Boolean(useOptionalServices());
+  const [trayCapability, setTrayCapability] = useState<{
+    supported: boolean;
+    gnomeLikeWithoutTray: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!isLinuxDesktop) return;
+    let active = true;
+    void platform?.getCloseToTrayCapability?.().then(
+      (capability) => {
+        if (active) setTrayCapability(capability);
+      },
+      () => {
+        if (active) setTrayCapability({ supported: false, gnomeLikeWithoutTray: false });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [isLinuxDesktop, platform]);
   // 部分 SSR 单测会用精简 props 直接渲染本组件，新增终端设置项后旧 helper 未必同步传值。
   // 这里把运行时缺省值兜到“继承系统 profile”，避免 undefined.trim() 把无关测试打断。
   const [localTerminalFontFamily, setLocalTerminalFontFamily] = useState(terminalFontFamily);
@@ -655,15 +678,24 @@ export function GeneralSectionContent({
             />
           }
         />
-        {isWindowsDesktop ? (
+        {isWindowsDesktop || isLinuxDesktop ? (
           <SettingsRow
             label={intl.formatMessage({ id: "settings.closeToTrayOnWindows" })}
-            description={intl.formatMessage({
-              id: "settings.closeToTrayOnWindowsDescription",
-            })}
+            description={
+              isLinuxDesktop && !trayCapability?.supported
+                ? intl.formatMessage({
+                    id: trayCapability?.gnomeLikeWithoutTray
+                      ? "settings.closeToTrayGnomeHint"
+                      : "settings.closeToTrayUnavailable",
+                  })
+                : intl.formatMessage({ id: "settings.closeToTrayOnWindowsDescription" })
+            }
             control={
               <Switch
-                checked={closeToTrayOnWindows}
+                checked={
+                  isLinuxDesktop && !trayCapability?.supported ? false : closeToTrayOnWindows
+                }
+                disabled={isLinuxDesktop && !trayCapability?.supported}
                 onCheckedChange={(checked) => {
                   void onCloseToTrayOnWindowsChange(checked);
                 }}

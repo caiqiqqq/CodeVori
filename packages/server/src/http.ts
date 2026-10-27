@@ -1,7 +1,8 @@
 /* eslint-disable max-lines -- HTTP、WebSocket 与静态资源路由集中注册，保持同一鉴权顺序。 */
 import { randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
-import { basename, extname, relative, resolve, sep } from "node:path";
+import * as nodePath from "node:path";
+import { basename, extname, resolve } from "node:path";
 import { hostname } from "node:os";
 import { Hono, type Context } from "hono";
 import { serve } from "@hono/node-server";
@@ -244,9 +245,15 @@ function isStaticFallbackAllowed(pathname: string): boolean {
   return !isTokenProtectedPath(pathname);
 }
 
-function isInsideDirectory(root: string, candidate: string): boolean {
-  const diff = relative(root, candidate);
-  return diff === "" || (!diff.startsWith("..") && !diff.includes(`..${sep}`));
+export function isInsideDirectory(
+  root: string,
+  candidate: string,
+  pathApi: Pick<typeof nodePath, "relative" | "isAbsolute" | "sep"> = nodePath,
+): boolean {
+  const diff = pathApi.relative(root, candidate);
+  // Windows 跨盘的 relative 返回绝对路径，不以 .. 开头；旧判断因此允许越盘读取。
+  if (pathApi.isAbsolute(diff)) return false;
+  return diff === "" || (!diff.startsWith("..") && !diff.includes(`..${pathApi.sep}`));
 }
 
 async function resolveStaticFile(
@@ -257,6 +264,8 @@ async function resolveStaticFile(
   const root = resolve(staticRoot);
   const normalizedPathname = pathname === "/" ? "/index.html" : pathname;
   const relativePath = decodeURIComponent(normalizedPathname).replace(/^\/+/, "");
+  // 盘符绝对/相对路径（含编码冒号）不能交给 Windows resolve，也不能落入 SPA fallback。
+  if (/^[a-zA-Z]:/.test(relativePath)) return null;
   let candidate = resolve(root, relativePath);
   if (!isInsideDirectory(root, candidate)) {
     return null;

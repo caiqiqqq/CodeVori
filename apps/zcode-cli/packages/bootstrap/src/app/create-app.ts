@@ -83,7 +83,7 @@ import { createDynamicWorkflowSnippetService } from "./dynamic-workflow-snippet-
 import { createModelCatalogPort } from "./model-catalog-port.js";
 import { createDynamicWorkflowRunProgressSink } from "./dynamic-workflow-run-progress-sink.js";
 import { createScriptWorkflowAgentRuntime } from "./script-workflow-child-runtime.js";
-import { workflowActorModelPolicy } from "./workflow-actor-model.js";
+import { parseWorkflowActorModel, workflowActorModelPolicy } from "./workflow-actor-model.js";
 import { workflowActorToolPolicy } from "./workflow-actor-tools.js";
 import {
   createNodeReplBrowserBroker,
@@ -621,6 +621,9 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
                   ...workflowActorModelPolicy(
                     {
                       parentSelection: getRuntime().getSessionModelSelection(),
+                      ...(persona.model === undefined
+                        ? {}
+                        : { actorSelection: parseWorkflowActorModel(persona.model) }),
                       ...(runSubagentModel === undefined ? {} : { runSelection: runSubagentModel }),
                     },
                     pinnedModel,
