@@ -72,6 +72,11 @@ enum OpenZCodeNative {
                 "accessibility": AXIsProcessTrusted(),
                 "screenRecording": CGPreflightScreenCaptureAccess(),
             ])
+        case "resolve-app":
+            guard arguments.count == 2 else {
+                throw NativeCommandError.invalidArguments("resolve-app requires the original application name or bundle id")
+            }
+            try printJSON(["bundle_id": try hostResolveApplicationBundle(arguments[1])])
         case "cursor":
             let point = CGEvent(source: nil)?.location ?? .zero
             try printJSON(CursorDescriptor(x: point.x, y: point.y))
@@ -87,7 +92,7 @@ enum OpenZCodeNative {
             try holdKey(arguments: Array(arguments.dropFirst()))
         default:
             throw NativeCommandError.invalidArguments(
-                "Usage: OpenZCodeNative host | displays | cursor | frontmost | activate <pid> | hold-key <pid> <key> <duration> [modifiers...]"
+                "Usage: OpenZCodeNative host | permissions | resolve-app <name-or-bundle-id> | displays | cursor | frontmost | activate <pid> | hold-key <pid> <key> <duration> [modifiers...]"
             )
         }
     }

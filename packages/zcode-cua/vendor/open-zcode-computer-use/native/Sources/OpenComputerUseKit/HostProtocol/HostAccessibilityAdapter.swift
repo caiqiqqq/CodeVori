@@ -827,8 +827,24 @@ enum HostAX {
         return nil
     }
 
+    static func isChromiumApplication(pid: pid_t) -> Bool {
+        guard let bundleURL = NSRunningApplication(processIdentifier: pid)?.bundleURL,
+              let frameworks = try? FileManager.default.contentsOfDirectory(
+                  atPath: bundleURL.appendingPathComponent("Contents/Frameworks").path
+              ) else { return false }
+        return frameworks.contains { $0 == "Electron Framework.framework" || $0.hasSuffix("Chrome Framework.framework") }
+    }
+
     static func window(pid: pid_t, windowId: CGWindowID, bounds: CGRect) -> AXUIElement? {
         let application = AXUIElementCreateApplication(pid)
+
+        // Electron 会先暴露标题栏和 AXWindows，但尚未创建 renderer 的控件树。
+        // 不能以「窗口存在」判断可访问性已启用；只对按需提供 AX 的 Chromium 框架设置手动开关。
+        if isChromiumApplication(pid: pid),
+           bool(application, "AXManualAccessibility") != true {
+            _ = AXUIElementSetAttributeValue(
+                application, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        }
 
         // Ask first; only reach for the switches if the app really is holding
         // its tree back.

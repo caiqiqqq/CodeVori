@@ -54,12 +54,6 @@ enum AppDiscovery {
     private static let useCountAttribute = "kMDItemUseCount"
     private static let maxRecentNonRunningApps = 10
     private static let fixtureListBundleIdentifier = "dev.opencodex.opencomputeruse.fixture"
-    private static let standardApplicationSearchRoots: [URL] = [
-        URL(fileURLWithPath: "/Applications", isDirectory: true),
-        URL(fileURLWithPath: "/System/Applications", isDirectory: true),
-        URL(fileURLWithPath: "/System/Library/CoreServices", isDirectory: true),
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications", isDirectory: true),
-    ]
 
     static let usageDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -182,7 +176,10 @@ enum AppDiscovery {
         _ query: String,
         waitFor budget: TimeInterval = defaultLaunchWaitSeconds
     ) throws -> RunningAppDescriptor {
-        try resolve(query, waitFor: budget, launch: launchIfPossible, runningApps: runningApps)
+        // 先固定磁盘应用的身份；启动后使用 bundle id 等待，不能再以显示名误匹配 VM shim。
+        let installed = try? ApplicationCatalog.resolve(query)
+        let identity = installed.flatMap { Bundle(url: $0)?.bundleIdentifier } ?? query
+        return try resolve(identity, waitFor: budget, launch: launchIfPossible, runningApps: runningApps)
     }
 
     /// §5.7 — `budget` covers the whole of "make this app usable", not just the
@@ -357,42 +354,7 @@ enum AppDiscovery {
     }
 
     private static func applicationURL(named query: String) -> URL? {
-        let targetName = stripAppSuffix(from: query).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !targetName.isEmpty else {
-            return nil
-        }
-
-        let fileManager = FileManager.default
-        let resourceKeys: [URLResourceKey] = [.isApplicationKey, .isDirectoryKey, .nameKey]
-        var visitedPaths: Set<String> = []
-
-        for root in standardApplicationSearchRoots where fileManager.fileExists(atPath: root.path) {
-            guard let enumerator = fileManager.enumerator(
-                at: root,
-                includingPropertiesForKeys: resourceKeys,
-                options: [.skipsHiddenFiles, .skipsPackageDescendants]
-            ) else {
-                continue
-            }
-
-            for case let candidateURL as URL in enumerator {
-                guard candidateURL.pathExtension.caseInsensitiveCompare("app") == .orderedSame else {
-                    continue
-                }
-
-                let normalizedPath = candidateURL.standardizedFileURL.path.lowercased()
-                guard visitedPaths.insert(normalizedPath).inserted else {
-                    continue
-                }
-
-                let candidateName = stripAppSuffix(from: candidateURL.lastPathComponent)
-                if candidateName.caseInsensitiveCompare(targetName) == .orderedSame {
-                    return candidateURL
-                }
-            }
-        }
-
-        return nil
+        ApplicationCatalog.applicationURL(named: query)
     }
 
     /// §5.7 — the configuration every launch is asked for.
@@ -482,7 +444,7 @@ enum AppDiscovery {
     }
 
     private static func isBundleIdentifierQuery(_ query: String) -> Bool {
-        query.contains(".")
+        ApplicationCatalog.isBundleIdentifier(query)
     }
 
     private static func isUserFacingListApp(_ app: NSRunningApplication) -> Bool {

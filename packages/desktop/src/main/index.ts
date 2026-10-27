@@ -1,4 +1,5 @@
 import { createLocalTtftExporter } from "./localTtftExporter.js";
+import { enableDesktopAccessibility } from "./desktopAccessibility.js";
 import { executeForgeWebMedia } from "./electronForgeWebMedia.js";
 /* eslint-disable max-lines */
 import "./desktopEarlyDataBaseDirBootstrap.js";
@@ -2012,6 +2013,7 @@ app.on("second-instance", (_event, argv, _workingDirectory, additionalData) => {
 });
 
 app.whenReady().then(async () => {
+  enableDesktopAccessibility(app);
   registerDeviceBridgeSettings(windowHostProcessMap);
   desktopLanAccess = registerDesktopLanAccess({
     hosts: windowHostProcessMap,

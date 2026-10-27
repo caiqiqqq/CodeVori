@@ -192,12 +192,13 @@ export class ComputerUseService {
   constructor({
     host,
     nativeUtility = runNativeUtility,
+    runProcess: executeProcess = runProcess,
     assertActive = () => {},
     now = Date.now,
   }) {
     this.host = host;
     this.nativeUtility = nativeUtility;
-    this.runProcess = (...args) => { assertActive(); return runProcess(...args); };
+    this.runProcess = (...args) => { assertActive(); return executeProcess(...args); };
     this.states = new StateRegistry({ now });
     this.frames = new FrameRegistry({ now });
     this.actions = new ActionQueue();
@@ -339,9 +340,12 @@ export class ComputerUseService {
         await this.host.call("apps.list", { session: this.host.session }),
       ).apps;
       const existingPids = new Set(before.map((candidate) => candidate.pid));
-      const flags = ["-n"];
-      if (app.bundle_id) flags.push("-b", app.bundle_id);
-      else flags.push("-a", app.name);
+      // 中文显示名和 VM shim 必须走同一个原生解析器，不能由 open -a 重新选择应用。
+      const canonical = await this.nativeUtility("resolve-app", [application]);
+      if (!canonical.bundle_id) {
+        throw new DomainError("app_not_found", "Native resolver returned no application identity");
+      }
+      const flags = ["-g", "-n", "-b", canonical.bundle_id];
       for (const url of app.urls ?? (app.url ? [app.url] : [])) flags.push(url);
       await this.runProcess("/usr/bin/open", flags);
       const deadline = Date.now() + 8_000;
@@ -352,8 +356,7 @@ export class ComputerUseService {
         const candidates = running.filter((candidate) =>
           !existingPids.has(candidate.pid) &&
           (
-            (app.bundle_id && candidate.appId.toLowerCase() === app.bundle_id.toLowerCase()) ||
-            (app.name && candidate.name.toLowerCase() === app.name.toLowerCase())
+            candidate.appId.toLowerCase() === canonical.bundle_id.toLowerCase()
           ),
         );
         if (candidates.length === 1) {
@@ -368,6 +371,9 @@ export class ComputerUseService {
           "The launcher did not expose one unambiguous new application process",
         );
       }
+    } else if (app.pid !== undefined) {
+      // PID 指向已有进程，不能把 pid:123 当作应用名称再次交给启动器。
+      resolved = await this.resolveApp(app);
     } else {
       const result = ensureHostOK(
         await this.host.call("apps.launch", {
@@ -376,11 +382,6 @@ export class ComputerUseService {
           waitForWindowMs: 8_000,
         }),
       );
-      if (app.url || app.urls) {
-        const flags = app.bundle_id ? ["-b", app.bundle_id] : ["-a", result.name];
-        flags.push(...(app.urls ?? [app.url]));
-        await this.runProcess("/usr/bin/open", flags);
-      }
       resolved = {
         pid: result.pid,
         appId: result.appId,
@@ -388,6 +389,14 @@ export class ComputerUseService {
       };
     }
 
+    if (!newInstance && (app.url || app.urls)) {
+      const flags = resolved.appId.startsWith("pid:")
+        ? ["-a", resolved.name]
+        : ["-b", resolved.appId];
+      flags.unshift("-g");
+      flags.push(...(app.urls ?? [app.url]));
+      await this.runProcess("/usr/bin/open", flags);
+    }
     if (activate) {
       const activation = await this.nativeUtility("activate", [String(resolved.pid)]);
       if (activation.activated !== true || activation.active !== true) {
