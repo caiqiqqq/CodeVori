@@ -2,14 +2,16 @@ import { logger } from "@/logger.js";
 
 export async function openFolderFromWorkspaceEntry({
   selectDirectory,
+  selectDirectories,
   openDirectoryBrowser,
   preferDirectoryBrowser = false,
   onSelectProject,
 }: {
   selectDirectory?: () => Promise<string | null>;
+  selectDirectories?: () => Promise<string[]>;
   openDirectoryBrowser?: () => void;
   preferDirectoryBrowser?: boolean;
-  onSelectProject: (path: string) => void;
+  onSelectProject: (path: string) => Promise<void> | void;
 }) {
   if (preferDirectoryBrowser) {
     if (!openDirectoryBrowser) {
@@ -23,20 +25,23 @@ export async function openFolderFromWorkspaceEntry({
     return;
   }
 
-  if (!selectDirectory) {
+  if (!selectDirectories && !selectDirectory) {
     return;
   }
 
-  logger.info("[openWorkspaceFolderEntry] calling selectDirectory...");
+  logger.info("[openWorkspaceFolderEntry] selecting local directories...");
   try {
-    const dir = await selectDirectory();
-    logger.info("[openWorkspaceFolderEntry] selectDirectory returned:", dir);
-    if (dir) {
-      onSelectProject(dir);
-    } else {
-      logger.info("[openWorkspaceFolderEntry] user cancelled or dir is null");
+    const paths = selectDirectories
+      ? await selectDirectories()
+      : [await selectDirectory!()].filter((path): path is string => Boolean(path));
+    for (const path of new Set(paths.filter(Boolean))) {
+      try {
+        await onSelectProject(path);
+      } catch (error) {
+        logger.error("[openWorkspaceFolderEntry] failed to open selected directory:", path, error);
+      }
     }
   } catch (err) {
-    logger.error("[openWorkspaceFolderEntry] selectDirectory threw:", err);
+    logger.error("[openWorkspaceFolderEntry] directory selection failed:", err);
   }
 }

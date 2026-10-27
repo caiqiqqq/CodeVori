@@ -15,6 +15,7 @@ import {
 } from "./permission-capability.js";
 import { buildDefaultPermissionUpdates } from "./permission-suggestions.js";
 import type { ToolExecutorDeps } from "./types.js";
+import { restrictApprovalGrants } from "./approval-gate.js";
 
 interface PermissionHookInputRecheckResult {
   brokerResult?: PermissionBrokerResult;
@@ -70,7 +71,8 @@ export async function recheckPermissionHookModifiedInput(input: {
   }
   if (
     decision.decision !== "ask" ||
-    (decision.ruleId !== "rule.project.ask" &&
+    (decision.approvalMode !== "user-once" &&
+      decision.ruleId !== "rule.project.ask" &&
       !targetsMemoryFile({
         executionInput: input.modifiedInput,
         memoryRoot: input.deps.getMemoryRoot?.(),
@@ -97,6 +99,9 @@ export async function recheckPermissionHookModifiedInput(input: {
       sessionId: input.deps.sessionId,
       sideEffectScope: decision.sideEffectScope,
       suggestedPermissionUpdates,
+      ...(decision.approvalMode === "user-once"
+        ? { optionsPolicy: "no-always-allow" as const }
+        : {}),
       toolCallId: input.toolCall.id as PermissionBrokerRequest["toolCallId"],
       toolName: input.toolCall.name,
       traceId: input.traceContext.traceId,
@@ -107,5 +112,8 @@ export async function recheckPermissionHookModifiedInput(input: {
       timeoutMs: input.deps.permissionTimeoutMs,
     },
   );
-  return { brokerResult, permissionDecision: decision };
+  return {
+    brokerResult: restrictApprovalGrants(brokerResult, decision.approvalMode),
+    permissionDecision: decision,
+  };
 }

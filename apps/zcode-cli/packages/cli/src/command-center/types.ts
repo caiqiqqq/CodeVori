@@ -28,7 +28,7 @@ export type TuiSendInputOptions = Parameters<TuiSendInput>[1];
 export type CommandCenterMode = NonNullable<TuiSubmitPromptResult["mode"]>;
 export type SwitchableCommandCenterMode = Extract<
   CommandCenterMode,
-  "plan" | "build" | "edit" | "yolo"
+  "plan" | "build" | "edit" | "guarded" | "yolo"
 >;
 
 export type CommandCenterModelOption = ZCodeModelOption;

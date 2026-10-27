@@ -127,6 +127,7 @@ const appWorkspaceSessionEntrySchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("remote"),
     workspacePath: nonEmptyStringSchema,
+    sourceServerId: z.string().uuid().optional(),
     localWorkspacePath: nonEmptyStringSchema.optional(),
     workspaceIdentity: nonEmptyStringSchema.optional(),
     target: remoteWorkspaceTargetSchema,
@@ -485,6 +486,7 @@ const appSettingsObjectSchema = z.object({
   taskAutoArchiveEnabled: z.boolean().default(false),
   taskAutoArchiveOlderThanDays: z.number().int().positive().max(365).default(7),
   closeToTrayOnWindows: z.boolean().default(true),
+  closeToTrayLinuxMigrationInitialized: z.boolean().default(false),
   closeToTrayOnWindowsMigrationInitialized: z.boolean().default(true),
   keepAwakeWhileRunning: z.boolean().default(false),
   desktopZoomLevel: desktopZoomLevelSchema.optional(),
@@ -563,6 +565,7 @@ export const appSettingsPatchSchema = z.object({
   taskAutoArchiveEnabled: z.boolean().optional(),
   taskAutoArchiveOlderThanDays: z.number().int().positive().max(365).optional(),
   closeToTrayOnWindows: z.boolean().optional(),
+  closeToTrayLinuxMigrationInitialized: z.boolean().optional(),
   keepAwakeWhileRunning: z.boolean().optional(),
   closeToTrayOnWindowsMigrationInitialized: z.boolean().optional(),
   desktopZoomLevel: desktopZoomLevelSchema.optional(),

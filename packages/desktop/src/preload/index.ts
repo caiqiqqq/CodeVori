@@ -48,6 +48,8 @@ import type {
   DesktopCommandId,
   DesktopTitleBarTheme,
   EmbeddedBrowserOpenUrlRequest,
+  EmbeddedBrowserSitePermissionPrompt,
+  EmbeddedBrowserSitePermissionUpdate,
   Locale,
   OAuthStateRegistration,
   OpenInEditorOptions,
@@ -288,6 +290,9 @@ contextBridge.exposeInMainWorld("zcode", {
   /** 打开系统目录选择框，返回选中路径或 null */
   selectDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke(PlatformChannels.SelectDirectory),
+  /** 打开系统多目录选择框；取消时返回空数组 */
+  selectDirectories: (): Promise<string[]> =>
+    ipcRenderer.invoke(PlatformChannels.SelectDirectories),
   /** 打开系统文件选择框，返回选中文件路径或 null */
   selectFile: (): Promise<string | null> => ipcRenderer.invoke(PlatformChannels.SelectFile),
   /** 打开系统多文件选择框，返回选中文件路径；取消时返回空数组 */
@@ -570,6 +575,8 @@ contextBridge.exposeInMainWorld("zcode", {
     }
     return { zoomLevel: latestDesktopZoomLevel };
   },
+  getCloseToTrayCapability: (): Promise<{ supported: boolean; gnomeLikeWithoutTray: boolean }> =>
+    ipcRenderer.invoke(PlatformChannels.GetCloseToTrayCapability),
   /** 注册当前桌面窗口页面缩放档位变化回调，返回 disposer */
   onDesktopZoomLevelChanged: (callback: (state: DesktopZoomState) => void): (() => void) => {
     const handler = (_event: unknown, state: DesktopZoomState) => {
@@ -724,6 +731,39 @@ contextBridge.exposeInMainWorld("zcode", {
   /** 清理内置浏览器缓存或全部站点数据。 */
   clearEmbeddedBrowserData: (mode: "cache" | "all") =>
     ipcRenderer.invoke(PlatformChannels.ClearEmbeddedBrowserData, mode),
+  onEmbeddedBrowserSitePermissionPrompt: (
+    callback: (event: EmbeddedBrowserSitePermissionPrompt) => void,
+  ) => {
+    const handler = (_event: unknown, payload: EmbeddedBrowserSitePermissionPrompt) =>
+      callback(payload);
+    ipcRenderer.on(PlatformChannels.EmbeddedBrowserSitePermissionPrompt, handler);
+    return () =>
+      ipcRenderer.removeListener(PlatformChannels.EmbeddedBrowserSitePermissionPrompt, handler);
+  },
+  onEmbeddedBrowserSitePermissionClosed: (callback: (requestId: string) => void) => {
+    const handler = (_event: unknown, requestId: string) => callback(requestId);
+    ipcRenderer.on(PlatformChannels.EmbeddedBrowserSitePermissionClosed, handler);
+    return () =>
+      ipcRenderer.removeListener(PlatformChannels.EmbeddedBrowserSitePermissionClosed, handler);
+  },
+  onEmbeddedBrowserSitePermissionsChanged: (callback: () => void) => {
+    ipcRenderer.on(PlatformChannels.EmbeddedBrowserSitePermissionsChanged, callback);
+    return () =>
+      ipcRenderer.removeListener(PlatformChannels.EmbeddedBrowserSitePermissionsChanged, callback);
+  },
+  resolveEmbeddedBrowserSitePermissionPrompt: (request: {
+    requestId: string;
+    action: "allow-always" | "allow-session" | "dismiss" | "select";
+    selectionId?: string;
+  }) => ipcRenderer.send(PlatformChannels.ResolveEmbeddedBrowserSitePermissionPrompt, request),
+  getEmbeddedBrowserSitePermissions: () =>
+    ipcRenderer.invoke(PlatformChannels.GetEmbeddedBrowserSitePermissions),
+  setEmbeddedBrowserSitePermission: (request: EmbeddedBrowserSitePermissionUpdate) =>
+    ipcRenderer.invoke(PlatformChannels.SetEmbeddedBrowserSitePermission, request),
+  resetEmbeddedBrowserSitePermission: (origin: string) =>
+    ipcRenderer.invoke(PlatformChannels.ResetEmbeddedBrowserSitePermission, origin),
+  clearEmbeddedBrowserSitePermissions: () =>
+    ipcRenderer.invoke(PlatformChannels.ClearEmbeddedBrowserSitePermissions),
   /** 读取开发态 stdio tap proxy 开关状态 */
   getZCodeStdioTapDevState: (): Promise<ZCodeStdioTapDevState> =>
     ipcRenderer.invoke(PlatformChannels.GetZCodeStdioTapDevState),
@@ -848,6 +888,7 @@ ipcRenderer.on(
     payload: {
       attachmentId?: string;
       sessionId?: string;
+      sourceServerId?: string;
       target?: RemoteTarget;
     },
   ) => {
@@ -858,6 +899,7 @@ ipcRenderer.on(
           type: InternalChannels.ScopedServicePort,
           attachmentId: payload.attachmentId,
           sessionId: payload.sessionId,
+          sourceServerId: payload.sourceServerId,
           target: payload.target,
         },
         "*",

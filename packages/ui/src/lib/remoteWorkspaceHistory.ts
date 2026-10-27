@@ -297,6 +297,7 @@ export function removeRemoteWorkspaceSessionEntries(
 export function buildRemoteWorkspaceSessionMutation(params: {
   remoteSessions: RemoteWorkspaceSessionEntry[];
   workspacePath: string;
+  sourceServerId?: string;
   localWorkspacePath?: string;
   workspaceIdentity?: string;
   target: RemoteTarget;
@@ -325,6 +326,9 @@ export function buildRemoteWorkspaceSessionMutation(params: {
   const nextEntry: RemoteWorkspaceSessionEntry = {
     kind: "remote",
     workspacePath: params.workspacePath,
+    ...((params.sourceServerId ?? currentEntry?.sourceServerId)
+      ? { sourceServerId: params.sourceServerId ?? currentEntry?.sourceServerId }
+      : {}),
     // filesystem MCP 同步需要用“本机 workspace -> 远端 workspace”映射。
     // 远端历史之前只保存远端路径，已连接后的 Settings/Header 入口无法再恢复本机基准路径。
     ...(localWorkspacePath ? { localWorkspacePath } : {}),

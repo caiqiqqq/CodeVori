@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   BIGMODEL_PROVIDER_ID,
   type OAuthProviderId,
@@ -69,18 +70,29 @@ class AccountProviderRequestAuthService implements AccountRequestAuthResolver {
     const providerId = input.providerId.trim();
     const access = await this.#resolveAccess(input.accountAccess);
     if (!access) throw new AccountRequestCredentialUnavailableError(providerId);
+    const login = await this.#options.loadOAuthTokenSet(resolveOAuthProviderId(access.family));
+    const scope = requestScope(access, login, providerId);
+    const apiKey =
+      access.planKind === "start-plan"
+        ? login?.zcodeJwtToken
+        : access.planKind === "individual-coding-plan"
+          ? await this.#options.loadIndividualPlanApiKey(providerId, access.family)
+          : await this.#options.resolveTeamPlanApiKey(access);
 
-    if (access.planKind === "start-plan") {
-      const tokenSet = await this.#options.loadOAuthTokenSet(resolveOAuthProviderId(access.family));
-      return { apiKey: requireApiKey(tokenSet?.zcodeJwtToken, providerId) };
+    // 多个 Agent 的 key IO 可以交错完成；只检查 IO 前的连接会返回已退出账号或旧项目的材料。
+    // scope 属于本次调用，不写共享 Registry；迟到结果失效不影响其他并发/后续请求。
+    const latest = await this.#resolveAccess(input.accountAccess);
+    if (
+      !latest ||
+      scope !==
+        requestScope(
+          latest,
+          await this.#options.loadOAuthTokenSet(resolveOAuthProviderId(latest.family)),
+          providerId,
+        )
+    ) {
+      throw new AccountRequestCredentialUnavailableError(providerId);
     }
-
-    if (access.planKind === "individual-coding-plan") {
-      const apiKey = await this.#options.loadIndividualPlanApiKey(providerId, access.family);
-      return { apiKey: requireApiKey(apiKey, providerId) };
-    }
-
-    const apiKey = await this.#options.resolveTeamPlanApiKey(access);
     return { apiKey: requireApiKey(apiKey, providerId) };
   }
 
@@ -90,13 +102,49 @@ class AccountProviderRequestAuthService implements AccountRequestAuthResolver {
     }
   }
 
-  #resolveAccess(
+  async #resolveAccess(
     access: ZCodeProviderAccountAccess | ZCodeAccountAccess,
   ): Promise<ZCodeAccountAccess | null> {
-    return "mode" in access
-      ? this.#options.resolveCurrentAccountAccess(access)
-      : Promise.resolve(access);
+    if ("mode" in access) return this.#options.resolveCurrentAccountAccess(access);
+    // 已解析 access 只是调用方快照，也必须向同一连接事实入口复核，不能绕过换号/换项目失效。
+    const current = await this.#options.resolveCurrentAccountAccess({
+      type: "zhipu-account",
+      accountType: access.family,
+      mode: access.planKind,
+      entitled: true,
+    });
+    return current && accessScope(current) === accessScope(access) ? current : null;
   }
+}
+
+function accessScope(access: ZCodeAccountAccess): string {
+  return JSON.stringify([
+    access.family,
+    access.planKind,
+    access.planKind === "team-coding-plan"
+      ? [access.organizationId, access.projectId, access.productId]
+      : null,
+  ]);
+}
+
+function requestScope(
+  access: ZCodeAccountAccess,
+  login: { accessToken?: string | null; zcodeJwtToken?: string | null } | null,
+  providerId: string,
+): string {
+  requireApiKey(
+    access.planKind === "start-plan" ? login?.zcodeJwtToken : login?.accessToken,
+    providerId,
+  );
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        accessScope(access),
+        login?.accessToken?.trim(),
+        login?.zcodeJwtToken?.trim(),
+      ]),
+    )
+    .digest("hex");
 }
 
 function resolveOAuthProviderId(family: ProviderFamilyDomain): OAuthProviderId {

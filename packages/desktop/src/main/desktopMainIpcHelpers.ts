@@ -3,11 +3,24 @@ import { realpath } from "node:fs/promises";
 import { normalize } from "node:path";
 import type { BrowserWindow } from "electron";
 import { shell } from "electron";
+import { fileUrlToLocalPath } from "./desktopFileUrl.js";
 
 type DesktopIpcLogger = {
   info?: (...args: unknown[]) => void;
   warn: (...args: unknown[]) => void;
 };
+
+export async function openFileUrlInDefaultApp(
+  url: string,
+  logger: DesktopIpcLogger,
+): Promise<void> {
+  const path = fileUrlToLocalPath(url);
+  if (!path) {
+    logger.warn("[open-external] invalid file URL", { url });
+    return;
+  }
+  await openPathInDefaultApp(path, logger);
+}
 
 export async function openPathInDefaultApp(
   rawPath: string,

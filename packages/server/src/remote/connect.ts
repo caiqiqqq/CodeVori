@@ -7,11 +7,13 @@ import {
   ZCODE_DESKTOP_CONTEXT_PROMPT_ENABLED_ENV,
   ZCODE_DYNAMIC_WORKFLOW_MODE_ENV,
   formatLogPrefix,
+  redactTelemetryText,
   ZCODE_REMOTE_HTTP_PROXY_ENV_KEY,
   ZCODE_REMOTE_NO_PROXY_ENV_KEY,
   ZCODE_REMOTE_PROXY_ONLY_DOMAINS_ENV_KEY,
   ZCODE_REMOTE_RUNTIME_NETWORK_AUTHORITY_ENV_KEY,
 } from "@zcode/shared";
+import type { HelloMessage } from "@zcode/shared";
 import type { IRemoteBackend } from "./backend.js";
 import { wrapStdioStream } from "./stdio-socket.js";
 import { performHandshake } from "./handshake.js";
@@ -20,6 +22,7 @@ import type { DeployOptions } from "./deploy.js";
 import { assertSupportedRemoteEnvironment } from "@zcode/server/remote/remotePlatformSupport.js";
 import { quotePosixShellArg } from "./posixShell.js";
 import { formatWslProxyForLog } from "./wslProxy.js";
+import { forwardRemoteStderr } from "./diagnosticLog.js";
 
 const BACKEND_DISCONNECT_EXIT_CODE = -1;
 
@@ -49,6 +52,7 @@ export interface RemoteRuntimeNetworkOptions {
 }
 
 export interface RemoteConnection {
+  hello: HelloMessage;
   services: IServiceAccessor;
   client: ChannelClient;
   dispose(): void;
@@ -167,7 +171,10 @@ async function connectRemoteUnchecked(
   const clientId = options?.clientId ?? `desktop-${Date.now()}`;
 
   const log = (...args: unknown[]) =>
-    console.log(formatLogPrefix("connectRemote", process.pid), ...args);
+    console.log(
+      formatLogPrefix("connectRemote", process.pid),
+      ...args.map((arg) => (typeof arg === "string" ? redactTelemetryText(arg) : arg)),
+    );
 
   // 1. Detect remote environment
   log("detecting remote env...");
@@ -196,16 +203,21 @@ async function connectRemoteUnchecked(
   throwIfRemoteConnectAborted(options?.signal);
   log("remote server exec started");
 
-  // Forward stderr for debugging
-  stream.stderr.on("data", (chunk: Buffer) => {
-    // 远端 zcode-server 的服务日志走 stderr，直接写 host stderr 时可能被结构化日志中继吞掉。
-    // 这里转成 host 的 console 日志，让 remote sqlite 初始化/锁冲突日志能稳定出现在连接日志面板和启动终端。
-    console.log(`[remote] ${chunk.toString().trimEnd()}`);
-  });
+  // 远端 stderr 可能携带认证材料；按完整行脱敏后再转 Host 日志，避免 chunk 边界绕过清洗。
+  const stopStderrForwarding = forwardRemoteStderr(stream.stderr, (line) =>
+    console.log(`[remote] ${line}`),
+  );
 
   // 4. Handshake
   log("performing handshake...");
-  const { hello, remaining } = await performHandshake(stream, clientId, options?.handshakeTimeout);
+  const { hello, remaining } = await performHandshake(
+    stream,
+    clientId,
+    options?.handshakeTimeout,
+  ).catch((error: unknown) => {
+    stopStderrForwarding();
+    throw error;
+  });
   throwIfRemoteConnectAborted(options?.signal);
   log("handshake done, server version:", hello.version);
 
@@ -246,6 +258,7 @@ async function connectRemoteUnchecked(
     reportRemoteClose(BACKEND_DISCONNECT_EXIT_CODE);
   });
   const streamCloseDisposable = stream.onClose((code) => {
+    stopStderrForwarding();
     hasStreamClosed = true;
     resolveStreamClosed();
     reportRemoteClose(code);
@@ -259,6 +272,7 @@ async function connectRemoteUnchecked(
       return;
     }
     disposalStarted = true;
+    stopStderrForwarding();
     backendDisconnectDisposable?.dispose();
     client.dispose();
     protocol.dispose();
@@ -287,6 +301,7 @@ async function connectRemoteUnchecked(
   };
 
   return {
+    hello,
     services,
     client,
     dispose() {

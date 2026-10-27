@@ -1681,6 +1681,7 @@ export function SettingsPage({
                             setInterfaceMode={setInterfaceMode}
                             isDesktop={isDesktop}
                             isWindowsDesktop={isWindowsDesktop}
+                            isLinuxDesktop={isLinuxDesktop}
                             platform={platform}
                             notificationEnabled={notificationEnabled}
                             notificationSoundEnabled={notificationSoundEnabled}

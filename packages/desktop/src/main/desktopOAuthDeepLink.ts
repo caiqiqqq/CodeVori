@@ -10,6 +10,7 @@ import {
   PlatformChannels,
 } from "@zcode/shared";
 import {
+  deepLinkProtocolRegistrationArgs,
   extractWorkspaceOpenPath,
   extractShareImportCode,
   isOAuthCallbackUrl,
@@ -381,7 +382,9 @@ export function registerDeepLinkProtocol(
 
   if (process.defaultApp && process.argv.length >= 2) {
     const entry = resolve(process.argv[1]!);
-    const ok = app.setAsDefaultProtocolClient(scheme, process.execPath, [entry]);
+    // Windows 的外部 URL 必须跟在 -- 后，防止启动前被 Electron 解析为命令行选项。
+    const args = deepLinkProtocolRegistrationArgs(process.platform, entry)!;
+    const ok = app.setAsDefaultProtocolClient(scheme, process.execPath, args);
     if (!ok) {
       logger.warn("[deep-link] 注册协议失败（defaultApp）", {
         scheme,
@@ -398,7 +401,10 @@ export function registerDeepLinkProtocol(
     return;
   }
 
-  const ok = app.setAsDefaultProtocolClient(scheme);
+  const args = deepLinkProtocolRegistrationArgs(process.platform);
+  const ok = args
+    ? app.setAsDefaultProtocolClient(scheme, process.execPath, args)
+    : app.setAsDefaultProtocolClient(scheme);
   if (!ok) {
     logger.warn("[deep-link] 注册协议失败", { scheme });
   } else {

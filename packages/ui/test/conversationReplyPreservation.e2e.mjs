@@ -56,43 +56,48 @@ try {
           const closing = page
             .locator('[data-conversation-selectable="true"]')
             .filter({ hasText: "记好了。等你贴日志。" });
-          await answer.waitFor({ state: "visible" });
           await closing.waitFor({ state: "visible" });
-          assert.equal(await answer.count(), 1);
-          assert.equal(
-            await answer.evaluate((node) =>
-              Boolean(node.closest('[data-slot="collapsible-content"]')),
-            ),
-            false,
-          );
           assert.equal(await page.getByText("healthz", { exact: true }).count(), 0);
           assert.equal(await page.getByText("网站", { exact: true }).count(), 0);
-          await page.waitForFunction(() => {
-            const texts = [...document.querySelectorAll('[data-conversation-selectable="true"]')];
-            const answer = texts.find((node) =>
-              node.textContent.includes("先检查容器状态，再按日志定位。"),
-            );
-            const closing = texts.find((node) => node.textContent.includes("记好了。等你贴日志。"));
-            return (
-              answer &&
-              closing &&
-              answer.getBoundingClientRect().height > 0 &&
-              answer.getBoundingClientRect().y < closing.getBoundingClientRect().y
-            );
-          });
-          if (stage !== "running") {
-            const trigger = page.locator('[data-testid^="chat-assistant-history-trigger"]');
-            await trigger.waitFor();
+          const trigger = page.locator('[data-testid^="chat-assistant-history-trigger"]');
+          await trigger.waitFor();
+          if (stage === "running") {
+            assert.equal(await trigger.getAttribute("data-state"), "open");
+            await answer.waitFor({ state: "visible" });
+          } else {
             assert.equal(await trigger.getAttribute("data-state"), "closed");
+            assert.equal(await answer.isVisible(), false);
             await trigger.click();
             assert.equal(await trigger.getAttribute("data-state"), "open");
+            await answer.waitFor({ state: "visible" });
+            assert.equal(
+              await answer.evaluate((node) =>
+                Boolean(node.closest('[data-slot="collapsible-content"]')),
+              ),
+              true,
+            );
+            await page.waitForFunction(() => {
+              const texts = [...document.querySelectorAll('[data-conversation-selectable="true"]')];
+              const answer = texts.find((node) =>
+                node.textContent.includes("先检查容器状态，再按日志定位。"),
+              );
+              const closing = texts.find((node) =>
+                node.textContent.includes("记好了。等你贴日志。"),
+              );
+              return (
+                answer &&
+                closing &&
+                answer.getBoundingClientRect().height > 0 &&
+                answer.getBoundingClientRect().y < closing.getBoundingClientRect().y
+              );
+            });
             await trigger.click();
             assert.equal(await trigger.getAttribute("data-state"), "closed");
             await page
               .locator('[data-testid^="chat-assistant-history-content"]')
               .first()
               .waitFor({ state: "hidden" });
-            assert.equal(await answer.isVisible(), true);
+            assert.equal(await answer.isVisible(), false);
             assert.equal(await closing.isVisible(), true);
           }
           cases++;

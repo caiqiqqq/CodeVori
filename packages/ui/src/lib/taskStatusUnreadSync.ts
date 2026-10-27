@@ -140,6 +140,13 @@ export function syncTaskUnreadFromStatusWorkspaceEvent(params: {
       unread: true,
     })
     .then((meta) => {
+      // 用户打开任务或新终态已接管 overlay 后，旧请求的回包不能覆盖新的未读意图。
+      if (
+        useTaskQueryCacheStore.getState().taskUnreadOverlayByEntityKey[taskEntityKey] !==
+        optimisticUnreadAt
+      ) {
+        return;
+      }
       // 服务端先更新 tasks-index 再回包；只对账 unreadAt 字段，禁止整份 meta
       // 覆盖 sessions-index activity，避免后台完成或未读写入改变 Updated 排序。
       const committedUnreadAt = meta.unreadAt ?? optimisticUnreadAt;
@@ -147,6 +154,13 @@ export function syncTaskUnreadFromStatusWorkspaceEvent(params: {
       store.setTaskUnreadIndicator(event.workspacePath, taskId, true, event.workspaceIdentity);
     })
     .catch((error: unknown) => {
+      // 失败回滚同样只属于本次提交，不能撤销等待期间用户写入的已读状态。
+      if (
+        useTaskQueryCacheStore.getState().taskUnreadOverlayByEntityKey[taskEntityKey] !==
+        optimisticUnreadAt
+      ) {
+        return;
+      }
       // 持久化失败时不能留下 renderer-only 假未读。恢复提交前字段，
       // 再标脏精确 workspace，让下一轮 membership join 回到 tasks-index 事实。
       rollbackTaskQueryCacheUnread(targetTask, previousUnreadAt);

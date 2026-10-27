@@ -30,6 +30,8 @@ declare interface Node<T> extends PromiseLike<T> {}
 declare interface AgentPersona {
   /** System prompt describing the actor's role. */
   system?: string;
+  /** Concrete providerId/modelId[$reasoningLevel] for this agent only. */
+  model?: string;
 }
 
 /**

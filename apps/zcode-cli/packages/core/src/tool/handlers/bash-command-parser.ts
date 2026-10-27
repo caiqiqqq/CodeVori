@@ -1,4 +1,5 @@
 import { parse } from "unbash";
+import { literalPosixWord, type CommandWord } from "./guarded/word.js";
 import type {
   AndOr,
   Command,
@@ -25,6 +26,7 @@ export interface BashCommandRedirect {
 }
 
 export interface BashCommandInvocation {
+  readonly words: CommandWord[];
   readonly argv: string[];
   readonly commandText: string;
   readonly envAssignments: BashCommandEnvAssignment[];
@@ -183,6 +185,10 @@ function collectSimpleCommand(source: string, command: Command, context: Collect
 
   const name = command.name ? wordValue(command.name) : "";
   context.analysis.commands.push({
+    // 保留每个词的语法边界与引号事实，危险命令分类不能从 argv 猜测通配符或动态词。
+    words: words.map((word) =>
+      literalPosixWord(source.slice(word.pos, word.end), word.pos, word.end),
+    ),
     argv,
     commandText: source.slice(command.pos, command.end),
     envAssignments,

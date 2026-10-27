@@ -513,6 +513,7 @@ interface ConversationComposerProps {
    * 分屏时仅 primary pane 监听，避免一次点击插入两份。
    */
   listenAddToChatEvents?: boolean;
+  imageReferenceEnabled?: boolean;
   /**
    * 外部一次性文本预填请求（Example Prompt 等）。
    * requestId 保证同一文本可连续取回两次时仍能触发回填。
@@ -602,6 +603,7 @@ function ConversationComposerImpl({
   onOpenModelSettings,
   onOpenCodeViewer,
   listenAddToChatEvents = true,
+  imageReferenceEnabled = listenAddToChatEvents,
   externalTextInsertRequest = null,
   onExternalTextInsertApplied,
   composerRestoreRequest = null,
@@ -711,6 +713,7 @@ function ConversationComposerImpl({
     onRuntimeLifecycle,
     disabled,
     listenAddToChatEvents: listenAddToChatEvents && !disabled,
+    imageReferenceEnabled,
   });
   // 对齐旧版 useChatComposer：窗口级 dragover 会在指针进入 ChatView 前预先点亮
   // 整个聊天区与桌面草稿标题栏；workspace payload 的文案优先于系统附件。
@@ -857,10 +860,13 @@ function ConversationComposerImpl({
     text: string;
     editorStateJson?: string;
   } => {
-    const currentText = textRef.current;
+    let currentText = textRef.current;
     let editorStateJson: string | undefined;
     try {
-      const editorState = inputApiRef.current?.getEditorState();
+      const api = inputApiRef.current;
+      const editorState = api?.getEditorState();
+      // 输入法组合尚未发布 onChange；切任务时必须从编辑器读取草稿，不能使用滞后的 textRef。
+      if (api && editorState) currentText = api.getMarkdown();
       editorStateJson = editorState ? JSON.stringify(editorState.toJSON()) : undefined;
     } catch (error) {
       logger.warn(`[v4-composer] 草稿 editorState 序列化失败: ${String(error)}`);
@@ -1051,6 +1057,14 @@ function ConversationComposerImpl({
         draftPersistTimerRef.current = null;
       }
       const previousDraft = snapshotDraftOfEditor();
+      // scope 已切换时旧 updateComposerContent 会被来源守卫拒绝；必须按旧 owner 显式落盘，
+      // 否则尚未上屏的 IME 文本即使被快照读出，也会在恢复新 scope 时丢失。
+      persistV4ComposerDraft(
+        previousTarget.workspacePath,
+        previousTarget.workspaceIdentity,
+        previousTarget.scopeId,
+        { ...ownerDraftRef.current.draft, ...previousDraft },
+      );
       const shouldTransferDraft =
         (previousTarget.scopeId === composerDraftSourceScopeId &&
           previousTarget.workspacePath === workspacePath &&

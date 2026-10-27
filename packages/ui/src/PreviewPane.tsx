@@ -1,4 +1,6 @@
 import { DocumentViewStateProvider } from "@/lib/documentViewState.js";
+import { ImageReferenceTargetProvider } from "@/hooks/useImageReference.js";
+import { V4_DRAFT_SCOPE_ROOT } from "@/v4/composer/composerDraftStore.js";
 import type { MarkdownSelectionTarget } from "@/lib/conversationSelectionReference.js";
 /* eslint-disable max-lines -- PreviewPane 当前同时承载文件读取、图片与 Office 预览、markdown/code 渲染和顶部路径面包屑；后续需按 header/body 边界继续拆分。 */
 import {
@@ -1522,7 +1524,7 @@ export function PreviewPane({
         }
       : undefined;
 
-  return (
+  const previewContent = (
     <aside
       data-testid={TID_PREVIEW_PANE}
       className="flex h-full flex-col overflow-hidden bg-background"
@@ -1811,5 +1813,21 @@ export function PreviewPane({
         )}
       </div>
     </aside>
+  );
+  return (
+    <ImageReferenceTargetProvider
+      target={
+        markdownSelectionTarget &&
+        (source.workspaceIdentity?.trim() || sourceWorkspacePath) ===
+          markdownSelectionTarget.workspaceKey
+          ? {
+              workspaceKey: markdownSelectionTarget.workspaceKey,
+              scopeId: markdownSelectionTarget.sessionId ?? V4_DRAFT_SCOPE_ROOT,
+            }
+          : null
+      }
+    >
+      {previewContent}
+    </ImageReferenceTargetProvider>
   );
 }

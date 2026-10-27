@@ -341,7 +341,24 @@ export function groupItemsByCategory(
     group.push(item);
     groups.set(category, group);
   }
-  return [...groups.entries()].map(([category, items]) => ({ category, items }));
+  return [...groups.entries()].map(([category, entries]) => ({
+    category,
+    items: entries.toSorted((left, right) => Number(right.installed) - Number(left.installed)),
+  }));
+}
+
+export function sortPersonalMarketplaceItems(
+  items: StorePluginItem[],
+  locale: string,
+): StorePluginItem[] {
+  return items.toSorted(
+    (left, right) =>
+      Number(right.installed) - Number(left.installed) ||
+      resolveItemDisplayName(left, locale).localeCompare(
+        resolveItemDisplayName(right, locale),
+        locale,
+      ),
+  );
 }
 
 export function storeItemMatches(item: StorePluginItem, keyword: string, locale: string): boolean {

@@ -227,6 +227,7 @@ function registerRemoteWorkspaceServicePort(params: RemoteWorkspaceServicePortRe
   );
   registerRemoteWorkspaceSession({
     sessionId: params.sessionId,
+    ...(params.sourceServerId ? { sourceServerId: params.sourceServerId } : {}),
     target: params.target,
     services,
     dispose: (reason) =>

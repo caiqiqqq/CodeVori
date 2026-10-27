@@ -6,6 +6,7 @@ import { Emitter, type Event } from "@zcode/rpc";
 import type { IPty } from "node-pty";
 import type { ISettingService } from "../setting/setting.js";
 import type { ITerminalService, TerminalWindowsPtyInfo } from "./terminal.js";
+import { TerminalOutput } from "./terminalOutput.js";
 import {
   resolveTerminalFontProfile,
   type TerminalFontFamilySource,
@@ -19,7 +20,7 @@ type PtySpawnOptions = Parameters<NodePtyModule["spawn"]>[2];
 
 interface TerminalInstance {
   pty: IPty;
-  dataEmitter: Emitter<string>;
+  dataEmitter: TerminalOutput;
   exitEmitter: Emitter<number>;
 }
 
@@ -373,7 +374,7 @@ export function createTerminalService(dependencies: {
       });
       const nodePty = await loadNodePtyModule();
       ensureNodePtySpawnHelperExecutable();
-      const dataEmitter = new Emitter<string>();
+      const dataEmitter = new TerminalOutput();
       const exitEmitter = new Emitter<number>();
 
       let p: IPty;

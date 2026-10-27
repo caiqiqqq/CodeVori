@@ -31,7 +31,7 @@ import {
   reportRemoteConnectResultToArms,
   type RemoteConnectionStats,
 } from "./desktopRemoteUsageArmsTelemetry.js";
-import { openPathInDefaultApp } from "./desktopMainIpcHelpers.js";
+import { openFileUrlInDefaultApp, openPathInDefaultApp } from "./desktopMainIpcHelpers.js";
 
 function isAllowedExternalOpenUrl(value: string): boolean {
   try {
@@ -197,6 +197,11 @@ export function registerRemoteIpcHandlers(options: {
     const { url } = request;
     if (!isAllowedExternalOpenUrl(url)) {
       options.logger.warn("[open-external] blocked unsupported url", url);
+      return;
+    }
+    if (new URL(url).protocol === "file:") {
+      // shell.openExternal 对本地文件不可靠，解码 file URL 后交给系统默认文件应用。
+      void openFileUrlInDefaultApp(url, options.logger);
       return;
     }
     void Promise.resolve(shell.openExternal(url)).catch((error: unknown) => {

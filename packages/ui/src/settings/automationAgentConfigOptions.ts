@@ -22,7 +22,7 @@ export function resolveAutomationPreferredModelValue(
   return preferred ? encodeCustomModelValue(preferred.providerId, preferred.modelId) : null;
 }
 
-const AUTOMATION_MODE_VALUES = ["build", "edit", "plan", "yolo"] as const;
+const AUTOMATION_MODE_VALUES = ["build", "edit", "plan", "yolo", "guarded"] as const;
 
 export function buildAutomationModelSelectGroups(params: {
   selectedProvider: ZCodeProvider;

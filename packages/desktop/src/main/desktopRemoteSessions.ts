@@ -313,6 +313,7 @@ export function createRemoteWorkspaceSessionManager(options: {
           {
             attachmentId,
             sessionId: descriptor.remoteSessionId,
+            ...(descriptor.sourceServerId ? { sourceServerId: descriptor.sourceServerId } : {}),
             target: descriptor.target,
           },
           [port1],

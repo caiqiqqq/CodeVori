@@ -1,3 +1,4 @@
+import { isEmptyToolCallPlaceholder } from "@/v4/toolCallVisibility.js";
 import type {
   AssistantTextRow,
   ConversationRow,
@@ -107,6 +108,7 @@ function isHookInvocationRow(row: ConversationRow): row is HookInvocationRow {
 }
 
 function isVisibleAssistantWorkRow(row: AssistantWorkRow): boolean {
+  if (row.kind === "toolCall" && isEmptyToolCallPlaceholder(row)) return false;
   // 修复原因：ACP 的空计划代表清除旧步骤；保留 Host 事实，但不留下空折叠行。
   if (row.kind === "plan" && row.entries.length === 0) return false;
   if (row.kind === "reasoning" && row.text.trim().length === 0) {

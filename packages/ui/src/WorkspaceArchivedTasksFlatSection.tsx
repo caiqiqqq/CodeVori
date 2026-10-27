@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Cloud, Folder } from "lucide-react";
 import { useGlobalTaskList } from "@/hooks/useGlobalTaskList.js";
 import { useArchivedWorkspaceScopes } from "@/hooks/useArchivedWorkspaceScopes.js";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
@@ -17,6 +16,7 @@ import { useAcpSidebarSessions } from "@/hooks/useAcpSidebarSessions.js";
 import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
 import { WorkspaceArchivedAcpSessionItem } from "@/WorkspaceArchivedAcpSessionItem.js";
 
+import { WorkspaceArchivedProjectGroup } from "@/WorkspaceArchivedProjectGroup.js";
 import { WorkspaceArchivedNativeTaskItem } from "@/WorkspaceArchivedNativeTaskItem.js";
 
 export function WorkspaceArchivedTasksFlatSection({
@@ -44,7 +44,7 @@ export function WorkspaceArchivedTasksFlatSection({
   ) => void;
   onSelectAcpSession?: (session: AcpSidebarSession) => void;
 }) {
-  const { intl, locale } = useZCodeIntl();
+  const { intl } = useZCodeIntl();
   const baseServices = useBaseWorkspaceServices();
   const archiveScopes = useArchivedWorkspaceScopes(workspaceTabs);
   const sessionsById = useRemoteWorkspaceSessionStore((state) => state.sessionsById);
@@ -164,87 +164,51 @@ export function WorkspaceArchivedTasksFlatSection({
             workspaceLabelByKey.get(workspaceKey) ?? getPathLeaf(workspace.workspacePath);
           const isRemote = Boolean(workspace.workspaceIdentity?.trim());
           return (
-            <section
+            <WorkspaceArchivedProjectGroup
               key={workspaceKey}
-              data-testid="archive-project-group"
-              className="min-w-0 rounded-xl border border-border p-2"
+              workspaceKey={workspaceKey}
+              workspacePath={workspace.workspacePath}
+              label={label}
+              isRemote={isRemote}
+              count={entries.length}
             >
-              {/* 短名称会重名，且手机没有悬停；路径必须常显，项目标题独立于对话正文。 */}
-              <h3
-                data-workspace-key={workspaceKey}
-                className="flex min-w-0 items-start gap-2 px-2.5 pt-2 text-ui-base font-semibold text-foreground"
-                title={workspace.workspacePath}
-              >
-                {isRemote ? (
-                  <Cloud
-                    aria-hidden="true"
-                    className="mt-0.5 size-4 shrink-0 text-foreground-subtle"
-                  />
-                ) : (
-                  <Folder
-                    aria-hidden="true"
-                    className="mt-0.5 size-4 shrink-0 text-foreground-subtle"
-                  />
-                )}
-                <span className="min-w-0 flex-1 wrap-anywhere">{label}</span>
-                <span
-                  data-testid="archive-project-count"
-                  className="shrink-0 text-ui-sm font-normal text-foreground-subtle"
-                >
-                  {entries.length.toLocaleString(locale)}
-                </span>
-              </h3>
-              <div className="mx-2.5 mt-1 mb-2 space-y-1 border-b border-border pb-3 text-ui-sm text-foreground-subtle">
-                <p>
-                  {intl.formatMessage({
-                    id: isRemote ? "taskList.archiveRemoteProject" : "taskList.archiveLocalProject",
-                  })}
-                </p>
-                <p data-testid="archive-project-path" className="font-mono wrap-anywhere">
-                  {workspace.workspacePath}
-                </p>
-              </div>
-              <ul className="space-y-1">
-                {entries.map((entry) => {
-                  if (entry.kind === "acp") {
-                    const session = entry.session;
-                    const key = buildTaskWorkspaceKey(
-                      session.workspacePath,
-                      session.workspaceIdentity,
-                    );
-                    const resolved = workspaceServiceLookup.get(key);
-                    if (!resolved) return null;
-                    return (
-                      <WorkspaceArchivedAcpSessionItem
-                        key={`acp:${key}:${session.id}`}
-                        session={session}
-                        service={resolved.services.acpService}
-                        workspaceLabel={
-                          workspaceLabelByKey.get(key) ?? getPathLeaf(session.workspacePath)
-                        }
-                        active={key === activeWorkspaceKey && session.id === activeAcpSessionId}
-                        onSelect={() => onSelectAcpSession?.(session)}
-                      />
-                    );
-                  }
-                  const task = entry.task;
-                  const key = buildTaskWorkspaceKey(task.workspacePath, task.workspaceIdentity);
+              {entries.map((entry) => {
+                if (entry.kind === "acp") {
+                  const session = entry.session;
+                  const key = buildTaskWorkspaceKey(
+                    session.workspacePath,
+                    session.workspaceIdentity,
+                  );
+                  const resolved = workspaceServiceLookup.get(key);
+                  if (!resolved) return null;
                   return (
-                    <WorkspaceArchivedNativeTaskItem
-                      key={`${key}:${task.taskId}`}
-                      task={task}
-                      services={workspaceServiceLookup.get(key)?.services}
+                    <WorkspaceArchivedAcpSessionItem
+                      key={`acp:${key}:${session.id}`}
+                      session={session}
+                      service={resolved.services.acpService}
                       workspaceLabel={
-                        workspaceLabelByKey.get(key) ?? getPathLeaf(task.workspacePath)
+                        workspaceLabelByKey.get(key) ?? getPathLeaf(session.workspacePath)
                       }
-                      isActive={key === activeWorkspaceKey && task.taskId === activeTaskId}
-                      onSelectTask={onSelectTask}
-                      refresh={refresh}
+                      active={key === activeWorkspaceKey && session.id === activeAcpSessionId}
+                      onSelect={() => onSelectAcpSession?.(session)}
                     />
                   );
-                })}
-              </ul>
-            </section>
+                }
+                const task = entry.task;
+                const key = buildTaskWorkspaceKey(task.workspacePath, task.workspaceIdentity);
+                return (
+                  <WorkspaceArchivedNativeTaskItem
+                    key={`${key}:${task.taskId}`}
+                    task={task}
+                    services={workspaceServiceLookup.get(key)?.services}
+                    workspaceLabel={workspaceLabelByKey.get(key) ?? getPathLeaf(task.workspacePath)}
+                    isActive={key === activeWorkspaceKey && task.taskId === activeTaskId}
+                    onSelectTask={onSelectTask}
+                    refresh={refresh}
+                  />
+                );
+              })}
+            </WorkspaceArchivedProjectGroup>
           );
         })}
       </div>

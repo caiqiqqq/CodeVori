@@ -8,7 +8,10 @@ import type {
   RemoteUploadOptions,
   StdioStream,
 } from "@zcode/server/remote/backend.js";
-import { createCloseEventController } from "@zcode/server/remote/closeEvent.js";
+import {
+  createCloseEventController,
+  resolveRemoteExitCode,
+} from "@zcode/server/remote/closeEvent.js";
 import {
   isDockerAvailable,
   listDockerContainers,
@@ -200,11 +203,11 @@ export class DockerBackend implements IRemoteBackend {
           onClose.fire(code);
         };
 
-        child.on("exit", (code) => {
-          fireOnce(code ?? 0);
+        child.on("exit", (code, signal) => {
+          fireOnce(resolveRemoteExitCode(code, signal));
         });
-        child.on("close", (code) => {
-          fireOnce(code ?? 0);
+        child.on("close", (code, signal) => {
+          fireOnce(resolveRemoteExitCode(code, signal));
         });
 
         resolve({

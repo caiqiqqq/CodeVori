@@ -4,6 +4,8 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   DownloadIcon,
+  CopyIcon,
+  MessageSquarePlusIcon,
   MinusIcon,
   PlusIcon,
   XIcon,
@@ -16,6 +18,8 @@ import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui
 import { toast } from "@/components/ui/toast.js";
 import { useOptionalPlatform } from "@/hooks/usePlatform.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { useImagePreviewActions } from "@/hooks/useImagePreviewActions.js";
+import { ImageDownloadError, readBoundedImageBlob } from "@/lib/imagePreviewData.js";
 import { logger } from "@/logger.js";
 
 export interface ImagePreviewDialogItem {
@@ -38,7 +42,6 @@ interface PreviewSize {
 }
 
 const defaultPreviewOffset: PreviewOffset = { x: 0, y: 0 };
-const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024;
 
 const imageExtensionByMediaType: Record<string, string> = {
   "image/avif": "avif",
@@ -73,12 +76,6 @@ function safeDownloadBaseName(item: ImagePreviewDialogItem) {
   );
 }
 
-class ImageDownloadError extends Error {
-  constructor(readonly code: "download_failed" | "file_too_large") {
-    super(code);
-  }
-}
-
 function isHttpSource(value: string) {
   return value.startsWith("http://") || value.startsWith("https://");
 }
@@ -94,47 +91,6 @@ export function sanitizeImageSourceForLog(source: string) {
     return url.toString();
   } catch {
     return "invalid-url";
-  }
-}
-
-async function readBoundedImageBlob(source: string) {
-  const controller = new AbortController();
-  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-  try {
-    const response = await fetch(source, { signal: controller.signal });
-    if (!response.ok || !response.body) throw new ImageDownloadError("download_failed");
-    const contentLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(contentLength) && contentLength > MAX_DOWNLOAD_BYTES) {
-      throw new ImageDownloadError("file_too_large");
-    }
-
-    reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let receivedBytes = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      receivedBytes += value.byteLength;
-      if (receivedBytes > MAX_DOWNLOAD_BYTES) {
-        // Web 下载也必须在读取过程中截断，不能等 response.blob() 完整占用 renderer 内存。
-        controller.abort();
-        throw new ImageDownloadError("file_too_large");
-      }
-      chunks.push(value);
-    }
-    if (receivedBytes === 0) throw new ImageDownloadError("download_failed");
-    const bytes = new Uint8Array(receivedBytes);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return new Blob([bytes.buffer], {
-      type: response.headers.get("content-type") ?? "application/octet-stream",
-    });
-  } finally {
-    controller.abort();
-    await reader?.cancel().catch(() => undefined);
   }
 }
 
@@ -167,6 +123,8 @@ export function ImagePreviewDialog({
 }) {
   const { intl } = useZCodeIntl();
   const platform = useOptionalPlatform();
+  const imageActions = useImagePreviewActions();
+  const [imageActionPending, setImageActionPending] = useState(false);
   const [activeIndex, setActiveIndex] = useState(initialIndex);
   const [previewScale, setPreviewScale] = useState(1);
   const [previewOffset, setPreviewOffset] = useState(defaultPreviewOffset);
@@ -326,6 +284,33 @@ export function ImagePreviewDialog({
       : null;
   };
 
+  const runImageAction = async (kind: "copy" | "reference") => {
+    if (!activeItem?.src || activeItemIsVideo || imageActionPending) return;
+    setImageActionPending(true);
+    try {
+      if (kind === "copy") await imageActions.copy(activeItem.src);
+      else
+        await imageActions.reference(
+          activeItem.src,
+          activeItem.filename || `${safeDownloadBaseName(activeItem)}.png`,
+        );
+      toast(
+        intl.formatMessage({
+          id: kind === "copy" ? "markdownImage.copySucceeded" : "markdownImage.referenceSucceeded",
+        }),
+      );
+      if (kind === "reference") onOpenChange(false);
+    } catch {
+      toast(
+        intl.formatMessage({
+          id: kind === "copy" ? "markdownImage.copyFailed" : "markdownImage.referenceFailed",
+        }),
+      );
+    } finally {
+      setImageActionPending(false);
+    }
+  };
+
   const downloadActiveImage = async () => {
     if (!activeItem?.src || activeItemIsVideo || isDownloading) return;
     setIsDownloading(true);
@@ -403,6 +388,34 @@ export function ImagePreviewDialog({
           {activeItem?.alt || intl.formatMessage({ id: "chat.attachments.preview.title" })}
         </DialogTitle>
         <div className="pointer-events-auto absolute right-4 top-4 z-20 flex items-center gap-2 [app-region:no-drag] platform-mac-desktop:top-12 platform-linux-desktop:right-6 platform-linux-desktop:top-4 platform-windows-desktop:right-6 platform-windows-desktop:top-[calc(env(titlebar-area-height,48px)_+_0.5rem)]">
+          {!activeItemIsVideo ? (
+            <>
+              <Button
+                type="button"
+                aria-label={intl.formatMessage({ id: "markdownImage.copy" })}
+                className="rounded-full border border-border bg-background text-foreground shadow-md hover:bg-background/80"
+                disabled={!activeItem?.src || imageActionPending}
+                onClick={() => void runImageAction("copy")}
+                size="icon-md"
+                variant="ghost"
+              >
+                <CopyIcon />
+              </Button>
+              {imageActions.canReference ? (
+                <Button
+                  type="button"
+                  aria-label={intl.formatMessage({ id: "markdownImage.reference" })}
+                  className="rounded-full border border-border bg-background text-foreground shadow-md hover:bg-background/80"
+                  disabled={!activeItem?.src || imageActionPending}
+                  onClick={() => void runImageAction("reference")}
+                  size="icon-md"
+                  variant="ghost"
+                >
+                  <MessageSquarePlusIcon />
+                </Button>
+              ) : null}
+            </>
+          ) : null}
           {!activeItemIsVideo ? (
             <Button
               type="button"

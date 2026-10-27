@@ -181,14 +181,15 @@ function isTerminalPhase(phase: SessionPhase): boolean {
   return phase === "completedSuccess" || phase === "completedInterrupted" || phase === "error";
 }
 
-function resolveTerminalUnreadSignal(
+export function resolveTerminalUnreadSignal(
   summary: Pick<SessionSummary, "phase" | "goalStatus">,
 ): ZCodeWorkspaceTaskListChanged["unreadSignal"] {
   if (summary.phase === "error") {
     return "background_terminal";
   }
   if (
-    (summary.phase === "completedSuccess" || summary.phase === "completedInterrupted") &&
+    // 中断是用户停止执行，不是后台完成；官方 3.16.3 同样只对成功/错误发新未读。
+    summary.phase === "completedSuccess" &&
     (summary.goalStatus === undefined || summary.goalStatus === "verified")
   ) {
     return "background_terminal";

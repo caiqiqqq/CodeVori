@@ -1,6 +1,6 @@
 import { getDatabaseStartupPortPayload } from "./databaseStartupRelay.js";
 import { randomUUID } from "node:crypto";
-import { app, BrowserWindow, Menu, MessageChannelMain } from "electron";
+import { app, BrowserWindow, Menu, MessageChannelMain, nativeImage } from "electron";
 import type { UtilityProcess as ElectronUtilityProcess } from "electron";
 import { HostMessageTypes, InternalChannels, PlatformChannels, type Locale } from "@zcode/shared";
 import { scheduleArmsBrowserPerfLoadNudge } from "./armsBrowserPerfLoadNudge.js";
@@ -12,14 +12,20 @@ import {
   parseWindowUnreadCount,
   sumWindowUnreadCounts,
   syncAppUnreadBadge,
+  createUnreadDotBitmap,
+  formatWindowsUnreadDescription,
 } from "./unreadBadge.js";
+import { updateWindowsDesktopTrayUnreadCount } from "./desktopTray.js";
+import { shouldHideWindowToTray } from "./desktopTraySupport.js";
 import { attachDesktopWindowSizePersistence, type DesktopWindowSize } from "./desktopWindowSize.js";
 import {
+  isMainApplicationWindowWebContents,
   registerMainApplicationWindow,
   unregisterMainApplicationWindow,
 } from "./resourceManagerWindow.js";
 
 const DEFAULT_RUNTIME_PROCESS_ENV_WAIT_TIMEOUT_MS = 4_500;
+let windowsUnreadOverlay: ReturnType<typeof nativeImage.createFromBitmap> | null = null;
 
 export function createWindow(options: {
   iconPath: string;
@@ -315,13 +321,30 @@ export function focusWorkspaceInExistingWindow(
 }
 
 export function syncApplicationUnreadBadge(windowUnreadCountMap: Map<number, number>) {
+  const totalUnreadCount = sumWindowUnreadCounts(windowUnreadCountMap);
   syncAppUnreadBadge({
     platform: process.platform,
-    totalUnreadCount: sumWindowUnreadCounts(windowUnreadCountMap),
+    totalUnreadCount,
     setBadgeCount: (count) => {
       app.setBadgeCount(count);
     },
   });
+  if (process.platform !== "win32") return;
+
+  if (totalUnreadCount > 0 && !windowsUnreadOverlay) {
+    windowsUnreadOverlay = nativeImage.createFromBitmap(
+      createUnreadDotBitmap(Buffer.alloc(16 * 16 * 4), 16, 16),
+      { width: 16, height: 16 },
+    );
+  }
+  const overlay = totalUnreadCount > 0 ? windowsUnreadOverlay : null;
+  const description = totalUnreadCount > 0 ? formatWindowsUnreadDescription(totalUnreadCount) : "";
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed() && isMainApplicationWindowWebContents(win.webContents.id)) {
+      win.setOverlayIcon(overlay, description);
+    }
+  }
+  updateWindowsDesktopTrayUnreadCount(totalUnreadCount);
 }
 
 export function handleWindowUnreadCountSync(
@@ -369,6 +392,7 @@ export function handleDesktopWindowCloseRequest(options: {
   forceQuit: boolean;
   explicitQuitRequested?: boolean;
   closeToTrayOnWindows?: boolean;
+  closeToTraySupported?: boolean;
   isLastWindow: boolean;
   label: string;
   logger: { info: (...args: unknown[]) => void };
@@ -378,10 +402,13 @@ export function handleDesktopWindowCloseRequest(options: {
   hideWindow?: () => void;
 }) {
   if (
-    options.platform === "win32" &&
-    options.closeToTrayOnWindows &&
-    !options.forceQuit &&
-    !options.explicitQuitRequested
+    shouldHideWindowToTray({
+      platform: options.platform,
+      enabled: options.closeToTrayOnWindows,
+      supported: options.closeToTraySupported,
+      forceQuit: options.forceQuit,
+      explicitQuitRequested: options.explicitQuitRequested,
+    })
   ) {
     options.logger.info(`[createWindow] window close hidden to tray (${options.label})`);
     options.hideWindow?.();

@@ -54,6 +54,7 @@ import {
 import { createBashProviderDescription } from "./bash-prompt.js";
 import { applyBashReadFileStateEffects } from "./bash-read-file-state.js";
 import { isRuntimeReadOnlyBashCommand } from "./bash-semantics.js";
+import { matchDangerousCommand } from "./guarded/command.js";
 import {
   attachToolExecutionTelemetry,
   classifyCommand,
@@ -79,6 +80,11 @@ function resolveBashPermissionCapability(
   context?: ToolRuntimePermissionCapabilityContext,
 ): ToolRuntimePermissionCapability | undefined {
   const command = readStringProperty(input, "command");
+  if (command && context?.mode === "guarded") {
+    // 实际 shell 文法下分类，不能依赖 Bash 静态 destructive 标记判断批量删除。
+    const match = matchDangerousCommand(command, context.bashShellSelection?.dialect ?? "posix");
+    if (match.status === "matched") return { userApprovalRule: match.ruleId };
+  }
   if (!command || !isRuntimeReadOnlyBashCommand(command, context)) return undefined;
   return {
     destructive: false,

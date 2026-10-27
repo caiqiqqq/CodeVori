@@ -1,6 +1,4 @@
-// project 级权限规则的读取与持久化（从 permission-flow.ts 拆出）。
-// 拆分原因：permission-flow.ts 引入 responder 竞速后超过单文件 400 行上限；
-// 这三个 helper 只与 sessionStore 的 project permission 存取内聚，与 ask 时序无关。
+// 权限规则更新：项目规则持久化到 sessionStore，会话规则仅交给 PermissionService 内存所有者。
 import {
   traceContextToLogContext,
   type PermissionRuleset,
@@ -10,6 +8,28 @@ import {
 } from "@zcode/contracts";
 import { applyPermissionUpdates } from "./permission-rules.js";
 import type { ToolExecutorDeps } from "./types.js";
+import type { ExecutableToolCall } from "../types.js";
+
+export function applySessionPermissionUpdates(
+  deps: ToolExecutorDeps,
+  updates: PermissionUpdate[] | undefined,
+  toolCall: ExecutableToolCall,
+  requestId: string,
+  traceContext: TraceContext,
+): void {
+  if (!updates?.length) return;
+  deps.permissionService.grantSessionPermission(updates);
+  deps.logger?.info("Session permission granted", {
+    ...traceContextToLogContext(traceContext),
+    event: "tool.permission.session_grant.applied",
+    module: "core.tool.executor",
+    requestId,
+    status: "completed",
+    toolCallId: toolCall.id,
+    toolName: toolCall.name,
+    updateCount: updates.length,
+  });
+}
 
 export async function loadProjectPermissionRuleset(
   deps: ToolExecutorDeps,

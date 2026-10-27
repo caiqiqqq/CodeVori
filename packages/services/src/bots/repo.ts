@@ -7,6 +7,7 @@ import {
   type BotsConfigFile,
   type BotsStateFile,
   type BotNotificationRecipient,
+  type BotContextState,
 } from "@zcode/shared";
 import { getAppConfigDir } from "../paths.js";
 import {
@@ -33,6 +34,36 @@ async function writeJson(path: string, value: unknown): Promise<void> {
 }
 
 export class BotsRepo {
+  async removeContexts(
+    predicate: (context: BotContextState, key: string) => boolean,
+  ): Promise<void> {
+    const path = join(getAppConfigDir(), BOTS_STATE_FILE);
+    await withFileLock(path, async () => {
+      const current = await readOptionalJson(path);
+      if (current === undefined) return;
+      const state = botsStateFileSchema.parse(current);
+      // 配置清理也必须在锁内修改最新状态，避免删除一个话题时覆盖另一个话题。
+      for (const [key, context] of Object.entries(state.bots)) {
+        if (predicate(context, key)) delete state.bots[key];
+      }
+      await writeJson(path, state);
+    });
+  }
+  async updateContext(context: BotContextState): Promise<void> {
+    const path = join(getAppConfigDir(), BOTS_STATE_FILE);
+    await withFileLock(path, async () => {
+      const current = await readOptionalJson(path);
+      const state = botsStateFileSchema.parse(current ?? { version: 3, bots: {} });
+      const key = context.conversationKey ?? context.botId;
+      // 话题并行时必须在锁内合并单条上下文，不能把另一个话题刚保存的状态覆盖掉。
+      state.bots[key] = {
+        ...context,
+        notificationRecipient: state.bots[key]?.notificationRecipient,
+        updatedAt: Date.now(),
+      };
+      await writeJson(path, botsStateFileSchema.parse(state));
+    });
+  }
   async readConfig(): Promise<BotsConfigFile> {
     const path = join(getAppConfigDir(), BOTS_CONFIG_FILE);
     return withFileLock(path, async () => {

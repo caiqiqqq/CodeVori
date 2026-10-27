@@ -20,6 +20,7 @@ import {
   resolveItemDisplayName,
   selectFeaturedItems,
   sortInstalledStripItems,
+  sortPersonalMarketplaceItems,
   sortPersonalMarketplaceGroups,
   storeItemMatches,
   type PersonalMarketplaceGroup,
@@ -113,12 +114,7 @@ export function PluginStoreListView({
       ([marketplace, groupItems]) => ({
         marketplace,
         title: resolveMarketplaceDisplayName(marketplace, marketplaces),
-        items: groupItems.toSorted((left, right) =>
-          resolveItemDisplayName(left, locale).localeCompare(
-            resolveItemDisplayName(right, locale),
-            locale,
-          ),
-        ),
+        items: sortPersonalMarketplaceItems(groupItems, locale),
       }),
     );
     return sortPersonalMarketplaceGroups(titled, marketplaces, locale);
@@ -322,13 +318,19 @@ function StoreSection({
   title,
   children,
   className,
+  groupKey,
 }: {
   title: string;
   children: React.ReactNode;
   className?: string;
+  groupKey?: string;
 }) {
   return (
-    <section className={className}>
+    <section
+      className={className}
+      data-testid={groupKey ? "plugin-store-sorted-group" : undefined}
+      data-group-key={groupKey}
+    >
       <div className="pb-2">
         <h2 className="text-ui-lg font-semibold text-foreground">{title}</h2>
       </div>
@@ -476,6 +478,7 @@ function PublicSegment({
       {categoryGroups.map((group) => (
         <StoreSection
           key={group.category}
+          groupKey={`category:${group.category}`}
           className="py-4 first:pt-0 last:pb-0"
           title={
             group.category === FALLBACK_CATEGORY
@@ -525,6 +528,7 @@ function PersonalSegment({
       {groups.map((group) => (
         <StoreSection
           key={group.marketplace}
+          groupKey={`marketplace:${group.marketplace}`}
           title={group.title}
           className="py-4 first:pt-0 last:pb-0"
         >

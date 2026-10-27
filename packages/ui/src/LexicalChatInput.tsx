@@ -41,6 +41,8 @@ import {
   KEY_ARROW_UP_COMMAND,
   KEY_BACKSPACE_COMMAND,
   COMMAND_PRIORITY_HIGH,
+  COMPOSITION_START_COMMAND,
+  COMPOSITION_END_COMMAND,
   KEY_ENTER_COMMAND,
   type EditorState,
   type LexicalEditor,
@@ -817,67 +819,92 @@ function TextContentPlugin({
   taskId?: string | null;
 }) {
   const [editor] = useLexicalComposerContext();
-  // IME 组合态标记:不直接依赖 editor.isComposing(),因为它在 update listener 同步执行时
-  // 是否已反映组合态存在时序不确定性,读不到 true 会把中文/日文长文本组合的高耗时误报成打字卡顿。
-  // 改由 compositionstart/compositionend 事件自行维护,稳健可控。
   const composingRef = useRef(false);
+  const pendingCompositionRef = useRef(false);
+  const lastPublishedTextRef = useRef("");
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const taskIdRef = useRef(taskId);
+  taskIdRef.current = taskId;
 
   useEffect(() => {
+    let frame: number | undefined;
+    const publish = (editorState: EditorState, isProgrammatic: boolean) => {
+      const startedAt = performance.now();
+      // 原先每次按键同时序列化新旧状态，长文本开销翻倍；已发布文本就是比较基准。
+      const nextText = getEditorMarkdown(editorState);
+      if (nextText === lastPublishedTextRef.current) return;
+      lastPublishedTextRef.current = nextText;
+      onChangeRef.current?.(nextText);
+      recordInputLag({
+        lagMs: performance.now() - startedAt,
+        textLength: nextText.length,
+        isProgrammatic,
+        isComposing: false,
+        taskId: taskIdRef.current ?? undefined,
+      });
+    };
     const handleCompositionStart = () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      frame = undefined;
       composingRef.current = true;
     };
     const handleCompositionEnd = () => {
-      // compositionend 触发时组合刚结束,但「组合提交」这一拍的 update listener 通常在同一轮
-      // 任务里同步执行,若立即置 false,这次高耗时会被误判为打字卡顿。用 queueMicrotask 把置 false
-      // 延后到当前同步任务之后,确保组合提交那一拍仍按组合态短路,再恢复正常计入。
-      queueMicrotask(() => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      // compositionend 的最终 Lexical 更新可能晚于 DOM 事件；下一帧读取最终状态。
+      // 组合期间不序列化、不通知 React，避免候选输入触发整棵 composer 重渲染。
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
         composingRef.current = false;
+        if (pendingCompositionRef.current) {
+          pendingCompositionRef.current = false;
+          publish(editor.getEditorState(), false);
+        }
       });
     };
-
-    // root 会重挂,用 registerRootListener 在新旧 root 上正确解绑/绑定。
-    return editor.registerRootListener((rootElement, previousRootElement) => {
-      previousRootElement?.removeEventListener("compositionstart", handleCompositionStart);
-      previousRootElement?.removeEventListener("compositionend", handleCompositionEnd);
-      rootElement?.addEventListener("compositionstart", handleCompositionStart);
-      rootElement?.addEventListener("compositionend", handleCompositionEnd);
+    const unregisterStart = editor.registerCommand(
+      COMPOSITION_START_COMMAND,
+      () => {
+        handleCompositionStart();
+        return false;
+      },
+      COMMAND_PRIORITY_HIGH,
+    );
+    const unregisterEnd = editor.registerCommand(
+      COMPOSITION_END_COMMAND,
+      () => {
+        handleCompositionEnd();
+        return false;
+      },
+      COMMAND_PRIORITY_HIGH,
+    );
+    const unregisterRoot = editor.registerRootListener((root, previous) => {
+      previous?.removeEventListener("compositionstart", handleCompositionStart);
+      previous?.removeEventListener("compositionend", handleCompositionEnd);
+      root?.addEventListener("compositionstart", handleCompositionStart);
+      root?.addEventListener("compositionend", handleCompositionEnd);
     });
-  }, [editor]);
-
-  useEffect(() => {
-    if (!onChange) {
-      return;
-    }
-
-    return editor.registerUpdateListener(
-      ({ dirtyElements, dirtyLeaves, editorState, prevEditorState, tags }) => {
-        if (dirtyElements.size === 0 && dirtyLeaves.size === 0) {
+    const unregisterUpdate = editor.registerUpdateListener(
+      ({ dirtyElements, dirtyLeaves, editorState, tags }) => {
+        if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
+        if (composingRef.current || editor.isComposing()) {
+          pendingCompositionRef.current = true;
           return;
         }
-
-        // 输入卡顿计时:包住「全量序列化 + onChange 同步重渲染」这段处理热点。
-        const startedAt = performance.now();
-
-        const nextText = getEditorMarkdown(editorState);
-        const previousText = getEditorMarkdown(prevEditorState);
-        if (nextText === previousText) {
-          return;
-        }
-
-        onChange(nextText);
-
-        const lagMs = performance.now() - startedAt;
-        // 程序化改写与 IME 组合态不算打字卡顿(判定在 recordInputLag 内统一短路)。
-        recordInputLag({
-          lagMs,
-          textLength: nextText.length,
-          isProgrammatic: tags.has(PROGRAMMATIC_UPDATE_TAG),
-          isComposing: composingRef.current,
-          taskId: taskId ?? undefined,
-        });
+        publish(editorState, tags.has(PROGRAMMATIC_UPDATE_TAG));
       },
     );
-  }, [editor, onChange, taskId]);
+    return () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      unregisterUpdate();
+      unregisterRoot();
+      unregisterStart();
+      unregisterEnd();
+      const root = editor.getRootElement();
+      root?.removeEventListener("compositionstart", handleCompositionStart);
+      root?.removeEventListener("compositionend", handleCompositionEnd);
+    };
+  }, [editor]);
 
   return null;
 }

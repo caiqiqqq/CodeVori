@@ -373,10 +373,12 @@ export function captureComputerUseRuntimeFromEnvironment(
   env: NodeJS.ProcessEnv = process.env,
 ): ComputerUseRuntime | undefined {
   const socketPath = env.ZCODE_CUA_PERMISSION_BROKER_SOCKET?.trim();
-  if (!socketPath) return undefined;
+  const openNative = env.ZCODE_OPEN_CUA_NATIVE?.trim();
+  if (!socketPath && !openNative) return undefined;
   return createComputerUseRuntime({
-    brokerSocketPath: socketPath,
+    ...(socketPath ? { brokerSocketPath: socketPath } : {}),
     refreshMarkerPath: env.ZCODE_CUA_PERMISSION_BROKER_REFRESH_MARKER?.trim(),
+    env,
   });
 }
 

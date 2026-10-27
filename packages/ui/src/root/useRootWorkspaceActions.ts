@@ -420,7 +420,8 @@ export function useRootWorkspaceActions({
         }
 
         // 新增 tab（如果已在本窗口打开则激活它）
-        addTab(path);
+        // 用户显式选择本地文件夹时必须标为项目；复用同路径的旧对话 tab 也要更新分类。
+        addTab(path, { workspacePurpose: "project" });
         // 打开 workspace 是 workspace-only 意图，不是“继续上次会话”。
         // 即使命中已存在 tab，也必须清掉该 workspace 的 activeTaskId 并回到单 pane 草稿。
         startDraftInWorkspace(path);
@@ -494,9 +495,8 @@ export function useRootWorkspaceActions({
 
     void openFolderFromWorkspaceEntry({
       selectDirectory: () => platform.selectDirectory(),
-      onSelectProject: (path) => {
-        void handleSelectProject(path);
-      },
+      selectDirectories: platform.selectDirectories,
+      onSelectProject: handleSelectProject,
     });
   }, [
     allowOpenWorkspace,
@@ -537,9 +537,8 @@ export function useRootWorkspaceActions({
 
     void openFolderFromWorkspaceEntry({
       selectDirectory: () => platform.selectDirectory(),
-      onSelectProject: (path) => {
-        void handleSelectProject(path);
-      },
+      selectDirectories: platform.selectDirectories,
+      onSelectProject: handleSelectProject,
     });
   }, [
     allowOpenWorkspace,

@@ -14,13 +14,14 @@ import type { HookRunResult } from "../../hooks/index.js";
 import type { PermissionContext } from "../../permission/service.js";
 import type { ExecutableToolCall, ToolEntry, ToolExecutionResult } from "../types.js";
 import { normalizeToolExecutionInput } from "../input-normalization.js";
-import { resolveToolApproval } from "./approval-gate.js";
+import { resolveToolApproval, restrictApprovalGrants } from "./approval-gate.js";
 import { createErrorResult, createPermissionErrorResult } from "./errors.js";
 import { emitPermissionDenied, emitPermissionRequested, emitPermissionResolved } from "./events.js";
 import { applyPreToolPermissionDecision, runPermissionRequestHooks } from "./hook-flow.js";
 import { racePermissionResponders } from "./permission-responder-race.js";
 import {
   loadProjectPermissionRuleset,
+  applySessionPermissionUpdates,
   persistProjectPermissionUpdates,
 } from "./permission-rules-persistence.js";
 import {
@@ -151,7 +152,10 @@ export async function resolveToolPermission(
     };
   }
 
-  const approval = resolveToolApproval(deps, toolCall, entry, executionInput, traceContext);
+  const approval =
+    permissionDecision.approvalMode === "user-once"
+      ? { gate: "ask" as const, optionsPolicy: "no-always-allow" as const }
+      : resolveToolApproval(deps, toolCall, entry, executionInput, traceContext);
   if (approval.gate === "proceed") {
     telemetry?.setPermissionDecision("not_required");
     return { allowed: true, executionInput };
@@ -222,19 +226,21 @@ export async function resolveToolPermission(
           },
         ),
       runHooks: (hookSignal) =>
-        runPermissionRequestHooks(
-          deps,
-          toolCall,
-          executionInput,
-          requestId,
-          permissionDecision,
-          mode,
-          traceContext,
-          hookSignal,
-        ),
+        permissionDecision.approvalMode === "user-once"
+          ? Promise.resolve(undefined)
+          : runPermissionRequestHooks(
+              deps,
+              toolCall,
+              executionInput,
+              requestId,
+              permissionDecision,
+              mode,
+              traceContext,
+              hookSignal,
+            ),
       ...(signal === undefined ? {} : { signal }),
     });
-    brokerResult = raceOutcome.result;
+    brokerResult = restrictApprovalGrants(raceOutcome.result, permissionDecision.approvalMode);
     const permissionHookResult = raceOutcome.source === "hook" ? raceOutcome.result : undefined;
 
     if (permissionHookResult?.decision === "modify") {
@@ -387,21 +393,13 @@ export async function resolveToolPermission(
     }
   }
 
-  if (resolvedPermission.sessionPermissionUpdates?.length) {
-    // 会话免确认：只进内存里的会话 ruleset，
-    // 与上面的项目级持久化互不可见。
-    deps.permissionService.grantSessionPermission(resolvedPermission.sessionPermissionUpdates);
-    deps.logger?.info("Session permission granted", {
-      ...traceContextToLogContext(traceContext),
-      event: "tool.permission.session_grant.applied",
-      module: "core.tool.executor",
-      requestId,
-      status: "completed",
-      toolCallId: toolCall.id,
-      toolName: toolCall.name,
-      updateCount: resolvedPermission.sessionPermissionUpdates.length,
-    });
-  }
+  applySessionPermissionUpdates(
+    deps,
+    resolvedPermission.sessionPermissionUpdates,
+    toolCall,
+    requestId,
+    traceContext,
+  );
 
   telemetry?.setPermissionDecision("granted");
   if (resolvedPermission.decision !== "modify") {

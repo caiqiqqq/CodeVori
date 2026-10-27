@@ -1,4 +1,8 @@
 import {
+  retryTasksDatabaseInitialization,
+  TASKS_INITIALIZATION_BUSY_TIMEOUT_MS,
+} from "#src/session/tasksDatabase/initialization.js";
+import {
   isTasksStorageMigrated,
   isTasksStoragePrepared,
 } from "#src/session/tasksDatabase/prepared.js";
@@ -178,10 +182,23 @@ export class OffPeakTaskRepo {
       this.close();
     }
     if (!this.initializePromise) {
-      this.initializePromise = this.initialize(path).catch((error) => {
-        this.close();
-        throw error;
-      });
+      this.initializePromise = retryTasksDatabaseInitialization(
+        () => this.initialize(path),
+        () => {
+          this.db?.close();
+          this.db = null;
+          this.dbPath = null;
+        },
+        this.startupBusyTimeoutMs,
+      )
+        .then(() => {
+          // 初始化成功后恢复业务连接原有的锁等待策略。
+          this.db?.exec(`PRAGMA busy_timeout = ${this.startupBusyTimeoutMs}`);
+        })
+        .catch((error) => {
+          this.close();
+          throw error;
+        });
     }
     await this.initializePromise;
   }
@@ -205,7 +222,7 @@ export class OffPeakTaskRepo {
     if (!this.db) {
       this.db = new DatabaseSync(path);
       this.dbPath = path;
-      this.db.exec(`PRAGMA busy_timeout = ${this.startupBusyTimeoutMs}`);
+      this.db.exec(`PRAGMA busy_timeout = ${TASKS_INITIALIZATION_BUSY_TIMEOUT_MS}`);
       this.db.exec("PRAGMA journal_mode = WAL");
       this.db.exec("PRAGMA synchronous = NORMAL");
     }

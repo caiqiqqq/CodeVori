@@ -452,14 +452,14 @@ export class SqliteSessionStore
       this.maybeThrowForkCommitFault("afterChild");
       for (const message of bundle.messages) {
         const messageSource = bundle.copySources?.messages[message.info.id];
-        await messageRepository.saveMessage(
+        messageRepository.saveMessage(
           this.db,
           message.info,
           messageSource ? { sessionID: child.parentID, id: messageSource } : undefined,
         );
         for (const part of message.parts) {
           const partSource = bundle.copySources?.parts[part.id];
-          await messageRepository.savePart(
+          messageRepository.savePart(
             this.db,
             part,
             partSource ? { sessionID: child.parentID, id: partSource } : undefined,
@@ -480,7 +480,7 @@ export class SqliteSessionStore
       }
       this.maybeThrowForkCommitFault("afterEntries");
       if (initialInput) {
-        await sessionInputRepository.saveSessionInput(this.db, initialInput);
+        sessionInputRepository.saveSessionInput(this.db, initialInput);
       }
       this.maybeThrowForkCommitFault("afterInput");
       const now = Date.now();
@@ -536,9 +536,9 @@ export class SqliteSessionStore
         return existing;
       }
       const persisted = sessionRepository.createSession(this.db, session);
-      await messageRepository.saveMessage(this.db, contextMessage.info);
+      messageRepository.saveMessage(this.db, contextMessage.info);
       for (const part of contextMessage.parts) {
-        await messageRepository.savePart(this.db, part);
+        messageRepository.savePart(this.db, part);
       }
       sessionEntryRepository.saveSessionEntry(this.db, provenance);
       this.db.exec("commit");
@@ -586,7 +586,7 @@ export class SqliteSessionStore
         },
       });
       const contextMessage = (
-        await messageRepository.messages(this.db, { sessionID: input.sessionID })
+        messageRepository.messages(this.db, { sessionID: input.sessionID })
       ).find((message) => {
         const metadata = message.info.metadata;
         return Boolean(
@@ -596,7 +596,7 @@ export class SqliteSessionStore
         );
       });
       if (contextMessage) {
-        await messageRepository.saveMessage(this.db, {
+        messageRepository.saveMessage(this.db, {
           ...contextMessage.info,
           metadata: {
             ...(contextMessage.info.metadata ?? {}),

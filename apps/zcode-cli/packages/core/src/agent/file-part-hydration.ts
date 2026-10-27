@@ -9,6 +9,15 @@ export async function filePartToContentBlock(
   part: FilePart,
   artifactStore: ToolArtifactStorePort | undefined,
 ): Promise<ModelMessageContentBlock> {
+  // 路径引用只携带说明，旧恢复丢失目录/大文件语义；使用持久原文而不是重新探测磁盘。
+  const pathReferenceText = part.metadata?.pathReferenceText;
+  if (part.metadata?.storageKind === "local_ref" && typeof pathReferenceText === "string") {
+    return { type: "text", text: pathReferenceText };
+  }
+  // URL 引用也属于 text MIME，但不是 inline 文本附件；冷恢复不能把它降级成失败占位。
+  if (part.mime === "text/uri-list" && part.metadata?.storageKind === "remote_ref") {
+    return { type: "resource_link", uri: part.url };
+  }
   const source = attachmentRefFromFilePart(part);
   const dataUrl = await filePartDataUrl(part, artifactStore);
   if (isImageMime(part.mime) && dataUrl) {

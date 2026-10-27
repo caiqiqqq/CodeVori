@@ -164,6 +164,8 @@ export type RemoteTargetSnapshot =
 export interface RemoteWorkspaceSessionSnapshot {
   /** 远程 workspace 的真实绝对路径 */
   workspacePath: string;
+  /** 握手确认的设备身份；旧历史与旧服务端可缺省。 */
+  sourceServerId?: string;
   /** 发起远程连接时的本机 workspace 路径，仅用于 MCP filesystem 路径改写。 */
   localWorkspacePath?: string;
   /** 远程 workspace 的稳定身份键（authority + canonicalPath）。 */
@@ -288,8 +290,10 @@ export interface AppSettings {
   taskAutoArchiveEnabled?: boolean;
   /** 自动归档阈值；当任务最后更新时间早于该天数时允许被归档 */
   taskAutoArchiveOlderThanDays?: number;
-  /** Windows 桌面端关闭窗口时隐藏到托盘；其它平台忽略 */
+  /** Windows 与 Linux 桌面端关闭窗口时隐藏到托盘 */
   closeToTrayOnWindows?: boolean;
+  /** Linux 首次启用托盘选项的默认值迁移标记。 */
+  closeToTrayLinuxMigrationInitialized?: boolean;
   /** 存在执行中的闲时任务时阻止系统闲置休眠（手动开关，防不了合盖）。 */
   keepAwakeWhileRunning?: boolean;
   /** Windows 关闭到托盘默认值是否已执行过一次性迁移；只用于设置迁移，不参与业务判断。 */

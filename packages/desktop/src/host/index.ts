@@ -1738,6 +1738,7 @@ async function createWindowRemoteConnectionHandle(params: {
           requestLimiter: hostRemoteMediaRequestLimiter,
         });
   return {
+    ...(connection.hello.sourceServerId ? { sourceServerId: connection.hello.sourceServerId } : {}),
     services,
     capabilities:
       "backend" in connection

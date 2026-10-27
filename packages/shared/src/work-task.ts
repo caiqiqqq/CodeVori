@@ -102,7 +102,7 @@ export const workTaskExecutionSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("api"),
       modelSelection: modelSelectionSchema,
-      mode: z.enum(["build", "edit", "plan", "yolo"]),
+      mode: z.enum(["build", "edit", "plan", "yolo", "guarded"]),
     })
     .strict(),
   z

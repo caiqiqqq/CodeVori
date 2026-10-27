@@ -1,6 +1,7 @@
 import type { HelloMessage, HelloAckMessage } from "@zcode/shared";
 import { ZCODE_VERSION, formatZodError, helloMessageSchema } from "@zcode/shared";
 import type { StdioStream } from "./backend.js";
+import { createRemoteDiagnosticLines } from "./diagnosticLog.js";
 
 const MAX_HANDSHAKE_DIAGNOSTIC_CHARS = 2048;
 
@@ -27,12 +28,21 @@ export function performHandshake(
     let stdoutText = "";
     let stderrText = "";
     let settled = false;
+    // 诊断只存已脱敏的完整行；先截断原始文本会丢掉 key，留下未脱敏的凭据尾部。
+    const stdoutDiagnostics = createRemoteDiagnosticLines((line) => {
+      stdoutText = appendLimited(stdoutText, `${line}\n`);
+    });
+    const stderrDiagnostics = createRemoteDiagnosticLines((line) => {
+      stderrText = appendLimited(stderrText, `${line}\n`);
+    });
 
     const rejectWithDiagnostics = (message: string, exitCode?: number) => {
       if (settled) {
         return;
       }
       settled = true;
+      stdoutDiagnostics.finish();
+      stderrDiagnostics.finish();
       cleanup();
       reject(
         new Error(
@@ -52,7 +62,7 @@ export function performHandshake(
     const onData = (chunk: Buffer) => {
       const text = chunk.toString("utf-8");
       buffer += text;
-      stdoutText = appendLimited(stdoutText, text);
+      stdoutDiagnostics.push(chunk);
 
       // Process line by line
       while (true) {
@@ -106,7 +116,7 @@ export function performHandshake(
     };
 
     const onStderrData = (chunk: Buffer) => {
-      stderrText = appendLimited(stderrText, chunk.toString("utf-8"));
+      stderrDiagnostics.push(chunk);
     };
 
     stream.stdout.on("data", onData);

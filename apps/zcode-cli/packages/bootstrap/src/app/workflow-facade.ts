@@ -1,3 +1,4 @@
+import { workflowPermissionMode } from "./workflow-permission-mode.js";
 import { join } from "node:path";
 import { createNodeContextSourceAdapter } from "@zcode/adapters/context";
 import { createNodeExecutionAdapter } from "@zcode/adapters/exec";
@@ -230,7 +231,7 @@ export function createWorkflowFacade(deps: CreateWorkflowFacadeDeps): WorkflowFa
       : `/workflow ${definition.kind} ${task}`;
 
   const switchWorkflowToYolo = (): void => {
-    if (deps.runtime.getMode() !== "yolo") {
+    if (deps.runtime.getMode() !== "yolo" && deps.runtime.getMode() !== "guarded") {
       deps.runtime.updateConfig({ mode: "yolo" });
     }
   };
@@ -285,7 +286,7 @@ function createWorkflowChildRuntime(
     {
       ...deps.runtimeConfig,
       agentName: options.workflowKind === "expert" ? "zcode-expert" : "zcode-workflow",
-      mode: "yolo",
+      mode: workflowPermissionMode(deps.runtime.getMode()),
       modelSelection: deps.runtime.getSessionModelSelection(),
       parentSessionId: deps.sessionId,
       taskType: "workflow_child",

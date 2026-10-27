@@ -55,16 +55,15 @@ export function refToString(ref: InstanceRef | ActorRef): string {
 /**
  * 冻结的 actor persona，交给 {@link WorkflowDriver.createActorSession}。
  *
- * persona 只剩身份（名字 + system prompt）。模型档位（`model?: "main" | "lite"`）
- * 与工具档位（`tools?: "default" | "readonly" | "none"`）都已退场：宿主没有 lite 模型来源，而
- * 工具档位买到的只有「裁判不能改文件」——普通子代理也不靠档位保证这一点，ask 文本说清即可。
- * 子代理一律跑在父会话当前模型上、拿完整工作工具集减去会悬挂/越权的交互工具。
- * 是否注册 submit_result 由 driver 结合站点图判定（全 untyped 的 actor 不注册），
- * 不在这里表达——保持 persona 只描述身份。
+ * persona 描述名字、system prompt 与可选具体模型；main/lite 与工具档位已退场。
+ * 未指定模型时由宿主解析 run 默认、journal pin 和父会话选择。
+ * 是否注册 submit_result 由 driver 结合站点图判定，不由 persona 决定。
  */
 export interface PersonaSpec {
   name?: string;
   system?: string;
+  /** 冻结的具体模型选择 providerId/modelId[$reasoningLevel]，不恢复 main/lite 档位。 */
+  model?: string;
 }
 
 /**

@@ -204,7 +204,8 @@ export function applyPreToolPermissionDecision(
   if (
     hookResult.permissionBehavior === "allow" &&
     permissionDecision.decision === "ask" &&
-    !permissionDecision.alwaysAsk
+    !permissionDecision.alwaysAsk &&
+    permissionDecision.approvalMode !== "user-once"
   ) {
     return {
       ...permissionDecision,

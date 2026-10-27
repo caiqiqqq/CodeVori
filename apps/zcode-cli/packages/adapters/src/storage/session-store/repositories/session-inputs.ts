@@ -31,7 +31,7 @@ interface SessionInputRow {
   time_updated: number;
 }
 
-export async function saveSessionInput(
+export function saveSessionInput(
   db: DatabaseSync,
   input: {
     id: string;
@@ -40,7 +40,7 @@ export async function saveSessionInput(
     delivery: SessionInputDelivery;
     payload: { text: string; [key: string]: unknown };
   },
-): Promise<void> {
+): void {
   const now = Date.now();
   // admitted_sequence 按 session 内账本单调分配；同 id 重入会用 runtime 的实际
   // kind/delivery/payload 修正执行前预 admission，同时保留原序与状态（幂等）。
@@ -198,11 +198,12 @@ export async function promoteSessionInput(
   },
 ): Promise<void> {
   const now = Date.now();
+  // 同步数据库事务内不让出执行权；否则另一个 session 的 BEGIN 会嵌套或被本次回滚误伤。
   db.exec("begin immediate");
   try {
-    await saveMessage(db, input.message);
+    saveMessage(db, input.message);
     for (const part of input.parts) {
-      await savePart(db, part);
+      savePart(db, part);
     }
     const refs =
       input.message.metadata && typeof input.message.metadata === "object"
@@ -248,7 +249,7 @@ export async function promoteSessionInput(
           data: { ...data, status: "attached", attachedMessageId: String(input.message.id) },
         });
         const contextMessage = (
-          await readMessages(db, {
+          readMessages(db, {
             sessionID: input.sessionID,
           })
         ).find((candidate) => {
@@ -260,7 +261,7 @@ export async function promoteSessionInput(
           );
         });
         if (contextMessage) {
-          await saveMessage(db, {
+          saveMessage(db, {
             ...contextMessage.info,
             metadata: {
               ...(contextMessage.info.metadata ?? {}),

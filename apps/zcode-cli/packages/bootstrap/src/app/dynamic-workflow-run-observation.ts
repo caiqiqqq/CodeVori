@@ -170,6 +170,7 @@ export function snapshotOf(
   const stopReason = terminal ? stopReasonOf(entry, record) : undefined;
   const failure = terminal ? terminalErrorField(runStatus, entry, record).error : undefined;
   const error = failure?.message;
+  const result = terminalResultField(runStatus, entry, record).result;
   // 归属：AmendWorkflow 的
   // resolveInput 读快照判「是不是本会话的 run」；lineage 两端指针见 lineageFields。
   const parentSessionId = entry?.parentSessionId ?? record?.parentSessionId;
@@ -212,13 +213,7 @@ export function snapshotOf(
     // （`entry.terminal.artifact` = 脚本顶层返回值，引擎内部也叫 artifact）是**两件不同的东西**：
     // 这里是脚本经 `artifact.*` 发布给用户看的产出，那里是给模型看的返回值。
     ...(nodes === undefined ? {} : artifactsOf(taskId, journal, nodes)),
-    ...(entry?.terminal?.status === "completed"
-      ? { output: entry.terminal.artifact }
-      : // 重启后本进程的注册表是空的，产物只能从 journal 记录取（journal 行的
-        // result_json）。内存终态在上一支里优先——它是本进程刚从引擎手里接过的原值。
-        record?.status === "completed" && record.result !== undefined
-        ? { output: record.result }
-        : {}),
+    ...(result === undefined ? {} : { output: result }),
   };
 }
 
@@ -436,8 +431,8 @@ export function registryRunSummary(
 /**
  * completed 的 run 才带产物，且 `undefined` 产物 = **整字段缺席**（与完成通知同规）。
  *
- * 优先级同 {@link snapshotOf}：内存终态的 artifact 是本进程刚从引擎手里接过的**原值**，
- * journal 的 result_json 是它经过一次 JSON 往返后的形态；条目被逐出后才退到后者。
+ * 优先级同 {@link snapshotOf}：内存条目存在时只认本进程引擎的结算，连「没有产物」也
+ * 是明确事实；条目被逐出后才读取 journal 的 result_json。
  * 值本身**原样交出、不序列化**——面向模型的文本投影在 core 有唯一实现，端口再做一次就会
  * 出现「同一个产物在通知里和在工具里长得不一样」。
  */
@@ -447,8 +442,11 @@ export function terminalResultField(
   row?: { result?: unknown },
 ): { result?: unknown } {
   if (status !== "completed") return {};
-  if (entry?.terminal?.status === "completed" && entry.terminal.artifact !== undefined) {
-    return { result: entry.terminal.artifact };
+  if (entry !== undefined) {
+    // 修复原因：外来终态行可能先于本地引擎结算；内存结果缺席时不能继承那行的旧结果。
+    return entry.terminal?.status === "completed" && entry.terminal.artifact !== undefined
+      ? { result: entry.terminal.artifact }
+      : {};
   }
   // `result: null` 是合法产物（`ask<T | null>` 会返回它），所以判据是 `!== undefined`
   // 而不是真值性——解码侧同样只在列非 NULL 时才写出这个键。
