@@ -1,13 +1,14 @@
 // pnpm exec tsx packages/ui/test/acpStreamingSnapshots.e2e.mjs
 // Real Host persistence and timeline; synthetic adapter, isolated files, no model requests.
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
 import { summarizeAcpSession } from "@zcode/shared";
 import { createAcpService } from "../../services/src/acp/acpServiceImpl.ts";
+import { readPersistedAcpSession } from "../../services/test/acpTestStorage.ts";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__acp-streaming-${process.pid}`;
@@ -97,7 +98,8 @@ try {
   const completed = await turn;
   const terminal = snapshots.at(-1);
   const terminalFrames = await capture();
-  const replay = JSON.parse(await readFile(join(directory, `${session.id}.json`), "utf8"));
+  // 历史已使用 checkpoint + journal；回放必须读完整持久事实，不能只读旧 checkpoint。
+  const replay = await readPersistedAcpSession(join(directory, `${session.id}.json`));
   assert.deepEqual(replay, completed);
   subscription.dispose();
   assert.ok(first.streamDiagnostics && live.streamDiagnostics && terminal.streamDiagnostics);
@@ -141,18 +143,18 @@ try {
       import '../../../ui/src/styles.css';
       const data=${JSON.stringify(data)};
       const platform={isMacOS:false,isWindows:false,isLinux:false,isWeb:true};
-      const listeners=new Set(); const bodyListeners=new Map(); let current=data.initial; let currentFrames=data.initialFrames;
+      const listeners=new Set(); const bodyListeners=new Map(); let currentSummary=data.summaries.initial; let currentFrames=data.initialFrames;
       const mapped=(change,id)=>{const copy=structuredClone(change);copy.wire.subscriptionId=id;if(copy.wire.kind==='complete')copy.wire.frame.subscriptionId=id;return copy};
       window.__streamLogs=[]; window.__throwSink=false;
       window.zcode={log:(_level,args)=>{if(window.__throwSink)throw new Error('sink unavailable');
         if(args[0]==='[diagnostics]'&&args[1]?.scope==='renderer-acp-stream')window.__streamLogs.push(args[1]);}};
-      const service={listSummaries:async()=>[data.summaries.initial],refresh:async()=>current,
+      const service={listSummaries:async()=>[data.summaries.initial],refreshSummary:async()=>currentSummary,
         readConversation:async input=>currentFrames.map(change=>mapped(change,input.subscriptionId)),
         conversationRowsRange:async()=>({rows:[],atSeq:0,atRevision:0,atLogEpoch:'unused',hasMore:false}),
         onDynamicConversationChanged:input=>listener=>{bodyListeners.set(input.subscriptionId,listener);return{dispose(){bodyListeners.delete(input.subscriptionId)}}},
         create:async()=>{throw new Error('unexpected create')},remove:async()=>{},
         onDynamicSessionSummaryChanged:()=>listener=>{listeners.add(listener);return{dispose(){listeners.delete(listener)}}}};
-      const emit=(change,frames,summary)=>{current=change.session;currentFrames=frames.snapshot;
+      const emit=(change,frames,summary)=>{currentSummary=summary;currentFrames=frames.snapshot;
         listeners.forEach(listener=>listener({kind:'updated',session:summary}));
         for(const [id,listener] of bodyListeners)frames.live.forEach(change=>listener(mapped(change,id)))};
       function Fixture(){

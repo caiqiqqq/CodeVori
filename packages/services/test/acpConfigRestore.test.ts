@@ -249,7 +249,7 @@ test("Host restart freezes choices before early load updates and restores model,
     await f.first.disposeAllAndWait();
     f.control.early = true;
     const restarted = f.open();
-    const updated = await restarted.refresh(f.input);
+    const updated = await restarted.refreshSummary(f.input);
     assert.equal(updated.acpSessionId, f.saved.acpSessionId);
     assert.deepEqual(values(updated.configOptions), values(f.saved.configOptions));
     assert.deepEqual(f.calls, restoredCalls);
@@ -257,7 +257,7 @@ test("Host restart freezes choices before early load updates and restores model,
       values((await readPersistedAcpSession(f.path)).configOptions),
       values(f.saved.configOptions),
     );
-    await restarted.refresh(f.input);
+    await restarted.refreshSummary(f.input);
     assert.deepEqual(f.calls, restoredCalls);
   } finally {
     await f.close();
@@ -272,7 +272,7 @@ test("interrupted process reconnect and concurrent prompt wait for configuration
     f.control.wait = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const refreshed = f.first.refresh(f.input);
+    const refreshed = f.first.refreshSummary(f.input);
     const prompted = f.first.prompt({ ...f.input, commandId: "resume", text: "continue" });
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(f.calls.includes("prompt"), false);
@@ -308,7 +308,7 @@ test("permission restoration cannot silently reset the restored model", async ()
     await f.first.disposeAllAndWait();
     f.control.resetModelOnPermission = true;
     const restarted = f.open();
-    await assert.rejects(restarted.refresh(f.input), /configuration changed/);
+    await assert.rejects(restarted.refreshSummary(f.input), /configuration changed/);
     assert.deepEqual(
       values((await restarted.read(f.input)).configOptions),
       values(f.saved.configOptions),
@@ -360,7 +360,7 @@ test("a disposed generation cannot apply later config options or publish a ready
     const started = new Promise<void>((resolve) => {
       f.control.onSet = resolve;
     });
-    const refreshed = restarted.refresh(f.input);
+    const refreshed = restarted.refreshSummary(f.input);
     await started;
     restarted.disposeAll();
     release();

@@ -30,6 +30,8 @@ interface SessionDataLayerOptions {
     Partial<Pick<ConversationTransport, "queryCommands">>;
   /** 引用归零后延迟退订窗口（ms），默认 30s。 */
   keepWarmMs?: number;
+  /** Final warm lease expired; adapters may dispose their connection-level listeners. */
+  onEmpty?: () => void;
 }
 
 const SESSION_DATA_LAYER_KEEP_WARM_MS = 30_000;
@@ -56,6 +58,7 @@ function monotonicNow(): number {
 export class SessionDataLayer {
   private readonly transport: SessionDataLayerOptions["transport"];
   private readonly keepWarmMs: number;
+  private readonly onEmpty: SessionDataLayerOptions["onEmpty"];
   private readonly entries = new Map<string, SessionEntry>();
   private readonly offFrame: () => void;
   private disposed = false;
@@ -63,6 +66,7 @@ export class SessionDataLayer {
   constructor(options: SessionDataLayerOptions) {
     this.transport = options.transport;
     this.keepWarmMs = options.keepWarmMs ?? resolveSessionDataLayerKeepWarmMs();
+    this.onEmpty = options.onEmpty;
     // 连接级单监听：按 topic 扇入到各 store（pane 间共享的正是这一条连接）。
     this.offFrame = this.transport.onFrame((frame, context) => {
       this.entries.get(frame.topic)?.store.handleFrame(frame, context);
@@ -161,6 +165,7 @@ export class SessionDataLayer {
         topic,
       });
       void entry.store.close();
+      if (this.entries.size === 0) this.onEmpty?.();
     }, this.keepWarmMs);
     logger.lifecycle.info("v4 session data lease released", {
       event: "v4.session_data.release",

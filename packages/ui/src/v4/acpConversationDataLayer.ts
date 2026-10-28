@@ -31,7 +31,16 @@ export function acquireAcpConversationProjection(
     const transport = createAcpConversationTransport(service, workspace, id, (change) => {
       for (const observer of observers) observer(change);
     });
-    entry = { transport, observers, layer: new SessionDataLayer({ transport, keepWarmMs: 0 }) };
+    // 切换对话沿用 API 的保温期；只保留只读投影，连接就绪仍由 Host refreshSummary 核验。
+    const layer = new SessionDataLayer({
+      transport,
+      onEmpty: () => {
+        registry.delete(key);
+        layer.dispose();
+        transport.dispose();
+      },
+    });
+    entry = { transport, observers, layer };
     registry.set(key, entry);
   }
   const current = entry;
@@ -45,11 +54,6 @@ export function acquireAcpConversationProjection(
       released = true;
       current.observers.delete(observe);
       lease.release();
-      if (current.observers.size === 0) {
-        registry.delete(key);
-        current.layer.dispose();
-        current.transport.dispose();
-      }
     },
   };
 }

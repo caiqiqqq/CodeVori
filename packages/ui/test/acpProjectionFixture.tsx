@@ -64,6 +64,8 @@ export function withAcpProjectionFixture(service: IAcpService): IAcpService {
       return result;
     };
   }
+  service.refreshSummary ??= async (input) =>
+    summarizeAcpSession(normalize(await service.refresh(input)));
   const list = service.list?.bind(service) ?? (async () => [...sessions.values()]);
   const changed = service.onDynamicSessionChanged.bind(service);
   const commandReceipt = (value: AcpSession, commandId: string) => {

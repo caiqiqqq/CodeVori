@@ -121,6 +121,8 @@ export interface IAcpService {
   updateRow(input: AcpSessionRowUpdate): Promise<AcpSession>;
   /** Reconnects an existing display snapshot so its Agent-owned options are current. */
   refresh(input: AcpWorkspace & { id: string }): Promise<AcpSession>;
+  /** Same connection/configuration barrier; UI receives metadata without the full history. */
+  refreshSummary(input: AcpWorkspace & { id: string }): Promise<AcpSessionSummary>;
   /** Optional preconnection returns an in-memory draft; composer can opt into permission memory. */
   create(input: AcpCreateInput): Promise<AcpSession>;
   /**
