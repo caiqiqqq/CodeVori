@@ -20,12 +20,17 @@ import { join } from "node:path";
 import { Emitter } from "@zcode/rpc";
 import { AcpStreamDiagnostics } from "./acpStreamDiagnostics.js";
 import { AcpConversationProjection } from "./acpConversationProjection.js";
+import { AcpSessionStore } from "./acpSessionStore.js";
 import { AcpCompactionTiming } from "./acpCompactionTiming.js";
 import {
   acpConversationTargetSchema,
   PhaseTimer,
   acpConversationReadSchema,
   acpConversationRowsRangeSchema,
+  acpConversationCommandSchema,
+  acpCommandQuerySchema,
+  acpCommandReceiptSchema,
+  type AcpCommandReceipt,
   summarizeAcpSession,
   resolveDynamicWorkflowClientConfig,
   type DynamicWorkflowClientConfig,
@@ -54,7 +59,6 @@ import {
   acpAttachmentReadInputSchema,
   acpAttachmentReadResultSchema,
   acpStopInputSchema,
-  acpSessionSchema,
   acpTerminalControlSchema,
   type AcpTerminal,
   acpSessionRowUpdateSchema,
@@ -299,15 +303,15 @@ export function createAcpService(
     {
       sessionId: string;
       commandId: string;
-      promise: Promise<AcpSession>;
-      resolve(snapshot: AcpSession): void;
+      promise: Promise<AcpCommandReceipt>;
+      resolve(receipt: AcpCommandReceipt): void;
       reject(error: unknown): void;
     }
   >();
   const beginAdmission = (session: AcpSession, commandId: string) => {
-    let resolve!: (snapshot: AcpSession) => void;
+    let resolve!: (receipt: AcpCommandReceipt) => void;
     let reject!: (error: unknown) => void;
-    const promise = new Promise<AcpSession>((accepted, failed) => {
+    const promise = new Promise<AcpCommandReceipt>((accepted, failed) => {
       resolve = accepted;
       reject = failed;
     });
@@ -390,6 +394,32 @@ export function createAcpService(
   const file = (id: string): string => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid ACP session id");
     return join(directory, `${id}.json`);
+  };
+  const sessionStore = new AcpSessionStore(file, (error) =>
+    logger.warn(undefined, "ACP checkpoint maintenance failed", { error: failureMessage(error) }),
+  );
+  const commandReceipt = (id: string, commandId: string): AcpCommandReceipt | null => {
+    // 修复原因：owner 可能已变更但尚未落盘；ACK/断线对账只读取成功提交的事实。
+    const snapshot = sessionStore.current(id);
+    if (!snapshot) return null;
+    const disposition = snapshot.entries.some((entry) => entry.id === `user:${commandId}`)
+      ? "started"
+      : snapshot.queue.items.some((item) => item.commandId === commandId)
+        ? "queued"
+        : snapshot.queue.discardedCommandIds?.includes(commandId)
+          ? "discarded"
+          : null;
+    if (!disposition) return null;
+    return acpCommandReceiptSchema.parse({
+      id,
+      commandId,
+      workspacePath: snapshot.workspacePath,
+      workspaceIdentity: snapshot.workspaceIdentity,
+      remoteSessionId: snapshot.remoteSessionId,
+      ack: { commandId, status: "accepted", revisionAtDecision: snapshot.revision },
+      disposition,
+      sessionStatus: snapshot.status,
+    });
   };
   const diagnosticDirectory = join(directory, "diagnostics");
   const diagnosticFile = (id: string): string =>
@@ -515,10 +545,8 @@ export function createAcpService(
   ): Promise<void> => {
     if (removed.has(session.id)) return;
     const snapshotStartedAt = Date.now();
-    timing?.phase("snapshot_clone");
-    const cloned = structuredClone(session);
-    timing?.phase("snapshot_validate");
-    const snapshot = acpSessionSchema.parse(cloned);
+    timing?.phase("snapshot_capture");
+    const snapshot = sessionStore.capture(session);
     const receipt = streamDiagnostics.capture(session.id, snapshot.revision);
     if (snapshot.provisional) {
       // 修复原因：Codeg 会预连接取得 Agent 选项，但空草稿不能先进入持久会话历史。
@@ -533,39 +561,27 @@ export function createAcpService(
     const next = previous
       .catch(() => {})
       .then(async () => {
-        timing?.phase("snapshot_mkdir");
-        await mkdir(directory, { recursive: true });
-        const temporary = `${file(snapshot.id)}.${randomUUID()}.tmp`;
-        try {
-          timing?.phase("snapshot_serialize");
-          const serialized = JSON.stringify(snapshot);
-          timing?.setFacts({ snapshotBytes: Buffer.byteLength(serialized) });
-          timing?.phase("snapshot_write");
-          await writeFile(temporary, serialized, { mode: 0o600 });
-          timing?.phase("snapshot_rename");
-          await rename(temporary, file(snapshot.id));
-          if (!disposed && !removed.has(session.id)) {
-            // 取证依据：只有原子替换成功后的通知才代表可显示事实；诊断不进入磁盘会话。
-            const trace = streamDiagnostics.broadcast(
-              session.id,
-              snapshot.revision,
-              receipt,
-              snapshotStartedAt,
-              Date.now(),
-              snapshot.status !== "running",
-            );
-            timing?.phase("snapshot_projection");
-            if (projections.has(snapshot.id)) project(snapshot, streaming);
-            timing?.phase("snapshot_broadcast");
-            emitter.fire({
-              kind: "updated",
-              session: snapshot,
-              ...(trace ? { streamDiagnostics: trace } : {}),
-            });
-          }
-        } finally {
-          timing?.phase("snapshot_cleanup");
-          await rm(temporary, { force: true });
+        timing?.phase("snapshot_write");
+        const persistedBytes = await sessionStore.commit(snapshot);
+        timing?.setFacts({ snapshotBytes: persistedBytes });
+        if (!disposed && !removed.has(session.id)) {
+          // 只有快照/增量日志提交成功后的通知才代表可显示事实；诊断不进入磁盘会话。
+          const trace = streamDiagnostics.broadcast(
+            session.id,
+            snapshot.revision,
+            receipt,
+            snapshotStartedAt,
+            Date.now(),
+            snapshot.status !== "running",
+          );
+          timing?.phase("snapshot_projection");
+          if (projections.has(snapshot.id)) project(snapshot, streaming);
+          timing?.phase("snapshot_broadcast");
+          emitter.fire({
+            kind: "updated",
+            session: snapshot,
+            ...(trace ? { streamDiagnostics: trace } : {}),
+          });
         }
       });
     writes.set(session.id, next);
@@ -628,7 +644,7 @@ export function createAcpService(
     const inFlight = loading.get(id);
     if (inFlight) return inFlight;
     const task = (async () => {
-      const session = acpSessionSchema.parse(JSON.parse(await readFile(file(id), "utf8")));
+      const session = await sessionStore.read(id);
       let migratedLegacyTime = false;
       if (
         session.legacySavedAt === undefined &&
@@ -707,9 +723,7 @@ export function createAcpService(
     if (cached?.projection && cached.session)
       return { projection: cached.projection, session: cached.session };
     // 修复依据：owner 在等待 IO 时仍可接收分片，首次读取只能以原子保存事实建立水位。
-    const snapshot = owner.provisional
-      ? structuredClone(owner)
-      : acpSessionSchema.parse(JSON.parse(await readFile(file(owner.id), "utf8")));
+    const snapshot = owner.provisional ? structuredClone(owner) : await sessionStore.read(owner.id);
     if (removed.has(owner.id) || disposed) throw new Error("ACP session closed");
     return project(snapshot);
   };
@@ -1957,7 +1971,12 @@ export function createAcpService(
       await queueGate.run(session.id, async () => {
         timing?.phase("admission_backup");
         if (!ownsRun() || disposed || removed.has(session.id)) return;
-        const beforeAdmission = structuredClone(session);
+        // admission 只追加 user row，旧历史不变；回滚复制元数据与数组即可，避免克隆整段历史。
+        const { entries: previousEntries, ...previousState } = session;
+        const beforeAdmission = {
+          ...structuredClone(previousState),
+          entries: previousEntries.slice(),
+        };
         try {
           await mutate(
             session,
@@ -2009,10 +2028,10 @@ export function createAcpService(
           );
           admitted = true;
           // 接受凭证来自成功落盘的同一快照；后续诊断、模型重连和整轮执行都不阻塞输入框。
-          timing?.phase("receipt_clone_validate");
+          timing?.phase("receipt_validate");
           promptAdmissions
             .get(`${session.id}:${commandId}`)
-            ?.resolve(acpSessionSchema.parse(structuredClone(session)));
+            ?.resolve(commandReceipt(session.id, commandId)!);
           finishAttachmentIO();
           await appendDiagnostic(
             session,
@@ -2187,10 +2206,10 @@ export function createAcpService(
     }
   };
 
-  // 两个公开接口只选择等待边界，共用唯一的校验、幂等、串行 admission 和 Agent 执行路径。
+  // 命令回执与 legacy prompt 只选择等待边界，共用校验、幂等、串行 admission 和 Agent 执行路径。
   const dispatchPrompt = async (
     input: AcpWorkspace & { id: string } & AcpPromptInput,
-    observeAdmission?: (admission: Promise<AcpSession>) => void,
+    observeAdmission?: (admission: Promise<AcpCommandReceipt>) => void,
     timing?: PhaseTimer,
   ) => {
     const submission = acpPromptSubmissionSchema.parse(input);
@@ -2212,13 +2231,10 @@ export function createAcpService(
       timing?.phase("dispatch_check");
       ensureOpen(session);
       if (session.archived) throw new Error("Restore the archived conversation before sending");
-      if (
-        session.entries.some((entry) => entry.id === `user:${prompt.commandId}`) ||
-        session.queue.items.some((item) => item.commandId === prompt.commandId) ||
-        session.queue.discardedCommandIds?.includes(prompt.commandId)
-      ) {
+      const committed = commandReceipt(session.id, prompt.commandId);
+      if (committed) {
         timing?.setFacts({ duplicate: true });
-        return { snapshot: structuredClone(session) };
+        return { snapshot: session, receipt: committed };
       }
       const existing = promptTasks.get(`${session.id}:${prompt.commandId}`);
       if (existing) {
@@ -2240,10 +2256,10 @@ export function createAcpService(
         observeAdmission?.(admission.promise);
         try {
           await enqueuePrompt(session, prompt, timing);
-          timing?.phase("receipt_clone_validate");
-          const snapshot = acpSessionSchema.parse(structuredClone(session));
-          admission.resolve(snapshot);
-          return { snapshot };
+          timing?.phase("receipt_validate");
+          const receipt = commandReceipt(session.id, prompt.commandId)!;
+          admission.resolve(receipt);
+          return { snapshot: session, receipt };
         } catch (error) {
           admission.reject(error);
           throw error;
@@ -2325,7 +2341,7 @@ export function createAcpService(
       await Promise.allSettled(attachmentWrites.get(session.id) ?? []);
       await attachmentStore.remove(session.id);
       await rm(diagnosticFile(session.id), { force: true });
-      await rm(file(session.id), { force: true });
+      await sessionStore.remove(session.id);
       removed.add(session.id);
       stopping.delete(session.id);
       sessions.delete(session.id);
@@ -2623,6 +2639,12 @@ export function createAcpService(
       const session = await scoped(input);
       if (removed.has(session.id) || disposed || !isAcpHistorySession(session))
         throw new Error("ACP session has no durable history");
+      // 显式打开文件时才合并 checkpoint，不能让用户打开落后于 journal 的历史快照。
+      const next = (writes.get(session.id) ?? Promise.resolve()).then(() =>
+        sessionStore.checkpoint(session.id),
+      );
+      writes.set(session.id, next);
+      await next;
       return file(session.id);
     },
     async getDiagnosticLogPath(input) {
@@ -2861,42 +2883,48 @@ export function createAcpService(
         listener.dispose();
       }
     },
-    submitPrompt(input) {
+    async queryConversationCommand(input) {
+      const parsed = acpCommandQuerySchema.parse(input);
+      const session = await scoped(parsed);
+      const receipt = commandReceipt(session.id, parsed.commandId);
+      // attachment 是当前路由而不是历史身份；重连可换 attachment，workspace 身份仍由 scoped 核验。
+      return receipt ? { ...receipt, remoteSessionId: parsed.remoteSessionId } : null;
+    },
+    sendConversationCommand(input) {
+      const parsed = acpConversationCommandSchema.parse(input);
+      const { payload, type: _type, ...target } = parsed;
+      const submission = { ...target, ...payload };
       // 接受耗时与 Agent 整轮耗时分开；只在发送时计量快照，流式分片不新增日志。
       const timing = new PhaseTimer(
         {
           scope: "acp.send",
-          sessionId: input.id,
-          commandId: input.commandId,
+          sessionId: submission.id,
+          commandId: submission.commandId,
           commandType: "sendText",
         },
         (record) => logger.info(undefined, "[latency]", record),
       );
       timing.setFacts({
-        textChars: input.text?.length ?? 0,
-        attachments: input.attachments?.length ?? 0,
+        textChars: submission.text?.length ?? 0,
+        attachments: submission.attachments?.length ?? 0,
       });
       timing.phase("input_validate");
       // 关闭可先终结接受等待，附件复制仍由原 gate 收尾；不等待未接受 IO 才释放输入框。
-      const receipt = new Promise<AcpSession>((resolve, reject) => {
+      const receipt = new Promise<AcpCommandReceipt>((resolve, reject) => {
         void dispatchPrompt(
-          input,
+          submission,
           (admission) => {
             void admission.then(resolve, reject);
           },
           timing,
         ).then((receipt) => {
-          if (receipt.snapshot) resolve(receipt.snapshot);
+          if (receipt.receipt) resolve(receipt.receipt);
         }, reject);
       });
       return receipt.then(
-        (snapshot) => {
-          timing.finish(
-            snapshot.queue.items.some((item) => item.commandId === input.commandId)
-              ? "queued"
-              : "accepted",
-          );
-          return snapshot;
+        (accepted) => {
+          timing.finish(accepted.disposition === "queued" ? "queued" : "accepted");
+          return { ...accepted, remoteSessionId: parsed.remoteSessionId };
         },
         (error: unknown) => {
           timing.finish("failed");
@@ -2904,9 +2932,23 @@ export function createAcpService(
         },
       );
     },
+    async submitPrompt(input) {
+      const { commandId, id, workspacePath, workspaceIdentity, remoteSessionId, ...payload } =
+        input;
+      await service.sendConversationCommand({
+        id,
+        workspacePath,
+        workspaceIdentity,
+        remoteSessionId,
+        commandId,
+        type: "sendText",
+        payload,
+      });
+      return service.read({ id, workspacePath, workspaceIdentity, remoteSessionId });
+    },
     async prompt(input) {
       const receipt = await dispatchPrompt(input);
-      return receipt.turn ? receipt.turn : receipt.snapshot!;
+      return receipt.turn ? receipt.turn : structuredClone(receipt.snapshot!);
     },
     async deleteQueueItem(input) {
       const parsed = acpQueueItemInputSchema.parse(input);

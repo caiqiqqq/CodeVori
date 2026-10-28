@@ -53,10 +53,17 @@ import type {
   AcpConversationTarget,
   AcpSessionSummary,
   AcpSessionSummaryChanged,
+  AcpConversationCommand,
+  AcpCommandQuery,
+  AcpCommandReceipt,
 } from "@zcode/shared";
 import type { V4ConversationRowsRangeResult } from "@zcode/shared/zcode-protocol-v4";
 
 export interface IAcpService {
+  /** Durable Host admission; no Agent turn wait and no conversation snapshot in the ACK. */
+  sendConversationCommand(input: AcpConversationCommand): Promise<AcpCommandReceipt>;
+  /** Read committed command evidence after ACK loss; null means unknown, never a resend. */
+  queryConversationCommand(input: AcpCommandQuery): Promise<AcpCommandReceipt | null>;
   /** Isolated auxiliary run using the source conversation's current model; no source admission. */
   generateText(input: AcpGenerateText): Promise<AcpGeneratedText>;
   cancelGenerateText(input: AcpCancelGenerateText): Promise<void>;
@@ -117,7 +124,7 @@ export interface IAcpService {
   /** Optional preconnection returns an in-memory draft; composer can opt into permission memory. */
   create(input: AcpCreateInput): Promise<AcpSession>;
   /**
-   * Persisted Host acceptance only; never waits for the Agent turn or live-event delivery.
+   * Legacy/internal snapshot API. UI uses sendConversationCommand for bounded receipts.
    * @example await service.submitPrompt({ workspacePath, id, commandId, text });
    * The returned running/queued snapshot acknowledges input; task completion still uses prompt.
    */

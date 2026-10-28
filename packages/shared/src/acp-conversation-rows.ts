@@ -146,6 +146,7 @@ export function buildAcpConversationRows(
         ...base,
         kind: "userInput",
         origin: "realUser",
+        ...(entry.id.startsWith("user:") ? { sourceCommandId: entry.id.slice(5) } : {}),
         text: displayText(entry),
         ...(entry.attachments?.length ? { attachments: entry.attachments } : {}),
       });

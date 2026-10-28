@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { readPersistedAcpSession } from "./acpTestStorage.js";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -105,7 +106,7 @@ test("Host publishes and persists a later successful turn while historical queue
       "end_turn",
     );
     const stored = acpSessionSchema.parse(
-      JSON.parse(await readFile(join(directory, `${session.id}.json`), "utf8")),
+      await readPersistedAcpSession(join(directory, `${session.id}.json`)),
     );
     assert.equal(stored.entries.findLast((entry) => entry.kind === "user")?.stopReason, "end_turn");
   } finally {

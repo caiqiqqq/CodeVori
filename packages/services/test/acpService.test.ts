@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readPersistedAcpSession } from "./acpTestStorage.js";
 import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -140,7 +141,7 @@ test("ACP context capacity belongs to the selected Host session and survives sna
     );
     assert.equal(revisions.at(-1), codex.revision + 1);
     assert.deepEqual(
-      JSON.parse(await readFile(join(directory, `${codex.id}.json`), "utf8")).contextUsage,
+      (await readPersistedAcpSession(join(directory, `${codex.id}.json`))).contextUsage,
       { used: 9000, size: 200000 },
     );
     await assert.rejects(
@@ -422,7 +423,7 @@ test("ACP row actions persist on the scoped Host without changing activity time 
     assert.equal(archived.pinned, false);
     assert.equal(archived.entries[0]?.createdAt, 100);
     assert.deepEqual(revisions, [2, 3, 4, 5, 6]);
-    assert.equal(JSON.parse(await readFile(join(dir, `${id}.json`), "utf8")).archived, true);
+    assert.equal((await readPersistedAcpSession(join(dir, `${id}.json`))).archived, true);
     const restartedWhileArchived = createAcpService({ directory: dir });
     try {
       assert.equal((await restartedWhileArchived.read({ ...workspace, id })).archived, true);
@@ -610,7 +611,7 @@ test("undated legacy ACP history freezes its snapshot time without inventing ent
     const reloaded = (await service.list(workspace))[0];
     assert.equal(reloaded?.legacySavedAt, time);
     assert.equal(reloaded?.revision, afterGoal?.revision);
-    assert.equal(JSON.parse(await readFile(path, "utf8")).legacySavedAt, time);
+    assert.equal((await readPersistedAcpSession(path)).legacySavedAt, time);
   } finally {
     service?.disposeAll();
     await rm(dir, { recursive: true, force: true });
@@ -761,7 +762,7 @@ test("ACP preconnect exposes Agent options without history; the first prompt per
     await service.prompt({ ...workspace, id: draft.id, commandId: "first", text: "hello" });
     assert.deepEqual(calls, ["new", "config:fast", "prompt:hello"]);
     assert.equal((await service.list(workspace))[0]?.id, draft.id);
-    const saved = JSON.parse(await readFile(join(dir, `${draft.id}.json`), "utf8"));
+    const saved = await readPersistedAcpSession(join(dir, `${draft.id}.json`));
     assert.equal(saved.provisional, undefined);
     assert.equal(saved.entries[0].text, "hello");
     await service.remove({ ...workspace, id: draft.id, provisionalOnly: true });
@@ -1059,10 +1060,11 @@ test("ACP config is Agent-owned, validates choices and refreshes the full catalo
     assert.equal(mode.modeState?.currentModeId, "plan");
     assert.deepEqual(calls, ["codex:model:luna", "claude:mode:plan"]);
     const savedPath = join(dir, `${codex.id}.json`);
-    const saved = JSON.parse(await readFile(savedPath, "utf8"));
+    const saved = await readPersistedAcpSession(savedPath);
     assert.equal(saved.configOptions[0].currentValue, "luna");
     // 升级前的快照没有配置字段；加载后仍使用原会话 ID 取最新目录。
     delete saved.configOptions;
+    await rm(`${savedPath}.journal`, { force: true });
     delete saved.modeState;
     await writeFile(savedPath, JSON.stringify(saved));
     const restarted = createAcpService({ directory: dir, connect });

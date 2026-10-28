@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { readPersistedAcpSession } from "./acpTestStorage.js";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { acpSessionSchema, type AcpSession, type AcpStopReason } from "@zcode/shared";
+import { type AcpSession, type AcpStopReason } from "@zcode/shared";
 import {
   createAcpService,
   type AcpConnectionFactory,
@@ -83,14 +84,13 @@ async function fixture() {
     },
     read: () => service.read(target),
     stop: () => service.stop(target),
-    disk: async () =>
-      acpSessionSchema.parse(
-        JSON.parse(await readFile(join(directory, `${session.id}.json`), "utf8")),
-      ),
+    disk: () => readPersistedAcpSession(join(directory, `${session.id}.json`)),
     async restart(crashedSnapshot?: AcpSession) {
       await service.disposeAllAndWait();
-      if (crashedSnapshot)
+      if (crashedSnapshot) {
+        await rm(join(directory, `${session.id}.json.journal`), { force: true });
         await writeFile(join(directory, `${session.id}.json`), JSON.stringify(crashedSnapshot));
+      }
       service = createAcpService({ directory, connect });
     },
     async dispose() {

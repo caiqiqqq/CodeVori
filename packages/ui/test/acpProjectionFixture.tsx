@@ -66,6 +66,38 @@ export function withAcpProjectionFixture(service: IAcpService): IAcpService {
   }
   const list = service.list?.bind(service) ?? (async () => [...sessions.values()]);
   const changed = service.onDynamicSessionChanged.bind(service);
+  const commandReceipt = (value: AcpSession, commandId: string) => {
+    const session = normalize(value);
+    const disposition = session.entries.some((entry) => entry.id === `user:${commandId}`)
+      ? ("started" as const)
+      : session.queue.items.some((item) => item.commandId === commandId)
+        ? ("queued" as const)
+        : session.queue.discardedCommandIds?.includes(commandId)
+          ? ("discarded" as const)
+          : null;
+    return disposition
+      ? {
+          id: session.id,
+          commandId,
+          workspacePath: session.workspacePath,
+          workspaceIdentity: session.workspaceIdentity,
+          remoteSessionId: session.remoteSessionId,
+          ack: { commandId, status: "accepted" as const, revisionAtDecision: session.revision },
+          disposition,
+          sessionStatus: session.status,
+        }
+      : null;
+  };
+  service.sendConversationCommand ??= async ({ type: _type, payload, ...target }) => {
+    const result = commandReceipt(
+      await service.submitPrompt({ ...target, ...payload }),
+      target.commandId,
+    );
+    if (!result) throw new Error("Fixture command not admitted");
+    return result;
+  };
+  service.queryConversationCommand ??= async (input) =>
+    commandReceipt(await service.read(input), input.commandId);
   service.listSummaries = async (workspace) =>
     (await list(workspace)).map((value) => {
       remember(value);

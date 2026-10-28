@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { readPersistedAcpSession } from "./acpTestStorage.js";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -249,8 +250,9 @@ test("history restores its own mode, including legacy snapshots, rather than a n
     const later = await first.create({ ...target, agent: "codex" });
     await choose(first, later, "agent");
     const path = join(f.directory, `${history.id}.json`);
-    const saved = JSON.parse(await readFile(path, "utf8"));
+    const saved = await readPersistedAcpSession(path);
     delete saved.permissionSelection;
+    await rm(`${path}.journal`, { force: true });
     await writeFile(path, JSON.stringify(saved));
     await first.disposeAllAndWait();
     const restarted = f.open();
