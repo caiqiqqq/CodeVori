@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { readPersistedAcpSession } from "./acpTestStorage.js";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -126,7 +127,9 @@ test("ordinary ACP turns receive live marketplace skill catalogs from their targ
     await send(first.id, workspace.workspaceIdentity, "继续");
     assert.match(promptText(2), /<available_plugin_skills>/);
     assert.doesNotMatch(promptText(2), /<skill |name="inspect"|name="review"/);
-    const persisted = await readFile(join(directory, `${first.id}.json`), "utf8");
+    const persisted = JSON.stringify(
+      await readPersistedAcpSession(join(directory, `${first.id}.json`)),
+    );
     assert.deepEqual(
       JSON.parse(persisted)
         .entries.filter((entry: { kind: string }) => entry.kind === "user")
@@ -191,7 +194,9 @@ test("ACP supplies target plugin MCP, keeps original history and rejects disable
     assert.match(block.text, /<mcp_server name="plugin:demo:tool"/);
     assert.match(block.text, /<skill name="inspect"/);
     assert.doesNotMatch(block.text, /plugin-private-secret|private skill body/);
-    const persisted = await readFile(join(directory, `${session.id}.json`), "utf8");
+    const persisted = JSON.stringify(
+      await readPersistedAcpSession(join(directory, `${session.id}.json`)),
+    );
     assert.equal(JSON.parse(persisted).entries[0].text, input.text);
     assert.doesNotMatch(persisted, /available_plugins|plugin-private-secret|private skill body/);
     sourceFailure = true;

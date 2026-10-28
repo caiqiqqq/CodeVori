@@ -93,6 +93,52 @@ async function until(predicate: () => boolean, store: ConversationProjectionStor
   });
 }
 
+test("large-history command returns a small ACK and repairs a completely silent projection without resending", async () => {
+  const f = await setup();
+  const transport = createAcpConversationTransport(f.service, f.workspace, f.target.id, () => {});
+  const store = new ConversationProjectionStore(`conversation/${f.target.id}`, transport);
+  let silent = false;
+  const off = transport.onFrame((frame, context) => {
+    if (!silent || context?.deliveryKind !== "online") store.handleFrame(frame, context);
+  });
+  try {
+    await store.connect();
+    await f.service.refresh(f.target);
+    silent = true;
+    const accepted = await f.service.sendConversationCommand({
+      ...f.target,
+      commandId: "silent",
+      type: "sendText",
+      payload: { text: "PRIVATE CURRENT INPUT" },
+    });
+    const wire = JSON.stringify(accepted);
+    assert.ok(wire.length < 1024, `ACK was ${wire.length} chars for 3440 entries`);
+    assert.ok(!wire.includes("PRIVATE CURRENT INPUT"));
+    assert.ok(!wire.includes("entries"));
+    assert.ok(store.getState().snapshot!.seq < accepted.ack.revisionAtDecision);
+    store.reconcileCommittedRevision(accepted.ack.revisionAtDecision);
+    await until(() => store.getState().snapshot!.seq >= accepted.ack.revisionAtDecision, store);
+    assert.ok(
+      store
+        .getState()
+        .snapshot!.rows.window.some(
+          (row) => row.kind === "userInput" && row.sourceCommandId === "silent",
+        ),
+    );
+    assert.equal(
+      (await f.service.read(f.target)).entries.filter((entry) => entry.id === "user:silent").length,
+      1,
+    );
+    await store.loadOlder();
+    assert.ok(store.getState().snapshot!.rows.window.length > 60);
+  } finally {
+    off();
+    await store.close();
+    transport.dispose();
+    await f.cleanup();
+  }
+});
+
 test("real ACP Host, V4 store and transport apply small deltas, page history and repair a lost frame", async () => {
   const f = await setup();
   const observed: number[] = [];

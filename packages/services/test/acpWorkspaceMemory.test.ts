@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { readPersistedAcpSession } from "./acpTestStorage.js";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, symlink, writeFile, mkdir, access } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile, mkdir, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, basename, resolve } from "node:path";
 import test from "node:test";
@@ -149,9 +150,7 @@ test("ACP shares memory updates across turns and resume without changing history
     await service.prompt({ ...input, commandId: randomUUID(), text: "next" });
     assert.match(received[1]!, /updated by ACP file tool/);
     assert.match(received[1]!, /fixture skill/);
-    const persisted = JSON.parse(
-      await readFile(join(root, "sessions", `${session.id}.json`), "utf8"),
-    );
+    const persisted = await readPersistedAcpSession(join(root, "sessions", `${session.id}.json`));
     assert.deepEqual(
       persisted.entries
         .filter((e: { kind: string }) => e.kind === "user")
@@ -218,7 +217,7 @@ test("index failures stay before admission and allow a retry without duplicate h
     fail = false;
     await service.prompt(input);
     assert.equal(sends, 1);
-    const saved = JSON.parse(await readFile(join(root, "sessions", `${session.id}.json`), "utf8"));
+    const saved = await readPersistedAcpSession(join(root, "sessions", `${session.id}.json`));
     assert.equal(saved.entries.filter((e: { kind: string }) => e.kind === "user").length, 1);
   } finally {
     await service.disposeAllAndWait();

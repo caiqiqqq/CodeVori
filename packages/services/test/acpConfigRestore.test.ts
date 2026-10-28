@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { readPersistedAcpSession } from "./acpTestStorage.js";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -253,7 +254,7 @@ test("Host restart freezes choices before early load updates and restores model,
     assert.deepEqual(values(updated.configOptions), values(f.saved.configOptions));
     assert.deepEqual(f.calls, restoredCalls);
     assert.deepEqual(
-      values(JSON.parse(await readFile(f.path, "utf8")).configOptions),
+      values((await readPersistedAcpSession(f.path)).configOptions),
       values(f.saved.configOptions),
     );
     await restarted.refresh(f.input);
@@ -334,7 +335,7 @@ test("failed restoration preserves saved choices, blocks prompt and permits expl
       values(f.saved.configOptions),
     );
     assert.deepEqual(
-      values(JSON.parse(await readFile(f.path, "utf8")).configOptions),
+      values((await readPersistedAcpSession(f.path)).configOptions),
       values(f.saved.configOptions),
     );
     f.control.reject = false;
@@ -366,7 +367,7 @@ test("a disposed generation cannot apply later config options or publish a ready
     await assert.rejects(refreshed, /changed while restoring/);
     assert.deepEqual(f.calls, ["model:6-sol"]);
     assert.deepEqual(
-      values(JSON.parse(await readFile(f.path, "utf8")).configOptions),
+      values((await readPersistedAcpSession(f.path)).configOptions),
       values(f.saved.configOptions),
     );
   } finally {

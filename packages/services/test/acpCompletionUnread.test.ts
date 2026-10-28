@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { readPersistedAcpSession } from "./acpTestStorage.js";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -53,10 +54,11 @@ async function fixture() {
     get service() {
       return service;
     },
-    disk: async () =>
-      JSON.parse(await readFile(join(directory, `${session.id}.json`), "utf8")) as AcpSession,
-    seed: async (snapshot: AcpSession) =>
-      writeFile(join(directory, `${session.id}.json`), JSON.stringify(snapshot)),
+    disk: () => readPersistedAcpSession(join(directory, `${session.id}.json`)),
+    seed: async (snapshot: AcpSession) => {
+      await rm(join(directory, `${session.id}.json.journal`), { force: true });
+      await writeFile(join(directory, `${session.id}.json`), JSON.stringify(snapshot));
+    },
     async restart() {
       await service.disposeAllAndWait();
       service = create();

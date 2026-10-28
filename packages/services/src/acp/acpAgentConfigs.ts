@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   ACP_AGENT_CATALOG,
@@ -12,6 +12,7 @@ import {
   type AcpWorkspace,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
+import { AcpSessionStore } from "./acpSessionStore.js";
 
 const logger = createServiceLogger("acp-agent-configs");
 const metadataSchema = acpSessionSchema.pick({
@@ -49,13 +50,20 @@ export async function readAcpAgentConfigs(
       .map(async (name) => {
         try {
           const path = join(directory, name);
-          const cached = sessions.get(name.slice(0, -5));
-          const [contents, info] = await Promise.all([
-            cached ? Promise.resolve(null) : readFile(path, "utf8"),
+          const id = name.slice(0, -5);
+          const cached = sessions.get(id);
+          const [snapshot, info, journalInfo] = await Promise.all([
+            cached ?? new AcpSessionStore(() => path).read(id, { repairTail: false }),
             stat(path),
+            stat(`${path}.journal`).catch((error: NodeJS.ErrnoException) => {
+              if (error.code === "ENOENT") return null;
+              throw error;
+            }),
           ]);
-          const parsed = metadataSchema.safeParse(cached ?? JSON.parse(contents!));
-          return parsed.success ? { session: parsed.data, at: info.mtimeMs } : null;
+          const parsed = metadataSchema.safeParse(snapshot);
+          return parsed.success
+            ? { session: parsed.data, at: Math.max(info.mtimeMs, journalInfo?.mtimeMs ?? 0) }
+            : null;
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT")
             logger.warn(undefined, "ACP configuration metadata unreadable");

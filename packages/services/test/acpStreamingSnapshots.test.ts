@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { acpSessionChangedSchema, type AcpSession, type AcpSessionChanged } from "@zcode/shared";
 import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
 import { connectAcpAgent } from "../src/acp/acpStdioConnection.js";
+import { readPersistedAcpSession } from "./acpTestStorage.js";
 
 const workspace = { workspacePath: "/synthetic/stream", workspaceIdentity: "stream:a" };
 function deferred() {
@@ -65,8 +66,7 @@ async function fixture() {
       events.push(change);
     }
   });
-  const disk = async () =>
-    JSON.parse(await readFile(join(directory, `${session.id}.json`), "utf8")) as AcpSession;
+  const disk = () => readPersistedAcpSession(join(directory, `${session.id}.json`));
   return {
     directory,
     service,
@@ -311,9 +311,7 @@ test("simultaneous streams sharing a Host remain isolated by workspace identity 
       ]).flat(),
     );
     assert.equal(textOf(await f.disk()), "甲".repeat(128));
-    const disk = JSON.parse(
-      await readFile(join(f.directory, `${other.id}.json`), "utf8"),
-    ) as AcpSession;
+    const disk = await readPersistedAcpSession(join(f.directory, `${other.id}.json`));
     assert.equal(textOf(disk), "乙".repeat(128));
     assert.ok(otherChanges.length > 0 && otherChanges.length <= 2);
     assert.ok(f.changes.every((snapshot) => snapshot.id === f.target.id));
@@ -414,9 +412,7 @@ test("a real stdio transport preserves a burst before the immediate prompt respo
       String.fromCharCode(0x4e00 + index),
     ).join("");
     assert.equal(textOf(result), expected);
-    const disk = JSON.parse(
-      await readFile(join(directory, `${session.id}.json`), "utf8"),
-    ) as AcpSession;
+    const disk = await readPersistedAcpSession(join(directory, `${session.id}.json`));
     assert.equal(textOf(disk), expected);
     assert.equal(disk.status, "idle");
     assert.ok(changes.length < 20, `wire burst broadcast ${changes.length} snapshots`);

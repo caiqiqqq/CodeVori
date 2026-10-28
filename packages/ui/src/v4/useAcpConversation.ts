@@ -668,7 +668,7 @@ export function useAcpConversation(
       );
       try {
         // 修复原因：打开时已完成 refresh；重复恢复 RPC 只延长发送等待。
-        // 连接失效仍由 Host submitPrompt 的唯一 admission/attach 路径核验。
+        // 连接失效仍由 Host command 的唯一 admission/attach 路径核验。
         const session = selected;
         if (
           targetKeyRef.current !== targetKey ||
@@ -682,12 +682,14 @@ export function useAcpConversation(
           ...input,
           commandId,
         });
-        // 修复原因：接受通知可能丢失；直接 ACK 也须更新同一目标的权威投影，避免 UI 留在 idle。
+        if (projectionLease?.key === `${targetKey}:${session.id}`)
+          projectionLease.store.reconcileCommittedRevision(accepted.ack.revisionAtDecision);
+        // 小回执只更新接纳状态；正文/队列仍由同 revision 的 Host 投影负责，不能构造第二份历史。
         if (targetKeyRef.current === targetKey && selectedRef.current?.id === session.id)
           setSessions((previous) =>
             previous.map((item) =>
-              item.id === accepted.id && item.revision <= accepted.revision
-                ? summarizeAcpSession(accepted)
+              item.id === accepted.id && item.revision <= accepted.ack.revisionAtDecision
+                ? { ...item, status: accepted.sessionStatus, provisional: false }
                 : item,
             ),
           );
@@ -712,7 +714,7 @@ export function useAcpConversation(
         });
       }
     },
-    [agent, busy, loaded, selected, service, target, targetKey, intl],
+    [agent, busy, loaded, selected, service, target, targetKey, intl, projectionLease],
   );
 
   const stop = useCallback(() => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -15,6 +15,7 @@ import {
   type AcpConnectionFactory,
   type AcpUpdate,
 } from "../src/acp/acpServiceImpl.js";
+import { AcpSessionStore } from "../src/acp/acpSessionStore.js";
 
 const target = { workspacePath: "/fixture/new-project", workspaceIdentity: "fixture:new" };
 const model = (value: string): AcpConfigOption => ({
@@ -48,6 +49,34 @@ async function persist(directory: string, session: AcpSession, at: number) {
   await utimes(path, at, at);
   return path;
 }
+
+test("cold model catalogs read journal metadata without repairing a writer's unfinished tail or connecting", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "acp-journal-models-"));
+  const saved = snapshot({ configOptions: [model("old")] });
+  const path = await persist(directory, saved, 1);
+  const store = new AcpSessionStore(() => path);
+  const current = await store.read(saved.id);
+  current.revision++;
+  current.configOptions = [model("new")];
+  await store.commit(store.capture(current));
+  await appendFile(`${path}.journal`, '{"inflight":');
+  const before = await readFile(`${path}.journal`);
+  const service = createAcpService({
+    directory,
+    connect: async () => {
+      throw new Error("must not connect");
+    },
+  });
+  try {
+    assert.deepEqual(await service.listAgentModels({ agent: "codex" }), [
+      { slug: "new", name: "new" },
+    ]);
+    assert.deepEqual(await readFile(`${path}.journal`), before);
+  } finally {
+    await service.disposeAllAndWait();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("model catalogs remain isolated for all 15 built-in ACP agents", async () => {
   const directory = await mkdtemp(join(tmpdir(), "zcode-all-model-catalogs-"));

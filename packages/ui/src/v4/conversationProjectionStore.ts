@@ -1228,6 +1228,14 @@ export class ConversationProjectionStore {
     }
   }
 
+  /** ACK 明确提供已提交投影水位时，补齐独立事件通路。 */
+  reconcileCommittedRevision(revision: number): void {
+    // ACP ACK 给出已提交水位；投影尚未到达时复用同订阅恢复，不能再靠完整会话回执填队列。
+    // 原生 admission ACK 不保证投影已提交，因此只由明确提供 committed revision 的 adapter 调用。
+    if (!this.closed && this.state.snapshot && this.state.snapshot.seq < revision)
+      this.requestRecovery();
+  }
+
   /** 命令上行前登记 overlay（pending/stopping 展示用）。 */
   markCommandPending(command: OptimisticCommand): void {
     if (this.closed) return;

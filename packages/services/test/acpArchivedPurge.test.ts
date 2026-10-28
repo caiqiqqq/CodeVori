@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readPersistedAcpSession } from "./acpTestStorage.js";
 import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -77,7 +78,7 @@ test("failed ACP cleanup retains pending snapshot, blocks restore and can retry 
     await mkdir(path); // 可重复的清理 IO 失败，不依赖平台 chmod 或计时。
     await assert.rejects(service.removeArchived(target));
     assert.equal(
-      JSON.parse(await readFile(join(directory, `${session.id}.json`), "utf8")).deletionState,
+      (await readPersistedAcpSession(join(directory, `${session.id}.json`))).deletionState,
       "pending",
     );
     service.disposeAll();

@@ -10,6 +10,8 @@ import { AcpAttachmentStore } from "../src/acp/acpAttachmentStore.js";
 import { ChannelClient, ChannelServer, ProxyChannel, createQueuePair } from "@zcode/rpc";
 import type { IAcpService } from "../src/acp/acpService.js";
 import type { PhaseTimingRecord } from "@zcode/shared";
+import { AcpSessionStore } from "../src/acp/acpSessionStore.js";
+import { readPersistedAcpSession } from "./acpTestStorage.js";
 
 const workspace = { workspacePath: "/tmp/queue-workspace", workspaceIdentity: "remote:queue" };
 async function waitFor(check: () => unknown | Promise<unknown>) {
@@ -101,6 +103,109 @@ async function fixture(options: NonNullable<Parameters<typeof createAcpService>[
   };
 }
 
+test("small command ACK and reconciliation use committed facts, keep dedup across restart and never wait for Agent", async () => {
+  const f = await fixture();
+  const command = (commandId: string, text = commandId) => ({
+    ...f.target,
+    commandId,
+    type: "sendText" as const,
+    payload: { text },
+  });
+  const query = (commandId: string) =>
+    f.service.queryConversationCommand({ ...f.target, commandId });
+  try {
+    assert.equal(await query("first"), null);
+    const ack = await f.service.sendConversationCommand(command("first", "PRIVATE INPUT"));
+    assert.equal(ack.ack.status, "accepted");
+    assert.equal(ack.disposition, "started");
+    assert.ok(JSON.stringify(ack).length < 1024);
+    assert.ok(!JSON.stringify(ack).includes("PRIVATE INPUT"));
+    const durable = await new AcpSessionStore((id) => join(f.directory, `${id}.json`)).read(
+      f.target.id,
+    );
+    assert.equal(durable.entries[0]?.id, "user:first");
+    await waitFor(() => f.calls.length === 1);
+    assert.deepEqual(await query("first"), ack);
+    const queued = await f.service.sendConversationCommand(command("second"));
+    assert.equal(queued.disposition, "queued");
+    await f.service.sendConversationCommand(command("first"));
+    assert.equal(f.calls.length, 1);
+    await f.restart();
+    assert.equal((await query("first"))?.disposition, "started");
+    assert.equal((await query("second"))?.disposition, "queued");
+    await f.service.sendConversationCommand(command("first"));
+    assert.equal(f.calls.length, 1, "same ID must not execute after restart");
+    await assert.rejects(
+      f.service.queryConversationCommand({
+        ...f.target,
+        workspaceIdentity: "other",
+        commandId: "first",
+      }),
+    );
+    assert.equal(
+      (
+        await f.service.queryConversationCommand({
+          ...f.target,
+          remoteSessionId: "reconnected",
+          commandId: "first",
+        })
+      )?.remoteSessionId,
+      "reconnected",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("uncommitted owner rows cannot acknowledge duplicate commands or ACK recovery", async (t) => {
+  const f = await fixture();
+  const original = AcpSessionStore.prototype.commit;
+  const gate = Promise.withResolvers<void>();
+  const entered = Promise.withResolvers<void>();
+  let blocked = true;
+  t.mock.method(AcpSessionStore.prototype, "commit", async function (snapshot) {
+    if (blocked && snapshot.entries.some((entry) => entry.id === "user:pending")) {
+      entered.resolve();
+      await gate.promise;
+    }
+    return original.call(this, snapshot);
+  });
+  const input = {
+    ...f.target,
+    commandId: "pending",
+    type: "sendText" as const,
+    payload: { text: "hello" },
+  };
+  try {
+    let accepted = 0;
+    const first = f.service.sendConversationCommand(input).then((value) => {
+      accepted++;
+      return value;
+    });
+    await entered.promise;
+    const duplicate = f.service.sendConversationCommand(input).then((value) => {
+      accepted++;
+      return value;
+    });
+    assert.equal(
+      await f.service.queryConversationCommand({ ...f.target, commandId: input.commandId }),
+      null,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(accepted, 0);
+    blocked = false;
+    gate.resolve();
+    const receipts = await Promise.all([first, duplicate]);
+    assert.deepEqual(receipts[0], receipts[1]);
+    await waitFor(() => f.calls.length === 1);
+    f.turns[0]!.resolve();
+  } finally {
+    blocked = false;
+    gate.resolve();
+    await f.dispose();
+  }
+});
+
 test("RPC acceptance needs no session notifications and does not finish the Agent turn", async () => {
   const f = await fixture();
   const [clientProtocol, serverProtocol] = createQueuePair();
@@ -109,10 +214,17 @@ test("RPC acceptance needs no session notifications and does not finish the Agen
   const client = new ChannelClient(clientProtocol);
   const remote = ProxyChannel.toService<IAcpService>(client.getChannel("acp"));
   try {
-    const accepted = await remote.submitPrompt({ ...f.target, commandId: "first", text: "first" });
-    const disk = JSON.parse(await readFile(join(f.directory, `${f.target.id}.json`), "utf8"));
+    const accepted = await remote.sendConversationCommand({
+      ...f.target,
+      commandId: "first",
+      type: "sendText",
+      payload: { text: "first" },
+    });
+    const disk = await readPersistedAcpSession(join(f.directory, `${f.target.id}.json`));
     assert.equal(disk.entries[0].id, "user:first");
-    assert.equal(accepted.status, "running");
+    assert.equal(accepted.sessionStatus, "running");
+    assert.equal(accepted.ack.status, "accepted");
+    assert.ok(JSON.stringify(accepted).length < 1024);
     await waitFor(() => f.calls.length === 1);
     f.turns[0]!.resolve();
     await waitFor(async () => (await f.read()).status === "idle");
@@ -206,13 +318,11 @@ test("send timing separates blocked preparation, queue persistence and failure w
     for (const phase of [
       "dispatch_queue",
       "admission_queue",
-      "snapshot_clone",
-      "snapshot_validate",
+      "snapshot_capture",
       "snapshot_io_queue",
-      "snapshot_serialize",
       "snapshot_write",
       "snapshot_projection",
-      "receipt_clone_validate",
+      "receipt_validate",
     ])
       assert.ok(phase in accepted.phasesMs, phase);
     await f.service.submitPrompt({ ...f.target, commandId: "timed-queue", text: "PRIVATE QUEUED" });
@@ -308,7 +418,7 @@ test("diagnostic failure after durable acceptance cannot roll back the accepted 
     f.turns[0]!.resolve();
     await waitFor(async () => (await f.read()).status === "idle");
     assert.equal((await f.read()).entries[0]?.id, "user:diagnostic-failure");
-    const disk = JSON.parse(await readFile(join(f.directory, `${f.target.id}.json`), "utf8"));
+    const disk = await readPersistedAcpSession(join(f.directory, `${f.target.id}.json`));
     assert.equal(disk.entries[0].id, "user:diagnostic-failure");
     assert.equal(f.calls.length, 1);
   } finally {
@@ -417,7 +527,7 @@ test("ACP busy prompts are durable, idempotent and drain exactly once in FIFO or
       (await f.read()).queue.items.map((item) => item.commandId),
       ["second", "third"],
     );
-    const disk = JSON.parse(await readFile(join(f.directory, `${f.target.id}.json`), "utf8"));
+    const disk = await readPersistedAcpSession(join(f.directory, `${f.target.id}.json`));
     assert.equal(disk.queue.items.length, 2);
     f.turns[0]!.resolve();
     await first;
