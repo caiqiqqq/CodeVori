@@ -1,10 +1,12 @@
 import type { IAcpService } from "@zcode/services";
 import {
   acpSessionSchema,
+  PhaseTimer,
   type AcpPromptInput,
   type AcpSession,
   type AcpWorkspace,
 } from "@zcode/shared";
+import { logger } from "../logger.js";
 
 export const ACP_HOST_UPGRADE_REQUIRED = "ACP_HOST_UPGRADE_REQUIRED";
 
@@ -36,18 +38,46 @@ export async function waitForAcpPromptAdmission(
   workspace: AcpWorkspace,
   input: AcpWorkspace & { id: string } & AcpPromptInput,
 ): Promise<AcpSession> {
+  const timing = new PhaseTimer(
+    {
+      scope: "ui.acp_ack",
+      sessionId: input.id,
+      commandId: input.commandId,
+      commandType: "sendText",
+    },
+    (record) => logger.lifecycle.info("[latency]", record),
+  );
+  let status = "failed";
   try {
-    return acceptedSnapshot(await service.submitPrompt(input), workspace, input);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    // 旧远端缺少接口时不能回退整轮 prompt，更不能生成另一个 command 自动重发。
-    if (/Method not found: submitPrompt|submitPrompt is not a function/.test(detail))
-      throw new Error(ACP_HOST_UPGRADE_REQUIRED);
-    // ACK 丢失不能证明未接受；读权威快照对账，仍未知时保留原 commandId 和草稿。
+    timing.phase("host_rpc");
     try {
-      return acceptedSnapshot(await service.read({ ...workspace, id: input.id }), workspace, input);
-    } catch {
-      throw error;
+      const reply = await service.submitPrompt(input);
+      timing.phase("receipt_validate");
+      const snapshot = acceptedSnapshot(reply, workspace, input);
+      timing.setFacts({
+        entries: snapshot.entries.length,
+        queueItems: snapshot.queue.items.length,
+      });
+      status = "accepted";
+      return snapshot;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      // 旧远端缺少接口时不能回退整轮 prompt，更不能生成另一个 command 自动重发。
+      if (/Method not found: submitPrompt|submitPrompt is not a function/.test(detail))
+        throw new Error(ACP_HOST_UPGRADE_REQUIRED);
+      // ACK 丢失不能证明未接受；读权威快照对账，仍未知时保留原 commandId 和草稿。
+      try {
+        timing.phase("ack_recovery_read");
+        const reply = await service.read({ ...workspace, id: input.id });
+        timing.phase("recovery_validate");
+        const snapshot = acceptedSnapshot(reply, workspace, input);
+        status = "recovered";
+        return snapshot;
+      } catch {
+        throw error;
+      }
     }
+  } finally {
+    timing.finish(status);
   }
 }

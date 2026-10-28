@@ -9,6 +9,7 @@ import { isAcpHistorySession, type AcpStopReason } from "@zcode/shared";
 import { AcpAttachmentStore } from "../src/acp/acpAttachmentStore.js";
 import { ChannelClient, ChannelServer, ProxyChannel, createQueuePair } from "@zcode/rpc";
 import type { IAcpService } from "../src/acp/acpService.js";
+import type { PhaseTimingRecord } from "@zcode/shared";
 
 const workspace = { workspacePath: "/tmp/queue-workspace", workspaceIdentity: "remote:queue" };
 async function waitFor(check: () => unknown | Promise<unknown>) {
@@ -161,6 +162,71 @@ test("preparing retries share acceptance and execute the same command once", asy
     assert.deepEqual(receipts[0], receipts[1]);
     await waitFor(() => f.calls.length === 1);
     f.turns[0]!.resolve();
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("send timing separates blocked preparation, queue persistence and failure without waiting for the Agent", async (t) => {
+  const records: PhaseTimingRecord[] = [];
+  t.mock.method(console, "log", (...args: unknown[]) => {
+    const record = args.at(-1) as PhaseTimingRecord | undefined;
+    if (record?.event === "latency.phases" && record.scope === "acp.send") records.push(record);
+  });
+  let release!: () => void;
+  let preparing = false;
+  const f = await fixture({
+    skillsService: {
+      async buildPromptContext({ prompt }) {
+        if (prompt === "PRIVATE FAIL") throw new Error("PRIVATE FAILURE");
+        preparing = true;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return { prompt };
+      },
+    },
+  });
+  try {
+    const first = f.service.submitPrompt({
+      ...f.target,
+      commandId: "timed-first",
+      text: "PRIVATE TEXT",
+    });
+    await waitFor(() => preparing);
+    assert.equal(records.length, 0, "blocked preparation cannot be reported as accepted");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    release();
+    await first;
+    await waitFor(() => f.calls.length === 1);
+    const accepted = records.find((record) => record.commandId === "timed-first")!;
+    assert.equal(accepted.outcome, "accepted");
+    assert.ok(accepted.phasesMs.skills_context! >= 20);
+    assert.ok(accepted.facts.snapshotBytes! > 0);
+    for (const phase of [
+      "dispatch_queue",
+      "admission_queue",
+      "snapshot_clone",
+      "snapshot_validate",
+      "snapshot_io_queue",
+      "snapshot_serialize",
+      "snapshot_write",
+      "snapshot_projection",
+      "receipt_clone_validate",
+    ])
+      assert.ok(phase in accepted.phasesMs, phase);
+    await f.service.submitPrompt({ ...f.target, commandId: "timed-queue", text: "PRIVATE QUEUED" });
+    assert.equal(records.find((record) => record.commandId === "timed-queue")?.outcome, "queued");
+    await f.service.deleteQueueItem({ ...f.target, queueItemId: "timed-queue" });
+    f.turns[0]!.resolve();
+    await waitFor(async () => (await f.read()).status === "idle");
+    await assert.rejects(
+      f.service.submitPrompt({ ...f.target, commandId: "timed-fail", text: "PRIVATE FAIL" }),
+    );
+    const failed = records.find((record) => record.commandId === "timed-fail")!;
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.phase, "skills_context");
+    assert.ok(!JSON.stringify(records).includes("PRIVATE"));
   } finally {
     await f.dispose();
   }

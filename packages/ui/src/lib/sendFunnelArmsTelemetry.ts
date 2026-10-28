@@ -1,9 +1,9 @@
 import type { ArmsCustomEventPayload, IPlatformService } from "@zcode/shared";
-import { logger } from "@/logger.js";
+import { logger } from "../logger.js";
 
 // Composer 发送漏斗埋点的 ARMS 出口。
-// 本组事件只走 ARMS，不进 /event/report；reporter 由 Root.tsx 按 isDesktop 安装，
-// Web / 手机远控拿不到 reporter，整组静默。
+// ARMS 事件不进 /event/report；reporter 由 Root.tsx 按 isDesktop 安装。
+// 发送计时同时写本地 lifecycle 日志，不依赖 ARMS reporter。
 
 const SEND_FUNNEL_ARMS_GROUP = "send_funnel";
 
@@ -80,6 +80,13 @@ export function reportSendFunnelSendClick(params: {
   trigger: "button" | "shortcut";
   extraDetail: Record<string, string>;
 }): void {
+  logger.lifecycle.info("[latency]", {
+    event: "latency.send_click",
+    scope: "ui.send",
+    sessionId: optionalId(params.sessionId),
+    sendClickId: params.sendClickId,
+    trigger: params.trigger,
+  });
   emit({
     name: SEND_FUNNEL_EVENT_SEND_CLICK,
     group: SEND_FUNNEL_ARMS_GROUP,
@@ -117,6 +124,21 @@ export function reportSendFunnelSendResult(params: {
   const costMs = Math.max(0, Math.round(params.costMs));
   const ackCostMs =
     params.ackCostMs === undefined ? undefined : Math.max(0, Math.round(params.ackCostMs));
+  // 本地正式包也保留低频发送计时；不依赖 ARMS reporter，不展开可能含用户数据的 extraDetail。
+  logger.lifecycle.info("[latency]", {
+    event: "latency.send_result",
+    scope: "ui.send",
+    sessionId: optionalId(params.sessionId),
+    commandId: optionalId(params.commandId),
+    sendClickId: params.sendClickId,
+    status: params.status,
+    ackStatus: params.ackStatus,
+    reasonCode: params.reasonCode,
+    durationMs: costMs,
+    ackMs: ackCostMs,
+    postAckMs: ackCostMs === undefined ? undefined : Math.max(0, costMs - ackCostMs),
+    queueConfirmed: params.queueConfirmed,
+  });
   emit({
     name: SEND_FUNNEL_EVENT_SEND_RESULT,
     group: SEND_FUNNEL_ARMS_GROUP,

@@ -1,4 +1,5 @@
 import type { AgentRuntime, TurnAttachment, TurnResult } from "@zcode/core";
+import { PhaseTimer } from "@zcode/shared";
 import {
   SessionEventType,
   traceContextToLogContext,
@@ -143,12 +144,15 @@ export function createInputFacade(deps: CreateInputFacadeDeps): InputFacade {
   const prepareRuntimePrompt = async (
     promptInput: ReturnType<typeof normalizePromptInput>,
     options?: SubmitPromptOptions,
+    timing?: PhaseTimer,
   ): Promise<{ input: string; storedAttachments?: TurnAttachment[] }> => {
+    timing?.phase("attachments_externalize");
     const storedAttachments = await externalizePromptAttachments(promptInput.attachments, {
       artifactStore: deps.artifactStore,
       sessionId: deps.sessionId,
       traceContext: options?.traceContext ?? deps.traceContext,
     });
+    timing?.phase("custom_command_resolve");
     const resolvedCommandPrompt = await deps.customCommandPromptResolver?.(promptInput.text, {
       abortSignal: options?.abortSignal,
       traceContext: options?.traceContext ?? deps.traceContext,
@@ -191,7 +195,24 @@ export function createInputFacade(deps: CreateInputFacadeDeps): InputFacade {
     },
     recallPreviousInputHistory,
     sendInput: async (input, options) => {
+      const trace = options?.traceContext ?? deps.traceContext;
+      const timing = new PhaseTimer(
+        { scope: "api.input", sessionId: deps.sessionId, commandId: options?.inputId },
+        (record) =>
+          deps.logger.info("Input phase timing", {
+            traceId: trace.traceId,
+            queryId: trace.queryId,
+            spanId: trace.spanId,
+            ...record,
+          }),
+      );
+      let timingStatus = "failed";
+      timing.phase("input_normalize");
       const promptInput = normalizePromptInput(input);
+      timing.setFacts({
+        textChars: promptInput.text.length,
+        attachments: promptInput.attachments?.length ?? 0,
+      });
       const delivery = options?.delivery ?? "auto";
       const unsubscribe =
         options?.onEvent || options?.onTurnStartedObserved
@@ -211,8 +232,10 @@ export function createInputFacade(deps: CreateInputFacadeDeps): InputFacade {
       try {
         // resume review 属于本次 prompt 生命周期，订阅覆盖 prepare boundary；Core admission
         // 在同一个 session runtime 内完成 start/queue，不在这里读取 activeTurn 做分叉。
+        timing.phase("execution_boundary");
         await preparePromptBoundary(options);
-        const prepared = await prepareRuntimePrompt(promptInput, options);
+        const prepared = await prepareRuntimePrompt(promptInput, options, timing);
+        timing.phase("core_admission");
         const result = await deps.runtime.admitPrompt(prepared.input, prepared.storedAttachments, {
           ...options,
           delivery,
@@ -220,6 +243,7 @@ export function createInputFacade(deps: CreateInputFacadeDeps): InputFacade {
           ...(prepared.input !== promptInput.text ? { displayInput: promptInput.text } : {}),
         });
         if (result.kind === "started") {
+          timing.phase("input_history_write");
           await recordAcceptedInputHistory(
             promptInput.text,
             "prompt",
@@ -227,6 +251,7 @@ export function createInputFacade(deps: CreateInputFacadeDeps): InputFacade {
             prepared.storedAttachments,
           );
           if (unsubscribe) void result.completion.then(unsubscribe, unsubscribe);
+          timingStatus = "accepted";
           return {
             completion: result.completion,
             kind: "started_turn",
@@ -235,6 +260,7 @@ export function createInputFacade(deps: CreateInputFacadeDeps): InputFacade {
         }
         unsubscribe?.();
         if (result.kind === "queued") {
+          timing.phase("input_history_write");
           await recordAcceptedInputHistory(
             promptInput.text,
             "steered_input",
@@ -242,10 +268,13 @@ export function createInputFacade(deps: CreateInputFacadeDeps): InputFacade {
             prepared.storedAttachments,
           );
         }
+        timingStatus = result.kind;
         return result;
       } catch (error) {
         unsubscribe?.();
         throw error;
+      } finally {
+        timing.finish(timingStatus);
       }
     },
     enqueueDeferredInput: async (input, options) => {

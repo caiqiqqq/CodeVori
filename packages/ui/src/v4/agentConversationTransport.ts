@@ -1,6 +1,6 @@
 import { sendWithConversationDelayE2E } from "@/v4/conversationTransportDelayE2E.js";
 import { getLocalTtftObserver } from "@/v4/telemetry/localTtftObserver.js";
-import { calibrateLocalTtftClock, createUuid, localTtftNow } from "@zcode/shared";
+import { calibrateLocalTtftClock, createUuid, localTtftNow, PhaseTimer } from "@zcode/shared";
 /* oxlint-disable eslint(max-lines) -- transport 将上传、分块读取和 runtime 生命周期保持在同一 host 边界。 */
 // ConversationTransport 的 desktop/host 实现：桥到 IZCodeAgentService 的 v4 转发面
 // （依赖注入原则——数据层不感知 host 细节，
@@ -348,22 +348,41 @@ export function createAgentConversationTransport(
       }
     },
     async sendCommand(envelope: CommandEnvelope): Promise<CommandAck> {
-      const hello = await ensureHandshake();
-      const payload = envelope.payload as {
-        planEnabled?: boolean;
-        config?: { planEnabled?: boolean };
-        firstInput?: { planEnabled?: boolean };
-      };
-      // 旧 Host 会剥掉未知字段；不能把 yolo + Plan 错发成完全访问执行。
-      if (
-        hello.capabilities.independentPlanState !== true &&
-        (payload.planEnabled || payload.config?.planEnabled || payload.firstInput?.planEnabled)
-      ) {
-        throw new Error("proto.independentPlanUnsupported");
-      }
-      return sendWithConversationDelayE2E(() =>
-        agentService.sendConversationCommandV4({ ...workspace, envelope }),
+      const timing = new PhaseTimer(
+        {
+          scope: "ui.api_ack",
+          sessionId: envelope.sessionId ?? undefined,
+          commandId: envelope.commandId,
+          commandType: envelope.type,
+        },
+        (record) => logger.lifecycle.info("[latency]", record),
       );
+      let status = "failed";
+      try {
+        timing.phase("handshake");
+        const hello = await ensureHandshake();
+        timing.phase("capability_check");
+        const payload = envelope.payload as {
+          planEnabled?: boolean;
+          config?: { planEnabled?: boolean };
+          firstInput?: { planEnabled?: boolean };
+        };
+        // 旧 Host 会剥掉未知字段；不能把 yolo + Plan 错发成完全访问执行。
+        if (
+          hello.capabilities.independentPlanState !== true &&
+          (payload.planEnabled || payload.config?.planEnabled || payload.firstInput?.planEnabled)
+        ) {
+          throw new Error("proto.independentPlanUnsupported");
+        }
+        timing.phase("host_rpc");
+        const ack = await sendWithConversationDelayE2E(() =>
+          agentService.sendConversationCommandV4({ ...workspace, envelope }),
+        );
+        status = ack.status;
+        return ack;
+      } finally {
+        timing.finish(status);
+      }
     },
     async queryCommands(params: CommandsQueryParams): Promise<CommandsQueryResult> {
       await ensureHandshake();

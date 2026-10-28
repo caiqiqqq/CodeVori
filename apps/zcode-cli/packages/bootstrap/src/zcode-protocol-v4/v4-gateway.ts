@@ -31,7 +31,11 @@ import type {
 import type { ConversationSnapshot } from "@zcode/shared/zcode-protocol-v4";
 import { SessionEventType, isFileSystemPortError } from "@zcode/contracts";
 import type { ZCodeWorkspaceRef } from "@zcode/shared";
-import { extractMarkdownArtifactImageRefs } from "@zcode/shared";
+import {
+  extractMarkdownArtifactImageRefs,
+  PhaseTimer,
+  type PhaseTimingRecord,
+} from "@zcode/shared";
 import type {
   CommandAck,
   AttachmentRef,
@@ -429,6 +433,8 @@ export interface V4GatewayHost {
   ): Promise<PersistedEventsLoadResult>;
   /** 仅用于低频生命周期和恢复裁决；高频 event/stream trace 禁止走生产日志。 */
   onDebug?(message: string): void;
+  /** Correlated low-frequency command timing; never includes envelope payloads. */
+  onCommandTiming?(record: PhaseTimingRecord): void;
   onError?(scope: string, error: unknown, context?: V4GatewayErrorContext): void;
 }
 
@@ -2374,6 +2380,28 @@ export class ConversationV4Gateway {
    * settle 仍然固化结果供 duplicate 重放。
    */
   async handleCommand(rawParams: unknown): Promise<CommandAck> {
+    const raw = rawParams as Partial<CommandEnvelope> | null;
+    const timing = new PhaseTimer(
+      {
+        scope: "api.command",
+        commandId: typeof raw?.commandId === "string" ? raw.commandId : undefined,
+        sessionId: typeof raw?.sessionId === "string" ? raw.sessionId : undefined,
+        commandType: typeof raw?.type === "string" ? raw.type : undefined,
+      },
+      (record) => this.host.onCommandTiming?.(record),
+    );
+    let status = "failed";
+    try {
+      const ack = await this.handleTimedCommand(rawParams, timing);
+      status = ack.status;
+      return ack;
+    } finally {
+      timing.finish(status);
+    }
+  }
+
+  private async handleTimedCommand(rawParams: unknown, timing: PhaseTimer): Promise<CommandAck> {
+    timing.phase("ready_wait");
     let ttftCapacityRejected = false;
     const ttftCommand =
       typeof rawParams === "object" && rawParams !== null && "ttft" in rawParams
@@ -2395,6 +2423,7 @@ export class ConversationV4Gateway {
       if (ready) await ready;
     }
 
+    timing.phase("inbox_wait_validate");
     const outcome = await this.inbox.handle(rawParams);
     if (outcome.kind === "ack")
       return {
@@ -2449,6 +2478,7 @@ export class ConversationV4Gateway {
       }
     };
     try {
+      timing.phase("projection_budget");
       const admission = {
         admissionSeq: outcome.admissionSeq,
         admittedAt: outcome.admittedAt,
@@ -2477,12 +2507,15 @@ export class ConversationV4Gateway {
           message: `conversation projection would exceed ${PROTOCOL_V4_LIMITS.logicalFrameAssemblyMaxBytes} bytes`,
         });
       }
+      timing.phase("input_ledger");
       durableInputIntent =
         (await this.host.admitCommandInput?.(outcome.envelope, admission)) ?? null;
       if (durableInputIntent && outcome.envelope.sessionId !== null) {
         this.inbox.pinLiveInput(outcome.envelope.sessionId, durableInputIntent);
       }
+      timing.phase("execute_command");
       const result = await this.host.executeCommand(outcome.envelope, admission);
+      timing.phase("ack_finalize");
       // 新建/侧聊命令采用结果会话的开关，避免把父会话或当前 App 设置误记到新会话。
       const telemetrySessionId =
         result?.type === "createSession" || result?.type === "createSelectionSideSession"

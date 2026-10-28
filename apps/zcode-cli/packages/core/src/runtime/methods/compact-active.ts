@@ -16,6 +16,7 @@ import {
   createCompactBoundaryId,
   getUsageTotalTokens,
 } from "../deps.js";
+import { PhaseTimer } from "@zcode/shared";
 import type { SessionEvent, TraceContext } from "../deps.js";
 import { resolveModelRequestSessionTypeFromTaskType } from "./model-request-session-type.js";
 import {
@@ -116,6 +117,23 @@ export async function compactActiveConversation(
     // Auto 复用策略决策，Reactive 复用 overflow 路径 activeMessages；其他 trigger 不额外投影。
     compactTelemetry.setInputTokens(options.compactContextTelemetry.inputTokens);
   }
+  const operationId = `cmp_${crypto.randomUUID()}`;
+  const timing = new PhaseTimer(
+    {
+      scope: "api.compact",
+      sessionId: this.sessionId,
+      operationId,
+      commandId: options.sourceCommandId,
+    },
+    (record) =>
+      this.logger?.info("Compact phase timing", {
+        traceId: turnTraceContext.traceId,
+        queryId: turnTraceContext.queryId,
+        spanId: turnTraceContext.spanId,
+        ...record,
+      }),
+  );
+  let timingStatus = "failed";
   return compactTelemetry.run(async () => {
     try {
       const result = await compactActiveConversationImpl.call(
@@ -124,17 +142,22 @@ export async function compactActiveConversation(
         turnTraceContext,
         events,
         options,
+        { timing, operationId },
       );
       compactTelemetry.setOutputTokens(result.tokenCount);
       compactTelemetry.finishCompleted();
+      timingStatus = result.outcome;
       return result;
     } catch (error) {
       if (isTurnCancellationError(error, options.abortSignal)) {
+        timingStatus = "cancelled";
         compactTelemetry.finishCancelled("abort_signal");
       } else {
         compactTelemetry.finishFailed("unhandled", "unknown", error);
       }
       throw error;
+    } finally {
+      timing.finish(timingStatus);
     }
   });
 }
@@ -161,12 +184,15 @@ async function compactActiveConversationImpl(
     model?: Model;
     activeEntries?: readonly RuntimeMessageEntry[];
   } = {},
+  diagnostics: { timing: PhaseTimer; operationId: string },
 ): Promise<{
   displayText: string;
   entries: readonly RuntimeMessageEntry[];
   outcome: Extract<CompactAttemptOutcome, "compacted" | "skipped">;
   tokenCount: number;
 }> {
+  const { timing } = diagnostics;
+  timing.phase("context_select");
   throwIfTurnAborted(options.abortSignal);
   const trigger = options.trigger ?? CompactTrigger.Manual;
   const phase = options.phase ?? defaultCompactPhaseForTrigger(trigger);
@@ -201,9 +227,16 @@ async function compactActiveConversationImpl(
     useMidConversationSystem,
   });
   const maxAttempts = trigger === CompactTrigger.Auto ? AUTO_COMPACT_MAX_ATTEMPTS : 1;
+  timing.setFacts({
+    activeEntries: activeEntries.length,
+    summaryEntries: entriesForSummary.length,
+    preservedEntries: preservedEntries.length,
+    preTokens: preCompactTokenCount,
+    auto: trigger === CompactTrigger.Auto,
+  });
   let attempt = 1;
   const compactTimeline: CompactTimelineContext = {
-    operationId: `cmp_${crypto.randomUUID()}`,
+    operationId: diagnostics.operationId,
     messageId: createMessageId(),
     partId: createPartId(),
     trigger,
@@ -237,6 +270,7 @@ async function compactActiveConversationImpl(
     };
   }
 
+  timing.phase("start_timeline_write");
   const compactStartedPayload = this.buildCompactTimelinePayload(compactTimeline, {
     ...(maxAttempts > 1 ? { attempt, maxAttempts } : {}),
     status: CompactTimelineStatus.Started,
@@ -250,8 +284,10 @@ async function compactActiveConversationImpl(
   );
   // 止血原因：massive MCP 工具会把 compact summary request 的 provider context 撑爆。
   // ToolSearch/deferred tools 完成前，仅在工具数超过阈值时让 compact summary 保持无工具。
+  timing.phase("mcp_initialize");
   await this.initializeMcp(turnTraceContext);
   throwIfTurnAborted(options.abortSignal);
+  timing.phase("tool_catalog");
   const runtimeCompactTools = this.getTools(compactModel);
   const compactTools =
     runtimeCompactTools.length > COMPACT_TOOL_KEEP_MAX_COUNT ? [] : runtimeCompactTools;
@@ -306,6 +342,13 @@ async function compactActiveConversationImpl(
       };
 
       while (true) {
+        timing.phase("request_prepare");
+        timing.setFacts({
+          outerAttempt: attempt,
+          contextRetries: compactPromptTooLongAttempts,
+          summaryEntries: entriesForSummary.length,
+          toolCount: compactTools.length,
+        });
         const requestMessages = buildCompactSummaryRequestMessages(
           entriesForSummary,
           compactPrompt,
@@ -362,6 +405,7 @@ async function compactActiveConversationImpl(
           logCompactMediaRetryProjection(this.logger, modelTraceContext, mediaProjection);
         }
 
+        timing.phase("request_event_write");
         const modelRequestEvent = this.createEvent(
           SessionEventType.ModelRequest,
           {
@@ -409,12 +453,15 @@ async function compactActiveConversationImpl(
         };
 
         try {
+          timing.phase("model_request");
+          timing.report();
           result = await runCompactSummaryModelRequest({
             logger: this.logger,
             model: compactModel,
             request: compactModelRequest,
           });
         } catch (error) {
+          timing.phase("failed_usage_write");
           await recordModelUsageFact(this, {
             attemptIndex: compactPromptTooLongAttempts,
             error,
@@ -454,6 +501,7 @@ async function compactActiveConversationImpl(
           throw error;
         }
 
+        timing.phase("usage_write");
         await recordModelUsageFact(this, {
           attemptIndex: compactPromptTooLongAttempts,
           events,
@@ -500,6 +548,7 @@ async function compactActiveConversationImpl(
         }),
       ];
 
+      timing.phase("complete_event_write");
       const modelCompleteEvent = this.createEvent(
         SessionEventType.ModelComplete,
         {
@@ -520,6 +569,7 @@ async function compactActiveConversationImpl(
       });
       // Continue 没有对应 Session message；无 store 的统计也不能把它计入保留记录。
       const recordablePreservedEntries = filterOutputTokenContinuationEntries(preservedEntries);
+      timing.phase("preserved_tail_read");
       const preservation = this.sessionStore
         ? await selectPersistedCompactTail({
             sessionStore: this.sessionStore,
@@ -528,6 +578,7 @@ async function compactActiveConversationImpl(
             summaryMessageId,
           })
         : { keptMessageCount: countCompactPreservedRuntimeMessages(recordablePreservedEntries) };
+      timing.phase("post_context_build");
       const postCompactEntries = buildPostCompactRuntimeEntries(
         activeEntries,
         {
@@ -572,6 +623,11 @@ async function compactActiveConversationImpl(
             : undefined,
       });
 
+      timing.setFacts({
+        postTokens: truePostCompactTokenCount,
+        summaryChars: persistedSummary.length,
+      });
+      timing.phase("summary_persist");
       await this.persistCompactSummary(
         summaryMessageId,
         summaryMessageContent,
@@ -585,6 +641,7 @@ async function compactActiveConversationImpl(
         },
       );
 
+      timing.phase("boundary_timeline_write");
       const compactBoundaryEvent = this.createEvent(
         SessionEventType.CompactBoundary,
         compactBoundary,
@@ -612,6 +669,7 @@ async function compactActiveConversationImpl(
         events,
       );
 
+      timing.phase("history_replace");
       this.latestConversationMessageId = summaryMessageId;
       const recordablePostCompactEntries = filterOutputTokenContinuationEntries(postCompactEntries);
       this.messageHistory.replaceMessages(

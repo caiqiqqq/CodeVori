@@ -121,6 +121,7 @@ import {
   type ZCodeTaskMode,
 } from "@zcode/shared";
 import { createServiceLogger } from "#src/logger/serviceLogger.js";
+import { PhaseTimer } from "@zcode/shared";
 import { createOfficialMcpIssuanceAudit } from "#src/official-mcp/officialMcpIssuanceAudit.js";
 import type {
   AccountRequestAuthMaterial,
@@ -5193,96 +5194,127 @@ export function createZCodeAgentService(
     },
 
     async sendConversationCommandV4(params: ZCodeAgentConversationCommandParams) {
-      const sessionId = params.envelope.sessionId;
-      if (sessionId) {
-        const lifecycle = await automationTaskIndexRepo.getConversationLifecycle({
-          ...params,
-          taskId: sessionId,
-        });
-        const startsInput = [
-          "sendText",
-          "sendGoalCommand",
-          "retryTurn",
-          "editUserQuery",
-          "compact",
-          "sendQueuedNow",
-        ].includes(params.envelope.type);
-        // 修复原因：桌面直接使用 V4 而手机会经 task adapter；门禁必须落在两端共用的 Host 边界。
-        if (
-          lifecycle === "pending" ||
-          lifecycle === "deleted" ||
-          (lifecycle === "archived" && startsInput)
-        )
-          throw new Error(
-            "Restore the archived conversation before sending; pending deletion can only be retried",
-          );
-      }
-      const client = await getClient(params);
-      const planPayload = params.envelope.payload as {
-        planEnabled?: boolean;
-        config?: { planEnabled?: boolean };
-        firstInput?: { planEnabled?: boolean };
-      };
-      if (
-        planPayload.planEnabled ||
-        planPayload.config?.planEnabled ||
-        planPayload.firstInput?.planEnabled
-      ) {
-        await ensureIndependentPlanSupport(client);
-      }
-      // RPC facade 会清掉调用方可伪造的顶层 clientMode，再用 trusted carrier 注入 host
-      // 真值；host 内部 adapter 直调仍兼容显式 clientMode。
-      const commandClientMode =
-        readTrustedZCodeAgentV4Connection(params)?.clientMode ??
-        params.clientMode ??
-        "desktop-continuous";
-      if (params.envelope.type === "createSession") {
-        // V4 草稿预热直接走 command 转发；新会话创建前只需等待 Account Config，
-        // ZCode Built-in / Personal 已由 Worker 进程 Registry 自己装配。
-        await ensureAccountProviderConfigSynced({
-          client,
-          reason: "v4_command_create_session",
-          workspace: params,
-        });
-      }
-      let envelope = await buildConversationCommandEnvelope(params);
-      if (envelope.type === "sendText" || envelope.type === "sendGoalCommand")
-        await options?.onDelegationConversationCommand?.(params, envelope);
-      // TTFT 首版只允许可信桌面本地 continuous，手机/远端透传不能开启本地观测。
-      if (
-        commandClientMode !== "desktop-continuous" ||
-        params.workspaceIdentity?.trim() ||
-        params.remoteSessionId
-      ) {
-        const { ttft: _ttft, ...withoutTtft } = envelope;
-        envelope = withoutTtft;
-      }
-      if (envelope.type === "sendText" && envelope.sessionId) {
-        const payload = commandPayloadSchemas.sendText.parse(envelope.payload);
-        const browserAmbientContext = await collectBrowserAmbientContext(
-          options?.browserControlExecutor,
-          {
-            sessionId: envelope.sessionId,
-            workspacePath: params.workspacePath,
-            ...(params.workspaceIdentity ? { workspaceIdentity: params.workspaceIdentity } : {}),
-            ...(params.remoteSessionId ? { remoteSessionId: params.remoteSessionId } : {}),
-            clientMode: commandClientMode,
-          },
-        );
-        if (browserAmbientContext) {
-          envelope = {
-            ...envelope,
-            payload: { ...payload, browserAmbientContext },
-          };
+      const timing = new PhaseTimer(
+        {
+          scope: "api.host_command",
+          sessionId: params.envelope.sessionId ?? undefined,
+          commandId: params.envelope.commandId,
+          commandType: params.envelope.type,
+        },
+        (record) => logger.info(undefined, "[latency]", record),
+      );
+      let timingStatus = "failed";
+      try {
+        timing.phase("lifecycle_lookup");
+        const sessionId = params.envelope.sessionId;
+        if (sessionId) {
+          const lifecycle = await automationTaskIndexRepo.getConversationLifecycle({
+            ...params,
+            taskId: sessionId,
+          });
+          const startsInput = [
+            "sendText",
+            "sendGoalCommand",
+            "retryTurn",
+            "editUserQuery",
+            "compact",
+            "sendQueuedNow",
+          ].includes(params.envelope.type);
+          // 修复原因：桌面直接使用 V4 而手机会经 task adapter；门禁必须落在两端共用的 Host 边界。
+          if (
+            lifecycle === "pending" ||
+            lifecycle === "deleted" ||
+            (lifecycle === "archived" && startsInput)
+          )
+            throw new Error(
+              "Restore the archived conversation before sending; pending deletion can only be retried",
+            );
         }
+        timing.phase("client_ready");
+        const client = await getClient(params);
+        timing.phase("plan_support");
+        const planPayload = params.envelope.payload as {
+          planEnabled?: boolean;
+          config?: { planEnabled?: boolean };
+          firstInput?: { planEnabled?: boolean };
+        };
+        if (
+          planPayload.planEnabled ||
+          planPayload.config?.planEnabled ||
+          planPayload.firstInput?.planEnabled
+        ) {
+          await ensureIndependentPlanSupport(client);
+        }
+        // RPC facade 会清掉调用方可伪造的顶层 clientMode，再用 trusted carrier 注入 host
+        // 真值；host 内部 adapter 直调仍兼容显式 clientMode。
+        const commandClientMode =
+          readTrustedZCodeAgentV4Connection(params)?.clientMode ??
+          params.clientMode ??
+          "desktop-continuous";
+        if (params.envelope.type === "createSession") {
+          timing.phase("account_config_sync");
+          // V4 草稿预热直接走 command 转发；新会话创建前只需等待 Account Config，
+          // ZCode Built-in / Personal 已由 Worker 进程 Registry 自己装配。
+          await ensureAccountProviderConfigSynced({
+            client,
+            reason: "v4_command_create_session",
+            workspace: params,
+          });
+        }
+        timing.phase("envelope_prepare");
+        let envelope = await buildConversationCommandEnvelope(params);
+        timing.phase("delegation_input");
+        if (envelope.type === "sendText" || envelope.type === "sendGoalCommand")
+          await options?.onDelegationConversationCommand?.(params, envelope);
+        // TTFT 首版只允许可信桌面本地 continuous，手机/远端透传不能开启本地观测。
+        if (
+          commandClientMode !== "desktop-continuous" ||
+          params.workspaceIdentity?.trim() ||
+          params.remoteSessionId
+        ) {
+          const { ttft: _ttft, ...withoutTtft } = envelope;
+          envelope = withoutTtft;
+        }
+        if (envelope.type === "sendText" && envelope.sessionId) {
+          timing.phase("browser_context");
+          const payload = commandPayloadSchemas.sendText.parse(envelope.payload);
+          timing.setFacts({
+            textChars: payload.text.length,
+            attachments: payload.attachments?.length ?? 0,
+          });
+          const browserAmbientContext = await collectBrowserAmbientContext(
+            options?.browserControlExecutor,
+            {
+              sessionId: envelope.sessionId,
+              workspacePath: params.workspacePath,
+              ...(params.workspaceIdentity ? { workspaceIdentity: params.workspaceIdentity } : {}),
+              ...(params.remoteSessionId ? { remoteSessionId: params.remoteSessionId } : {}),
+              clientMode: commandClientMode,
+            },
+          );
+          if (browserAmbientContext) {
+            envelope = {
+              ...envelope,
+              payload: { ...payload, browserAmbientContext },
+            };
+          }
+        }
+        timing.phase("cli_command_rpc");
+        const ack: CommandAck = await client.request(
+          V4_METHODS.command,
+          envelope,
+          commandAckSchema,
+        );
+        // Prompt command 在 committed TurnStarted 或 committed WorkspaceHookReviewRequested
+        // 任一 authority 到达后即返回；人工审核不能占用 Host RPC，因此继续使用统一默认
+        // timeout/watchdog。放宽到审核领域 deadline 只会掩盖串行协议队列死锁。
+        // duplicate 只证明 commandId 曾处理过，不证明其目标仍是当前 session 配置。
+        // 旧 B 命令在用户已切 C 后重放时，不能借 duplicate 把派生缓存再改回 B。
+        timingStatus = ack.status;
+        return ack;
+      } finally {
+        timing.finish(timingStatus);
       }
-      const ack: CommandAck = await client.request(V4_METHODS.command, envelope, commandAckSchema);
-      // Prompt command 在 committed TurnStarted 或 committed WorkspaceHookReviewRequested
-      // 任一 authority 到达后即返回；人工审核不能占用 Host RPC，因此继续使用统一默认
-      // timeout/watchdog。放宽到审核领域 deadline 只会掩盖串行协议队列死锁。
-      // duplicate 只证明 commandId 曾处理过，不证明其目标仍是当前 session 配置。
-      // 旧 B 命令在用户已切 C 后重放时，不能借 duplicate 把派生缓存再改回 B。
-      return ack;
     },
 
     async queryConversationCommandsV4(params: ZCodeAgentCommandsQueryParams) {

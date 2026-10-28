@@ -20,8 +20,10 @@ import { join } from "node:path";
 import { Emitter } from "@zcode/rpc";
 import { AcpStreamDiagnostics } from "./acpStreamDiagnostics.js";
 import { AcpConversationProjection } from "./acpConversationProjection.js";
+import { AcpCompactionTiming } from "./acpCompactionTiming.js";
 import {
   acpConversationTargetSchema,
+  PhaseTimer,
   acpConversationReadSchema,
   acpConversationRowsRangeSchema,
   summarizeAcpSession,
@@ -273,6 +275,7 @@ export function createAcpService(
     });
   const sessions = new Map<string, AcpSession>();
   const streamDiagnostics = new AcpStreamDiagnostics();
+  const compactionTiming = new AcpCompactionTiming();
   const connections = new Map<string, AcpConnectionPort>();
   const connecting = new Map<string, Promise<AcpConnectionPort>>();
   const loading = new Map<string, Promise<AcpSession>>();
@@ -505,10 +508,17 @@ export function createAcpService(
     );
     return next;
   };
-  const save = async (session: AcpSession, streaming = false): Promise<void> => {
+  const save = async (
+    session: AcpSession,
+    streaming = false,
+    timing?: PhaseTimer,
+  ): Promise<void> => {
     if (removed.has(session.id)) return;
     const snapshotStartedAt = Date.now();
-    const snapshot = acpSessionSchema.parse(structuredClone(session));
+    timing?.phase("snapshot_clone");
+    const cloned = structuredClone(session);
+    timing?.phase("snapshot_validate");
+    const snapshot = acpSessionSchema.parse(cloned);
     const receipt = streamDiagnostics.capture(session.id, snapshot.revision);
     if (snapshot.provisional) {
       // 修复原因：Codeg 会预连接取得 Agent 选项，但空草稿不能先进入持久会话历史。
@@ -519,13 +529,20 @@ export function createAcpService(
       return;
     }
     const previous = writes.get(session.id) ?? Promise.resolve();
+    timing?.phase("snapshot_io_queue");
     const next = previous
       .catch(() => {})
       .then(async () => {
+        timing?.phase("snapshot_mkdir");
         await mkdir(directory, { recursive: true });
         const temporary = `${file(snapshot.id)}.${randomUUID()}.tmp`;
         try {
-          await writeFile(temporary, JSON.stringify(snapshot), { mode: 0o600 });
+          timing?.phase("snapshot_serialize");
+          const serialized = JSON.stringify(snapshot);
+          timing?.setFacts({ snapshotBytes: Buffer.byteLength(serialized) });
+          timing?.phase("snapshot_write");
+          await writeFile(temporary, serialized, { mode: 0o600 });
+          timing?.phase("snapshot_rename");
           await rename(temporary, file(snapshot.id));
           if (!disposed && !removed.has(session.id)) {
             // 取证依据：只有原子替换成功后的通知才代表可显示事实；诊断不进入磁盘会话。
@@ -537,7 +554,9 @@ export function createAcpService(
               Date.now(),
               snapshot.status !== "running",
             );
+            timing?.phase("snapshot_projection");
             if (projections.has(snapshot.id)) project(snapshot, streaming);
+            timing?.phase("snapshot_broadcast");
             emitter.fire({
               kind: "updated",
               session: snapshot,
@@ -545,6 +564,7 @@ export function createAcpService(
             });
           }
         } finally {
+          timing?.phase("snapshot_cleanup");
           await rm(temporary, { force: true });
         }
       });
@@ -573,6 +593,7 @@ export function createAcpService(
     session: AcpSession,
     change: () => void,
     streaming = false,
+    timing?: PhaseTimer,
   ): Promise<void> => {
     if (session.deletionState) throw new Error("conversation deletion pending; retry deletion");
     const wasRunning = session.status === "running";
@@ -596,9 +617,10 @@ export function createAcpService(
         Date.now(),
       );
       interruptAcpCompactions(session);
+      compactionTiming.removeSession(session.id);
     }
     session.revision += 1;
-    await (streaming ? saveStreaming(session) : save(session));
+    await (streaming ? saveStreaming(session) : save(session, false, timing));
   };
   const load = async (id: string): Promise<AcpSession> => {
     const cached = sessions.get(id);
@@ -951,6 +973,7 @@ export function createAcpService(
     },
   });
   const detach = (id: string): void => {
+    compactionTiming.removeSession(id);
     const session = sessions.get(id);
     if (!session?.deletionState && session?.terminals.some((t) => t.status === "running")) {
       // 主动断开也要发布失去进程所有权的事实；不能让旧连接的 running 悬挂在面板。
@@ -1163,6 +1186,7 @@ export function createAcpService(
                 appendAcpConversationEntry(session, commandId, update, receivedAt);
               } else if (update.kind === "compaction" || update.kind === "compaction_summary") {
                 applyAcpCompaction(session, commandId, update, receivedAt);
+                compactionTiming.update(session, commandId, update);
               } else {
                 const id = `tool:${commandId}:${update.id}`;
                 const index = session.entries.findIndex((entry) => entry.id === id);
@@ -1617,10 +1641,14 @@ export function createAcpService(
     if (item.state !== "queued") throw new Error("ACP queue item is not editable");
     return item;
   };
-  const changeQueue = async (session: AcpSession, change: () => void): Promise<void> => {
+  const changeQueue = async (
+    session: AcpSession,
+    change: () => void,
+    timing?: PhaseTimer,
+  ): Promise<void> => {
     const before = structuredClone(session.queue);
     try {
-      await mutate(session, change);
+      await mutate(session, change, false, timing);
     } catch (error) {
       // 修复原因：队列 IO 失败只能回滚队列，不能用旧快照覆盖并发流式正文。
       session.queue = before;
@@ -1630,14 +1658,18 @@ export function createAcpService(
   const enqueuePrompt = async (
     session: AcpSession,
     prompt: ReturnType<typeof acpPromptInputSchema.parse>,
+    timing?: PhaseTimer,
   ): Promise<void> => {
     if (session.queue.items.length >= 100) throw new Error("ACP queue is full (100 messages)");
+    timing?.phase("agent_attach");
     const port = await attach(session);
+    timing?.phase("prompt_blocks");
     const blocks = await buildAcpPromptBlocks({
       ...prompt,
       workspacePath: session.workspacePath,
       capabilities: port.promptCapabilities,
     });
+    timing?.phase("attachments_save");
     const saved = await attachmentStore.save(
       session.id,
       prompt.attachments,
@@ -1649,19 +1681,23 @@ export function createAcpService(
       ensureOpen(session);
       if (connections.get(session.id) !== port)
         throw new Error("ACP session changed while queuing");
-      await changeQueue(session, () => {
-        delete session.provisional;
-        if (!session.entries.length && !session.queue.items.length)
-          session.title = prompt.text.trim().slice(0, 72) || "Attachments";
-        session.queue.items.push({
-          commandId: prompt.commandId,
-          text: prompt.text,
-          attachments: saved.attachments,
-          workspaceFiles: prompt.workspaceFiles,
-          createdAt: Date.now(),
-          state: "queued",
-        });
-      });
+      await changeQueue(
+        session,
+        () => {
+          delete session.provisional;
+          if (!session.entries.length && !session.queue.items.length)
+            session.title = prompt.text.trim().slice(0, 72) || "Attachments";
+          session.queue.items.push({
+            commandId: prompt.commandId,
+            text: prompt.text,
+            attachments: saved.attachments,
+            workspaceFiles: prompt.workspaceFiles,
+            createdAt: Date.now(),
+            state: "queued",
+          });
+        },
+        timing,
+      );
     } catch (error) {
       session.provisional = wasProvisional;
       session.title = previousTitle;
@@ -1786,6 +1822,7 @@ export function createAcpService(
     session: AcpSession,
     prompt: ReturnType<typeof acpPromptInputSchema.parse>,
     queued?: AcpQueueItem,
+    timing?: PhaseTimer,
   ): Promise<AcpSession> => {
     const commandId = prompt.commandId.trim();
     const token = activeTokens.get(session.id);
@@ -1805,8 +1842,11 @@ export function createAcpService(
       attachmentWrite = undefined;
     };
     try {
+      timing?.phase("delegation_input");
       if (!internalResults.has(commandId)) await options.delegation?.onInput(session);
+      timing?.phase("agent_attach");
       const port = await attach(session);
+      timing?.phase("plugin_references");
       const delegationInstruction =
         port.provisionedMcpNames?.has("zcode-delegation") &&
         delegationRegistrations.get(session.id)?.canDelegate !== false
@@ -1843,17 +1883,20 @@ export function createAcpService(
             port.provisionedMcpNames ?? new Set(),
           )
         : [];
+      timing?.phase("skills_context");
       const skillContext = await options.skillsService?.buildPromptContext({
         workspacePath: session.workspacePath,
         ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
         prompt: prompt.text,
       });
       // 记忆由目标 Host 读取，不能借用桌面路径；只附加到模型请求，保留用户原始历史。
+      timing?.phase("memory_context");
       const memoryContext = await options.memoryContext?.buildPromptContext({
         workspacePath: session.workspacePath,
         ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
         ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
       });
+      timing?.phase("prompt_blocks");
       const blocks = await buildAcpPromptBlocks({
         text: buildAcpPluginPrompt(
           skillContext?.prompt ?? prompt.text,
@@ -1878,6 +1921,7 @@ export function createAcpService(
         inFlight.add(attachmentWrite);
         attachmentWrites.set(session.id, inFlight);
       }
+      timing?.phase("attachments_save");
       const savedAttachments = queued
         ? { attachments: queued.attachments, group: null }
         : await attachmentStore.save(
@@ -1888,6 +1932,7 @@ export function createAcpService(
       attachmentGroup = savedAttachments.group;
       if (!ownsRun() || removed.has(session.id) || disposed || connections.get(session.id) !== port)
         return structuredClone(session);
+      timing?.phase("admission_prepare");
       if (workflowInstruction) blocks.unshift({ type: "text", text: workflowInstruction });
       if (delegationInstruction) blocks.unshift({ type: "text", text: delegationInstruction });
       const notifications = workflowNotifications.get(session.id);
@@ -1908,55 +1953,63 @@ export function createAcpService(
         return structuredClone(session);
       }
       const admittedAt = Date.now();
+      timing?.phase("admission_queue");
       await queueGate.run(session.id, async () => {
+        timing?.phase("admission_backup");
         if (!ownsRun() || disposed || removed.has(session.id)) return;
         const beforeAdmission = structuredClone(session);
         try {
-          await mutate(session, () => {
-            // 修复原因：预连接只存在于 Host 内存；首条有效消息与会话一起落盘。
-            delete session.provisional;
-            session.status = "running";
-            session.error = null;
-            session.title =
-              session.entries.length === 0
-                ? prompt.text.trim().slice(0, 72) || "Attachments"
-                : session.title;
-            if (queued)
-              session.queue.items = session.queue.items.filter(
-                (item) => item.commandId !== commandId,
-              );
-            session.entries.push({
-              id: `user:${commandId}`,
-              kind: "user",
-              text: prompt.text,
-              createdAt: admittedAt,
-              ...(session.configOptions.length
-                ? {
-                    traceSelections: session.configOptions.map((option) => ({
-                      name: option.name,
-                      value: option.currentValue,
-                    })),
-                  }
-                : session.modeState
+          await mutate(
+            session,
+            () => {
+              // 修复原因：预连接只存在于 Host 内存；首条有效消息与会话一起落盘。
+              delete session.provisional;
+              session.status = "running";
+              session.error = null;
+              session.title =
+                session.entries.length === 0
+                  ? prompt.text.trim().slice(0, 72) || "Attachments"
+                  : session.title;
+              if (queued)
+                session.queue.items = session.queue.items.filter(
+                  (item) => item.commandId !== commandId,
+                );
+              session.entries.push({
+                id: `user:${commandId}`,
+                kind: "user",
+                text: prompt.text,
+                createdAt: admittedAt,
+                ...(session.configOptions.length
                   ? {
-                      traceSelections: [{ name: "Mode", value: session.modeState.currentModeId }],
+                      traceSelections: session.configOptions.map((option) => ({
+                        name: option.name,
+                        value: option.currentValue,
+                      })),
+                    }
+                  : session.modeState
+                    ? {
+                        traceSelections: [{ name: "Mode", value: session.modeState.currentModeId }],
+                      }
+                    : {}),
+                ...(savedAttachments.attachments.length
+                  ? { attachments: savedAttachments.attachments }
+                  : {}),
+                ...(prompt.attachments.length || prompt.workspaceFiles.length
+                  ? {
+                      attachmentNames: [
+                        ...prompt.attachments.map((item) => item.fileName),
+                        ...prompt.workspaceFiles,
+                      ],
                     }
                   : {}),
-              ...(savedAttachments.attachments.length
-                ? { attachments: savedAttachments.attachments }
-                : {}),
-              ...(prompt.attachments.length || prompt.workspaceFiles.length
-                ? {
-                    attachmentNames: [
-                      ...prompt.attachments.map((item) => item.fileName),
-                      ...prompt.workspaceFiles,
-                    ],
-                  }
-                : {}),
-            });
-          });
+              });
+            },
+            false,
+            timing,
+          );
           admitted = true;
           // 接受凭证来自成功落盘的同一快照；后续诊断、模型重连和整轮执行都不阻塞输入框。
+          timing?.phase("receipt_clone_validate");
           promptAdmissions
             .get(`${session.id}:${commandId}`)
             ?.resolve(acpSessionSchema.parse(structuredClone(session)));
@@ -2138,9 +2191,13 @@ export function createAcpService(
   const dispatchPrompt = async (
     input: AcpWorkspace & { id: string } & AcpPromptInput,
     observeAdmission?: (admission: Promise<AcpSession>) => void,
+    timing?: PhaseTimer,
   ) => {
     const submission = acpPromptSubmissionSchema.parse(input);
+    timing?.phase("session_load");
     const session = await scoped(submission);
+    timing?.setFacts({ entries: session.entries.length, queueItems: session.queue.items.length });
+    timing?.phase("input_validate");
     if (stopping.has(session.id) || configuring.has(session.id))
       throw new Error("ACP session is running");
     const prompt = acpPromptInputSchema.parse(submission);
@@ -2150,17 +2207,22 @@ export function createAcpService(
       (!prompt.text.trim() && !prompt.attachments.length && !prompt.workspaceFiles.length)
     )
       throw new Error("ACP prompt is empty");
+    timing?.phase("dispatch_queue");
     const receipt = await queueGate.run(session.id, async () => {
+      timing?.phase("dispatch_check");
       ensureOpen(session);
       if (session.archived) throw new Error("Restore the archived conversation before sending");
       if (
         session.entries.some((entry) => entry.id === `user:${prompt.commandId}`) ||
         session.queue.items.some((item) => item.commandId === prompt.commandId) ||
         session.queue.discardedCommandIds?.includes(prompt.commandId)
-      )
+      ) {
+        timing?.setFacts({ duplicate: true });
         return { snapshot: structuredClone(session) };
+      }
       const existing = promptTasks.get(`${session.id}:${prompt.commandId}`);
       if (existing) {
+        timing?.phase("existing_admission");
         const admission = promptAdmissions.get(`${session.id}:${prompt.commandId}`)!.promise;
         observeAdmission?.(admission);
         return { turn: existing, admission };
@@ -2177,7 +2239,8 @@ export function createAcpService(
         const admission = beginAdmission(session, prompt.commandId);
         observeAdmission?.(admission.promise);
         try {
-          await enqueuePrompt(session, prompt);
+          await enqueuePrompt(session, prompt, timing);
+          timing?.phase("receipt_clone_validate");
           const snapshot = acpSessionSchema.parse(structuredClone(session));
           admission.resolve(snapshot);
           return { snapshot };
@@ -2193,7 +2256,7 @@ export function createAcpService(
       const key = `${session.id}:${prompt.commandId}`;
       const admission = beginAdmission(session, prompt.commandId).promise;
       observeAdmission?.(admission);
-      const turn = executePrompt(session, prompt);
+      const turn = executePrompt(session, prompt, undefined, timing);
       promptTasks.set(key, turn);
       void turn
         .finally(() => {
@@ -2799,14 +2862,47 @@ export function createAcpService(
       }
     },
     submitPrompt(input) {
+      // 接受耗时与 Agent 整轮耗时分开；只在发送时计量快照，流式分片不新增日志。
+      const timing = new PhaseTimer(
+        {
+          scope: "acp.send",
+          sessionId: input.id,
+          commandId: input.commandId,
+          commandType: "sendText",
+        },
+        (record) => logger.info(undefined, "[latency]", record),
+      );
+      timing.setFacts({
+        textChars: input.text?.length ?? 0,
+        attachments: input.attachments?.length ?? 0,
+      });
+      timing.phase("input_validate");
       // 关闭可先终结接受等待，附件复制仍由原 gate 收尾；不等待未接受 IO 才释放输入框。
-      return new Promise<AcpSession>((resolve, reject) => {
-        void dispatchPrompt(input, (admission) => {
-          void admission.then(resolve, reject);
-        }).then((receipt) => {
+      const receipt = new Promise<AcpSession>((resolve, reject) => {
+        void dispatchPrompt(
+          input,
+          (admission) => {
+            void admission.then(resolve, reject);
+          },
+          timing,
+        ).then((receipt) => {
           if (receipt.snapshot) resolve(receipt.snapshot);
         }, reject);
       });
+      return receipt.then(
+        (snapshot) => {
+          timing.finish(
+            snapshot.queue.items.some((item) => item.commandId === input.commandId)
+              ? "queued"
+              : "accepted",
+          );
+          return snapshot;
+        },
+        (error: unknown) => {
+          timing.finish("failed");
+          throw error;
+        },
+      );
     },
     async prompt(input) {
       const receipt = await dispatchPrompt(input);
@@ -3200,6 +3296,7 @@ export function createAcpService(
         });
     },
     disposeAll() {
+      compactionTiming.dispose();
       disposed = true;
       streamDiagnostics.clear();
       projections.clear();
