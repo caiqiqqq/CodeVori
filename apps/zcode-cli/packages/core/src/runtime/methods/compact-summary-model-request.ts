@@ -3,6 +3,7 @@ import {
   runWithModelInvocationContext,
   traceContextToLogContext,
 } from "../deps.js";
+import { CompactModelTiming } from "./compact-model-timing.js";
 import type {
   Logger,
   Model,
@@ -74,38 +75,60 @@ const COMPACT_SUMMARY_SETUP_ERROR_CODES = new Set<string>([
 export async function runCompactSummaryModelRequest(
   input: RunCompactSummaryModelRequestInput,
 ): Promise<RuntimeModelTextResult> {
-  const state = createCompactSummaryStreamState();
-  const streamingLogicalCallId = crypto.randomUUID();
-  const streamingRequest: CompactSummaryModelRequest = {
-    ...input.request,
-    modelCall: {
-      ...input.request.modelCall,
-      callCause: input.request.modelCall?.callCause ?? "initial",
-      logicalCallId: streamingLogicalCallId,
-    },
-  };
-
+  const timing = new CompactModelTiming(
+    input.logger,
+    input.request.traceContext,
+    input.request.modelCall?.operationId,
+  );
+  let status = "failed";
   try {
-    for await (const event of compactModelStream(input, streamingRequest)) {
-      applyCompactSummaryStreamEvent(state, event, input);
+    const state = createCompactSummaryStreamState();
+    const streamingLogicalCallId = crypto.randomUUID();
+    const streamingRequest: CompactSummaryModelRequest = {
+      ...input.request,
+      modelCall: {
+        ...input.request.modelCall,
+        callCause: input.request.modelCall?.callCause ?? "initial",
+        logicalCallId: streamingLogicalCallId,
+      },
+    };
+
+    try {
+      timing.phase("await_first_provider_event");
+      for await (const event of compactModelStream(input, streamingRequest)) {
+        timing.observe(event);
+        applyCompactSummaryStreamEvent(state, event, input);
+      }
+
+      timing.phase("stream_validate");
+      if (!state.finish) {
+        throw new Error("Compact summary stream ended before finish");
+      }
+      if (
+        (state.providerMessageProtocolObserved && !state.providerResponseStarted) ||
+        (!state.committedContentBlock && !hasCompactSummaryStopReason(state))
+      ) {
+        // AI SDK 会为空 SSE 合成 finish(other)，也会吞掉 message_delta 的真实 stop reason；
+        // 只有观察到 response start，且 block stop / truthy stop reason 至少一个成立时才接受该流。
+        throw new Error("Compact summary stream ended without a complete provider response");
+      }
+    } catch (error) {
+      if (isTurnCancellationError(error, input.request.abortSignal)) status = "cancelled";
+      const result = await handleCompactSummaryStreamFailure(
+        { ...input, request: streamingRequest },
+        state,
+        error,
+        timing,
+      );
+      status = "fallback_completed";
+      return result;
     }
 
-    if (!state.finish) {
-      throw new Error("Compact summary stream ended before finish");
-    }
-    if (
-      (state.providerMessageProtocolObserved && !state.providerResponseStarted) ||
-      (!state.committedContentBlock && !hasCompactSummaryStopReason(state))
-    ) {
-      // AI SDK 会为空 SSE 合成 finish(other)，也会吞掉 message_delta 的真实 stop reason；
-      // 只有观察到 response start，且 block stop / truthy stop reason 至少一个成立时才接受该流。
-      throw new Error("Compact summary stream ended without a complete provider response");
-    }
-  } catch (error) {
-    return handleCompactSummaryStreamFailure({ ...input, request: streamingRequest }, state, error);
+    status = "completed";
+    return compactSummaryStreamResult(state, state.finish);
+  } finally {
+    timing.finish(status);
   }
-
-  return compactSummaryStreamResult(state, state.finish);
 }
 
 function applyCompactSummaryStreamEvent(
@@ -259,6 +282,7 @@ async function handleCompactSummaryStreamFailure(
   input: RunCompactSummaryModelRequestInput,
   state: CompactSummaryStreamState,
   error: unknown,
+  timing: CompactModelTiming,
 ): Promise<RuntimeModelTextResult> {
   if (
     isTurnCancellationError(error, input.request.abortSignal) ||
@@ -294,6 +318,8 @@ async function handleCompactSummaryStreamFailure(
       previousLogicalCallId: input.request.modelCall?.logicalCallId,
     },
   };
+  timing.phase("fallback_non_stream");
+  timing.report();
   return runWithModelInvocationContext(invocationContext(fallbackRequest), () =>
     input.model.generateText(cleanRequest(fallbackRequest)),
   );
@@ -340,7 +366,6 @@ function isCompactSummarySetupFailure(error: unknown): boolean {
   }
 
   if (streamFailurePhase === "request_setup") {
-
     // 其他同步 setup 或明确 HTTP 拒绝属于原请求错误，不能用第二种 transport 掩盖。
     return context?.httpResponseStatus !== 404;
   }

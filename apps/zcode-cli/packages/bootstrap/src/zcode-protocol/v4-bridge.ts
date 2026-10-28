@@ -1917,6 +1917,7 @@ export function createConversationV4Gateway(
         sourceEventSeq,
       };
     },
+    onCommandTiming: (record) => context.logger?.info("Command phase timing", { ...record }),
     onError: (scope, error, errorContext) =>
       context.logger?.warn("ZCode Protocol v4 gateway error", {
         ...errorContext,

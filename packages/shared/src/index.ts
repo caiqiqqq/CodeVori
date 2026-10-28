@@ -318,6 +318,7 @@ export * from "./execution-state.js";
 export { bashOutputDisplaySchema } from "./bash-output-display.js";
 
 export * from "./localTtft.js";
+export * from "./phaseTimer.js";
 export * from "./pluginStoreOrder.js";
 export * from "./clientConfig.js";
 export * from "./pluginStoreOrdering.js";
