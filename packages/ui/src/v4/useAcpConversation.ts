@@ -33,7 +33,7 @@ const diagnostics = new OperationDiagnostics(
 
 function messageOf(error: unknown): string {
   const detail = error instanceof Error ? error.message : String(error);
-  return /(?:Method not found: |is not a function).*?(?:listSummaries|onDynamicSessionSummaryChanged)|(?:listSummaries|onDynamicSessionSummaryChanged).*?is not a function/.test(
+  return /(?:Method not found: |is not a function).*?(?:refreshSummary|listSummaries|onDynamicSessionSummaryChanged)|(?:refreshSummary|listSummaries|onDynamicSessionSummaryChanged).*?is not a function/.test(
     detail,
   )
     ? ACP_HOST_UPGRADE_REQUIRED
@@ -544,7 +544,7 @@ export function useAcpConversation(
       refreshRequests.current.set(session.id, request);
       changeBusy(session.agent, 1, session.id);
       void diagnostics
-        .run("acp.refresh", () => service.refresh({ ...target, id: session.id }))
+        .run("acp.refreshSummary", () => service.refreshSummary({ ...target, id: session.id }))
         .then((next) => {
           if (
             targetKeyRef.current !== targetKey ||
@@ -557,8 +557,7 @@ export function useAcpConversation(
           setSessions((previous) => {
             const current = previous.find((item) => item.id === next.id);
             if (next.id === session.id && !current) return previous;
-            const merged =
-              current && current.revision > next.revision ? current : summarizeAcpSession(next);
+            const merged = current && current.revision > next.revision ? current : next;
             return [
               merged,
               ...previous.filter((item) => item.id !== next.id && item.id !== session.id),

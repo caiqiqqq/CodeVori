@@ -2359,6 +2359,28 @@ export function createAcpService(
     });
   };
 
+  const refreshSession = async (input: AcpWorkspace & { id: string }): Promise<AcpSession> => {
+    const session = await scoped(input);
+    ensureOpen(session);
+    if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
+    if (session.supersededBy) return scoped({ ...input, id: session.supersededBy });
+    try {
+      await attach(session);
+    } catch (error) {
+      // 仅旧原生会话无法恢复可接替；含聊天或目标的历史绝不自动换 ID。
+      if (
+        !(error instanceof AcpSessionLoadError) ||
+        session.status !== "idle" ||
+        session.entries.length > 0 ||
+        session.queue.items.length > 0 ||
+        session.goal !== null
+      )
+        throw error;
+      return recoverEmptySession(session);
+    }
+    return session;
+  };
+
   const service: IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } = {
     generateText: (input) => textGeneration.generate(input),
     cancelGenerateText: (input) => textGeneration.cancel(input),
@@ -2714,26 +2736,11 @@ export function createAcpService(
       });
     },
     async refresh(input) {
-      const session = await scoped(input);
-      ensureOpen(session);
-      if (removed.has(session.id) || disposed) throw new Error("ACP session closed");
-      if (session.supersededBy)
-        return structuredClone(await scoped({ ...input, id: session.supersededBy }));
-      try {
-        await attach(session);
-      } catch (error) {
-        // 仅旧原生会话无法恢复可接替；含聊天或目标的历史绝不自动换 ID。
-        if (
-          !(error instanceof AcpSessionLoadError) ||
-          session.status !== "idle" ||
-          session.entries.length > 0 ||
-          session.queue.items.length > 0 ||
-          session.goal !== null
-        )
-          throw error;
-        return structuredClone(await recoverEmptySession(session));
-      }
-      return structuredClone(session);
+      return structuredClone(await refreshSession(input));
+    },
+    async refreshSummary(input) {
+      // 切换对话只需就绪元数据；必须先裁摘要再复制，避免把长历史复制和序列化到 UI。
+      return structuredClone(summarizeAcpSession(await refreshSession(input)));
     },
     async create(input) {
       if (disposed) throw new Error("ACP service closed");

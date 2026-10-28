@@ -16,7 +16,7 @@ try {
     `
     import React,{useEffect} from 'react';
     import {createRoot} from 'react-dom/client';
-    import {acpSessionSchema} from '@zcode/shared';
+    import {acpSessionSchema,summarizeAcpSession} from '@zcode/shared';
     import {useAcpConversation} from '../../../ui/test/acpProjectionFixture.tsx';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     const workspacePath='/synthetic/latency';
@@ -30,11 +30,12 @@ try {
     const service={
       list:async()=>[...sessions.values()].map(s=>structuredClone(s)),
       onDynamicSessionChanged:()=>listener=>{listeners.add(listener);return {dispose:()=>listeners.delete(listener)}},
-      refresh:async({id})=>{
+      refresh:async()=>{throw new Error('UI must never request a full history refresh')},
+      refreshSummary:async({id})=>{
         calls.push(['refresh',id]);
         if(id===delayId) await new Promise(resolve=>pending.set(id,resolve));
         if(id===rejectId) throw new Error('synthetic restore failure');
-        return structuredClone(sessions.get(id));
+        return summarizeAcpSession(structuredClone(sessions.get(id)));
       },
       submitPrompt:async({id,commandId,text})=>{
         calls.push(['submit',id,commandId]);
@@ -51,6 +52,7 @@ try {
     controls.delay=id=>{delayId=id};
     controls.reject=id=>{rejectId=id};
     controls.rejectSubmit=value=>{rejectSubmit=value};
+    controls.oldHost=()=>{delete service.refreshSummary};
     controls.snapshot=(id,status)=>{
       const session=sessions.get(id);session.status=status;session.revision++;
       for(const listener of listeners)listener({kind:'updated',session:structuredClone(session)});
@@ -159,6 +161,34 @@ try {
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
     assert.equal(await page.getByTestId("state").getAttribute("data-error"), "");
+    // 已缓存正文也不能绕过当前会话的恢复校验；同一会话重开后仍可显式重试。
+    await page.evaluate(() => {
+      window.__latency.reject("B");
+      window.__latency.select("B");
+    });
+    await page.waitForFunction(() =>
+      document
+        .querySelector('[data-testid="state"]')
+        ?.dataset.error?.includes("synthetic restore failure"),
+    );
+    assert.equal(await page.getByTestId("state").getAttribute("data-ready"), "false");
+    await page.evaluate(() => {
+      window.__latency.reject(null);
+      window.__latency.select("B");
+    });
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="state"]')?.dataset.ready === "true",
+    );
+    // 缺少轻量接口时明确要求升级；不能悄悄退回全历史刷新或凭保温快照开放发送。
+    await page.evaluate(() => {
+      window.__latency.reject(null);
+      window.__latency.oldHost();
+      window.__latency.select("A");
+    });
+    await page.waitForFunction(() =>
+      document.querySelector('[data-testid="state"]')?.dataset.error?.includes("升级"),
+    );
+    assert.equal(await page.getByTestId("state").getAttribute("data-ready"), "false");
     assert.deepEqual(errors, []);
     await page.close();
   }

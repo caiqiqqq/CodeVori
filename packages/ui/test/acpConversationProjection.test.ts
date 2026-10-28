@@ -233,7 +233,8 @@ test("notification before initial RPC ACK cannot replace its base or duplicate t
   }
 });
 
-test("split panes reuse the existing data layer lease and one physical ACP subscription", async () => {
+test("split panes and warm reopen share one subscription until the last lease expires", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = await setup();
   let subscriptions = 0;
   let releases = 0;
@@ -250,6 +251,7 @@ test("split panes reuse the existing data layer lease and one physical ACP subsc
   };
   const first = acquireAcpConversationProjection(wrapped, f.workspace, f.target.id, () => {});
   const second = acquireAcpConversationProjection(wrapped, f.workspace, f.target.id, () => {});
+  let reopened: ReturnType<typeof acquireAcpConversationProjection> | undefined;
   try {
     assert.equal(first.store, second.store);
     await until(() => first.store.getState().snapshot !== null, first.store);
@@ -258,12 +260,33 @@ test("split panes reuse the existing data layer lease and one physical ACP subsc
     assert.equal(releases, 0);
     assert.equal(second.store.getState().status, "live");
     second.release();
-    assert.equal(releases, 1);
+    assert.equal(releases, 0, "leaving a conversation keeps its projection warm");
+    t.mock.timers.tick(20_000);
+    reopened = acquireAcpConversationProjection(wrapped, f.workspace, f.target.id, () => {});
+    assert.equal(reopened.store, first.store);
+    assert.equal(reopened.openKind, "keep_warm");
+    assert.equal(reopened.store.getState().status, "live");
+    assert.equal(subscriptions, 1, "warm reopen must not read history or subscribe again");
+    t.mock.timers.tick(30_000);
+    assert.equal(releases, 0, "the previous expiry cannot dispose an active lease");
+    reopened.release();
+    t.mock.timers.tick(29_999);
+    assert.equal(releases, 0);
+    t.mock.timers.tick(1);
+    assert.equal(releases, 1, "expiry disposes the physical subscription exactly once");
     second.release();
     assert.equal(releases, 1);
+    const cold = acquireAcpConversationProjection(wrapped, f.workspace, f.target.id, () => {});
+    assert.notEqual(cold.store, first.store);
+    await until(() => cold.store.getState().snapshot !== null, cold.store);
+    assert.equal(subscriptions, 2);
+    cold.release();
+    t.mock.timers.tick(30_000);
   } finally {
     first.release();
     second.release();
+    reopened?.release();
+    t.mock.timers.tick(30_000);
     await f.cleanup();
   }
 });
@@ -314,7 +337,7 @@ test("invalid online payload repairs the same saved revision without mutating th
   }
 });
 
-test("Channel RPC serializes small summary and selected conversation events for long history", async () => {
+test("Channel RPC serializes small summary and selected conversation events for long history", async (t) => {
   const f = await setup();
   const [serverProtocol, clientProtocol] = createQueuePair();
   const server = new ChannelServer(serverProtocol, "fixture");
@@ -335,7 +358,23 @@ test("Channel RPC serializes small summary and selected conversation events for 
     resolveFrame();
   });
   try {
-    await client.refresh(f.target);
+    const refreshed = await client.refreshSummary(f.target);
+    assert.equal(refreshed.history.entryCount, 3440);
+    assert.equal(refreshed.entries.length, 1);
+    assert.ok(refreshed.entries[0]!.kind === "user");
+    assert.ok(
+      Buffer.byteLength(JSON.stringify(refreshed)) < 15000,
+      "readiness must not serialize the full history (body notifications are independent)",
+    );
+    await assert.rejects(
+      client.refreshSummary({ ...f.target, workspaceIdentity: "projection:other-host" }),
+      /does not belong/,
+    );
+    const before = await client.read(f.target);
+    assert.equal(before.entries.length, 3440, "refresh cannot truncate the durable history");
+    t.diagnostic(
+      `3440-entry history: full ${Buffer.byteLength(JSON.stringify(before))} bytes; ready summary ${Buffer.byteLength(JSON.stringify(refreshed))} bytes`,
+    );
     await client.submitPrompt({ ...f.target, commandId: "rpc", text: "新问题" });
     await client.readConversation({ ...f.target, subscriptionId: "rpc" });
     sizes.length = 0;
