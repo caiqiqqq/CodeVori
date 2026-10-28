@@ -134,8 +134,9 @@ test(
       assert.equal(opened, 0);
       const paired = await fetch(origin + `/?token=${token}`, { redirect: "manual" });
       assert.equal(paired.status, 303);
-      assert.equal(paired.headers.get("location"), "/");
+      assert.equal(paired.headers.get("location"), "/pair");
       assert.match(paired.headers.get("set-cookie")!, /HttpOnly; SameSite=Strict/);
+      assert.doesNotMatch(paired.headers.get("set-cookie")!, /Max-Age|Expires/i);
       cookie = paired.headers.get("set-cookie")!.split(";")[0]!;
       assert.equal(
         await (await fetch(origin, { headers: { Cookie: cookie } })).text(),

@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { realpath, stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
@@ -13,6 +13,7 @@ import {
 } from "@zcode/rpc";
 import { windowHostAttachmentScopeSchema, type WindowHostAttachmentScope } from "@zcode/shared";
 import { sendDesktopLanStatic } from "./desktopLanStatic.js";
+import { desktopLanPairingPage } from "./desktopLanPairingPage.js";
 
 export interface DesktopLanAttachment {
   protocol: IMessagePassingProtocol;
@@ -90,13 +91,16 @@ export async function createDesktopLanGateway(options: {
     if (!allowedHosts.has(url.hostname.toLowerCase())) throw new Error("Invalid Host");
     return url;
   };
-  const authorize = (response: ServerResponse) => {
+  // Cookie 不按端口隔离；绑定完整 origin，避免改地址/端口后沿用旧授权。
+  const sessionToken = (url: URL) =>
+    createHmac("sha256", options.token).update(url.origin).digest("base64url");
+  const authorize = (response: ServerResponse, url: URL) => {
     response.setHeader(
       "Set-Cookie",
-      `${COOKIE}=${encodeURIComponent(options.token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800`,
+      `${COOKIE}=${sessionToken(url)}; Path=/; HttpOnly; SameSite=Strict`,
     );
     response.writeHead(303, {
-      Location: "/",
+      Location: "/pair",
       "Cache-Control": "no-store",
       "Referrer-Policy": "no-referrer",
     });
@@ -113,7 +117,7 @@ export async function createDesktopLanGateway(options: {
         request.method === "GET" &&
         equalToken(url.searchParams.get("token") ?? undefined, options.token)
       ) {
-        authorize(response);
+        authorize(response, url);
         return;
       }
       if (request.method === "POST" && url.pathname === "/pair") {
@@ -133,18 +137,22 @@ export async function createDesktopLanGateway(options: {
           send(response, 401, "Unauthorized");
           return;
         }
-        authorize(response);
+        authorize(response, url);
         return;
       }
-      if (!equalToken(cookieToken(request), options.token)) {
+      if (!equalToken(cookieToken(request), sessionToken(url))) {
+        const pairingPage = url.pathname === "/" || url.pathname === "/pair";
         send(
           response,
           401,
-          url.pathname === "/"
-            ? '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZCode LAN</title><form method="post" action="/pair"><label>Access token <input name="token" type="password" required autocomplete="off"></label><button>Connect</button></form>'
-            : "Unauthorized",
-          url.pathname === "/" ? "text/html; charset=utf-8" : undefined,
+          pairingPage ? desktopLanPairingPage() : "Unauthorized",
+          pairingPage ? "text/html; charset=utf-8" : undefined,
         );
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/pair") {
+        // 原先 8 小时 Cookie 到期就丢失配对；按 origin 保存固定凭据以跨浏览器会话恢复。
+        send(response, 200, desktopLanPairingPage(options.token), "text/html; charset=utf-8");
         return;
       }
       if (request.method !== "GET" && request.method !== "HEAD") {
@@ -207,7 +215,7 @@ export async function createDesktopLanGateway(options: {
       if (
         url.pathname !== "/ws" ||
         request.headers.origin !== url.origin ||
-        !equalToken(cookieToken(request), options.token)
+        !equalToken(cookieToken(request), sessionToken(url))
       ) {
         socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
         return;
