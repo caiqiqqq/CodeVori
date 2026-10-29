@@ -177,8 +177,8 @@ export class AcpTerminals {
     return {};
   }
 
-  async dispose() {
-    this.closed = true;
+  /** 停止只回收当前进程；输出句柄和管理器留给同一 ACP 连接的后续 prompt。 */
+  async interrupt() {
     const results = await Promise.allSettled(
       [...this.terminals].map(async ([id, terminal]) => {
         if (terminal.fact.status === "running") terminal.fact.status = "interrupted";
@@ -188,6 +188,11 @@ export class AcpTerminals {
     );
     if (results.some((result) => result.status === "rejected"))
       throw new Error("ACP terminal process cleanup did not complete");
+  }
+
+  async dispose() {
+    this.closed = true;
+    await this.interrupt();
     this.terminals.clear();
   }
 }

@@ -328,7 +328,8 @@ test("ACP stop/remove/dispose wait for unaccepted attachment cleanup without pub
       ).then(() => {
         settled = true;
       });
-      await closed.promise;
+      if (action === "stop") await operation;
+      else await closed.promise;
       if (action !== "stop") assert.equal(settled, false, "remove/close must wait for cleanup");
       release.resolve();
       await Promise.all([sending, operation]);
@@ -370,7 +371,7 @@ test("ACP deletion waits for a stopped attachment write even after a new turn fi
     connect: async (input) => ({
       ...(await factory(input)),
       close() {
-        if (++closes === 2) removedConnection.resolve();
+        if (++closes === 1) removedConnection.resolve();
       },
     }),
   });

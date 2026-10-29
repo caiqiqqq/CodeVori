@@ -21,12 +21,13 @@ import { projectAcpContextUsage } from "./acpContextUsage.js";
 import { projectAcpMcpServers, projectAcpPluginMcpServers } from "./acpMcpServers.js";
 import { projectAcpToolDetails } from "./acpToolDetails.js";
 import { projectLegacyCompaction, projectTypedCompaction } from "./acpCompaction.js";
-import { projectAcpSessionFailure } from "./acpSessionFailures.js";
+import { AcpSessionLoadError, projectAcpSessionFailure } from "./acpSessionFailures.js";
 import { AcpTerminals } from "./acpTerminals.js";
 import { connectAcpClientTransport } from "./acpClientTransport.js";
 import { OperationDiagnostics } from "@zcode/rpc";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { acpTextConnectionPolicy } from "./acpTextConnectionPolicy.js";
+import { AcpPromptLifecycle } from "./acpPromptLifecycle.js";
 
 const diagnosticLogger = createServiceLogger("acp-connection");
 const diagnostics = new OperationDiagnostics(
@@ -37,13 +38,7 @@ const diagnostics = new OperationDiagnostics(
 const START_TIMEOUT_MS = 20_000;
 const MAX_INITIAL_USAGE_SESSIONS = 16;
 
-/** Only native-session restore failures may trigger empty-session replacement in the Host. */
-export class AcpSessionLoadError extends Error {
-  constructor(cause: unknown) {
-    super(cause instanceof Error ? cause.message : String(cause), { cause });
-    this.name = "AcpSessionLoadError";
-  }
-}
+export { AcpSessionLoadError } from "./acpSessionFailures.js";
 
 export const connectAcpAgent: AcpConnectionFactory = (input) =>
   diagnostics.run(`acp.connect.${input.agent}`, (timing) => connectWithDiagnostics(input, timing));
@@ -115,6 +110,7 @@ async function connectWithDiagnostics(
   let configOptions: AcpConnectionPort["configOptions"] = [];
   let modeState: AcpConnectionPort["modeState"] = null;
   let receivingLiveUpdates = false;
+  const promptLifecycle = new AcpPromptLifecycle(input.onUpdate);
   const compactionIds = new Set<string>();
   let receivingInitialUsage = false;
   const initialUsageBySession = new Map<string, AcpUpdate & { kind: "context_usage" }>();
@@ -134,7 +130,7 @@ async function connectWithDiagnostics(
   const client: Client = {
     async createTerminal(request) {
       if (input.textOnly) throw new Error("Auxiliary generation has no terminal capability");
-      if (closed || !receivingLiveUpdates || request.sessionId !== sessionId)
+      if (closed || !promptLifecycle.accepting || request.sessionId !== sessionId)
         throw new Error("ACP terminal session is not active");
       return terminals.create(request);
     },
@@ -232,20 +228,21 @@ async function connectWithDiagnostics(
       ) {
         mapped = projectToolUpdate(update);
       }
-      if (mapped) await input.onUpdate(mapped);
+      if (mapped) await promptLifecycle.update(mapped);
     },
     async requestPermission(request) {
       if (input.textOnly || !receivingLiveUpdates || request.sessionId !== sessionId) {
         return { outcome: { outcome: "cancelled" } };
       }
       // 部分适配器只在授权请求中给出工具信息；先交给同一 Host owner，避免丢失参数和关联行。
-      await input.onUpdate(projectToolUpdate(request.toolCall));
-      const optionId = await input.onPermission({
-        requestId: randomUUID(),
-        toolCallId: request.toolCall.toolCallId,
-        title: request.toolCall.title ?? request.toolCall.toolCallId,
-        options: request.options.map(({ optionId, name, kind }) => ({ optionId, name, kind })),
-      });
+      const optionId = await promptLifecycle.authorize(projectToolUpdate(request.toolCall), () =>
+        input.onPermission({
+          requestId: randomUUID(),
+          toolCallId: request.toolCall.toolCallId,
+          title: request.toolCall.title ?? request.toolCall.toolCallId,
+          options: request.options.map(({ optionId, name, kind }) => ({ optionId, name, kind })),
+        }),
+      );
       return { outcome: optionId ? { outcome: "selected", optionId } : { outcome: "cancelled" } };
     },
   };
@@ -359,7 +356,6 @@ async function connectWithDiagnostics(
     initialUsageBySession.clear();
     receivingLiveUpdates = true;
     const activeSessionId = sessionId;
-    let lastStopReason: AcpConnectionPort["lastStopReason"];
     const readNativeUsage = () =>
       input.agent === "codex" && agentInfo?.name === "@agentclientprotocol/codex-acp"
         ? readCodexNativeUsage({
@@ -384,7 +380,7 @@ async function connectWithDiagnostics(
         return nativeUsage;
       },
       get lastStopReason() {
-        return lastStopReason;
+        return promptLifecycle.lastStopReason;
       },
       ...(initialUsage ? { contextUsage: initialUsage.usage } : {}),
       async setConfigOption(configId, value) {
@@ -401,18 +397,21 @@ async function connectWithDiagnostics(
       async prompt(text, blocks) {
         // 仅保留本轮 legacy 工具的路由身份；生命周期与终态仍由 Host 唯一持有。
         compactionIds.clear();
-        const response = await connection.request("session/prompt", {
-          sessionId: activeSessionId,
-          prompt: blocks ?? [{ type: "text", text }],
-        });
-        lastStopReason = response.stopReason;
-        const failure = projectAcpSessionFailure(response._meta);
-        if (failure) await input.onUpdate({ kind: "failure", failure });
+        const response = await promptLifecycle.run(() =>
+          connection.request("session/prompt", {
+            sessionId: activeSessionId,
+            prompt: blocks ?? [{ type: "text", text }],
+          }),
+        );
         nativeUsage = await readNativeUsage();
         return projectAcpPromptUsage(input.agent, agentInfo, response);
       },
       async cancel() {
-        await connection.notify("session/cancel", { sessionId: activeSessionId });
+        promptLifecycle.cancel();
+        await Promise.all([
+          connection.notify("session/cancel", { sessionId: activeSessionId }),
+          terminals.interrupt(),
+        ]);
       },
       close,
     };

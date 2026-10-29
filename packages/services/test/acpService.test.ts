@@ -1571,7 +1571,7 @@ test("reconnection changes attachment id without losing workspace history or lea
   }
 });
 
-test("stop cancels permission, closes the old process, and ignores late updates", async () => {
+test("stop cancels permission, retains the settled process, and ignores idle late updates", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zcode-acp-stop-"));
   let lateUpdate: ((update: { kind: "text"; text: string }) => Promise<void>) | undefined;
   let choice: string | null | undefined;
@@ -1614,7 +1614,7 @@ test("stop cancels permission, closes the old process, and ignores late updates"
     await service.stop({ ...workspace, id: session.id });
     await running;
     assert.equal(choice, null);
-    assert.equal(closed, true);
+    assert.equal(closed, false);
     await assert.rejects(
       service.decide({ ...workspace, id: session.id, requestId: "ask-1", optionId: "allow" }),
       /expired/,
