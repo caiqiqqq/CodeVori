@@ -21,6 +21,8 @@ export const repositoryIssueSummarySchema = z
   .object({
     pending: z.number().int().nonnegative(),
     checkedAt: z.number().int().nonnegative(),
+    // 部分项目不可用时 pending 仅包含成功仓库，不能当成完整总数。
+    incomplete: z.boolean().optional(),
   })
   .strict();
 export type RepositoryIssueSummary = z.infer<typeof repositoryIssueSummarySchema>;

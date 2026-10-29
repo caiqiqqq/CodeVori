@@ -113,10 +113,22 @@ export function createRepositoryIssueSummary(options: {
     if (!request.projects.length) return { pending: 0, checkedAt: now() };
     if (!options.forge) throw new Error("FORGE_TASK_UNSUPPORTED");
     const groups = new Map<string, RepositoryGroup>();
-    for (const project of request.projects) {
-      const info = await options.forge.getForgeRepository(project);
-      if (info.status === "missing-account" || info.status === "account-mismatch")
-        throw new Error("FORGE_MISSING_ACCOUNT");
+    // 项目独立发现：某个项目缺账号或读取失败不能阻断其他项目的议题提示。
+    const discovery = await Promise.allSettled(
+      request.projects.map(async (project) => {
+        const info = await options.forge!.getForgeRepository(project);
+        if (info.status === "missing-account" || info.status === "account-mismatch")
+          throw new Error("FORGE_MISSING_ACCOUNT");
+        return { project, info };
+      }),
+    );
+    const failures: unknown[] = [];
+    for (const result of discovery) {
+      if (result.status === "rejected") {
+        failures.push(result.reason);
+        continue;
+      }
+      const { project, info } = result.value;
       if (info.status !== "ready" || !info.repository) continue;
       let group = groups.get(info.repository.key);
       if (!group) {
@@ -134,7 +146,7 @@ export function createRepositoryIssueSummary(options: {
       }
       group.projects.push(project);
     }
-    const counts = await Promise.all(
+    const results = await Promise.allSettled(
       [...groups.values()].map(async ({ target, projects }) => {
         const numbers = await openIssues(target, request.force);
         const linked = new Set<number>();
@@ -148,6 +160,16 @@ export function createRepositoryIssueSummary(options: {
         return pending;
       }),
     );
-    return { pending: counts.reduce((sum, count) => sum + count, 0), checkedAt: now() };
+    let pending = 0;
+    let available = 0;
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        pending += result.value;
+        available++;
+      } else failures.push(result.reason);
+    }
+    // 完全失败仍交给共享读模型保留旧值；只有部分成功时才发布明确标记的部分数量。
+    if (!available && failures.length) throw failures[0];
+    return { pending, checkedAt: now(), ...(failures.length ? { incomplete: true } : {}) };
   };
 }

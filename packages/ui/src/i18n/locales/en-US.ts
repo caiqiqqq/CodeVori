@@ -591,6 +591,8 @@ const enUS: Record<string, string> = {
   "workTasks.error.work-task.executor-invalid": "Invalid task agent configuration.",
   "repositoryPanel.title": "Repository Panel",
   "repositoryPanel.sidebar.pending": "{count} open issues have no linked ZCode task",
+  "repositoryPanel.sidebar.partial":
+    "Found {count} unhandled issues. Some projects are unavailable.",
   "repositoryPanel.sidebar.stale": "Last known: {count} unhandled issues. Unable to refresh.",
   "repositoryPanel.sidebar.loading": "Checking for unhandled issues…",
   "repositoryPanel.sidebar.unavailable": "Unhandled issue count is unavailable",
