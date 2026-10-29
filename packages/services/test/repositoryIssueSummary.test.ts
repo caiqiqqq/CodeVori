@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ForgeItem, ForgeItemList, WorkTask } from "@zcode/shared";
+import type { ForgeItem, ForgeItemList, ForgeRepositoryInfo, WorkTask } from "@zcode/shared";
 import { createRepositoryIssueSummary } from "../src/session/repositoryIssueSummary.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -26,6 +26,8 @@ function page(numbers: number[], hasMore = false, total: number | null = null): 
 function fixture() {
   let now = 1000;
   const tasks = new Map<string, WorkTask[]>();
+  const repositories = new Map<string, string | Error>();
+  const statuses = new Map<string, ForgeRepositoryInfo["status"]>();
   const calls: unknown[] = [];
   const replies: Array<ForgeItemList | Error | Promise<ForgeItemList>> = [];
   const read = createRepositoryIssueSummary({
@@ -33,13 +35,15 @@ function fixture() {
     tasks: (scope) => tasks.get(scope.workspacePath) ?? [],
     forge: {
       async getForgeRepository(scope) {
+        const repository = repositories.get(scope.workspacePath) ?? "repo";
+        if (repository instanceof Error) throw repository;
         return {
-          status: "ready",
+          status: statuses.get(scope.workspacePath) ?? "ready",
           remoteNames: ["origin"],
           remoteName: scope.remoteName ?? "origin",
           host: "forge.example.invalid",
           provider: "github",
-          repository: { key: "repo", accountId } as never,
+          repository: { key: repository, accountId } as never,
         };
       },
       async listForgeItems(input) {
@@ -54,6 +58,8 @@ function fixture() {
   return {
     read,
     tasks,
+    repositories,
+    statuses,
     calls,
     replies,
     advance: () => {
@@ -97,6 +103,67 @@ test("cached remote rows never cache task associations; remote cache expires aft
   f.advance();
   f.replies.push(page([1, 2, 3]));
   assert.equal((await f.read({ projects: [project] })).pending, 2);
+});
+
+test("every eligible project contributes even when the current project has no issues", async () => {
+  const f = fixture();
+  f.repositories.set("/other", "other-repo");
+  f.repositories.set("/third", "third-repo");
+  f.replies.push(page([]), page([1, 2]), page([1, 3, 4]));
+  const summary = await f.read({
+    projects: [project, { workspacePath: "/other" }, { workspacePath: "/third" }],
+  });
+  assert.equal(summary.pending, 5);
+  assert.equal(Boolean(summary.incomplete), false);
+  assert.equal(f.calls.length, 3);
+});
+
+test("ineligible and failed discovery projects cannot hide another repository's issues", async () => {
+  const f = fixture();
+  const statuses = [
+    "missing-account",
+    "account-mismatch",
+    "not-repository",
+    "no-remote",
+    "unsupported",
+  ] as const;
+  for (const status of statuses) f.statuses.set(`/${status}`, status);
+  f.repositories.set("/unreadable", new Error("FORGE_NETWORK"));
+  f.replies.push(page([1, 2]));
+  const summary = await f.read({
+    projects: [
+      ...statuses.map((status) => ({ workspacePath: `/${status}` })),
+      { workspacePath: "/unreadable" },
+      project,
+    ],
+  });
+  assert.equal(summary.pending, 2);
+  assert.equal(summary.incomplete, true);
+  assert.equal(f.calls.length, 1);
+  const recovered = await f.read({ projects: [project] });
+  assert.equal(recovered.pending, 2);
+  assert.equal(Boolean(recovered.incomplete), false);
+  await assert.rejects(
+    f.read({ projects: [{ workspacePath: "/missing-account" }] }),
+    /FORGE_MISSING_ACCOUNT/,
+  );
+  assert.equal((await f.read({ projects: [{ workspacePath: "/no-remote" }] })).pending, 0);
+});
+
+test("failed and incomplete repositories leave successful repository counts visible and recover", async () => {
+  for (const failure of [new Error("FORGE_FORBIDDEN"), { ...page([9]), incomplete: true }]) {
+    const f = fixture();
+    f.repositories.set("/failed", "failed-repo");
+    f.replies.push(page([1, 2]), failure);
+    const projects = [project, { workspacePath: "/failed" }];
+    const partial = await f.read({ projects });
+    assert.equal(partial.pending, 2);
+    assert.equal(partial.incomplete, true);
+    f.replies.push(page([9]));
+    const recovered = await f.read({ projects });
+    assert.equal(recovered.pending, 3);
+    assert.equal(Boolean(recovered.incomplete), false);
+  }
 });
 
 test("concurrent readers share IO and use links accepted while Forge is in flight", async () => {

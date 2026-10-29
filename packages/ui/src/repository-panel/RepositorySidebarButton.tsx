@@ -17,7 +17,7 @@ export function RepositorySidebarButton({
   onClick?: () => void;
 }) {
   const { intl } = useZCodeIntl();
-  const { count, loading, stale } = useRepositoryIssueCounts(projects);
+  const { count, loading, stale, partial } = useRepositoryIssueCounts(projects);
   const available = !projectsLoading && count !== null;
   // 只有已知的正数才表示有待处理议题；加载、失败或过期的 0 不应产生侧栏提醒。
   const showPending = available && count > 0;
@@ -25,9 +25,11 @@ export function RepositorySidebarButton({
   const summary = intl.formatMessage(
     {
       id: available
-        ? stale
-          ? "repositoryPanel.sidebar.stale"
-          : "repositoryPanel.sidebar.pending"
+        ? partial
+          ? "repositoryPanel.sidebar.partial"
+          : stale
+            ? "repositoryPanel.sidebar.stale"
+            : "repositoryPanel.sidebar.pending"
         : loading || projectsLoading
           ? "repositoryPanel.sidebar.loading"
           : "repositoryPanel.sidebar.unavailable",
@@ -57,7 +59,7 @@ export function RepositorySidebarButton({
             aria-hidden="true"
             className="flex shrink-0 items-center gap-1 text-ui-xs tabular-nums text-warning"
           >
-            {stale ? (
+            {stale || partial ? (
               <TriangleAlert data-testid="repository-sidebar-stale" className="size-3!" />
             ) : (
               <CircleDot data-testid="repository-sidebar-issue" className="size-3!" />
