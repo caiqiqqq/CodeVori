@@ -1,6 +1,7 @@
 import { WorkTaskAgent } from "@/work-tasks/WorkTaskParts.js";
-import { Star } from "lucide-react";
+import { Folder, Star } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
+import { Badge } from "@/components/ui/badge.js";
 import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -28,6 +29,7 @@ export function AgentBoardCard({
   const colors = boardStatusColors;
   const status = boardDisplayStatus(item);
   const isConversation = item.workspacePurpose === "conversation";
+  const projectName = projectLabel ?? item.workspacePath.split("/").pop();
   const change = item.kind === "native" ? item.task.changeSummary : undefined;
   const summary = change
     ? intl.formatMessage(
@@ -45,13 +47,22 @@ export function AgentBoardCard({
         onClick={onOpen}
       >
         <div className="mb-3 flex items-center justify-between gap-2 text-ui-caption text-foreground-subtle">
-          <span className="truncate">
-            {item.kind === "work-task"
-              ? `${t("workTasks")} · ${projectLabel ?? item.workspacePath.split("/").pop()}`
-              : isConversation
-                ? intl.formatMessage({ id: "agentBoard.conversations" })
-                : (projectLabel ?? item.workspacePath.split("/").pop())}
-          </span>
+          <div className="flex min-w-0 items-center gap-2">
+            {/* 项目名原先与辅助信息同为灰字，跨项目浏览时难辨认，提升为主文字标签。 */}
+            <Badge
+              variant="outline"
+              className="h-6 min-w-0 shrink justify-start rounded-md bg-accent px-2 text-ui-base font-semibold text-foreground"
+              title={isConversation ? t("conversations") : projectName}
+            >
+              {!isConversation ? (
+                <Folder aria-hidden="true" className="shrink-0 text-icon-blue" />
+              ) : null}
+              <span className="truncate">{isConversation ? t("conversations") : projectName}</span>
+            </Badge>
+            {item.kind === "work-task" ? (
+              <span className="shrink-0 text-ui-xs">{t("workTasks")}</span>
+            ) : null}
+          </div>
           <span className={`shrink-0 ${colors[status]}`}>{t(`status.${status}`)}</span>
         </div>
         <h3 className="line-clamp-2 font-medium leading-relaxed">{item.title || t("untitled")}</h3>

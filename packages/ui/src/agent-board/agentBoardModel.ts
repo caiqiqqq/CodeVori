@@ -103,13 +103,19 @@ export function nativeBoardStatus(task: WindowHostControllerTaskListItem): Board
   )
     return "running";
   if (reviewed(task.updatedAt, task.boardCompletedAt)) return "completed";
-  return task.liveStatus === "error" || activity?.phase === "error" ? "error" : "idle";
+  // 主动中断的 liveStatus 也可能是 completed，需读原始 phase，避免又被归入进行中。
+  return task.liveStatus === "error" ||
+    activity?.phase === "error" ||
+    activity?.phase === "completedInterrupted"
+    ? "error"
+    : "idle";
 }
 export function acpBoardStatus(session: AcpSidebarSession): BoardStatus {
   if (session.waiting) return "waiting";
   if (session.status === "running") return "running";
   if (reviewed(session.updatedAt, session.boardCompletedAt)) return "completed";
-  return session.failed ? "error" : "idle";
+  // failed 仅表示带错误的中断；用户停止时没有 error，也不能继续显示进行中。
+  return session.status === "interrupted" || session.failed ? "error" : "idle";
 }
 export function workTaskBoardStatus(task: WorkTask): BoardStatus {
   // 待办完成以原任务生命周期为准，不能用会话确认水位代替验收。
