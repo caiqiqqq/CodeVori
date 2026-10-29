@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { NativeMcpServerRecord } from "@zcode/shared";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
+import { savedWorkflowTools } from "./acpSavedWorkflows.js";
 
 interface McpEndpointTools {
   names: readonly string[];
@@ -48,6 +49,8 @@ await Promise.allSettled(pending);
 `;
 
 function toolInputSchema(name: string): Record<string, unknown> {
+  const saved = savedWorkflowTools.find((tool) => tool.name === name);
+  if (saved) return saved.inputSchema;
   if (name === "submit_result")
     return {
       type: "object",
@@ -129,7 +132,9 @@ export function createAcpWorkflowMcp(directory: string) {
                   endpoint.tools ??
                   endpoint.names.map((name) => ({
                     name,
-                    description: `ZCode workflow: ${name}`,
+                    description:
+                      savedWorkflowTools.find((tool) => tool.name === name)?.description ??
+                      `ZCode workflow: ${name}`,
                     inputSchema: toolInputSchema(name),
                   })),
               };

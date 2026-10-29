@@ -25,6 +25,7 @@ export {
   createSubmitResultToolEntry,
   submitResultToolEntry,
 } from "./tool/handlers/submit-result.js";
+export { prepareWorkflowSave, saveWorkflowDefinition } from "./tool/handlers/save-workflow.js";
 // 已保存工作流的 store / codec：GUI 中枢的协议处理器住在
 // bootstrap，但解析器与序列化器只能有一份——写侧与读侧各自演化的症状是「刚保存的 workflow
 // 列不出来」，所以从这里导出而不是让 bootstrap 再抄一份。

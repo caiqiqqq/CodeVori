@@ -32,6 +32,8 @@ import type {
   ZCodeWorkflowsDeleteResult,
   ZCodeWorkflowsGetResult,
   ZCodeWorkflowsListResult,
+  ZCodeWorkflowsPrepareSaveResult,
+  ZCodeWorkflowsSaveResult,
   ZCodeWorkflowsMoveResult,
   ZCodeWorkflowsRunsResult,
   ZCodeWorkflowsUpdateMetaResult,
@@ -137,6 +139,8 @@ import type {
   ZCodeAgentGetSavedWorkflowParams,
   ZCodeAgentListSavedWorkflowRunsParams,
   ZCodeAgentListSavedWorkflowsParams,
+  ZCodeAgentPrepareWorkflowSaveParams,
+  ZCodeAgentSaveWorkflowParams,
   ZCodeAgentMoveSavedWorkflowParams,
   ZCodeAgentUpdateSavedWorkflowMetaParams,
 } from "./zcodeAgentWorkflowParams.js";
@@ -620,6 +624,10 @@ export interface IZCodeAgentService {
   // 已保存工作流的 GUI 中枢：workspace 级、无会话，每次调用现扫 `<cwd>/.zcode/workflows/`。
   // 全局档传 `scope: "global"`：带 workspace 就用它当载体，不带则由 services 层自选本机载体运行时。
   listSavedWorkflows(params: ZCodeAgentListSavedWorkflowsParams): Promise<ZCodeWorkflowsListResult>;
+  prepareWorkflowSave(
+    params: ZCodeAgentPrepareWorkflowSaveParams,
+  ): Promise<ZCodeWorkflowsPrepareSaveResult>;
+  saveWorkflow(params: ZCodeAgentSaveWorkflowParams): Promise<ZCodeWorkflowsSaveResult>;
   getSavedWorkflow(params: ZCodeAgentGetSavedWorkflowParams): Promise<ZCodeWorkflowsGetResult>;
   updateSavedWorkflowMeta(
     params: ZCodeAgentUpdateSavedWorkflowMetaParams,

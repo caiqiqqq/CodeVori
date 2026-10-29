@@ -24,6 +24,11 @@ import {
   type FrozenActorSelection,
 } from "./acpWorkflowPlan.js";
 import { restoreAcpWorkflowProjection } from "./acpWorkflowRestore.js";
+import {
+  callSavedWorkflowTool,
+  savedWorkflowTools,
+  type AcpSavedWorkflowService,
+} from "./acpSavedWorkflows.js";
 
 type Live = { cancel: AbortController; settled: Promise<void> };
 /** Per-parent Host controller; run decisions live only in the shared engine/journal. */
@@ -37,6 +42,7 @@ export class AcpWorkflowHost {
   constructor(
     private readonly options: {
       directory: string;
+      savedWorkflows?: AcpSavedWorkflowService;
       connect: AcpConnectionFactory;
       mcp: AcpWorkflowMcp;
       mutate(session: AcpSession, change: () => void): Promise<void>;
@@ -71,6 +77,7 @@ export class AcpWorkflowHost {
   }
 
   async register(session: AcpSession): Promise<{ record: NativeMcpServerRecord; revoke(): void }> {
+    const savedTools = this.options.savedWorkflows ? savedWorkflowTools : [];
     return this.options.mcp.register("zcode-workflows", {
       names: [
         "ReadWorkflowInstructions",
@@ -78,9 +85,23 @@ export class AcpWorkflowHost {
         "GetWorkflowRun",
         "CancelWorkflowRun",
         "ResumeWorkflowRun",
+        ...savedTools.map((tool) => tool.name),
       ],
       call: async (name, args) => {
-        if (name === "ReadWorkflowInstructions") return { instructions };
+        if (savedTools.some((tool) => tool.name === name))
+          return callSavedWorkflowTool(
+            name,
+            args,
+            session,
+            this.options.savedWorkflows!,
+            this.options.permission,
+          );
+        if (name === "ReadWorkflowInstructions")
+          return {
+            instructions: this.options.savedWorkflows
+              ? `${instructions}\nCreateWorkflow starts a run; it does not save a reusable definition. Only when the user explicitly asks or agrees, use SaveWorkflow with name (file-safe identifier), description, required scope (project/global), optional whenToUse/args declarations, and exactly one of script/script_path. Saving checks the script, asks one-time permission and writes without running. ListSavedWorkflows lists definitions; saved ones are available in Automations → Workflows.`
+              : instructions,
+          };
         if (name === "CreateWorkflow") return this.create(session, args);
         const runId = args.runId;
         if (typeof runId !== "string") throw new Error("runId is required");
