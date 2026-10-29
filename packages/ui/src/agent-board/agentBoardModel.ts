@@ -45,10 +45,11 @@ export const defaultBoardTracking: BoardTracking = {
   includedItems: [],
   excludedItems: [],
 };
-export function matchesBoardTracking(
-  item: Pick<BoardItem, "key" | "projectKey" | "workspacePurpose" | "kind">,
-  tracking: BoardTracking,
-) {
+export type BoardTrackingTarget = Pick<
+  BoardItem,
+  "key" | "projectKey" | "workspacePurpose" | "kind"
+>;
+export function matchesBoardTracking(item: BoardTrackingTarget, tracking: BoardTracking) {
   if (tracking.mode === "all") return true;
   if (tracking.excludedItems.includes(item.key)) return false;
   return (

@@ -1,3 +1,4 @@
+import { AgentBoardPreview } from "./AgentBoardPreview.js";
 import { useMemo, useRef, useState } from "react";
 import { isWorkTaskMerging } from "@zcode/shared";
 import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
@@ -70,35 +71,40 @@ export function AgentBoardWorkTaskDetails({
             {intl.formatMessage({ id: "agentBoard.workTasks" })}
           </DialogDescription>
           {item.online ? (
-            <WorkTaskConversationPane
-              task={task}
-              panel={panel}
-              options={{
-                ...options,
-                focused: !modal,
-                statusPanel: binding
-                  ? {
-                      ...git,
-                      workspaceKey: gitScope.workspacePath,
-                      onOpenGitReview: git.onOpenGitReview
-                        ? (sourceId) => {
-                            onClose();
-                            git.onOpenGitReview?.(sourceId);
-                          }
-                        : undefined,
-                    }
-                  : undefined,
-              }}
-              showMergeConversation={showMerge}
-              onToggleMergeConversation={() => setMerge(!showMerge)}
-              onClose={onClose}
-              onDetails={() => setModal("details")}
-              onEdit={() => setModal("edit")}
-              onComplete={() => {
-                if (canReviewWorkTaskCompletion(task)) setModal("complete");
-              }}
-              onOpenConversation={() => onOpenSession(item)}
-            />
+            <AgentBoardPreview scope={gitScope} onOpenBrowserUrl={options?.onOpenBrowserUrl}>
+              {(preview) => (
+                <WorkTaskConversationPane
+                  task={task}
+                  panel={panel}
+                  options={{
+                    ...options,
+                    ...preview,
+                    focused: !modal,
+                    statusPanel: binding
+                      ? {
+                          ...git,
+                          workspaceKey: gitScope.workspacePath,
+                          onOpenGitReview: git.onOpenGitReview
+                            ? (sourceId) => {
+                                onClose();
+                                git.onOpenGitReview?.(sourceId);
+                              }
+                            : undefined,
+                        }
+                      : undefined,
+                  }}
+                  showMergeConversation={showMerge}
+                  onToggleMergeConversation={() => setMerge(!showMerge)}
+                  onClose={onClose}
+                  onDetails={() => setModal("details")}
+                  onEdit={() => setModal("edit")}
+                  onComplete={() => {
+                    if (canReviewWorkTaskCompletion(task)) setModal("complete");
+                  }}
+                  onOpenConversation={() => onOpenSession(item)}
+                />
+              )}
+            </AgentBoardPreview>
           ) : (
             <p className="p-4 text-warning">{intl.formatMessage({ id: "agentBoard.offline" })}</p>
           )}

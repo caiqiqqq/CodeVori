@@ -7,6 +7,8 @@ import {
   boardDisplayStatus,
   boardHasUnreadResult,
   workTaskResultToken,
+  matchesBoardTracking,
+  type BoardTrackingTarget,
   type BoardItem,
   type BoardStagedItems,
   type BoardTracking,
@@ -37,6 +39,7 @@ interface BoardStore extends Preferences {
   setAgent(agent: string): void;
   setSearch(search: string): void;
   setTracking(tracking: BoardTracking): void;
+  includeItem(item: BoardTrackingTarget): void;
   selectStandalone(): void;
   selectWorkTasks(): void;
 }
@@ -220,6 +223,18 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
       selectWorkTasks: () => save({ project: null, category: "work-tasks" }),
       selectStandalone: () => save({ project: null, category: "standalone" }),
       setTracking: (tracking) => save({ tracking: readTracking(tracking) }),
+      includeItem: (item) => {
+        const tracking = get().tracking;
+        if (matchesBoardTracking(item, tracking)) return;
+        // 菜单只纳入当前实体，并解除它的显式排除；不能扩大为整项目或覆盖其它选择。
+        save({
+          tracking: {
+            ...tracking,
+            includedItems: [...new Set([...tracking.includedItems, item.key])],
+            excludedItems: tracking.excludedItems.filter((key) => key !== item.key),
+          },
+        });
+      },
       toggleProject: (project, defaultKeys = [], knownKeys) => {
         const saved = get().pinnedProjects ?? defaultKeys;
         const current = knownKeys ? saved.filter((key) => knownKeys.includes(key)) : saved;

@@ -54,7 +54,10 @@ export async function exerciseAgentBoardWorkTasks(page, { manage, save, pane, ar
     "completed and archived completed tasks are hidden from tracking candidates",
   );
   const expectedCandidates = await page.evaluate(
-    () => window.__board.native.length + window.__board.acp.length + 3,
+    () =>
+      window.__board.native.filter((item) => !item.archived).length +
+      window.__board.acp.filter((item) => !item.archived).length +
+      3,
   );
   await page.getByText("当前范围包含 " + expectedCandidates + " 项", { exact: true }).waitFor();
   await page
