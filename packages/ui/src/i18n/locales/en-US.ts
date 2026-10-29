@@ -2,8 +2,26 @@
 import { PRODUCT_NAME } from "@zcode/shared";
 const enUS: Record<string, string> = {
   "agentBoard.changeSummary": "{count} files · +{added} −{removed}",
+  "agentBoard.trackWholeWorkTasks": "Track this group (including future work tasks)",
+  "agentBoard.workTasks": "Work tasks",
+  "agentBoard.status.todo": "To do",
+  "agentBoard.status.review": "Awaiting review",
   "agentBoard.title": "Agent board",
-  "agentBoard.description": "See progress across projects and focus on conversations that need you",
+  "agentBoard.conversations": "Conversations",
+  "agentBoard.standalone": "Standalone tasks",
+  "agentBoard.manageTracking": "Manage displayed sessions",
+  "agentBoard.trackingDescription":
+    "Choose standalone tasks, work tasks or project conversations to track. Group rules include future items; individual choices take priority. Saved in this browser.",
+  "agentBoard.trackingMode": "Display mode",
+  "agentBoard.trackingMode.all": "Show all",
+  "agentBoard.trackingMode.custom": "Custom selection",
+  "agentBoard.trackingSearch": "Search tasks, conversations or projects…",
+  "agentBoard.trackWholeGroup": "Track this group, including future sessions",
+  "agentBoard.trackingCount": "Current selection includes {count} items",
+  "agentBoard.saveTracking": "Save selection",
+  "agentBoard.cancel": "Cancel",
+  "agentBoard.description":
+    "Track conversations and work tasks across projects, and handle confirmations and reviews",
   "agentBoard.projects": "All projects",
   "agentBoard.allProjects": "All projects",
   "agentBoard.pinnedProjects": "Pinned projects",

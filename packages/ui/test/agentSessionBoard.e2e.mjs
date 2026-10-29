@@ -1,3 +1,5 @@
+import { agentBoardFixture } from "./agentBoardFixture.mjs";
+import { exerciseAgentBoardWorkTasks } from "./agentBoardWorkTasksScenario.mjs";
 // Real board components/data hooks and command routing; synthetic Host and chat pane.
 import assert from "node:assert/strict";
 import { writeFile, rm, mkdir } from "node:fs/promises";
@@ -16,30 +18,7 @@ try {
     html,
     `<!doctype html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="./${name}.tsx"></script>`,
   );
-  await writeFile(
-    moduleFile,
-    `
-import React,{useState} from 'react';import {createRoot} from 'react-dom/client';
-import {AgentBoardPanel} from '../../../ui/src/agent-board/AgentBoardPanel.tsx';
-import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
-import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
-import {agentBoardStore} from '../../../ui/src/store/agentBoardStore.ts';
-import {useRemoteWorkspaceSessionStore} from '../../../ui/src/store/remoteWorkspaceSessionStore.ts';
-import {useZCodeSessionStore} from '../../../ui/src/store/zcodeSessionStore.ts';
-import '../../../ui/src/styles.css';
-window.__React=React;window.__remoteStore=useRemoteWorkspaceSessionStore;
-const tabs=Array.from({length:24},(_,i)=>({id:'p'+i,kind:'workspace',workspacePath:i<2?'/same':'/fixture/project-'+i,label:i<2?'Same project':'Project '+i,...(i<2?{workspaceIdentity:'remote:'+i,remoteSessionId:'host-'+i}:{})}));
-const native=tabs.map((tab,i)=>({...tab,taskId:'same-id',traceId:'fixture',title:i===0?'Remote API session':i===2?'Waiting for review':'Implement project '+i,createdAt:100,updatedAt:1000+i,mode:'guarded',status:i===3?'running':'completed',liveStatus:i===2?'waiting':i===3?'running':'completed',sourceAvailability:i===5?'offline':'online',provider:'API',boardCompletedAt:i===4?1004:undefined,pinned:i===6,archived:i===7}));
-const acp=tabs.slice(0,2).map((tab,i)=>({...tab,id:'same-id',agent:i===0?'codex':'claude',title:'Remote ACP '+i,status:'idle',revision:1,entries:[{kind:'user',text:'Review remote implementation',createdAt:1100+i}],queue:{items:[]},history:{createdAt:100,updatedAt:1100+i}}));
-const listeners=new Map(),commands=[],controllerListeners=new Set();
-const servicesFor=tab=>({acpService:{onDynamicSessionSummaryChanged:()=>listener=>{listeners.set(tab.workspaceIdentity??tab.workspacePath,listener);return{dispose(){listeners.delete(tab.workspaceIdentity??tab.workspacePath)}}},listSummaries:async()=>acp.filter(s=>(s.workspaceIdentity??s.workspacePath)===(tab.workspaceIdentity??tab.workspacePath)),updateRow:async input=>{commands.push({kind:'acp',...input});const row=acp.find(s=>s.id===input.id&&s.workspaceIdentity===input.workspaceIdentity);if(!row)throw Error('wrong host');if(input.action.kind==='pin')row.pinned=input.action.pinned;if(input.action.kind==='archive'){row.archived=input.action.archived;row.pinned=false;}if(input.action.kind==='completion')row.boardCompletedAt=input.action.completed?input.action.expectedUpdatedAt:undefined;row.revision++;listeners.get(row.workspaceIdentity)?.({kind:'upserted',session:{...row}});}}});
-const services={gitService:{getWorkspaceRepositoryInfo:async({workspacePath})=>({workspacePath,kind:'not-repository'})},acpService:{onDynamicSessionSummaryChanged:()=>()=>({dispose(){}}),listSummaries:async()=>[]},windowControllerService:{onDynamicControllerFrame:()=>listener=>{controllerListeners.add(listener);return{dispose(){controllerListeners.delete(listener)}}},subscribeControllerV4:async({topic})=>({ack:{subscriptionId:topic}}),unsubscribeControllerV4:async()=>{},listTaskList:async query=>{const items=native.filter(row=>query.workspaceScopes.some(scope=>(scope.workspaceIdentity??scope.workspacePath)===(row.workspaceIdentity??row.workspacePath))&&(query.kind==='archived'?row.archived:query.kind==='pinned'?row.pinned&&!row.archived:!row.archived&&!row.pinned));return{items:items.map(row=>({...row})),total:items.length,hasMore:false}},mutateTask:async input=>{if(window.__board.rejectWrites)throw Error('Host rejected stale action');commands.push({kind:'native',...input});const row=native.find(s=>s.taskId===input.address.taskId&&(s.workspaceIdentity??s.workspacePath)===(input.address.workspaceIdentity??input.address.workspacePath));if(!row)throw Error('wrong workspace');const m=input.mutation;if(m.kind==='pin')row.pinned=m.pinned;if(m.kind==='archive'){row.archived=m.archived;row.pinned=false;}if(m.kind==='board-completion')row.boardCompletedAt=m.completed?m.expectedUpdatedAt:undefined;return row;}}};
-for(const tab of tabs.slice(0,2)){useRemoteWorkspaceSessionStore.getState().registerSession({sessionId:tab.remoteSessionId,services:servicesFor(tab)});useRemoteWorkspaceSessionStore.getState().bindWorkspaceIdentity(tab.workspaceIdentity,tab.remoteSessionId);}
-window.__board={commands,tabs,native,acp,store:agentBoardStore,services,update(index,patch){Object.assign(native[index],patch);const tab=tabs[index];useZCodeSessionStore.getState().bumpTaskListVersion(tab.workspacePath,tab.workspaceIdentity);}};
-function Fixture(){const [selection,setSelection]=useState('');return <div className='h-dvh'><output data-testid='navigation'>{selection}</output><AgentBoardPanel workspaceTabs={tabs} onOpenSession={item=>setSelection(item.kind+':'+(item.workspaceIdentity??item.workspacePath))} onCreateSession={tab=>setSelection('new:'+tab.workspacePath)}/></div>}
-createRoot(document.getElementById('root')).render(<ServiceProvider services={services}><ZCodeIntlProvider><Fixture/></ZCodeIntlProvider></ServiceProvider>);
-`,
-  );
+  await writeFile(moduleFile, agentBoardFixture);
   browser = await chromium.launch({
     headless: true,
     executablePath:
@@ -61,11 +40,14 @@ createRoot(document.getElementById('root')).render(<ServiceProvider services={se
   await page.route("**/v4/V4ConversationContext.tsx*", (route) =>
     route.fulfill({
       contentType: "application/javascript",
-      body: `export function V4PaneConversationProvider({scope,children}){window.__paneScope=scope;return children}`,
+      body: `export function V4PaneConversationProvider({scope,children}){window.__paneScope=scope;return children} export function useHasV4Conversation(){return false} export function useV4Conversation(){throw Error('Synthetic pane boundary only')}`,
     }),
   );
   await page.addInitScript(() => {
-    localStorage.clear();
+    if (!sessionStorage.getItem("board-fixture-initialized")) {
+      localStorage.clear();
+      sessionStorage.setItem("board-fixture-initialized", "yes");
+    }
     localStorage.setItem("zcode-locale-preference", "zh-CN");
     document.addEventListener("DOMContentLoaded", () => {
       document.documentElement.className = "theme-zai-light";
@@ -79,6 +61,38 @@ createRoot(document.getElementById('root')).render(<ServiceProvider services={se
     5,
     "24 projects use 5 status columns",
   );
+  const localConversation = page
+    .locator("article")
+    .filter({ has: page.getByRole("heading", { name: "Implement project 22", exact: true }) });
+  const remoteConversation = page
+    .locator("article")
+    .filter({ has: page.getByRole("heading", { name: "Remote ACP 1", exact: true }) });
+  for (const card of [localConversation, remoteConversation]) {
+    assert.equal(await card.getByText("对话", { exact: true }).count(), 1);
+    assert.doesNotMatch(await card.textContent(), /default|Internal chat cwd|remote:1/);
+  }
+  const realDefaultProject = page
+    .locator("article")
+    .filter({ has: page.getByRole("heading", { name: "Implement project 20", exact: true }) });
+  assert.equal(
+    await realDefaultProject.getByText("default", { exact: true }).count(),
+    2,
+    "a real project named default retains project metadata",
+  );
+  await localConversation.getByRole("button").first().click();
+  await page.getByTestId("real-pane-contract").waitFor();
+  assert.match(await page.getByRole("dialog").textContent(), /对话/);
+  assert.doesNotMatch(await page.getByRole("dialog").textContent(), /default|Internal chat cwd/);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "所有项目", exact: true }).click();
+  assert.equal(await page.getByRole("dialog").getByText("独立任务", { exact: true }).count(), 1);
+  assert.equal(await page.getByRole("dialog").getByText("对话", { exact: true }).count(), 0);
+  assert.doesNotMatch(
+    await page.getByRole("dialog").textContent(),
+    /Internal chat cwd|\/fixture\/default|remote:1/,
+  );
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
   await page.screenshot({ path: join(artifacts, "desktop-light.png"), fullPage: true });
   await page.getByRole("tab", { name: /需关注/ }).click();
   assert.equal(await page.locator("[data-board-card]").count(), 1);
@@ -153,6 +167,11 @@ createRoot(document.getElementById('root')).render(<ServiceProvider services={se
     state.unregisterSession("host-0");
   });
   await nativeCard.getByText("离线 · 暂不可操作", { exact: true }).waitFor();
+  assert.equal(
+    await nativeCard.locator('[data-task-agent-icon="api"] svg').count(),
+    1,
+    "disconnected remote must not use the local provider logo",
+  );
   const disconnectedAcp = page
     .locator("article")
     .filter({ has: page.getByRole("heading", { name: "Remote ACP 0", exact: true }) });
@@ -173,10 +192,10 @@ createRoot(document.getElementById('root')).render(<ServiceProvider services={se
         ?.textContent.includes("离线"),
   );
   await page.getByRole("button", { name: "所有项目", exact: true }).click();
-  await page.getByRole("button", { name: "固定项目 Project 4", exact: true }).click();
   await page.getByRole("button", { name: "固定项目 Project 5", exact: true }).click();
+  await page.getByRole("button", { name: "固定项目 Project 6", exact: true }).click();
   assert.equal(
-    await page.getByRole("button", { name: "固定项目 Project 6", exact: true }).isDisabled(),
+    await page.getByRole("button", { name: "固定项目 Project 7", exact: true }).isDisabled(),
     true,
   );
   await page
@@ -194,7 +213,10 @@ createRoot(document.getElementById('root')).render(<ServiceProvider services={se
   );
   await page.keyboard.press("Escape");
   await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("");
-  await page.evaluate(() => (document.documentElement.className = "theme-zai-dark"));
+  await page.evaluate(() => (document.documentElement.className = "dark theme-zai-dark"));
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector("article")).backgroundColor === "rgb(43, 43, 43)",
+  );
   await page.screenshot({ path: join(artifacts, "desktop-dark.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(
@@ -226,9 +248,121 @@ createRoot(document.getElementById('root')).render(<ServiceProvider services={se
   await page.getByRole("textbox", { name: "搜索项目名称或路径…", exact: true }).fill("project-23");
   await page.getByRole("button", { name: /Project 23.*project-23/ }).click();
   assert.equal(await page.getByTestId("navigation").textContent(), "new:/fixture/project-23");
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const manage = () => page.getByRole("button", { name: "管理显示范围", exact: true }).click();
+  const save = () => page.getByRole("button", { name: "保存显示范围", exact: true }).click();
+  const cancel = () => page.getByRole("button", { name: "取消", exact: true }).click();
+  await manage();
+  await page.getByRole("radio", { name: "自定义显示", exact: true }).check();
+  await save();
+  assert.equal(
+    await page.locator("[data-board-card]").count(),
+    0,
+    "empty custom range is intentional",
+  );
+  await manage();
+  await page.getByRole("checkbox", { name: /Implement project 22/ }).check();
+  await page
+    .locator("details")
+    .filter({ has: page.locator("summary", { hasText: /^Project 3 / }) })
+    .locator("summary")
+    .click();
+  const project3 = page
+    .locator("details")
+    .filter({ has: page.locator("summary", { hasText: /^Project 3 / }) });
+  await project3
+    .getByRole("checkbox", { name: "自动跟踪此组（含后续新对话）", exact: true })
+    .check();
+  await save();
+  assert.equal(await page.locator("[data-board-card]").count(), 2);
+  assert.equal(await page.getByRole("tab", { name: /全部/ }).textContent(), "全部2");
+  await manage();
+  await page.getByRole("checkbox", { name: /Implement project 22/ }).uncheck();
+  await cancel();
+  assert.equal(await page.locator("[data-board-card]").count(), 2, "cancel must not apply draft");
+  await page.reload();
+  await page.getByRole("heading", { name: "Implement project 22", exact: true }).waitFor();
+  assert.equal(await page.locator("[data-board-card]").count(), 2, "selection survives reload");
+  await page.evaluate(() => {
+    window.__board.native.push({
+      ...window.__board.native[3],
+      taskId: "new-project-session",
+      title: "Future project session",
+      status: "completed",
+      liveStatus: "completed",
+    });
+    window.__board.update(3, { updatedAt: 5000 });
+  });
+  await page.getByRole("heading", { name: "Future project session", exact: true }).waitFor();
+  assert.equal(
+    await page.locator("[data-board-card]").count(),
+    3,
+    "whole project includes future sessions",
+  );
+  await manage();
+  await page
+    .getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true })
+    .fill("Future project session");
+  await page.getByRole("checkbox", { name: /Future project session/ }).uncheck();
+  await save();
+  assert.equal(
+    await page.locator("[data-board-card]").count(),
+    2,
+    "one session can be excluded from a tracked project",
+  );
+  await manage();
+  await page
+    .getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true })
+    .fill("Remote ACP 0");
+  await page.getByRole("checkbox", { name: /Remote ACP 0/ }).check();
+  await save();
+  assert.equal(
+    await page.locator("[data-board-card]").count(),
+    3,
+    "individual session from untracked project can be added",
+  );
+  assert.equal(
+    await page.getByRole("heading", { name: "Remote API session", exact: true }).count(),
+    0,
+    "same id in another session kind is not included",
+  );
+  await page.getByRole("button", { name: "所有项目", exact: true }).click();
+  await page.getByRole("button", { name: "独立任务", exact: true }).click();
+  assert.equal(
+    await page.locator("[data-board-card]").count(),
+    1,
+    "standalone filter is separate from projects",
+  );
+  await page.getByRole("button", { name: "独立任务", exact: true }).click();
+  await page.getByRole("button", { name: "所有项目", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
+  await page.screenshot({ path: join(artifacts, "custom-tracking.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await manage();
+  await page
+    .getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true })
+    .fill("Remote ACP 1");
+  await page.getByRole("checkbox", { name: /Remote ACP 1/ }).check();
+  await page.screenshot({ path: join(artifacts, "mobile-tracking.png") });
+  await save();
+  assert.equal(
+    await page.locator("[data-board-card]").count(),
+    4,
+    "mobile can add an independent remote task",
+  );
+  await manage();
+  await page.getByRole("radio", { name: "显示全部", exact: true }).check();
+  await save();
+  assert.equal(
+    await page.locator("[data-board-card]").count(),
+    26,
+    "all restores hidden sessions without Host mutations",
+  );
+
+  await exerciseAgentBoardWorkTasks(page, { manage, save, pane, artifacts });
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: real board/hooks; 24 projects; identity routing; API/ACP completion/archive; six-pin limit; search; desktop themes; mobile drawer; new session. Screenshots: " +
+    "PASS: real board/hooks; 24 projects; identity routing; API/ACP completion/archive; six-pin limit; search; desktop themes; mobile drawer; new session; work-task selection, scoped conversation, acceptance failure/retry, archive/read-only. Screenshots: " +
       artifacts,
   );
 } finally {

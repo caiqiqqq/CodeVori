@@ -2334,7 +2334,10 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                     )
                                   }
                                   onOpenSession={(item) => {
-                                    if (item.kind === "acp") handleSelectAcpSession(item.session);
+                                    if (item.kind === "work-task")
+                                      handleOpenWorkTaskConversation(item.workTask);
+                                    else if (item.kind === "acp")
+                                      handleSelectAcpSession(item.session);
                                     else
                                       handleSelectTaskInChat(
                                         item.workspacePath,
