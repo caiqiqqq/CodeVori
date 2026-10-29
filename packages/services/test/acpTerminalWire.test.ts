@@ -62,6 +62,10 @@ test("stdio ACP terminal methods reject wrong sessions and keep real processes a
     assert.equal(live.status, "running");
     await port.stopTerminal!(live.terminalId);
     assert.equal(terminalUpdates().at(-1)!.terminal.status, "finished");
+    await port.prompt("start for cancel");
+    assert.equal(terminalUpdates().at(-1)!.terminal.status, "running");
+    await port.cancel();
+    assert.equal(terminalUpdates().at(-1)!.terminal.status, "interrupted");
     await port.prompt("start for disconnect");
     assert.equal(terminalUpdates().at(-1)!.terminal.status, "running");
     port.close();
