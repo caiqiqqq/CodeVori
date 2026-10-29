@@ -665,6 +665,11 @@ export interface IZCodeTaskService {
     title: string;
   }): Promise<ZCodeTaskMeta>;
 
+  /** 确认/重新打开会话工作，不修改最后一轮运行结果。 */
+  setTaskBoardCompleted(
+    params: import("@zcode/shared").ZCodeTaskBoardCompletion,
+  ): Promise<ZCodeTaskMeta>;
+
   /** 更新 task 置顶状态 */
   setTaskPinned(params: {
     taskId: string;

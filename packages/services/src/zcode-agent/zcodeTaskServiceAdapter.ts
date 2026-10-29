@@ -1,3 +1,4 @@
+import { zcodeTaskBoardCompletionSchema } from "@zcode/shared";
 /* oxlint-disable eslint(max-lines) -- 迁移期需要在一个门面里集中维护旧 task projection 到 ZCode session 的协议适配。 */
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -3081,6 +3082,13 @@ export function createZCodeTaskServiceAdapter(
         });
         throw error;
       }
+    },
+
+    async setTaskBoardCompleted(input): Promise<ZCodeTaskMeta> {
+      const params = zcodeTaskBoardCompletionSchema.parse(input);
+      const meta = await taskIndexRepo.setBoardCompletion(params);
+      emitWorkspaceTaskListChanged(params, meta, "task_meta_changed");
+      return meta;
     },
 
     async setTaskPinned(params): Promise<ZCodeTaskMeta> {

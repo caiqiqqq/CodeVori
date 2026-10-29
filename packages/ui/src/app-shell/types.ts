@@ -129,7 +129,8 @@ export type WorkspaceMainView =
   | "automations"
   | "plugin-store"
   | "repository"
-  | "work-tasks";
+  | "work-tasks"
+  | "agent-board";
 
 export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackService"> {
   commandCenterOpen: boolean;
@@ -154,6 +155,7 @@ export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackS
   handleOpenAutomations: OpenAutomationsMain;
   handleOpenPluginStore: () => void;
   handleOpenRepository: (target?: { workspacePath: string; workspaceIdentity?: string }) => void;
+  handleOpenAgentBoard?: () => void;
   handleOpenWorkTasks: (target?: { workspacePath: string; workspaceIdentity?: string }) => void;
   handleManageInstalledPlugins: () => void;
   workspaceShellZCodeState: WorkspaceShellZCodeState;

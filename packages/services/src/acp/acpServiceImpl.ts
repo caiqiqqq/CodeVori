@@ -32,6 +32,7 @@ import {
   acpCommandReceiptSchema,
   type AcpCommandReceipt,
   summarizeAcpSession,
+  acpSessionActivity,
   resolveDynamicWorkflowClientConfig,
   type DynamicWorkflowClientConfig,
   type AcpSessionSummary,
@@ -2702,6 +2703,20 @@ export function createAcpService(
             await mutate(session, () => {
               session.title = title;
             });
+        } else if (action.kind === "completion") {
+          // 用户确认只覆盖看过的活动水位；不能把运行中或等待交互的工作标成完成。
+          if (
+            action.completed &&
+            (session.archived ||
+              session.status === "running" ||
+              session.pendingPermission ||
+              session.pendingElicitation ||
+              acpSessionActivity(session).updatedAt !== action.expectedUpdatedAt)
+          )
+            throw new Error("Conversation changed or is still active; refresh before completing");
+          await mutate(session, () => {
+            session.boardCompletedAt = action.completed ? action.expectedUpdatedAt : undefined;
+          });
         } else if (action.kind === "pin") {
           if (session.archived && action.pinned)
             throw new Error("Archived ACP session cannot be pinned");

@@ -632,6 +632,7 @@ export const acpSessionSchema = acpWorkspaceSchema.extend({
   supersededBy: z.string().uuid().optional(),
   title: z.string(),
   /** Sidebar metadata belongs to this Host snapshot; older files use unpinned/read defaults. */
+  boardCompletedAt: z.number().finite().nonnegative().optional(),
   pinned: z.boolean().default(false),
   archived: z.boolean().default(false),
   deletionState: z.literal("pending").optional(),
@@ -748,6 +749,13 @@ export const acpSessionRowUpdateSchema = acpWorkspaceSchema
     id: z.string().uuid(),
     action: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("pin"), pinned: z.boolean() }).strict(),
+      z
+        .object({
+          kind: z.literal("completion"),
+          completed: z.boolean(),
+          expectedUpdatedAt: z.number().finite().nonnegative(),
+        })
+        .strict(),
       z.object({ kind: z.literal("archive"), archived: z.boolean() }).strict(),
       z.object({ kind: z.literal("rename"), title: z.string().max(200) }).strict(),
       z

@@ -22,6 +22,7 @@ import type {
 } from "../session/zcodeTaskListTypes.js";
 
 export type WindowHostControllerMutation =
+  | { kind: "board-completion"; completed: boolean; expectedUpdatedAt: number }
   | { kind: "pin"; pinned: boolean }
   | { kind: "archive"; archived: boolean }
   | { kind: "delete" }
