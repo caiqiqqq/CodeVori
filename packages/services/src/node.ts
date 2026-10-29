@@ -2431,6 +2431,7 @@ export function createLocalServices(options: {
   const composerPreferenceService = createComposerPreferenceService();
   const acpService = createAcpService({
     composerPreferenceService,
+    fetcher: hostApiNetworkTransport.fetch,
     resolveInstallEnv: async () => {
       const settings = await settingService.get();
       const network =

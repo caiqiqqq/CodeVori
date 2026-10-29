@@ -389,6 +389,7 @@ export function createAcpAgentManager(
     env?: NodeJS.ProcessEnv;
     runPackageCommand?: (agent: AcpAgent, action: Action) => Promise<void>;
     fetchMetadata?: (url: string) => Promise<unknown>;
+    fetcher?: typeof fetch;
     now?: () => number;
     resolveInstallEnv?: () => Promise<Record<string, string>>;
     installTimeoutMs?: number;
@@ -396,7 +397,7 @@ export function createAcpAgentManager(
 ): AcpAgentManager {
   const directory = options.directory ?? join(getZCodeDataRootDir(), "acp-agents");
   const env = options.env ?? process.env;
-  const nodeRuntime = createAcpNodeRuntime(join(directory, "runtime"), env);
+  const nodeRuntime = createAcpNodeRuntime(join(directory, "runtime"), env, options.fetcher);
   const geminiProviders = createGeminiProviderStore(directory);
   const operations = new AcpAgentOperations();
   const updates = new Map<AcpAgent, Promise<AcpAgentInfo>>();
@@ -792,10 +793,15 @@ export function createAcpAgentManager(
             }
           } else {
             emit("log", `Installing ${acpAgentDefinition(agent).command}@${target.version}`);
-            await installAcpBinary(binaryDir(agent), url!, {
-              ...target.binary!,
-              version: target.version,
-            });
+            await installAcpBinary(
+              binaryDir(agent),
+              url!,
+              {
+                ...target.binary!,
+                version: target.version,
+              },
+              { fetcher: options.fetcher },
+            );
           }
           if (!(await managedFor(agent)))
             throw new Error("ACP adapter installation did not produce a launchable package");

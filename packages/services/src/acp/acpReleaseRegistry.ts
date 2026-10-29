@@ -76,8 +76,8 @@ type BuiltinRelease = AcpReleaseTarget & {
 type UpdateCheck = NonNullable<AcpAgentInfo["updateCheck"]>;
 
 /** Bounded public metadata only. Error messages never expose response bodies or user configuration. */
-async function fetchMetadata(url: string): Promise<unknown> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+async function fetchMetadata(url: string, fetcher: typeof fetch): Promise<unknown> {
+  const response = await fetcher(url, { signal: AbortSignal.timeout(12_000) });
   if (!response.ok || !response.body) throw new Error("ACP release metadata unavailable");
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -100,11 +100,16 @@ async function fetchMetadata(url: string): Promise<unknown> {
 /** Per target Host. Only explicit settings checks query the network; launch and menus just read files. */
 export function createAcpReleaseRegistry(
   builtins: readonly BuiltinRelease[],
-  options: { fetchMetadata?: (url: string) => Promise<unknown>; now?: () => number } = {},
+  options: {
+    fetchMetadata?: (url: string) => Promise<unknown>;
+    fetcher?: typeof fetch;
+    now?: () => number;
+  } = {},
 ) {
   const targets = new Map(builtins.map((meta) => [meta.agent, meta as AcpReleaseTarget]));
   const checks = new Map<AcpAgent, UpdateCheck>();
-  const request = options.fetchMetadata ?? fetchMetadata;
+  const request =
+    options.fetchMetadata ?? ((url: string) => fetchMetadata(url, options.fetcher ?? fetch));
   const now = options.now ?? Date.now;
   let cachedAt: number | undefined;
   let pending: Promise<void> | undefined;
