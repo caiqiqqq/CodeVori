@@ -13,6 +13,27 @@ const imageUpload = {
   totalBytes: 8,
 };
 
+test("GitLab Host reads use the bound account access URL for internal web links", async () => {
+  const f = fixture(
+    "https://gitlab.example.invalid/git/team/project.git",
+    [account("gitlab", "https://gitlab.example.invalid/git")],
+    [
+      {
+        iid: 42,
+        title: "Synthetic",
+        web_url: "http://internal.example.invalid:1080/team/project/-/work_items/42",
+      },
+    ],
+  );
+  const result = await f.service.getForgeItem({ ...(await f.target()), kind: "issue", number: 42 });
+  assert.equal(result.url, "https://gitlab.example.invalid/git/team/project/-/work_items/42");
+  assert.equal(f.state.calls.length, 1);
+  assert.equal(
+    f.state.calls[0]!.url.href,
+    "https://gitlab.example.invalid/git/api/v4/projects/team%2Fproject/issues/42",
+  );
+});
+
 test("GitLab image uploads use multipart and deduplicate a live Host request", async () => {
   const url =
     "https://gitlab.example.invalid/team/project/uploads/0123456789abcdef0123456789abcdef/screen.png";

@@ -2,6 +2,7 @@ import {
   forgeImagePreviewSchema,
   type ForgeItemDetail,
   type ForgeItemExtras,
+  type ForgeItemKind,
   type ForgeMergeMethod,
 } from "@zcode/shared";
 import {
@@ -20,12 +21,12 @@ import {
   page,
   record,
   records,
-  safeForgeUrl,
   string,
   type ForgeApiClient,
 } from "./forgeApiClient.js";
 import { gitlabUploadApiPath } from "./forgeMedia.js";
 import { listGitlabActivity } from "./gitlabForgeActivity.js";
+import { gitlabWebUrl } from "./gitlabWebUrl.js";
 
 export function createGitlabForgeProvider(
   api: ForgeApiClient,
@@ -39,6 +40,11 @@ export function createGitlabForgeProvider(
   const repo = `projects/${encodeURIComponent(repository)}`;
   const itemPath = (request: { kind: string; number: number }) =>
     `${repo}/${request.kind === "issue" ? "issues" : "merge_requests"}/${request.number}`;
+  const webUrl = (value: unknown) => gitlabWebUrl(value, repository, repositoryUrl);
+  const gitlabItem = (raw: Record<string, unknown>, kind: ForgeItemKind) => ({
+    ...item(raw, kind, "gitlab"),
+    url: webUrl(raw.web_url),
+  });
   return {
     async uploadImage(request) {
       if (!repositoryUrl) throw new Error("FORGE_MEDIA_UNAVAILABLE");
@@ -78,7 +84,7 @@ export function createGitlabForgeProvider(
         },
       );
       const result = page(
-        records(response.data).map((raw) => item(raw, request.kind, "gitlab")),
+        records(response.data).map((raw) => gitlabItem(raw, request.kind)),
         response,
         request,
       );
@@ -93,10 +99,13 @@ export function createGitlabForgeProvider(
     async getItem(request): Promise<ForgeItemDetail> {
       const raw = record((await api(itemPath(request))).data);
       const result: ForgeItemDetail = {
-        ...item(raw, request.kind, "gitlab"),
+        ...gitlabItem(raw, request.kind),
         change: null,
         metadata: itemMetadata(raw, "gitlab"),
       };
+      if (result.metadata?.milestone) {
+        result.metadata.milestone.url = webUrl(result.metadata.milestone.url);
+      }
       if (request.kind === "issue") return result;
       let checksError: string | null = null;
       let mergeOptionsError: string | null = null;
@@ -107,7 +116,7 @@ export function createGitlabForgeProvider(
               id: String(pipeline.id),
               name: `Pipeline #${pipeline.id}`,
               state: checkState(pipeline.status),
-              url: safeForgeUrl(pipeline.web_url),
+              url: webUrl(pipeline.web_url),
             })),
           )
           .catch((error: unknown) => {
@@ -169,7 +178,7 @@ export function createGitlabForgeProvider(
         readSection("links", `${itemPath(request)}/links`, (response) => {
           const rows = records(response.data);
           extras.linkedItems = rows.map((row) => {
-            const related = item(row, "issue", "gitlab");
+            const related = gitlabItem(row, "issue");
             return {
               number: related.number,
               title: related.title,
@@ -240,7 +249,7 @@ export function createGitlabForgeProvider(
       return readForgeIssueOptions(api, repo, "gitlab");
     },
     async createIssue(request) {
-      return item(
+      return gitlabItem(
         record(
           (
             await api(
@@ -258,11 +267,10 @@ export function createGitlabForgeProvider(
           ).data,
         ),
         "issue",
-        "gitlab",
       );
     },
     async updateIssue(request) {
-      return item(
+      return gitlabItem(
         record(
           (
             await api(
@@ -280,7 +288,6 @@ export function createGitlabForgeProvider(
           ).data,
         ),
         "issue",
-        "gitlab",
       );
     },
     async createComment(request) {
