@@ -31,12 +31,12 @@ try {
     import {applyTheme} from '../../../ui/src/useTheme.ts';
     import '../../../ui/src/styles.css';
     applyTheme('zai-light');
-    const state:any={calls:[],listeners:{A:new Set(),B:new Set()},counts:{A:0,B:6},fail:true,delay:true,pending:[],open:false};
+    const state:any={calls:[],listeners:{A:new Set(),B:new Set()},counts:{A:0,B:6,other:2},incomplete:false,fail:true,delay:true,pending:[],open:false};
     const hosts:any={};
     for(const host of ['A','B'])hosts[host]={workTaskService:{
       async getRepositoryIssueSummary(input:any){
         state.calls.push({host,...input});
-        const value={pending:state.counts[host],checkedAt:Date.now()};
+        const value={pending:state.counts[host]+(host==='A'&&input.projects.some(project=>project.workspacePath==='/synthetic/other')?state.counts.other:0),checkedAt:Date.now(),incomplete:host==='A'&&state.incomplete};
         if(state.delay){state.delay=false;await new Promise(resolve=>state.pending.push(resolve));}
         if(state.fail)throw new Error('FORGE_FORBIDDEN');
         return value;
@@ -44,6 +44,7 @@ try {
       onDynamicChanged:()=>listener=>{state.listeners[host].add(listener);return{dispose:()=>state.listeners[host].delete(listener)}}
     }};
     const project={workspacePath:'/synthetic/project'};
+    const other={workspacePath:'/synthetic/other'};
     const remote={...project,workspaceIdentity:'synthetic-endpoint-b',remoteSessionId:'attachment-b'};
     const connect=()=>useRemoteWorkspaceSessionStore.setState({sessionsById:{'attachment-b':{services:hosts.B}},sessionIdByWorkspaceIdentity:{'synthetic-endpoint-b':'attachment-b'}} as any);
     state.finish=()=>state.pending.shift()?.();
@@ -77,6 +78,10 @@ try {
             <button onClick={()=>useRemoteWorkspaceSessionStore.setState({sessionsById:{},sessionIdByWorkspaceIdentity:{}})}>断开远端</button>
             <button onClick={()=>useRemoteWorkspaceSessionStore.setState({sessionsById:{'attachment-b-2':{services:hosts.B}},sessionIdByWorkspaceIdentity:{'synthetic-endpoint-b':'attachment-b-2'}} as any)}>重连远端</button>
             <button onClick={()=>setProjects([project])}>同路径本机</button>
+            <button onClick={()=>{state.counts.A=0;setProjects([project,other])}}>全部本机项目</button>
+            <button onClick={()=>{connect();setProjects([project,other,remote])}}>加入远端项目</button>
+            <button onClick={()=>{state.incomplete=true;repositoryIssueRefreshStore.getState().invalidate()}}>部分项目不可用</button>
+            <button onClick={()=>{state.incomplete=false;repositoryIssueRefreshStore.getState().invalidate()}}>全部项目恢复</button>
             <button onClick={()=>repositoryNavigationStore.getState().selectRemote(project,'private')}>更换仓库</button>
             <button onClick={()=>setShown(false)}>卸载侧栏</button>
           </div>
@@ -107,6 +112,7 @@ try {
   };
   const expectNoBadge = async () => {
     await page.clock.runFor(20);
+    await entry.waitFor({ state: "visible" });
     await badge.waitFor({ state: "detached" });
     assert.equal(await page.getByTestId("repository-sidebar-stale").count(), 0);
     assert.equal(await page.getByTestId("repository-sidebar-issue").count(), 0);
@@ -204,6 +210,33 @@ try {
   assert.equal(colors[0], colors[1], "entry uses the same readable foreground as the dark surface");
   await page.screenshot({ path: join(artifacts, "mobile-dark.png") });
   await page.setViewportSize({ width: 1120, height: 700 });
+  // 当前项目没有议题时，其他项目的议题仍须显示；项目/Host 的失败不能清空成功部分。
+  await page.getByRole("button", { name: "全部本机项目", exact: true }).click();
+  await expectCount(2);
+  assert.equal(await page.getByTestId("repository-sidebar-issue").isVisible(), true);
+  assert.equal(await page.evaluate(() => window.__counts.calls.at(-1).projects.length), 2);
+  await page.getByRole("button", { name: "部分项目不可用", exact: true }).click();
+  await expectCount(2);
+  assert.equal(await page.getByTestId("repository-sidebar-stale").isVisible(), true);
+  assert.match(await entry.getAttribute("aria-description"), /Some projects are unavailable/);
+  await page.getByRole("button", { name: "全部项目恢复", exact: true }).click();
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid="repository-sidebar-stale"]'),
+  );
+  await page.getByRole("button", { name: "加入远端项目", exact: true }).click();
+  await expectCount(8);
+  await page.getByRole("button", { name: "断开远端", exact: true }).click();
+  await expectCount(2);
+  assert.match(await entry.getAttribute("aria-description"), /Some projects are unavailable/);
+  await page.screenshot({ path: join(artifacts, "multiple-projects-partial.png") });
+  await page.getByRole("button", { name: "重连远端", exact: true }).click();
+  await expectCount(8);
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid="repository-sidebar-stale"]'),
+  );
+  await page.getByRole("button", { name: "同路径本机", exact: true }).click();
+  await page.getByRole("button", { name: "大量议题", exact: true }).click();
+  await expectCount("99+");
   await page.getByRole("button", { name: "延迟查询", exact: true }).click();
   await page.getByRole("button", { name: "切换远端", exact: true }).click();
   await expectCount(6);

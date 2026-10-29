@@ -98,9 +98,10 @@ export interface RepositoryIssueCounts {
   count: number | null;
   loading: boolean;
   stale: boolean;
+  partial: boolean;
 }
 
-/** 合并 Host 投影，不把缺失 Host 的部分数量误报为总数。 */
+/** 合并全部可用 Host 的投影，用 partial 明确部分数量，避免离线项目吞掉已有议题。 */
 export function combineRepositoryIssueReads(sources: readonly RepositoryIssueReadSource[]) {
   let previous: ReturnType<Resource["getSnapshot"]>[] = [];
   let snapshot: RepositoryIssueCounts | null = null;
@@ -115,12 +116,15 @@ export function combineRepositoryIssueReads(sources: readonly RepositoryIssueRea
       );
       if (snapshot && current.every((read, index) => read === previous[index])) return snapshot;
       previous = current;
+      const available = current.flatMap((read) => (read.data ? [read.data] : []));
       snapshot = {
-        count: sources.every((source) => source.resource?.getSnapshot().data)
-          ? current.reduce((sum, read) => sum + read.data!.pending, 0)
-          : null,
+        count:
+          available.length || !sources.length
+            ? available.reduce((sum, data) => sum + data.pending, 0)
+            : null,
         loading: current.some((read) => read.loading),
         stale: sources.some((source) => source.error) || current.some((read) => read.error),
+        partial: available.length < sources.length || available.some((data) => data.incomplete),
       };
       return snapshot;
     },

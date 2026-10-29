@@ -155,6 +155,44 @@ test("a malformed first RPC response remains unknown until a valid read succeeds
   }
 });
 
+test("all available Hosts contribute while missing Hosts and partial repository reads are explicit", async () => {
+  const a = host();
+  const b = host();
+  const reads = [
+    getRepositoryIssueReadModel(a.service, [project]),
+    getRepositoryIssueReadModel(b.service, [{ workspacePath: "/other" }]),
+  ];
+  const combined = combineRepositoryIssueReads(
+    reads.map((resource) => ({ resource, error: null })),
+  );
+  const stop = combined.subscribe(() => {});
+  try {
+    assert.equal(combined.getSnapshot().count, null);
+    a.requests[0]!.resolve(result(2));
+    await settle();
+    assert.equal(combined.getSnapshot().count, 2);
+    assert.equal(combined.getSnapshot().partial, true);
+    b.requests[0]!.resolve({ ...result(3), incomplete: true });
+    await settle();
+    assert.equal(combined.getSnapshot().count, 5);
+    assert.equal(combined.getSnapshot().partial, true);
+    const refresh = reads[1]!.refresh();
+    b.requests[1]!.resolve(result(4));
+    await refresh;
+    assert.equal(combined.getSnapshot().count, 6);
+    assert.equal(combined.getSnapshot().partial, false);
+    const disconnected = combineRepositoryIssueReads([
+      { resource: reads[0]!, error: null },
+      { resource: null, error: "DISCONNECTED" },
+    ]);
+    assert.equal(disconnected.getSnapshot().count, 2);
+    assert.equal(disconnected.getSnapshot().partial, true);
+    assert.equal(combineRepositoryIssueReads([]).getSnapshot().count, 0);
+  } finally {
+    stop();
+  }
+});
+
 test("hidden pages pause polling and visibility recovery forces a fresh read", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   const original = Object.getOwnPropertyDescriptor(globalThis, "document");

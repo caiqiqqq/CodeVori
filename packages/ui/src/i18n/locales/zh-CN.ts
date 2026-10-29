@@ -549,6 +549,7 @@ const zhCN: Record<string, string> = {
   "workTasks.error.work-task.executor-invalid": "任务智能体配置无效。",
   "repositoryPanel.title": "仓库面板",
   "repositoryPanel.sidebar.pending": "{count} 个打开的议题尚未关联 ZCode 处理任务",
+  "repositoryPanel.sidebar.partial": "已获取 {count} 个未处理议题，部分项目暂不可用",
   "repositoryPanel.sidebar.stale": "上次获取有 {count} 个未处理议题，当前未能更新",
   "repositoryPanel.sidebar.loading": "正在获取未处理议题数量…",
   "repositoryPanel.sidebar.unavailable": "未处理议题数量暂不可用",
