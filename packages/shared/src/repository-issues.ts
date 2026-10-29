@@ -23,6 +23,13 @@ export const repositoryIssueSummarySchema = z
     checkedAt: z.number().int().nonnegative(),
     // 部分项目不可用时 pending 仅包含成功仓库，不能当成完整总数。
     incomplete: z.boolean().optional(),
+    // 明细与总数由同一次 Host 查询生成；旧 Host 没有明细时保持未知。
+    projects: z
+      .array(
+        repositoryIssueProjectSchema.extend({ pending: z.number().int().nonnegative().nullable() }),
+      )
+      .max(200)
+      .optional(),
   })
   .strict();
 export type RepositoryIssueSummary = z.infer<typeof repositoryIssueSummarySchema>;
