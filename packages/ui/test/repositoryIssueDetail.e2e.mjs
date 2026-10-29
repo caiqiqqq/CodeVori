@@ -1,4 +1,4 @@
-// Synthetic Hosts only. No real credentials, repositories or remote mutations.
+// Synthetic Hosts; optional captured images. No real credentials or remote mutations.
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,7 +7,7 @@ import { chromium } from "playwright-core";
 import { tsImport } from "tsx/esm/api";
 import { assertRepositoryImageAuthentication } from "./repositoryImageAuthAssertions.mjs";
 import { assertRepositoryGithubImages } from "./repositoryGithubImageAssertions.mjs";
-import { assertRepositoryImageRecovery } from "./repositoryImageRetryAssertions.mjs";
+import * as imageChecks from "./repositoryImageRetryAssertions.mjs";
 
 const { createGitlabForgeProvider } = await tsImport(
   "../../services/src/git/providers/gitlabForgeProvider.ts",
@@ -86,7 +86,7 @@ try {
       async getForgeItem(r:any){state.calls.push({host,op:'item',...r});return item(host,r)},
       async getForgeItemExtras(r:any){state.calls.push({host,op:'extras',...r});const result={...extras,participants:[{...user,displayName:host+' 参与者'}]};if(state.delayExtras){state.delayExtras=false;return new Promise(resolve=>state.pendingExtras.push(()=>resolve(result)))}return state.failExtras?{errors:{participants:'FORGE_FORBIDDEN',links:'FORGE_NOT_FOUND',labels:'FORGE_RESPONSE'}}:result},
       async listForgeComments(r:any){state.calls.push({host,op:'comments',...r});if(state.github)return {page:r.page,pageSize:30,hasMore:false,total:1,items:[{id:'github-comment',body:'![Comment screenshot](https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc)',author:user,createdAt:'2026-10-02T00:00:01Z',url:null}]};return {page:r.page,pageSize:30,hasMore:r.page===1,total:4,items:r.page===1?[{id:'label-event:1',body:'',author:user,createdAt:'2026-10-01T00:00:00Z',system:true,url:null,labelActivity:{action:'add',labels:[label,{key:'optimization',name:'优化',color:'#16874b'}]}},{id:'system',body:'assigned to tester',author:user,createdAt:'2026-10-01T00:00:01Z',system:true,url:null}]:[{id:'label-event:3',body:'',author:user,createdAt:'2026-10-02T00:00:00Z',system:true,url:null,labelActivity:{action:'remove',labels:[null]}},{id:'comment',body:'正常评论',author:user,createdAt:'2026-10-02T00:00:01Z',system:false,url:null}]}},
-      async readForgeImage(r:any){state.calls.push({host,op:'image',...r});if(state.imageError)throw new Error(state.imageError);if(state.corruptImage){if(!r.refresh)return corruptPreview;state.corruptImage=false}if(state.needsSignIn&&!state.authorizedHosts.includes(host))throw new Error(state.imageSignInError);if(state.delayImage){state.delayImage=false;return new Promise(resolve=>state.pendingImages.push(()=>resolve(state.github&&host==='A'?stalePreview:preview)))}if(state.failImage){state.failImage=false;throw new Error('FORGE_FORBIDDEN')}return preview},
+      async readForgeImage(r:any){state.calls.push({host,op:'image',...r});if(state.imageError)throw new Error(state.imageError);if(state.corruptImage){if(!r.refresh)return corruptPreview;state.corruptImage=false}if(state.needsSignIn&&!state.authorizedHosts.includes(host))throw new Error(state.imageSignInError);if(state.delayImage){state.delayImage=false;return new Promise(resolve=>state.pendingImages.push(()=>resolve(state.github&&host==='A'?stalePreview:preview)))}if(state.failImage){state.failImage=false;throw new Error('FORGE_FORBIDDEN')}return state.imagePreview??preview},
       async authenticateForgeImage(r:any){state.calls.push({host,op:'authenticate',...r});if(state.failSignIn){const code=state.failSignIn;state.failSignIn=null;throw new Error(code)}if(state.delaySignIn){state.delaySignIn=false;return new Promise<void>(resolve=>state.pendingSignIns.push(()=>{state.authorizedHosts.push(host);resolve()}))}state.authorizedHosts.push(host)},
       async createForgeComment(r:any){state.calls.push({host,op:'write',...r})},
     }};
@@ -357,7 +357,8 @@ try {
     "B",
   );
 
-  await assertRepositoryImageRecovery({ page, detail, image, draft, row, artifacts });
+  await imageChecks.assertRepositoryImageRecovery({ page, detail, image, draft, row, artifacts });
+  await imageChecks.assertRepositoryBinaryImages({ page, detail, row, image, artifacts });
   await assertRepositoryImageAuthentication({ page, detail, image, draft, row });
   await assertRepositoryGithubImages({ page, panel, artifacts });
   await page.evaluate(() => window.__detail.showChat(true));

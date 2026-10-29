@@ -34,6 +34,7 @@ import {
 } from "./share/conversationShareRoute.js";
 import type { IPlatformService, RemoteTarget, ServerRemoteInfo } from "@zcode/shared";
 import { WEB_DEFAULT_THEME, resolveWebInitialTheme } from "./webThemeSeed.js";
+import { createWebTaskNotifications } from "./taskNotifications.js";
 
 function resolveWebThemePreference(defaultTheme: Theme = WEB_DEFAULT_THEME): Theme {
   const saved = localStorage.getItem("zcode-theme");
@@ -261,28 +262,12 @@ function createWebPlatform(): IPlatformService {
     notifyRendererReady: () => {},
     reportTelemetryEvent: async () => {},
     reportArmsCustomEvent: () => Promise.resolve(),
-    showTaskNotification: (payload) => {
-      if (isTaskNotificationOnlyWhenUnfocused() && document.hasFocus()) {
-        return;
-      }
-
-      if (
-        typeof window.Notification === "undefined" ||
-        window.Notification.permission !== "granted"
-      ) {
-        return;
-      }
-
-      try {
-        new window.Notification(payload.title, {
-          body: payload.body,
-          silent: true,
-        });
+    ...createWebTaskNotifications({
+      onlyWhenUnfocused: isTaskNotificationOnlyWhenUnfocused,
+      playSound: () => {
         void playTaskNotificationSound();
-      } catch {
-        // 浏览器通知不可用时静默忽略，避免打断主流程
-      }
-    },
+      },
+    }),
     // Web 端不需要跨窗口 tab 管理
     syncWindowTabs: () => {},
     // Web 端没有宿主层 Dock / 任务栏徽标，保持空实现以兼容统一平台接口
@@ -295,7 +280,6 @@ function createWebPlatform(): IPlatformService {
     onNewTask: () => () => {},
     onOpenWorkspace: () => () => {},
     onWindowFullscreenChanged: () => () => {},
-    onTaskNotificationClick: () => () => {},
     exportLogs: () => Promise.resolve({ success: false, error: "Not supported in web mode" }),
     captureWindowScreenshot: () => Promise.resolve(null),
     importChromeBrowserData: (_options) =>

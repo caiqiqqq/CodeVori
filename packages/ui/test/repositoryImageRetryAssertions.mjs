@@ -1,5 +1,80 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { tsImport } from "tsx/esm/api";
+
+export async function assertRepositoryBinaryImages(context) {
+  const { readForgeImageResponse } = await tsImport(
+    "../../services/src/git/providers/forgeMedia.ts",
+    import.meta.url,
+  );
+  const captured = process.env.ZCODE_E2E_IMAGE_PREVIEWS_FILE
+    ? JSON.parse(await readFile(process.env.ZCODE_E2E_IMAGE_PREVIEWS_FILE, "utf8"))
+    : [];
+  const binaryImages = [
+    { dataBase64: await context.page.evaluate(() => window.__detail.imageData) },
+    ...captured,
+  ];
+  for (const [index, input] of binaryImages.entries()) {
+    const preview = await readForgeImageResponse(
+      new Response(Buffer.from(input.dataBase64, "base64"), {
+        headers: { "content-type": "application/octet-stream" },
+      }),
+    );
+    const dimensions = await assertRepositoryBinaryImage({
+      ...context,
+      preview,
+      name: `binary-image-${index}`,
+    });
+    process.stdout.write(
+      `Binary image ${index} decoded inline and expanded on desktop/mobile: ${dimensions.join("x")}\n`,
+    );
+  }
+}
+
+async function assertRepositoryBinaryImage({ page, detail, row, image, preview, artifacts, name }) {
+  const bytes = Buffer.from(preview.dataBase64, "base64");
+  assert.equal(preview.mediaType, "image/png");
+  const dimensions = [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
+  await detail.getByRole("button", { name: "关闭详情", exact: true }).click();
+  await page.evaluate((value) => {
+    window.__detail.imagePreview = value;
+  }, preview);
+  for (const [width, theme] of [
+    [1280, "zai-light"],
+    [390, "zai-dark"],
+  ]) {
+    await page.setViewportSize({ width, height: 960 });
+    await page.evaluate((value) => window.__detail.setTheme(value), theme);
+    await row().click();
+    await image.waitFor();
+    await image.evaluate((node) => node.decode());
+    assert.deepEqual(
+      await image.evaluate((node) => [node.naturalWidth, node.naturalHeight]),
+      dimensions,
+    );
+    assert.equal(await detail.getByTestId("repository-image").getByRole("alert").count(), 0);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({ path: join(artifacts, `${name}-${width}.png`) });
+    await detail.getByRole("button", { name: "预览图片", exact: true }).click();
+    const expanded = page.getByTestId("repository-image-preview").getByRole("img");
+    await expanded.evaluate((node) => node.decode());
+    assert.deepEqual(
+      await expanded.evaluate((node) => [node.naturalWidth, node.naturalHeight]),
+      dimensions,
+    );
+    await page.keyboard.press("Escape");
+    await page.getByTestId("repository-image-preview").waitFor({ state: "detached" });
+    await detail.getByRole("button", { name: "关闭详情", exact: true }).click();
+  }
+  await page.evaluate(() => {
+    window.__detail.imagePreview = null;
+  });
+  await page.setViewportSize({ width: 1280, height: 960 });
+  await row().click();
+  await image.waitFor();
+  return dimensions;
+}
 
 export async function assertRepositoryImageRecovery({
   page,

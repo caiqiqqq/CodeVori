@@ -193,7 +193,7 @@ test("all available Hosts contribute while missing Hosts and partial repository 
   }
 });
 
-test("hidden pages pause polling and visibility recovery forces a fresh read", async (t) => {
+test("hidden pages keep notification polling and visibility recovery forces a fresh read", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
   const original = Object.getOwnPropertyDescriptor(globalThis, "document");
   const documentTarget = Object.assign(new EventTarget(), { visibilityState: "hidden" });
@@ -204,13 +204,16 @@ test("hidden pages pause polling and visibility recovery forces a fresh read", a
   try {
     h.requests[0]!.resolve(result(1));
     await settle();
-    t.mock.timers.tick(120_000);
-    assert.equal(h.requests.length, 1);
-    documentTarget.visibilityState = "visible";
-    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    t.mock.timers.tick(60_000);
     assert.equal(h.requests.length, 2);
     assert.equal(h.requests[1]!.input.force, true);
     h.requests[1]!.resolve(result(2));
+    await settle();
+    documentTarget.visibilityState = "visible";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    assert.equal(h.requests.length, 3);
+    assert.equal(h.requests[2]!.input.force, true);
+    h.requests[2]!.resolve(result(3));
     await settle();
   } finally {
     close();

@@ -3319,6 +3319,7 @@ const enUS: Record<string, string> = {
   "notification.taskWaiting": "Task waiting for your confirmation",
   "notification.taskReview": "Task waiting for your review",
   "notification.completed": "Task completed",
+  "notification.newRepositoryIssue": "New repository issue",
   "notification.completedBody": "Task completed",
   "notification.error": "Task error occurred",
   "notification.permissionRequired": "Your confirmation is needed",
