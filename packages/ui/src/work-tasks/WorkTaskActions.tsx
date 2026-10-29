@@ -22,6 +22,8 @@ import { WorkTaskArchiveWorktreeDialog } from "./WorkTaskArchiveWorktreeDialog.j
 import { WorkTaskRenameDialog } from "./WorkTaskRenameDialog.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { toast } from "@/components/ui/toast.js";
+import { AgentBoardAddMenuItem } from "@/agent-board/AgentBoardAddMenuItem.js";
+import { boardEntityKey, boardWorkspaceKey } from "@/agent-board/agentBoardModel.js";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -166,20 +168,32 @@ export function WorkTaskActions({
       disabled: disabled || !panel.executable || syncing,
       run: () => setConfirmCleanup(true),
     });
-  const items = (Item: typeof DropdownMenuItem | typeof ContextMenuItem) =>
-    actions.map(({ label, hint, Icon, disabled, run }) => (
-      <Item key={label} disabled={disabled} onSelect={run}>
-        <Icon className="size-4" />
-        {hint ? (
-          <span className="min-w-0">
-            {label}
-            <span className="block max-w-64 whitespace-normal text-ui-xs">{hint}</span>
-          </span>
-        ) : (
-          label
-        )}
-      </Item>
-    ));
+  const items = (Item: typeof DropdownMenuItem | typeof ContextMenuItem) => (
+    <>
+      <AgentBoardAddMenuItem
+        Item={Item}
+        archived={task.archived}
+        target={{
+          kind: "work-task",
+          key: boardEntityKey(task, "work-task", task.id),
+          projectKey: boardWorkspaceKey(task),
+        }}
+      />
+      {actions.map(({ label, hint, Icon, disabled, run }) => (
+        <Item key={label} disabled={disabled} onSelect={run}>
+          <Icon className="size-4" />
+          {hint ? (
+            <span className="min-w-0">
+              {label}
+              <span className="block max-w-64 whitespace-normal text-ui-xs">{hint}</span>
+            </span>
+          ) : (
+            label
+          )}
+        </Item>
+      ))}
+    </>
+  );
   const controls = menu ? (
     // 菜单内会打开独立弹窗，双重模态锁可能在关闭后残留 body pointer-events:none。
     <DropdownMenu modal={false}>

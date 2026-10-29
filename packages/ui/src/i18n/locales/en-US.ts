@@ -11,6 +11,7 @@ const enUS: Record<string, string> = {
   "agentBoard.conversations": "Conversations",
   "agentBoard.standalone": "Standalone tasks",
   "agentBoard.manageTracking": "Manage displayed sessions",
+  "agentBoard.addToBoard": "Add to board",
   "agentBoard.trackingDescription":
     "Choose standalone tasks, work tasks or project conversations to track. Group rules include future items; individual choices take priority. Saved in this browser.",
   "agentBoard.trackingMode": "Display mode",

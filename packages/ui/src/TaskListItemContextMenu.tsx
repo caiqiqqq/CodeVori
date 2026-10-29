@@ -4,6 +4,10 @@ import {
   ContextMenuSeparator,
 } from "@/components/ui/context-menu.js";
 import { TaskActionMenuContent } from "@/TaskActionMenuContent.js";
+import {
+  AgentBoardConversationMenuItem,
+  type BoardConversationMenuTarget,
+} from "@/agent-board/AgentBoardAddMenuItem.js";
 
 export function TaskListItemContextMenu({
   intl,
@@ -27,6 +31,7 @@ export function TaskListItemContextMenu({
   onViewModelTrajectory,
   disableTaskActions = false,
   disabledReason,
+  boardTarget,
 }: {
   intl: {
     formatMessage: (desc: { id: string }, values?: Record<string, string>) => string;
@@ -57,9 +62,11 @@ export function TaskListItemContextMenu({
   onViewModelTrajectory?: () => void;
   disableTaskActions?: boolean;
   disabledReason?: string;
+  boardTarget?: BoardConversationMenuTarget;
 }) {
   return (
     <ContextMenuContent className="w-52">
+      {boardTarget ? <AgentBoardConversationMenuItem target={boardTarget} /> : null}
       <TaskActionMenuContent
         intl={intl}
         isPinned={isPinned}

@@ -25,6 +25,7 @@ import { buildTaskFeedbackDescription } from "@/lib/taskFeedbackDraft.js";
 import { useV4SplitPaneEntry } from "@/v4/splitPaneEntryContext.js";
 import { useModelTrajectoryStore } from "@/store/modelTrajectoryStore.js";
 import { useTaskRowArchiveConfirmation } from "@/hooks/useTaskRowArchiveConfirmation.js";
+import { AgentBoardConversationMenuItem } from "@/agent-board/AgentBoardAddMenuItem.js";
 
 /** The same ACP row and actions appear in workspace, chronological and pinned lists. */
 export function WorkspaceAcpTaskItem({
@@ -288,6 +289,7 @@ export function WorkspaceAcpTaskItem({
           </li>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-52" data-testid={`acp-task-menu-${session.id}`}>
+          <AgentBoardConversationMenuItem target={{ ...session, kind: "acp" }} />
           <ContextMenuItem disabled={readOnly || busy} onSelect={pinAction}>
             {pinLabel}
           </ContextMenuItem>

@@ -834,6 +834,12 @@ export function TaskListItemContextMenuContent({
 
   return (
     <TaskListItemContextMenu
+      boardTarget={{
+        workspacePath,
+        workspaceIdentity: task.workspaceIdentity,
+        kind: "native",
+        id: task.taskId,
+      }}
       intl={intl}
       isPinned={isPinned}
       fileManagerLabel={fileManagerLabel}
