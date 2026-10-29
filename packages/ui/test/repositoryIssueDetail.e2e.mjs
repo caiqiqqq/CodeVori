@@ -4,8 +4,36 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import { tsImport } from "tsx/esm/api";
 import { assertRepositoryImageAuthentication } from "./repositoryImageAuthAssertions.mjs";
 import { assertRepositoryGithubImages } from "./repositoryGithubImageAssertions.mjs";
+
+const { createGitlabForgeProvider } = await tsImport(
+  "../../services/src/git/providers/gitlabForgeProvider.ts",
+  import.meta.url,
+);
+// 使用真实 provider 输出进入 UI，覆盖内网 web_url 到平台外链的完整数据链。
+const externalItem = await createGitlabForgeProvider(
+  async () => ({
+    data: {
+      iid: 7,
+      title: "Synthetic",
+      web_url:
+        "http://internal.example.invalid:1080/team/sub/project/-/work_items/7?view=full#note_7",
+    },
+    headers: new Headers(),
+  }),
+  "team/sub/project",
+  "https://forge.example.invalid/git/team/sub/project",
+).getItem({
+  workspacePath: "/synthetic/A",
+  repositoryKey: "A",
+  accountId: "A",
+  kind: "issue",
+  number: 7,
+});
+const expectedExternalUrl =
+  "https://forge.example.invalid/git/team/sub/project/-/work_items/7?view=full#note_7";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__repository-issue-detail-e2e-${process.pid}`;
@@ -46,7 +74,7 @@ try {
     const project='https://forge.example.invalid/git/team/sub/project';
     const user={username:'tester',displayName:'测试用户',avatarUrl:null};
     const label={key:'bug',name:'bug',color:'#d73a4a'};
-    const item=(host:string,r:any)=>({number:7,kind:'issue',title:host+' 网页式议题详情与完整图片',body:state.github?'<img width="800" height="400" alt="GitHub screenshot" src="https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc" />':'## 问题描述\\n\\n复现步骤和页面截图。\\n\\n![Synthetic screenshot](/uploads/0123456789abcdef0123456789abcdef/screenshot.png)\\n\\n[Related issue](8) [blocked file](file:///tmp/private.txt)\\n\\n- [x] 已确认\\n- [ ] 待修复',state:'open',draft:false,author:user,url:state.github?'https://github.com/team/project/issues/7':project+'/-/issues/7',createdAt:'2026-10-01T00:00:00Z',updatedAt:'2026-10-07T00:00:00Z',labels:[{...label,color:null}],commentCount:1,change:null,metadata:{assignees:[user],milestone:{title:'下一版',url:project+'/-/milestones/1'},dueDate:'2026-10-20',timeStats:{estimateSeconds:3600,spentSeconds:1800},confidential:false,taskStatus:{total:2,completed:1}}});
+    const item=(host:string,r:any)=>({number:7,kind:'issue',title:host+' 网页式议题详情与完整图片',body:state.github?'<img width="800" height="400" alt="GitHub screenshot" src="https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc" />':'## 问题描述\\n\\n复现步骤和页面截图。\\n\\n![Synthetic screenshot](/uploads/0123456789abcdef0123456789abcdef/screenshot.png)\\n\\n[Related issue](8) [blocked file](file:///tmp/private.txt)\\n\\n- [x] 已确认\\n- [ ] 待修复',state:'open',draft:false,author:user,url:state.github?'https://github.com/team/project/issues/7':${JSON.stringify(externalItem.url)},createdAt:'2026-10-01T00:00:00Z',updatedAt:'2026-10-07T00:00:00Z',labels:[{...label,color:null}],commentCount:1,change:null,metadata:{assignees:[user],milestone:{title:'下一版',url:project+'/-/milestones/1'},dueDate:'2026-10-20',timeStats:{estimateSeconds:3600,spentSeconds:1800},confidential:false,taskStatus:{total:2,completed:1}}});
     const extras={participants:[user],participantsHasMore:false,linkedItems:[{number:8,title:'关联的修复任务',state:'open',url:project+'/-/issues/8'}],linkedItemsHasMore:false,labels:[label]};
     const services:any={};
     for(const host of ['A','B']) services[host]={gitService:{
@@ -171,9 +199,22 @@ try {
   await detail.getByRole("button", { name: "Related issue", exact: true }).click();
   assert.equal(
     await page.evaluate(() => window.__detail.calls.find((c) => c.op === "external").url),
-    "https://forge.example.invalid/git/team/sub/project/-/issues/8",
+    "https://forge.example.invalid/git/team/sub/project/-/work_items/8",
   );
   assert.equal(await detail.locator('a[href^="file:"]').count(), 0);
+  const assertIssueExternalLink = async () => {
+    await detail
+      .locator("header")
+      .getByRole("button", { name: "在浏览器中打开", exact: true })
+      .click();
+    assert.equal(
+      await page.evaluate(
+        () => window.__detail.calls.filter((c) => c.op === "external").at(-1).url,
+      ),
+      expectedExternalUrl,
+    );
+  };
+  await assertIssueExternalLink();
   assert.equal(await detail.locator("[data-markdown-local-path-trigger]").count(), 0);
   const draft = detail.getByRole("textbox", { name: "评论", exact: true });
   await draft.fill("保留评论草稿");
@@ -255,6 +296,7 @@ try {
   await settleVisuals();
   await page.screenshot({ path: join(artifacts, "desktop-dark.png") });
   await page.setViewportSize({ width: 390, height: 844 });
+  await assertIssueExternalLink();
   await detail.getByTestId("repository-detail-scroll").evaluate((node) => {
     node.scrollTop = 0;
   });
