@@ -78,8 +78,8 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   await page.getByRole("combobox", { name: "分组方式", exact: true }).selectOption("status");
   assert.equal(
     await page.locator('[data-board-column="running"] article').count(),
-    3,
-    "unfinished conversations and work tasks share the ongoing column",
+    2,
+    "only running work tasks stay ongoing; the ended conversation is completed",
   );
   await page.evaluate(() => {
     const { workRows, notifyWork, store } = window.__board;
@@ -121,7 +121,7 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   await statusTabs.getByRole("tab", { name: /^失败\s*2$/ }).waitFor();
   assert.equal(await statusTabs.getByRole("tab", { name: /需关注/ }).count(), 0);
   await choose("进行中");
-  assert.equal(await page.locator("[data-board-card]").count(), 6);
+  assert.equal(await page.locator("[data-board-card]").count(), 5);
   assert.equal(
     await page.getByRole("heading", { name: "Status example failed", exact: true }).count(),
     0,
@@ -130,8 +130,8 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   await choose("已完成");
   assert.equal(
     await page.locator("[data-board-card]").count(),
-    2,
-    "archived completion is excluded",
+    3,
+    "finished execution includes review, while archived completion is excluded",
   );
   assert.equal(await groups.count(), 1, "completion view starts with its own column");
   await choose("失败");
@@ -194,5 +194,80 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
     await page.evaluate(() => JSON.parse(localStorage.getItem("zcode-agent-board:v1")).view),
     "completed",
   );
-  assert.equal(await page.locator("[data-board-card]").count(), 2);
+  assert.equal(await page.locator("[data-board-card]").count(), 3);
+
+  // 复现升级前少量项目且保留 project 偏好的真实入口，不能靠项目过多的分支通过。
+  const legacyWorkRows = await page.evaluate(() => {
+    const { workRows } = window.__board;
+    const rows = workRows
+      .slice(0, 2)
+      .map((task) => ({ ...task, status: "running", archived: false }));
+    const saved = JSON.parse(localStorage.getItem("zcode-agent-board:v1"));
+    delete saved.layoutVersion;
+    Object.assign(saved, {
+      project: null,
+      category: "all",
+      group: "project",
+      view: "all",
+      agent: "all",
+      search: "",
+      tracking: {
+        mode: "custom",
+        projects: [],
+        standalone: false,
+        workTasks: false,
+        includedItems: [
+          ...rows.map((task) => JSON.stringify([task.workspacePath, "work-task", task.id])),
+          JSON.stringify(["/fixture/project-23", "native", "same-id"]),
+        ],
+        excludedItems: [],
+      },
+    });
+    localStorage.setItem("zcode-agent-board:v1", JSON.stringify(saved));
+    return rows;
+  });
+  await page.reload();
+  await page.getByRole("heading", { name: "Agent 看板", exact: true }).waitFor();
+  await page.evaluate((rows) => {
+    window.__board.workRows.push(...rows);
+    window.__board.notifyWork();
+  }, legacyWorkRows);
+  await page.waitForFunction(() => document.querySelectorAll("[data-board-card]").length === 3);
+  assert.equal(
+    await page.getByRole("combobox", { name: "分组方式", exact: true }).inputValue(),
+    "status",
+  );
+  assert.deepEqual(
+    await groups.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn)),
+    ["running", "completed", "error"],
+  );
+  assert.equal(await page.locator('[data-board-column="running"] article').count(), 2);
+  assert.equal(await page.locator('[data-board-column="completed"] article').count(), 1);
+  assert.equal(await page.locator('[data-board-column="error"] article').count(), 0);
+  // 用户可主动选项目分组，但从选择器回到所有项目后恢复三列。
+  await page.getByRole("combobox", { name: "分组方式", exact: true }).selectOption("project");
+  assert.equal(await groups.count(), 2);
+  await page.getByRole("button", { name: "所有项目", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "所有项目", exact: true }).click();
+  assert.equal(await groups.count(), 3);
+  assert.equal(await page.evaluate(() => window.__board.store.getState().group), "status");
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {
+    await page.evaluate((value) => (document.documentElement.className = value), theme);
+    await page.screenshot({
+      path: join(
+        artifacts,
+        theme.includes("dark")
+          ? "all-projects-migrated-dark.png"
+          : "all-projects-migrated-light.png",
+      ),
+      animations: "disabled",
+    });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({
+    path: join(artifacts, "all-projects-migrated-mobile.png"),
+    animations: "disabled",
+  });
 }

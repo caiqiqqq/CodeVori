@@ -82,9 +82,6 @@ export const boardEntityKey = (
   kind: BoardItem["kind"],
   id: string,
 ) => JSON.stringify([boardWorkspaceKey(scope), kind, id]);
-function reviewed(updatedAt: number, marker: number | undefined) {
-  return marker !== undefined && updatedAt <= marker;
-}
 export function nativeBoardStatus(task: WindowHostControllerTaskListItem): BoardStatus {
   const activity = task.activity;
   if (
@@ -102,14 +99,18 @@ export function nativeBoardStatus(task: WindowHostControllerTaskListItem): Board
     task.liveStatus === "running"
   )
     return "running";
-  if (reviewed(task.updatedAt, task.boardCompletedAt)) return "completed";
-  return task.liveStatus === "error" || activity?.phase === "error" ? "error" : "idle";
+  // 主动中断的 liveStatus 也可能是 completed，需读原始 phase，避免又被归入进行中。
+  return task.liveStatus === "error" ||
+    activity?.phase === "error" ||
+    activity?.phase === "completedInterrupted"
+    ? "error"
+    : "completed";
 }
 export function acpBoardStatus(session: AcpSidebarSession): BoardStatus {
   if (session.waiting) return "waiting";
   if (session.status === "running") return "running";
-  if (reviewed(session.updatedAt, session.boardCompletedAt)) return "completed";
-  return session.failed ? "error" : "idle";
+  // failed 仅表示带错误的中断；用户停止时没有 error，也不能继续显示进行中。
+  return session.status === "interrupted" || session.failed ? "error" : "completed";
 }
 export function workTaskBoardStatus(task: WorkTask): BoardStatus {
   // 待办完成以原任务生命周期为准，不能用会话确认水位代替验收。
@@ -134,8 +135,9 @@ export function workTaskBoardStatus(task: WorkTask): BoardStatus {
   }
 }
 export function boardDisplayStatus(item: BoardItem): BoardDisplayStatus {
-  // 看板只呈现三类，原始生命周期继续用于任务操作；一轮结束不代表任务完成。
-  if (item.status === "completed") return "completed";
+  // 正常执行结束即完成；待办 review 只保留原验收操作，不再把结束的会话显示为进行中。
+  if (item.status === "completed" || (item.kind === "work-task" && item.status === "review"))
+    return "completed";
   if (item.status === "error" || (item.kind === "work-task" && item.workTask.status === "canceled"))
     return "error";
   return "running";

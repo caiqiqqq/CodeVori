@@ -57,15 +57,95 @@ test("new preferences use status columns and new status views restore saved grou
   }
 });
 
-test("turn outcomes do not complete work, explicit review expires on new activity", () => {
-  const task: any = { updatedAt: 100, status: "completed", liveStatus: "completed" };
-  assert.equal(nativeBoardStatus(task), "idle");
-  assert.equal(nativeBoardStatus({ ...task, boardCompletedAt: 100 }), "completed");
-  assert.equal(nativeBoardStatus({ ...task, updatedAt: 101, boardCompletedAt: 100 }), "idle");
+test("legacy project layout migrates without discarding scope; all-project navigation restores status layout", () => {
+  let raw = JSON.stringify({
+    project: null,
+    pinnedProjects: ["/project"],
+    view: "failed",
+    group: "project",
+    agent: "codex",
+    search: "fix",
+    category: "all",
+    tracking: {
+      mode: "custom",
+      projects: ["/project"],
+      standalone: true,
+      workTasks: true,
+      includedItems: ["include"],
+      excludedItems: ["exclude"],
+    },
+  });
+  const legacy = JSON.parse(raw);
+  const storage = {
+    getItem: () => raw,
+    setItem: (_: string, value: string) => {
+      raw = value;
+    },
+    removeItem() {},
+  };
+  const store = createAgentBoardStore(storage);
+  assert.equal(store.getState().group, "status");
+  for (const field of [
+    "project",
+    "pinnedProjects",
+    "view",
+    "agent",
+    "search",
+    "category",
+    "tracking",
+  ] as const)
+    assert.deepEqual(store.getState()[field], legacy[field]);
+  store.getState().setGroup("project");
   assert.equal(
-    nativeBoardStatus({ ...task, liveStatus: "waiting", boardCompletedAt: 100 }),
-    "waiting",
+    createAgentBoardStore(storage).getState().group,
+    "project",
+    "explicit grouping after migration persists",
   );
+  for (const select of [
+    () => store.getState().selectProject("/project"),
+    () => store.getState().selectWorkTasks(),
+    () => store.getState().selectStandalone(),
+  ]) {
+    select();
+    store.getState().setGroup("project");
+    store.getState().selectProject(null);
+    const restored = createAgentBoardStore(storage).getState();
+    assert.equal(restored.project, null);
+    assert.equal(restored.category, "all");
+    assert.equal(restored.group, "status");
+    assert.deepEqual(restored.tracking, legacy.tracking);
+  }
+});
+
+test("conversation outcomes drive completion without manual confirmation", () => {
+  const task: any = { updatedAt: 100, status: "completed", liveStatus: "completed" };
+  assert.equal(nativeBoardStatus(task), "completed");
+  assert.equal(nativeBoardStatus({ ...task, liveStatus: "idle" }), "completed");
+  assert.equal(
+    nativeBoardStatus({ ...task, activity: { phase: "completedSuccess" } }),
+    "completed",
+  );
+  assert.equal(acpBoardStatus({ status: "idle", updatedAt: 100 } as any), "completed");
+  for (const marker of [undefined, 100, 1000]) {
+    assert.equal(nativeBoardStatus({ ...task, boardCompletedAt: marker }), "completed");
+    assert.equal(
+      nativeBoardStatus({ ...task, liveStatus: "running", boardCompletedAt: marker }),
+      "running",
+    );
+    assert.equal(
+      nativeBoardStatus({ ...task, liveStatus: "waiting", boardCompletedAt: marker }),
+      "waiting",
+    );
+    assert.equal(
+      nativeBoardStatus({ ...task, liveStatus: "error", boardCompletedAt: marker }),
+      "error",
+    );
+    assert.equal(
+      acpBoardStatus({ status: "interrupted", boardCompletedAt: marker } as any),
+      "error",
+    );
+    assert.equal(acpBoardStatus({ status: "running", boardCompletedAt: marker } as any), "running");
+  }
   assert.equal(
     nativeBoardStatus({
       ...task,
@@ -73,27 +153,40 @@ test("turn outcomes do not complete work, explicit review expires on new activit
     }),
     "running",
   );
+  assert.equal(acpBoardStatus({ status: "running", waiting: true } as any), "waiting");
+});
+
+test("interrupted conversations leave ongoing even without a sidebar error", () => {
+  const acp = { status: "interrupted", failed: false, updatedAt: 101 } as any;
+  const native = {
+    updatedAt: 101,
+    liveStatus: "completed",
+    activity: { phase: "completedInterrupted", hasBackgroundWork: false },
+  } as any;
+  for (const failed of [false, true]) assert.equal(acpBoardStatus({ ...acp, failed }), "error");
+  assert.equal(nativeBoardStatus(native), "error");
+  for (const [source, project] of [
+    [acp, acpBoardStatus],
+    [native, nativeBoardStatus],
+  ] as const) {
+    const status = project(source);
+    const item = { status, archived: false } as BoardItem;
+    assert.equal(boardDisplayStatus(item), "error");
+    assert.equal(matchesBoardView(item, "active"), false);
+    assert.equal(matchesBoardView(item, "failed"), true);
+    assert.equal(matchesBoardView(item, "completed"), false);
+    assert.equal(matchesBoardView({ ...item, archived: true }, "failed"), false);
+    assert.equal(matchesBoardView({ ...item, archived: true }, "archived"), true);
+    assert.equal(project({ ...source, boardCompletedAt: 101 }), "error");
+    assert.equal(project({ ...source, boardCompletedAt: 100 }), "error");
+  }
+  assert.equal(acpBoardStatus({ ...acp, status: "running", boardCompletedAt: 101 }), "running");
+  assert.equal(acpBoardStatus({ ...acp, waiting: true }), "waiting");
+  assert.equal(nativeBoardStatus({ ...native, liveStatus: "running" }), "running");
+  assert.equal(nativeBoardStatus({ ...native, liveStatus: "waiting" }), "waiting");
   assert.equal(
-    acpBoardStatus({ status: "idle", updatedAt: 100, boardCompletedAt: 100 } as any),
-    "completed",
-  );
-  assert.equal(
-    acpBoardStatus({ status: "running", waiting: true, updatedAt: 100 } as any),
-    "waiting",
-  );
-  assert.equal(acpBoardStatus({ status: "interrupted", failed: true } as any), "error");
-  assert.equal(
-    nativeBoardStatus({ ...task, liveStatus: "error", boardCompletedAt: 100 }),
-    "completed",
-  );
-  assert.equal(
-    acpBoardStatus({
-      status: "interrupted",
-      failed: true,
-      updatedAt: 100,
-      boardCompletedAt: 100,
-    } as any),
-    "completed",
+    nativeBoardStatus({ ...native, activity: { ...native.activity, hasBackgroundWork: true } }),
+    "running",
   );
 });
 
@@ -257,6 +350,29 @@ test("work tasks retain lifecycle and have an independent tracking group", () =>
   );
   assert.equal(matchesBoardTracking(item, { ...tracking, includedItems: [item.key] }), true);
   assert.notEqual(item.key, boardEntityKey({ workspacePath: "/p" }, "native", "1"));
+});
+
+test("finished work-task execution is completed on the board before acceptance", () => {
+  for (const status of ["review", "done"] as const) {
+    const workTask = { status } as any;
+    const item = {
+      kind: "work-task",
+      status: workTaskBoardStatus(workTask),
+      workTask,
+    } as BoardItem;
+    assert.equal(boardDisplayStatus(item), "completed");
+    assert.equal(matchesBoardView(item, "active"), false);
+    assert.equal(matchesBoardView(item, "completed"), true);
+  }
+  const workTask = {
+    status: "done",
+    forgeWriteback: { commentState: "pending", closeState: "done" },
+  } as any;
+  assert.equal(workTaskBoardStatus(workTask), "review");
+  assert.equal(
+    boardDisplayStatus({ kind: "work-task", status: "review", workTask } as BoardItem),
+    "completed",
+  );
 });
 
 test("legacy custom tracking preserves choices while new work tasks default to unselected", () => {

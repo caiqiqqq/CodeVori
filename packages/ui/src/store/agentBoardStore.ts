@@ -29,6 +29,7 @@ interface BoardStore extends Preferences {
   selectWorkTasks(): void;
 }
 const key = "zcode-agent-board:v1";
+const layoutVersion = 2;
 const defaults: Preferences = {
   project: null,
   pinnedProjects: null,
@@ -81,7 +82,8 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
       initial = {
         project: v.project,
         view: v.view === "attention" ? "all" : v.view,
-        group: v.group,
+        // 旧默认项目分组曾遮住三状态列；只迁移布局，不清除用户的跟踪范围。
+        group: v.layoutVersion === layoutVersion ? v.group : "status",
         agent: v.agent,
         search: v.search,
         tracking: readTracking(v.tracking),
@@ -101,6 +103,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         storage?.setItem(
           key,
           JSON.stringify({
+            layoutVersion,
             project,
             pinnedProjects,
             view,
@@ -119,7 +122,8 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
       ...initial,
       pickerOpen: false,
       setPickerOpen: (pickerOpen) => set({ pickerOpen }),
-      selectProject: (project) => save({ project, category: "all" }),
+      selectProject: (project) =>
+        save({ project, category: "all", ...(project === null ? { group: "status" } : {}) }),
       selectWorkTasks: () => save({ project: null, category: "work-tasks" }),
       selectStandalone: () => save({ project: null, category: "standalone" }),
       setTracking: (tracking) => save({ tracking: readTracking(tracking) }),

@@ -1,5 +1,13 @@
 import { acpSessionFailureSchema, type AcpSessionFailure, type AcpSession } from "@zcode/shared";
 
+/** Only native-session restore failures may trigger empty-session replacement in the Host. */
+export class AcpSessionLoadError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "AcpSessionLoadError";
+  }
+}
+
 const MAX_TEXT = 32_000;
 function object(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)

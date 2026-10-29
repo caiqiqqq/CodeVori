@@ -60,8 +60,6 @@ const zhCN: Record<string, string> = {
   "agentBoard.pinProject": "固定项目",
   "agentBoard.unpinProject": "取消固定项目",
   "agentBoard.close": "返回看板",
-  "agentBoard.complete": "标记完成",
-  "agentBoard.reopen": "重新打开",
   "agentBoard.archive": "归档",
   "agentBoard.restore": "恢复会话",
   "agentBoard.openSession": "打开主会话",

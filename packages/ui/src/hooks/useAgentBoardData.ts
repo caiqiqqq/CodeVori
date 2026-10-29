@@ -35,7 +35,7 @@ export function useAgentBoardProjects(workspaceTabs: WorkspaceTabState[]) {
     [groups, intl],
   );
 }
-export type BoardAction = "pin" | "archive" | "completion";
+export type BoardAction = "pin" | "archive";
 export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
   const services = useBaseWorkspaceServices();
   const sessionsById = useRemoteWorkspaceSessionStore((s) => s.sessionsById);
@@ -191,13 +191,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
         const mutation: WindowHostControllerMutation =
           action === "pin"
             ? { kind: "pin", pinned: !item.pinned }
-            : action === "archive"
-              ? { kind: "archive", archived: !item.archived }
-              : {
-                  kind: "board-completion",
-                  completed: item.status !== "completed",
-                  expectedUpdatedAt: item.updatedAt,
-                };
+            : { kind: "archive", archived: !item.archived };
         if (!services.windowControllerService) throw new Error("Window Controller unavailable");
         await services.windowControllerService.mutateTask({
           address: {
@@ -220,13 +214,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
           action:
             action === "pin"
               ? { kind: "pin", pinned: !item.pinned }
-              : action === "archive"
-                ? { kind: "archive", archived: !item.archived }
-                : {
-                    kind: "completion",
-                    completed: item.status !== "completed",
-                    expectedUpdatedAt: item.updatedAt,
-                  },
+              : { kind: "archive", archived: !item.archived },
         });
       }
     },
