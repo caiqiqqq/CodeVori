@@ -61,8 +61,8 @@ export function selectNodeRelease(
   return valid(release.version)!;
 }
 
-async function getResponse(url: string) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+async function getResponse(url: string, fetcher: typeof fetch) {
+  const response = await fetcher(url, { signal: AbortSignal.timeout(30_000) });
   if (!response.ok) throw new Error(`Node.js 国内镜像请求失败：HTTP ${response.status}`);
   return response;
 }
@@ -96,7 +96,11 @@ async function versionOf(command: string, args: string[], env: NodeJS.ProcessEnv
 }
 
 /** 目标 Host 唯一运行环境入口；读路径不联网、不启动版本探测进程。 */
-export function createAcpNodeRuntime(directory: string, baseEnv: NodeJS.ProcessEnv) {
+export function createAcpNodeRuntime(
+  directory: string,
+  baseEnv: NodeJS.ProcessEnv,
+  fetcher?: typeof fetch,
+) {
   const pointer = join(directory, "active.json");
   const environment = (root: string, version: string) => {
     const archive = nodeArchive(version);
@@ -134,12 +138,12 @@ export function createAcpNodeRuntime(directory: string, baseEnv: NodeJS.ProcessE
     async install(range: string, log: (message: string) => void) {
       log("正在从国内镜像选择兼容的 Node.js LTS…");
       const version = selectNodeRelease(
-        await (await getResponse(`${NODE_MIRROR}/index.json`)).json(),
+        await (await getResponse(`${NODE_MIRROR}/index.json`, fetcher ?? fetch)).json(),
         range,
       );
       const archive = nodeArchive(version);
       const baseUrl = `${NODE_MIRROR}/v${version}`;
-      const sums = await (await getResponse(`${baseUrl}/SHASUMS256.txt`)).text();
+      const sums = await (await getResponse(`${baseUrl}/SHASUMS256.txt`, fetcher ?? fetch)).text();
       const sha256 = sums
         .split(/\r?\n/)
         .map((line) => line.trim().split(/\s+/))
@@ -154,6 +158,7 @@ export function createAcpNodeRuntime(directory: string, baseEnv: NodeJS.ProcessE
         `${baseUrl}/${archive.file}`,
         { version, entry: archive.entry, sibling: archive.npm, sha256 },
         {
+          fetcher,
           skipArchiveLinks: true,
           onProgress(bytes, total) {
             const mb = Math.floor(bytes / 1_000_000);

@@ -233,6 +233,8 @@ export function createAcpService(
     directory?: string;
     composerPreferenceService?: IComposerPreferenceService;
     resolveInstallEnv?: () => Promise<Record<string, string>>;
+    /** 复用目标 Host 的代理、域名范围和证书策略，不在 ACP 内另建网络出口。 */
+    fetcher?: typeof fetch;
     /** Same Host policy as the management page and API session tools. */
     resolveDynamicWorkflowClientConfig?: () => Promise<DynamicWorkflowClientConfig>;
     /** Projection-only membership; exact read and internal execution keep child access. */
@@ -277,6 +279,7 @@ export function createAcpService(
     createAcpAgentManager({
       directory: options.directory ? join(options.directory, "agent-settings") : undefined,
       resolveInstallEnv: options.resolveInstallEnv,
+      fetcher: options.fetcher,
     });
   const sessions = new Map<string, AcpSession>();
   const streamDiagnostics = new AcpStreamDiagnostics();

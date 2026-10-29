@@ -56,6 +56,7 @@ test("一键安装通过同一 Host 管理运行环境，失败保留旧指针�
   let rejectDownload = false;
   let releaseDownload: (() => void) | undefined;
   let pendingDownload: Promise<void> | undefined;
+  let fetcher: typeof fetch;
   const events: string[] = [];
   const baseEnv = {
     PATH: systemBin,
@@ -65,6 +66,7 @@ test("一键安装通过同一 Host 管理运行环境，失败保留旧指针�
   const manager = createAcpAgentManager({
     directory,
     env: baseEnv,
+    fetcher: (...args) => fetcher(...args),
     fetchMetadata: async (url) => {
       if (url.includes("agentclientprotocol.com")) return { agents: [] };
       const parts = new URL(url).pathname.slice(1).split("/");
@@ -106,7 +108,10 @@ fs.writeFileSync(${JSON.stringify(join(root, "installed.json"))},JSON.stringify(
     await symlink("/tmp/unsafe-outside-node", join(content, archive.root, "bin/npm"));
     await createTar({ file: archivePath, cwd: content, gzip: true }, [archive.root]);
     let payload = await readFile(archivePath);
-    globalThis.fetch = async (input) => {
+    globalThis.fetch = async () => {
+      throw new Error("Node runtime must use the Host fetcher");
+    };
+    fetcher = async (input) => {
       const url = String(input);
       requests.push(url);
       assert.ok(url.startsWith("https://npmmirror.com/mirrors/node/"));
