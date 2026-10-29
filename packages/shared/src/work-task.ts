@@ -269,6 +269,8 @@ export const workTaskSchema = workTaskScopeSchema
     failureReason: z.string().optional(),
     completion: z.enum(["accepted_without_merge", "merged"]).optional(),
     stopPending: z.boolean(),
+    /** 最近一次执行收口时间；后续验收和元数据更新不能改变完成排序。 */
+    finishedAt: z.number().finite().nonnegative().optional(),
     createdAt: z.number(),
     updatedAt: z.number(),
   })

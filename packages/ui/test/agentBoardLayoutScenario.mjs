@@ -159,23 +159,23 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   });
   await choose("全部");
   await page.setViewportSize({ width: 1600, height: 1000 });
-  assert.equal(await groups.count(), 3);
+  assert.equal(await groups.count(), 4);
   assert.deepEqual(
     await groups.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn)),
-    ["running", "completed", "error"],
+    ["running", "completed", "error", "staged"],
   );
   for (const label of ["待验收", "等你回复", "待办", "本轮结束", "任务执行中", "已取消"])
     assert.equal(
       await page.getByText(label, { exact: true }).count(),
       0,
-      "board shows only three status labels",
+      "board hides legacy labels while keeping waiting indicators in ongoing",
     );
   for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {
     await page.evaluate((value) => (document.documentElement.className = value), theme);
     await page.screenshot({
       path: join(
         artifacts,
-        theme.includes("dark") ? "three-status-desktop-dark.png" : "three-status-desktop-light.png",
+        theme.includes("dark") ? "four-status-desktop-dark.png" : "four-status-desktop-light.png",
       ),
       animations: "disabled",
     });
@@ -186,7 +186,7 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   assert.ok((await page.locator('[data-board-column="error"]').boundingBox()).x >= 0);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({
-    path: join(artifacts, "three-status-mobile-failed.png"),
+    path: join(artifacts, "four-status-mobile-failed.png"),
     animations: "disabled",
   });
   await choose("已完成");
@@ -239,17 +239,17 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   );
   assert.deepEqual(
     await groups.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn)),
-    ["running", "completed", "error"],
+    ["running", "completed", "error", "staged"],
   );
   assert.equal(await page.locator('[data-board-column="running"] article').count(), 2);
   assert.equal(await page.locator('[data-board-column="completed"] article').count(), 1);
   assert.equal(await page.locator('[data-board-column="error"] article').count(), 0);
-  // 用户可主动选项目分组，但从选择器回到所有项目后恢复三列。
+  // 用户可主动选项目分组，但从选择器回到所有项目后恢复四列。
   await page.getByRole("combobox", { name: "分组方式", exact: true }).selectOption("project");
   assert.equal(await groups.count(), 2);
   await page.getByRole("button", { name: "所有项目", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "所有项目", exact: true }).click();
-  assert.equal(await groups.count(), 3);
+  assert.equal(await groups.count(), 4);
   assert.equal(await page.evaluate(() => window.__board.store.getState().group), "status");
   await page.setViewportSize({ width: 1600, height: 1000 });
   for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {

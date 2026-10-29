@@ -1,3 +1,13 @@
+import { exerciseAgentBoardAgentLabels } from "./agentBoardAgentLabelsScenario.mjs";
+import { assertBoardMessagePreviewsHidden } from "./agentBoardCardPreviewScenario.mjs";
+import {
+  assertBoardFavoritesRemoved,
+  assertLegacyFavoriteMigration,
+} from "./agentBoardFavoritesScenario.mjs";
+import { exerciseAgentBoardUnread } from "./agentBoardUnreadScenario.mjs";
+import { exerciseAgentBoardSidebar } from "./agentBoardSidebarScenario.mjs";
+import { exerciseAgentBoardWaiting } from "./agentBoardWaitingScenario.mjs";
+import { exerciseAgentBoardStaging } from "./agentBoardStagingScenario.mjs";
 import { exerciseAgentBoardLayout } from "./agentBoardLayoutScenario.mjs";
 import { exerciseAgentBoardInterruption } from "./agentBoardInterruptionScenario.mjs";
 import { agentBoardFixture } from "./agentBoardFixture.mjs";
@@ -48,6 +58,18 @@ try {
   await page.addInitScript(() => {
     if (!sessionStorage.getItem("board-fixture-initialized")) {
       localStorage.clear();
+      // 旧收藏视图升级后回到全部，原收藏成员仍应显示。
+      localStorage.setItem(
+        "zcode-agent-board:v1",
+        JSON.stringify({
+          project: null,
+          pinnedProjects: null,
+          view: "starred",
+          group: "status",
+          agent: "all",
+          search: "",
+        }),
+      );
       sessionStorage.setItem("board-fixture-initialized", "yes");
     }
     localStorage.setItem("zcode-locale-preference", "zh-CN");
@@ -58,10 +80,12 @@ try {
   await page.goto(origin + "/" + name + ".html");
   await page.getByRole("heading", { name: "Agent 看板", exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll("[data-board-card]").length === 25);
+  await assertLegacyFavoriteMigration(page);
+  await assertBoardMessagePreviewsHidden(page);
   assert.equal(
     await page.locator("[data-board-column]").count(),
-    3,
-    "24 projects use only 3 display status columns",
+    4,
+    "24 projects use four display status columns",
   );
   const localConversation = page
     .locator("article")
@@ -134,7 +158,7 @@ try {
   assert.equal(await pane.getAttribute("data-acp-id"), "same-id");
   await page
     .getByRole("dialog")
-    .getByText(/Same project · codex · 已完成/)
+    .getByText(/Same project · Codex · 已完成/)
     .waitFor();
   await page.getByRole("button", { name: "归档", exact: true }).click();
   assert.equal(await page.evaluate(() => window.__board.commands.at(-1).remoteSessionId), "host-0");
@@ -168,13 +192,7 @@ try {
   const nativeCard = page
     .locator("article")
     .filter({ has: page.getByRole("heading", { name: "Remote API session", exact: true }) });
-  await nativeCard.getByRole("button", { name: "收藏会话", exact: true }).click();
-  await nativeCard.getByRole("button", { name: "取消收藏", exact: true }).waitFor();
-  const acpCard = page
-    .locator("article")
-    .filter({ has: page.getByRole("heading", { name: "Remote ACP 1", exact: true }) });
-  await acpCard.getByRole("button", { name: "收藏会话", exact: true }).click();
-  await acpCard.getByRole("button", { name: "取消收藏", exact: true }).waitFor();
+  await assertBoardFavoritesRemoved(page);
   await page.evaluate(() => {
     const state = window.__remoteStore.getState();
     window.__disconnected = state.sessionsById["host-0"];
@@ -190,10 +208,6 @@ try {
     .locator("article")
     .filter({ has: page.getByRole("heading", { name: "Remote ACP 0", exact: true }) });
   await disconnectedAcp.getByText("离线 · 暂不可操作", { exact: true }).waitFor();
-  assert.equal(
-    await nativeCard.getByRole("button", { name: "取消收藏", exact: true }).isDisabled(),
-    true,
-  );
   await page.evaluate(() => {
     const state = window.__remoteStore.getState();
     state.registerSession(window.__disconnected);
@@ -369,13 +383,17 @@ try {
     26,
     "all restores hidden sessions without Host mutations",
   );
-
   await exerciseAgentBoardWorkTasks(page, { manage, save, pane, artifacts });
   await exerciseAgentBoardLayout(page, artifacts);
   await exerciseAgentBoardInterruption(page, artifacts);
+  await exerciseAgentBoardStaging(page, artifacts);
+  await exerciseAgentBoardWaiting(page, artifacts);
+  await exerciseAgentBoardUnread(page, artifacts);
+  await exerciseAgentBoardAgentLabels(page, artifacts);
+  await exerciseAgentBoardSidebar(page, artifacts);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: real board/hooks; 24 projects; identity routing; API/ACP automatic completion/archive; six-pin limit; search; desktop themes; mobile drawer; new session; work-task selection, scoped conversation, acceptance failure/retry, archive/read-only. Screenshots: " +
+    "PASS: real board/hooks; 24 projects; identity routing; API/ACP automatic completion/archive; six-pin limit; search; desktop themes; mobile drawer; new session; work-task selection, scoped conversation, acceptance failure/retry, archive/read-only; staging drag/buttons/persistence/restart; waiting indicators and resume; unread acknowledgement/CAS/failure/reload; completion-time sorting; favorites removed/legacy migration; sidebar status counts/icons/zero hiding/tracking/live updates/narrow layout. Screenshots: " +
       artifacts,
   );
 } finally {

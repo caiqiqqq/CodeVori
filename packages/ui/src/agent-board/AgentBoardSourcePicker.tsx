@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "zustand";
-import { MessageSquare, Star } from "lucide-react";
+import { MessageSquare, Star, ListTodo } from "lucide-react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Button } from "@/components/ui/button.js";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
@@ -95,6 +95,7 @@ export function AgentBoardSourcePicker({
                 onClose();
               }}
             >
+              <ListTodo aria-hidden="true" className="size-4 shrink-0" />
               <span>{t("workTasks")}</span>
             </Button>
           ) : null}

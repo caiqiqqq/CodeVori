@@ -1,4 +1,9 @@
-import { isWorkTaskMerging, isWorkTaskForgePending, type WorkTask } from "@zcode/shared";
+import {
+  ACP_AGENT_CATALOG,
+  isWorkTaskMerging,
+  isWorkTaskForgePending,
+  type WorkTask,
+} from "@zcode/shared";
 import type { WindowHostControllerTaskListItem } from "@zcode/services";
 import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
@@ -13,15 +18,15 @@ export const BOARD_STATUSES = [
   "completed",
 ] as const;
 export type BoardStatus = (typeof BOARD_STATUSES)[number];
-export const BOARD_DISPLAY_STATUSES = ["running", "completed", "error"] as const;
+export const BOARD_DISPLAY_STATUSES = ["running", "completed", "error", "staged"] as const;
 export type BoardDisplayStatus = (typeof BOARD_DISPLAY_STATUSES)[number];
 export type BoardView =
   | "all"
   | "active"
   | "completed"
   | "failed"
+  | "staged"
   | "attention"
-  | "starred"
   | "archived";
 export type BoardProject = { key: string; label: string; tabs: WorkspaceTabState[] };
 export type BoardTracking = {
@@ -64,11 +69,13 @@ export type BoardItem = {
   workspacePurpose?: WorkspaceTabState["workspacePurpose"];
   remoteSessionId?: string;
   updatedAt: number;
+  completedAt?: number;
+  unread?: boolean;
   agent: string;
   status: BoardStatus;
-  pinned: boolean;
   archived: boolean;
   online: boolean;
+  staged?: boolean;
   summary?: string;
 } & (
   | { kind: "native"; task: WindowHostControllerTaskListItem }
@@ -77,6 +84,18 @@ export type BoardItem = {
 );
 export const boardWorkspaceKey = (scope: { workspacePath: string; workspaceIdentity?: string }) =>
   scope.workspaceIdentity?.trim() || scope.workspacePath;
+export function boardAgentLabel(item: BoardItem) {
+  const agent =
+    item.kind === "acp"
+      ? item.session.agent
+      : item.kind === "work-task" && item.workTask.execution.kind === "acp"
+        ? item.workTask.execution.agent
+        : undefined;
+  // 同一 Agent 的会话和待办原先使用两套名称；只统一展示，保留原筛选标识。
+  return agent
+    ? (ACP_AGENT_CATALOG.find((entry) => entry.id === agent)?.name ?? agent).replace(/\s+ACP$/i, "")
+    : item.agent;
+}
 export const boardEntityKey = (
   scope: { workspacePath: string; workspaceIdentity?: string },
   kind: BoardItem["kind"],
@@ -134,7 +153,7 @@ export function workTaskBoardStatus(task: WorkTask): BoardStatus {
       return "idle";
   }
 }
-export function boardDisplayStatus(item: BoardItem): BoardDisplayStatus {
+function boardOutcomeStatus(item: BoardItem): Exclude<BoardDisplayStatus, "staged"> {
   // 正常执行结束即完成；待办 review 只保留原验收操作，不再把结束的会话显示为进行中。
   if (item.status === "completed" || (item.kind === "work-task" && item.status === "review"))
     return "completed";
@@ -142,13 +161,60 @@ export function boardDisplayStatus(item: BoardItem): BoardDisplayStatus {
     return "error";
   return "running";
 }
+export type BoardStagedItems = Record<
+  string,
+  { updatedAt: number; outcome: "completed" | "error" }
+>;
+export function canStageBoardItem(item: BoardItem) {
+  return !item.archived && boardOutcomeStatus(item) !== "running";
+}
+export function isBoardItemStaged(item: BoardItem, stagedItems: BoardStagedItems) {
+  const marker = stagedItems[item.key];
+  return Boolean(
+    marker &&
+    canStageBoardItem(item) &&
+    item.updatedAt <= marker.updatedAt &&
+    boardOutcomeStatus(item) === marker.outcome,
+  );
+}
+export function boardDisplayStatus(item: BoardItem): BoardDisplayStatus {
+  return item.staged && canStageBoardItem(item) ? "staged" : boardOutcomeStatus(item);
+}
+export function boardStatusIndicator(item: BoardItem): BoardDisplayStatus | "waiting" {
+  const status = boardDisplayStatus(item);
+  // 分组会将等待合并到进行中；卡片需保留等待事实，避免把排队或等用户操作误标为正在执行。
+  return status === "running" &&
+    (item.status === "waiting" || (item.kind === "work-task" && item.status === "todo"))
+    ? "waiting"
+    : status;
+}
 export function matchesBoardView(item: BoardItem, view: BoardView) {
   if (view === "archived") return item.archived;
   if (item.archived) return false;
   if (view === "active") return boardDisplayStatus(item) === "running";
   if (view === "completed") return boardDisplayStatus(item) === "completed";
   if (view === "failed") return boardDisplayStatus(item) === "error";
+  if (view === "staged") return boardDisplayStatus(item) === "staged";
   if (view === "attention")
     return item.status === "waiting" || item.status === "review" || item.status === "error";
-  return view !== "starred" || item.pinned;
+  return true;
+}
+
+export function boardResultTimestamp(item: BoardItem) {
+  return boardOutcomeStatus(item) === "running"
+    ? item.updatedAt
+    : (item.completedAt ?? item.updatedAt);
+}
+export function compareBoardItems(a: BoardItem, b: BoardItem) {
+  return boardResultTimestamp(b) - boardResultTimestamp(a) || a.key.localeCompare(b.key);
+}
+export function workTaskResultToken(task: WorkTask) {
+  return JSON.stringify([task.runSeq, task.finishedAt ?? null]);
+}
+export function boardHasUnreadResult(item: BoardItem, readWorkTaskResults: Record<string, string>) {
+  if (item.archived || boardOutcomeStatus(item) === "running") return false;
+  if (item.kind === "work-task")
+    return readWorkTaskResults[item.key] !== workTaskResultToken(item.workTask);
+  const unreadAt = item.kind === "native" ? item.task.unreadAt : item.session.unreadAt;
+  return typeof unreadAt === "number" && unreadAt > 0;
 }

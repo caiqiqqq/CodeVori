@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  canStageBoardItem,
+  isBoardItemStaged,
   nativeBoardStatus,
   workTaskBoardStatus,
   acpBoardStatus,
@@ -9,6 +11,11 @@ import {
   matchesBoardView,
   BOARD_STATUSES,
   boardDisplayStatus,
+  boardResultTimestamp,
+  compareBoardItems,
+  boardHasUnreadResult,
+  workTaskResultToken,
+  boardStatusIndicator,
   BOARD_DISPLAY_STATUSES,
   type BoardItem,
   type BoardTracking,
@@ -24,7 +31,7 @@ test("status views separate ongoing, completed, failed and archived work", () =>
     for (const view of ["active", "completed", "failed"] as const)
       assert.equal(matchesBoardView({ ...item, archived: true }, view), false);
   }
-  assert.deepEqual(BOARD_DISPLAY_STATUSES, ["running", "completed", "error"]);
+  assert.deepEqual(BOARD_DISPLAY_STATUSES, ["running", "completed", "error", "staged"]);
   const canceled = {
     kind: "work-task",
     status: "idle",
@@ -54,6 +61,38 @@ test("new preferences use status columns and new status views restore saved grou
     const restored = createAgentBoardStore(storage).getState();
     assert.equal(restored.view, view);
     assert.equal(restored.group, "project");
+  }
+});
+
+test("legacy starred view migrates to all without resetting board preferences", () => {
+  const preferences = {
+    layoutVersion: 2,
+    project: "/project",
+    pinnedProjects: ["/project"],
+    view: "starred",
+    group: "project",
+    agent: "codex",
+    search: "keep search",
+    category: "work-tasks",
+    tracking: {
+      mode: "custom",
+      projects: ["/project"],
+      standalone: true,
+      workTasks: true,
+      includedItems: ["keep"],
+      excludedItems: ["hide"],
+    },
+    stagedItems: { staged: { updatedAt: 100, outcome: "completed" } },
+    readWorkTaskResults: { result: "[1,100]" },
+  };
+  const state = createAgentBoardStore({
+    getItem: () => JSON.stringify(preferences),
+    setItem() {},
+    removeItem() {},
+  }).getState();
+  for (const [key, value] of Object.entries(preferences)) {
+    if (key === "layoutVersion") continue;
+    assert.deepEqual(state[key as keyof typeof state], key === "view" ? "all" : value, key);
   }
 });
 
@@ -404,4 +443,223 @@ test("legacy custom tracking preserves choices while new work tasks default to u
   store.getState().selectWorkTasks();
   assert.equal(store.getState().category, "work-tasks");
   assert.equal(store.getState().project, null);
+});
+
+test("staging only accepts terminal cards and preserves their raw outcome", () => {
+  for (const status of BOARD_STATUSES) {
+    const item = { key: "a", kind: "native", status, updatedAt: 100, archived: false } as BoardItem;
+    assert.equal(canStageBoardItem(item), status === "completed" || status === "error");
+    assert.equal(canStageBoardItem({ ...item, archived: true }), false);
+  }
+  for (const status of ["completed", "error", "review", "idle"] as const) {
+    const item = {
+      key: "a",
+      kind: "work-task",
+      status,
+      updatedAt: 100,
+      workTask: { status: status === "idle" ? "canceled" : "review" },
+    } as BoardItem;
+    assert.equal(canStageBoardItem(item), true);
+    const staged = { ...item, staged: true };
+    assert.equal(boardDisplayStatus(staged), "staged");
+    assert.equal(matchesBoardView(staged, "staged"), true);
+    assert.equal(matchesBoardView(staged, "completed"), false);
+    assert.equal(matchesBoardView(staged, "failed"), false);
+    assert.equal(matchesBoardView({ ...staged, archived: true }, "staged"), false);
+    assert.equal(staged.status, status);
+  }
+});
+
+test("staging persists with identity isolation and is cleared by observed new activity", () => {
+  let raw: string | null = null;
+  const storage = {
+    getItem: () => raw,
+    setItem: (_: string, value: string) => {
+      raw = value;
+    },
+    removeItem() {},
+  };
+  const store = createAgentBoardStore(storage);
+  const item = {
+    key: boardEntityKey({ workspacePath: "/p", workspaceIdentity: "remote:a" }, "native", "1"),
+    kind: "native",
+    status: "completed",
+    updatedAt: 100,
+    archived: false,
+  } as BoardItem;
+  store.getState().setItemStaged(item, true);
+  store.getState().setView("staged");
+  const restored = createAgentBoardStore(storage);
+  assert.equal(restored.getState().view, "staged");
+  assert.equal(isBoardItemStaged(item, restored.getState().stagedItems), true);
+  for (const other of [
+    {
+      ...item,
+      key: boardEntityKey({ workspacePath: "/p", workspaceIdentity: "remote:b" }, "native", "1"),
+    },
+    {
+      ...item,
+      key: boardEntityKey({ workspacePath: "/p", workspaceIdentity: "remote:a" }, "acp", "1"),
+    },
+    { ...item, updatedAt: 101 },
+    { ...item, status: "error" as const },
+    { ...item, archived: true },
+  ])
+    assert.equal(isBoardItemStaged(other, restored.getState().stagedItems), false);
+  restored.getState().reconcileStagedItems([]);
+  assert.equal(isBoardItemStaged(item, restored.getState().stagedItems), true);
+  restored.getState().reconcileStagedItems([{ ...item, status: "running" }]);
+  assert.equal(
+    isBoardItemStaged(item, restored.getState().stagedItems),
+    false,
+    "old staging cannot return after a new run",
+  );
+  restored.getState().setItemStaged({ ...item, status: "running" }, true);
+  assert.deepEqual(restored.getState().stagedItems, {}, "reject stale drop on running card");
+  restored.getState().setItemStaged(item, true);
+  restored.getState().setItemStaged(item, false);
+  assert.deepEqual(restored.getState().stagedItems, {});
+  for (const malformed of [
+    undefined,
+    [],
+    { a: { updatedAt: "bad", outcome: "completed" } },
+    { a: { updatedAt: 100, outcome: "running" } },
+  ]) {
+    raw = JSON.stringify({ ...JSON.parse(raw!), stagedItems: malformed, search: "keep" });
+    const recovered = createAgentBoardStore(storage).getState();
+    assert.deepEqual(recovered.stagedItems, {});
+    assert.equal(recovered.search, "keep");
+  }
+});
+
+test("ongoing indicators distinguish waiting without changing columns or staging admission", () => {
+  for (const status of [
+    "todo",
+    "queued",
+    "awaiting_input",
+    "preparing",
+    "running",
+    "review",
+    "done",
+    "failed",
+    "canceled",
+  ] as const) {
+    const workTask = { status } as any;
+    const item = {
+      kind: "work-task",
+      workTask,
+      status: workTaskBoardStatus(workTask),
+      archived: false,
+    } as BoardItem;
+    const waiting = ["todo", "queued", "awaiting_input"].includes(status);
+    assert.equal(boardStatusIndicator(item), waiting ? "waiting" : boardDisplayStatus(item));
+    if (waiting) {
+      assert.equal(boardDisplayStatus(item), "running");
+      assert.equal(matchesBoardView(item, "active"), true);
+      assert.equal(canStageBoardItem(item), false);
+      assert.equal(boardStatusIndicator({ ...item, staged: true }), "waiting");
+    }
+  }
+  for (const task of [
+    { liveStatus: "waiting" },
+    { liveStatus: "running", pendingInteraction: { kind: "permission" } },
+    {
+      liveStatus: "running",
+      activity: {
+        hasBackgroundWork: true,
+        pendingInteractions: { permissionCount: 1, userInputCount: 0 },
+      },
+    },
+    {
+      liveStatus: "running",
+      activity: { pendingInteractions: { permissionCount: 0, userInputCount: 1 } },
+    },
+  ]) {
+    const status = nativeBoardStatus(task as any);
+    assert.equal(boardStatusIndicator({ kind: "native", status } as BoardItem), "waiting");
+  }
+  for (const status of ["running", "idle", "interrupted"] as const) {
+    const session = { status, waiting: true } as any;
+    const item = { kind: "acp", status: acpBoardStatus(session) } as BoardItem;
+    assert.equal(boardStatusIndicator(item), "waiting");
+    assert.equal(matchesBoardView(item, "active"), true);
+    assert.equal(canStageBoardItem(item), false);
+  }
+  const base = { kind: "native", status: "running" } as BoardItem;
+  assert.equal(boardStatusIndicator(base), "running");
+  for (const status of ["completed", "error"] as const) {
+    const terminal = { ...base, status };
+    assert.equal(boardStatusIndicator(terminal), status);
+    assert.equal(boardStatusIndicator({ ...terminal, staged: true }), "staged");
+  }
+});
+
+test("result order uses completion rather than metadata or read time", () => {
+  const older = {
+    key: "a",
+    kind: "native",
+    status: "completed",
+    completedAt: 100,
+    updatedAt: 900,
+    task: { unreadAt: 100 },
+  } as BoardItem;
+  const newer = { ...older, key: "b", completedAt: 200, updatedAt: 500 };
+  assert.deepEqual(
+    [older, newer].sort(compareBoardItems).map((i) => i.key),
+    ["b", "a"],
+  );
+  assert.equal(boardResultTimestamp(older), 100);
+  assert.equal(boardResultTimestamp({ ...older, status: "running" }), 900);
+  assert.equal(boardResultTimestamp({ ...older, completedAt: undefined }), 900);
+  assert.equal(boardHasUnreadResult(older, {}), true);
+  assert.equal(
+    boardHasUnreadResult({ ...older, task: { unreadAt: undefined } } as BoardItem, {}),
+    false,
+  );
+  assert.equal(boardHasUnreadResult({ ...older, archived: true }, {}), false);
+  assert.equal(boardHasUnreadResult({ ...older, status: "waiting" }, {}), false);
+  assert.equal(boardHasUnreadResult({ ...older, staged: true }, {}), true);
+});
+
+test("work-task reading persists per result and never accepts a newer result", () => {
+  let raw: string | null = null;
+  const storage = {
+    getItem: () => raw,
+    setItem: (_: string, value: string) => {
+      raw = value;
+    },
+    removeItem() {},
+  };
+  const store = createAgentBoardStore(storage);
+  const item = {
+    key: "work-a",
+    kind: "work-task",
+    status: "review",
+    archived: false,
+    workTask: { status: "review", runSeq: 1, finishedAt: 100 },
+  } as BoardItem;
+  assert.equal(boardHasUnreadResult(item, {}), true);
+  store.getState().markWorkTaskResultRead(item);
+  const read = createAgentBoardStore(storage).getState().readWorkTaskResults;
+  assert.equal(read[item.key], workTaskResultToken(item.workTask));
+  assert.equal(
+    boardHasUnreadResult(
+      {
+        ...item,
+        status: "completed",
+        workTask: { ...item.workTask, status: "done", updatedAt: 900 },
+      },
+      read,
+    ),
+    false,
+  );
+  const next = { ...item, workTask: { ...item.workTask, runSeq: 2, finishedAt: 200 } };
+  assert.equal(boardHasUnreadResult(next, read), true);
+  assert.equal(boardHasUnreadResult({ ...item, key: "work-b" }, read), true);
+  store.getState().markWorkTaskResultRead(item);
+  assert.equal(boardHasUnreadResult(next, store.getState().readWorkTaskResults), true);
+  raw = JSON.stringify({ ...JSON.parse(raw!), readWorkTaskResults: { a: 1 }, search: "keep" });
+  const recovered = createAgentBoardStore(storage).getState();
+  assert.deepEqual(recovered.readWorkTaskResults, {});
+  assert.equal(recovered.search, "keep");
 });

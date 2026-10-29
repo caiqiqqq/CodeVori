@@ -20,7 +20,7 @@ import {
   assertNewSessionRestart,
   assertWorkTaskWorkspaceEditable,
 } from "./workTaskConversationState.js";
-import { finishWorkTaskRun } from "./workTaskRunState.js";
+import { cancelWorkTaskRun, finishWorkTaskRun } from "./workTaskRunState.js";
 import { claimWorkTaskForge, writeWorkTaskForge } from "./workTaskForgePersistence.js";
 import {
   assertWorkTaskSourceAvailable,
@@ -204,6 +204,7 @@ export class WorkTaskRepo {
         ...(fresh ? { session: undefined, sessionRequestId: uuidv7() } : {}),
         failureReason: undefined,
         merge: undefined,
+        finishedAt: undefined,
         updatedAt: Date.now(),
       },
       "queued",
@@ -228,6 +229,7 @@ export class WorkTaskRepo {
         {
           ...task,
           merge,
+          finishedAt: undefined,
           status: "queued",
           forgeWriteback: prepareWorkTaskForge(
             { ...task, merge, runSeq: task.runSeq + 1 },
@@ -319,10 +321,7 @@ export class WorkTaskRepo {
       if (task.status === "canceled") return task;
       if (!WORK_TASK_ACTIVE_STATUSES.includes(task.status) && task.status !== "queued")
         throw new Error("work-task.not-cancelable");
-      return this.write(
-        { ...task, status: "canceled", stopPending: !!row.owner, updatedAt: Date.now() },
-        "canceled",
-      );
+      return this.write(cancelWorkTaskRun(task, !!row.owner, Date.now()), "canceled");
     });
   }
   complete(

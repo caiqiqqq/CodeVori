@@ -2348,6 +2348,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                   }}
                                   conversationOptions={{
                                     isDesktop: Boolean(isDesktop),
+                                    onOpenScopedGitReview: handleOpenScopedGitReview,
                                     onOpenBrowserUrl: handleOpenBrowserUrl,
                                     onOpenCodeViewer: handleOpenCodeViewer,
                                     onOpenFileLink: handleOpenMarkdownFileLink,

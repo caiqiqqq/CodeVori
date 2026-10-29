@@ -1,7 +1,6 @@
 import { useAgentBoardWorkTasks } from "./useAgentBoardWorkTasks.js";
 import { useCallback, useMemo } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import type { WindowHostControllerMutation } from "@zcode/services";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { useGlobalTaskList } from "@/hooks/useGlobalTaskList.js";
 import { useAcpSidebarSessionState } from "@/hooks/useAcpSidebarSessions.js";
@@ -11,6 +10,7 @@ import { useRemoteWorkspaceSessionStore } from "@/store/remoteWorkspaceSessionSt
 import type { WorkspaceTabState } from "@/store/tabStore.js";
 import {
   boardEntityKey,
+  compareBoardItems,
   boardWorkspaceKey,
   nativeBoardStatus,
   acpBoardStatus,
@@ -35,7 +35,7 @@ export function useAgentBoardProjects(workspaceTabs: WorkspaceTabState[]) {
     [groups, intl],
   );
 }
-export type BoardAction = "pin" | "archive";
+export type BoardAction = "archive";
 export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
   const services = useBaseWorkspaceServices();
   const sessionsById = useRemoteWorkspaceSessionStore((s) => s.sessionsById);
@@ -75,10 +75,11 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
     );
     const tabByScope = new Map(workspaceTabs.map((tab) => [boardWorkspaceKey(tab), tab]));
     const rows = new Map<string, BoardItem>();
-    for (const [list, isPinned, isArchived] of [
-      [timeline.items, false, false],
-      [pinned.items, true, false],
-      [archived.items, false, true],
+    // 原收藏会话仍属于全部列表；仅移除看板收藏操作，不能遗漏 pinned 来源的成员。
+    for (const [list, isArchived] of [
+      [timeline.items, false],
+      [pinned.items, false],
+      [archived.items, true],
     ] as const) {
       for (const task of list) {
         if (task.deletionState) continue;
@@ -95,9 +96,9 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
           workspacePurpose: tabByScope.get(scope)?.workspacePurpose,
           remoteSessionId: task.remoteSessionId,
           updatedAt: task.updatedAt,
+          completedAt: task.activity?.lastActivityAt,
           agent: task.provider || "API",
           status: nativeBoardStatus(task),
-          pinned: isPinned,
           archived: isArchived,
           online:
             task.sourceAvailability === "online" &&
@@ -121,14 +122,14 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
         workspacePurpose: tabByScope.get(scope)?.workspacePurpose,
         remoteSessionId: lookup.get(scope)?.remoteSessionId,
         updatedAt: session.updatedAt,
+        completedAt: session.completedAt,
         agent: session.agent,
         status: acpBoardStatus(session),
-        pinned: Boolean(session.pinned),
         archived: Boolean(session.archived),
         online:
           lookup.has(scope) &&
           tabByScope.get(scope)?.availability !== "unavailable-local-directory",
-        summary: session.preview,
+        // 最近用户消息不是任务摘要；不再在卡片重复展示或作为看板搜索内容。
       });
     }
     for (const workTask of workTasks.board?.tasks ?? []) {
@@ -144,12 +145,12 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
         workspaceIdentity: workTask.workspaceIdentity,
         remoteSessionId: workTask.remoteSessionId,
         updatedAt: workTask.updatedAt,
+        completedAt: workTask.finishedAt,
         agent:
           workTask.execution.kind === "acp"
             ? workTask.execution.agent
             : workTask.execution.modelSelection.modelId,
         status: workTaskBoardStatus(workTask),
-        pinned: false,
         archived: workTask.archived,
         online:
           lookup.has(scope) &&
@@ -157,7 +158,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
         summary: workTask.failureReason,
       });
     }
-    return [...rows.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+    return [...rows.values()].sort(compareBoardItems);
   }, [
     projects,
     workspaceTabs,
@@ -181,17 +182,9 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
     async (item: BoardItem, action: BoardAction) => {
       if (item.kind === "work-task") throw new Error("Use WorkTask lifecycle commands");
       if (!item.online) throw new Error("Workspace unavailable");
-      if (
-        action !== "pin" &&
-        !item.archived &&
-        (item.status === "running" || item.status === "waiting")
-      )
+      if (!item.archived && (item.status === "running" || item.status === "waiting"))
         throw new Error("Session is active");
       if (item.kind === "native") {
-        const mutation: WindowHostControllerMutation =
-          action === "pin"
-            ? { kind: "pin", pinned: !item.pinned }
-            : { kind: "archive", archived: !item.archived };
         if (!services.windowControllerService) throw new Error("Window Controller unavailable");
         await services.windowControllerService.mutateTask({
           address: {
@@ -200,7 +193,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
             ...(item.workspaceIdentity ? { workspaceIdentity: item.workspaceIdentity } : {}),
             ...(item.remoteSessionId ? { remoteSessionId: item.remoteSessionId } : {}),
           },
-          mutation,
+          mutation: { kind: action, archived: !item.archived },
         });
         await refresh();
       } else {
@@ -211,14 +204,42 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
           workspacePath: item.workspacePath,
           workspaceIdentity: item.workspaceIdentity,
           remoteSessionId: target.remoteSessionId,
-          action:
-            action === "pin"
-              ? { kind: "pin", pinned: !item.pinned }
-              : { kind: "archive", archived: !item.archived },
+          action: { kind: action, archived: !item.archived },
         });
       }
     },
     [services, lookup, refresh],
+  );
+  const acknowledgeRead = useCallback(
+    async (item: BoardItem) => {
+      if (item.kind === "work-task" || !item.online || item.archived) return;
+      const unreadAt = item.kind === "native" ? item.task.unreadAt : item.session.unreadAt;
+      if (typeof unreadAt !== "number") return;
+      if (item.kind === "native") {
+        if (!services.windowControllerService) throw new Error("Window Controller unavailable");
+        await services.windowControllerService.mutateTask({
+          address: {
+            taskId: item.task.taskId,
+            workspacePath: item.workspacePath,
+            ...(item.workspaceIdentity ? { workspaceIdentity: item.workspaceIdentity } : {}),
+            ...(item.remoteSessionId ? { remoteSessionId: item.remoteSessionId } : {}),
+          },
+          mutation: { kind: "mark-read", expectedUnreadAt: unreadAt },
+        });
+        await refresh();
+      } else {
+        const target = lookup.get(boardWorkspaceKey(item));
+        if (!target) throw new Error("Workspace unavailable");
+        await target.services.acpService.updateRow({
+          id: item.session.id,
+          workspacePath: item.workspacePath,
+          workspaceIdentity: item.workspaceIdentity,
+          remoteSessionId: target.remoteSessionId,
+          action: { kind: "unread", unread: false, expectedUnreadAt: unreadAt },
+        });
+      }
+    },
+    [services.windowControllerService, lookup, refresh],
   );
   return {
     projects,
@@ -227,6 +248,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
       lookup.has(boardWorkspaceKey(tab)) && tab.availability !== "unavailable-local-directory",
     items,
     mutate,
+    acknowledgeRead,
     refresh,
     loading:
       timeline.loading || pinned.loading || archived.loading || acp.loading || workTasks.loading,

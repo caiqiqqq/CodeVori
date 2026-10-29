@@ -38,6 +38,7 @@ export function usePaneGitStatus(
   );
   return {
     gitSummary: gitState.summary,
+    gitLoading: gitState.loading,
     gitDirtyFileCount: getGitDirtyFileCount(gitState.datasets),
     gitWorktreeChangeSummary: status.changeSummary,
     gitWorktreeReviewSourceId: status.reviewSourceId,

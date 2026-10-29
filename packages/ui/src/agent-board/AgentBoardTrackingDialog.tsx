@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button.js";
 import { Checkbox } from "@/components/ui/checkbox.js";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
 import {
-  boardDisplayStatus,
+  boardAgentLabel,
+  boardStatusIndicator,
   matchesBoardTracking,
   type BoardItem,
   type BoardProject,
@@ -73,7 +74,7 @@ export function AgentBoardTrackingDialog({
       items: `${group.label} ${group.path}`.toLocaleLowerCase().includes(query)
         ? group.items
         : group.items.filter((item) =>
-            `${item.title} ${item.agent}`.toLocaleLowerCase().includes(query),
+            `${item.title} ${boardAgentLabel(item)}`.toLocaleLowerCase().includes(query),
           ),
     }))
     .filter(
@@ -186,7 +187,7 @@ export function AgentBoardTrackingDialog({
                       <span className="min-w-0">
                         <span className="line-clamp-2">{item.title || t("untitled")}</span>
                         <span className="text-ui-caption text-foreground-subtle">
-                          {item.agent} · {t(`status.${boardDisplayStatus(item)}`)}
+                          {boardAgentLabel(item)} · {t(`status.${boardStatusIndicator(item)}`)}
                           {item.archived ? ` · ${t("view.archived")}` : ""}
                         </span>
                       </span>
