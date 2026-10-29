@@ -4,6 +4,7 @@
 // 一个实例对应一条 host 连接；跨 workspace 分屏在 shell 层做
 // Map<workspaceKey, SessionDataLayer>，本层不感知 workspace。
 import { ConversationProjectionStore } from "@/v4/conversationProjectionStore.js";
+import { ConversationRowPool } from "@/v4/conversationRowPool.js";
 import { shouldExposeE2EStoreBridge } from "@/lib/e2eStoreBridge.js";
 import type { SessionOpenKind } from "@/lib/sessionOpenArmsTelemetry.js";
 import {
@@ -60,6 +61,7 @@ export class SessionDataLayer {
   private readonly keepWarmMs: number;
   private readonly onEmpty: SessionDataLayerOptions["onEmpty"];
   private readonly entries = new Map<string, SessionEntry>();
+  private readonly rowPool = new ConversationRowPool();
   private readonly offFrame: () => void;
   private disposed = false;
 
@@ -94,7 +96,7 @@ export class SessionDataLayer {
         entry.keepWarmTimer = null;
       }
     } else {
-      const store = new ConversationProjectionStore(topic, this.transport);
+      const store = new ConversationProjectionStore(topic, this.transport, this.rowPool);
       entry = { store, refCount: 1, keepWarmTimer: null };
       this.entries.set(topic, entry);
       openKind = "cold";
