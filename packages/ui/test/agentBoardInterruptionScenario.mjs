@@ -35,6 +35,10 @@ export async function exerciseAgentBoardInterruption(page, artifacts) {
   await search.fill("Remote ACP 1");
   const candidate = page.getByRole("dialog").locator("label").filter({ hasText: "Remote ACP 1" });
   await candidate.getByText("claude · 进行中", { exact: true }).waitFor();
+  await page.evaluate(() => window.__board.updateAcp(1, { status: "idle" }));
+  await candidate.getByText("claude · 已完成", { exact: true }).waitFor();
+  await page.evaluate(() => window.__board.updateAcp(1, { status: "running" }));
+  await candidate.getByText("claude · 进行中", { exact: true }).waitFor();
   // 原始中断事件没有 error：复现侧栏 failed=false 但看板仍显示进行中的缺口。
   await page.evaluate(() => window.__board.updateAcp(1, { status: "interrupted" }));
   await candidate.getByText("claude · 失败", { exact: true }).waitFor();
@@ -42,6 +46,30 @@ export async function exerciseAgentBoardInterruption(page, artifacts) {
   await count("进行中", 1);
   await count("失败", 1);
   await count("已完成", 0);
+  await page.evaluate(() =>
+    window.__board.update(0, {
+      liveStatus: "completed",
+      activity: { phase: "completedSuccess", lastActivityAt: 3050, hasBackgroundWork: false },
+      updatedAt: 3050,
+    }),
+  );
+  await count("进行中", 0);
+  await count("已完成", 1);
+  await page.getByRole("button", { name: /Remote API session/ }).click();
+  await page
+    .getByRole("dialog")
+    .getByText(/Same project · API · 已完成/)
+    .waitFor();
+  assert.equal(await page.getByRole("button", { name: "标记完成", exact: true }).count(), 0);
+  await page.keyboard.press("Escape");
+  await page.evaluate(() =>
+    window.__board.update(0, {
+      liveStatus: "running",
+      activity: { phase: "running", lastActivityAt: 3075, hasBackgroundWork: false },
+      updatedAt: 3075,
+    }),
+  );
+  await count("进行中", 1);
   await page.evaluate(() =>
     window.__board.update(0, {
       liveStatus: "completed",
@@ -96,4 +124,51 @@ export async function exerciseAgentBoardInterruption(page, artifacts) {
   await choose("进行中");
   await page.getByRole("heading", { name: "Remote ACP 1", exact: true }).waitFor();
   assert.equal(await page.locator('[data-board-column="running"] article').count(), 1);
+  await page.evaluate(() => {
+    const f = window.__board;
+    f.updateAcp(1, { status: "idle" });
+    f.updateAcp(0, { status: "interrupted", boardCompletedAt: 999999 });
+    f.update(0, {
+      liveStatus: "running",
+      activity: { phase: "running", hasBackgroundWork: false, lastActivityAt: 3200 },
+    });
+    const s = f.store.getState();
+    s.setView("all");
+    s.setTracking({
+      ...s.tracking,
+      includedItems: [...s.tracking.includedItems, JSON.stringify(["remote:0", "acp", "same-id"])],
+    });
+  });
+  await count("进行中", 1);
+  await count("已完成", 1);
+  await count("失败", 1);
+  assert.equal(await page.locator('[data-board-column="completed"] article').count(), 1);
+  assert.equal(await page.locator('[data-board-column="error"] article').count(), 1);
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {
+    await page.evaluate((value) => (document.documentElement.className = value), theme);
+    await page.screenshot({
+      path: join(
+        artifacts,
+        theme.includes("dark") ? "automatic-status-dark.png" : "automatic-status-light.png",
+      ),
+      animations: "disabled",
+    });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await choose("已完成");
+  await page.getByRole("heading", { name: "Remote ACP 1", exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({
+    path: join(artifacts, "automatic-status-mobile.png"),
+    animations: "disabled",
+  });
+  assert.equal(
+    await page.evaluate(() =>
+      window.__board.commands.some(
+        (c) => c.mutation?.kind === "board-completion" || c.action?.kind === "completion",
+      ),
+    ),
+    false,
+  );
 }

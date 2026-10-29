@@ -1,6 +1,6 @@
 import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
 import { lazy, Suspense } from "react";
-import { Archive, ArrowUpRight, Check, X } from "lucide-react";
+import { Archive, ArrowUpRight, X } from "lucide-react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Button } from "@/components/ui/button.js";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
@@ -82,20 +82,6 @@ export function AgentBoardDetails({
               </Button>
             </div>
             <div className="flex flex-wrap gap-2 border-b border-border px-4 py-2">
-              <Button
-                variant="outline"
-                disabled={
-                  busy ||
-                  !selected.online ||
-                  selected.archived ||
-                  selected.status === "running" ||
-                  selected.status === "waiting"
-                }
-                onClick={() => void run(selected, "completion")}
-              >
-                <Check className="size-4" />
-                {selected.status === "completed" ? t("reopen") : t("complete")}
-              </Button>
               <Button
                 variant="ghost"
                 disabled={

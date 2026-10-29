@@ -61,8 +61,6 @@ const enUS: Record<string, string> = {
   "agentBoard.pinProject": "Pin project",
   "agentBoard.unpinProject": "Unpin project",
   "agentBoard.close": "Back to board",
-  "agentBoard.complete": "Mark complete",
-  "agentBoard.reopen": "Reopen",
   "agentBoard.archive": "Archive",
   "agentBoard.restore": "Restore session",
   "agentBoard.openSession": "Open main session",
