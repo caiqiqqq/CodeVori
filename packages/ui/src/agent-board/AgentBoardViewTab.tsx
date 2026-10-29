@@ -1,14 +1,17 @@
 import { useDroppable } from "@dnd-kit/core";
 import { Button } from "@/components/ui/button.js";
-import type { BoardView } from "./agentBoardModel.js";
-export const BOARD_VIEWS: BoardView[] = [
-  "all",
-  "active",
-  "completed",
-  "failed",
-  "staged",
-  "archived",
-];
+import type { BoardDisplayStatus, BoardView } from "./agentBoardModel.js";
+
+export function boardViews(statusOrder: readonly BoardDisplayStatus[]): BoardView[] {
+  return [
+    "all",
+    ...statusOrder.map(
+      (status): BoardView =>
+        status === "running" ? "active" : status === "error" ? "failed" : status,
+    ),
+    "archived",
+  ];
+}
 
 export function BoardViewTab({
   view,

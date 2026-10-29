@@ -22,6 +22,41 @@ import {
 } from "../src/agent-board/agentBoardModel.js";
 import { createAgentBoardStore } from "../src/store/agentBoardStore.js";
 
+test("custom status order persists and invalid orders only reset that preference", () => {
+  let raw: string | null = null;
+  const storage = {
+    getItem: () => raw,
+    setItem: (_: string, value: string) => {
+      raw = value;
+    },
+    removeItem() {},
+  };
+  const store = createAgentBoardStore(storage);
+  assert.deepEqual(store.getState().statusOrder, BOARD_DISPLAY_STATUSES);
+  store.getState().setSearch("keep search");
+  const custom = ["error", "staged", "running", "completed"] as const;
+  store.getState().setStatusOrder(custom);
+  assert.deepEqual(createAgentBoardStore(storage).getState().statusOrder, custom);
+  for (const invalid of [
+    null,
+    ["running"],
+    ["running", "running", "staged", "error"],
+    ["running", "completed", "staged", "unknown"],
+  ]) {
+    const saved = JSON.parse(raw!);
+    raw = JSON.stringify({ ...saved, statusOrder: invalid });
+    const restored = createAgentBoardStore(storage).getState();
+    assert.deepEqual(restored.statusOrder, BOARD_DISPLAY_STATUSES);
+    assert.equal(restored.search, "keep search");
+  }
+  const legacy = JSON.parse(raw!);
+  delete legacy.statusOrder;
+  raw = JSON.stringify(legacy);
+  assert.deepEqual(createAgentBoardStore(storage).getState().statusOrder, BOARD_DISPLAY_STATUSES);
+  store.getState().setStatusOrder(BOARD_DISPLAY_STATUSES);
+  assert.deepEqual(createAgentBoardStore(storage).getState().statusOrder, BOARD_DISPLAY_STATUSES);
+});
+
 test("status views separate ongoing, completed, failed and archived work", () => {
   for (const status of BOARD_STATUSES) {
     const item = { status, archived: false } as BoardItem;
@@ -31,7 +66,7 @@ test("status views separate ongoing, completed, failed and archived work", () =>
     for (const view of ["active", "completed", "failed"] as const)
       assert.equal(matchesBoardView({ ...item, archived: true }, view), false);
   }
-  assert.deepEqual(BOARD_DISPLAY_STATUSES, ["running", "completed", "error", "staged"]);
+  assert.deepEqual(BOARD_DISPLAY_STATUSES, ["running", "completed", "staged", "error"]);
   const canceled = {
     kind: "work-task",
     status: "idle",

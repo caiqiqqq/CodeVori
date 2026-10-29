@@ -18,7 +18,7 @@ export const BOARD_STATUSES = [
   "completed",
 ] as const;
 export type BoardStatus = (typeof BOARD_STATUSES)[number];
-export const BOARD_DISPLAY_STATUSES = ["running", "completed", "error", "staged"] as const;
+export const BOARD_DISPLAY_STATUSES = ["running", "completed", "staged", "error"] as const;
 export type BoardDisplayStatus = (typeof BOARD_DISPLAY_STATUSES)[number];
 export type BoardView =
   | "all"

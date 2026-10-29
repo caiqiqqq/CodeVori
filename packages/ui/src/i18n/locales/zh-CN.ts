@@ -11,6 +11,12 @@ const zhCN: Record<string, string> = {
   "agentBoard.conversations": "对话",
   "agentBoard.standalone": "独立任务",
   "agentBoard.manageTracking": "管理显示范围",
+  "agentBoard.statusOrder": "状态顺序",
+  "agentBoard.statusOrderDescription": "上移或下移状态，调整后自动保存。",
+  "agentBoard.moveStatusUp": "上移{status}",
+  "agentBoard.moveStatusDown": "下移{status}",
+  "agentBoard.resetStatusOrder": "恢复默认",
+  "agentBoard.closeStatusOrder": "完成",
   "agentBoard.addToBoard": "添加到看板",
   "agentBoard.trackingDescription":
     "选择要跟踪的独立任务、待办任务或项目对话。整组选择会包含后续新增内容，单条勾选优先；配置仅保存在当前浏览器。",

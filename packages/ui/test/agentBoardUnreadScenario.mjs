@@ -162,12 +162,7 @@ export async function exerciseAgentBoardUnread(page, artifacts) {
     row.updatedAt++;
     f.notifyWork();
   });
-  await work.getByText("已完成", { exact: true }).waitFor();
-  assert.equal(
-    await work.locator("[data-board-unread]").count(),
-    0,
-    "acceptance does not recreate unread",
-  );
+  await work.waitFor({ state: "hidden" });
   await page.evaluate(() => {
     const f = window.__board,
       row = f.workRows.find((row) => row.id === "unread-result");

@@ -8,6 +8,8 @@ import {
   boardHasUnreadResult,
   workTaskResultToken,
   matchesBoardTracking,
+  BOARD_DISPLAY_STATUSES,
+  type BoardDisplayStatus,
   type BoardTrackingTarget,
   type BoardItem,
   type BoardStagedItems,
@@ -15,6 +17,7 @@ import {
   type BoardView,
 } from "@/agent-board/agentBoardModel.js";
 interface Preferences {
+  statusOrder: readonly BoardDisplayStatus[];
   readWorkTaskResults: Record<string, string>;
   stagedItems: BoardStagedItems;
   project: string | null;
@@ -27,6 +30,7 @@ interface Preferences {
   category: "all" | "standalone" | "work-tasks";
 }
 interface BoardStore extends Preferences {
+  setStatusOrder(order: readonly BoardDisplayStatus[]): void;
   pickerOpen: boolean;
   markWorkTaskResultRead(item: BoardItem): void;
   setItemStaged(item: BoardItem, staged: boolean): void;
@@ -46,6 +50,7 @@ interface BoardStore extends Preferences {
 const key = "zcode-agent-board:v1";
 const layoutVersion = 2;
 const defaults: Preferences = {
+  statusOrder: BOARD_DISPLAY_STATUSES,
   readWorkTaskResults: {},
   stagedItems: {},
   project: null,
@@ -57,6 +62,14 @@ const defaults: Preferences = {
   tracking: defaultBoardTracking,
   category: "all",
 };
+function readStatusOrder(value: unknown): readonly BoardDisplayStatus[] {
+  // 顺序必须是完整排列，避免损坏偏好让某个状态及其暂存入口从界面消失。
+  return Array.isArray(value) &&
+    value.length === BOARD_DISPLAY_STATUSES.length &&
+    BOARD_DISPLAY_STATUSES.every((status) => value.includes(status))
+    ? [...value]
+    : BOARD_DISPLAY_STATUSES;
+}
 function readTracking(value: unknown): BoardTracking {
   if (!value || typeof value !== "object") return defaultBoardTracking;
   const v = value as Record<string, unknown>;
@@ -122,6 +135,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
       typeof v.search === "string"
     )
       initial = {
+        statusOrder: readStatusOrder(v.statusOrder),
         readWorkTaskResults:
           v.readWorkTaskResults &&
           typeof v.readWorkTaskResults === "object" &&
@@ -160,11 +174,13 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         category,
         stagedItems,
         readWorkTaskResults,
+        statusOrder,
       } = get();
       try {
         storage?.setItem(
           key,
           JSON.stringify({
+            statusOrder,
             stagedItems,
             readWorkTaskResults,
             layoutVersion,
@@ -184,6 +200,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
     };
     return {
       ...initial,
+      setStatusOrder: (order) => save({ statusOrder: readStatusOrder(order) }),
       pickerOpen: false,
       markWorkTaskResultRead: (item) => {
         if (item.kind !== "work-task" || !boardHasUnreadResult(item, get().readWorkTaskResults))

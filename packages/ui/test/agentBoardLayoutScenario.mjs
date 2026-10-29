@@ -130,8 +130,8 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   await choose("已完成");
   assert.equal(
     await page.locator("[data-board-card]").count(),
-    3,
-    "finished execution includes review, while archived completion is excluded",
+    1,
+    "review stays visible, while formally completed work tasks are excluded",
   );
   assert.equal(await groups.count(), 1, "completion view starts with its own column");
   await choose("失败");
@@ -162,8 +162,38 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   assert.equal(await groups.count(), 4);
   assert.deepEqual(
     await groups.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn)),
-    ["running", "completed", "error", "staged"],
+    ["running", "completed", "staged", "error"],
   );
+  const expectedTabs = ["全部", "进行中", "已完成", "暂存", "失败", "归档"];
+  assert.deepEqual(
+    await statusTabs
+      .getByRole("tab")
+      .allTextContents()
+      .then((labels) => labels.map((label) => label.replace(/\s*\d+$/, "").trim())),
+    expectedTabs,
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.deepEqual(
+    await groups.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn)),
+    ["running", "completed", "staged", "error"],
+    "mobile keeps the same status column order",
+  );
+  assert.deepEqual(
+    await statusTabs
+      .getByRole("tab")
+      .allTextContents()
+      .then((labels) => labels.map((label) => label.replace(/\s*\d+$/, "").trim())),
+    expectedTabs,
+  );
+  await choose("暂存");
+  assert.deepEqual(
+    await groups.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn)),
+    ["staged"],
+  );
+  await choose("失败");
+  assert.equal(await page.locator('[data-board-column="error"] article').count(), 2);
+  await choose("全部");
+  await page.setViewportSize({ width: 1600, height: 1000 });
   for (const label of ["待验收", "等你回复", "待办", "本轮结束", "任务执行中", "已取消"])
     assert.equal(
       await page.getByText(label, { exact: true }).count(),
@@ -194,7 +224,7 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
     await page.evaluate(() => JSON.parse(localStorage.getItem("zcode-agent-board:v1")).view),
     "completed",
   );
-  assert.equal(await page.locator("[data-board-card]").count(), 3);
+  assert.equal(await page.locator("[data-board-card]").count(), 1);
 
   // 复现升级前少量项目且保留 project 偏好的真实入口，不能靠项目过多的分支通过。
   const legacyWorkRows = await page.evaluate(() => {
@@ -239,7 +269,7 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   );
   assert.deepEqual(
     await groups.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn)),
-    ["running", "completed", "error", "staged"],
+    ["running", "completed", "staged", "error"],
   );
   assert.equal(await page.locator('[data-board-column="running"] article').count(), 2);
   assert.equal(await page.locator('[data-board-column="completed"] article').count(), 1);

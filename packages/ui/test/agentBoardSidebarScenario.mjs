@@ -22,6 +22,7 @@ export async function exerciseAgentBoardSidebar(page, artifacts) {
       ["sidebar-staged", "review", f.tabs[0]],
       ["sidebar-failed", "failed", f.tabs[0]],
       ["sidebar-queued", "queued", f.tabs[3]],
+      ["sidebar-completed", "done", f.tabs[0]],
     ])
       f.workRows.push({
         workspacePath: scope.workspacePath,
@@ -169,6 +170,45 @@ export async function exerciseAgentBoardSidebar(page, artifacts) {
   await expectCounts("所有项目", { running: 1, staged: 1, error: 1 });
   await expectCounts("独立任务", {});
   await expectCounts(longName, { staged: 1, error: 1 });
+  await page.evaluate(() => {
+    const f = window.__board;
+    const task = f.workRows.find((task) => task.id === "sidebar-staged");
+    task.status = "done";
+    task.forgeWriteback = { commentState: "pending", closeState: "done" };
+    f.notifyWork();
+  });
+  await expectCounts("待办任务", { running: 1, staged: 1, error: 1 });
+  await page.evaluate(() => {
+    const f = window.__board;
+    f.workRows.find((task) => task.id === "sidebar-staged").forgeWriteback.commentState = "done";
+    f.notifyWork();
+  });
+  await expectCounts("所有项目", { running: 1, error: 1 });
+  await expectCounts("待办任务", { running: 1, error: 1 });
+  await expectCounts(longName, { error: 1 });
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  for (const label of ["全部", "已完成", "暂存", "归档"]) {
+    await main.getByRole("tab", { name: new RegExp("^" + label + "\\s*\\d+$") }).click();
+    assert.equal(
+      await main.getByRole("heading", { name: "sidebar-staged", exact: true }).count(),
+      0,
+    );
+    assert.equal(
+      await main.getByRole("heading", { name: "sidebar-completed", exact: true }).count(),
+      0,
+    );
+  }
+  await main.getByRole("tab", { name: /^全部/ }).click();
+  await page.evaluate(() => {
+    const f = window.__board;
+    const task = f.workRows.find((task) => task.id === "sidebar-staged");
+    task.status = "running";
+    task.updatedAt++;
+    f.notifyWork();
+  });
+  await expectCounts("所有项目", { running: 2, error: 1 });
+  await main.getByRole("heading", { name: "sidebar-staged", exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.__board.commands.length), before);
   await page.evaluate(() =>
     window.__board.store.getState().setTracking({
       mode: "custom",
