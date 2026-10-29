@@ -32,8 +32,43 @@ function fixture(
         body: { title: "private-title", body: "private-body" },
       },
     );
-  return { create, warnings, calls };
+  return { api, create, warnings, calls };
 }
+
+test("image response diagnostics classify MIME without recording arbitrary header values or content", async (t) => {
+  for (const [header, expected] of [
+    [null, "missing"],
+    ["application/octet-stream; private=synthetic-secret", "application/octet-stream"],
+    ["image/png", "image/png"],
+    ["text/html", "text/html"],
+    ["application/json", "application/json"],
+    ["application/private-synthetic-secret", "other"],
+  ] as const) {
+    const f = fixture(
+      t,
+      [
+        new Response(Buffer.from("private-body"), {
+          headers: header ? { "content-type": header } : {},
+        }),
+      ],
+      "gitlab",
+    );
+    await assert.rejects(
+      f.api("projects/private-project/uploads/private-file", {}, undefined, "image"),
+      /FORGE_RESPONSE/,
+    );
+    assert.deepEqual(f.warnings[0]?.at(-1), {
+      provider: "gitlab",
+      method: "GET",
+      phase: "response",
+      status: 200,
+      requestId: null,
+      imageContentType: expected,
+    });
+    assert.equal(f.calls.length, 1);
+    assert.doesNotMatch(JSON.stringify(f.warnings), /private-|synthetic-secret|https:/);
+  }
+});
 
 test("issue POST failures preserve HTTP status, classify errors and never automatically resend", async (t) => {
   const cases = [

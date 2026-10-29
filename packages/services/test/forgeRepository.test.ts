@@ -729,6 +729,28 @@ test("GitLab private upload images use the bound account API without exposing cr
 });
 
 const legacyUrl = `https://forge.example.invalid/git/team/sub/project/uploads/${uploadId}/image.png`;
+test("GitLab binary attachment responses produce a browser image without changing download or auth paths", async () => {
+  for (const contentType of [null, "application/octet-stream"]) {
+    const f = fixture(
+      "https://forge.example.invalid/git/team/sub/project.git",
+      [account("gitlab", "https://forge.example.invalid/git")],
+      [new Response(png, { headers: contentType ? { "content-type": contentType } : {} })],
+    );
+    const result = await f.service.readForgeImage({ ...(await f.target()), url: legacyUrl });
+    assert.equal(result.mediaType, "image/png");
+    assert.equal(result.dataBase64, png.toString("base64"));
+    assert.equal(f.state.calls.length, 1);
+    assert.equal(
+      f.state.calls[0]!.url.pathname,
+      `/git/api/v4/projects/team%2Fsub%2Fproject/uploads/${uploadId}/image.png`,
+    );
+    assert.equal(
+      new Headers(f.state.calls[0]!.init.headers).get("PRIVATE-TOKEN"),
+      "synthetic-forge-token",
+    );
+    assert.equal(f.state.calls[0]!.init.redirect, "error");
+  }
+});
 const legacyProject = {
   path_with_namespace: "team/sub/project",
   web_url: "https://web.example.invalid/git/team/sub/project",
