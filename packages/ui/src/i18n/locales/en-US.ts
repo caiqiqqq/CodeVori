@@ -764,6 +764,15 @@ const enUS: Record<string, string> = {
   "repositoryPanel.noCommentsOnPage": "No comments in the loaded activity",
   "repositoryPanel.image": "Issue image",
   "repositoryPanel.imageUnavailable": "Image could not be loaded",
+  "repositoryPanel.imageNetworkError": "Image download failed. Check your connection and retry.",
+  "repositoryPanel.imagePermissionError":
+    "This account cannot read the image. Check your version control account and attachment permissions.",
+  "repositoryPanel.imageNotFound":
+    "Image not found. Open the original to check whether the attachment still exists.",
+  "repositoryPanel.imageRateLimited": "Too many image requests. Please retry later.",
+  "repositoryPanel.imageInvalidContent":
+    "Image content could not be displayed. Retry or open the original in your browser.",
+  "repositoryPanel.openImage": "Open original image",
   "repositoryPanel.imageNeedsSignIn": "Private images on this GitLab version require web sign-in.",
   "repositoryPanel.imageAuthUnavailable":
     "This GitLab version requires web sign-in, which is unavailable on this connection. View the image on the original page.",

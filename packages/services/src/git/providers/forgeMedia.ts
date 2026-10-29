@@ -105,6 +105,7 @@ export function gitlabWebLoginUrl(
   repository: string,
   projectPath: unknown,
   webUrl: unknown,
+  accessRepositoryUrl?: string,
 ): string {
   if (projectPath !== repository || typeof webUrl !== "string") throw new Error("FORGE_RESPONSE");
   let url: URL;
@@ -123,6 +124,9 @@ export function gitlabWebLoginUrl(
     !url.pathname.endsWith(suffix)
   )
     throw new Error("FORGE_RESPONSE");
+  // 先核验服务端项目，再使用已绑定的访问地址；升级后返回内网 web_url 不能把登录窗口带到内网。
+  if (accessRepositoryUrl !== undefined)
+    return gitlabWebLoginUrl(repository, projectPath, accessRepositoryUrl);
   url.pathname = `${url.pathname.slice(0, -suffix.length)}/users/sign_in`;
   return url.href;
 }

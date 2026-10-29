@@ -7,6 +7,7 @@ import { chromium } from "playwright-core";
 import { tsImport } from "tsx/esm/api";
 import { assertRepositoryImageAuthentication } from "./repositoryImageAuthAssertions.mjs";
 import { assertRepositoryGithubImages } from "./repositoryGithubImageAssertions.mjs";
+import { assertRepositoryImageRecovery } from "./repositoryImageRetryAssertions.mjs";
 
 const { createGitlabForgeProvider } = await tsImport(
   "../../services/src/git/providers/gitlabForgeProvider.ts",
@@ -59,7 +60,7 @@ try {
     import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
     import {StoreProvider} from '../../../ui/src/store/StoreProvider.tsx';
     import {TabStoreProvider} from '../../../ui/src/store/TabStoreProvider.tsx';
-    import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
+    import {ZCodeIntlProvider,useZCodeIntl} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
     import {applyTheme} from '../../../ui/src/useTheme.ts';
     import '../../../ui/src/styles.css';
@@ -71,6 +72,7 @@ try {
     state.imageData=dataBase64;
     const preview={mediaType:'image/png',dataBase64,totalBytes:atob(dataBase64).length};
     const staleCanvas=document.createElement('canvas');staleCanvas.width=1;staleCanvas.height=1;const staleBase64=staleCanvas.toDataURL('image/png').split(',')[1];const stalePreview={...preview,dataBase64:staleBase64,totalBytes:atob(staleBase64).length};
+    const corruptPreview={mediaType:'image/png',dataBase64:'iVBORw0KGgo=',totalBytes:8};
     const project='https://forge.example.invalid/git/team/sub/project';
     const user={username:'tester',displayName:'测试用户',avatarUrl:null};
     const label={key:'bug',name:'bug',color:'#d73a4a'};
@@ -84,14 +86,14 @@ try {
       async getForgeItem(r:any){state.calls.push({host,op:'item',...r});return item(host,r)},
       async getForgeItemExtras(r:any){state.calls.push({host,op:'extras',...r});const result={...extras,participants:[{...user,displayName:host+' 参与者'}]};if(state.delayExtras){state.delayExtras=false;return new Promise(resolve=>state.pendingExtras.push(()=>resolve(result)))}return state.failExtras?{errors:{participants:'FORGE_FORBIDDEN',links:'FORGE_NOT_FOUND',labels:'FORGE_RESPONSE'}}:result},
       async listForgeComments(r:any){state.calls.push({host,op:'comments',...r});if(state.github)return {page:r.page,pageSize:30,hasMore:false,total:1,items:[{id:'github-comment',body:'![Comment screenshot](https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc)',author:user,createdAt:'2026-10-02T00:00:01Z',url:null}]};return {page:r.page,pageSize:30,hasMore:r.page===1,total:4,items:r.page===1?[{id:'label-event:1',body:'',author:user,createdAt:'2026-10-01T00:00:00Z',system:true,url:null,labelActivity:{action:'add',labels:[label,{key:'optimization',name:'优化',color:'#16874b'}]}},{id:'system',body:'assigned to tester',author:user,createdAt:'2026-10-01T00:00:01Z',system:true,url:null}]:[{id:'label-event:3',body:'',author:user,createdAt:'2026-10-02T00:00:00Z',system:true,url:null,labelActivity:{action:'remove',labels:[null]}},{id:'comment',body:'正常评论',author:user,createdAt:'2026-10-02T00:00:01Z',system:false,url:null}]}},
-      async readForgeImage(r:any){state.calls.push({host,op:'image',...r});if(state.needsSignIn&&!state.authorizedHosts.includes(host))throw new Error(state.imageSignInError);if(state.delayImage){state.delayImage=false;return new Promise(resolve=>state.pendingImages.push(()=>resolve(state.github&&host==='A'?stalePreview:preview)))}if(state.failImage){state.failImage=false;throw new Error('FORGE_FORBIDDEN')}return preview},
+      async readForgeImage(r:any){state.calls.push({host,op:'image',...r});if(state.imageError)throw new Error(state.imageError);if(state.corruptImage){if(!r.refresh)return corruptPreview;state.corruptImage=false}if(state.needsSignIn&&!state.authorizedHosts.includes(host))throw new Error(state.imageSignInError);if(state.delayImage){state.delayImage=false;return new Promise(resolve=>state.pendingImages.push(()=>resolve(state.github&&host==='A'?stalePreview:preview)))}if(state.failImage){state.failImage=false;throw new Error('FORGE_FORBIDDEN')}return preview},
       async authenticateForgeImage(r:any){state.calls.push({host,op:'authenticate',...r});if(state.failSignIn){const code=state.failSignIn;state.failSignIn=null;throw new Error(code)}if(state.delaySignIn){state.delaySignIn=false;return new Promise<void>(resolve=>state.pendingSignIns.push(()=>{state.authorizedHosts.push(host);resolve()}))}state.authorizedHosts.push(host)},
       async createForgeComment(r:any){state.calls.push({host,op:'write',...r})},
     }};
     const platform:any={openExternal:(url:string)=>state.calls.push({op:'external',url}),readFile:()=>{throw new Error('Local IO must not occur')}};
     const broadcast:any={send(){},onMessage(){return {dispose(){}}}};
     const chatMarkdown=['# Chat regression','[local.ts](file:///synthetic/local.ts)','![Chat image](https://images.example.invalid/chat.png)','| Key | Value |\\n| --- | --- |\\n| row | preserved |'].join('\\n\\n');
-    function Fixture(){const [version,setVersion]=useState(0);const [host,setHost]=useState('A');state.showGithub=()=>{state.github=true;state.needsSignIn=false;state.failImage=true;setHost('B');setVersion(v=>v+1)};const [active,setActive]=useState(true);const [theme,setTheme]=useState<any>('zai-light');const [chat,setChat]=useState(false);state.switchHost=setHost;state.setActive=setActive;state.showChat=setChat;state.setTheme=(value:any)=>{applyTheme(value);setTheme(value)};
+    function Fixture(){const {setLocale}=useZCodeIntl();state.setLocale=setLocale;const [version,setVersion]=useState(0);const [host,setHost]=useState('A');state.showGithub=()=>{state.github=true;state.needsSignIn=false;state.failImage=true;setHost('B');setVersion(v=>v+1)};const [active,setActive]=useState(true);const [theme,setTheme]=useState<any>('zai-light');const [chat,setChat]=useState(false);state.switchHost=setHost;state.setActive=setActive;state.showChat=setChat;state.setTheme=(value:any)=>{applyTheme(value);setTheme(value)};
       return <ServiceProvider services={services[host]}>{chat?<div data-testid='chat-markdown-regression' className='p-4'><MessageResponse workspacePath='/synthetic' theme={theme} codePreviewSettings={DEFAULT_CODE_PREVIEW_SETTINGS} onOpenFileLink={(target:any)=>state.calls.push({op:'local-link',...target})}>{chatMarkdown}</MessageResponse></div>:<><div hidden={!active} className='h-dvh'><RepositoryPanel key={version} workspacePath={'/synthetic/'+host} active={active} theme={theme}/></div>{!active?<div data-testid='settings-cover'>设置</div>:null}</>}</ServiceProvider>}
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><StoreProvider broadcastService={broadcast}><TabStoreProvider><Fixture/></TabStoreProvider></StoreProvider></TooltipProvider></ZCodeIntlProvider></PlatformProvider>);
   `,
@@ -355,6 +357,7 @@ try {
     "B",
   );
 
+  await assertRepositoryImageRecovery({ page, detail, image, draft, row, artifacts });
   await assertRepositoryImageAuthentication({ page, detail, image, draft, row });
   await assertRepositoryGithubImages({ page, panel, artifacts });
   await page.evaluate(() => window.__detail.showChat(true));
