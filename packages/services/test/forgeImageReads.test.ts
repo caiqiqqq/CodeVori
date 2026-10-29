@@ -27,14 +27,16 @@ function fixture() {
     missing: false,
     changed: false,
     failure: false,
+    image: { ...preview },
     pause: null as Promise<void> | null,
   };
   const adapter = {
     async readImage(input: ForgeImageRequest) {
       state.reads.push(input);
+      const image = { ...state.image };
       if (state.pause) await state.pause;
       if (state.failure) throw new Error("FORGE_NETWORK");
-      return { ...preview };
+      return image;
     },
     async authenticateImage() {},
   } as ForgeProviderAdapter;
@@ -92,6 +94,50 @@ test("failed image reads are retryable and never cached", async () => {
   state.failure = false;
   assert.deepEqual(await service.readForgeImage(request), preview);
   await service.readForgeImage(request);
+  assert.equal(state.reads.length, 2);
+});
+
+test("explicit image refresh replaces cached bytes and keeps other images cached", async () => {
+  const { service, state } = fixture();
+  const other = { ...request, url: request.url.replace(/abc$/, "abd") };
+  await service.readForgeImage(request);
+  await service.readForgeImage(other);
+  state.image = { ...preview, dataBase64: "AA==", totalBytes: 1 };
+  assert.deepEqual(await service.readForgeImage(request), preview);
+  assert.deepEqual(await service.readForgeImage({ ...request, refresh: true }), state.image);
+  assert.deepEqual(await service.readForgeImage(request), state.image);
+  assert.deepEqual(await service.readForgeImage(other), preview);
+  assert.equal(state.reads.length, 3);
+});
+
+test("refresh cannot invalidate cached content before target and request validation", async () => {
+  const { service, state } = fixture();
+  await service.readForgeImage(request);
+  state.missing = true;
+  await assert.rejects(
+    service.readForgeImage({ ...request, refresh: true }),
+    /FORGE_MISSING_ACCOUNT/,
+  );
+  state.missing = false;
+  await assert.rejects(service.readForgeImage({ ...request, refresh: "true" }));
+  await service.readForgeImage(request);
+  assert.equal(state.reads.length, 1);
+});
+
+test("a late read cannot replace bytes fetched by an explicit retry", async () => {
+  const { service, state } = fixture();
+  let release!: () => void;
+  state.pause = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const oldRead = service.readForgeImage(request);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  state.pause = null;
+  state.image = { ...preview, dataBase64: "AA==", totalBytes: 1 };
+  assert.deepEqual(await service.readForgeImage({ ...request, refresh: true }), state.image);
+  release();
+  await oldRead;
+  assert.deepEqual(await service.readForgeImage(request), state.image);
   assert.equal(state.reads.length, 2);
 });
 

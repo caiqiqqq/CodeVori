@@ -26,6 +26,18 @@ export interface RepositoryContentContext {
   onOpen: (url: string) => void;
 }
 
+const imageErrorMessages: Record<string, string> = {
+  NETWORK: "imageNetworkError",
+  DISCONNECTED: "imageNetworkError",
+  AUTHENTICATION: "imagePermissionError",
+  FORBIDDEN: "imagePermissionError",
+  MISSING_ACCOUNT: "imagePermissionError",
+  NOT_FOUND: "imageNotFound",
+  RATE_LIMIT: "imageRateLimited",
+  RESPONSE: "imageInvalidContent",
+  IMAGE_DECODE: "imageInvalidContent",
+};
+
 function RepositoryImage({
   source,
   alt,
@@ -52,7 +64,7 @@ function RepositoryImage({
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const [publicRevision, setPublicRevision] = useState(0);
   const [preview, setPreview] = useState(false);
-  const error = media.error || (url && failedUrl === url ? "RESPONSE" : null);
+  const error = media.error || (url && failedUrl === url ? "IMAGE_DECODE" : null);
   const needsSignIn =
     privateUpload && (error === "MEDIA_AUTHENTICATION" || error === "MEDIA_IDENTITY_CHANGED");
   return (
@@ -71,7 +83,7 @@ function RepositoryImage({
                   : "imageNeedsSignIn"
                 : error === "MEDIA_AUTHENTICATION_UNAVAILABLE"
                   ? "imageAuthUnavailable"
-                  : "imageUnavailable",
+                  : (imageErrorMessages[error] ?? "imageUnavailable"),
             )}
           </span>
           {needsSignIn ? (
@@ -91,7 +103,7 @@ function RepositoryImage({
           <Button
             size="sm"
             variant="outline"
-            disabled={media.authentication.busy}
+            disabled={media.authentication.busy || media.loading}
             onClick={() => {
               setFailedUrl(null);
               if (hostRead) media.retry();
@@ -99,6 +111,9 @@ function RepositoryImage({
             }}
           >
             {t("retry")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => context.onOpen(source)}>
+            {t("openImage")}
           </Button>
           <RepositoryExternalButton
             url={context.itemUrl}

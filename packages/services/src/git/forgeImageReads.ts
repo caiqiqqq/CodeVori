@@ -89,6 +89,8 @@ export function createForgeImageReads(target: (request: ForgeTargetRequest) => P
       const original = await target(request);
       if (!original.adapter.readImage) throw new Error("FORGE_MEDIA_UNAVAILABLE");
       const key = imageKey(request, original);
+      // 解码失败的图片也可能已缓存；用户明确重试时必须取新字节，且只能在验证目标后失效当前 key。
+      if (request.refresh) cache.forget(key);
       // 修复原因：处理同一议题曾反复下载截图；只有已核对目标和凭据的 Host 才能复用内容。
       const image = await cache.read(key, async () => {
         const preview = forgeImagePreviewSchema.parse(await original.adapter.readImage!(request));

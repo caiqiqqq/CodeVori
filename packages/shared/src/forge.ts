@@ -27,6 +27,7 @@ export const forgeTargetRequestSchema = forgeRepositoryRequestSchema.extend({
 export type ForgeTargetRequest = z.infer<typeof forgeTargetRequestSchema>;
 export const forgeImageRequestSchema = forgeTargetRequestSchema.extend({
   url: z.string().min(1).max(8192).url(),
+  refresh: z.boolean().optional(),
 });
 export type ForgeImageRequest = z.infer<typeof forgeImageRequestSchema>;
 export const forgeImagePreviewSchema = z.object({

@@ -780,7 +780,7 @@ test("legacy private reads use an attested native session without automatically 
   const request = { ...(await f.target()), url: legacyUrl };
   await assert.rejects(f.service.readForgeImage(request), /FORGE_MEDIA_AUTHENTICATION$/);
   assert.equal(signIns, 0);
-  assert.equal(contexts[0]!.loginUrl, "https://web.example.invalid/git/users/sign_in");
+  assert.equal(contexts[0]!.loginUrl, "https://forge.example.invalid/git/users/sign_in");
   assert.equal(contexts[0]!.serverUrl, "https://forge.example.invalid/git");
   assert.equal(contexts[0]!.accountId, accountId);
   assert.doesNotMatch(JSON.stringify(contexts), /synthetic-forge-token|Cookie|secret/);
@@ -860,6 +860,26 @@ test("canonical login origins must be attested to the exact project", async () =
     );
     assert.equal(invoked, false);
   }
+});
+
+test("GitLab image login uses configured access origin after attesting an internal project URL", async () => {
+  const contexts: ForgeWebMediaContext[] = [];
+  const f = legacyFixture(
+    [{ ...legacyProject, web_url: "http://internal.example.invalid:1080/team/sub/project" }],
+    {
+      async read() {
+        throw new Error("unexpected");
+      },
+      async authenticate(context) {
+        contexts.push(context);
+      },
+    },
+  );
+  await f.service.authenticateForgeImage({ ...(await f.target()), url: legacyUrl });
+  assert.equal(contexts[0]!.loginUrl, "https://forge.example.invalid/git/users/sign_in");
+  assert.equal(contexts[0]!.url, legacyUrl);
+  assert.equal(contexts[0]!.username, "synthetic-user");
+  assert.doesNotMatch(JSON.stringify(contexts), /internal\.example|synthetic-forge-token/);
 });
 
 test("removed, rotated and changed targets cannot accept late login completion", async () => {

@@ -149,6 +149,7 @@ export function createForgeService(options?: {
           resolved.repository.name,
           project.path_with_namespace,
           project.web_url,
+          resolved.repository.url,
         ),
       };
     };
