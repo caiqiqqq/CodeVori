@@ -18,6 +18,7 @@
 // 字段集合注释）。新桌面按 toolName 读入参渲染富确认块，覆盖与否由 `overwrite` 字段区分；
 // 旧桌面与 legacy v3 得到通用权限提示 + 完整入参 JSON——降级但内容完整。
 
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import {
   SAVE_WORKFLOW_SENTINEL_IN_SCRIPT_ERROR,
   SAVE_WORKFLOW_SOURCE_ERROR,
@@ -47,7 +48,7 @@ import {
   savedWorkflowExists,
   savedWorkflowPath,
   savedWorkflowRoot,
-  saveSavedWorkflow,
+  serializeSavedWorkflow,
 } from "./saved-workflows/index.js";
 import { readWorkflowScriptFile } from "./workflow-path-source.js";
 import { analyzeScript } from "./workflow-script-analysis.js";
@@ -154,12 +155,35 @@ async function resolveSaveWorkflowInput(
   };
 }
 
-const saveWorkflowHandler: ToolHandler = async (input, context) => {
-  const parsed = SaveWorkflowInputSchema.parse(input) as SaveWorkflowInput;
-  const cwd = context.workingDirectory ?? ".";
+/** Host 协议与原生工具共用归一化和诊断，避免 ACP 保存出管理页无法读取的定义。 */
+export async function prepareWorkflowSave(input: unknown, cwd: string) {
+  SaveWorkflowInputSchema.parse(input);
+  const validated = validateSaveWorkflowInput(input);
+  if (!validated.result) throw new Error(validated.message);
+  const resolved = await resolveSaveWorkflowInput(input, cwd);
+  if (!resolved.result) throw new Error(resolved.message);
+  const parsed = SaveWorkflowInputSchema.parse(resolved.input);
+  const { script_path: _source, ...frozen } = parsed;
+  const { diagnostics, ok } = analyzeScript(parsed.script!);
+  return {
+    ok,
+    input: { ...frozen, script: parsed.script!, path: parsed.path!, overwrite: parsed.overwrite! },
+    diagnostics,
+  };
+}
+
+/** 只负责已获准的定义写入；调用方负责权限。重新校验且重新推导落点，不能信任传入 path。 */
+export async function saveWorkflowDefinition(
+  input: unknown,
+  cwd: string,
+): Promise<SaveWorkflowOutput> {
+  const { script_path: _source, ...parsed } = SaveWorkflowInputSchema.parse(input);
+  const validated = validateSaveWorkflowInput(parsed);
+  if (!validated.result) throw new Error(validated.message);
   const scope = parsed.scope;
-  // 落点由归一化填好；缺席只可能是有人绕过了 executor 的生命周期，此时自己算一遍而不是崩。
-  const path = parsed.path ?? savedWorkflowPath(savedWorkflowRoot(cwd, scope), parsed.name);
+  // 落点总由作用域和名字推导，不能把模型或 hook 传入的展示路径当成文件写入授权。
+  const root = savedWorkflowRoot(cwd, scope);
+  const path = savedWorkflowPath(root, parsed.name);
   const script = parsed.script;
   if (script === undefined) {
     // 到不了：validateInput 挡掉「两个都不给」，resolveInput 会把 `script_path` 读成 `script`。
@@ -192,13 +216,20 @@ const saveWorkflowHandler: ToolHandler = async (input, context) => {
   // `overwritten` 由**写的那一刻**重新判定，不读入参里那个 `overwrite`：入参上的那个是给
   // 确认窗与 hook 看的事实，而 hook 能改写入参——让它改变落盘后的自述会把一个展示字段
   // 变成一个行为开关。
-  const written = saveSavedWorkflow({
-    cwd,
-    name: parsed.name,
-    meta: toMeta(parsed),
-    script,
-    scope,
+  await mkdir(root.dir, { recursive: true });
+  const overwritten = await stat(path).then(
+    () => true,
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return false;
+      throw error;
+    },
+  );
+  // 异步审批期间可能出现另一份同名文件；批准新建不能悄悄升级为覆盖。
+  await writeFile(path, serializeSavedWorkflow(toMeta(parsed), script), {
+    encoding: "utf8",
+    flag: parsed.overwrite === false ? "wx" : "w",
   });
+  const written = { path, scope, overwritten };
 
   const isGlobal = written.scope === "global";
   return {
@@ -219,7 +250,10 @@ const saveWorkflowHandler: ToolHandler = async (input, context) => {
       `Run it with CreateWorkflow using \`saved: { name: "${parsed.name}" }\`.`,
     ].join(" "),
   } satisfies SaveWorkflowOutput;
-};
+}
+
+const saveWorkflowHandler: ToolHandler = (input, context) =>
+  saveWorkflowDefinition(input, context.workingDirectory ?? ".");
 
 /**
  * 判断"把这段脚本写进仓库"值不值得打断用户。
@@ -308,7 +342,8 @@ export const saveWorkflowToolEntry: ToolEntry = {
   cancellation: {
     supported: false,
     cleanup: "none",
-    userVisibleMessage: "SaveWorkflow typechecks and writes synchronously and cannot be cancelled",
+    userVisibleMessage:
+      "SaveWorkflow checks and writes a definition and cannot be cancelled after approval",
   },
   trace: {
     required: true,

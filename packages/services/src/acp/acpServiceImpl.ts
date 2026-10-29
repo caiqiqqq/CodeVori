@@ -240,6 +240,7 @@ export function createAcpService(
     /** Projection-only membership; exact read and internal execution keep child access. */
     delegatedSessionIds?: (scope: AcpWorkspace) => Promise<string[]>;
     connect?: AcpConnectionFactory;
+    savedWorkflows?: import("./acpSavedWorkflows.js").AcpSavedWorkflowService;
     agentManager?: AcpAgentManager;
     memoryContext?: ProjectMemoryContext;
     mcpSyncService?: Pick<IMcpSyncService, "loadMcpFromUserDirectory">;
@@ -957,6 +958,7 @@ export function createAcpService(
   };
   const workflowHost = new AcpWorkflowHost({
     directory,
+    savedWorkflows: options.savedWorkflows,
     connect,
     mcp: workflowMcp,
     mutate,

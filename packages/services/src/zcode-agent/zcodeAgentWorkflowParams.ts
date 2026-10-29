@@ -1,4 +1,9 @@
-import type { ZCodeSavedWorkflowMeta, ZCodeSavedWorkflowScope } from "@zcode/shared";
+import type {
+  ZCodeSavedWorkflowMeta,
+  ZCodeSavedWorkflowScope,
+  ZCodeWorkflowSaveInput,
+  ZCodeWorkflowSavePreparedInput,
+} from "@zcode/shared";
 import type { ZCodeAgentWorkspaceTarget } from "./zcodeAgentPluginParams.js";
 
 // 已保存工作流的 GUI 中枢：五个 workspace 级、无会话的方法。
@@ -14,7 +19,17 @@ export type ZCodeAgentSavedWorkflowTarget =
   | (ZCodeAgentWorkspaceTarget & { scope?: ZCodeSavedWorkflowScope })
   | ({ scope: "global" } & Partial<ZCodeAgentWorkspaceTarget>);
 
-export type ZCodeAgentListSavedWorkflowsParams = ZCodeAgentSavedWorkflowTarget;
+export type ZCodeAgentListSavedWorkflowsParams = ZCodeAgentSavedWorkflowTarget & {
+  includeGlobal?: boolean;
+};
+
+/** ACP 保存必须携带确切会话工作区；全局作用域也不允许切换到另一个载体。 */
+export type ZCodeAgentPrepareWorkflowSaveParams = ZCodeAgentWorkspaceTarget & {
+  input: ZCodeWorkflowSaveInput;
+};
+export type ZCodeAgentSaveWorkflowParams = ZCodeAgentWorkspaceTarget & {
+  input: ZCodeWorkflowSavePreparedInput;
+};
 
 export type ZCodeAgentGetSavedWorkflowParams = ZCodeAgentSavedWorkflowTarget & {
   name: string;

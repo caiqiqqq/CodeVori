@@ -2780,6 +2780,57 @@ export type ZCodeSavedWorkflowMeta = z.infer<typeof zcodeSavedWorkflowMetaSchema
 // 作用域两档：项目档落 `<cwd>/.zcode/workflows/`、全局档落 agent 机器的 `~/.zcode/workflows/`。作用域由文件所在目录推得，frontmatter 不存 scope。
 export const zcodeSavedWorkflowScopeSchema = z.enum(["project", "global"]);
 export type ZCodeSavedWorkflowScope = z.infer<typeof zcodeSavedWorkflowScopeSchema>;
+/** ACP 与原生 SaveWorkflow 使用相同的模型字段；目标路径只能由 Agent 推导。 */
+export const zcodeWorkflowSaveInputSchema = z
+  .object({
+    name: z.string().min(1).max(64),
+    description: nonEmptyString,
+    whenToUse: nonEmptyString.optional(),
+    args: zcodeSavedWorkflowArgsDeclarationSchema.optional(),
+    scope: zcodeSavedWorkflowScopeSchema,
+    script: z.string().optional(),
+    script_path: nonEmptyString.optional(),
+  })
+  .strict();
+export type ZCodeWorkflowSaveInput = z.infer<typeof zcodeWorkflowSaveInputSchema>;
+export const zcodeWorkflowSavePreparedInputSchema = zcodeWorkflowSaveInputSchema
+  .omit({ script_path: true })
+  .extend({
+    script: z.string(),
+    path: nonEmptyString,
+    overwrite: z.boolean(),
+    shadowing: z.enum(["hides_global", "hidden_by_project"]).optional(),
+  });
+export type ZCodeWorkflowSavePreparedInput = z.infer<typeof zcodeWorkflowSavePreparedInputSchema>;
+const zcodeWorkflowSaveDiagnosticSchema = z
+  .object({ code: z.number(), column: z.number(), line: z.number(), message: z.string() })
+  .strict();
+export const zcodeWorkflowsPrepareSaveParamsSchema = z
+  .object({ workspace: zcodeWorkspaceRefSchema, input: zcodeWorkflowSaveInputSchema })
+  .strict();
+export const zcodeWorkflowsPrepareSaveResultSchema = z
+  .object({
+    ok: z.boolean(),
+    input: zcodeWorkflowSavePreparedInputSchema,
+    diagnostics: z.array(zcodeWorkflowSaveDiagnosticSchema),
+  })
+  .strict();
+export type ZCodeWorkflowsPrepareSaveResult = z.infer<typeof zcodeWorkflowsPrepareSaveResultSchema>;
+export const zcodeWorkflowsSaveParamsSchema = z
+  .object({ workspace: zcodeWorkspaceRefSchema, input: zcodeWorkflowSavePreparedInputSchema })
+  .strict();
+export const zcodeWorkflowsSaveResultSchema = z
+  .object({
+    ok: z.boolean(),
+    diagnostics: z.array(zcodeWorkflowSaveDiagnosticSchema),
+    response: z.string(),
+    name: nonEmptyString,
+    scope: zcodeSavedWorkflowScopeSchema,
+    path: nonEmptyString,
+    overwritten: z.boolean().optional(),
+  })
+  .strict();
+export type ZCodeWorkflowsSaveResult = z.infer<typeof zcodeWorkflowsSaveResultSchema>;
 export const zcodeSavedWorkflowEntrySchema = z
   .object({
     name: nonEmptyString,
@@ -2814,6 +2865,8 @@ const zcodeSavedWorkflowFailureSchema = z
 export const zcodeWorkflowsListParamsSchema = z
   .object({
     workspace: zcodeWorkspaceRefSchema,
+    /** ACP 工具按原生 ListSavedWorkflows 枚举两档并应用项目优先；管理页继续定向 scope。 */
+    includeGlobal: z.boolean().optional(),
     // 缺省即 `project`（本项目档）。给 `global` 时改扫本机 `~/.zcode/workflows/`；此时 `workspace`
     // 仍必填，但只是**载体运行时**——协议处理器对全局档不读它的路径。
     scope: zcodeSavedWorkflowScopeSchema.optional(),
@@ -3684,6 +3737,8 @@ export const zcodeProtocolMethods = {
   skillsReferenceCatalog: "skills/referenceCatalog",
   // 已保存工作流的 GUI 中枢：workspace 级、无会话。
   workflowsList: "workflows/list",
+  workflowsPrepareSave: "workflows/prepareSave",
+  workflowsSave: "workflows/save",
   workflowsGet: "workflows/get",
   workflowsUpdateMeta: "workflows/updateMeta",
   workflowsDelete: "workflows/delete",

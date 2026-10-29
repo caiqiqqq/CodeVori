@@ -47,6 +47,8 @@ import {
   zcodeWorkflowsDeleteResultSchema,
   zcodeWorkflowsGetResultSchema,
   zcodeWorkflowsListResultSchema,
+  zcodeWorkflowsPrepareSaveResultSchema,
+  zcodeWorkflowsSaveResultSchema,
   zcodeWorkflowsMoveResultSchema,
   zcodeWorkflowsRunsResultSchema,
   zcodeWorkflowsUpdateMetaResultSchema,
@@ -4050,8 +4052,30 @@ export function createZCodeAgentService(
       const { client, workspace } = await resolveSavedWorkflowCarrier(params);
       return client.request(
         zcodeProtocolMethods.workflowsList,
-        { workspace, ...savedWorkflowScopeParam(params) },
+        {
+          workspace,
+          ...savedWorkflowScopeParam(params),
+          ...(params.includeGlobal === undefined ? {} : { includeGlobal: params.includeGlobal }),
+        },
         zcodeWorkflowsListResultSchema,
+      );
+    },
+
+    async prepareWorkflowSave(params) {
+      const { client, workspace } = await resolveSavedWorkflowCarrier(params);
+      return client.request(
+        zcodeProtocolMethods.workflowsPrepareSave,
+        { workspace, input: params.input },
+        zcodeWorkflowsPrepareSaveResultSchema,
+      );
+    },
+
+    async saveWorkflow(params) {
+      const { client, workspace } = await resolveSavedWorkflowCarrier(params);
+      return client.request(
+        zcodeProtocolMethods.workflowsSave,
+        { workspace, input: params.input },
+        zcodeWorkflowsSaveResultSchema,
       );
     },
 

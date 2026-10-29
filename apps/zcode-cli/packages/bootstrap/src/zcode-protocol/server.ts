@@ -85,6 +85,7 @@ import {
   updateSavedWorkflowMetaOp,
 } from "./saved-workflows.js";
 import { listMcpServers } from "./mcp.js";
+import { prepareWorkflowSaveOp, saveWorkflowOp } from "./workflow-authoring.js";
 import { updateInteractionPreferences } from "./interaction-preferences.js";
 import { updateAccountProviderConfig } from "./account-provider-config.js";
 import { updateModelIoPreferences } from "./model-io-preferences.js";
@@ -661,6 +662,10 @@ export class ZCodeProtocolAgentServer {
         return await getSkillReferenceCatalog(this.context, request.params);
       case zcodeProtocolMethods.workflowsList:
         return await listSavedWorkflowsOp(this.context, request.params);
+      case zcodeProtocolMethods.workflowsPrepareSave:
+        return await prepareWorkflowSaveOp(this.context, request.params);
+      case zcodeProtocolMethods.workflowsSave:
+        return await saveWorkflowOp(this.context, request.params);
       case zcodeProtocolMethods.workflowsGet:
         return await getSavedWorkflowOp(this.context, request.params);
       case zcodeProtocolMethods.workflowsUpdateMeta:
