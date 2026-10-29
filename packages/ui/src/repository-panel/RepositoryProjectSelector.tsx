@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, Cloud, Folder, LoaderCircle } from "lucide-react";
+import { ChevronDown, Cloud, Folder, LoaderCircle, TriangleAlert } from "lucide-react";
+import { useRepositoryIssueCounts } from "@/hooks/useRepositoryIssueCounts.js";
+import { cn } from "@/components/lib/utils.js";
 import { useRemoteWorkspaceSessionStore } from "@/store/remoteWorkspaceSessionStore.js";
 import {
   buildWorkspaceSessionKey,
@@ -41,6 +43,7 @@ export function RepositoryProjectSelector(props: Props) {
       ),
     [props.projectGroups, props.projectsLoading, sessions],
   );
+  const counts = useRepositoryIssueCounts(options);
   const activeKey = buildWorkspaceSessionKey(props);
   const currentGroup = props.projectGroups.find((group) =>
     group.workspaceTabs.some((tab) => buildWorkspaceSessionKey(tab) === activeKey),
@@ -85,6 +88,19 @@ export function RepositoryProjectSelector(props: Props) {
             )}
             {options.map((option) => {
               const Icon = hasRemoteWorkspaceIdentity(option) ? Cloud : Folder;
+              const issueCount = counts.projects.get(option.key);
+              const count = issueCount?.count ?? null;
+              const loading = issueCount?.loading ?? counts.loading;
+              const summary = t(
+                count === null
+                  ? loading
+                    ? "sidebar.loading"
+                    : "sidebar.unavailable"
+                  : issueCount?.stale
+                    ? "sidebar.stale"
+                    : "sidebar.pending",
+                { count: count ?? 0 },
+              );
               const subtitle = [option.workspacePath, option.remoteSubtitle]
                 .filter(Boolean)
                 .join(" · ");
@@ -109,7 +125,33 @@ export function RepositoryProjectSelector(props: Props) {
                 >
                   <Icon className="size-4 shrink-0 text-foreground-subtle" />
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate">{option.label}</span>
+                    <span className="flex min-w-0 items-center justify-between gap-2">
+                      <span className="truncate">{option.label}</span>
+                      <span
+                        data-testid="repository-project-count"
+                        title={summary}
+                        aria-label={summary}
+                        className={cn(
+                          "flex shrink-0 items-center gap-1 text-ui-xs tabular-nums text-foreground-subtle",
+                          count !== null && count > 0 && "text-warning",
+                        )}
+                      >
+                        {count === null ? (
+                          loading ? (
+                            <LoaderCircle aria-hidden="true" className="size-3 animate-spin" />
+                          ) : (
+                            "—"
+                          )
+                        ) : (
+                          <>
+                            {issueCount?.stale ? (
+                              <TriangleAlert aria-hidden="true" className="size-3" />
+                            ) : null}
+                            {count > 99 ? "99+" : count}
+                          </>
+                        )}
+                      </span>
+                    </span>
                     <span className="truncate text-ui-sm text-foreground-subtle">
                       {option.workspacePath}
                     </span>

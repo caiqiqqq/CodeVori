@@ -93,12 +93,19 @@ export function getRepositoryIssueReadModel(
 export interface RepositoryIssueReadSource {
   resource: Resource | null;
   error: string | null;
+  projects?: readonly RepositoryIssueProject[];
+}
+export interface RepositoryProjectIssueCount {
+  count: number | null;
+  loading: boolean;
+  stale: boolean;
 }
 export interface RepositoryIssueCounts {
   count: number | null;
   loading: boolean;
   stale: boolean;
   partial: boolean;
+  projects: ReadonlyMap<string, RepositoryProjectIssueCount>;
 }
 
 /** 合并全部可用 Host 的投影，用 partial 明确部分数量，避免离线项目吞掉已有议题。 */
@@ -117,6 +124,25 @@ export function combineRepositoryIssueReads(sources: readonly RepositoryIssueRea
       if (snapshot && current.every((read, index) => read === previous[index])) return snapshot;
       previous = current;
       const available = current.flatMap((read) => (read.data ? [read.data] : []));
+      const projects = new Map<string, RepositoryProjectIssueCount>();
+      for (const source of sources) {
+        const read = source.resource?.getSnapshot();
+        const details = new Map(
+          read?.data?.projects?.map((project) => [
+            project.workspaceIdentity?.trim() || project.workspacePath,
+            project.pending,
+          ]),
+        );
+        // 断开的 scope 与旧 Host 未提供的明细保持未知，不能继承同路径其他 Host 的数量。
+        for (const project of source.projects ?? read?.data?.projects ?? []) {
+          const key = project.workspaceIdentity?.trim() || project.workspacePath;
+          projects.set(key, {
+            count: details.get(key) ?? null,
+            loading: read?.loading ?? false,
+            stale: Boolean(source.error || read?.error),
+          });
+        }
+      }
       snapshot = {
         count:
           available.length || !sources.length
@@ -125,6 +151,7 @@ export function combineRepositoryIssueReads(sources: readonly RepositoryIssueRea
         loading: current.some((read) => read.loading),
         stale: sources.some((source) => source.error) || current.some((read) => read.error),
         partial: available.length < sources.length || available.some((data) => data.incomplete),
+        projects,
       };
       return snapshot;
     },

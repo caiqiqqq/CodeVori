@@ -10,6 +10,11 @@ import {
   assertRepositorySelectionReload,
 } from "./repositorySelectionMemoryAssertions.mjs";
 
+import {
+  assertRepositoryProjectCounts,
+  assertRepositoryProjectCountLayouts,
+} from "./repositoryProjectCountAssertions.mjs";
+
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__repository-project-e2e-${process.pid}`;
 const html = join(root, `${name}.html`);
@@ -35,19 +40,21 @@ try {
     import {isWorkspaceTab} from '../../../ui/src/store/tabStore.ts';
     import {useZCodeSessionStore} from '../../../ui/src/store/zcodeSessionStore.ts';
     import {repositoryNavigationStore} from '../../../ui/src/store/repositoryNavigationStore.ts';
+    import {repositoryIssueRefreshStore} from '../../../ui/src/store/repositoryIssueRefreshStore.ts';
     import {useRemoteWorkspaceSessionStore} from '../../../ui/src/store/remoteWorkspaceSessionStore.ts';
     import {buildRemoteWorkspaceIdentity,buildWorkspaceSessionKey} from '../../../ui/src/lib/remoteWorkspaceHistory.ts';
     import {persistV4ComposerDraft,readV4ComposerDraft} from '../../../ui/src/v4/composer/composerDraftStore.ts';
-    import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
+    import {ZCodeIntlProvider,useZCodeIntl} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
     import {Button} from '../../../ui/src/components/ui/button.tsx';
     import {applyTheme} from '../../../ui/src/useTheme.ts';
     import '../../../ui/src/styles.css';
-    const state:any={calls:[],pending:[],pendingInfo:[],view:'repository',delayDiscovery:false,delayInfo:true,dropPrivate:false};
+    const state:any={calls:[],pending:[],pendingInfo:[],pendingCounts:[],countListeners:{},counts:{},failCounts:false,delayCounts:true,view:'repository',delayDiscovery:false,delayInfo:true,dropPrivate:false};
     window.__projects=state;
     state.setTheme=applyTheme;
     const alpha='/synthetic/alpha/project';
     const beta='/synthetic/beta/project';
+    state.refreshCounts=()=>repositoryIssueRefreshStore.getState().invalidate();
     const remote=(host:string,sessionId?:string)=>{
       const target={kind:'ssh',host:host+'.example.invalid',username:'tester'};
       return {workspacePath:alpha,workspaceIdentity:buildRemoteWorkspaceIdentity(alpha,target as any),remoteTarget:target,remoteSessionId:sessionId};
@@ -88,7 +95,20 @@ try {
     clientConfigService:{async getSnapshot(){throw new Error('Files-only draft must not read plugins')}},
     modelSelectionService:{async getView(){return {revision:1,providers:[],preferredSelection:null}},onDidChange(){return {dispose(){}}}},
     acpService:{async listAvailableAgents(){state.calls.push({op:'agents',host});return [{agent:'codex',enabled:true,ready:true}]},async listAgentConfigs(){return []},onDynamicAgentConfigsChanged:()=>()=>({dispose(){}})},
-    workTaskService:{async list(){return {tasks:[],concurrency:1}},onDynamicChanged:()=>()=>({dispose(){}}),async create(){throw new Error('Navigation must not save a task')}},
+    workTaskService:{
+      async getRepositoryIssueSummary(r:any){
+        state.calls.push({op:'counts',host,...r});
+        const projects=r.projects.map((scope:any)=>{
+          const fallback=host==='remote-one'?5:host==='remote-two'?120:scope.workspacePath===alpha?3:scope.workspacePath===beta?(scope.remoteName==='private'?7:0):scope.workspacePath.includes('/extras/')?0:null;
+          return {...scope,pending:state.counts[host+':'+scope.workspacePath]??fallback};
+        });
+        const result={pending:projects.reduce((sum:number,project:any)=>sum+(project.pending??0),0),checkedAt:Date.now(),projects};
+        if(host==='local'&&r.projects.some((scope:any)=>scope.workspacePath===alpha)&&state.delayCounts){state.delayCounts=false;await new Promise(resolve=>state.pendingCounts.push(resolve))}
+        if(state.failCounts)throw new Error('FORGE_NETWORK');
+        return result;
+      },
+      async list(){return {tasks:[],concurrency:1}},onDynamicChanged:()=>listener=>{const listeners=state.countListeners[host]??=new Set();listeners.add(listener);return{dispose(){listeners.delete(listener)}}},async create(){throw new Error('Navigation must not save a task')}
+    },
     });
     const base:any=services('local');
     const registry=useRemoteWorkspaceSessionStore.getState();
@@ -111,6 +131,7 @@ try {
     });
     const broadcast:any={send(){},onMessage(){return {dispose(){}}}};
     function Fixture(){
+      const {setLocale}=useZCodeIntl();state.setLocale=setLocale;
       const [visible,setVisible]=useState(true);
       const [revision,setRevision]=useState(0);
       const tabs=useTabStore(s=>s.tabs);
@@ -158,17 +179,6 @@ try {
       text,
     );
   const snapshot = () => page.evaluate(() => window.__projects.snapshot());
-  const settleVisuals = () =>
-    page.evaluate(async () => {
-      await document.fonts.ready;
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      await Promise.all(
-        document
-          .getAnimations()
-          .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
-          .map((animation) => animation.finished.catch(() => {})),
-      );
-    });
   await waitRow("local /synthetic/alpha/project origin");
   const initial = await snapshot();
   await trigger().click();
@@ -177,6 +187,7 @@ try {
   assert.equal(await option("/synthetic/worktrees/abcd/project").count(), 0);
   await page.evaluate(() => window.__projects.pendingInfo.shift()());
   await option("/synthetic/beta/project").waitFor();
+  const { count, expectCount } = await assertRepositoryProjectCounts({ page, option });
   assert.equal(await option("/synthetic/worktrees/abcd/project").count(), 0);
   assert.equal(await option("/synthetic/worktrees/orphan/project").count(), 0);
   const relationCalls = await page.evaluate(
@@ -190,6 +201,10 @@ try {
       .filter((source) => source.workspaceIdentity)
       .map((source) => source.workspaceIdentity),
   );
+  await expectCount(remoteKeys[0], 5);
+  await expectCount(remoteKeys[1], "99+");
+  assert.match(await count(remoteKeys[1]).getAttribute("title"), /120/);
+  await expectCount(remoteKeys[2], "—");
   assert.equal(await option(remoteKeys[2]).getAttribute("aria-disabled"), "true");
   assert.equal(await option(remoteKeys[3]).getAttribute("aria-disabled"), "true");
   const list = picker().locator('[data-slot="command-list"]');
@@ -217,6 +232,10 @@ try {
   await panel.getByRole("combobox", { name: "远端仓库", exact: true }).click();
   await page.getByRole("option", { name: "private", exact: true }).click();
   await waitRow("local /synthetic/beta/project private");
+  await trigger().click();
+  await search().fill("beta");
+  await expectCount("/synthetic/beta/project", 7);
+  await search().press("Escape");
   await page.getByRole("button", { name: "后退", exact: true }).click();
   await waitRow("local /synthetic/alpha/project origin");
   await page.getByRole("button", { name: "前进", exact: true }).click();
@@ -326,7 +345,10 @@ try {
     await page.evaluate(
       () =>
         window.__projects.calls.filter(
-          (call) => !["list", "discover", "detail", "agents", "repository-info"].includes(call.op),
+          (call) =>
+            !["list", "discover", "detail", "agents", "repository-info", "counts"].includes(
+              call.op,
+            ),
         ).length,
     ),
     0,
@@ -354,44 +376,17 @@ try {
   assert.equal((await snapshot()).history.cursor, 2);
   assert.equal((await snapshot()).history.entries.length, 3);
 
-  for (const [theme, width] of [
-    ["light", 1120],
-    ["dark", 1120],
-    ["light", 390],
-    ["dark", 390],
-    ["light", 320],
-    ["dark", 320],
-  ]) {
-    await page.setViewportSize({ width, height: 850 });
-    await page.evaluate((theme) => {
-      window.__projects.setTheme(theme);
-    }, theme);
-    await trigger().click();
-    await search().fill("project");
-    await settleVisuals();
-    assert.equal(
-      await trigger()
-        .locator("span")
-        .first()
-        .evaluate((node) => node.scrollWidth > node.clientWidth),
-      false,
-    );
-    await page.screenshot({ path: join(artifacts, `projects-${theme}-${width}.png`) });
-    assert.equal(
-      await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
-      false,
-    );
-    const bounds = await picker().boundingBox();
-    assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width);
-    assert.equal(await picker().evaluate((node) => node.scrollWidth > node.clientWidth), false);
-    await search().press("Escape");
-    await picker().waitFor({ state: "detached" });
-  }
+  await assertRepositoryProjectCountLayouts({ page, picker, trigger, search, artifacts });
   assert.deepEqual(errors, []);
   await choose("/synthetic/beta/project", "beta");
   await waitRow("local /synthetic/beta/project private");
   await assertRepositorySelectionMemory({ page, panel, waitRow });
   await assertRepositorySelectionReload({ page, panel, waitRow, choose });
+  await page.evaluate(() => window.__projects.setLocale("en-US"));
+  await panel.getByRole("combobox", { name: "Select Project", exact: true }).click();
+  await page.getByTestId("repository-project-picker").getByRole("combobox").fill("beta");
+  await expectCount("/synthetic/beta/project", 0);
+  assert.match(await count("/synthetic/beta/project").getAttribute("aria-label"), /0 open issues/);
   process.stdout.write(
     `PASS: repository project search, scroll, keyboard, empty states, exact local/remote/worktree navigation, history, stale replies, task/draft preservation and responsive themes. Screenshots: ${artifacts}\n`,
   );

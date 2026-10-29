@@ -218,3 +218,46 @@ test("hidden pages pause polling and visibility recovery forces a fresh read", a
     else Reflect.deleteProperty(globalThis, "document");
   }
 });
+
+test("project projections preserve identities, unknown counts and stale values without extra reads", async () => {
+  const h = host();
+  const remote = { ...project, workspaceIdentity: " endpoint-b ", remoteSessionId: "attachment-b" };
+  const projects = [project, remote, { workspacePath: "/empty" }, { workspacePath: "/unknown" }];
+  const read = getRepositoryIssueReadModel(h.service, projects);
+  const combined = combineRepositoryIssueReads([{ resource: read, error: null, projects }]);
+  const close = combined.subscribe(() => {});
+  try {
+    assert.equal(combined.getSnapshot().projects.get("/project")?.loading, true);
+    h.requests[0]!.resolve({
+      ...result(5),
+      projects: projects.map((scope, index) => ({ ...scope, pending: [2, 3, 0, null][index]! })),
+    });
+    await settle();
+    assert.equal(combined.getSnapshot().count, 5);
+    assert.equal(combined.getSnapshot().projects.get("/project")?.count, 2);
+    assert.equal(combined.getSnapshot().projects.get("endpoint-b")?.count, 3);
+    assert.equal(combined.getSnapshot().projects.get("/empty")?.count, 0);
+    assert.equal(combined.getSnapshot().projects.get("/unknown")?.count, null);
+    const refresh = read.refresh();
+    h.requests[1]!.reject(new Error("FORGE_NETWORK"));
+    await refresh;
+    assert.equal(combined.getSnapshot().projects.get("/project")?.count, 2);
+    assert.equal(combined.getSnapshot().projects.get("/project")?.stale, true);
+    const disconnected = combineRepositoryIssueReads([
+      { resource: null, error: "DISCONNECTED", projects: [remote] },
+    ]);
+    assert.equal(disconnected.getSnapshot().projects.get("endpoint-b")?.count, null);
+    const legacy = read.refresh();
+    h.requests[2]!.resolve(result(5));
+    await legacy;
+    assert.equal(combined.getSnapshot().count, 5);
+    assert.equal(
+      combined.getSnapshot().projects.get("/project")?.count,
+      null,
+      "old Hosts do not turn a total into a project count",
+    );
+    assert.equal(h.requests.length, 3);
+  } finally {
+    close();
+  }
+});

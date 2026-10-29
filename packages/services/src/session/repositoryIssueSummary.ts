@@ -110,9 +110,12 @@ export function createRepositoryIssueSummary(options: {
   return async (input: RepositoryIssueSummaryRequest) => {
     const request = repositoryIssueSummaryRequestSchema.parse(input);
     await options.ready?.();
-    if (!request.projects.length) return { pending: 0, checkedAt: now() };
+    if (!request.projects.length) return { pending: 0, checkedAt: now(), projects: [] };
     if (!options.forge) throw new Error("FORGE_TASK_UNSUPPORTED");
     const groups = new Map<string, RepositoryGroup>();
+    const projectCounts = new Map<RepositoryIssueProject, number | null>(
+      request.projects.map((project) => [project, null]),
+    );
     // 项目独立发现：某个项目缺账号或读取失败不能阻断其他项目的议题提示。
     const discovery = await Promise.allSettled(
       request.projects.map(async (project) => {
@@ -157,6 +160,8 @@ export function createRepositoryIssueSummary(options: {
               linked.add(task.source.number);
         let pending = 0;
         for (const number of numbers) if (!linked.has(number)) pending++;
+        // 同仓库别名共享去重后的关联和数量，不在下拉列表另发查询或重复推导业务事实。
+        for (const project of projects) projectCounts.set(project, pending);
         return pending;
       }),
     );
@@ -170,6 +175,14 @@ export function createRepositoryIssueSummary(options: {
     }
     // 完全失败仍交给共享读模型保留旧值；只有部分成功时才发布明确标记的部分数量。
     if (!available && failures.length) throw failures[0];
-    return { pending, checkedAt: now(), ...(failures.length ? { incomplete: true } : {}) };
+    return {
+      pending,
+      checkedAt: now(),
+      ...(failures.length ? { incomplete: true } : {}),
+      projects: request.projects.map((project) => ({
+        ...project,
+        pending: projectCounts.get(project) ?? null,
+      })),
+    };
   };
 }

@@ -118,6 +118,37 @@ test("every eligible project contributes even when the current project has no is
   assert.equal(f.calls.length, 3);
 });
 
+test("project details reuse the deduplicated repository count and keep unknown projects distinct", async () => {
+  const f = fixture();
+  const alias = { workspacePath: "/clone", remoteName: "private" };
+  const remote = {
+    workspacePath: "/project",
+    workspaceIdentity: "endpoint-b",
+    remoteSessionId: "attachment-b",
+  };
+  f.repositories.set("/empty", "empty-repo");
+  f.repositories.set("/failed", "failed-repo");
+  f.statuses.set("/non-git", "not-repository");
+  f.tasks.set("/clone", [linked(1)]);
+  f.replies.push(page([1, 2]), page([]), new Error("FORGE_NETWORK"));
+  const projects = [
+    project,
+    alias,
+    remote,
+    { workspacePath: "/empty" },
+    { workspacePath: "/failed" },
+    { workspacePath: "/non-git" },
+  ];
+  const summary = await f.read({ projects });
+  assert.equal(summary.pending, 1);
+  assert.equal(summary.incomplete, true);
+  assert.deepEqual(
+    summary.projects,
+    projects.map((scope, index) => ({ ...scope, pending: index < 3 ? 1 : index === 3 ? 0 : null })),
+  );
+  assert.equal(f.calls.length, 3, "details reuse the same Forge IO and alias task associations");
+});
+
 test("ineligible and failed discovery projects cannot hide another repository's issues", async () => {
   const f = fixture();
   const statuses = [

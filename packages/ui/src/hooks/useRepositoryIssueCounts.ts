@@ -35,7 +35,11 @@ export function useRepositoryIssueCounts(projects: Parameters<typeof workTaskSid
       });
       const service = resolved?.services.workTaskService;
       if (!service) {
-        sources.push({ resource: null, error: resolved ? "UNSUPPORTED" : "DISCONNECTED" });
+        sources.push({
+          resource: null,
+          error: resolved ? "UNSUPPORTED" : "DISCONNECTED",
+          projects: [scope],
+        });
         continue;
       }
       const batch = batches.get(service) ?? [];
@@ -47,7 +51,11 @@ export function useRepositoryIssueCounts(projects: Parameters<typeof workTaskSid
       batches.set(service, batch);
     }
     for (const [service, batch] of batches)
-      sources.push({ resource: getRepositoryIssueReadModel(service, batch), error: null });
+      sources.push({
+        resource: getRepositoryIssueReadModel(service, batch),
+        error: null,
+        projects: batch,
+      });
     return combineRepositoryIssueReads(sources);
   }, [
     baseServices,
