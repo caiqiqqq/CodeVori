@@ -250,11 +250,11 @@ fs.writeFileSync(path.join(dir,'bin/cli.js'), '// fake ACP');
   }
 });
 
-test("二进制安装绑定查询出的 URL 和版本，检查期间目标变化不改变在途安装", async (t) => {
+test("ACP 服务使用 Host fetcher 检查和安装，绑定在途目标并共享安全失败提示", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "zcode-acp-binary-admission-"));
   const entry = process.platform === "win32" ? "opencode.exe" : "opencode";
   const key = `${process.platform === "win32" ? "windows" : process.platform}-${process.arch === "arm64" ? "aarch64" : "x86_64"}`;
-  let version = "1.18.33";
+  let version = "99.1.0";
   let downloadStarted!: () => void;
   let finishDownload!: () => void;
   const started = new Promise<void>((resolve) => {
@@ -270,61 +270,93 @@ test("二进制安装绑定查询出的 URL 和版本，检查期间目标变化
   const chunks: Buffer[] = [];
   for await (const chunk of zip.outputStream) chunks.push(Buffer.from(chunk));
   const payload = Buffer.concat(chunks);
-  t.mock.method(globalThis, "fetch", async (url: string) => {
-    seen.push(url);
-    downloadStarted();
-    await ready;
-    return new Response(payload);
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("ACP must use the injected Host transport");
   });
-  const manager = createAcpAgentManager({
+  let rejectDownload = false;
+  const service = createAcpService({
     directory: root,
-    env: { PATH: "" },
-    fetchMetadata: async (url) =>
-      url.includes("agentclientprotocol.com")
-        ? {
-            agents: [
-              {
-                id: "opencode",
-                version,
-                distribution: {
-                  binary: {
-                    [key]: {
-                      archive: `https://example.invalid/opencode-${version}.zip`,
-                      cmd: `./${entry}`,
-                      args: ["acp"],
+    fetcher: async (input) => {
+      const url = String(input);
+      if (url.startsWith("https://example.invalid/")) {
+        seen.push(url);
+        downloadStarted();
+        await ready;
+        if (rejectDownload)
+          throw new TypeError("fetch failed", {
+            cause: Object.assign(new Error("synthetic-secret"), {
+              code: "UND_ERR_CONNECT_TIMEOUT",
+            }),
+          });
+        return new Response(payload);
+      }
+      return Response.json(
+        url.includes("agentclientprotocol.com")
+          ? {
+              agents: [
+                {
+                  id: "opencode",
+                  version,
+                  distribution: {
+                    binary: {
+                      [key]: {
+                        archive: `https://example.invalid/opencode-${version}.zip`,
+                        cmd: `./${entry}`,
+                        args: ["acp"],
+                      },
                     },
                   },
                 },
-              },
-            ],
-          }
-        : npmMetadata(url),
+              ],
+            }
+          : npmMetadata(url),
+      );
+    },
   });
-  let install: ReturnType<typeof manager.manageAgent> | undefined;
+  let install: ReturnType<typeof service.manageAgent> | undefined;
   try {
-    await manager.listAgents({ checkUpdates: true });
-    install = manager.manageAgent({
+    await service.listAgents({ checkUpdates: true });
+    install = service.manageAgent({
       agent: "opencode",
       action: "install",
       expectedVersion: version,
       operationId: randomUUID(),
     });
     await started;
-    version = "1.18.34";
-    await manager.listAgents({ checkUpdates: true, force: true });
+    version = "99.2.0";
+    await service.listAgents({ checkUpdates: true, force: true });
     finishDownload();
     const result = await install;
-    assert.equal(result.installedVersion, "1.18.33");
-    assert.equal(result.registryVersion, "1.18.34");
-    assert.deepEqual(seen, ["https://example.invalid/opencode-1.18.33.zip"]);
-    assert.equal(
-      (await manager.resolveLaunch("opencode")).command,
-      join(root, "opencode", "binary", entry),
-    );
+    assert.equal(result.installedVersion, "99.1.0");
+    assert.equal(result.registryVersion, "99.2.0");
+    assert.deepEqual(seen, ["https://example.invalid/opencode-99.1.0.zip"]);
+    rejectDownload = true;
+    const operationId = randomUUID();
+    let failedMessage: string | undefined;
+    const subscription = service.onDynamicAgentOperation(operationId)((event) => {
+      if (event.phase === "failed") failedMessage = event.message;
+    });
+    try {
+      await assert.rejects(
+        service.manageAgent({ agent: "opencode", action: "upgrade", operationId }),
+        (error: Error) => {
+          assert.match(error.message, /连接超时.*UND_ERR_CONNECT_TIMEOUT/);
+          assert.equal(error.message, failedMessage);
+          assert.equal(error.message.includes("synthetic-secret"), false);
+          return true;
+        },
+      );
+      assert.equal(
+        (await service.listAgents()).find((item) => item.agent === "opencode")?.managedVersion,
+        "99.1.0",
+      );
+    } finally {
+      subscription.dispose();
+    }
   } finally {
     finishDownload();
     await install?.catch(() => {});
-    manager.dispose();
+    await service.disposeAllAndWait();
     await rm(root, { recursive: true, force: true });
   }
 });

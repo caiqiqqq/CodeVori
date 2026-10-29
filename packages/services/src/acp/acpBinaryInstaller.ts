@@ -7,6 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import * as yauzl from "yauzl";
 import { x as extractTar } from "tar";
+import { getNetworkErrorCodes } from "../providers/api/networkErrorClassifier.js";
 
 export type AcpBinaryRelease = {
   version: string;
@@ -106,6 +107,7 @@ export async function installAcpBinary(
   url: string,
   release: AcpBinaryRelease,
   options: {
+    fetcher?: typeof fetch;
     skipArchiveLinks?: boolean;
     validate?: (directory: string) => Promise<void>;
     onProgress?: (bytes: number, total: number | null) => void;
@@ -117,7 +119,10 @@ export async function installAcpBinary(
   await mkdir(staging, { recursive: true, mode: 0o700 });
   let movedOld = false;
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+    // 修复原因：裸 fetch 不读取 Host 代理/CA 设置，GitHub 二进制升级会绕过代理并建连超时。
+    const response = await (options.fetcher ?? fetch)(url, {
+      signal: AbortSignal.timeout(120_000),
+    });
     if (!response.ok || !response.body)
       throw new Error(`ACP download failed: HTTP ${response.status}`);
     let bytes = 0;
@@ -193,6 +198,34 @@ export async function installAcpBinary(
       throw error;
     }
     if (movedOld) await rm(backup, { recursive: true, force: true });
+  } catch (error) {
+    // 只投影已知错误码，原始 cause 可能带代理凭据或 URL，不能直接展示到安装日志。
+    const reasons: Record<string, string> = {
+      UND_ERR_CONNECT_TIMEOUT: "连接超时",
+      ETIMEDOUT: "连接超时",
+      ENOTFOUND: "域名解析失败",
+      EAI_AGAIN: "域名解析暂时失败",
+      ECONNREFUSED: "连接被拒绝",
+      ECONNRESET: "连接被重置",
+      ENETUNREACH: "网络不可达",
+      EHOSTUNREACH: "目标不可达",
+      UND_ERR_CONNECT_ERROR: "连接失败",
+    };
+    const code = getNetworkErrorCodes(error).find((code) => reasons[code]);
+    if (code)
+      throw new Error(
+        `ACP 下载失败：${reasons[code]}（${code}）。请检查目标 Host 的网络和代理设置。`,
+        { cause: error },
+      );
+    if (
+      error instanceof Error &&
+      (error.name === "TimeoutError" || error.message === "fetch failed")
+    )
+      throw new Error(
+        `ACP 下载失败：${error.name === "TimeoutError" ? "请求超时" : "网络请求失败"}。请检查目标 Host 的网络和代理设置。`,
+        { cause: error },
+      );
+    throw error;
   } finally {
     await rm(staging, { recursive: true, force: true });
   }
