@@ -1,6 +1,8 @@
 import type { BoardItem } from "./agentBoardModel.js";
 import { SessionPane, type SessionPaneProps } from "@/v4/SessionPane.js";
 import { V4PaneConversationProvider } from "@/v4/V4ConversationContext.js";
+import { useMemo } from "react";
+import { usePaneGitStatus, type OpenScopedGitReview } from "@/hooks/usePaneGitStatus.js";
 
 export type BoardConversationOptions = Pick<
   SessionPaneProps,
@@ -19,7 +21,7 @@ export type BoardConversationOptions = Pick<
   | "onOpenWorkflowRunDirectory"
   | "onOpenWorkflowActorSession"
   | "onOpenWorkflowWorkspace"
->;
+> & { onOpenScopedGitReview?: OpenScopedGitReview };
 export function AgentBoardConversation({
   item,
   options,
@@ -29,15 +31,31 @@ export function AgentBoardConversation({
   options?: BoardConversationOptions;
   onClose(): void;
 }) {
-  const scope = {
-    workspacePath: item.workspacePath,
-    workspaceIdentity: item.workspaceIdentity,
-    remoteSessionId: item.remoteSessionId,
-  };
+  const scope = useMemo(
+    () => ({
+      workspacePath: item.workspacePath,
+      workspaceIdentity: item.workspaceIdentity,
+      remoteSessionId: item.remoteSessionId,
+    }),
+    [item.workspacePath, item.workspaceIdentity, item.remoteSessionId],
+  );
+  const { onOpenScopedGitReview, ...paneOptions } = options ?? {};
+  // 看板跨项目打开会话，不能遗漏 Git 投影，也不能复用 Shell 当前项目的闭包。
+  const git = usePaneGitStatus(scope, item.online, onOpenScopedGitReview);
   return (
     <V4PaneConversationProvider scope={scope}>
       <SessionPane
-        {...options}
+        {...paneOptions}
+        {...git}
+        activeTaskChangeSummary={item.kind === "native" ? item.task.changeSummary : undefined}
+        onOpenGitReview={
+          git.onOpenGitReview
+            ? (sourceId) => {
+                onClose();
+                git.onOpenGitReview?.(sourceId);
+              }
+            : undefined
+        }
         paneId="agent-board-conversation"
         workspacePath={item.workspacePath}
         workspaceIdentity={item.workspaceIdentity}

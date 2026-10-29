@@ -1,33 +1,45 @@
 import { WorkTaskAgent } from "@/work-tasks/WorkTaskParts.js";
-import { Folder, Star } from "lucide-react";
+import { useDraggable } from "@dnd-kit/core";
+import { Folder, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { Badge } from "@/components/ui/badge.js";
 import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { boardDisplayStatus, type BoardItem } from "./agentBoardModel.js";
+import {
+  boardResultTimestamp,
+  boardAgentLabel,
+  canStageBoardItem,
+  boardStatusIndicator,
+  type BoardItem,
+} from "./agentBoardModel.js";
 export const boardStatusColors = {
   running: "text-brand",
+  waiting: "text-interaction-confirmation-foreground",
   error: "text-destructive",
   completed: "text-success",
+  staged: "text-foreground-subtle",
 };
 export function AgentBoardCard({
   item,
   projectLabel,
-  busy,
   onOpen,
-  onPin,
+  onStage,
 }: {
   item: BoardItem;
   projectLabel?: string;
-  busy: boolean;
   onOpen(): void;
-  onPin(): void;
+  onStage(item: BoardItem): void;
 }) {
   const { intl, locale } = useZCodeIntl();
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
+  const canStage = canStageBoardItem(item);
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: item.key,
+    disabled: !canStage || item.staged,
+  });
   const colors = boardStatusColors;
-  const status = boardDisplayStatus(item);
+  const status = boardStatusIndicator(item);
   const isConversation = item.workspacePurpose === "conversation";
   const projectName = projectLabel ?? item.workspacePath.split("/").pop();
   const change = item.kind === "native" ? item.task.changeSummary : undefined;
@@ -39,6 +51,8 @@ export function AgentBoardCard({
     : item.summary;
   return (
     <article
+      ref={setNodeRef}
+      style={{ opacity: isDragging ? 0.4 : undefined }}
       className="rounded-xl border border-border bg-card shadow-sm transition-colors hover:border-brand/40"
       data-board-card={item.key}
     >
@@ -63,7 +77,15 @@ export function AgentBoardCard({
               <span className="shrink-0 text-ui-xs">{t("workTasks")}</span>
             ) : null}
           </div>
-          <span className={`shrink-0 ${colors[status]}`}>{t(`status.${status}`)}</span>
+          <span className="flex shrink-0 items-center gap-2">
+            {item.unread ? (
+              <span data-board-unread className="inline-flex items-center gap-1 text-icon-blue">
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-icon-blue" />
+                {t("unread")}
+              </span>
+            ) : null}
+            <span className={colors[status]}>{t(`status.${status}`)}</span>
+          </span>
         </div>
         <h3 className="line-clamp-2 font-medium leading-relaxed">{item.title || t("untitled")}</h3>
         {summary ? (
@@ -72,15 +94,20 @@ export function AgentBoardCard({
           </p>
         ) : null}
         <div className="mt-4 flex items-center justify-between gap-2 text-ui-caption text-foreground-subtlest">
-          <span className="inline-flex min-w-0 items-center gap-1.5 rounded bg-surface px-1.5 py-0.5">
+          <span
+            data-board-agent-label
+            className="inline-flex min-w-0 items-center gap-1.5 rounded bg-surface px-1.5 py-0.5"
+          >
             {item.kind === "work-task" ? (
-              <WorkTaskAgent task={item.workTask} />
+              <WorkTaskAgent task={item.workTask} label={boardAgentLabel(item)} />
             ) : item.kind === "acp" ? (
               <AcpAgentIcon agent={item.session.agent} />
             ) : (
               <TaskAgentIcon task={item.task} />
             )}
-            {item.kind !== "work-task" ? <span className="truncate">{item.agent}</span> : null}
+            {item.kind !== "work-task" ? (
+              <span className="truncate">{boardAgentLabel(item)}</span>
+            ) : null}
           </span>
           <span className="shrink-0">
             {new Intl.DateTimeFormat(locale, {
@@ -88,35 +115,40 @@ export function AgentBoardCard({
               day: "numeric",
               hour: "2-digit",
               minute: "2-digit",
-            }).format(item.updatedAt)}
+            }).format(boardResultTimestamp(item))}
           </span>
         </div>
         {!item.online ? <p className="mt-2 text-ui-caption text-warning">{t("offline")}</p> : null}
       </button>
-      <div className="flex items-center justify-end gap-2 border-t border-border/60 px-3 py-1">
-        {!isConversation ? (
-          <span
-            className="mr-auto truncate text-ui-xs text-foreground-subtlest"
-            title={item.workspaceIdentity ?? item.workspacePath}
-          >
-            {item.workspaceIdentity ?? item.workspacePath.split("/").pop()}
-          </span>
-        ) : null}
-        {item.kind !== "work-task" ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={busy || !item.online || item.archived}
-            aria-label={item.pinned ? t("unstar") : t("star")}
-            aria-pressed={item.pinned}
-            onClick={onPin}
-          >
-            <Star
-              className={`size-3.5 ${item.pinned ? "fill-current text-warning" : "text-foreground-subtlest"}`}
-            />
-          </Button>
-        ) : null}
-      </div>
+      {canStage || !isConversation ? (
+        <div className="flex items-center justify-end gap-2 border-t border-border/60 px-3 py-1">
+          {canStage && !item.staged ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="touch-none cursor-grab"
+              {...listeners}
+              {...attributes}
+              aria-label={t("dragToStaged")}
+            >
+              <GripVertical className="size-3.5" />
+            </Button>
+          ) : null}
+          {!isConversation ? (
+            <span
+              className="mr-auto truncate text-ui-xs text-foreground-subtlest"
+              title={item.workspaceIdentity ?? item.workspacePath}
+            >
+              {item.workspaceIdentity ?? item.workspacePath.split("/").pop()}
+            </span>
+          ) : null}
+          {canStage ? (
+            <Button variant="ghost" size="sm" onClick={() => onStage(item)}>
+              {t(item.staged ? "unstage" : "stage")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }

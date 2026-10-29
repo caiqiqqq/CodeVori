@@ -1,3 +1,4 @@
+import { useDroppable } from "@dnd-kit/core";
 import { Circle } from "lucide-react";
 import { AgentBoardCard, boardStatusColors } from "./AgentBoardCard.js";
 import type { BoardItem, BoardProject, BoardDisplayStatus } from "./agentBoardModel.js";
@@ -7,16 +8,14 @@ export function AgentBoardGroups({
   columns,
   byStatus,
   projects,
-  busy,
   onOpen,
-  onPin,
+  onStage,
 }: {
   columns: BoardGroup[];
   byStatus: boolean;
   projects: BoardProject[];
-  busy: boolean;
   onOpen(item: BoardItem): void;
-  onPin(item: BoardItem): void;
+  onStage(item: BoardItem): void;
 }) {
   // 项目分区只由当前可见会话构成；待办所属项目不能再占一个空列。
   const groups = byStatus ? columns : columns.filter((column) => column.items.length > 0);
@@ -30,15 +29,7 @@ export function AgentBoardGroups({
       data-testid="agent-board-columns"
     >
       {groups.map((column) => (
-        <section
-          key={column.key}
-          className={
-            byStatus
-              ? "flex min-h-0 w-72 shrink-0 flex-col md:flex-1 md:basis-60 md:min-w-60"
-              : "min-w-0 shrink-0"
-          }
-          data-board-column={column.key}
-        >
+        <BoardColumn key={column.key} column={column} byStatus={byStatus}>
           <h2 className="mb-3 flex items-center gap-2 px-1 font-medium">
             <Circle
               className={`size-3 ${byStatus ? boardStatusColors[column.key as BoardDisplayStatus] : "text-foreground-subtle"}`}
@@ -62,14 +53,42 @@ export function AgentBoardGroups({
                 key={item.key}
                 item={item}
                 projectLabel={projects.find((project) => project.key === item.projectKey)?.label}
-                busy={busy}
                 onOpen={() => onOpen(item)}
-                onPin={() => onPin(item)}
+                onStage={onStage}
               />
             ))}
           </div>
-        </section>
+        </BoardColumn>
       ))}
     </div>
+  );
+}
+
+function BoardColumn({
+  column,
+  byStatus,
+  children,
+}: {
+  column: BoardGroup;
+  byStatus: boolean;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `column:${column.key}`,
+    disabled: !byStatus || column.key !== "staged",
+    data: { boardStaging: true },
+  });
+  return (
+    <section
+      ref={setNodeRef}
+      className={`${
+        byStatus
+          ? "flex min-h-0 w-72 shrink-0 flex-col md:flex-1 md:basis-60 md:min-w-60"
+          : "min-w-0 shrink-0"
+      } rounded-lg ${isOver ? "bg-accent ring-2 ring-brand" : ""}`}
+      data-board-column={column.key}
+    >
+      {children}
+    </section>
   );
 }

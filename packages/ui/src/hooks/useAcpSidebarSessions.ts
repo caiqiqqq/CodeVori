@@ -27,6 +27,7 @@ function sameSidebarRows(
         previous.boardCompletedAt === row.boardCompletedAt &&
         previous.preview === row.preview &&
         previous.createdAt === row.createdAt &&
+        previous.completedAt === row.completedAt &&
         previous.updatedAt === row.updatedAt
       );
     })

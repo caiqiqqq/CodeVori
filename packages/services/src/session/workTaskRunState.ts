@@ -27,6 +27,7 @@ export function finishWorkTaskRun(
           phase: merged ? "merged" : canceled ? "canceled" : "failed",
           error: reason,
         },
+        finishedAt: input.now,
         updatedAt: input.now,
       },
       type: merged ? "merged" : "merge-settled",
@@ -41,6 +42,8 @@ export function finishWorkTaskRun(
       status: active ? (failure ? "failed" : "review") : stopFailure ? "failed" : current.status,
       failureReason: active ? failure : stopFailure ? input.error : current.failureReason,
       stopPending: false,
+      // 晚到收口不能把已有终态的完成时间推进为“刚刚完成”。
+      finishedAt: active || stopFailure ? input.now : current.finishedAt,
       updatedAt: input.now,
     },
     type: active ? "settled" : "stopped",
@@ -79,6 +82,11 @@ export function interruptWorkTaskRun(task: WorkTask, now: number, stopPending: b
       ? { merge: { ...task.merge!, phase: "failed" as const, error: "work-task.host-interrupted" } }
       : {}),
     stopPending,
+    finishedAt: merging || WORK_TASK_ACTIVE_STATUSES.includes(task.status) ? now : task.finishedAt,
     updatedAt: now,
   };
+}
+
+export function cancelWorkTaskRun(task: WorkTask, stopPending: boolean, now: number): WorkTask {
+  return { ...task, status: "canceled", stopPending, finishedAt: now, updatedAt: now };
 }

@@ -65,15 +65,18 @@ export function WorkTaskStatus({ task }: { task: WorkTask }) {
 export function WorkTaskAgent({
   task,
   iconOnly = false,
+  label: displayLabel,
 }: {
   task: Pick<WorkTask, "execution" | "workspacePath" | "workspaceIdentity">;
   iconOnly?: boolean;
+  label?: string;
 }) {
   const execution = task.execution;
   const label =
-    execution.kind === "acp"
+    displayLabel ??
+    (execution.kind === "acp"
       ? (ACP_AGENT_CATALOG.find((agent) => agent.id === execution.agent)?.name ?? execution.agent)
-      : execution.modelSelection.modelId;
+      : execution.modelSelection.modelId);
   const content = (
     <span
       data-work-task-agent
