@@ -34,10 +34,8 @@ export function AgentBoardTrackingDialog({
   const [draft, setDraft] = useState(tracking);
   const [search, setSearch] = useState("");
   const query = search.trim().toLocaleLowerCase();
-  // 归档项不再是跟踪候选；搜索、组选择和计数共用此投影，保留待验收回执。
-  const items = allItems.filter(
-    (item) => !item.archived && (item.kind !== "work-task" || item.status !== "completed"),
-  );
+  // 完成待办已由公共看板投影排除；此处仅排除归档候选，搜索和计数共用同一列表。
+  const items = allItems.filter((item) => !item.archived);
   const groups = [
     {
       key: "work-tasks",

@@ -1,4 +1,5 @@
-import { BoardViewTab, BOARD_VIEWS as VIEWS } from "./AgentBoardViewTab.js";
+import { BoardViewTab, boardViews } from "./AgentBoardViewTab.js";
+import { AgentBoardStatusOrder } from "./AgentBoardStatusOrder.js";
 import {
   DndContext,
   DragOverlay,
@@ -23,7 +24,6 @@ import type { WorkspaceTabState } from "@/store/tabStore.js";
 import { logger } from "@/logger.js";
 import {
   boardAgentLabel,
-  BOARD_DISPLAY_STATUSES,
   boardDisplayStatus,
   boardHasUnreadResult,
   canStageBoardItem,
@@ -143,16 +143,18 @@ export function AgentBoardView({
     preferences.category !== "all" ||
     groupedProjects.length > 6;
   const columns = byStatus
-    ? BOARD_DISPLAY_STATUSES.filter((status) =>
-        ["active", "completed", "failed", "attention", "staged"].includes(preferences.view)
-          ? (status === "staged" && (preferences.view === "staged" || Boolean(dragging))) ||
-            filtered.some((item) => boardDisplayStatus(item) === status)
-          : true,
-      ).map((status) => ({
-        key: status,
-        label: t(`status.${status}`),
-        items: filtered.filter((item) => boardDisplayStatus(item) === status),
-      }))
+    ? preferences.statusOrder
+        .filter((status) =>
+          ["active", "completed", "failed", "attention", "staged"].includes(preferences.view)
+            ? (status === "staged" && (preferences.view === "staged" || Boolean(dragging))) ||
+              filtered.some((item) => boardDisplayStatus(item) === status)
+            : true,
+        )
+        .map((status) => ({
+          key: status,
+          label: t(`status.${status}`),
+          items: filtered.filter((item) => boardDisplayStatus(item) === status),
+        }))
     : [
         ...(scopeItems.some((item) => item.kind === "work-task")
           ? [
@@ -225,6 +227,7 @@ export function AgentBoardView({
             <p className="mt-1 text-ui-caption text-foreground-subtle">{t("description")}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <AgentBoardStatusOrder />
             <Button variant="outline" onClick={() => setManaging(true)}>
               <ListFilter className="size-4" />
               {t("manageTracking")}
@@ -293,7 +296,7 @@ export function AgentBoardView({
           aria-label={t("view")}
           className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4 py-2 md:px-6"
         >
-          {VIEWS.map((view) => (
+          {boardViews(preferences.statusOrder).map((view) => (
             <BoardViewTab
               key={view}
               view={view}

@@ -133,6 +133,9 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
       });
     }
     for (const workTask of workTasks.board?.tasks ?? []) {
+      const status = workTaskBoardStatus(workTask);
+      // 正式完成的待办退出看板公共投影，卡片和计数同步隐藏；待验收及未完成回执仍保留。
+      if (status === "completed") continue;
       const scope = boardWorkspaceKey(workTask);
       const key = boardEntityKey(workTask, "work-task", workTask.id);
       rows.set(key, {
@@ -150,7 +153,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
           workTask.execution.kind === "acp"
             ? workTask.execution.agent
             : workTask.execution.modelSelection.modelId,
-        status: workTaskBoardStatus(workTask),
+        status,
         archived: workTask.archived,
         online:
           lookup.has(scope) &&

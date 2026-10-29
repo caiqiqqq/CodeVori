@@ -79,8 +79,8 @@ export async function exerciseAgentBoardWorkTasks(page, { manage, save, pane, ar
   await page.getByRole("button", { name: "待办任务", exact: true }).click();
   assert.equal(
     await page.locator("[data-board-card]").count(),
-    3,
-    "candidate filtering preserves the board completed view",
+    2,
+    "completed work tasks are excluded from the entire board projection",
   );
   await page.getByRole("button", { name: /Tracked work 1/ }).click();
   await pane.waitFor();
@@ -109,15 +109,14 @@ export async function exerciseAgentBoardWorkTasks(page, { manage, save, pane, ar
     await page.evaluate(() => window.__board.commands.at(-1).kind),
     "work-task-complete",
   );
-  await page.getByTestId("work-task-back").click();
   await page.getByTestId("work-task-content").waitFor({ state: "hidden" });
-  await page.waitForFunction(() =>
-    document
-      .querySelector('[data-board-column="completed"]')
-      ?.textContent.includes("Tracked work 0"),
+  assert.equal(
+    await page.getByRole("heading", { name: "Tracked work 0", exact: true }).count(),
+    0,
+    "successful acceptance removes the card and closes its details",
   );
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: /Tracked work 0/ }).click();
+  await page.getByRole("button", { name: /Tracked work 1/ }).click();
   await page.getByTestId("work-task-content").waitFor();
   await page.mouse.move(380, 800);
   await page.screenshot({ path: join(artifacts, "mobile-work-task.png"), animations: "disabled" });
@@ -125,7 +124,7 @@ export async function exerciseAgentBoardWorkTasks(page, { manage, save, pane, ar
   await page.getByTestId("work-task-back").click();
   await page.getByTestId("work-task-content").waitFor({ state: "hidden" });
   await page.evaluate(() => {
-    window.__board.workRows[1].status = "done";
+    window.__board.workRows[1].status = "failed";
     window.__board.notifyWork();
   });
   await page.getByRole("button", { name: /Tracked work 1/ }).click();
@@ -146,6 +145,11 @@ export async function exerciseAgentBoardWorkTasks(page, { manage, save, pane, ar
       document.querySelector('[data-testid="real-pane-contract"]')?.dataset.readonly === "false",
   );
   await page.getByTestId("work-task-back").click();
+  await page.evaluate(() => {
+    window.__board.workRows[1].status = "done";
+    window.__board.notifyWork();
+  });
+  await page.getByRole("button", { name: /Tracked work 1/ }).waitFor({ state: "hidden" });
   await manage();
   await page
     .getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true })

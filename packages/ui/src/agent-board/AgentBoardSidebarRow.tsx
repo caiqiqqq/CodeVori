@@ -1,6 +1,8 @@
 import { CircleCheck, Inbox, Play, TriangleAlert, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { useStore } from "zustand";
+import { agentBoardStore } from "@/store/agentBoardStore.js";
 import type { BoardDisplayStatus } from "./agentBoardModel.js";
 import type { BoardSidebarCounts } from "./agentBoardSidebarCounts.js";
 
@@ -22,7 +24,10 @@ export function AgentBoardSidebarRow({
   counts?: BoardSidebarCounts;
 }) {
   const { intl } = useZCodeIntl();
-  const visible = indicators.filter(({ status }) => (counts?.[status] ?? 0) > 0);
+  const order = useStore(agentBoardStore, (state) => state.statusOrder);
+  const visible = order.flatMap((status) =>
+    (counts?.[status] ?? 0) > 0 ? indicators.filter((item) => item.status === status) : [],
+  );
   const summary = visible
     .map(
       ({ status }) =>
