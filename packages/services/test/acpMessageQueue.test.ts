@@ -848,7 +848,7 @@ test("ACP stop pauses pending input and resume waits for cancellation then drain
     await first;
     await resumed;
     await waitFor(() => f.calls.length === 2);
-    assert.equal(f.closed, 1);
+    assert.equal(f.closed, 0);
     f.turns[1]!.resolve();
   } finally {
     await f.dispose();
@@ -938,7 +938,7 @@ test("ACP Host restart holds queued input and never replays an admitted turn", a
   }
 });
 
-test("ACP send now selects one queued input after closing the old process", async () => {
+test("ACP send now selects one queued input after cancelling the old prompt on the same process", async () => {
   const f = await fixture();
   try {
     const first = f.prompt("first");
@@ -949,7 +949,7 @@ test("ACP send now selects one queued input after closing the old process", asyn
     await f.service.sendQueuedNow({ ...f.target, queueItemId: "third" });
     await first;
     await waitFor(() => f.calls.length === 2);
-    assert.equal(f.closed, 1);
+    assert.equal(f.closed, 0);
     assert.equal(f.calls[1]!.text, "third");
     assert.equal((await f.read()).queue.autoDrain, false);
     f.turns[1]!.resolve();

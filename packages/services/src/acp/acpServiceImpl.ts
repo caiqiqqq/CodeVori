@@ -301,6 +301,11 @@ export function createAcpService(
   const queueGate = new AcpQueueGate();
   const queueTasks = new Map<string, Promise<void>>();
   const promptTasks = new Map<string, Promise<AcpSession>>();
+  // 修复原因：stop 只能等待已进入 Agent 的请求；整轮 task 还会等待同一 queueGate，不能拿它作取消屏障。
+  const wirePrompts = new Map<
+    string,
+    { port: AcpConnectionPort; result: ReturnType<AcpConnectionPort["prompt"]> }
+  >();
   // 修复原因：Renderer 不能依赖实时通知或整轮 RPC 判断接受；与同一执行任务共享持久接受凭证。
   const promptAdmissions = new Map<
     string,
@@ -2054,7 +2059,14 @@ export function createAcpService(
       // admission 已接受本轮附件后再派生清单；不改用户历史，也不反复发送历史图片字节。
       const attachmentContext = acpAttachmentPromptContext(session);
       if (attachmentContext) blocks.push({ type: "text", text: attachmentContext });
-      const usage = await port.prompt(prompt.text, blocks);
+      const wirePrompt = { port, result: port.prompt(prompt.text, blocks) };
+      wirePrompts.set(session.id, wirePrompt);
+      let usage: AcpUsageReport | null | void;
+      try {
+        usage = await wirePrompt.result;
+      } finally {
+        if (wirePrompts.get(session.id) === wirePrompt) wirePrompts.delete(session.id);
+      }
       const completedAt = Date.now();
       if (ownsRun()) await cancelInteractions(session, (item) => !item.runId);
       await queueGate.run(session.id, async () => {
@@ -2167,6 +2179,9 @@ export function createAcpService(
     if (stopping.has(session.id)) return;
     const hadActive = active.has(session.id);
     const commandId = active.get(session.id);
+    const port = connections.get(session.id);
+    const wirePrompt = wirePrompts.get(session.id);
+    let reusable = false;
     const stoppedAt = Date.now();
     stopping.add(session.id);
     active.delete(session.id);
@@ -2202,10 +2217,39 @@ export function createAcpService(
         },
         stoppedAt,
       );
-      await connections.get(session.id)?.cancel();
+      if (port && connections.get(session.id) === port) {
+        if (wirePrompt?.port === port) {
+          // 修复原因：session/cancel 仅发送通知；必须等旧 prompt 真正结束，才能安全复用同一进程。
+          // 超时只用于隔离失去响应的 Agent，绝不据此宣称取消成功或在旧连接上发送新消息。
+          const cancelGraceMs = 5_000;
+          let deadline: ReturnType<typeof setTimeout> | undefined;
+          try {
+            reusable = await Promise.race([
+              Promise.all([port.cancel(), wirePrompt.result]).then(
+                () => true,
+                () => false,
+              ),
+              new Promise<false>((resolve) => {
+                deadline = setTimeout(() => resolve(false), cancelGraceMs);
+              }),
+            ]);
+          } finally {
+            if (deadline) clearTimeout(deadline);
+          }
+          if (!reusable)
+            logger.warn(undefined, "ACP cancellation did not settle; replacing connection", {
+              agent: session.agent,
+              sessionId: session.id,
+              commandId,
+            });
+        } else {
+          // 准备阶段没有向 Agent 发送 prompt，撤销 active token 后可直接保留已经就绪的连接。
+          reusable = true;
+        }
+      }
     } finally {
-      // 取消后终止旧连接，避免旧 prompt 未结束时新轮进入同一 Agent 进程。
-      if (hadActive) detach(session.id);
+      // 正常取消复用原 native session；异常或仍在握手中的连接必须撤销 generation 并回收。
+      if (hadActive && (!reusable || connections.get(session.id) !== port)) detach(session.id);
       stopping.delete(session.id);
     }
   };

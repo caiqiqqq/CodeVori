@@ -327,3 +327,59 @@ test("the Host RPC combines persisted links without starting execution and prese
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+function notificationPage(numbers: number[], createdAt = new Date(2000).toISOString()) {
+  const result = page(numbers);
+  result.items = result.items.map((item) => ({
+    ...item,
+    title: `Issue ${item.number}`,
+    url: `https://forge.example.invalid/team/repo/issues/${item.number}`,
+    createdAt,
+  }));
+  return result;
+}
+
+test("new issue facts survive cache expiry, ignore links/reopens, and establish a quiet baseline", async () => {
+  const f = fixture();
+  f.replies.push(notificationPage([1]));
+  assert.deepEqual((await f.read({ projects: [project] })).newIssues, []);
+  f.advance();
+  f.replies.push(notificationPage([1, 2]));
+  const fresh = await f.read({ projects: [project, { workspacePath: "/clone" }] });
+  assert.deepEqual(
+    fresh.newIssues?.map((issue) => issue.number),
+    [2],
+  );
+  assert.equal(fresh.newIssues?.[0]?.workspacePath, "/project");
+  assert.equal(fresh.newIssues?.[0]?.repositoryKey, "repo");
+  assert.equal(fresh.newIssues?.[0]?.title, "Issue 2");
+  assert.equal(fresh.newIssues?.[0]?.remoteName, "origin");
+  assert.deepEqual((await f.read({ projects: [project] })).newIssues, fresh.newIssues);
+  f.tasks.set("/project", [linked(2)]);
+  await f.read({ projects: [project] });
+  f.tasks.clear();
+  f.advance();
+  f.replies.push(notificationPage([]));
+  assert.deepEqual((await f.read({ projects: [project] })).newIssues, fresh.newIssues);
+  f.advance();
+  f.replies.push(notificationPage([1, 2]));
+  assert.deepEqual((await f.read({ projects: [project] })).newIssues, fresh.newIssues);
+});
+
+test("empty baseline rejects reopened historical issues and failed pages never advance discovery", async () => {
+  const f = fixture();
+  f.replies.push(page([]));
+  await f.read({ projects: [project] });
+  f.replies.push(notificationPage([9], new Date(0).toISOString()));
+  assert.deepEqual((await f.read({ projects: [project], force: true })).newIssues, []);
+  f.replies.push({ ...notificationPage([10]), incomplete: true });
+  await assert.rejects(f.read({ projects: [project], force: true }), /FORGE_INCOMPLETE/);
+  f.replies.push(notificationPage([9, 10]));
+  assert.deepEqual(
+    (await f.read({ projects: [project], force: true })).newIssues?.map((issue) => issue.number),
+    [10],
+  );
+  f.repositories.set("/other", "another-repo");
+  f.replies.push(notificationPage([50]));
+  assert.deepEqual((await f.read({ projects: [{ workspacePath: "/other" }] })).newIssues, []);
+});

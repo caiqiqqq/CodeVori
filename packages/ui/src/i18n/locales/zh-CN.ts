@@ -695,6 +695,13 @@ const zhCN: Record<string, string> = {
   "repositoryPanel.noCommentsOnPage": "当前已加载的活动中没有评论",
   "repositoryPanel.image": "议题图片",
   "repositoryPanel.imageUnavailable": "图片加载失败",
+  "repositoryPanel.imageNetworkError": "图片下载失败，请检查网络连接后重试。",
+  "repositoryPanel.imagePermissionError":
+    "当前账号无法读取图片，请检查版本控制账号及附件访问权限。",
+  "repositoryPanel.imageNotFound": "未找到这张图片，请打开原图确认附件是否仍然存在。",
+  "repositoryPanel.imageRateLimited": "图片请求过于频繁，请稍后重试。",
+  "repositoryPanel.imageInvalidContent": "图片内容无法显示，可重试或在浏览器中查看原图。",
+  "repositoryPanel.openImage": "打开原图",
   "repositoryPanel.imageNeedsSignIn": "此 GitLab 版本的私有图片需要网页登录后查看。",
   "repositoryPanel.imageAuthUnavailable":
     "此 GitLab 版本需要网页登录；当前连接无法完成网页登录，请在原网页查看图片。",
@@ -3062,6 +3069,7 @@ const zhCN: Record<string, string> = {
   "notification.taskWaiting": "任务等待你的确认",
   "notification.taskReview": "任务等待你的审阅",
   "notification.completed": "任务已完成",
+  "notification.newRepositoryIssue": "新增仓库议题",
   "notification.completedBody": "任务已完成",
   "notification.error": "任务出错",
   "notification.permissionRequired": "需要你的确认",

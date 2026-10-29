@@ -6,6 +6,8 @@ import { formatZodError, PlatformChannels, taskNotificationPayloadSchema } from 
 const TASK_NOTIFICATION_DEDUPE_WINDOW_MS = 3000;
 const MAX_ACTIVE_TASK_NOTIFICATIONS = 100;
 const recentTaskNotificationTimestamps = new Map<string, number>();
+const recentIssueNotificationTimestamps = new Map<string, number>();
+const ISSUE_NOTIFICATION_RETENTION_MS = 24 * 60 * 60 * 1000;
 const activeTaskNotifications = new Set<Notification>();
 
 function isAnyAppWindowFocused() {
@@ -20,6 +22,20 @@ function shouldSuppressDuplicateTaskNotification(
   requestId?: string,
 ) {
   const now = Date.now();
+  // 多窗口的 Host 轮询并不同步，议题不能沿用任务的三秒去重窗口。
+  // Main 仅保留有界投递回执；议题新增判断仍由原 Host owner 完成。
+  if (status === "repository_issue") {
+    for (const [key, timestamp] of recentIssueNotificationTimestamps)
+      if (now - timestamp >= ISSUE_NOTIFICATION_RETENTION_MS)
+        recentIssueNotificationTimestamps.delete(key);
+    if (recentIssueNotificationTimestamps.has(taskId)) return true;
+    recentIssueNotificationTimestamps.set(taskId, now);
+    while (recentIssueNotificationTimestamps.size > 10_000)
+      recentIssueNotificationTimestamps.delete(
+        recentIssueNotificationTimestamps.keys().next().value!,
+      );
+    return false;
+  }
 
   for (const [key, timestamp] of recentTaskNotificationTimestamps) {
     if (now - timestamp > TASK_NOTIFICATION_DEDUPE_WINDOW_MS) {

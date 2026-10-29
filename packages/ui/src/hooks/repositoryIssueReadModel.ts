@@ -46,7 +46,11 @@ export function getRepositoryIssueReadModel(
         changed();
       };
       // 同一个共享投影只持有一组 timer/监听；面板是否打开不影响侧栏查询。
-      const timer = setInterval(resume, 60_000);
+      // 新议题需要在后台也能被检测；仅恢复事件受可见性约束，timer 继续共享同一路读取。
+      const timer = setInterval(() => {
+        forceNext = true;
+        changed();
+      }, 60_000);
       const unique = new Map(
         ordered.map((project) => [
           JSON.stringify([

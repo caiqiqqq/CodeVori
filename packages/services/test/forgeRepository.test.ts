@@ -13,6 +13,27 @@ const imageUpload = {
   totalBytes: 8,
 };
 
+test("GitLab Host reads use the bound account access URL for internal web links", async () => {
+  const f = fixture(
+    "https://gitlab.example.invalid/git/team/project.git",
+    [account("gitlab", "https://gitlab.example.invalid/git")],
+    [
+      {
+        iid: 42,
+        title: "Synthetic",
+        web_url: "http://internal.example.invalid:1080/team/project/-/work_items/42",
+      },
+    ],
+  );
+  const result = await f.service.getForgeItem({ ...(await f.target()), kind: "issue", number: 42 });
+  assert.equal(result.url, "https://gitlab.example.invalid/git/team/project/-/work_items/42");
+  assert.equal(f.state.calls.length, 1);
+  assert.equal(
+    f.state.calls[0]!.url.href,
+    "https://gitlab.example.invalid/git/api/v4/projects/team%2Fproject/issues/42",
+  );
+});
+
 test("GitLab image uploads use multipart and deduplicate a live Host request", async () => {
   const url =
     "https://gitlab.example.invalid/team/project/uploads/0123456789abcdef0123456789abcdef/screen.png";
@@ -708,6 +729,28 @@ test("GitLab private upload images use the bound account API without exposing cr
 });
 
 const legacyUrl = `https://forge.example.invalid/git/team/sub/project/uploads/${uploadId}/image.png`;
+test("GitLab binary attachment responses produce a browser image without changing download or auth paths", async () => {
+  for (const contentType of [null, "application/octet-stream"]) {
+    const f = fixture(
+      "https://forge.example.invalid/git/team/sub/project.git",
+      [account("gitlab", "https://forge.example.invalid/git")],
+      [new Response(png, { headers: contentType ? { "content-type": contentType } : {} })],
+    );
+    const result = await f.service.readForgeImage({ ...(await f.target()), url: legacyUrl });
+    assert.equal(result.mediaType, "image/png");
+    assert.equal(result.dataBase64, png.toString("base64"));
+    assert.equal(f.state.calls.length, 1);
+    assert.equal(
+      f.state.calls[0]!.url.pathname,
+      `/git/api/v4/projects/team%2Fsub%2Fproject/uploads/${uploadId}/image.png`,
+    );
+    assert.equal(
+      new Headers(f.state.calls[0]!.init.headers).get("PRIVATE-TOKEN"),
+      "synthetic-forge-token",
+    );
+    assert.equal(f.state.calls[0]!.init.redirect, "error");
+  }
+});
 const legacyProject = {
   path_with_namespace: "team/sub/project",
   web_url: "https://web.example.invalid/git/team/sub/project",
@@ -759,7 +802,7 @@ test("legacy private reads use an attested native session without automatically 
   const request = { ...(await f.target()), url: legacyUrl };
   await assert.rejects(f.service.readForgeImage(request), /FORGE_MEDIA_AUTHENTICATION$/);
   assert.equal(signIns, 0);
-  assert.equal(contexts[0]!.loginUrl, "https://web.example.invalid/git/users/sign_in");
+  assert.equal(contexts[0]!.loginUrl, "https://forge.example.invalid/git/users/sign_in");
   assert.equal(contexts[0]!.serverUrl, "https://forge.example.invalid/git");
   assert.equal(contexts[0]!.accountId, accountId);
   assert.doesNotMatch(JSON.stringify(contexts), /synthetic-forge-token|Cookie|secret/);
@@ -839,6 +882,26 @@ test("canonical login origins must be attested to the exact project", async () =
     );
     assert.equal(invoked, false);
   }
+});
+
+test("GitLab image login uses configured access origin after attesting an internal project URL", async () => {
+  const contexts: ForgeWebMediaContext[] = [];
+  const f = legacyFixture(
+    [{ ...legacyProject, web_url: "http://internal.example.invalid:1080/team/sub/project" }],
+    {
+      async read() {
+        throw new Error("unexpected");
+      },
+      async authenticate(context) {
+        contexts.push(context);
+      },
+    },
+  );
+  await f.service.authenticateForgeImage({ ...(await f.target()), url: legacyUrl });
+  assert.equal(contexts[0]!.loginUrl, "https://forge.example.invalid/git/users/sign_in");
+  assert.equal(contexts[0]!.url, legacyUrl);
+  assert.equal(contexts[0]!.username, "synthetic-user");
+  assert.doesNotMatch(JSON.stringify(contexts), /internal\.example|synthetic-forge-token/);
 });
 
 test("removed, rotated and changed targets cannot accept late login completion", async () => {

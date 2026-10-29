@@ -36,6 +36,11 @@ export function createForgeApiClient(options: {
         options.provider === "github" ? "x-github-request-id" : "x-request-id",
       );
       const idPattern = options.provider === "github" ? /^[a-f\d:]{1,128}$/i : /^[\w-]{1,128}$/;
+      const contentType = response?.headers
+        .get("content-type")
+        ?.split(";")[0]
+        ?.trim()
+        .toLowerCase();
       // #175 的 HTTP 失败曾只留下 FORGE_RESPONSE；只记录有限元数据，不能记录仓库 URL 或正文。
       logger.warn(undefined, "request failed", {
         provider: options.provider,
@@ -43,6 +48,26 @@ export function createForgeApiClient(options: {
         phase,
         status: response?.status ?? null,
         requestId: rawId && idPattern.test(rawId) ? rawId : null,
+        // 图片 200 解析失败需要区分下载类型与网页响应；只记录固定分类，不能落盘原始响应头。
+        ...(format === "image" && phase === "response"
+          ? {
+              imageContentType: !contentType
+                ? "missing"
+                : [
+                      "application/octet-stream",
+                      "image/png",
+                      "image/jpeg",
+                      "image/gif",
+                      "image/webp",
+                      "image/avif",
+                      "text/html",
+                      "application/json",
+                      "image/svg+xml",
+                    ].includes(contentType)
+                  ? contentType
+                  : "other",
+            }
+          : {}),
       });
       return Object.assign(new Error(`FORGE_${code}`), response ? { status: response.status } : {});
     };

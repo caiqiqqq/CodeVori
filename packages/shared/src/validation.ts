@@ -129,6 +129,7 @@ export const taskNotificationPayloadSchema = z.object({
     "permission_request",
     "elicitation_request",
     "feedback_update",
+    "repository_issue",
   ]),
   requestId: nonEmptyStringSchema.optional(),
   title: z.string(),

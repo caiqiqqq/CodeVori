@@ -4,18 +4,26 @@ import {
   type RepositoryIssueSummaryRequest,
   type ForgeTargetRequest,
   type WorkTask,
+  type ForgeItem,
+  type RepositoryIssueDiscovery,
 } from "@zcode/shared";
 import type { WorkTaskRepositoryIssuesPort } from "./contract.js";
+import { createRepositoryIssueDiscoveries } from "./repositoryIssueDiscoveries.js";
 
 const CACHE_MS = 60_000;
 interface OpenIssues {
-  value?: Set<number>;
+  value?: IssueRead;
   checkedAt?: number;
-  pending?: Promise<Set<number>>;
-  forced?: Promise<Set<number>>;
+  pending?: Promise<IssueRead>;
+  forced?: Promise<IssueRead>;
+}
+interface IssueRead {
+  numbers: Set<number>;
+  newIssues: Array<Pick<ForgeItem, "number" | "title" | "url">>;
 }
 interface RepositoryGroup {
   target: ForgeTargetRequest;
+  repositoryName: string;
   projects: RepositoryIssueProject[];
 }
 
@@ -28,8 +36,11 @@ export function createRepositoryIssueSummary(options: {
 }) {
   const cache = new Map<string, OpenIssues>();
   const now = options.now ?? Date.now;
+  const discoveries = createRepositoryIssueDiscoveries(now);
   const readAll = async (target: ForgeTargetRequest) => {
+    const startedAt = now();
     const numbers = new Set<number>();
+    const items = new Map<number, ForgeItem>();
     let expectedTotal: number | null = null;
     for (let page = 1; page <= 100_000; page++) {
       const result = await options.forge!.listForgeItems({
@@ -50,18 +61,28 @@ export function createRepositoryIssueSummary(options: {
       }
       const before = numbers.size;
       for (const item of result.items)
-        if (item.kind === "issue" && item.state === "open") numbers.add(item.number);
+        if (item.kind === "issue" && item.state === "open") {
+          numbers.add(item.number);
+          items.set(item.number, item);
+        }
       if (!result.hasMore) {
         // 搜索上限（例如 GitHub 的 1000 条）不能伪装成完整仓库数量。
         if (expectedTotal !== null && numbers.size !== expectedTotal)
           throw new Error("FORGE_INCOMPLETE");
-        return numbers;
+        return {
+          numbers,
+          newIssues: discoveries(
+            JSON.stringify([target.repositoryKey, target.accountId]),
+            [...items.values()],
+            startedAt,
+          ),
+        };
       }
       if (numbers.size === before) throw new Error("FORGE_INCOMPLETE");
     }
     throw new Error("FORGE_INCOMPLETE");
   };
-  const openIssues = (target: ForgeTargetRequest, force = false): Promise<Set<number>> => {
+  const openIssues = (target: ForgeTargetRequest, force = false): Promise<IssueRead> => {
     const key = JSON.stringify([
       target.workspaceIdentity?.trim() || target.workspacePath,
       target.workspacePath,
@@ -136,6 +157,7 @@ export function createRepositoryIssueSummary(options: {
       let group = groups.get(info.repository.key);
       if (!group) {
         group = {
+          repositoryName: info.repository.name ?? info.repository.key,
           target: {
             workspacePath: project.workspacePath,
             workspaceIdentity: project.workspaceIdentity,
@@ -150,8 +172,8 @@ export function createRepositoryIssueSummary(options: {
       group.projects.push(project);
     }
     const results = await Promise.allSettled(
-      [...groups.values()].map(async ({ target, projects }) => {
-        const numbers = await openIssues(target, request.force);
+      [...groups.values()].map(async ({ target, projects, repositoryName }) => {
+        const { numbers, newIssues } = await openIssues(target, request.force);
         const linked = new Set<number>();
         // 必须在 IO 后读取；查询期间已接受的新关联也应立即从未处理数量移除。
         for (const project of projects)
@@ -162,14 +184,29 @@ export function createRepositoryIssueSummary(options: {
         for (const number of numbers) if (!linked.has(number)) pending++;
         // 同仓库别名共享去重后的关联和数量，不在下拉列表另发查询或重复推导业务事实。
         for (const project of projects) projectCounts.set(project, pending);
-        return pending;
+        return {
+          pending,
+          newIssues: newIssues.map(
+            (item): RepositoryIssueDiscovery => ({
+              ...projects[0]!,
+              remoteName: target.remoteName,
+              repositoryKey: target.repositoryKey,
+              repositoryName,
+              number: item.number,
+              title: item.title,
+              url: item.url!,
+            }),
+          ),
+        };
       }),
     );
     let pending = 0;
     let available = 0;
+    const newIssues: RepositoryIssueDiscovery[] = [];
     for (const result of results) {
       if (result.status === "fulfilled") {
-        pending += result.value;
+        pending += result.value.pending;
+        newIssues.push(...result.value.newIssues);
         available++;
       } else failures.push(result.reason);
     }
@@ -177,6 +214,7 @@ export function createRepositoryIssueSummary(options: {
     if (!available && failures.length) throw failures[0];
     return {
       pending,
+      newIssues,
       checkedAt: now(),
       ...(failures.length ? { incomplete: true } : {}),
       projects: request.projects.map((project) => ({

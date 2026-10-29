@@ -34,23 +34,27 @@ export function gitlabUploadApiPath(
 }
 
 export function rasterImagePreview(bytes: Buffer, contentType: string | null): ForgeImagePreview {
-  const mediaType = (contentType ?? "").split(";")[0]?.trim().toLowerCase();
+  const declaredType = (contentType ?? "").split(";")[0]?.trim().toLowerCase();
   const signature = bytes.subarray(0, 12);
-  const matches =
-    mediaType === "image/png"
-      ? signature.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-      : mediaType === "image/jpeg"
-        ? signature.subarray(0, 3).equals(Buffer.from([255, 216, 255]))
-        : mediaType === "image/gif"
-          ? ["GIF87a", "GIF89a"].includes(signature.subarray(0, 6).toString("ascii"))
-          : mediaType === "image/webp"
-            ? signature.subarray(0, 4).toString("ascii") === "RIFF" &&
-              signature.subarray(8, 12).toString("ascii") === "WEBP"
-            : mediaType === "image/avif"
-              ? signature.subarray(4, 8).toString("ascii") === "ftyp" &&
-                ["avif", "avis"].includes(signature.subarray(8, 12).toString("ascii"))
-              : false;
-  if (!matches) throw new Error("FORGE_RESPONSE");
+  const mediaType = signature.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    ? "image/png"
+    : signature.subarray(0, 3).equals(Buffer.from([255, 216, 255]))
+      ? "image/jpeg"
+      : ["GIF87a", "GIF89a"].includes(signature.subarray(0, 6).toString("ascii"))
+        ? "image/gif"
+        : signature.subarray(0, 4).toString("ascii") === "RIFF" &&
+            signature.subarray(8, 12).toString("ascii") === "WEBP"
+          ? "image/webp"
+          : signature.subarray(4, 8).toString("ascii") === "ftyp" &&
+              ["avif", "avis"].includes(signature.subarray(8, 12).toString("ascii"))
+            ? "image/avif"
+            : null;
+  // 附件下载可能只声明通用二进制；按允许的图片签名确定 Blob 类型，仍拒绝 HTML/SVG 和声明不匹配。
+  if (
+    !mediaType ||
+    (declaredType && declaredType !== "application/octet-stream" && declaredType !== mediaType)
+  )
+    throw new Error("FORGE_RESPONSE");
   return forgeImagePreviewSchema.parse({
     mediaType,
     dataBase64: bytes.toString("base64"),
@@ -105,6 +109,7 @@ export function gitlabWebLoginUrl(
   repository: string,
   projectPath: unknown,
   webUrl: unknown,
+  accessRepositoryUrl?: string,
 ): string {
   if (projectPath !== repository || typeof webUrl !== "string") throw new Error("FORGE_RESPONSE");
   let url: URL;
@@ -123,6 +128,9 @@ export function gitlabWebLoginUrl(
     !url.pathname.endsWith(suffix)
   )
     throw new Error("FORGE_RESPONSE");
+  // 先核验服务端项目，再使用已绑定的访问地址；升级后返回内网 web_url 不能把登录窗口带到内网。
+  if (accessRepositoryUrl !== undefined)
+    return gitlabWebLoginUrl(repository, projectPath, accessRepositoryUrl);
   url.pathname = `${url.pathname.slice(0, -suffix.length)}/users/sign_in`;
   return url.href;
 }

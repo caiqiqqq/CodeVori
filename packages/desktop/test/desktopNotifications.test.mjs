@@ -25,14 +25,14 @@ const { outputFiles } = await build({
         }));
         builder.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({
           contents: `
-            export const state={windows:[],shown:[]};
-            export const app={};
-            export const BrowserWindow={getAllWindows:()=>state.windows,fromWebContents:()=>null};
+            export const state={windows:[],shown:[],instances:[],focus:[]};
+            export const app={dock:{show(){}},show(){},focus(){}};
+            export const BrowserWindow={getAllWindows:()=>state.windows,fromWebContents:()=>state.senderWindow??null};
             export class Notification {
               static isSupported(){return true}
-              constructor(options){this.options=options}
-              once(){return this}
-              show(){state.shown.push(this.options)}
+              constructor(options){this.options=options;this.handlers={}}
+              once(event,handler){this.handlers[event]=handler;return this}
+              show(){state.shown.push(this.options);state.instances.push(this)}
             }
           `,
           loader: "js",
@@ -41,6 +41,7 @@ const { outputFiles } = await build({
     },
   ],
 });
+let notificationNow = Date.now();
 const module = { exports: {} };
 runInNewContext(outputFiles[0].text, {
   module,
@@ -48,6 +49,11 @@ runInNewContext(outputFiles[0].text, {
   require: createRequire(import.meta.url),
   process,
   Buffer,
+  Date: class extends Date {
+    static now() {
+      return notificationNow;
+    }
+  },
   setTimeout,
   clearTimeout,
 });
@@ -95,4 +101,41 @@ test("IPC rejects a non-boolean focus policy", () => {
   assert.equal(emit({ onlyWhenUnfocused: "false" }), false);
   assert.equal(state.shown.length, shownBefore);
   assert.equal(warnings.length, 1);
+});
+
+test("repository issue receipts dedupe windows polling a minute apart without extending task dedupe", () => {
+  state.windows = [windowWithFocus(false)];
+  const taskId = "repository-issue-repo-42";
+  assert.equal(emit({ status: "repository_issue" }, taskId), true);
+  notificationNow += 60_000;
+  assert.equal(emit({ status: "repository_issue" }, taskId), false);
+  assert.equal(emit({ status: "repository_issue" }, "repository-issue-other-repo-42"), true);
+  assert.equal(emit({}, "repeat-task"), true);
+  notificationNow += 4000;
+  assert.equal(emit({}, "repeat-task"), true);
+  notificationNow += 24 * 60 * 60 * 1000;
+  assert.equal(emit({ status: "repository_issue" }, taskId), true);
+});
+
+test("native issue notification click restores the originating window and forwards stable identity", () => {
+  const forwarded = [];
+  state.senderWindow = {
+    id: 7,
+    isDestroyed: () => false,
+    isMinimized: () => true,
+    isVisible: () => false,
+    restore: () => state.focus.push("restore"),
+    show: () => state.focus.push("show"),
+    focus: () => state.focus.push("focus"),
+    webContents: { send: (...args) => forwarded.push(args) },
+  };
+  state.windows = [];
+  try {
+    assert.equal(emit({ status: "repository_issue" }, "repository-native-click-42"), true);
+    state.instances.at(-1).handlers.click();
+    assert.deepEqual(Array.from(state.focus), ["restore", "show", "focus"]);
+    assert.deepEqual(forwarded, [["zcode:task-notification-click", "repository-native-click-42"]]);
+  } finally {
+    state.senderWindow = null;
+  }
 });
