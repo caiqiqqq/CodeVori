@@ -1,7 +1,12 @@
 import { useDroppable } from "@dnd-kit/core";
-import { Circle } from "lucide-react";
+import { Circle, LoaderCircle } from "lucide-react";
 import { AgentBoardCard, boardStatusColors } from "./AgentBoardCard.js";
-import type { BoardItem, BoardProject, BoardDisplayStatus } from "./agentBoardModel.js";
+import {
+  boardStatusIndicator,
+  type BoardItem,
+  type BoardProject,
+  type BoardDisplayStatus,
+} from "./agentBoardModel.js";
 
 type BoardGroup = { key: string; label: string; items: BoardItem[] };
 export function AgentBoardGroups({
@@ -31,9 +36,23 @@ export function AgentBoardGroups({
       {groups.map((column) => (
         <BoardColumn key={column.key} column={column} byStatus={byStatus}>
           <h2 className="mb-3 flex items-center gap-2 px-1 font-medium">
-            <Circle
-              className={`size-3 ${byStatus ? boardStatusColors[column.key as BoardDisplayStatus] : "text-foreground-subtle"}`}
-            />
+            {byStatus &&
+            column.key === "running" &&
+            column.items.some(
+              (item) => item.online && !item.archived && boardStatusIndicator(item) === "running",
+            ) ? (
+              <LoaderCircle
+                aria-hidden="true"
+                data-board-running-indicator
+                strokeWidth={3}
+                className="size-3 shrink-0 animate-spin text-task-running-indicator motion-reduce:animate-none"
+              />
+            ) : (
+              <Circle
+                aria-hidden="true"
+                className={`size-3 ${byStatus ? boardStatusColors[column.key as BoardDisplayStatus] : "text-foreground-subtle"}`}
+              />
+            )}
             <span className="truncate">{column.label}</span>
             <span
               className={`${byStatus ? "ml-auto" : ""} text-ui-caption text-foreground-subtlest`}

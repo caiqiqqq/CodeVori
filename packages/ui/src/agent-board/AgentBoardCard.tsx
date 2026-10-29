@@ -1,6 +1,6 @@
 import { WorkTaskAgent } from "@/work-tasks/WorkTaskParts.js";
 import { useDraggable } from "@dnd-kit/core";
-import { Folder, GripVertical } from "lucide-react";
+import { Folder, GripVertical, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { Badge } from "@/components/ui/badge.js";
 import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
@@ -84,7 +84,18 @@ export function AgentBoardCard({
                 {t("unread")}
               </span>
             ) : null}
-            <span className={colors[status]}>{t(`status.${status}`)}</span>
+            <span className={`inline-flex items-center gap-1 ${colors[status]}`}>
+              {/* 看板原先只显示状态文字；依真实执行状态补动画，等待或断连不能伪装为执行中。 */}
+              {status === "running" && item.online && !item.archived ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  data-board-running-indicator
+                  strokeWidth={3}
+                  className="size-3 shrink-0 animate-spin text-task-running-indicator motion-reduce:animate-none"
+                />
+              ) : null}
+              {t(`status.${status}`)}
+            </span>
           </span>
         </div>
         <h3 className="line-clamp-2 font-medium leading-relaxed">{item.title || t("untitled")}</h3>

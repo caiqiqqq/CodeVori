@@ -61,6 +61,21 @@ export async function exerciseAgentBoardWaiting(page, artifacts) {
       .getByText("等待", { exact: true })
       .waitFor();
   await card("Waiting task preparing").getByText("进行中", { exact: true }).waitFor();
+  for (const target of [native, acp, card("Waiting task preparing")]) {
+    const spinner = target.locator("[data-board-running-indicator]");
+    await spinner.waitFor();
+    assert.equal(await spinner.evaluate((node) => getComputedStyle(node).animationName), "spin");
+    const before = await spinner.evaluate((node) => getComputedStyle(node).transform);
+    await page.waitForTimeout(100);
+    assert.notEqual(await spinner.evaluate((node) => getComputedStyle(node).transform), before);
+  }
+  assert.equal(await ongoing.locator("h2 [data-board-running-indicator]").count(), 1);
+  for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {
+    await page.evaluate((value) => (document.documentElement.className = value), theme);
+    await page.screenshot({
+      path: join(artifacts, theme.includes("dark") ? "running-dark.png" : "running-light.png"),
+    });
+  }
   await page.evaluate(() => {
     window.__board.update(0, {
       activity: {
@@ -79,9 +94,18 @@ export async function exerciseAgentBoardWaiting(page, artifacts) {
   });
   await native.getByText("等待", { exact: true }).waitFor();
   await acp.getByText("等待", { exact: true }).waitFor();
+  assert.equal(await native.locator("[data-board-running-indicator]").count(), 0);
+  assert.equal(await acp.locator("[data-board-running-indicator]").count(), 0);
+  await page.evaluate(() => {
+    const f = window.__board;
+    f.workRows.find((row) => row.id === "waiting-preparing").status = "queued";
+    f.notifyWork();
+  });
+  await card("Waiting task preparing").getByText("等待", { exact: true }).waitFor();
+  assert.equal(await ongoing.locator("[data-board-running-indicator]").count(), 0);
   assert.equal(await ongoing.locator("article").count(), 6);
   assert.equal(await page.locator('[data-board-column="waiting"]').count(), 0);
-  assert.equal(await ongoing.getByText("等待", { exact: true }).count(), 5);
+  assert.equal(await ongoing.getByText("等待", { exact: true }).count(), 6);
   assert.equal(await ongoing.getByRole("button", { name: "暂存", exact: true }).count(), 0);
   await native.getByRole("button").first().click();
   await page
@@ -137,6 +161,21 @@ export async function exerciseAgentBoardWaiting(page, artifacts) {
   );
   await native.getByText("进行中", { exact: true }).waitFor();
   await acp.getByText("进行中", { exact: true }).waitFor();
+  assert.equal(await ongoing.locator("[data-board-running-indicator]").count(), 7);
+  await page.screenshot({ path: join(artifacts, "running-mobile.png") });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  assert.equal(
+    await native
+      .locator("[data-board-running-indicator]")
+      .evaluate((node) => getComputedStyle(node).animationName),
+    "none",
+  );
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.evaluate(() => window.__board.update(0, { sourceAvailability: "offline" }));
+  await native.getByText("离线 · 暂不可操作", { exact: true }).waitFor();
+  assert.equal(await native.locator("[data-board-running-indicator]").count(), 0);
+  await page.evaluate(() => window.__board.update(0, { sourceAvailability: "online" }));
+  await native.locator("[data-board-running-indicator]").waitFor();
   await page.evaluate(() => {
     window.__board.update(0, {
       liveStatus: "completed",
@@ -146,5 +185,8 @@ export async function exerciseAgentBoardWaiting(page, artifacts) {
   });
   await count(4);
   await tabs.getByRole("tab", { name: /^已完成\s*2$/ }).waitFor();
+  await tabs.getByRole("tab", { name: /^已完成/ }).click();
+  assert.equal(await page.locator("[data-board-running-indicator]").count(), 0);
+  await tabs.getByRole("tab", { name: /^全部/ }).click();
   await page.setViewportSize({ width: 1600, height: 1000 });
 }
