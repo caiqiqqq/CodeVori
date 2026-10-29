@@ -78,8 +78,8 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   await page.getByRole("combobox", { name: "分组方式", exact: true }).selectOption("status");
   assert.equal(
     await page.locator('[data-board-column="running"] article').count(),
-    3,
-    "unfinished conversations and work tasks share the ongoing column",
+    2,
+    "only running work tasks stay ongoing; the ended conversation is completed",
   );
   await page.evaluate(() => {
     const { workRows, notifyWork, store } = window.__board;
@@ -121,7 +121,7 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   await statusTabs.getByRole("tab", { name: /^失败\s*2$/ }).waitFor();
   assert.equal(await statusTabs.getByRole("tab", { name: /需关注/ }).count(), 0);
   await choose("进行中");
-  assert.equal(await page.locator("[data-board-card]").count(), 6);
+  assert.equal(await page.locator("[data-board-card]").count(), 5);
   assert.equal(
     await page.getByRole("heading", { name: "Status example failed", exact: true }).count(),
     0,
@@ -130,8 +130,8 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   await choose("已完成");
   assert.equal(
     await page.locator("[data-board-card]").count(),
-    2,
-    "archived completion is excluded",
+    3,
+    "finished execution includes review, while archived completion is excluded",
   );
   assert.equal(await groups.count(), 1, "completion view starts with its own column");
   await choose("失败");
@@ -194,7 +194,7 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
     await page.evaluate(() => JSON.parse(localStorage.getItem("zcode-agent-board:v1")).view),
     "completed",
   );
-  assert.equal(await page.locator("[data-board-card]").count(), 2);
+  assert.equal(await page.locator("[data-board-card]").count(), 3);
 
   // 复现升级前少量项目且保留 project 偏好的真实入口，不能靠项目过多的分支通过。
   const legacyWorkRows = await page.evaluate(() => {
@@ -241,8 +241,8 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
     await groups.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn)),
     ["running", "completed", "error"],
   );
-  assert.equal(await page.locator('[data-board-column="running"] article').count(), 3);
-  assert.equal(await page.locator('[data-board-column="completed"] article').count(), 0);
+  assert.equal(await page.locator('[data-board-column="running"] article').count(), 2);
+  assert.equal(await page.locator('[data-board-column="completed"] article').count(), 1);
   assert.equal(await page.locator('[data-board-column="error"] article').count(), 0);
   // 用户可主动选项目分组，但从选择器回到所有项目后恢复三列。
   await page.getByRole("combobox", { name: "分组方式", exact: true }).selectOption("project");

@@ -98,7 +98,9 @@ try {
   await page.screenshot({ path: join(artifacts, "desktop-light.png"), fullPage: true });
   assert.equal(await page.getByRole("tab", { name: /需关注/ }).count(), 0);
   await page.getByRole("tab", { name: /进行中/ }).click();
-  assert.equal(await page.locator("[data-board-card]").count(), 24);
+  assert.equal(await page.locator("[data-board-card]").count(), 2);
+  await page.getByRole("tab", { name: /已完成/ }).click();
+  assert.equal(await page.locator("[data-board-card]").count(), 23);
   await page.getByRole("tab", { name: /全部/ }).click();
   await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("Remote");
   assert.equal(await page.locator("[data-board-card]").count(), 3);
@@ -107,26 +109,35 @@ try {
   await pane.waitFor();
   assert.equal(await pane.getAttribute("data-identity"), "remote:0");
   assert.equal(await pane.getAttribute("data-remote"), "host-0");
+  assert.equal(await page.getByRole("button", { name: "标记完成", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "重新打开", exact: true }).count(), 0);
+  await page
+    .getByRole("dialog")
+    .getByText(/Same project · API · 已完成/)
+    .waitFor();
   await page.evaluate(() => (window.__board.rejectWrites = true));
-  await page.getByRole("button", { name: "标记完成", exact: true }).click();
+  await page.getByRole("button", { name: "归档", exact: true }).click();
   await page.getByText("操作失败，会话状态可能已变化，请刷新后重试", { exact: true }).waitFor();
-  assert.equal(await page.getByRole("button", { name: "标记完成", exact: true }).count(), 1);
   await page.evaluate(() => (window.__board.rejectWrites = false));
-  await page.getByRole("button", { name: "标记完成", exact: true }).click();
-  await page.getByRole("button", { name: "重新打开", exact: true }).waitFor();
+  await page.getByRole("button", { name: "归档", exact: true }).click();
+  await page.getByRole("button", { name: "恢复会话", exact: true }).waitFor();
   assert.equal(
     await page.evaluate(() => window.__board.commands.at(-1).address.workspaceIdentity),
     "remote:0",
   );
+  await page.getByRole("button", { name: "恢复会话", exact: true }).click();
+  await page.getByRole("button", { name: "归档", exact: true }).waitFor();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /Remote ACP 0/ }).click();
   await pane.waitFor();
   assert.equal(await pane.getAttribute("data-native-id"), "");
   assert.equal(await pane.getAttribute("data-acp-id"), "same-id");
-  await page.getByRole("button", { name: "标记完成", exact: true }).click();
-  await page.getByRole("button", { name: "重新打开", exact: true }).waitFor();
-  assert.equal(await page.evaluate(() => window.__board.commands.at(-1).remoteSessionId), "host-0");
+  await page
+    .getByRole("dialog")
+    .getByText(/Same project · codex · 已完成/)
+    .waitFor();
   await page.getByRole("button", { name: "归档", exact: true }).click();
+  assert.equal(await page.evaluate(() => window.__board.commands.at(-1).remoteSessionId), "host-0");
   await page.waitForFunction(
     () => document.querySelector('[data-testid="real-pane-contract"]')?.dataset.readonly === "true",
   );
@@ -151,7 +162,7 @@ try {
   await page.evaluate(() => window.__board.update(0, { liveStatus: "completed", updatedAt: 2100 }));
   await page.waitForFunction(() =>
     document
-      .querySelector('[data-board-column="running"]')
+      .querySelector('[data-board-column="completed"]')
       ?.textContent.includes("Remote API session"),
   );
   const nativeCard = page
@@ -210,10 +221,7 @@ try {
   await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("Implement project 5");
   await page.getByRole("button", { name: /Implement project 5/ }).click();
   await pane.waitFor();
-  assert.equal(
-    await page.getByRole("button", { name: "标记完成", exact: true }).isDisabled(),
-    true,
-  );
+  assert.equal(await page.getByRole("button", { name: "归档", exact: true }).isDisabled(), true);
   await page.keyboard.press("Escape");
   await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("");
   await page.evaluate(() => (document.documentElement.className = "dark theme-zai-dark"));
@@ -367,7 +375,7 @@ try {
   await exerciseAgentBoardInterruption(page, artifacts);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: real board/hooks; 24 projects; identity routing; API/ACP completion/archive; six-pin limit; search; desktop themes; mobile drawer; new session; work-task selection, scoped conversation, acceptance failure/retry, archive/read-only. Screenshots: " +
+    "PASS: real board/hooks; 24 projects; identity routing; API/ACP automatic completion/archive; six-pin limit; search; desktop themes; mobile drawer; new session; work-task selection, scoped conversation, acceptance failure/retry, archive/read-only. Screenshots: " +
       artifacts,
   );
 } finally {
