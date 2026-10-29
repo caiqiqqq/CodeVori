@@ -1,12 +1,13 @@
 import { AgentBoardCard, boardStatusColors as colors } from "./AgentBoardCard.js";
+import { AgentBoardTrackingDialog } from "./AgentBoardTrackingDialog.js";
+import { AgentBoardSourcePicker } from "./AgentBoardSourcePicker.js";
 import { AgentBoardDetails } from "./AgentBoardDetails.js";
 import { useMemo, useState } from "react";
 import { useStore } from "zustand";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { ChevronDown, Circle, Folder, LayoutGrid, Plus, Search, Star } from "lucide-react";
+import { ChevronDown, Circle, Folder, LayoutGrid, Plus, Search, ListFilter } from "lucide-react";
 import { toast } from "@/components/ui/toast.js";
 import { Button } from "@/components/ui/button.js";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
 import { agentBoardStore } from "@/store/agentBoardStore.js";
 import { useAgentBoardData } from "@/hooks/useAgentBoardData.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
@@ -14,8 +15,8 @@ import { logger } from "@/logger.js";
 import {
   BOARD_STATUSES,
   matchesBoardView,
+  matchesBoardTracking,
   type BoardItem,
-  type BoardProject,
   type BoardView,
 } from "./agentBoardModel.js";
 import type { BoardConversationOptions } from "./AgentBoardConversation.js";
@@ -50,23 +51,39 @@ export function AgentBoardView({
   onCreateSession,
   conversationOptions,
   canCreateSession,
+  workTasks,
 }: Omit<Props, "workspaceTabs"> & ReturnType<typeof useAgentBoardData>) {
   const { intl } = useZCodeIntl();
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
   const preferences = useStore(agentBoardStore);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [projectSearch, setProjectSearch] = useState("");
   const [creating, setCreating] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const realProjects = projects.filter((p) => p.tabs[0]?.workspacePurpose !== "conversation");
+  const trackedItems = useMemo(
+    () => items.filter((item) => matchesBoardTracking(item, preferences.tracking)),
+    [items, preferences.tracking],
+  );
+  const scopeItems = useMemo(
+    () =>
+      trackedItems.filter((item) =>
+        preferences.category === "work-tasks"
+          ? item.kind === "work-task"
+          : preferences.category !== "standalone" ||
+            (item.kind !== "work-task" && item.workspacePurpose === "conversation"),
+      ),
+    [trackedItems, preferences.category],
+  );
+  const groupedProjects = realProjects.filter((p) =>
+    scopeItems.some((item) => item.projectKey === p.key),
+  );
   const selected = items.find((item) => item.key === selectedKey);
   const project = projects.find((p) => p.key === preferences.project);
-  const pinned = (preferences.pinnedProjects ?? projects.slice(0, 4).map((p) => p.key)).filter(
-    (key) => projects.some((project) => project.key === key),
-  );
-  const agents = [...new Set(items.map((item) => item.agent))].sort();
+  const agents = [...new Set(trackedItems.map((item) => item.agent))].sort();
   const filtered = useMemo(
     () =>
-      items.filter(
+      scopeItems.filter(
         (item) =>
           matchesBoardView(item, preferences.view) &&
           (!project || item.projectKey === project.key) &&
@@ -75,20 +92,53 @@ export function AgentBoardView({
             .toLocaleLowerCase()
             .includes(preferences.search.trim().toLocaleLowerCase()),
       ),
-    [items, preferences.view, preferences.agent, preferences.search, project, projects],
+    [scopeItems, preferences.view, preferences.agent, preferences.search, project, projects],
   );
-  const byStatus = preferences.group === "status" || Boolean(project) || projects.length > 6;
+  const byStatus =
+    preferences.group === "status" ||
+    Boolean(project) ||
+    preferences.category !== "all" ||
+    groupedProjects.length > 6;
   const columns = byStatus
-    ? BOARD_STATUSES.map((status) => ({
+    ? BOARD_STATUSES.filter(
+        (status) =>
+          (status !== "todo" && status !== "review") ||
+          scopeItems.some((item) => item.kind === "work-task"),
+      ).map((status) => ({
         key: status,
         label: t(`status.${status}`),
         items: filtered.filter((item) => item.status === status),
       }))
-    : projects.map((p) => ({
-        key: p.key,
-        label: p.label,
-        items: filtered.filter((item) => item.projectKey === p.key),
-      }));
+    : [
+        ...(scopeItems.some((item) => item.kind === "work-task")
+          ? [
+              {
+                key: "work-tasks",
+                label: t("workTasks"),
+                items: filtered.filter((item) => item.kind === "work-task"),
+              },
+            ]
+          : []),
+        ...(scopeItems.some((item) => item.workspacePurpose === "conversation")
+          ? [
+              {
+                key: "standalone",
+                label: t("standalone"),
+                items: filtered.filter((item) => item.workspacePurpose === "conversation"),
+              },
+            ]
+          : []),
+        ...groupedProjects.map((p) => ({
+          key: p.key,
+          label: p.label,
+          items: filtered.filter(
+            (item) =>
+              item.kind !== "work-task" &&
+              item.workspacePurpose !== "conversation" &&
+              item.projectKey === p.key,
+          ),
+        })),
+      ];
   const run = async (item: BoardItem, action: Parameters<typeof mutate>[1]) => {
     setBusy(true);
     try {
@@ -99,23 +149,6 @@ export function AgentBoardView({
     } finally {
       setBusy(false);
     }
-  };
-  const visibleProjects = projects.filter((p) =>
-    `${p.label} ${p.key} ${p.tabs.map((tab) => tab.workspacePath).join(" ")}`
-      .toLocaleLowerCase()
-      .includes(projectSearch.toLocaleLowerCase()),
-  );
-  const closePicker = () => {
-    preferences.setPickerOpen(false);
-    setCreating(false);
-    setProjectSearch("");
-  };
-  const pickProject = (p: BoardProject) => {
-    if (creating) {
-      const tab = p.tabs[0];
-      if (tab) onCreateSession(tab);
-    } else preferences.selectProject(p.key);
-    closePicker();
   };
   return (
     <section
@@ -128,25 +161,37 @@ export function AgentBoardView({
             <LayoutGrid className="size-5 text-brand" />
             <h1 className="text-ui-xl font-semibold">{t("title")}</h1>
             <span className="rounded-md bg-surface px-2 text-ui-caption text-foreground-subtle">
-              {items.filter((i) => !i.archived).length}
+              {trackedItems.filter((i) => !i.archived).length}
             </span>
           </div>
           <p className="mt-1 text-ui-caption text-foreground-subtle">{t("description")}</p>
         </div>
-        <Button
-          onClick={() => {
-            setCreating(true);
-            preferences.setPickerOpen(true);
-          }}
-        >
-          <Plus className="size-4" />
-          {t("newSession")}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setManaging(true)}>
+            <ListFilter className="size-4" />
+            {t("manageTracking")}
+          </Button>
+          <Button
+            onClick={() => {
+              setCreating(true);
+              preferences.setPickerOpen(true);
+            }}
+          >
+            <Plus className="size-4" />
+            {t("newSession")}
+          </Button>
+        </div>
       </header>
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 md:px-6">
         <Button variant="outline" onClick={() => preferences.setPickerOpen(true)}>
           <Folder className="size-4" />
-          <span className="max-w-40 truncate">{project?.label ?? t("allProjects")}</span>
+          <span className="max-w-40 truncate">
+            {preferences.category === "work-tasks"
+              ? t("workTasks")
+              : preferences.category === "standalone"
+                ? t("standalone")
+                : (project?.label ?? t("allProjects"))}
+          </span>
           <ChevronDown className="size-3" />
         </Button>
         <label className="flex min-w-36 flex-1 items-center gap-2 rounded-lg border border-border bg-input px-3">
@@ -172,7 +217,9 @@ export function AgentBoardView({
         </select>
         <select
           aria-label={t("group")}
-          disabled={Boolean(project) || projects.length > 6}
+          disabled={
+            Boolean(project) || preferences.category !== "all" || groupedProjects.length > 6
+          }
           value={byStatus ? "status" : "project"}
           onChange={(e) => preferences.setGroup(e.target.value as "project" | "status")}
           className="h-9 rounded-lg border border-border bg-input px-2 text-ui-base disabled:opacity-60"
@@ -197,7 +244,7 @@ export function AgentBoardView({
             {t(`view.${view}`)}
             <span className="text-ui-caption text-foreground-subtle">
               {
-                items.filter(
+                scopeItems.filter(
                   (i) => matchesBoardView(i, view) && (!project || i.projectKey === project.key),
                 ).length
               }
@@ -216,7 +263,7 @@ export function AgentBoardView({
           </Button>
         </div>
       ) : null}
-      {loading && items.length === 0 ? (
+      {loading && scopeItems.length === 0 ? (
         <p role="status" className="p-6 text-foreground-subtle">
           {t("loading")}
         </p>
@@ -260,78 +307,30 @@ export function AgentBoardView({
           </section>
         ))}
       </div>
-      <Dialog
-        open={preferences.pickerOpen}
-        onOpenChange={(open) => {
-          if (!open) closePicker();
-        }}
-      >
-        <DialogContent className="max-h-[85dvh] sm:max-w-xl">
-          <DialogTitle>{creating ? t("chooseNewProject") : t("projects")}</DialogTitle>
-          <DialogDescription>{t("projectLimit")}</DialogDescription>
-          <input
-            autoFocus
-            aria-label={t("searchProjects")}
-            placeholder={t("searchProjects")}
-            value={projectSearch}
-            onChange={(e) => setProjectSearch(e.target.value)}
-            className="h-10 w-full rounded-lg border border-border bg-input px-3 text-mobile-input-safe md:text-ui-base"
-          />
-          <div className="min-h-0 max-h-[55dvh] overflow-y-auto">
-            {!creating ? (
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => {
-                  preferences.selectProject(null);
-                  closePicker();
-                }}
-              >
-                {t("allProjects")}
-              </Button>
-            ) : null}
-            {visibleProjects.map((p) => (
-              <div key={p.key} className="flex items-center gap-2 border-b border-border/60 py-1">
-                <button
-                  className="min-w-0 flex-1 rounded-lg px-2 py-2 text-start hover:bg-surface-hover disabled:opacity-50"
-                  disabled={creating && (!p.tabs[0] || !canCreateSession(p.tabs[0]))}
-                  onClick={() => pickProject(p)}
-                >
-                  <span className="block truncate font-medium">{p.label}</span>
-                  <span className="block truncate text-ui-caption text-foreground-subtle">
-                    {p.key}
-                  </span>
-                </button>
-                {!creating ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    disabled={!pinned.includes(p.key) && pinned.length >= 6}
-                    aria-label={`${pinned.includes(p.key) ? t("unpinProject") : t("pinProject")} ${p.label}`}
-                    aria-pressed={pinned.includes(p.key)}
-                    onClick={() =>
-                      preferences.toggleProject(
-                        p.key,
-                        projects.slice(0, 4).map((p) => p.key),
-                        projects.map((p) => p.key),
-                      )
-                    }
-                  >
-                    <Star
-                      className={`size-4 ${pinned.includes(p.key) ? "fill-current text-warning" : ""}`}
-                    />
-                  </Button>
-                ) : null}
-              </div>
-            ))}
-            {visibleProjects.length === 0 ? (
-              <p className="p-4 text-foreground-subtle">{t("empty")}</p>
-            ) : null}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {preferences.pickerOpen ? (
+        <AgentBoardSourcePicker
+          projects={projects}
+          creating={creating}
+          canCreateSession={canCreateSession}
+          onCreateSession={onCreateSession}
+          onClose={() => {
+            preferences.setPickerOpen(false);
+            setCreating(false);
+          }}
+        />
+      ) : null}
+      {managing ? (
+        <AgentBoardTrackingDialog
+          projects={projects}
+          items={items}
+          tracking={preferences.tracking}
+          onSave={preferences.setTracking}
+          onClose={() => setManaging(false)}
+        />
+      ) : null}
       <AgentBoardDetails
         selected={selected}
+        workTasks={workTasks}
         projects={projects}
         busy={busy}
         run={run}

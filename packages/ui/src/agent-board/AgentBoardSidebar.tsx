@@ -1,6 +1,6 @@
 import { useStore } from "zustand";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { Folder, Search, LayoutGrid } from "lucide-react";
+import { Folder, Search, LayoutGrid, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { agentBoardStore } from "@/store/agentBoardStore.js";
 import { useAgentBoardProjects } from "@/hooks/useAgentBoardData.js";
@@ -8,7 +8,9 @@ import type { WorkspaceTabState } from "@/store/tabStore.js";
 export function AgentBoardSidebar({ workspaceTabs }: { workspaceTabs: WorkspaceTabState[] }) {
   const { intl } = useZCodeIntl();
   const preferences = useStore(agentBoardStore);
-  const projects = useAgentBoardProjects(workspaceTabs);
+  const projects = useAgentBoardProjects(workspaceTabs).filter(
+    (p) => p.tabs[0]?.workspacePurpose !== "conversation",
+  );
   const pinned = (preferences.pinnedProjects ?? projects.slice(0, 4).map((p) => p.key)).filter(
     (key) => projects.some((project) => project.key === key),
   );
@@ -20,11 +22,33 @@ export function AgentBoardSidebar({ workspaceTabs }: { workspaceTabs: WorkspaceT
       <Button
         variant="ghost"
         className="justify-start gap-2"
-        aria-pressed={!projects.some((project) => project.key === preferences.project)}
+        aria-pressed={
+          preferences.category === "all" &&
+          !projects.some((project) => project.key === preferences.project)
+        }
         onClick={() => preferences.selectProject(null)}
       >
         <LayoutGrid className="size-4" />
         {intl.formatMessage({ id: "agentBoard.allProjects" })}
+      </Button>
+      <Button
+        variant="ghost"
+        className="justify-start gap-2"
+        aria-pressed={preferences.category === "standalone"}
+        onClick={preferences.selectStandalone}
+      >
+        <MessageSquare className="size-4" />
+        {intl.formatMessage({ id: "agentBoard.standalone" })}
+      </Button>
+      <Button
+        variant="ghost"
+        className="justify-start gap-2"
+        aria-pressed={preferences.category === "work-tasks"}
+        onClick={() => {
+          preferences.selectWorkTasks();
+        }}
+      >
+        <span>{intl.formatMessage({ id: "agentBoard.workTasks" })}</span>
       </Button>
       <p className="px-3 pt-5 pb-1 text-ui-caption text-foreground-subtle">
         {intl.formatMessage({ id: "agentBoard.pinnedProjects" })}
@@ -35,7 +59,11 @@ export function AgentBoardSidebar({ workspaceTabs }: { workspaceTabs: WorkspaceT
           <Button
             key={project.key}
             variant="ghost"
-            title={`${project.label}\n${project.key}`}
+            title={
+              project.tabs[0]?.workspacePurpose === "conversation"
+                ? project.label
+                : `${project.label}\n${project.key}`
+            }
             aria-pressed={preferences.project === project.key}
             className="justify-start gap-2 aria-pressed:bg-selected"
             onClick={() => preferences.selectProject(project.key)}

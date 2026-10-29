@@ -1,4 +1,6 @@
+import { useAgentBoardWorkTasks } from "./useAgentBoardWorkTasks.js";
 import { useCallback, useMemo } from "react";
+import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { WindowHostControllerMutation } from "@zcode/services";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { useGlobalTaskList } from "@/hooks/useGlobalTaskList.js";
@@ -12,19 +14,25 @@ import {
   boardWorkspaceKey,
   nativeBoardStatus,
   acpBoardStatus,
+  workTaskBoardStatus,
   type BoardItem,
 } from "@/agent-board/agentBoardModel.js";
 
 export function useAgentBoardProjects(workspaceTabs: WorkspaceTabState[]) {
   const groups = useWorktreeProjectGroups(workspaceTabs);
+  const { intl } = useZCodeIntl();
   return useMemo(
     () =>
       groups.map((group) => ({
         key: boardWorkspaceKey(group.tab),
-        label: group.tab.label,
+        // 无项目会话的目录只是运行 cwd，不能把内部目录名当作用户项目展示。
+        label:
+          group.tab.workspacePurpose === "conversation"
+            ? intl.formatMessage({ id: "agentBoard.conversations" })
+            : group.tab.label,
         tabs: group.workspaceTabs,
       })),
-    [groups],
+    [groups, intl],
   );
 }
 export type BoardAction = "pin" | "archive" | "completion";
@@ -47,6 +55,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
     [workspaceTabs, services, sessionsById, sessionIdByWorkspaceIdentity, sessionIdByWorkspacePath],
   );
   const projects = useAgentBoardProjects(workspaceTabs);
+  const workTasks = useAgentBoardWorkTasks(workspaceTabs);
   const query = {
     workspaceTabs,
     sortBy: "updated" as const,
@@ -83,6 +92,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
           title: task.title,
           workspacePath: task.workspacePath,
           workspaceIdentity: task.workspaceIdentity,
+          workspacePurpose: tabByScope.get(scope)?.workspacePurpose,
           remoteSessionId: task.remoteSessionId,
           updatedAt: task.updatedAt,
           agent: task.provider || "API",
@@ -108,6 +118,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
         title: session.title,
         workspacePath: session.workspacePath,
         workspaceIdentity: session.workspaceIdentity,
+        workspacePurpose: tabByScope.get(scope)?.workspacePurpose,
         remoteSessionId: lookup.get(scope)?.remoteSessionId,
         updatedAt: session.updatedAt,
         agent: session.agent,
@@ -120,14 +131,55 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
         summary: session.preview,
       });
     }
+    for (const workTask of workTasks.board?.tasks ?? []) {
+      const scope = boardWorkspaceKey(workTask);
+      const key = boardEntityKey(workTask, "work-task", workTask.id);
+      rows.set(key, {
+        kind: "work-task",
+        workTask,
+        key,
+        projectKey: projectByScope.get(scope) ?? scope,
+        title: workTask.title,
+        workspacePath: workTask.workspacePath,
+        workspaceIdentity: workTask.workspaceIdentity,
+        remoteSessionId: workTask.remoteSessionId,
+        updatedAt: workTask.updatedAt,
+        agent:
+          workTask.execution.kind === "acp"
+            ? workTask.execution.agent
+            : workTask.execution.modelSelection.modelId,
+        status: workTaskBoardStatus(workTask),
+        pinned: false,
+        archived: workTask.archived,
+        online:
+          lookup.has(scope) &&
+          tabByScope.get(scope)?.availability !== "unavailable-local-directory",
+        summary: workTask.failureReason,
+      });
+    }
     return [...rows.values()].sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [projects, workspaceTabs, timeline.items, pinned.items, archived.items, acp.rows, lookup]);
+  }, [
+    projects,
+    workspaceTabs,
+    timeline.items,
+    pinned.items,
+    archived.items,
+    acp.rows,
+    lookup,
+    workTasks.board,
+  ]);
   const refresh = useCallback(async () => {
     acp.refresh();
-    await Promise.all([timeline.refresh(), pinned.refresh(), archived.refresh()]);
-  }, [timeline.refresh, pinned.refresh, archived.refresh, acp.refresh]);
+    await Promise.all([
+      timeline.refresh(),
+      pinned.refresh(),
+      archived.refresh(),
+      workTasks.refresh(),
+    ]);
+  }, [timeline.refresh, pinned.refresh, archived.refresh, acp.refresh, workTasks.refresh]);
   const mutate = useCallback(
     async (item: BoardItem, action: BoardAction) => {
+      if (item.kind === "work-task") throw new Error("Use WorkTask lifecycle commands");
       if (!item.online) throw new Error("Workspace unavailable");
       if (
         action !== "pin" &&
@@ -182,12 +234,14 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
   );
   return {
     projects,
+    workTasks,
     canCreateSession: (tab: WorkspaceTabState) =>
       lookup.has(boardWorkspaceKey(tab)) && tab.availability !== "unavailable-local-directory",
     items,
     mutate,
     refresh,
-    loading: timeline.loading || pinned.loading || archived.loading || acp.loading,
-    error: timeline.error || pinned.error || archived.error || acp.error,
+    loading:
+      timeline.loading || pinned.loading || archived.loading || acp.loading || workTasks.loading,
+    error: timeline.error || pinned.error || archived.error || acp.error || workTasks.error,
   };
 }

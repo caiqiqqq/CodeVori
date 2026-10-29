@@ -1,3 +1,4 @@
+import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
 import { lazy, Suspense } from "react";
 import { Archive, ArrowUpRight, Check, X } from "lucide-react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -6,11 +7,15 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import type { BoardItem, BoardProject } from "./agentBoardModel.js";
 import type { BoardAction } from "@/hooks/useAgentBoardData.js";
 import type { BoardConversationOptions } from "./AgentBoardConversation.js";
+const WorkTaskDetails = lazy(() =>
+  import("./AgentBoardWorkTaskDetails.js").then((m) => ({ default: m.AgentBoardWorkTaskDetails })),
+);
 const Conversation = lazy(() =>
   import("./AgentBoardConversation.js").then((m) => ({ default: m.AgentBoardConversation })),
 );
 export function AgentBoardDetails({
   selected,
+  workTasks,
   projects,
   busy,
   run,
@@ -19,6 +24,7 @@ export function AgentBoardDetails({
   onOpenSession,
 }: {
   selected: BoardItem | undefined;
+  workTasks: ReturnType<typeof useWorkTasks>;
   projects: BoardProject[];
   busy: boolean;
   run(item: BoardItem, action: BoardAction): Promise<void>;
@@ -28,6 +34,19 @@ export function AgentBoardDetails({
 }) {
   const { intl } = useZCodeIntl();
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
+  if (selected?.kind === "work-task")
+    return (
+      <Suspense fallback={null}>
+        <WorkTaskDetails
+          key={selected.key}
+          item={selected}
+          workTasks={workTasks}
+          options={options}
+          onClose={onClose}
+          onOpenSession={onOpenSession}
+        />
+      </Suspense>
+    );
   return (
     <Dialog
       open={Boolean(selected)}
@@ -49,12 +68,14 @@ export function AgentBoardDetails({
                   {t(`status.${selected.status}`)}
                   {!selected.online ? ` · ${t("offline")}` : ""}
                 </DialogDescription>
-                <p
-                  className="truncate text-ui-caption text-foreground-subtlest"
-                  title={selected.workspaceIdentity ?? selected.workspacePath}
-                >
-                  {selected.workspaceIdentity ?? selected.workspacePath}
-                </p>
+                {selected.workspacePurpose !== "conversation" ? (
+                  <p
+                    className="truncate text-ui-caption text-foreground-subtlest"
+                    title={selected.workspaceIdentity ?? selected.workspacePath}
+                  >
+                    {selected.workspaceIdentity ?? selected.workspacePath}
+                  </p>
+                ) : null}
               </div>
               <Button variant="ghost" size="icon" aria-label={t("close")} onClick={onClose}>
                 <X className="size-4" />

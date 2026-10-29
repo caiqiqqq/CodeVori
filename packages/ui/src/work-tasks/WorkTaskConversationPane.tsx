@@ -188,7 +188,9 @@ export function WorkTaskConversationPane({
                     key={`${workTaskSelectionKey(task)}:${binding.kind}:${binding.sessionId}:${binding.workspacePath}`}
                     task={task}
                     binding={binding}
+                    // 看板允许打开归档待办；归档任务不能通过绑定会话继续发送或确认。
                     readOnly={
+                      task.archived ||
                       task.worktreeCleanup?.phase === "running" ||
                       (isWorkTaskMerging(task)
                         ? !showMergeConversation || task.merge?.phase === "applying"

@@ -1,6 +1,10 @@
 import { createStore } from "zustand/vanilla";
 import { getSafeLocalStorage, type BrowserStorageLike } from "@/lib/browserEnvironment.js";
-import type { BoardView } from "@/agent-board/agentBoardModel.js";
+import {
+  defaultBoardTracking,
+  type BoardTracking,
+  type BoardView,
+} from "@/agent-board/agentBoardModel.js";
 interface Preferences {
   project: string | null;
   pinnedProjects: string[] | null;
@@ -8,6 +12,8 @@ interface Preferences {
   group: "project" | "status";
   agent: string;
   search: string;
+  tracking: BoardTracking;
+  category: "all" | "standalone" | "work-tasks";
 }
 interface BoardStore extends Preferences {
   pickerOpen: boolean;
@@ -18,6 +24,9 @@ interface BoardStore extends Preferences {
   setGroup(group: Preferences["group"]): void;
   setAgent(agent: string): void;
   setSearch(search: string): void;
+  setTracking(tracking: BoardTracking): void;
+  selectStandalone(): void;
+  selectWorkTasks(): void;
 }
 const key = "zcode-agent-board:v1";
 const defaults: Preferences = {
@@ -27,7 +36,31 @@ const defaults: Preferences = {
   group: "project",
   agent: "all",
   search: "",
+  tracking: defaultBoardTracking,
+  category: "all",
 };
+function readTracking(value: unknown): BoardTracking {
+  if (!value || typeof value !== "object") return defaultBoardTracking;
+  const v = value as Record<string, unknown>;
+  const strings = (x: unknown): x is string[] =>
+    Array.isArray(x) && x.every((k) => typeof k === "string");
+  if (
+    (v.mode !== "all" && v.mode !== "custom") ||
+    typeof v.standalone !== "boolean" ||
+    !strings(v.projects) ||
+    !strings(v.includedItems) ||
+    !strings(v.excludedItems)
+  )
+    return defaultBoardTracking;
+  return {
+    mode: v.mode,
+    standalone: v.standalone,
+    workTasks: v.workTasks === true,
+    projects: [...new Set(v.projects)],
+    includedItems: [...new Set(v.includedItems)],
+    excludedItems: [...new Set(v.excludedItems)],
+  };
+}
 export function createAgentBoardStore(storage: BrowserStorageLike | null = getSafeLocalStorage()) {
   let initial = defaults;
   try {
@@ -49,6 +82,8 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         group: v.group,
         agent: v.agent,
         search: v.search,
+        tracking: readTracking(v.tracking),
+        category: v.category === "standalone" || v.category === "work-tasks" ? v.category : "all",
         pinnedProjects: v.pinnedProjects
           ? [...new Set<string>(v.pinnedProjects)].slice(0, 6)
           : null,
@@ -59,11 +94,20 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
   return createStore<BoardStore>((set, get) => {
     const save = (patch: Partial<Preferences>) => {
       set(patch);
-      const { project, pinnedProjects, view, group, agent, search } = get();
+      const { project, pinnedProjects, view, group, agent, search, tracking, category } = get();
       try {
         storage?.setItem(
           key,
-          JSON.stringify({ project, pinnedProjects, view, group, agent, search }),
+          JSON.stringify({
+            project,
+            pinnedProjects,
+            view,
+            group,
+            agent,
+            search,
+            tracking,
+            category,
+          }),
         );
       } catch {
         /* 受限存储只影响显示偏好，不回写 Host。 */
@@ -73,7 +117,10 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
       ...initial,
       pickerOpen: false,
       setPickerOpen: (pickerOpen) => set({ pickerOpen }),
-      selectProject: (project) => save({ project }),
+      selectProject: (project) => save({ project, category: "all" }),
+      selectWorkTasks: () => save({ project: null, category: "work-tasks" }),
+      selectStandalone: () => save({ project: null, category: "standalone" }),
+      setTracking: (tracking) => save({ tracking: readTracking(tracking) }),
       toggleProject: (project, defaultKeys = [], knownKeys) => {
         const saved = get().pinnedProjects ?? defaultKeys;
         const current = knownKeys ? saved.filter((key) => knownKeys.includes(key)) : saved;

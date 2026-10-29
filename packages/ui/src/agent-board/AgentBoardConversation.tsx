@@ -25,7 +25,7 @@ export function AgentBoardConversation({
   options,
   onClose,
 }: {
-  item: BoardItem;
+  item: Exclude<BoardItem, { kind: "work-task" }>;
   options?: BoardConversationOptions;
   onClose(): void;
 }) {
