@@ -1,4 +1,5 @@
 import { exerciseAgentBoardLayout } from "./agentBoardLayoutScenario.mjs";
+import { exerciseAgentBoardInterruption } from "./agentBoardInterruptionScenario.mjs";
 import { agentBoardFixture } from "./agentBoardFixture.mjs";
 import { exerciseAgentBoardWorkTasks } from "./agentBoardWorkTasksScenario.mjs";
 // Real board components/data hooks and command routing; synthetic Host and chat pane.
@@ -363,6 +364,7 @@ try {
 
   await exerciseAgentBoardWorkTasks(page, { manage, save, pane, artifacts });
   await exerciseAgentBoardLayout(page, artifacts);
+  await exerciseAgentBoardInterruption(page, artifacts);
   assert.deepEqual(errors, []);
   console.log(
     "PASS: real board/hooks; 24 projects; identity routing; API/ACP completion/archive; six-pin limit; search; desktop themes; mobile drawer; new session; work-task selection, scoped conversation, acceptance failure/retry, archive/read-only. Screenshots: " +
