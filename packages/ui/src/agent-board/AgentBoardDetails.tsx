@@ -4,7 +4,7 @@ import { Archive, ArrowUpRight, Check, X } from "lucide-react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Button } from "@/components/ui/button.js";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
-import type { BoardItem, BoardProject } from "./agentBoardModel.js";
+import { boardDisplayStatus, type BoardItem, type BoardProject } from "./agentBoardModel.js";
 import type { BoardAction } from "@/hooks/useAgentBoardData.js";
 import type { BoardConversationOptions } from "./AgentBoardConversation.js";
 const WorkTaskDetails = lazy(() =>
@@ -65,7 +65,7 @@ export function AgentBoardDetails({
                 <DialogTitle className="truncate">{selected.title}</DialogTitle>
                 <DialogDescription className="truncate">
                   {projects.find((p) => p.key === selected.projectKey)?.label} · {selected.agent} ·{" "}
-                  {t(`status.${selected.status}`)}
+                  {t(`status.${boardDisplayStatus(selected)}`)}
                   {!selected.online ? ` · ${t("offline")}` : ""}
                 </DialogDescription>
                 {selected.workspacePurpose !== "conversation" ? (

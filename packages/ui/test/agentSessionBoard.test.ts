@@ -6,10 +6,56 @@ import {
   acpBoardStatus,
   boardEntityKey,
   matchesBoardTracking,
+  matchesBoardView,
+  BOARD_STATUSES,
+  boardDisplayStatus,
+  BOARD_DISPLAY_STATUSES,
   type BoardItem,
   type BoardTracking,
 } from "../src/agent-board/agentBoardModel.js";
 import { createAgentBoardStore } from "../src/store/agentBoardStore.js";
+
+test("status views separate ongoing, completed, failed and archived work", () => {
+  for (const status of BOARD_STATUSES) {
+    const item = { status, archived: false } as BoardItem;
+    assert.equal(matchesBoardView(item, "active"), status !== "completed" && status !== "error");
+    assert.equal(matchesBoardView(item, "completed"), status === "completed");
+    assert.equal(matchesBoardView(item, "failed"), status === "error");
+    for (const view of ["active", "completed", "failed"] as const)
+      assert.equal(matchesBoardView({ ...item, archived: true }, view), false);
+  }
+  assert.deepEqual(BOARD_DISPLAY_STATUSES, ["running", "completed", "error"]);
+  const canceled = {
+    kind: "work-task",
+    status: "idle",
+    archived: false,
+    workTask: { status: "canceled" },
+  } as BoardItem;
+  assert.equal(boardDisplayStatus(canceled), "error");
+  assert.equal(matchesBoardView(canceled, "failed"), true);
+  assert.equal(matchesBoardView(canceled, "active"), false);
+  assert.equal(boardDisplayStatus({ kind: "native", status: "idle" } as BoardItem), "running");
+});
+
+test("new preferences use status columns and new status views restore saved grouping", () => {
+  let raw: string | null = null;
+  const storage = {
+    getItem: () => raw,
+    setItem: (_: string, value: string) => {
+      raw = value;
+    },
+    removeItem() {},
+  };
+  const store = createAgentBoardStore(storage);
+  assert.equal(store.getState().group, "status");
+  store.getState().setGroup("project");
+  for (const view of ["completed", "failed"] as const) {
+    store.getState().setView(view);
+    const restored = createAgentBoardStore(storage).getState();
+    assert.equal(restored.view, view);
+    assert.equal(restored.group, "project");
+  }
+});
 
 test("turn outcomes do not complete work, explicit review expires on new activity", () => {
   const task: any = { updatedAt: 100, status: "completed", liveStatus: "completed" };
@@ -150,7 +196,7 @@ test("display preferences persist, pin limit is enforced, corrupt state recovers
   store.getState().setView("attention");
   const restored = createAgentBoardStore(storage);
   assert.equal(restored.getState().project, "remote:a");
-  assert.equal(restored.getState().view, "attention");
+  assert.equal(restored.getState().view, "all");
   store.getState().toggleProject("project-0");
   store.getState().toggleProject("new");
   assert.equal(store.getState().pinnedProjects?.length, 6);

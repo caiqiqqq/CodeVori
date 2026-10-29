@@ -33,7 +33,7 @@ const defaults: Preferences = {
   project: null,
   pinnedProjects: null,
   view: "all",
-  group: "project",
+  group: "status",
   agent: "all",
   search: "",
   tracking: defaultBoardTracking,
@@ -67,7 +67,9 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
     const v = JSON.parse(storage?.getItem(key) ?? "null");
     if (
       v &&
-      ["all", "active", "attention", "starred", "archived"].includes(v.view) &&
+      ["all", "active", "completed", "failed", "attention", "starred", "archived"].includes(
+        v.view,
+      ) &&
       ["project", "status"].includes(v.group) &&
       (v.project === null || typeof v.project === "string") &&
       (v.pinnedProjects === null ||
@@ -78,7 +80,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
     )
       initial = {
         project: v.project,
-        view: v.view,
+        view: v.view === "attention" ? "all" : v.view,
         group: v.group,
         agent: v.agent,
         search: v.search,
