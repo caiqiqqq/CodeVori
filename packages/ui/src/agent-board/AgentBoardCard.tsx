@@ -1,16 +1,12 @@
-import { WorkTaskAgent, WorkTaskStatus } from "@/work-tasks/WorkTaskParts.js";
+import { WorkTaskAgent } from "@/work-tasks/WorkTaskParts.js";
 import { Star } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import type { BoardItem } from "./agentBoardModel.js";
+import { boardDisplayStatus, type BoardItem } from "./agentBoardModel.js";
 export const boardStatusColors = {
-  todo: "text-foreground-subtle",
-  review: "text-warning",
   running: "text-brand",
-  waiting: "text-warning",
-  idle: "text-foreground-subtle",
   error: "text-destructive",
   completed: "text-success",
 };
@@ -30,6 +26,7 @@ export function AgentBoardCard({
   const { intl, locale } = useZCodeIntl();
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
   const colors = boardStatusColors;
+  const status = boardDisplayStatus(item);
   const isConversation = item.workspacePurpose === "conversation";
   const change = item.kind === "native" ? item.task.changeSummary : undefined;
   const summary = change
@@ -55,11 +52,7 @@ export function AgentBoardCard({
                 ? intl.formatMessage({ id: "agentBoard.conversations" })
                 : (projectLabel ?? item.workspacePath.split("/").pop())}
           </span>
-          {item.kind === "work-task" ? (
-            <WorkTaskStatus task={item.workTask} />
-          ) : (
-            <span className={`shrink-0 ${colors[item.status]}`}>{t(`status.${item.status}`)}</span>
-          )}
+          <span className={`shrink-0 ${colors[status]}`}>{t(`status.${status}`)}</span>
         </div>
         <h3 className="line-clamp-2 font-medium leading-relaxed">{item.title || t("untitled")}</h3>
         {summary ? (

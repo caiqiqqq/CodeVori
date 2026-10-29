@@ -13,7 +13,16 @@ export const BOARD_STATUSES = [
   "completed",
 ] as const;
 export type BoardStatus = (typeof BOARD_STATUSES)[number];
-export type BoardView = "all" | "active" | "attention" | "starred" | "archived";
+export const BOARD_DISPLAY_STATUSES = ["running", "completed", "error"] as const;
+export type BoardDisplayStatus = (typeof BOARD_DISPLAY_STATUSES)[number];
+export type BoardView =
+  | "all"
+  | "active"
+  | "completed"
+  | "failed"
+  | "attention"
+  | "starred"
+  | "archived";
 export type BoardProject = { key: string; label: string; tabs: WorkspaceTabState[] };
 export type BoardTracking = {
   mode: "all" | "custom";
@@ -124,10 +133,19 @@ export function workTaskBoardStatus(task: WorkTask): BoardStatus {
       return "idle";
   }
 }
+export function boardDisplayStatus(item: BoardItem): BoardDisplayStatus {
+  // 看板只呈现三类，原始生命周期继续用于任务操作；一轮结束不代表任务完成。
+  if (item.status === "completed") return "completed";
+  if (item.status === "error" || (item.kind === "work-task" && item.workTask.status === "canceled"))
+    return "error";
+  return "running";
+}
 export function matchesBoardView(item: BoardItem, view: BoardView) {
   if (view === "archived") return item.archived;
   if (item.archived) return false;
-  if (view === "active") return item.status !== "completed";
+  if (view === "active") return boardDisplayStatus(item) === "running";
+  if (view === "completed") return boardDisplayStatus(item) === "completed";
+  if (view === "failed") return boardDisplayStatus(item) === "error";
   if (view === "attention")
     return item.status === "waiting" || item.status === "review" || item.status === "error";
   return view !== "starred" || item.pinned;

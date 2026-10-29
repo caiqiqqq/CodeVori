@@ -1,0 +1,198 @@
+import assert from "node:assert/strict";
+import { join } from "node:path";
+
+export async function exerciseAgentBoardLayout(page, artifacts) {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.evaluate(() => {
+    const { store, workRows, notifyWork } = window.__board;
+    for (const task of workRows.slice(0, 2))
+      Object.assign(task, { status: "running", archived: false });
+    notifyWork();
+    const state = store.getState();
+    state.selectProject(null);
+    state.setView("all");
+    state.setAgent("all");
+    state.setSearch("");
+    state.setGroup("project");
+    state.setTracking({
+      mode: "custom",
+      projects: [],
+      standalone: false,
+      workTasks: false,
+      includedItems: [
+        ...workRows
+          .slice(0, 2)
+          .map((task) => JSON.stringify([task.workspacePath, "work-task", task.id])),
+        JSON.stringify(["/fixture/project-23", "native", "same-id"]),
+      ],
+      excludedItems: [],
+    });
+  });
+  const groups = page.locator("[data-board-column]");
+  await page.waitForFunction(() => document.querySelectorAll("[data-board-card]").length === 3);
+  assert.equal(
+    await groups.count(),
+    2,
+    "work task project must not add an empty conversation group",
+  );
+  assert.equal(await page.locator('[data-board-column="/fixture/project-3"]').count(), 0);
+  const cards = page.locator('[data-board-column="work-tasks"] article');
+  const a = await cards.nth(0).boundingBox(),
+    b = await cards.nth(1).boundingBox();
+  assert.ok(
+    a.width <= 385 && b.width <= 385,
+    "sparse groups must not stretch cards across the page",
+  );
+  assert.ok(Math.abs(a.y - b.y) < 2 && b.x > a.x, "desktop work tasks share one row");
+  for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {
+    await page.evaluate((value) => (document.documentElement.className = value), theme);
+    assert.notEqual(
+      await page
+        .getByRole("heading", { name: "Agent 看板", exact: true })
+        .evaluate((node) => getComputedStyle(node).color),
+      theme.includes("dark") ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)",
+      "board text follows the active theme",
+    );
+    await page.screenshot({
+      path: join(
+        artifacts,
+        theme.includes("dark") ? "grouped-desktop-dark.png" : "grouped-desktop-light.png",
+      ),
+      animations: "disabled",
+    });
+  }
+  await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("Implement project 23");
+  assert.equal(await groups.count(), 1, "search removes empty sections");
+  await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileA = await cards.nth(0).boundingBox(),
+    mobileB = await cards.nth(1).boundingBox();
+  assert.ok(
+    Math.abs(mobileA.x - mobileB.x) < 2 && mobileB.y > mobileA.y,
+    "mobile cards stack within their group",
+  );
+  assert.ok(mobileA.width <= 390 && mobileA.x >= 0);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: join(artifacts, "grouped-mobile.png"), animations: "disabled" });
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.getByRole("combobox", { name: "分组方式", exact: true }).selectOption("status");
+  assert.equal(
+    await page.locator('[data-board-column="running"] article').count(),
+    3,
+    "unfinished conversations and work tasks share the ongoing column",
+  );
+  await page.evaluate(() => {
+    const { workRows, notifyWork, store } = window.__board;
+    for (const [i, status] of [
+      "failed",
+      "done",
+      "todo",
+      "review",
+      "awaiting_input",
+      "canceled",
+    ].entries())
+      workRows.push({
+        ...workRows[0],
+        id: "status-example-" + i,
+        title: "Status example " + status,
+        status,
+        archived: false,
+      });
+    workRows.push({
+      ...workRows[0],
+      id: "status-example-archived",
+      title: "Archived completion",
+      status: "done",
+      archived: true,
+    });
+    notifyWork();
+    store.getState().setTracking({
+      mode: "custom",
+      projects: [],
+      standalone: false,
+      workTasks: true,
+      includedItems: [],
+      excludedItems: [],
+    });
+  });
+  const statusTabs = page.getByRole("tablist", { name: "会话范围", exact: true });
+  const choose = (label) =>
+    statusTabs.getByRole("tab", { name: new RegExp("^" + label + "\\s*\\d+$") }).click();
+  await statusTabs.getByRole("tab", { name: /^失败\s*2$/ }).waitFor();
+  assert.equal(await statusTabs.getByRole("tab", { name: /需关注/ }).count(), 0);
+  await choose("进行中");
+  assert.equal(await page.locator("[data-board-card]").count(), 6);
+  assert.equal(
+    await page.getByRole("heading", { name: "Status example failed", exact: true }).count(),
+    0,
+  );
+  assert.equal(await page.locator('[data-board-column="idle"]').count(), 0);
+  await choose("已完成");
+  assert.equal(
+    await page.locator("[data-board-card]").count(),
+    2,
+    "archived completion is excluded",
+  );
+  assert.equal(await groups.count(), 1, "completion view starts with its own column");
+  await choose("失败");
+  assert.equal(await page.locator("[data-board-card]").count(), 2);
+  await page.getByRole("heading", { name: "Status example failed", exact: true }).waitFor();
+  assert.equal(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("zcode-agent-board:v1")).view),
+    "failed",
+  );
+  await page.getByRole("heading", { name: "Status example failed", exact: true }).waitFor();
+  await page.evaluate(() => {
+    const f = window.__board;
+    f.workRows.find((task) => task.id === "status-example-0").status = "running";
+    f.notifyWork();
+  });
+  await page.waitForFunction(() => document.querySelectorAll("[data-board-card]").length === 1);
+  assert.equal(
+    await page.getByRole("heading", { name: "Status example failed", exact: true }).count(),
+    0,
+  );
+  await page.evaluate(() => {
+    const f = window.__board;
+    f.workRows.find((task) => task.id === "status-example-0").status = "failed";
+    f.notifyWork();
+  });
+  await choose("全部");
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  assert.equal(await groups.count(), 3);
+  assert.deepEqual(
+    await groups.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn)),
+    ["running", "completed", "error"],
+  );
+  for (const label of ["待验收", "等你回复", "待办", "本轮结束", "任务执行中", "已取消"])
+    assert.equal(
+      await page.getByText(label, { exact: true }).count(),
+      0,
+      "board shows only three status labels",
+    );
+  for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {
+    await page.evaluate((value) => (document.documentElement.className = value), theme);
+    await page.screenshot({
+      path: join(
+        artifacts,
+        theme.includes("dark") ? "three-status-desktop-dark.png" : "three-status-desktop-light.png",
+      ),
+      animations: "disabled",
+    });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await choose("失败");
+  assert.equal(await groups.count(), 1);
+  assert.ok((await page.locator('[data-board-column="error"]').boundingBox()).x >= 0);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({
+    path: join(artifacts, "three-status-mobile-failed.png"),
+    animations: "disabled",
+  });
+  await choose("已完成");
+  assert.equal(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("zcode-agent-board:v1")).view),
+    "completed",
+  );
+  assert.equal(await page.locator("[data-board-card]").count(), 2);
+}

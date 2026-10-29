@@ -1,11 +1,11 @@
-import { AgentBoardCard, boardStatusColors as colors } from "./AgentBoardCard.js";
+import { AgentBoardGroups } from "./AgentBoardGroups.js";
 import { AgentBoardTrackingDialog } from "./AgentBoardTrackingDialog.js";
 import { AgentBoardSourcePicker } from "./AgentBoardSourcePicker.js";
 import { AgentBoardDetails } from "./AgentBoardDetails.js";
 import { useMemo, useState } from "react";
 import { useStore } from "zustand";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { ChevronDown, Circle, Folder, LayoutGrid, Plus, Search, ListFilter } from "lucide-react";
+import { ChevronDown, Folder, LayoutGrid, Plus, Search, ListFilter } from "lucide-react";
 import { toast } from "@/components/ui/toast.js";
 import { Button } from "@/components/ui/button.js";
 import { agentBoardStore } from "@/store/agentBoardStore.js";
@@ -13,14 +13,15 @@ import { useAgentBoardData } from "@/hooks/useAgentBoardData.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
 import { logger } from "@/logger.js";
 import {
-  BOARD_STATUSES,
+  BOARD_DISPLAY_STATUSES,
+  boardDisplayStatus,
   matchesBoardView,
   matchesBoardTracking,
   type BoardItem,
   type BoardView,
 } from "./agentBoardModel.js";
 import type { BoardConversationOptions } from "./AgentBoardConversation.js";
-const VIEWS: BoardView[] = ["all", "active", "attention", "starred", "archived"];
+const VIEWS: BoardView[] = ["all", "active", "completed", "failed", "starred", "archived"];
 type Props = {
   workspaceTabs: readonly Omit<WorkspaceTabState, "id" | "kind">[];
   conversationOptions?: BoardConversationOptions;
@@ -76,7 +77,12 @@ export function AgentBoardView({
     [trackedItems, preferences.category],
   );
   const groupedProjects = realProjects.filter((p) =>
-    scopeItems.some((item) => item.projectKey === p.key),
+    scopeItems.some(
+      (item) =>
+        item.kind !== "work-task" &&
+        item.workspacePurpose !== "conversation" &&
+        item.projectKey === p.key,
+    ),
   );
   const selected = items.find((item) => item.key === selectedKey);
   const project = projects.find((p) => p.key === preferences.project);
@@ -100,14 +106,14 @@ export function AgentBoardView({
     preferences.category !== "all" ||
     groupedProjects.length > 6;
   const columns = byStatus
-    ? BOARD_STATUSES.filter(
-        (status) =>
-          (status !== "todo" && status !== "review") ||
-          scopeItems.some((item) => item.kind === "work-task"),
+    ? BOARD_DISPLAY_STATUSES.filter((status) =>
+        ["active", "completed", "failed", "attention"].includes(preferences.view)
+          ? filtered.some((item) => boardDisplayStatus(item) === status)
+          : true,
       ).map((status) => ({
         key: status,
         label: t(`status.${status}`),
-        items: filtered.filter((item) => item.status === status),
+        items: filtered.filter((item) => boardDisplayStatus(item) === status),
       }))
     : [
         ...(scopeItems.some((item) => item.kind === "work-task")
@@ -152,7 +158,7 @@ export function AgentBoardView({
   };
   return (
     <section
-      className="flex h-full min-h-0 flex-col bg-background text-ui-base"
+      className="flex h-full min-h-0 flex-col bg-background text-ui-base text-foreground"
       data-testid="agent-board"
     >
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-4 md:px-6">
@@ -273,40 +279,14 @@ export function AgentBoardView({
           {t("empty")}
         </div>
       ) : null}
-      <div
-        className="flex min-h-0 flex-1 gap-4 overflow-x-auto px-4 py-5 md:px-6"
-        data-testid="agent-board-columns"
-      >
-        {columns.map((column) => (
-          <section
-            key={column.key}
-            className="flex min-h-0 w-72 shrink-0 flex-col md:flex-1 md:basis-60 md:min-w-60"
-            data-board-column={column.key}
-          >
-            <h2 className="mb-3 flex items-center gap-2 px-1 font-medium">
-              <Circle
-                className={`size-3 ${byStatus ? colors[column.key as keyof typeof colors] : "text-foreground-subtle"}`}
-              />
-              <span className="truncate">{column.label}</span>
-              <span className="ml-auto text-ui-caption text-foreground-subtlest">
-                {column.items.length}
-              </span>
-            </h2>
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-4">
-              {column.items.map((item) => (
-                <AgentBoardCard
-                  key={item.key}
-                  item={item}
-                  projectLabel={projects.find((p) => p.key === item.projectKey)?.label}
-                  busy={busy}
-                  onOpen={() => setSelectedKey(item.key)}
-                  onPin={() => void run(item, "pin")}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      <AgentBoardGroups
+        columns={columns}
+        byStatus={byStatus}
+        projects={projects}
+        busy={busy}
+        onOpen={(item) => setSelectedKey(item.key)}
+        onPin={(item) => void run(item, "pin")}
+      />
       {preferences.pickerOpen ? (
         <AgentBoardSourcePicker
           projects={projects}

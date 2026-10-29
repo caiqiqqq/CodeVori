@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button.js";
 import { Checkbox } from "@/components/ui/checkbox.js";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
 import {
+  boardDisplayStatus,
   matchesBoardTracking,
   type BoardItem,
   type BoardProject,
@@ -16,7 +17,7 @@ function toggleKey(keys: string[], key: string, checked: boolean) {
 
 export function AgentBoardTrackingDialog({
   projects,
-  items,
+  items: allItems,
   tracking,
   onSave,
   onClose,
@@ -32,6 +33,8 @@ export function AgentBoardTrackingDialog({
   const [draft, setDraft] = useState(tracking);
   const [search, setSearch] = useState("");
   const query = search.trim().toLocaleLowerCase();
+  // 已完成待办不再是跟踪候选，搜索和计数也复用此投影；待验收回执仍需用户处理。
+  const items = allItems.filter((item) => item.kind !== "work-task" || item.status !== "completed");
   const groups = [
     {
       key: "work-tasks",
@@ -183,7 +186,7 @@ export function AgentBoardTrackingDialog({
                       <span className="min-w-0">
                         <span className="line-clamp-2">{item.title || t("untitled")}</span>
                         <span className="text-ui-caption text-foreground-subtle">
-                          {item.agent} · {t(`status.${item.status}`)}
+                          {item.agent} · {t(`status.${boardDisplayStatus(item)}`)}
                           {item.archived ? ` · ${t("view.archived")}` : ""}
                         </span>
                       </span>

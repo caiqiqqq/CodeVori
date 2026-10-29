@@ -1,3 +1,4 @@
+import { exerciseAgentBoardLayout } from "./agentBoardLayoutScenario.mjs";
 import { agentBoardFixture } from "./agentBoardFixture.mjs";
 import { exerciseAgentBoardWorkTasks } from "./agentBoardWorkTasksScenario.mjs";
 // Real board components/data hooks and command routing; synthetic Host and chat pane.
@@ -58,8 +59,8 @@ try {
   await page.waitForFunction(() => document.querySelectorAll("[data-board-card]").length === 25);
   assert.equal(
     await page.locator("[data-board-column]").count(),
-    5,
-    "24 projects use 5 status columns",
+    3,
+    "24 projects use only 3 display status columns",
   );
   const localConversation = page
     .locator("article")
@@ -94,8 +95,9 @@ try {
   await page.keyboard.press("Escape");
   await page.getByRole("dialog").waitFor({ state: "hidden" });
   await page.screenshot({ path: join(artifacts, "desktop-light.png"), fullPage: true });
-  await page.getByRole("tab", { name: /需关注/ }).click();
-  assert.equal(await page.locator("[data-board-card]").count(), 1);
+  assert.equal(await page.getByRole("tab", { name: /需关注/ }).count(), 0);
+  await page.getByRole("tab", { name: /进行中/ }).click();
+  assert.equal(await page.locator("[data-board-card]").count(), 24);
   await page.getByRole("tab", { name: /全部/ }).click();
   await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("Remote");
   assert.equal(await page.locator("[data-board-card]").count(), 3);
@@ -142,13 +144,13 @@ try {
   await page.evaluate(() => window.__board.update(0, { liveStatus: "waiting", updatedAt: 2100 }));
   await page.waitForFunction(() =>
     document
-      .querySelector('[data-board-column="waiting"]')
+      .querySelector('[data-board-column="running"]')
       ?.textContent.includes("Remote API session"),
   );
   await page.evaluate(() => window.__board.update(0, { liveStatus: "completed", updatedAt: 2100 }));
   await page.waitForFunction(() =>
     document
-      .querySelector('[data-board-column="idle"]')
+      .querySelector('[data-board-column="running"]')
       ?.textContent.includes("Remote API session"),
   );
   const nativeCard = page
@@ -360,6 +362,7 @@ try {
   );
 
   await exerciseAgentBoardWorkTasks(page, { manage, save, pane, artifacts });
+  await exerciseAgentBoardLayout(page, artifacts);
   assert.deepEqual(errors, []);
   console.log(
     "PASS: real board/hooks; 24 projects; identity routing; API/ACP completion/archive; six-pin limit; search; desktop themes; mobile drawer; new session; work-task selection, scoped conversation, acceptance failure/retry, archive/read-only. Screenshots: " +
