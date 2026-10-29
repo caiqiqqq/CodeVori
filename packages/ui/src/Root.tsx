@@ -79,6 +79,7 @@ import { useSettings, WORKSPACE_ALIASES_CHANGED_CHANNEL } from "@/hooks/useSetti
 import { CLOSE_ACTIVE_CONTEXT_REQUEST_EVENT } from "@/lib/closeActiveContext.js";
 import { AssistantCodeCommentFeatureProvider } from "@/AssistantCodeCommentFeatureProvider.js";
 import { WorkTaskNotifications } from "@/work-tasks/WorkTaskNotifications.js";
+import { RepositoryIssueNotifications } from "@/repository-panel/RepositoryIssueNotifications.js";
 import { BotWorkspaceNotifications } from "@/root/BotWorkspaceNotifications.js";
 import {
   disposeConversationTelemetrySupervisors,
@@ -1039,6 +1040,7 @@ function RootInner({
   return (
     <RootShell>
       <WorkTaskNotifications projects={windowWorkspaceTabs} />
+      <RepositoryIssueNotifications projects={windowWorkspaceTabs} />
       <BotWorkspaceNotifications projects={windowWorkspaceTabs} />
       {rootModelSelectionErrorNode}
       {remoteConnectionDialog}

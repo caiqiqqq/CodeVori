@@ -3068,6 +3068,7 @@ const zhCN: Record<string, string> = {
   "notification.taskWaiting": "任务等待你的确认",
   "notification.taskReview": "任务等待你的审阅",
   "notification.completed": "任务已完成",
+  "notification.newRepositoryIssue": "新增仓库议题",
   "notification.completedBody": "任务已完成",
   "notification.error": "任务出错",
   "notification.permissionRequired": "需要你的确认",

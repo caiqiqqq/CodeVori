@@ -13,7 +13,7 @@ import {
   type RepositoryIssueReadSource,
 } from "./repositoryIssueReadModel.js";
 
-export function useRepositoryIssueCounts(projects: Parameters<typeof workTaskSidebarScopes>[0]) {
+export function useRepositoryIssueSources(projects: Parameters<typeof workTaskSidebarScopes>[0]) {
   const baseServices = useBaseWorkspaceServices();
   const sessionsById = useRemoteWorkspaceSessionStore((state) => state.sessionsById);
   const sessionIdByWorkspaceIdentity = useRemoteWorkspaceSessionStore(
@@ -24,7 +24,7 @@ export function useRepositoryIssueCounts(projects: Parameters<typeof workTaskSid
   );
   const remotes = useStore(repositoryNavigationStore, (state) => state.remotes);
   const scopes = useMemo(() => workTaskSidebarScopes(projects), [projects]);
-  const combined = useMemo(() => {
+  return useMemo(() => {
     const batches = new Map<IWorkTaskService, RepositoryIssueProject[]>();
     const sources: RepositoryIssueReadSource[] = [];
     for (const { scope } of scopes) {
@@ -56,7 +56,7 @@ export function useRepositoryIssueCounts(projects: Parameters<typeof workTaskSid
         error: null,
         projects: batch,
       });
-    return combineRepositoryIssueReads(sources);
+    return sources;
   }, [
     baseServices,
     sessionsById,
@@ -65,5 +65,10 @@ export function useRepositoryIssueCounts(projects: Parameters<typeof workTaskSid
     scopes,
     remotes,
   ]);
+}
+
+export function useRepositoryIssueCounts(projects: Parameters<typeof workTaskSidebarScopes>[0]) {
+  const sources = useRepositoryIssueSources(projects);
+  const combined = useMemo(() => combineRepositoryIssueReads(sources), [sources]);
   return useSyncExternalStore(combined.subscribe, combined.getSnapshot, combined.getSnapshot);
 }
