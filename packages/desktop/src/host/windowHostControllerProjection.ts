@@ -50,6 +50,7 @@ export interface WindowHostControllerSessionOverlay {
 }
 
 export type WindowHostControllerMutation =
+  | { kind: "board-completion"; completed: boolean; expectedUpdatedAt: number }
   | { kind: "pin"; pinned: boolean }
   | { kind: "archive"; archived: boolean }
   | { kind: "delete" }
@@ -502,6 +503,17 @@ export function createWindowHostControllerProjection(options: { createId: () => 
           throw new Error("远程 source 当前离线，禁止列表写操作");
         }
         throw new Error("本地 source 当前不可用");
+      }
+      if (mutation.kind === "board-completion" && mutation.completed) {
+        const row = source.rows.get(taskKey(address));
+        // Host 实时投影拦住待交互/后台工作与迟到确认；不能只靠 Renderer 禁用按钮。
+        if (
+          !row ||
+          ["running", "waiting"].includes(row.liveStatus) ||
+          row.activity?.hasBackgroundWork ||
+          row.meta.updatedAt !== mutation.expectedUpdatedAt
+        )
+          throw new Error("Conversation is active or changed");
       }
       return source.mutate(address, mutation);
     },

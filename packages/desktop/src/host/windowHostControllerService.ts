@@ -243,6 +243,13 @@ export function createWindowHostControllerRuntime(options: {
     const service = current.taskService;
     const base = mutationParams(address);
     switch (mutation.kind) {
+      case "board-completion":
+        await service.setTaskBoardCompleted({
+          ...base,
+          completed: mutation.completed,
+          expectedUpdatedAt: mutation.expectedUpdatedAt,
+        });
+        break;
       case "pin":
         await service.setTaskPinned({ ...base, pinned: mutation.pinned });
         break;

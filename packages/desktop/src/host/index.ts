@@ -1896,6 +1896,7 @@ function createControllerRoutedTaskService(
       workspaceIdentity?: string;
     },
     mutation:
+      | { kind: "board-completion"; completed: boolean; expectedUpdatedAt: number }
       | { kind: "pin"; pinned: boolean }
       | { kind: "archive"; archived: boolean }
       | { kind: "delete" }
@@ -1914,6 +1915,17 @@ function createControllerRoutedTaskService(
 
   return new Proxy(base, {
     get(target, property, receiver) {
+      if (property === "setTaskBoardCompleted") {
+        return async (params: Parameters<IZCodeTaskService["setTaskBoardCompleted"]>[0]) => {
+          const meta = await route(params, {
+            kind: "board-completion",
+            completed: params.completed,
+            expectedUpdatedAt: params.expectedUpdatedAt,
+          });
+          if (!meta) throw new Error("completion mutation 后 task 投影缺失");
+          return meta;
+        };
+      }
       if (property === "setTaskPinned") {
         return async (params: Parameters<IZCodeTaskService["setTaskPinned"]>[0]) => {
           const meta = await route(params, { kind: "pin", pinned: params.pinned });

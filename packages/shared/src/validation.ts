@@ -1210,6 +1210,7 @@ export const zcodeTaskTargetSchema = zcodeTaskGoalSchema;
 export const zcodeTaskTargetChangedPatchSchema = zcodeTaskGoalChangedPatchSchema;
 
 export const zcodeTaskMetaSchema = z.object({
+  boardCompletedAt: z.number().finite().nonnegative().optional(),
   taskId: nonEmptyStringSchema,
   traceId: nonEmptyStringSchema,
   title: z.string(),

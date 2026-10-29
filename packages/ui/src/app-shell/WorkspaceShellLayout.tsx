@@ -135,6 +135,11 @@ const RepositoryPanel = lazy(() =>
     default: module.RepositoryPanel,
   })),
 );
+const AgentBoardPanel = lazy(() =>
+  import("@/agent-board/AgentBoardPanel.js").then((module) => ({
+    default: module.AgentBoardPanel,
+  })),
+);
 const WorkTasksPanel = lazy(() =>
   import("@/work-tasks/WorkTasksPanel.js").then((module) => ({ default: module.WorkTasksPanel })),
 );
@@ -251,6 +256,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   handleOpenPluginStore,
   handleOpenRepository,
   handleOpenWorkTasks,
+  handleOpenAgentBoard,
   handleManageInstalledPlugins,
   onConnectRemote,
   onSelectRemoteProject,
@@ -2067,6 +2073,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                     pluginStoreActive={workspaceMainView === "plugin-store"}
                     onOpenRepository={() => handleOpenRepository()}
                     repositoryActive={workspaceMainView === "repository"}
+                    onOpenAgentBoard={handleOpenAgentBoard}
+                    agentBoardActive={workspaceMainView === "agent-board"}
                     onOpenWorkTasks={() => handleOpenWorkTasks()}
                     workTasksActive={workspaceMainView === "work-tasks"}
                     onFileTreeOpenChange={setIsSidebarFileTreeOpen}
@@ -2295,6 +2303,66 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                 />
                               </div>
                             </div>
+                          </AutomationsMainBreadcrumbFrame>
+                        </main>
+                      ) : workspaceMainView === "agent-board" ? (
+                        <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
+                          <AutomationsMainBreadcrumbFrame
+                            isDesktop={Boolean(isDesktop)}
+                            sectionLabel={intl.formatMessage({ id: "agentBoard.title" })}
+                            ariaLabel={intl.formatMessage({ id: "agentBoard.title" })}
+                          >
+                            <ScopedErrorBoundary
+                              scope="agent-board-main"
+                              resetKeys={workspaceOnlyResetKeys}
+                              variant="panel"
+                              className="h-full min-h-0"
+                            >
+                              <Suspense
+                                fallback={
+                                  <div role="status" className="p-6 text-ui-base">
+                                    {intl.formatMessage({ id: "agentBoard.loading" })}
+                                  </div>
+                                }
+                              >
+                                <AgentBoardPanel
+                                  workspaceTabs={workspaceTabs}
+                                  onCreateSession={(tab) =>
+                                    handleCreateProjectDraft(
+                                      tab.workspacePath,
+                                      tab.workspaceIdentity,
+                                    )
+                                  }
+                                  onOpenSession={(item) => {
+                                    if (item.kind === "acp") handleSelectAcpSession(item.session);
+                                    else
+                                      handleSelectTaskInChat(
+                                        item.workspacePath,
+                                        item.task.taskId,
+                                        item.workspaceIdentity,
+                                        item.remoteSessionId,
+                                      );
+                                  }}
+                                  conversationOptions={{
+                                    isDesktop: Boolean(isDesktop),
+                                    onOpenBrowserUrl: handleOpenBrowserUrl,
+                                    onOpenCodeViewer: handleOpenCodeViewer,
+                                    onOpenFileLink: handleOpenMarkdownFileLink,
+                                    onOpenBackgroundBash: handleOpenBackgroundBash,
+                                    onOpenSubagentSession: handleOpenSubagentSession,
+                                    onOpenSubagentDirectory: handleOpenSubagentDirectory,
+                                    onSyncSubagentSessionTabs: handleSyncSubagentSessionTabs,
+                                    onOpenSelectionSideChat: handleOpenSelectionSideChat,
+                                    onOpenPlanDetail: handleOpenPlanDetail,
+                                    onOpenWorkflowRun: handleOpenWorkflowRun,
+                                    onOpenWorkflowArtifact: handleOpenWorkflowArtifact,
+                                    onOpenWorkflowRunDirectory: handleOpenWorkflowRunDirectory,
+                                    onOpenWorkflowActorSession: handleOpenWorkflowActorSession,
+                                    onOpenWorkflowWorkspace: handleOpenWorkflowWorkspace,
+                                  }}
+                                />
+                              </Suspense>
+                            </ScopedErrorBoundary>
                           </AutomationsMainBreadcrumbFrame>
                         </main>
                       ) : workspaceMainView === "work-tasks" ? (

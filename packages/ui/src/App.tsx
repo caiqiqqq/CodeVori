@@ -864,6 +864,10 @@ export function App({
   const handleNavigateToRepositoryMain = useCallback(() => {
     setWorkspaceMainView("repository");
   }, []);
+  const handleNavigateToAgentBoardMain = useCallback(() => {
+    preserveNextSettingsExit();
+    setWorkspaceMainView("agent-board");
+  }, [preserveNextSettingsExit]);
   const handleNavigateToWorkTasksMain = useCallback(() => {
     // 设置页显式打开待办时，即使进入设置前也是待办页，也不能被退出逻辑重置为聊天。
     preserveNextSettingsExit();
@@ -879,6 +883,7 @@ export function App({
     handleOpenPluginStore,
     handleOpenRepository,
     handleOpenWorkTasks,
+    handleOpenAgentBoard,
     handleTaskNavBack,
     handleTaskNavForward,
     canGoBack,
@@ -895,6 +900,7 @@ export function App({
     onNavigateToPluginStore: handleNavigateToPluginStoreMain,
     onNavigateToRepository: handleNavigateToRepositoryMain,
     onNavigateToWorkTasks: handleNavigateToWorkTasksMain,
+    onNavigateToAgentBoard: handleNavigateToAgentBoardMain,
   });
   const handleOpenPluginStoreForScope = useCallback(
     (_target: PluginStoreOpenTarget = {}) => {
@@ -1154,6 +1160,7 @@ export function App({
         handleOpenAutomations={handleOpenAutomations}
         handleOpenPluginStore={handleOpenPluginStoreForScope}
         handleOpenRepository={handleOpenRepository}
+        handleOpenAgentBoard={handleOpenAgentBoard}
         handleOpenWorkTasks={handleOpenWorkTasks}
         handleManageInstalledPlugins={handleManageInstalledPlugins}
         onConnectRemote={onConnectRemote}

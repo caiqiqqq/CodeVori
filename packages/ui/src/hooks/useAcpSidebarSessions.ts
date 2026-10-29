@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AcpSession } from "@zcode/shared";
 import type { IServiceAccessor } from "@zcode/services";
 import { projectAcpSidebarSessions, type AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
@@ -23,6 +23,9 @@ function sameSidebarRows(
         previous.unreadAt === row.unreadAt &&
         previous.status === row.status &&
         previous.failed === row.failed &&
+        previous.waiting === row.waiting &&
+        previous.boardCompletedAt === row.boardCompletedAt &&
+        previous.preview === row.preview &&
         previous.createdAt === row.createdAt &&
         previous.updatedAt === row.updatedAt
       );
@@ -31,11 +34,16 @@ function sameSidebarRows(
 }
 
 /** Sidebar observes each resolved target Host; it owns no accepted ACP state. */
-export function useAcpSidebarSessions(
+export function useAcpSidebarSessionState(
   workspaceTabs: Pick<WorkspaceTabState, "workspacePath" | "workspaceIdentity">[],
   serviceLookup: Map<string, { services: IServiceAccessor; remoteSessionId?: string }>,
-): AcpSidebarSession[] {
+  retainDisconnected = false,
+) {
   const [byWorkspace, setByWorkspace] = useState<Record<string, AcpSidebarSession[]>>({});
+  const [retry, setRetry] = useState(0);
+  const refresh = useCallback(() => setRetry((value) => value + 1), []);
+  const [pending, setPending] = useState(0);
+  const [error, setError] = useState<unknown>(null);
   const targets = useMemo(() => {
     const unique = new Map<
       string,
@@ -62,7 +70,18 @@ export function useAcpSidebarSessions(
 
   useEffect(() => {
     let live = true;
-    setByWorkspace({});
+    // 看板保留断连目标的最后可信行；原侧栏保持切换目标时重新读取的行为。
+    if (!retainDisconnected) setByWorkspace({});
+    else {
+      const keys = new Set(
+        workspaceTabs.map((tab) => buildTaskWorkspaceKey(tab.workspacePath, tab.workspaceIdentity)),
+      );
+      setByWorkspace((previous) =>
+        Object.fromEntries(Object.entries(previous).filter(([key]) => keys.has(key))),
+      );
+    }
+    setPending(targets.size);
+    setError(null);
     const subscriptions = [...targets].map(([key, { services, ...workspace }]) => {
       const snapshots = new Map<string, AcpSession>();
       const removed = new Set<string>();
@@ -104,7 +123,13 @@ export function useAcpSidebarSessions(
           publish();
         })
         .catch((error: unknown) => {
-          if (live) logger.warn("[acp-sidebar] 读取智能体会话失败", { error });
+          if (live) {
+            setError(error);
+            logger.warn("[acp-sidebar] 读取智能体会话失败", { error });
+          }
+        })
+        .finally(() => {
+          if (live) setPending((count) => Math.max(0, count - 1));
         });
       return subscription;
     });
@@ -112,7 +137,19 @@ export function useAcpSidebarSessions(
       live = false;
       subscriptions.forEach((subscription) => subscription.dispose());
     };
-  }, [targets]);
+  }, [targets, retry, retainDisconnected, workspaceTabs]);
 
-  return useMemo(() => Object.values(byWorkspace).flat(), [byWorkspace]);
+  const rows = useMemo(() => {
+    const keys = new Set(
+      workspaceTabs.map((tab) => buildTaskWorkspaceKey(tab.workspacePath, tab.workspaceIdentity)),
+    );
+    return Object.entries(byWorkspace).flatMap(([key, rows]) => (keys.has(key) ? rows : []));
+  }, [byWorkspace, workspaceTabs]);
+  return { rows, loading: pending > 0, error, refresh };
+}
+
+export function useAcpSidebarSessions(
+  ...args: Parameters<typeof useAcpSidebarSessionState>
+): AcpSidebarSession[] {
+  return useAcpSidebarSessionState(...args).rows;
 }

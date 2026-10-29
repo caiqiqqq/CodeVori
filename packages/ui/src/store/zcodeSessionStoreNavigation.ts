@@ -12,6 +12,7 @@ import {
   pushPluginStoreNavEntry,
   pushRepositoryNavEntry,
   pushWorkTasksNavEntry,
+  pushAgentBoardNavEntry,
   removeTaskFromHistory,
   type AutomationsNavigationTab,
   type WorkspaceNavEntry,
@@ -71,6 +72,15 @@ export function createNavigationSlice(set: SetFn, get: GetFn) {
       }));
     },
 
+    taskNavPushAgentBoard: (workspacePath: string, workspaceIdentity?: string) => {
+      set((state) => ({
+        taskNavHistory: pushAgentBoardNavEntry(
+          state.taskNavHistory,
+          workspacePath,
+          workspaceIdentity,
+        ),
+      }));
+    },
     taskNavPushWorkTasks: (workspacePath: string, workspaceIdentity?: string) => {
       set((state) => ({
         taskNavHistory: pushWorkTasksNavEntry(

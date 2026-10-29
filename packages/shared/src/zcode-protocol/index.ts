@@ -3790,3 +3790,15 @@ export { localTtftFactsSchema } from "../localTtft.js";
 export * from "./acp.js";
 export * from "./acpPlugin.js";
 export * from "./acpWorkflow.js";
+
+/** App-owned completion marker; never changes the runtime turn outcome. */
+export const zcodeTaskBoardCompletionSchema = z
+  .object({
+    taskId: z.string().trim().min(1),
+    workspacePath: z.string().trim().min(1),
+    workspaceIdentity: z.string().trim().min(1).optional(),
+    completed: z.boolean(),
+    expectedUpdatedAt: z.number().finite().nonnegative(),
+  })
+  .strict();
+export type ZCodeTaskBoardCompletion = z.infer<typeof zcodeTaskBoardCompletionSchema>;

@@ -18,6 +18,9 @@ export interface AcpSidebarSession {
   status: AcpSession["status"];
   /** Host summary projection; lightweight navigation targets may omit it. */
   failed?: boolean;
+  waiting?: boolean;
+  boardCompletedAt?: number;
+  preview?: string;
   workspacePath: string;
   workspaceIdentity?: string;
   remoteSessionId?: string;
@@ -55,6 +58,9 @@ export function projectAcpSidebarSessions(
         agent: session.agent,
         title: session.title,
         pinned: session.pinned,
+        boardCompletedAt: session.boardCompletedAt,
+        waiting: Boolean(session.pendingPermission || session.pendingElicitation),
+        preview: session.entries.findLast((entry) => entry.kind === "user")?.text?.slice(0, 512),
         archived: session.archived,
         deletionState: session.deletionState,
         unreadAt: session.unreadAt,

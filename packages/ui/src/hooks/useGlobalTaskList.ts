@@ -110,6 +110,7 @@ export function useGlobalTaskList(params: {
   );
   const [items, setItems] = useState<GlobalTaskListItem[]>([]);
   const itemsRef = useRef<GlobalTaskListItem[]>(items);
+  const [error, setError] = useState<unknown>(null);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(workspaceScopes.length > 0);
@@ -148,11 +149,13 @@ export function useGlobalTaskList(params: {
       }
       if (!controllerRegistry) {
         // 原子切换后 base attachment 必须提供 Controller；缺失代表 Host/Renderer 版本不一致。
+        setError(new Error("Window Host Controller unavailable"));
         logger.error("[useGlobalTaskList] window Host Controller channel unavailable");
         setLoading(false);
         return;
       }
       setLoading(true);
+      setError(null);
       try {
         const result = await controllerRegistry.list(queryKey, version, query);
         if (requestSerialRef.current !== requestSerial) {
@@ -175,6 +178,7 @@ export function useGlobalTaskList(params: {
       } catch (error) {
         if (requestSerialRef.current === requestSerial) {
           // Controller 查询失败时保留最后可信列表，避免单 source 异常清空其他 workspace。
+          setError(error);
           logger.error(`[useGlobalTaskList] Controller 加载 ${params.kind} 列表失败`, error);
         }
       } finally {
@@ -210,6 +214,7 @@ export function useGlobalTaskList(params: {
   const hasRemoteScope = params.workspaceTabs.some((tab) => Boolean(tab.workspaceIdentity));
   return {
     items,
+    error,
     total,
     hasMore,
     loading,

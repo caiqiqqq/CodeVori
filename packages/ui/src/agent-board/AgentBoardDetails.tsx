@@ -1,0 +1,115 @@
+import { lazy, Suspense } from "react";
+import { Archive, ArrowUpRight, Check, X } from "lucide-react";
+import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { Button } from "@/components/ui/button.js";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
+import type { BoardItem, BoardProject } from "./agentBoardModel.js";
+import type { BoardAction } from "@/hooks/useAgentBoardData.js";
+import type { BoardConversationOptions } from "./AgentBoardConversation.js";
+const Conversation = lazy(() =>
+  import("./AgentBoardConversation.js").then((m) => ({ default: m.AgentBoardConversation })),
+);
+export function AgentBoardDetails({
+  selected,
+  projects,
+  busy,
+  run,
+  options,
+  onClose,
+  onOpenSession,
+}: {
+  selected: BoardItem | undefined;
+  projects: BoardProject[];
+  busy: boolean;
+  run(item: BoardItem, action: BoardAction): Promise<void>;
+  options?: BoardConversationOptions;
+  onClose(): void;
+  onOpenSession(item: BoardItem): void;
+}) {
+  const { intl } = useZCodeIntl();
+  const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
+  return (
+    <Dialog
+      open={Boolean(selected)}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        className="inset-y-0 right-0 left-auto flex h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:max-w-3xl"
+      >
+        {selected ? (
+          <>
+            <div className="flex items-start justify-between gap-2 border-b border-border p-4">
+              <div className="min-w-0">
+                <DialogTitle className="truncate">{selected.title}</DialogTitle>
+                <DialogDescription className="truncate">
+                  {projects.find((p) => p.key === selected.projectKey)?.label} · {selected.agent} ·{" "}
+                  {t(`status.${selected.status}`)}
+                  {!selected.online ? ` · ${t("offline")}` : ""}
+                </DialogDescription>
+                <p
+                  className="truncate text-ui-caption text-foreground-subtlest"
+                  title={selected.workspaceIdentity ?? selected.workspacePath}
+                >
+                  {selected.workspaceIdentity ?? selected.workspacePath}
+                </p>
+              </div>
+              <Button variant="ghost" size="icon" aria-label={t("close")} onClick={onClose}>
+                <X className="size-4" />
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2 border-b border-border px-4 py-2">
+              <Button
+                variant="outline"
+                disabled={
+                  busy ||
+                  !selected.online ||
+                  selected.archived ||
+                  selected.status === "running" ||
+                  selected.status === "waiting"
+                }
+                onClick={() => void run(selected, "completion")}
+              >
+                <Check className="size-4" />
+                {selected.status === "completed" ? t("reopen") : t("complete")}
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={
+                  busy ||
+                  !selected.online ||
+                  (!selected.archived &&
+                    (selected.status === "running" || selected.status === "waiting"))
+                }
+                onClick={() => void run(selected, "archive")}
+              >
+                <Archive className="size-4" />
+                {selected.archived ? t("restore") : t("archive")}
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={!selected.online}
+                onClick={() => onOpenSession(selected)}
+              >
+                <ArrowUpRight className="size-4" />
+                {t("openSession")}
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <Suspense fallback={<p className="p-4">{t("loading")}</p>}>
+                <Conversation
+                  key={selected.key}
+                  item={selected}
+                  options={options}
+                  onClose={onClose}
+                />
+              </Suspense>
+            </div>
+          </>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}

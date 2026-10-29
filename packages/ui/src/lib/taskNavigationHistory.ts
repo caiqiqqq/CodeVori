@@ -41,12 +41,33 @@ export interface WorkTasksNavEntry extends WorkspaceNavEntryBase {
   kind: "work-tasks";
 }
 
+export interface AgentBoardNavEntry extends WorkspaceNavEntryBase {
+  kind: "agent-board";
+}
+
+export function isAgentBoardNavEntry(entry: WorkspaceNavEntry): entry is AgentBoardNavEntry {
+  return entry.kind === "agent-board";
+}
+
+export function pushAgentBoardNavEntry(
+  history: TaskNavigationHistory,
+  workspacePath: string,
+  workspaceIdentity?: string,
+): TaskNavigationHistory {
+  return pushEntry(history, {
+    kind: "agent-board",
+    workspacePath,
+    ...(workspaceIdentity?.trim() ? { workspaceIdentity: workspaceIdentity.trim() } : {}),
+  });
+}
+
 export type WorkspaceNavEntry =
   | TaskNavEntry
   | AutomationsNavEntry
   | PluginStoreNavEntry
   | RepositoryNavEntry
-  | WorkTasksNavEntry;
+  | WorkTasksNavEntry
+  | AgentBoardNavEntry;
 
 export interface TaskNavigationHistory {
   entries: WorkspaceNavEntry[];

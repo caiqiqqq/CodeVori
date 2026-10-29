@@ -1352,6 +1352,8 @@ export class TaskIndexRepo {
           // 同步 agent snapshot 时保留已覆盖标题，避免后台状态刷新把用户标题冲掉。
           title: titleOverridden && existingMeta ? existingMeta.title : params.meta.title,
           titleOverridden,
+          // 完成确认属于 app 元数据，迟到的 CLI snapshot 不得覆盖确认或重新打开。
+          boardCompletedAt: existingMeta ? existingMeta.boardCompletedAt : undefined,
           // turn.completed 会先通过 applyAgentPatch 写入较新的 completed/error。
           // 随后到达的 protocol snapshot 可能仍带较旧 running；如果这里降级 status，
           // 手机 replayable 切回 task 时就会把已完成任务恢复成“工作中”。
@@ -1623,6 +1625,41 @@ export class TaskIndexRepo {
         database.exec("ROLLBACK");
         throw error;
       }
+    });
+  }
+
+  async setBoardCompletion(params: {
+    workspacePath: string;
+    workspaceIdentity?: string;
+    taskId: string;
+    completed: boolean;
+    expectedUpdatedAt: number;
+  }): Promise<ZCodeTaskMeta> {
+    await this.ensureReady();
+    return this.enqueueWrite(params, () => {
+      const row = this.getTaskRow(params);
+      if (!row || row.deleted || rowToMeta(row).deletionState)
+        throw new Error("Conversation unavailable");
+      const meta = rowToMeta(row);
+      // 在同一写队列内校验活动水位，旧页面的确认不能完成另一轮新工作。
+      if (
+        params.completed &&
+        (row.archived ||
+          meta.status === "running" ||
+          meta.pendingInteraction ||
+          meta.updatedAt > params.expectedUpdatedAt)
+      )
+        throw new Error("Conversation changed or is still active; refresh before completing");
+      return this.writeRecord({
+        meta: {
+          ...meta,
+          boardCompletedAt: params.completed ? params.expectedUpdatedAt : undefined,
+        },
+        pinned: row.pinned === 1,
+        archived: row.archived === 1,
+        deleted: false,
+        titleOverridden: row.title_overridden === 1,
+      });
     });
   }
 

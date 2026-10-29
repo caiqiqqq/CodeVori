@@ -8,6 +8,7 @@ import {
   isPluginStoreNavEntry,
   isRepositoryNavEntry,
   isWorkTasksNavEntry,
+  isAgentBoardNavEntry,
   type AutomationsNavigationTab,
   type RepositoryNavEntry,
 } from "@/lib/taskNavigationHistory.js";
@@ -48,6 +49,7 @@ export function useWorkspaceTaskNavigation({
   onNavigateToPluginStore,
   onNavigateToRepository,
   onNavigateToWorkTasks,
+  onNavigateToAgentBoard,
 }: {
   intl: { formatMessage: (descriptor: { id: string }) => string };
   workspaceAbsPath: string;
@@ -57,6 +59,7 @@ export function useWorkspaceTaskNavigation({
   onNavigateToAutomations?: (target: AutomationsNavigationTarget) => void;
   onNavigateToPluginStore?: (target: Omit<AutomationsNavigationTarget, "automationId">) => void;
   onNavigateToRepository?: (target: { workspacePath: string; workspaceIdentity?: string }) => void;
+  onNavigateToAgentBoard?: (target: { workspacePath: string; workspaceIdentity?: string }) => void;
   onNavigateToWorkTasks?: (target: { workspacePath: string; workspaceIdentity?: string }) => void;
 }) {
   // 跨 workspace 选择会先同步切换 tab，但本次 React render 捕获的 ambient
@@ -69,6 +72,7 @@ export function useWorkspaceTaskNavigation({
   const taskNavPushAutomations = useZCodeSessionStore((s) => s.taskNavPushAutomations);
   const taskNavPushPluginStore = useZCodeSessionStore((s) => s.taskNavPushPluginStore);
   const taskNavPushRepository = useZCodeSessionStore((s) => s.taskNavPushRepository);
+  const taskNavPushAgentBoard = useZCodeSessionStore((s) => s.taskNavPushAgentBoard);
   const taskNavPushWorkTasks = useZCodeSessionStore((s) => s.taskNavPushWorkTasks);
   const taskNavGoBack = useZCodeSessionStore((s) => s.taskNavGoBack);
   const taskNavGoForward = useZCodeSessionStore((s) => s.taskNavGoForward);
@@ -286,6 +290,10 @@ export function useWorkspaceTaskNavigation({
       workspaceIdentity,
     ],
   );
+  const handleOpenAgentBoard = useCallback(() => {
+    taskNavPushAgentBoard(workspaceAbsPath, workspaceIdentity);
+    onNavigateToAgentBoard?.({ workspacePath: workspaceAbsPath, workspaceIdentity });
+  }, [taskNavPushAgentBoard, onNavigateToAgentBoard, workspaceAbsPath, workspaceIdentity]);
   const handleOpenWorkTasks = useCallback(
     (target?: { workspacePath: string; workspaceIdentity?: string }) => {
       // 设置页可打开另一项目的待办，导航历史必须使用明确的主项目 scope。
@@ -348,14 +356,19 @@ export function useWorkspaceTaskNavigation({
         entry = taskNavGoBack();
         continue;
       }
-      if (isPluginStoreNavEntry(currentEntry) || isWorkTasksNavEntry(currentEntry)) {
+      if (
+        isPluginStoreNavEntry(currentEntry) ||
+        isWorkTasksNavEntry(currentEntry) ||
+        isAgentBoardNavEntry(currentEntry)
+      ) {
         activateTabByPath(
           currentEntry.workspacePath,
           currentEntry.workspaceIdentity
             ? { workspaceIdentity: currentEntry.workspaceIdentity }
             : undefined,
         );
-        if (isWorkTasksNavEntry(currentEntry)) onNavigateToWorkTasks?.(currentEntry);
+        if (isAgentBoardNavEntry(currentEntry)) onNavigateToAgentBoard?.(currentEntry);
+        else if (isWorkTasksNavEntry(currentEntry)) onNavigateToWorkTasks?.(currentEntry);
         else onNavigateToPluginStore?.(currentEntry);
         return;
       }
@@ -391,6 +404,7 @@ export function useWorkspaceTaskNavigation({
     onNavigateToPluginStore,
     onNavigateToRepository,
     onNavigateToWorkTasks,
+    onNavigateToAgentBoard,
     removeTaskFromNavHistory,
     taskNavGoBack,
     workspaceAbsPath,
@@ -447,14 +461,19 @@ export function useWorkspaceTaskNavigation({
         entry = taskNavGoForward();
         continue;
       }
-      if (isPluginStoreNavEntry(currentEntry) || isWorkTasksNavEntry(currentEntry)) {
+      if (
+        isPluginStoreNavEntry(currentEntry) ||
+        isWorkTasksNavEntry(currentEntry) ||
+        isAgentBoardNavEntry(currentEntry)
+      ) {
         activateTabByPath(
           currentEntry.workspacePath,
           currentEntry.workspaceIdentity
             ? { workspaceIdentity: currentEntry.workspaceIdentity }
             : undefined,
         );
-        if (isWorkTasksNavEntry(currentEntry)) onNavigateToWorkTasks?.(currentEntry);
+        if (isAgentBoardNavEntry(currentEntry)) onNavigateToAgentBoard?.(currentEntry);
+        else if (isWorkTasksNavEntry(currentEntry)) onNavigateToWorkTasks?.(currentEntry);
         else onNavigateToPluginStore?.(currentEntry);
         return;
       }
@@ -489,6 +508,7 @@ export function useWorkspaceTaskNavigation({
     onNavigateToPluginStore,
     onNavigateToRepository,
     onNavigateToWorkTasks,
+    onNavigateToAgentBoard,
     removeTaskFromNavHistory,
     taskNavGoForward,
     workspaceAbsPath,
@@ -510,6 +530,7 @@ export function useWorkspaceTaskNavigation({
     handleOpenPluginStore,
     handleOpenRepository,
     handleOpenWorkTasks,
+    handleOpenAgentBoard,
     handleTaskNavBack,
     handleTaskNavForward,
     canGoBack,
