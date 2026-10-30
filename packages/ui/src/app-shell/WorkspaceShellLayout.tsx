@@ -56,6 +56,7 @@ import {
 import type { AcpAgent } from "@zcode/shared";
 import { useWorktreeDraftSelection } from "@/hooks/useWorktreeDraftSelection.js";
 import { useWorktreeSettingsConversation } from "@/hooks/useWorktreeSettingsConversation.js";
+import { requestWorkTaskConversation } from "@/lib/worktreeSettingsNavigation.js";
 import { ChatEmptyWorkspacePreviewMenu } from "@/ChatEmptyState.js";
 import { DesktopTopOverlay } from "@/DesktopTopOverlay.js";
 import { DesktopWindowFrame } from "@/DesktopWindowFrame.js";
@@ -1500,30 +1501,10 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       workspaceKey,
     ],
   );
-  const handleOpenWorkTaskConversation = useCallback(
-    (task: import("@zcode/shared").WorkTask) => {
-      if (!task.session || !task.worktree || task.workspaceIdentity || task.remoteSessionId) return;
-      // 工作树会话必须先补齐主项目 tab，再复用现有选择入口，才能归在原项目下。
-      tabStoreApi
-        .getState()
-        .ensureWorkspaceTab(task.workspacePath, { workspacePurpose: "project" });
-      if (task.session.kind === "acp" && task.execution.kind === "acp") {
-        handleSelectAcpSession({
-          id: task.session.id,
-          agent: task.execution.agent,
-          title: task.title,
-          status:
-            task.status === "running" || task.status === "awaiting_input" ? "running" : "idle",
-          workspacePath: task.worktree.path,
-          createdAt: task.createdAt,
-          updatedAt: task.updatedAt,
-        });
-      } else {
-        handleSelectTaskInChat(task.worktree.path, task.session.id);
-      }
-    },
-    [handleSelectAcpSession, handleSelectTaskInChat, tabStoreApi],
-  );
+  const handleOpenWorkTaskConversation = useCallback((task: import("@zcode/shared").WorkTask) => {
+    // 原入口直接选择底层 session，会把待办拆成普通对话；统一走已有待办导航意图。
+    requestWorkTaskConversation(task);
+  }, []);
   useDesktopWindowNavigation({
     workspacePath: workspaceAbsPath,
     workspaceIdentity,

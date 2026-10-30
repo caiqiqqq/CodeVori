@@ -130,7 +130,7 @@ import {
 } from "./acpAgentConfigs.js";
 import { projectAcpContextUsage } from "./acpContextUsage.js";
 import type { AcpToolDetails } from "./acpToolDetails.js";
-import { excludeDelegatedAcpSessions, searchAcpSessions } from "./acpSessionSearch.js";
+import { excludeHiddenAcpSessions, searchAcpSessions } from "./acpSessionSearch.js";
 import { createCodexUsageHistoryReader, type CodexUsageHistory } from "./acpNativeUsage.js";
 import { recordAcpPromptUsage, summarizeAcpUsage } from "./acpUsageStats.js";
 import {
@@ -237,8 +237,8 @@ export function createAcpService(
     fetcher?: typeof fetch;
     /** Same Host policy as the management page and API session tools. */
     resolveDynamicWorkflowClientConfig?: () => Promise<DynamicWorkflowClientConfig>;
-    /** Projection-only membership; exact read and internal execution keep child access. */
-    delegatedSessionIds?: (scope: AcpWorkspace) => Promise<string[]>;
+    /** 普通投影排除待办/委派绑定；精确读取与内部执行仍可访问原会话。 */
+    hiddenSessionIds?: (scope: AcpWorkspace) => Promise<string[]>;
     connect?: AcpConnectionFactory;
     agentManager?: AcpAgentManager;
     memoryContext?: ProjectMemoryContext;
@@ -1626,9 +1626,11 @@ export function createAcpService(
       });
   };
   const listVisibleSessions = async (workspace: AcpWorkspace): Promise<AcpSession[]> => {
-    const sessions = await listScopedSessions(workspace);
-    if (!options.delegatedSessionIds) return sessions;
-    return excludeDelegatedAcpSessions(sessions, await options.delegatedSessionIds(workspace));
+    // 修复原因：create 已建连接、待办尚未保存绑定时，内部 list 会保留空会话供执行器访问。
+    // 普通摘要不能沿用此资格，否则创建空档会先把空会话登记成普通对话。
+    const sessions = (await listScopedSessions(workspace)).filter(isAcpHistorySession);
+    if (!options.hiddenSessionIds) return sessions;
+    return excludeHiddenAcpSessions(sessions, await options.hiddenSessionIds(workspace));
   };
   const listAllSessions = async (): Promise<AcpSession[]> => {
     const names = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
@@ -2535,8 +2537,9 @@ export function createAcpService(
             listener(change);
             return;
           }
-          const delegatedSessionIds = options.delegatedSessionIds;
-          if (!delegatedSessionIds) {
+          if (!isAcpHistorySession(change.session)) return;
+          const hiddenSessionIds = options.hiddenSessionIds;
+          if (!hiddenSessionIds) {
             listener({
               kind: "updated",
               session:
@@ -2544,11 +2547,10 @@ export function createAcpService(
             });
             return;
           }
-          // 修复原因：新增会话的 Host 事件可能早于委派绑定写回，历史资格与持久归属
+          // 修复原因：待办和委派会话也发布 Host 事件，历史资格与持久归属
           // 都确认后才向普通列表发布；归属读取失败时宁可保留旧投影。
-          if (!isAcpHistorySession(change.session)) return;
           void (async () => {
-            const hidden = await delegatedSessionIds(workspace);
+            const hidden = await hiddenSessionIds(workspace);
             if (hidden.includes(change.session.id)) return;
             listener({
               kind: "updated",
@@ -2556,7 +2558,7 @@ export function createAcpService(
                 projections.get(change.session.id)?.session ?? summarizeAcpSession(change.session),
             });
           })().catch((error: unknown) =>
-            logger.warn(undefined, "ACP child membership unavailable", { error }),
+            logger.warn(undefined, "ACP hidden session membership unavailable", { error }),
           );
         });
     },
@@ -2616,7 +2618,7 @@ export function createAcpService(
       }
       const visible = await Promise.all(
         [...scopes.values()].map(async ({ scope, sessionIds }) => {
-          const hidden = new Set((await options.delegatedSessionIds?.(scope)) ?? []);
+          const hidden = new Set((await options.hiddenSessionIds?.(scope)) ?? []);
           return sessionIds.some((id) => !hidden.has(id)) ? scope : null;
         }),
       );

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AcpSession } from "@zcode/shared";
-import { excludeDelegatedAcpSessions, searchAcpSessions } from "../src/acp/acpSessionSearch.js";
+import { excludeHiddenAcpSessions, searchAcpSessions } from "../src/acp/acpSessionSearch.js";
 
 test("ACP ordinary projection excludes child before search limit without altering direct history", () => {
   const workspace = { workspacePath: "/project", workspaceIdentity: "one" };
@@ -24,7 +24,7 @@ test("ACP ordinary projection excludes child before search limit without alterin
     }) as AcpSession;
   const child = session("child", 300);
   const ordinary = session("ordinary", 200);
-  const visible = excludeDelegatedAcpSessions([child, ordinary], ["child"]);
+  const visible = excludeHiddenAcpSessions([child, ordinary], ["child"]);
   assert.deepEqual(
     searchAcpSessions(visible, { ...workspace, query: "matching", limit: 1 }).map(
       (item) => item.id,
@@ -32,5 +32,5 @@ test("ACP ordinary projection excludes child before search limit without alterin
     ["ordinary"],
   );
   assert.equal(child.entries[0]?.text, "matching");
-  assert.equal(excludeDelegatedAcpSessions([child, ordinary], []).length, 2);
+  assert.equal(excludeHiddenAcpSessions([child, ordinary], []).length, 2);
 });

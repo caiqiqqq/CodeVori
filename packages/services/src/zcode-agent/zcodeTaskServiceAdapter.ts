@@ -185,7 +185,8 @@ interface CreateZCodeTaskServiceAdapterOptions {
   taskIndexSyncer: ZCodeTaskIndexSyncer;
   settingService?: Pick<ISettingService, "get">;
   cuaProductMcpServerResolver?: CuaProductMcpServerResolver;
-  delegatedSessionIds?: (scope: {
+  /** 目标 Host 的待办/委派归属，只作用于普通列表和搜索，不删除会话。 */
+  hiddenSessionIds?: (scope: {
     workspacePath: string;
     workspaceIdentity?: string;
   }) => Promise<string[]>;
@@ -2349,7 +2350,7 @@ export function createZCodeTaskServiceAdapter(
     },
 
     async listTasks(params): Promise<ZCodeTaskMeta[]> {
-      const excludeTaskIds = await options.delegatedSessionIds?.(params);
+      const excludeTaskIds = await options.hiddenSessionIds?.(params);
       const tasks = await taskIndexRepo.listTaskMetas({
         workspacePath: params.workspacePath,
         workspaceIdentity: params.workspaceIdentity,
@@ -2367,7 +2368,7 @@ export function createZCodeTaskServiceAdapter(
         pinned: true,
         archived: false,
       });
-      if (!options.delegatedSessionIds) return tasks.map((task) => task.taskId);
+      if (!options.hiddenSessionIds) return tasks.map((task) => task.taskId);
       const scopes = new Map(
         tasks.map((task) => [
           JSON.stringify([resolveWorkspaceKey(task), task.workspacePath]),
@@ -2377,8 +2378,7 @@ export function createZCodeTaskServiceAdapter(
       const hidden = new Map(
         await Promise.all(
           [...scopes].map(
-            async ([key, scope]) =>
-              [key, new Set(await options.delegatedSessionIds!(scope))] as const,
+            async ([key, scope]) => [key, new Set(await options.hiddenSessionIds!(scope))] as const,
           ),
         ),
       );
@@ -2393,7 +2393,7 @@ export function createZCodeTaskServiceAdapter(
     },
 
     async listPinnedTasks(params): Promise<ZCodeTaskMeta[]> {
-      const excludeTaskIds = await options.delegatedSessionIds?.(params);
+      const excludeTaskIds = await options.hiddenSessionIds?.(params);
       const tasks = await taskIndexRepo.listTaskMetas({
         workspacePath: params.workspacePath,
         workspaceIdentity: params.workspaceIdentity,
@@ -2417,11 +2417,11 @@ export function createZCodeTaskServiceAdapter(
     // remoteTimelineTaskStore 补充链路；侧栏 5 视图 + remote shard 的无搜索行集合
     // 走上方三个分区读取。workspace 行在客户端用各 endpoint 的 task 行 + session detail 构建。
     async listTaskList(params: ZCodeTaskListQuery): Promise<ZCodeTaskListResult> {
-      const excludedSessions = options.delegatedSessionIds
+      const excludedSessions = options.hiddenSessionIds
         ? (
             await Promise.all(
               params.workspaceScopes.map(async (scope) =>
-                (await options.delegatedSessionIds!(scope)).map((taskId) => ({
+                (await options.hiddenSessionIds!(scope)).map((taskId) => ({
                   workspaceKey: resolveWorkspaceKey(scope),
                   taskId,
                 })),
@@ -2502,7 +2502,7 @@ export function createZCodeTaskServiceAdapter(
     },
 
     async listArchivedTasks(params): Promise<ZCodeTaskMeta[]> {
-      const excludeTaskIds = await options.delegatedSessionIds?.(params);
+      const excludeTaskIds = await options.hiddenSessionIds?.(params);
       const tasks = await taskIndexRepo.listTaskMetas({
         workspacePath: params.workspacePath,
         workspaceIdentity: params.workspaceIdentity,
@@ -2522,7 +2522,7 @@ export function createZCodeTaskServiceAdapter(
             ...scope,
             provider: GLM_PROVIDER,
             archived: true,
-            excludeTaskIds: await options.delegatedSessionIds?.(scope),
+            excludeTaskIds: await options.hiddenSessionIds?.(scope),
           }),
         })),
       );

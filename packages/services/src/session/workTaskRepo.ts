@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- 待办归属查询复用此 Repo 的数据库生命周期，保留同一存储入口。 */
 import {
   beginWorktreeCleanup,
   finishWorktreeCleanup,
@@ -8,6 +9,7 @@ import {
   openWorkTaskDatabase,
   hasActiveWorkTaskConversation,
   listWorkTaskConversations,
+  listWorkTaskConversationSessionIds,
   listWorkTaskEvents,
   writeWorkTask,
   claimNextWorkTask,
@@ -113,6 +115,9 @@ export class WorkTaskRepo {
   }
   conversationTasks(): WorkTask[] {
     return listWorkTaskConversations(this.database());
+  }
+  conversationSessionIds(scope: WorkTaskScope, kind: "api" | "acp"): string[] {
+    return listWorkTaskConversationSessionIds(this.database(), scope, kind);
   }
   hasActiveConversation(scope: WorkTaskScope, session: NonNullable<WorkTask["session"]>): boolean {
     return hasActiveWorkTaskConversation(this.database(), scope, session);

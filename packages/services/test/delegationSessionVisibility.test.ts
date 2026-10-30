@@ -23,7 +23,7 @@ test("API child membership is excluded before search pagination and scoped to id
       emitWorkspaceTaskListChanged() {},
       disposeAll() {},
     } as unknown as Options["taskIndexSyncer"],
-    delegatedSessionIds: async (scope) => {
+    hiddenSessionIds: async (scope) => {
       if (membershipUnavailable) throw new Error("membership unavailable");
       return scope.workspaceIdentity === "one" ? ["child"] : [];
     },

@@ -8,12 +8,12 @@ import {
   type AcpSessionSearchItem,
 } from "@zcode/shared";
 
-/** Keep the authoritative ACP snapshot for direct reads; remove children only from ordinary projections. */
-export function excludeDelegatedAcpSessions<T extends Pick<AcpSession, "id">>(
+/** 普通投影排除内部会话；权威快照继续供待办及委派精确读取。 */
+export function excludeHiddenAcpSessions<T extends Pick<AcpSession, "id">>(
   sessions: readonly T[],
-  childIds: readonly string[],
+  hiddenIds: readonly string[],
 ): T[] {
-  const hidden = new Set(childIds);
+  const hidden = new Set(hiddenIds);
   return sessions.filter((session) => !hidden.has(session.id));
 }
 

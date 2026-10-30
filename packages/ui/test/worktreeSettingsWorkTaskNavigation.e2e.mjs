@@ -31,6 +31,7 @@ try {
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
     import {workTaskNavigationStore} from '../../../ui/src/store/workTaskNavigationStore.ts';
+    import {requestWorkTaskConversation} from '../../../ui/src/lib/worktreeSettingsNavigation.ts';
     import '../../../ui/src/styles.css';
     window.__React=React;
     const project='/synthetic/project',tree='/synthetic/trees/abcd/project';
@@ -63,6 +64,8 @@ try {
       state.settings=()=>tabs.setState({activeTabId:'settings'});state.show=()=>tabs.getState().addTab(project);
       useEffect(()=>{workTaskNavigationStore.setState({project:null,tasks:{}});tabs.setState({tabs:[{id:'remote',kind:'workspace',workspacePath:project,workspaceIdentity:'remote-project',remoteSessionId:'remote-host',label:'Remote',workspacePurpose:'project'}],activeTabId:'settings',activeWorkspacePath:project,activeWorkspaceIdentity:null})},[tabs]);
       return <ServiceProvider services={services}><div className='h-dvh' data-testid='navigation-view' data-view={view} data-visible={String(visible)}>
+        <button onClick={()=>requestWorkTaskConversation(tasks[0])}>Open owned API</button>
+        <button onClick={()=>requestWorkTaskConversation(tasks[1])}>Open owned ACP</button>
         {!visible?<ManagedWorktreesList root={rootPath}/>:view==='work-tasks'?<WorkTasksPanel workspacePath={project} workspaceTabs={tabState.tabs.filter(t=>t.kind==='workspace')} onOpenConversation={forbidden('external-conversation')}/>:<p>Ordinary history</p>}
       </div></ServiceProvider>
     }
@@ -173,9 +176,55 @@ try {
     ),
     [{ op: "select-api", path: "/synthetic/trees/abcd/project", id: "ordinary" }],
   );
+  const previousTreeTabs = await page.evaluate(
+    () =>
+      window.__tasks.tabs
+        .getState()
+        .tabs.filter(
+          (t) => t.kind === "workspace" && t.workspacePath === "/synthetic/trees/abcd/project",
+        ).length,
+  );
+  for (const width of [1450, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const kind of ["api", "acp"]) {
+      await page
+        .getByRole("button", { name: `Open owned ${kind.toUpperCase()}`, exact: true })
+        .click();
+      await page.waitForFunction(
+        (kind) =>
+          document
+            .querySelector('[data-testid="work-task-fixture-session"]')
+            ?.getAttribute("data-session") === `session-${kind}`,
+        kind,
+      );
+      assert.equal(
+        await page.getByTestId("navigation-view").getAttribute("data-view"),
+        "work-tasks",
+      );
+      assert.equal(
+        await page.evaluate(
+          () =>
+            window.__tasks.tabs
+              .getState()
+              .tabs.filter(
+                (t) =>
+                  t.kind === "workspace" && t.workspacePath === "/synthetic/trees/abcd/project",
+              ).length,
+        ),
+        previousTreeTabs,
+        "owned conversation must not open an ordinary worktree tab",
+      );
+    }
+  }
+  assert.deepEqual(
+    await page.evaluate(() =>
+      window.__tasks.calls.filter((c) => c.op === "select-api" || c.op === "select-acp"),
+    ),
+    [{ op: "select-api", path: "/synthetic/trees/abcd/project", id: "ordinary" }],
+  );
   assert.deepEqual(errors, []);
   process.stdout.write(
-    "PASS: API/ACP settings open owning tasks; repeat navigation, missing local parent, remote path isolation, latest click, root/unmount invalidation, failed-read retry, ordinary history, zero business writes.\n",
+    "PASS: API/ACP settings and open-conversation actions select owning tasks on desktop/mobile; repeat navigation, missing local parent, remote path isolation, latest click, root/unmount invalidation, failed-read retry, ordinary history, zero business writes.\n",
   );
 } finally {
   await browser?.close();

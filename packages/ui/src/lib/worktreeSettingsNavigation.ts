@@ -51,6 +51,16 @@ export function requestWorktreeSettingsConversation(target: WorktreeSettingsConv
   for (const listener of listeners) listener(target);
 }
 
+/** 待办的会话始终回到所属待办；复用现有导航 owner，不创建普通聊天/工作树 tab。 */
+export function requestWorkTaskConversation(task: WorkTaskScope & { id: string }) {
+  const { workspacePath, workspaceIdentity, remoteSessionId, id } = task;
+  requestWorktreeSettingsConversation({
+    kind: "work-task",
+    scope: { workspacePath, workspaceIdentity, remoteSessionId },
+    id,
+  });
+}
+
 export function listenWorktreeSettingsConversation(
   listener: (target: WorktreeSettingsConversationTarget) => void,
 ): () => void {
