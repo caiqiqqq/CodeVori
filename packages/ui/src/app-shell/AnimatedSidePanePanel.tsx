@@ -3,17 +3,6 @@ import { ServiceProvider } from "@/hooks/useServices.js";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import type { IServiceAccessor } from "@zcode/services";
-import {
-  closestCenter,
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
-import { horizontalListSortingStrategy, SortableContext } from "@dnd-kit/sortable";
 import type { BrowserViewScreenshotSurfacePreparePayload, GitChangeSourceId } from "@zcode/shared";
 import { PreviewPane } from "@/PreviewPane.js";
 import { SidePaneTerminalPane } from "@/SidePaneTerminalPane.js";
@@ -31,16 +20,8 @@ import { ModelTrajectoryPane } from "@/ModelTrajectoryPane.js";
 import { AcpExecutionTracePane } from "@/AcpExecutionTracePane.js";
 import { DeveloperToolsPane } from "@/DeveloperToolsPane.js";
 import { cn } from "@/components/lib/utils.js";
-import { Button } from "@/components/ui/button.js";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu.js";
-import { ResizableHandle, ResizablePanel } from "@/components/ui/resizable.js";
-import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs.js";
-import { SidePaneTabOverview } from "@/app-shell/SidePaneTabOverview.js";
+import { ResizablePanel } from "@/components/ui/resizable.js";
+import { Tabs, TabsContent } from "@/components/ui/tabs.js";
 import { SubagentSessionSidePane } from "@/app-shell/SubagentSessionSidePane.js";
 import { SubagentDirectorySidePane } from "@/app-shell/SubagentDirectorySidePane.js";
 import { SelectionSideChatPane } from "@/app-shell/SelectionSideChatPane.js";
@@ -51,15 +32,9 @@ import { WorkflowRunDirectorySidePane } from "@/app-shell/WorkflowRunDirectorySi
 import { WorkflowActorSessionSidePane } from "@/app-shell/WorkflowActorSessionSidePane.js";
 import { WorkflowWorkspaceSidePane } from "@/app-shell/WorkflowWorkspaceSidePane.js";
 import { WorkflowArtifactSidePane } from "@/app-shell/WorkflowArtifactSidePane.js";
-import {
-  getSidePaneTabTitle,
-  SidePaneTabDragOverlay,
-  SortableSidePaneTabTrigger,
-} from "@/app-shell/SidePaneTabTrigger.js";
-import {
-  resolveSidePaneTabsOverflow,
-  SIDE_PANE_DEFAULT_EXPANDED_RATIO,
-} from "@/app-shell/sidePaneLayout.js";
+import { SIDE_PANE_DEFAULT_EXPANDED_RATIO } from "@/app-shell/sidePaneLayout.js";
+import { SidePaneTabsHeader } from "./SidePaneTabsHeader.js";
+import { SidePaneFrame, SidePaneResizeHandle, SidePaneAddTabMenu } from "./SidePaneChrome.js";
 import {
   resolveAnimatedSidePanePanelLayout,
   resolveOpenTabLauncherItemIds,
@@ -71,7 +46,6 @@ import type { BrowserNavigationRequest, RecentClosedSidePaneTab } from "@/hooks/
 import { useDeveloperToolsVisibility } from "@/hooks/useDeveloperToolsVisibility.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { logger } from "@/logger.js";
-import { formatTaskRelativeTime } from "@/lib/taskListItemPresentation.js";
 import {
   shouldMountSidePaneContent,
   shouldMountBrowserTabGuest,
@@ -95,17 +69,12 @@ import {
   FileDiffIcon,
   GlobeIcon,
   MessageSquareTextIcon,
-  PlusIcon,
   SquareTerminalIcon,
   type LucideIcon,
 } from "lucide-react";
 
 const SIDE_PANE_CONTENT_WIDTH_LOCK_DURATION_MS = 200;
 const PREVIEW_PANE_RESIZE_SETTLE_DELAY_MS = 220;
-type TabsScrollMaskEdges = {
-  left: boolean;
-  right: boolean;
-};
 type OpenTabLauncherItem = {
   id: OpenTabLauncherItemId;
   label: string;
@@ -113,10 +82,6 @@ type OpenTabLauncherItem = {
   onOpen: () => void;
 };
 const EMPTY_SIDE_PANE_TABS: WorkspaceSidePaneState["tabs"] = [];
-const EMPTY_TABS_SCROLL_MASK_EDGES: TabsScrollMaskEdges = {
-  left: false,
-  right: false,
-};
 
 function SuspendedBrowserSidePaneContent({
   tab,
@@ -430,18 +395,9 @@ export function AnimatedSidePanePanel({
   const visibleActiveTabId = visibleTabs.some((tab) => tab.id === activeTabId)
     ? activeTabId
     : (visibleTabs.at(-1)?.id ?? "");
-  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
-  const tabsScrollViewportRef = useRef<HTMLDivElement | null>(null);
-  const tabsScrollContentRef = useRef<HTMLDivElement | null>(null);
   const [lockedContentWidthPx, setLockedContentWidthPx] = useState<number | null>(null);
   const shouldMountContent = shouldMountSidePaneContent(isVisible, tabs);
   const [hasRenderedSidePane, setHasRenderedSidePane] = useState(shouldMountContent);
-  const [isTabsOverflowing, setIsTabsOverflowing] = useState(false);
-  const [tabsScrollMaskEdges, setTabsScrollMaskEdges] = useState<TabsScrollMaskEdges>({
-    left: false,
-    right: false,
-  });
-  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const sidePaneVisibleInlineSizePx = useViewportInlineIntersectionSize(
     panelElementRef,
     hasRenderedSidePane,
@@ -454,32 +410,6 @@ export function AnimatedSidePanePanel({
   const canOpenSelectionSideConversation = shouldOfferSelectionSideConversation({
     activeTaskId,
   });
-  const tabDragSensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 4,
-      },
-    }),
-  );
-
-  const handleTabDragStart = (event: DragStartEvent) => {
-    setDraggingTabId(String(event.active.id));
-  };
-
-  const handleTabDragEnd = (event: DragEndEvent) => {
-    setDraggingTabId(null);
-    const { active, over } = event;
-    if (!over || active.id === over.id) {
-      return;
-    }
-
-    onReorderTab(String(active.id), String(over.id));
-  };
-
-  const handleTabDragCancel = () => {
-    setDraggingTabId(null);
-  };
-
   const readInitialExpandedContentWidthPx = () => {
     const panelElement = panelElementRef.current;
     const panelGroupElement = panelElement?.parentElement;
@@ -550,219 +480,6 @@ export function AnimatedSidePanePanel({
         }
       : undefined;
 
-  useEffect(() => {
-    const viewport = tabsScrollViewportRef.current;
-    const content = tabsScrollContentRef.current;
-
-    if (!viewport || !content) {
-      setIsTabsOverflowing(false);
-      // sidePaneState 为空或内容尚未挂载时 refs 会持续为空。
-      // 这里不能每次写入新的 mask 对象，否则 effect 会在空 tabs 阶段反复触发更新。
-      setTabsScrollMaskEdges((current) =>
-        current.left || current.right ? EMPTY_TABS_SCROLL_MASK_EDGES : current,
-      );
-      return;
-    }
-
-    const updateOverflowState = () => {
-      const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
-      const addButton = viewport.parentElement?.querySelector<HTMLElement>(
-        "[data-side-pane-add-tab-trigger]",
-      );
-      const addButtonWidth = addButton?.getBoundingClientRect().width ?? 0;
-      // 旧判定直接读取 content.scrollWidth，但 overflow 状态本身会把新增按钮
-      // 移进/移出 content 并改变 viewport 宽度，临界区会形成 ResizeObserver 反馈环。
-      // 这里统一还原“新增按钮位于 tabs 末尾”的假想布局，只用稳定的最小宽度预算判定。
-      const isOverflowing = resolveSidePaneTabsOverflow({
-        addButtonInside: Boolean(addButton && content.contains(addButton)),
-        addButtonWidth,
-        tabCount: visibleTabs.length,
-        viewportWidth: viewport.clientWidth,
-      });
-      // 新增按钮在 tabs 尚可等宽收缩时跟随末尾，只有达到 60px 下限仍溢出后才固定到右侧。
-      setIsTabsOverflowing(isOverflowing);
-      // tabs 溢出时不能两侧一直显示渐变 mask：滚动到起点/终点也像还能继续滚。
-      // 这里把 mask 和实际 scrollLeft 绑定，只提示仍可继续滚动的一侧。
-      setTabsScrollMaskEdges((current) => {
-        const next = {
-          left: isOverflowing && viewport.scrollLeft > 1,
-          right: isOverflowing && viewport.scrollLeft < maxScrollLeft - 1,
-        };
-
-        if (current.left === next.left && current.right === next.right) {
-          return current;
-        }
-
-        return next;
-      });
-    };
-
-    // RAF-based debounce to coalesce resize events
-    let rafId: number | null = null;
-    let latestCallback = updateOverflowState;
-    const debouncedUpdate = () => {
-      if (rafId !== null) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        latestCallback();
-      });
-    };
-
-    updateOverflowState();
-    viewport.addEventListener("scroll", updateOverflowState, {
-      passive: true,
-    });
-
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", debouncedUpdate);
-      return () => {
-        viewport.removeEventListener("scroll", updateOverflowState);
-        window.removeEventListener("resize", debouncedUpdate);
-        if (rafId !== null) cancelAnimationFrame(rafId);
-      };
-    }
-
-    const resizeObserver = new ResizeObserver(() => {
-      latestCallback = updateOverflowState;
-      debouncedUpdate();
-    });
-    resizeObserver.observe(viewport);
-    resizeObserver.observe(content);
-    window.addEventListener("resize", debouncedUpdate);
-
-    return () => {
-      resizeObserver.disconnect();
-      viewport.removeEventListener("scroll", updateOverflowState);
-      window.removeEventListener("resize", debouncedUpdate);
-      if (rafId !== null) cancelAnimationFrame(rafId);
-    };
-  }, [visibleTabs]);
-
-  useEffect(() => {
-    const viewport = tabsScrollViewportRef.current;
-    const content = tabsScrollContentRef.current;
-
-    if (!visibleActiveTabId || !viewport || !content) {
-      return;
-    }
-
-    let frameId: number | null = requestAnimationFrame(() => {
-      frameId = null;
-      const activeTab = Array.from(
-        content.querySelectorAll<HTMLElement>("[data-side-pane-tab-id]"),
-      ).find((element) => element.dataset.sidePaneTabId === visibleActiveTabId);
-
-      if (!activeTab) {
-        return;
-      }
-
-      const viewportRect = viewport.getBoundingClientRect();
-      const activeTabRect = activeTab.getBoundingClientRect();
-      const leftOverflow = activeTabRect.left - viewportRect.left;
-      const rightOverflow = activeTabRect.right - viewportRect.right;
-
-      if (leftOverflow < 0) {
-        // 从外部激活 tab（例如打开文件或切回旧 Browser）时，
-        // active tab 可能已经被横向滚动区域遮住。这里按真实 DOM 宽度滚回可视区，
-        // 避免使用固定宽度估算导致长标题 / favicon tab 对不齐。
-        viewport.scrollBy({ left: leftOverflow, behavior: "smooth" });
-        return;
-      }
-
-      if (rightOverflow > 0) {
-        viewport.scrollBy({ left: rightOverflow, behavior: "smooth" });
-      }
-    });
-
-    return () => {
-      if (frameId !== null) {
-        cancelAnimationFrame(frameId);
-      }
-    };
-  }, [visibleActiveTabId, visibleTabs]);
-
-  const addTabMenu = (
-    <DropdownMenu open={isAddMenuOpen} onOpenChange={setIsAddMenuOpen}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-md"
-          className="shrink-0"
-          data-side-pane-add-trigger
-          data-side-pane-add-tab-trigger=""
-          aria-label={intl.formatMessage({
-            id: "sidePane.addTab",
-          })}
-        >
-          <PlusIcon className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        {canOpenSelectionSideConversation ? (
-          <DropdownMenuItem
-            data-side-pane-add-item="selection-side-conversation"
-            onSelect={onOpenSelectionSideConversation}
-          >
-            <MessageSquareTextIcon className="size-4" />
-            <span>{intl.formatMessage({ id: "sidePane.selectionChat" })}</span>
-          </DropdownMenuItem>
-        ) : null}
-        {!isOfficeMode && !hasReviewTab ? (
-          <DropdownMenuItem
-            onSelect={() => {
-              onOpenReviewTab();
-            }}
-          >
-            <FileDiffIcon className="size-4" />
-            <span>{intl.formatMessage({ id: "sidePane.review" })}</span>
-          </DropdownMenuItem>
-        ) : null}
-        {/* 画板入口未启用 */}
-        {/* <DropdownMenuItem
-          onSelect={() => {
-            onOpenWhiteboard();
-          }}
-        >
-          <PaletteIcon className="size-4" />
-          <span>{intl.formatMessage({ id: "whiteboard.title" })}</span>
-        </DropdownMenuItem> */}
-        {!isOfficeMode ? (
-          <DropdownMenuItem
-            data-side-pane-add-item="terminal"
-            onSelect={() => {
-              onOpenTerminalTab();
-            }}
-          >
-            <SquareTerminalIcon className="size-4" />
-            <span>{intl.formatMessage({ id: "terminal.title" })}</span>
-          </DropdownMenuItem>
-        ) : null}
-        {supportsEmbeddedBrowser ? (
-          <DropdownMenuItem
-            data-side-pane-add-item="browser"
-            onSelect={() => {
-              onOpenBrowserTab();
-            }}
-          >
-            <GlobeIcon className="size-4" />
-            <span>{intl.formatMessage({ id: "browser.title" })}</span>
-          </DropdownMenuItem>
-        ) : null}
-        {developerToolsEnabled ? (
-          <DropdownMenuItem
-            data-side-pane-add-item="developer-tools"
-            onSelect={() => {
-              onOpenDeveloperTools();
-            }}
-          >
-            <BugIcon className="size-4" />
-            <span>{intl.formatMessage({ id: "developerTools.title" })}</span>
-          </DropdownMenuItem>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
   const openTabLauncherItemById: Record<OpenTabLauncherItemId, OpenTabLauncherItem> = {
     "selection-side-conversation": {
       id: "selection-side-conversation",
@@ -803,6 +520,7 @@ export function AnimatedSidePanePanel({
   })
     .filter((itemId) => !isOfficeMode || (itemId !== "terminal" && itemId !== "review"))
     .map((itemId) => openTabLauncherItemById[itemId]);
+  const addTabMenu = <SidePaneAddTabMenu items={openTabLauncherItems} />;
   const closeSidePaneButton =
     isVisible && onCloseSidePane ? (
       <div className="flex shrink-0 items-center gap-0.5 [app-region:no-drag]">
@@ -860,70 +578,8 @@ export function AnimatedSidePanePanel({
       </div>
     </div>
   );
-  const sidePaneTabOverview = (
-    <SidePaneTabOverview
-      tabs={visibleTabs}
-      activeTabId={visibleActiveTabId}
-      recentClosedTabs={recentClosedSidePaneTabs}
-      labels={{
-        title: intl.formatMessage({ id: "sidePane.tabOverview" }),
-        searchPlaceholder: intl.formatMessage({
-          id: "sidePane.searchTabs",
-        }),
-        openTabs: intl.formatMessage({ id: "sidePane.openTabs" }),
-        recentlyClosedTabs: intl.formatMessage({
-          id: "sidePane.recentlyClosedTabs",
-        }),
-        noResults: intl.formatMessage({ id: "sidePane.noTabsFound" }),
-        closeTab: (title) => intl.formatMessage({ id: "sidePane.closeTab" }, { title }),
-        relativeTime: (timestamp) => formatTaskRelativeTime(timestamp, intl),
-        browserTitle: intl.formatMessage({ id: "browser.title" }),
-        reviewTitle: intl.formatMessage({ id: "sidePane.review" }),
-        codeViewerTitle: intl.formatMessage({ id: "codeViewer.title" }),
-        treemappingTitle: intl.formatMessage({ id: "treemapping.title" }),
-        whiteboardTitle: intl.formatMessage({ id: "whiteboard.title" }),
-        modelTrajectoryTitle: intl.formatMessage({
-          id: "modelTrajectory.title",
-        }),
-        acpTraceTitle: intl.formatMessage({ id: "acpTrace.title" }),
-        developerToolsTitle: intl.formatMessage({
-          id: "developerTools.title",
-        }),
-        terminalTitle: intl.formatMessage({ id: "terminal.title" }),
-        subagentTypeLabel: intl.formatMessage({ id: "sidePane.subagent" }),
-        subagentDirectoryTitle: intl.formatMessage({
-          id: "sidePane.subagentDirectory",
-        }),
-        selectionChatTitle: intl.formatMessage({
-          id: "sidePane.selectionChat",
-        }),
-        planTitle: intl.formatMessage({ id: "planTool.panel.planTab" }),
-        workflowRunTitle: intl.formatMessage({ id: "sidePane.workflowRun" }),
-        workflowDirectoryTitle: intl.formatMessage({ id: "sidePane.workflowDirectory" }),
-        workflowActorTitle: intl.formatMessage({ id: "sidePane.workflowActor" }),
-        workflowScriptTitle: intl.formatMessage({ id: "sidePane.workflowScript" }),
-        workflowArtifactTitle: intl.formatMessage({ id: "sidePane.workflowArtifact" }),
-      }}
-      onActivateTab={onActivateTab}
-      onCloseTab={onCloseTab}
-      onReopenClosedTab={onReopenClosedTab}
-    />
-  );
-  const draggingTab = draggingTabId
-    ? (visibleTabs.find((tab) => tab.id === draggingTabId) ?? null)
-    : null;
-
   const panelContent = (
-    <div
-      aria-hidden={!isVisible}
-      data-workspace-side-frame="true"
-      className={cn(
-        // 独立外框放在内容层：关闭仍保留 Browser Guest 和 tab 实例，不改变面板持久化边界。
-        "h-full overflow-hidden bg-background",
-        frameClassName,
-      )}
-      style={lockedContentStyle}
-    >
+    <SidePaneFrame aria-hidden={!isVisible} className={frameClassName} style={lockedContentStyle}>
       <ScopedErrorBoundary
         scope="workspace-side-pane"
         resetKeys={[workspaceKey, visibleActiveTabId]}
@@ -948,118 +604,21 @@ export function AnimatedSidePanePanel({
                 onValueChange={onActivateTab}
                 className="relative h-full gap-0"
               >
-                <TabsList
+                <SidePaneTabsHeader
+                  tabs={visibleTabs}
+                  activeTabId={visibleActiveTabId}
+                  recentClosedTabs={recentClosedSidePaneTabs}
+                  isDesktop={isDesktop}
                   style={captionControlsStyle}
-                  className={cn(
-                    "flex justify-start w-full rounded-none p-0 border-0 border-b border-border/50 bg-transparent shadow-none !h-12 overflow-hidden",
-                    // 独立面板将标签栏移至窗口顶部，需补充窗口拖拽区域；标签和按钮仍处理自身交互。
-                    isDesktop &&
-                      "[app-region:drag] [&_button]:[app-region:no-drag] [&_[data-side-pane-tab-id]]:[app-region:no-drag]",
-                  )}
-                >
-                  <div className="flex items-center justify-start flex-1 min-w-0">
-                    {/* 与 WorkspaceHeader 的 p-2 对齐，避免切换面板后左右操作区跳动。 */}
-                    <div className="flex h-full shrink-0 items-center p-2">
-                      {sidePaneTabOverview}
-                    </div>
-                    <DndContext
-                      sensors={tabDragSensors}
-                      collisionDetection={closestCenter}
-                      onDragStart={handleTabDragStart}
-                      onDragEnd={handleTabDragEnd}
-                      onDragCancel={handleTabDragCancel}
-                    >
-                      <div
-                        ref={tabsScrollViewportRef}
-                        data-side-pane-tabs-viewport=""
-                        className={cn(
-                          "min-w-0 flex-1 overflow-x-auto !scrollbar-hide h-12 items-center",
-                          tabsScrollMaskEdges.left &&
-                            tabsScrollMaskEdges.right &&
-                            "[mask-image:linear-gradient(to_right,transparent_0%,black_16px,black_calc(100%-16px),transparent_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_16px,black_calc(100%-16px),transparent_100%)]",
-                          tabsScrollMaskEdges.left &&
-                            !tabsScrollMaskEdges.right &&
-                            "[mask-image:linear-gradient(to_right,transparent_0%,black_16px,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_16px,black_100%)]",
-                          !tabsScrollMaskEdges.left &&
-                            tabsScrollMaskEdges.right &&
-                            "[mask-image:linear-gradient(to_right,black_0%,black_calc(100%-16px),transparent_100%)] [-webkit-mask-image:linear-gradient(to_right,black_0%,black_calc(100%-16px),transparent_100%)]",
-                        )}
-                      >
-                        {/* tab strip 固定占满滚动 viewport：每个 tab 先从 156px 等宽收缩到
-                            60px，只有最小宽度之和仍超出 viewport 时才产生横向滚动。 */}
-                        <div
-                          ref={tabsScrollContentRef}
-                          data-side-pane-tabs-content=""
-                          className="flex w-full gap-1 py-2.5"
-                        >
-                          <SortableContext
-                            items={visibleTabs.map((tab) => tab.id)}
-                            strategy={horizontalListSortingStrategy}
-                          >
-                            {visibleTabs.map((tab) => {
-                              const title = getSidePaneTabTitle(tab, intl.formatMessage);
-                              return (
-                                <SortableSidePaneTabTrigger
-                                  key={tab.id}
-                                  tab={tab}
-                                  title={title}
-                                  closeTabLabel={intl.formatMessage(
-                                    { id: "sidePane.closeTab" },
-                                    { title },
-                                  )}
-                                  closeTabMenuLabel={intl.formatMessage({
-                                    id: "sidePane.closeCurrentTab",
-                                  })}
-                                  closeOtherTabsLabel={intl.formatMessage({
-                                    id: "sidePane.closeOtherTabs",
-                                  })}
-                                  closeAllTabsLabel={intl.formatMessage({
-                                    id: "sidePane.closeAllTabs",
-                                  })}
-                                  diffBadgeLabel={intl.formatMessage({
-                                    id: "diff.title",
-                                  })}
-                                  isActive={tab.id === visibleActiveTabId}
-                                  onActivateTab={onActivateTab}
-                                  onCloseTab={onCloseTab}
-                                  onCloseOtherTabs={onCloseOtherTabs}
-                                  onCloseAllTabs={onCloseAllTabs}
-                                  canCloseOtherTabs={visibleTabs.length > 1}
-                                />
-                              );
-                            })}
-                          </SortableContext>
-                          {!isTabsOverflowing ? addTabMenu : null}
-                        </div>
-                      </div>
-                      <DragOverlay dropAnimation={null}>
-                        {draggingTab ? (
-                          <SidePaneTabDragOverlay
-                            tab={draggingTab}
-                            title={getSidePaneTabTitle(draggingTab, intl.formatMessage)}
-                            diffBadgeLabel={intl.formatMessage({
-                              id: "diff.title",
-                            })}
-                          />
-                        ) : null}
-                      </DragOverlay>
-                    </DndContext>
-
-                    <div className="ml-auto flex h-full shrink-0 items-center gap-1 px-2">
-                      {isTabsOverflowing ? addTabMenu : null}
-                      {closeSidePaneButton}
-                    </div>
-                  </div>
-                  {/* Expand Panel 按钮按要求先注释保留，相关逻辑已删除。
-                <div className="flex h-full shrink-0 items-center pl-1.5 pr-2">
-                  <ControlHintTooltip title="" side="bottom" align="end">
-                    <Button type="button" variant="ghost" size="icon-sm" aria-label="">
-                      Expand Panel
-                    </Button>
-                  </ControlHintTooltip>
-                </div>
-                */}
-                </TabsList>
+                  onActivateTab={onActivateTab}
+                  onCloseTab={onCloseTab}
+                  onCloseOtherTabs={onCloseOtherTabs}
+                  onCloseAllTabs={onCloseAllTabs}
+                  onReorderTab={onReorderTab}
+                  onReopenClosedTab={onReopenClosedTab}
+                  addTabMenu={addTabMenu}
+                  trailingControls={closeSidePaneButton}
+                />
 
                 <div className="relative min-h-0 flex-1 isolate">
                   {tabs.map((tab) => {
@@ -1338,7 +897,7 @@ export function AnimatedSidePanePanel({
           openTabLauncher
         ) : null}
       </ScopedErrorBoundary>
-    </div>
+    </SidePaneFrame>
   );
 
   if (!panelLayout.useResizablePanel) {
@@ -1365,19 +924,7 @@ export function AnimatedSidePanePanel({
 
   return (
     <>
-      {isVisible ? (
-        <ResizableHandle
-          data-workspace-side-pane-resize-handle="true"
-          className={cn(
-            // 拖动条占据真实 4px 间距，关闭时随 handle 一起移除，不为隐藏面板保留空隙。
-            "aria-[orientation=vertical]:w-1 aria-[orientation=vertical]:translate-x-0 aria-[orientation=vertical]:my-0 aria-[orientation=vertical]:h-full",
-            "hover:bg-transparent data-[separator=hover]:bg-transparent data-[separator=active]:bg-transparent focus-visible:bg-transparent",
-            "aria-[orientation=vertical]:[mask-image:none] aria-[orientation=vertical]:[-webkit-mask-image:none]",
-            "after:pointer-events-none after:absolute after:rounded-full after:bg-foreground-subtlest/50 after:opacity-0 after:transition-opacity after:content-[''] after:inset-y-[var(--workspace-panel-radius,var(--radius-xl))] after:w-0.5",
-            "hover:after:opacity-100 data-[separator=hover]:after:opacity-100 data-[separator=active]:after:opacity-100 focus-visible:after:opacity-100",
-          )}
-        />
-      ) : null}
+      {isVisible ? <SidePaneResizeHandle /> : null}
       <ResizablePanel
         id="browser"
         panelRef={panelRef}

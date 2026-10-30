@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
 import type { GitChangeSourceId, WorkTaskScope } from "@zcode/shared";
 import { DialogContent } from "@/components/ui/dialog.js";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable.js";
+import { ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable.js";
 import { cn } from "@/components/lib/utils.js";
 import { usePaneGitStatus, type OpenScopedGitReview } from "@/hooks/usePaneGitStatus.js";
 import { useWorkspaceServicesResolution } from "@/hooks/useWorkspaceServices.js";
@@ -20,6 +20,7 @@ import {
   reorderSidePaneTab,
   type WorkspaceSidePaneState,
 } from "@/lib/workspaceSidePane.js";
+import { SidePaneResizeHandle } from "@/app-shell/SidePaneChrome.js";
 import { AgentBoardToolsPane } from "./AgentBoardToolsPane.js";
 
 const PANEL_IDS = ["board-conversation", "board-review"];
@@ -63,17 +64,21 @@ export function AgentBoardTools({
     scopeKey: string;
     pane: WorkspaceSidePaneState | null;
     sourceId: GitChangeSourceId;
-  }>(() => ({ scopeKey, pane: null, sourceId: "unstaged" }));
+    collapsed: boolean;
+  }>(() => ({ scopeKey, pane: null, sourceId: "unstaged", collapsed: false }));
   const pane = request.scopeKey === scopeKey ? request.pane : null;
-  const open = Boolean(pane?.tabs.length);
+  const open = Boolean(pane?.tabs.length) && !request.collapsed;
   // 原回调写入看板中不可见的 Shell，文件又另开弹窗；改由当前详情统一持有工具标签。
   // scope/attachment 改变立即废弃旧标签，保留会话挂载；重连也不自动恢复旧请求。
-  if (request.scopeKey !== scopeKey) setRequest({ scopeKey, pane: null, sourceId: "unstaged" });
+  if (request.scopeKey !== scopeKey)
+    setRequest({ scopeKey, pane: null, sourceId: "unstaged", collapsed: false });
   const updatePane = (
     update: (current: WorkspaceSidePaneState | null) => WorkspaceSidePaneState | null,
   ) =>
     setRequest((current) =>
-      current.scopeKey === scopeKey ? { ...current, pane: update(current.pane) } : current,
+      current.scopeKey === scopeKey
+        ? { ...current, pane: update(current.pane), collapsed: false }
+        : current,
     );
   const openReview = useCallback<OpenScopedGitReview>(
     (_scope, sourceId) => {
@@ -83,6 +88,7 @@ export function AgentBoardTools({
           ? {
               ...current,
               pane: activateGitSidePane(current.pane),
+              collapsed: false,
               sourceId: sourceId ?? "unstaged",
             }
           : current,
@@ -158,6 +164,8 @@ export function AgentBoardTools({
       }}
       className={cn(
         "inset-y-0 right-0 left-auto flex h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0",
+        // 展开审查会让详情覆盖窗口左上角；复用桌面平台标记，为原生红绿灯保留 48px 安全区。
+        "platform-mac-desktop:pt-12",
         open ? "sm:max-w-none" : "sm:max-w-3xl",
       )}
     >
@@ -182,10 +190,9 @@ export function AgentBoardTools({
             {children(actions)}
           </div>
         </ResizablePanel>
-        <ResizableHandle
+        <SidePaneResizeHandle
           aria-label={intl.formatMessage({ id: "workspaceSidebar.resizeSidebar" })}
           style={!split ? { display: "none" } : undefined}
-          className="aria-[orientation=vertical]:my-0 aria-[orientation=vertical]:h-full aria-[orientation=vertical]:w-1 aria-[orientation=vertical]:translate-x-0 aria-[orientation=vertical]:[mask-image:none] aria-[orientation=vertical]:[-webkit-mask-image:none] before:absolute before:inset-y-0 before:left-1/2 before:w-px before:bg-border"
         />
         <ResizablePanel
           id={PANEL_IDS[1]}
@@ -193,9 +200,15 @@ export function AgentBoardTools({
           minSize={split ? "380px" : "0px"}
           hidden={!open}
         >
-          {open && pane ? (
+          {pane ? (
             <AgentBoardToolsPane
               state={pane}
+              onOpenReview={() => openReview(scope, request.sourceId)}
+              onCollapse={() =>
+                setRequest((current) =>
+                  current.scopeKey === scopeKey ? { ...current, collapsed: true } : current,
+                )
+              }
               scope={scope}
               remoteSessionId={remoteSessionId ?? undefined}
               services={services}
