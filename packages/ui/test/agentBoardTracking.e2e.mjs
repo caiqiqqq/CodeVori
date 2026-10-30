@@ -70,11 +70,20 @@ try {
       1
     );
   });
-  const manage = () => page.getByRole("button", { name: "管理显示范围", exact: true }).click();
+  const manage = async () => {
+    const filters = page.getByRole("button", { name: /^筛选/ });
+    if ((await filters.isVisible()) && (await filters.getAttribute("aria-expanded")) === "false")
+      await filters.click();
+    await page.getByRole("button", { name: "管理显示范围", exact: true }).click();
+  };
   const dialog = () => page.getByRole("dialog");
   const search = () =>
     dialog().getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true });
   const candidate = (name) => dialog().getByRole("checkbox", { name: new RegExp(name) });
+  const row = (title) =>
+    dialog()
+      .locator("label")
+      .filter({ has: page.getByText(title, { exact: true }) });
   const count = (n) =>
     dialog()
       .getByText("当前范围包含 " + n + " 项", { exact: true })
@@ -82,6 +91,23 @@ try {
   const save = () => dialog().getByRole("button", { name: "保存显示范围", exact: true }).click();
   await manage();
   await count(expected);
+  await search().fill("Remote ACP 1");
+  await row("Remote ACP 1").locator("svg.lucide-circle-check").waitFor();
+  await page.evaluate(() => window.__board.updateAcp(1, { status: "running" }));
+  await row("Remote ACP 1").locator("svg.lucide-loader-circle.animate-spin").waitFor();
+  assert.equal(await row("Remote ACP 1").locator("svg.lucide-circle-check").count(), 0);
+  await page.evaluate(() => window.__board.updateAcp(1, { status: "idle" }));
+  await row("Remote ACP 1").locator("svg.lucide-circle-check").waitFor();
+  await search().fill("Implement project 3");
+  await row("Implement project 3").locator("svg.lucide-loader-circle.animate-spin").waitFor();
+  await page.evaluate(() => window.__board.update(3, { sourceAvailability: "offline" }));
+  await row("Implement project 3").locator("svg.lucide-loader-circle:not(.animate-spin)").waitFor();
+  await page.evaluate(() =>
+    window.__board.update(3, { sourceAvailability: "online", liveStatus: "waiting" }),
+  );
+  await row("Implement project 3").getByText("等待", { exact: true }).waitFor();
+  assert.equal(await row("Implement project 3").locator("svg.lucide-loader-circle").count(), 0);
+  await page.evaluate(() => window.__board.update(3, { liveStatus: "running" }));
   for (const name of [
     "Implement project 7",
     "Implement project 22",
@@ -163,11 +189,25 @@ try {
       path: join(artifacts, `board-tracking-archive-${width}.png`),
       animations: "disabled",
     });
+    await page.evaluate(() => window.__board.updateAcp(0, { archived: false, status: "running" }));
+    const running = row("Remote ACP 0").locator("svg.lucide-loader-circle");
+    await running.waitFor();
+    await row("Remote ACP 1").locator("svg.lucide-circle-check").waitFor();
+    assert.equal(await running.getAttribute("aria-hidden"), "true");
+    assert.equal(await candidate("Remote ACP 1").isChecked(), true);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    assert.equal(await running.evaluate((node) => getComputedStyle(node).animationName), "none");
+    await page.screenshot({
+      path: join(artifacts, `board-tracking-status-icons-${width}.png`),
+      animations: "disabled",
+    });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.evaluate(() => window.__board.updateAcp(0, { archived: true, status: "idle" }));
     await dialog().getByRole("button", { name: "取消", exact: true }).click();
   }
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: archived Native/ACP/WorkTask excluded from candidates/search/group/count; live archive/restore; legacy rules preserved; selection/save/cancel; desktop/mobile themes.",
+    "PASS: tracking completed/running icons, live state changes, offline/reduced-motion animation; archived Native/ACP/WorkTask candidates; legacy rules; selection/save/cancel; desktop/mobile themes.",
   );
 } finally {
   await browser?.close();
