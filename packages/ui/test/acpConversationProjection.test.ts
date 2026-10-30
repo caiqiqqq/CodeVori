@@ -266,6 +266,12 @@ test("split panes and warm reopen share one subscription until the last lease ex
     assert.equal(reopened.store, first.store);
     assert.equal(reopened.openKind, "keep_warm");
     assert.equal(reopened.store.getState().status, "live");
+    assert.equal(reopened.latestChange?.session.id, f.target.id);
+    assert.equal(
+      reopened.latestChange?.session.revision,
+      reopened.store.getState().snapshot?.seq,
+      "warm exact selection retains Host metadata at the applied conversation revision",
+    );
     assert.equal(subscriptions, 1, "warm reopen must not read history or subscribe again");
     t.mock.timers.tick(30_000);
     assert.equal(releases, 0, "the previous expiry cannot dispose an active lease");
