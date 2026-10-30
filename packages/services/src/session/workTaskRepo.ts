@@ -210,6 +210,7 @@ export class WorkTaskRepo {
         failureReason: undefined,
         merge: undefined,
         finishedAt: undefined,
+        startedAt: undefined,
         updatedAt: Date.now(),
       },
       "queued",
@@ -235,6 +236,7 @@ export class WorkTaskRepo {
           ...task,
           merge,
           finishedAt: undefined,
+          startedAt: undefined,
           status: "queued",
           forgeWriteback: prepareWorkTaskForge(
             { ...task, merge, runSeq: task.runSeq + 1 },

@@ -275,6 +275,8 @@ export const workTaskSchema = workTaskScopeSchema
     stopPending: z.boolean(),
     /** 最近一次执行收口时间；后续验收和元数据更新不能改变完成排序。 */
     finishedAt: z.number().finite().nonnegative().optional(),
+    /** 原 owner 认领本轮的时间，进度更新不能改变看板排序。 */
+    startedAt: z.number().finite().nonnegative().optional(),
     createdAt: z.number(),
     updatedAt: z.number(),
   })

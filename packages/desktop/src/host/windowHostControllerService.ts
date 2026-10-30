@@ -116,6 +116,7 @@ function sessionOverlay(
     activity: {
       phase: summary.phase,
       lastActivityAt: summary.lastActivityAt,
+      ...(summary.turnStartedAt === undefined ? {} : { turnStartedAt: summary.turnStartedAt }),
       hasBackgroundWork: summary.hasBackgroundWork,
       ...(summary.pendingInteractionSummary
         ? { pendingInteractions: summary.pendingInteractionSummary }

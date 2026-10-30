@@ -27,6 +27,7 @@ export interface AcpSidebarSession {
   createdAt: number;
   updatedAt: number;
   completedAt?: number;
+  startedAt?: number;
 }
 
 export interface AcpConversationOpenRequest {
@@ -66,6 +67,7 @@ export function projectAcpSidebarSessions(
         deletionState: session.deletionState,
         unreadAt: session.unreadAt,
         completedAt: session.entries.findLast((entry) => entry.kind === "user")?.endedAt,
+        startedAt: session.entries.findLast((entry) => entry.kind === "user")?.createdAt,
         status: session.status,
         // 修复原因：ACP 没有 failed 状态枚举；只有中断且 Host 留有错误才表示失败，主动停止不能亮红点。
         failed: session.status === "interrupted" && Boolean(session.error),

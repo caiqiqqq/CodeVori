@@ -96,6 +96,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
           workspacePurpose: tabByScope.get(scope)?.workspacePurpose,
           remoteSessionId: task.remoteSessionId,
           updatedAt: task.updatedAt,
+          startedAt: task.activity?.turnStartedAt ?? task.createdAt,
           completedAt: task.activity?.lastActivityAt,
           agent: task.provider || "API",
           status: nativeBoardStatus(task),
@@ -122,6 +123,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
         workspacePurpose: tabByScope.get(scope)?.workspacePurpose,
         remoteSessionId: lookup.get(scope)?.remoteSessionId,
         updatedAt: session.updatedAt,
+        startedAt: session.startedAt ?? session.createdAt,
         completedAt: session.completedAt,
         agent: session.agent,
         status: acpBoardStatus(session),
@@ -148,6 +150,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
         workspaceIdentity: workTask.workspaceIdentity,
         remoteSessionId: workTask.remoteSessionId,
         updatedAt: workTask.updatedAt,
+        startedAt: workTask.startedAt ?? workTask.createdAt,
         completedAt: workTask.finishedAt,
         agent:
           workTask.execution.kind === "acp"

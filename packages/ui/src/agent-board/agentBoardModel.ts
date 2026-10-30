@@ -70,6 +70,7 @@ export type BoardItem = {
   workspacePurpose?: WorkspaceTabState["workspacePurpose"];
   remoteSessionId?: string;
   updatedAt: number;
+  startedAt?: number;
   completedAt?: number;
   unread?: boolean;
   agent: string;
@@ -207,7 +208,10 @@ export function boardResultTimestamp(item: BoardItem) {
     : (item.completedAt ?? item.updatedAt);
 }
 export function compareBoardItems(a: BoardItem, b: BoardItem) {
-  return boardResultTimestamp(b) - boardResultTimestamp(a) || a.key.localeCompare(b.key);
+  // 运行时 updatedAt 随正文和工具推进，会让并行卡片反复换位；仅终态使用结果时间。
+  const time = (item: BoardItem) =>
+    boardOutcomeStatus(item) === "running" ? (item.startedAt ?? 0) : boardResultTimestamp(item);
+  return time(b) - time(a) || a.key.localeCompare(b.key);
 }
 export function workTaskResultToken(task: WorkTask) {
   return JSON.stringify([task.runSeq, task.finishedAt ?? null]);

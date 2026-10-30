@@ -124,7 +124,12 @@ export async function exerciseAgentBoardWaiting(page, artifacts) {
   await page
     .getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true })
     .fill("Remote API session");
-  await page.getByRole("dialog").getByText("API · 等待", { exact: true }).waitFor();
+  await page
+    .getByRole("dialog")
+    .locator("label")
+    .filter({ hasText: "Remote API session" })
+    .getByText("等待", { exact: true })
+    .waitFor();
   await page.getByRole("button", { name: "取消", exact: true }).click();
   for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {
     await page.evaluate((value) => (document.documentElement.className = value), theme);

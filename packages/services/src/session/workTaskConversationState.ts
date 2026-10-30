@@ -83,6 +83,7 @@ export function continueWorkTaskConversation(
     commandId: event.commandId,
     runSeq: current.runSeq + 1,
     finishedAt: undefined,
+    startedAt: event.startedAt,
     failureReason: undefined,
     completion: undefined,
     merge: undefined,
