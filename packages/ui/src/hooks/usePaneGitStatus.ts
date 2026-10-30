@@ -11,6 +11,7 @@ export function usePaneGitStatus(
   scope: WorkTaskScope,
   enabled: boolean,
   onOpenScopedGitReview?: OpenScopedGitReview,
+  includeExtendedData = false,
 ) {
   const [refreshVersion, setRefreshVersion] = useState(0);
   const onRefreshGit = useCallback(() => setRefreshVersion((version) => version + 1), []);
@@ -20,6 +21,7 @@ export function usePaneGitStatus(
     ...scope,
     activeTaskId: null,
     enabled,
+    includeExtendedData,
     scopeIsExplicit: true,
     refreshToken: refreshVersion,
   });
@@ -37,6 +39,7 @@ export function usePaneGitStatus(
     [onOpenScopedGitReview, scope],
   );
   return {
+    gitState,
     gitSummary: gitState.summary,
     gitLoading: gitState.loading,
     gitDirtyFileCount: getGitDirtyFileCount(gitState.datasets),
