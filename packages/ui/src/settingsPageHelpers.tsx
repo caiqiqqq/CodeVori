@@ -1,4 +1,5 @@
 import { ProxyDomainSettings } from "@/settings/ProxyDomainSettings.js";
+import { WorkTaskConcurrencySetting } from "@/settings/WorkTaskConcurrencySetting.js";
 /* oxlint-disable eslint(max-lines) -- settings helper 聚合多个设置分组；终端、网络与自动归档多侧能力暂时超过行数限制。 */
 import type {
   IntegratedTerminalShellOption,
@@ -865,6 +866,7 @@ export function GeneralSectionContent({
       </SettingsGroupCard>
 
       <SettingsGroupCard>
+        <WorkTaskConcurrencySetting />
         <SettingsRow
           label={intl.formatMessage({ id: "settings.taskAutoArchive" })}
           description={intl.formatMessage({

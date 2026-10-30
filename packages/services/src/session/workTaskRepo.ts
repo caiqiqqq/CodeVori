@@ -251,9 +251,11 @@ export class WorkTaskRepo {
         this.enqueueInside(scope, task.id);
     });
   }
-  claimNext(owner: string, now: number, leaseMs: number): WorkTask | null {
-    // 同一事务内认领任务并检查合并目标锁，避免跨窗口重复执行或并发发布同一目标。
-    return this.transaction(() => claimNextWorkTask(this.database(), owner, now, leaseMs));
+  claimNext(owner: string, now: number, leaseMs: number, concurrency?: number): WorkTask | null {
+    // 并发计数与认领必须同事务；单窗口 runs.size 无法阻止其他 Host 同时抢占名额。
+    return this.transaction(() =>
+      claimNextWorkTask(this.database(), owner, now, leaseMs, concurrency),
+    );
   }
   updateRun(task: WorkTask, owner: string, patch: WorkTaskExecutionUpdate): boolean {
     return this.transaction(() => {

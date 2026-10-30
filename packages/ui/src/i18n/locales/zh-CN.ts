@@ -3118,6 +3118,12 @@ const zhCN: Record<string, string> = {
     "保留完整的模型请求和响应，不自动压缩、限制大小或删除旧记录。",
   "settings.performanceMode": "性能模式",
   "settings.performanceModeDescription": "精简渲染输出，提高性能。",
+  "settings.workTaskConcurrency": "待办任务并发上限",
+  "settings.workTaskConcurrencyDescription":
+    "仅控制待办任务，当前环境的所有项目共用。默认 4，可输入任意正整数，不设最高值。超出的待办任务排队，执行结束后自动补位；普通会话、委派和自动化不受此设置影响。",
+  "settings.workTaskConcurrencyInvalid": "请输入大于 0 的整数。",
+  "settings.workTaskConcurrencySave": "保存待办任务并发上限",
+  "settings.workTaskConcurrencySaveError": "保存并发上限失败，请重试。",
   "settings.taskAutoArchive": "自动归档旧任务",
   "settings.taskAutoArchiveDescription":
     "定时扫描最近打开过的工作区，将已完成、无未读、未置顶且超过保留期的任务自动归档。",

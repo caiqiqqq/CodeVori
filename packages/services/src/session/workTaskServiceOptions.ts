@@ -29,6 +29,8 @@ export interface WorkTaskServiceOptions {
   conversation?: WorkTaskConversationPort;
   pollIntervalMs?: number;
   allowExecution?: boolean;
+  /** 从当前 Host 设置读取统一上限；队列及名额仍由 Repo 原子认领。 */
+  getConcurrency?(): Promise<number>;
   /** Local Host adapter; receives the persisted task allocation, never a UI path. */
   removeWorktree?(task: WorkTask): Promise<void>;
 }

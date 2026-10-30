@@ -7,6 +7,11 @@ import type {
 } from "@zcode/shared";
 import type { IWorkTaskService } from "./contract.js";
 
+/** 队列与名额由 Host 调度，不在调用方先截取任务或维护等待队列。 */
+export async function enqueueProjectTasks(service: IWorkTaskService, workspacePath: string) {
+  return service.startAll({ workspacePath });
+}
+
 export async function renameWorkTask(service: IWorkTaskService, request: WorkTaskRename) {
   return service.rename(request);
 }

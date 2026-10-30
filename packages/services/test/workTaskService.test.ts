@@ -359,7 +359,7 @@ test("two Hosts claim each task once without waiting for another project task", 
 });
 
 for (const concurrency of [undefined, 1, 8]) {
-  test(`batch starts more than eight API/ACP tasks with legacy concurrency ${concurrency ?? "unset"}`, async () => {
+  test(`batch admits four API/ACP tasks regardless of legacy concurrency ${concurrency ?? "unset"}`, async () => {
     const started: string[] = [];
     const releases: (() => void)[] = [];
     const f = await fixture(async (task, context) => {
@@ -379,11 +379,16 @@ for (const concurrency of [undefined, 1, 8]) {
         });
       }
       await service.startAll(workspace);
-      await eventually(async () => started.length === 10);
+      await eventually(async () => started.length === 4);
       const board = await service.list(workspace);
-      assert.equal(new Set(started).size, 10);
-      assert.ok(board.tasks.every((task) => task.status === "running"));
+      assert.equal(new Set(started).size, 4);
+      assert.equal(board.tasks.filter((task) => task.status === "running").length, 4);
+      assert.equal(board.tasks.filter((task) => task.status === "queued").length, 6);
       assert.equal(board.concurrency, concurrency ?? 1, "legacy settings retain their read value");
+      releases.splice(0).forEach((release) => release());
+      await eventually(async () => started.length === 8);
+      releases.splice(0).forEach((release) => release());
+      await eventually(async () => started.length === 10);
       releases.splice(0).forEach((release) => release());
       await eventually(async () =>
         (await service.list(workspace)).tasks.every((task) => task.status === "review"),
