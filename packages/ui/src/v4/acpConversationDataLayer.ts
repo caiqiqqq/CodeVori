@@ -7,6 +7,7 @@ interface Entry {
   layer: SessionDataLayer;
   transport: ReturnType<typeof createAcpConversationTransport>;
   observers: Set<(change: AcpConversationChange) => void>;
+  latestChange?: AcpConversationChange;
 }
 const layers = new WeakMap<IAcpService, Map<string, Entry>>();
 
@@ -29,6 +30,13 @@ export function acquireAcpConversationProjection(
   if (!entry) {
     const observers = new Set<(change: AcpConversationChange) => void>();
     const transport = createAcpConversationTransport(service, workspace, id, (change) => {
+      // 正文保温时一并保留同 revision 的 Host 元数据；精确打开不依赖普通列表资格。
+      const current = registry.get(key);
+      if (
+        current &&
+        (!current.latestChange || current.latestChange.session.revision <= change.session.revision)
+      )
+        current.latestChange = change;
       for (const observer of observers) observer(change);
     });
     // 切换对话沿用 API 的保温期；只保留只读投影，连接就绪仍由 Host refreshSummary 核验。
@@ -49,6 +57,7 @@ export function acquireAcpConversationProjection(
   let released = false;
   return {
     ...lease,
+    latestChange: current.latestChange,
     release() {
       if (released) return;
       released = true;

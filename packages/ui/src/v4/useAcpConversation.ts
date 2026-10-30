@@ -115,7 +115,8 @@ export function useAcpConversation(
   } | null>(null);
   const workspaceKey = JSON.stringify([workspaceIdentity?.trim() || workspacePath, workspacePath]);
   const selectedWorkspaceKeyRef = useRef(workspaceKey);
-  const loaded = loadedTargetKey === targetKey;
+  const listKey = JSON.stringify([targetKey, reloadKey]);
+  const loaded = loadedTargetKey === listKey;
   const scopedSessions = sessions.filter(
     (session) =>
       (session.workspaceIdentity?.trim() || session.workspacePath) ===
@@ -135,41 +136,12 @@ export function useAcpConversation(
   sessionsRef.current = sessions;
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
-  const projectionKey = selected && agent ? `${targetKey}:${selected.id}` : null;
+  // 修复原因：待办/委派会话从普通列表隐藏后，精确绑定 id 仍须独立读取正文。
+  const selectedId = agent ? selectedIds[agent] : undefined;
+  const projectionKey = agent && selectedId ? `${targetKey}:${selectedId}` : null;
   const projection = useConversationProjection(
     projectionLease?.key === projectionKey ? projectionLease : null,
   );
-  useEffect(() => {
-    if (!projectionKey || !selected) return;
-    let live = true;
-    const id = selected.id;
-    let store: ConversationProjectionStore;
-    const observe = (change: AcpConversationChange) => {
-      if (!live || targetKeyRef.current !== targetKey || selectedRef.current?.id !== id) return;
-      if (store.getState().snapshot?.seq !== change.session.revision) return;
-      if (
-        (sessionsRef.current.find((item) => item.id === id)?.revision ?? -1) >
-        change.session.revision
-      )
-        return;
-      if (change.wire.deliveryKind === "online")
-        streamObserver.received(change.session, change.streamDiagnostics);
-      setSessions((previous) =>
-        previous.map((item) =>
-          item.id === id && item.revision <= change.session.revision ? change.session : item,
-        ),
-      );
-    };
-    const lease = acquireAcpConversationProjection(service, target, id, observe);
-    store = lease.store;
-    setProjectionLease({ key: projectionKey, store });
-    return () => {
-      live = false;
-      lease.release();
-    };
-    // 会话的高频 revision 不创建新 store；生命周期只绑定精确目标和会话。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectionKey, service, target, targetKey, streamObserver]);
   const incompleteCursorRef = useRef<string | null>(null);
   useEffect(() => {
     if (
@@ -257,7 +229,16 @@ export function useAcpConversation(
     const updated = new Map<string, AcpSession>();
     const removed = new Set<string>();
     setLoadedTargetKey(null);
-    setSessions([]);
+    // 列表重读/attachment 重连保留当前 Host 已确认的精确选择，列表缺席不代表删除。
+    setSessions((previous) =>
+      previous.filter(
+        (item) =>
+          selectedIdsRef.current[item.agent] === item.id &&
+          item.workspacePath === workspacePath &&
+          (item.workspaceIdentity?.trim() || item.workspacePath) ===
+            (workspaceIdentity?.trim() || workspacePath),
+      ),
+    );
     attempted.current.clear();
     refreshed.current.clear();
     refreshRequests.current.clear();
@@ -345,6 +326,19 @@ export function useAcpConversation(
           const older = byId.get(item.id);
           if (!older || item.revision > older.revision) byId.set(item.id, item);
         }
+        // 普通列表不包含待办/委派绑定；迟到的列表不能抹掉精确正文已经确认的元数据。
+        for (const item of sessionsRef.current) {
+          if (
+            selectedIdsRef.current[item.agent] !== item.id ||
+            removed.has(item.id) ||
+            item.workspacePath !== workspacePath ||
+            (item.workspaceIdentity?.trim() || item.workspacePath) !==
+              (workspaceIdentity?.trim() || workspacePath)
+          )
+            continue;
+          const older = byId.get(item.id);
+          if (!older || item.revision > older.revision) byId.set(item.id, item);
+        }
         const nextSessions = [...byId.values()];
         sessionsRef.current = nextSessions;
         setSessions(nextSessions);
@@ -352,7 +346,7 @@ export function useAcpConversation(
         nextSessions.forEach(closeArchivedSelection);
         // 修复原因：用户已点选的精确历史 id 可能早于 list 回包；旧快照缺失不能把
         // 这个意图抹掉并触发自动创建。真实删除由 removed 事件或新建任务处理。
-        setLoadedTargetKey(targetKey);
+        setLoadedTargetKey(listKey);
         setErrorState(null);
       })
       .catch((cause) => {
@@ -366,6 +360,7 @@ export function useAcpConversation(
   }, [
     activated,
     closeArchivedSelection,
+    listKey,
     reloadKey,
     service,
     target,
@@ -373,6 +368,73 @@ export function useAcpConversation(
     streamObserver,
     workspaceIdentity,
     workspaceKey,
+    workspacePath,
+  ]);
+
+  useEffect(() => {
+    if (!projectionKey || !selectedId || !agent) return;
+    let live = true;
+    const id = selectedId;
+    let store: ConversationProjectionStore;
+    const observe = (change: AcpConversationChange) => {
+      if (
+        !live ||
+        targetKeyRef.current !== targetKey ||
+        agentRef.current !== agent ||
+        selectedIdsRef.current[agent] !== id
+      )
+        return;
+      if (store.getState().snapshot?.seq !== change.session.revision) return;
+      if (
+        (sessionsRef.current.find(
+          (item) =>
+            item.id === id &&
+            item.workspacePath === workspacePath &&
+            (item.workspaceIdentity?.trim() || item.workspacePath) ===
+              (workspaceIdentity?.trim() || workspacePath),
+        )?.revision ?? -1) > change.session.revision
+      )
+        return;
+      if (change.wire.deliveryKind === "online")
+        streamObserver.received(change.session, change.streamDiagnostics);
+      // 元数据来自已原子应用的 Host 正文帧，不能用任务标题/状态伪造会话快照。
+      // 同步更新读取引用，避免同一批次迟到 list 在 React 提交前抹掉精确选择。
+      sessionsRef.current = [
+        change.session,
+        ...sessionsRef.current.filter((item) => item.id !== id),
+      ];
+      setSessions((previous) => {
+        const current = previous.find(
+          (item) =>
+            item.id === id &&
+            item.workspacePath === workspacePath &&
+            (item.workspaceIdentity?.trim() || item.workspacePath) ===
+              (workspaceIdentity?.trim() || workspacePath),
+        );
+        if (current && current.revision > change.session.revision) return previous;
+        return [change.session, ...previous.filter((item) => item.id !== id)];
+      });
+      closeArchivedSelection(change.session);
+    };
+    const lease = acquireAcpConversationProjection(service, target, id, observe);
+    store = lease.store;
+    setProjectionLease({ key: projectionKey, store });
+    if (lease.latestChange) observe(lease.latestChange);
+    return () => {
+      live = false;
+      lease.release();
+    };
+    // 会话的高频 revision 不创建新 store；生命周期只绑定精确目标和会话。
+  }, [
+    agent,
+    closeArchivedSelection,
+    projectionKey,
+    selectedId,
+    service,
+    target,
+    targetKey,
+    streamObserver,
+    workspaceIdentity,
     workspacePath,
   ]);
 
@@ -898,6 +960,10 @@ export function useAcpConversation(
 
   const retryConnection = useCallback(() => {
     if (!agent) return;
+    if (projectionLease?.key === projectionKey && projection.lastError) {
+      void projectionLease.store.retry();
+      return;
+    }
     if (!loaded) {
       setReloadKey((key) => key + 1);
     } else if (!selected && !selectedIds[agent]) {
@@ -912,7 +978,17 @@ export function useAcpConversation(
     } else {
       setErrorState(null);
     }
-  }, [agent, connectNew, loaded, refreshSession, selected, selectedIds]);
+  }, [
+    agent,
+    connectNew,
+    loaded,
+    refreshSession,
+    selected,
+    selectedIds,
+    projectionLease,
+    projectionKey,
+    projection.lastError,
+  ]);
 
   const sendingInput =
     agent && selected ? sendingInputs.get(`${targetKey}:${agent}:${selected.id}`) : null;
