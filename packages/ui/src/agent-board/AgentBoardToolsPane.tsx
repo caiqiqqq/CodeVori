@@ -1,15 +1,16 @@
 import { lazy, Suspense } from "react";
-import { closestCenter, DndContext, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { horizontalListSortingStrategy, SortableContext } from "@dnd-kit/sortable";
 import type { IServiceAccessor } from "@zcode/services";
 import type { GitChangeSourceId, WorkTaskScope } from "@zcode/shared";
-import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs.js";
+import { Tabs, TabsContent } from "@/components/ui/tabs.js";
 import { ServiceProvider } from "@/hooks/useServices.js";
 import type { GitPaneRepositoryState } from "@/hooks/useGitRepository.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import type { WorkspaceSidePaneState } from "@/lib/workspaceSidePane.js";
-import { getSidePaneTabTitle, SortableSidePaneTabTrigger } from "@/app-shell/SidePaneTabTrigger.js";
+import { SidePaneTabsHeader } from "@/app-shell/SidePaneTabsHeader.js";
+import { SidePaneFrame, SidePaneAddTabMenu } from "@/app-shell/SidePaneChrome.js";
+import { WorkspaceSidePaneToggleButton } from "@/WorkspaceSidePaneToggleButton.js";
+import { FileDiffIcon } from "lucide-react";
 
 const GitPane = lazy(() => import("@/GitPane.js").then((module) => ({ default: module.GitPane })));
 const PreviewPane = lazy(() =>
@@ -34,6 +35,8 @@ export function AgentBoardToolsPane({
   onRefresh,
   onOpenCodeViewer,
   onOpenBrowserUrl,
+  onOpenReview,
+  onCollapse,
 }: {
   state: WorkspaceSidePaneState;
   scope: WorkTaskScope;
@@ -42,6 +45,8 @@ export function AgentBoardToolsPane({
   gitState: GitPaneRepositoryState;
   sourceId: GitChangeSourceId;
   isDesktop?: boolean;
+  onOpenReview(): void;
+  onCollapse(): void;
   onSelectSource(source: GitChangeSourceId): void;
   onActivateTab(id: string): void;
   onCloseTab(id: string): void;
@@ -53,110 +58,91 @@ export function AgentBoardToolsPane({
   onOpenBrowserUrl?: (url: string) => void;
 }) {
   const { intl } = useZCodeIntl();
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   return (
-    <aside
-      data-testid="agent-board-side-pane"
-      className="flex h-full min-h-0 min-w-0 flex-col bg-background"
-    >
-      <Tabs
-        value={state.activeTabId}
-        onValueChange={onActivateTab}
-        className="h-full min-h-0 gap-0"
-      >
-        <div className="flex h-10 shrink-0 items-center overflow-hidden border-b border-border bg-header px-2">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={({ active, over }) => {
-              if (over) onReorderTab(String(active.id), String(over.id));
-            }}
-          >
-            <TabsList
-              variant="line"
-              aria-label={intl.formatMessage({ id: "sidePane.review" })}
-              className="min-w-0 flex-1 justify-start overflow-x-auto"
-            >
-              <SortableContext
-                items={state.tabs.map((tab) => tab.id)}
-                strategy={horizontalListSortingStrategy}
-              >
-                {state.tabs.map((tab) => {
-                  const title = getSidePaneTabTitle(tab, intl.formatMessage);
-                  return (
-                    <SortableSidePaneTabTrigger
-                      key={tab.id}
-                      tab={tab}
-                      title={title}
-                      closeTabLabel={intl.formatMessage({ id: "sidePane.closeTab" }, { title })}
-                      closeTabMenuLabel={intl.formatMessage({ id: "sidePane.closeCurrentTab" })}
-                      closeOtherTabsLabel={intl.formatMessage({ id: "sidePane.closeOtherTabs" })}
-                      closeAllTabsLabel={intl.formatMessage({ id: "sidePane.closeAllTabs" })}
-                      diffBadgeLabel={intl.formatMessage({ id: "diff.title" })}
-                      isActive={tab.id === state.activeTabId}
-                      onActivateTab={onActivateTab}
-                      onCloseTab={onCloseTab}
-                      onCloseOtherTabs={onCloseOtherTabs}
-                      onCloseAllTabs={onCloseAllTabs}
-                      canCloseOtherTabs={state.tabs.length > 1}
-                    />
-                  );
-                })}
-              </SortableContext>
-            </TabsList>
-          </DndContext>
-        </div>
-        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-          <ServiceProvider services={services}>
-            {state.tabs.map((tab) => (
-              // 标签切换只改变可见性，不卸载 GitPane 的展开 diff 或会话草稿。
-              <TabsContent
-                key={tab.id}
-                value={tab.id}
-                forceMount
-                data-testid={
-                  tab.type === "git" ? "agent-board-git-review" : "agent-board-file-preview"
-                }
-                className="h-full min-h-0 min-w-0 data-[state=inactive]:hidden"
-              >
-                <Suspense
-                  fallback={
-                    <p className="p-4 text-ui-base">
-                      {intl.formatMessage({ id: "agentBoard.loading" })}
-                    </p>
+    <aside data-testid="agent-board-side-pane" className="h-full min-h-0 min-w-0">
+      <SidePaneFrame>
+        <Tabs
+          value={state.activeTabId}
+          onValueChange={onActivateTab}
+          className="h-full min-h-0 gap-0"
+        >
+          <SidePaneTabsHeader
+            tabs={state.tabs}
+            activeTabId={state.activeTabId}
+            isDesktop={isDesktop}
+            onActivateTab={onActivateTab}
+            onCloseTab={onCloseTab}
+            onCloseOtherTabs={onCloseOtherTabs}
+            onCloseAllTabs={onCloseAllTabs}
+            onReorderTab={onReorderTab}
+            addTabMenu={
+              <SidePaneAddTabMenu
+                items={[
+                  {
+                    id: "review",
+                    label: intl.formatMessage({ id: "sidePane.review" }),
+                    icon: FileDiffIcon,
+                    onOpen: onOpenReview,
+                  },
+                ]}
+              />
+            }
+            trailingControls={
+              <WorkspaceSidePaneToggleButton isSidePaneOpen onToggleSidePane={onCollapse} />
+            }
+          />
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+            <ServiceProvider services={services}>
+              {state.tabs.map((tab) => (
+                // 标签切换只改变可见性，不卸载 GitPane 的展开 diff 或会话草稿。
+                <TabsContent
+                  key={tab.id}
+                  value={tab.id}
+                  forceMount
+                  data-testid={
+                    tab.type === "git" ? "agent-board-git-review" : "agent-board-file-preview"
                   }
+                  className="h-full min-h-0 min-w-0 data-[state=inactive]:hidden"
                 >
-                  {tab.type === "git" ? (
-                    <GitPane
-                      workspacePath={scope.workspacePath}
-                      workspaceIdentity={scope.workspaceIdentity}
-                      workspaceRemoteSessionId={remoteSessionId}
-                      gitState={gitState}
-                      isDesktop={isDesktop}
-                      selectedSourceId={sourceId}
-                      onSelectSource={onSelectSource}
-                      onClose={() => onCloseTab(tab.id)}
-                      onRefresh={onRefresh}
-                      fileChangeFindActiveIndex={0}
-                      fileChangeFindNavigationRequestId={0}
-                      fileChangeFindQuery=""
-                      onFileChangeFindMatchCountChange={ignoreFindMatchCount}
-                    />
-                  ) : tab.type === "code-viewer" ? (
-                    <PreviewPane
-                      source={tab.source}
-                      workspacePath={tab.source.workspacePath}
-                      onClose={() => onCloseTab(tab.id)}
-                      onOpenCodeViewer={onOpenCodeViewer}
-                      onOpenBrowserUrl={onOpenBrowserUrl}
-                    />
-                  ) : null}
-                </Suspense>
-              </TabsContent>
-            ))}
-          </ServiceProvider>
-        </div>
-      </Tabs>
+                  <Suspense
+                    fallback={
+                      <p className="p-4 text-ui-base">
+                        {intl.formatMessage({ id: "agentBoard.loading" })}
+                      </p>
+                    }
+                  >
+                    {tab.type === "git" ? (
+                      <GitPane
+                        workspacePath={scope.workspacePath}
+                        workspaceIdentity={scope.workspaceIdentity}
+                        workspaceRemoteSessionId={remoteSessionId}
+                        gitState={gitState}
+                        isDesktop={isDesktop}
+                        selectedSourceId={sourceId}
+                        onSelectSource={onSelectSource}
+                        onClose={() => onCloseTab(tab.id)}
+                        onRefresh={onRefresh}
+                        fileChangeFindActiveIndex={0}
+                        fileChangeFindNavigationRequestId={0}
+                        fileChangeFindQuery=""
+                        onFileChangeFindMatchCountChange={ignoreFindMatchCount}
+                      />
+                    ) : tab.type === "code-viewer" ? (
+                      <PreviewPane
+                        source={tab.source}
+                        workspacePath={tab.source.workspacePath}
+                        onClose={() => onCloseTab(tab.id)}
+                        onOpenCodeViewer={onOpenCodeViewer}
+                        onOpenBrowserUrl={onOpenBrowserUrl}
+                      />
+                    ) : null}
+                  </Suspense>
+                </TabsContent>
+              ))}
+            </ServiceProvider>
+          </div>
+        </Tabs>
+      </SidePaneFrame>
     </aside>
   );
 }
