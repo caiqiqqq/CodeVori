@@ -35,7 +35,7 @@ try {
       body: `
     import {MessageResponse} from '/@fs${renderer}../../../ui/src/components/ai-elements/message.tsx';
     import {DEFAULT_CODE_PREVIEW_SETTINGS} from '/@fs${renderer}../../../ui/src/lib/codePreviewSettings.ts';
-    export function SessionPane(p){window.__filePane=p;return window.__React.createElement('div',{className:'p-4'},window.__React.createElement(MessageResponse,{workspacePath:p.workspacePath,workspaceIdentity:p.workspaceIdentity,workspaceRemoteSessionId:p.remoteSessionId,theme:'light',codePreviewSettings:DEFAULT_CODE_PREVIEW_SETTINGS,onOpenFileLink:p.onOpenFileLink,onOpenCodeViewer:p.onOpenCodeViewer},'已准备 [三张运行表的建表脚本](/scripts/create_tables.sql)，可打开检查。'));}
+    export function SessionPane(p){const React=window.__React;const [draft,setDraft]=React.useState('');window.__filePane=p;return React.createElement('div',{className:'p-4'},React.createElement('textarea',{'aria-label':'文件会话草稿',value:draft,onChange:e=>setDraft(e.target.value)}),window.__React.createElement(MessageResponse,{workspacePath:p.workspacePath,workspaceIdentity:p.workspaceIdentity,workspaceRemoteSessionId:p.remoteSessionId,theme:'light',codePreviewSettings:DEFAULT_CODE_PREVIEW_SETTINGS,onOpenFileLink:p.onOpenFileLink,onOpenCodeViewer:p.onOpenCodeViewer},'已准备 [三张运行表的建表脚本](/scripts/create_tables.sql)，可打开检查。'));}
   `,
     }),
   );
@@ -62,7 +62,12 @@ try {
   };
   const link = () => page.getByRole("button", { name: /三张运行表的建表脚本/ });
   const preview = () => page.getByTestId("agent-board-file-preview");
-  const close = () => preview().getByRole("button", { name: "关闭代码面板", exact: true }).click();
+  const close = () =>
+    page
+      .getByTestId("agent-board-side-pane")
+      .locator("[data-side-pane-tab-id][data-active]")
+      .getByRole("button", { name: /^关闭 / })
+      .click();
   const codeContains = (text) =>
     page.waitForFunction((text) => {
       const read = (node) =>
@@ -83,6 +88,17 @@ try {
     await open(title);
     await link().click();
     await preview().waitFor();
+    assert.equal(
+      await page.getByRole("dialog").count(),
+      1,
+      "file opens in the same detail, not another dialog",
+    );
+    const chat = await page.getByTestId("agent-board-conversation-column").boundingBox();
+    const tool = await preview().boundingBox();
+    assert.ok(
+      chat && tool && tool.x >= chat.x + chat.width - 1,
+      "file must appear beside conversation",
+    );
     await codeContains("fixture_" + host.replace(/-/g, "_"));
     assert.deepEqual(await page.evaluate(() => window.__board.fileReads.at(-1)), {
       host,
@@ -137,6 +153,39 @@ try {
   }
   await page.getByTestId("work-task-back").click();
   await open("Remote ACP 0");
+  await page.getByRole("textbox", { name: "文件会话草稿" }).fill("保留文件会话草稿");
+  await link().click();
+  await codeContains("CREATE TABLE");
+  await link().click();
+  assert.equal(
+    await page.getByTestId("agent-board-side-pane").locator("[data-side-pane-tab-id]").count(),
+    1,
+  );
+  await page.evaluate(() =>
+    window.__filePane.onOpenCodeViewer({
+      type: "text",
+      title: "Second SQL",
+      language: "sql",
+      content: "SELECT 7;",
+    }),
+  );
+  await page.locator("[data-side-pane-tab-id]").filter({ hasText: "Second SQL" }).waitFor();
+  assert.equal(
+    await page.getByTestId("agent-board-side-pane").locator("[data-side-pane-tab-id]").count(),
+    2,
+  );
+  await page.locator("[data-side-pane-tab-id]").filter({ hasText: "create_tables.sql" }).click();
+  assert.equal(
+    await page.getByRole("textbox", { name: "文件会话草稿" }).inputValue(),
+    "保留文件会话草稿",
+  );
+  await close();
+  await page
+    .locator("[data-side-pane-tab-id][data-active]")
+    .filter({ hasText: "Second SQL" })
+    .waitFor();
+  await close();
+  await page.getByTestId("agent-board-side-pane").waitFor({ state: "hidden" });
   // 缺省 scope 继承当前远端；显式 source 属于另一 Host 时保留原身份。
   for (const explicit of [false, true]) {
     await page.evaluate(
@@ -165,7 +214,7 @@ try {
       language: "sql",
     }),
   );
-  await preview().getByRole("heading", { name: "Inline SQL", exact: true }).waitFor();
+  await page.locator("[data-side-pane-tab-id]").filter({ hasText: "Inline SQL" }).waitFor();
   await codeContains("SELECT 42;");
   await close();
   await page.evaluate(() => window.__board.setFileMode("missing"));
@@ -200,7 +249,7 @@ try {
   assert.deepEqual(await page.evaluate(() => window.__board.fileReads), []);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: real Markdown file links and PreviewPane in board dialogs; local/remote/native/ACP scope, execution/merge worktrees, source scope fallback/preservation, inline preview, missing file feedback, nested close, desktop/mobile themes, offline no local fallback.",
+    "PASS: real Markdown file links and PreviewPane in board dialogs; local/remote/native/ACP scope, execution/merge worktrees, source scope fallback/preservation, inline preview, missing file feedback, shared side pane tabs, desktop/mobile themes, offline no local fallback.",
   );
 } finally {
   await browser?.close();
