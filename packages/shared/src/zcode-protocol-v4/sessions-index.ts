@@ -49,6 +49,8 @@ export const sessionSummarySchema = z.object({
   goalStatus: goalStateSchema.shape.status.optional(),
   // 未读推导：客户端本地记 lastSeenActivityAt 比较（不用 seq，epoch 会重置）。
   lastActivityAt: timestampSchema,
+  // 本轮排序锚点；正文、工具和后台进度不能推进它。旧 CLI 可缺省。
+  turnStartedAt: timestampSchema.optional(),
   // ≤120 字符。
   lastAssistantPreview: z.string().optional(),
   createdAt: timestampSchema,

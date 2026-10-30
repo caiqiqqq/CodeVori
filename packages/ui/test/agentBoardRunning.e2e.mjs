@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { agentBoardFixture } from "./agentBoardFixture.mjs";
 import { exerciseAgentBoardWaiting } from "./agentBoardWaitingScenario.mjs";
+import { exerciseAgentBoardRunningOrder } from "./agentBoardRunningOrderScenario.mjs";
 const renderer = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__agent-board-running-${process.pid}`;
 const html = join(renderer, name + ".html"),
@@ -92,9 +93,10 @@ try {
     f.notifyWork();
   });
   await exerciseAgentBoardWaiting(page, artifacts);
+  await exerciseAgentBoardRunningOrder(page);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: Native/ACP/WorkTask animated running indicators and column header; waiting/queued/offline/completion transitions; reduced motion; desktop/mobile themes.",
+    "PASS: Native/ACP/WorkTask running order stability, new rounds and result order; animated indicators; waiting/queued/offline/completion transitions; reduced motion; desktop/mobile themes.",
   );
 } finally {
   await browser?.close();

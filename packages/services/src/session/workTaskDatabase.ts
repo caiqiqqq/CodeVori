@@ -73,6 +73,7 @@ export function claimNextWorkTask(
         ...task,
         runSeq: task.runSeq + 1,
         finishedAt: undefined,
+        startedAt: now,
         commandId: uuidv7(),
         status: "preparing",
         ...(isWorkTaskMerging(task)

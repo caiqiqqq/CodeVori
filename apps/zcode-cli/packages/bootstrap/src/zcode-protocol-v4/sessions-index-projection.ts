@@ -28,6 +28,8 @@ function deriveSessionSummary(
   // 最后一条 assistantText row 的文本作预览（≤120 字符）。
   let lastAssistantPreview: string | undefined;
   const rows = snapshot.rows.window;
+  // 看板原先随 lastActivityAt 交替置顶；使用原执行轮的开始事实，不能按接收时间造锚点。
+  const turnStartedAt = rows.findLast((row) => row.kind === "turnHeader")?.startedAt;
   for (let i = rows.length - 1; i >= 0; i -= 1) {
     const row = rows[i];
     if (
@@ -95,6 +97,7 @@ function deriveSessionSummary(
       : {}),
     ...(snapshot.goal ? { goalStatus: snapshot.goal.status } : {}),
     lastActivityAt: extra.lastActivityAt,
+    ...(turnStartedAt === undefined ? {} : { turnStartedAt }),
     ...(lastAssistantPreview ? { lastAssistantPreview } : {}),
     createdAt: extra.createdAt,
   };
@@ -119,6 +122,7 @@ function summariesEqual(a: SessionSummary, b: SessionSummary): boolean {
     a.pendingInteractionSummary?.userInputCount === b.pendingInteractionSummary?.userInputCount &&
     a.goalStatus === b.goalStatus &&
     a.lastActivityAt === b.lastActivityAt &&
+    a.turnStartedAt === b.turnStartedAt &&
     a.lastAssistantPreview === b.lastAssistantPreview &&
     a.createdAt === b.createdAt
   );

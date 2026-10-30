@@ -77,6 +77,7 @@ export const windowHostControllerTaskActivitySchema = z
   .object({
     phase: sessionPhaseSchema,
     lastActivityAt: z.number().finite().nonnegative(),
+    turnStartedAt: z.number().finite().nonnegative().optional(),
     hasBackgroundWork: z.boolean(),
     pendingInteractions: pendingInteractionSummarySchema.optional(),
     // 侧栏工作流运行行；无 run 时缺席。

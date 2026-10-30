@@ -28,6 +28,7 @@ function sameSidebarRows(
         previous.preview === row.preview &&
         previous.createdAt === row.createdAt &&
         previous.completedAt === row.completedAt &&
+        previous.startedAt === row.startedAt &&
         previous.updatedAt === row.updatedAt
       );
     })
