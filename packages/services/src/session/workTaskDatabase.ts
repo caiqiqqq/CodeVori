@@ -108,6 +108,32 @@ export function listWorkTaskConversations(db: WorkTaskDatabase): WorkTask[] {
     );
 }
 
+export function listWorkTaskConversationSessionIds(
+  db: WorkTaskDatabase,
+  scope: WorkTaskScope,
+  kind: "api" | "acp",
+): string[] {
+  const rows = db.prepare("SELECT data FROM work_tasks").all() as { data: string }[];
+  const ids = new Set<string>();
+  for (const row of rows) {
+    const task = workTaskSchema.parse(JSON.parse(row.data));
+    // 待办完成/归档不解除会话归属；执行目录可能是原项目，也可能是独立工作树。
+    // 普通列表必须按持久绑定过滤，不能凭标题或分支名猜测，也不能串到另一 Host identity。
+    for (const [path, session] of [
+      [workTaskExecutionPath(task), task.session],
+      [task.merge?.worktree?.path, task.merge?.session],
+    ] as const) {
+      if (
+        path === scope.workspacePath &&
+        session?.kind === kind &&
+        resolveWorkspaceKey({ ...task, workspacePath: path }) === resolveWorkspaceKey(scope)
+      )
+        ids.add(session.id);
+    }
+  }
+  return [...ids];
+}
+
 export function recordWorkTaskChange(
   db: WorkTaskDatabase,
   task: WorkTask,

@@ -123,7 +123,7 @@ test("delegated ACP sessions stay directly readable but leave history and search
   const ordinary = snapshot({ title: "普通会话" });
   const service = createAcpService({
     directory,
-    delegatedSessionIds: async (scope) =>
+    hiddenSessionIds: async (scope) =>
       scope.workspaceIdentity === "host-one" && scope.workspacePath === workspace.workspacePath
         ? [child.id]
         : [],

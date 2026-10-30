@@ -2151,6 +2151,15 @@ export function createLocalServices(options: {
     await workTaskRepo.ready();
     return workTaskRepo.hasActiveConversation(scope, { kind, id });
   };
+  const hiddenConversationSessionIds = async (scope: WorkTaskScope, kind: "api" | "acp") => {
+    if (!agentDelegationService) throw new Error("delegation.owner-unavailable");
+    const [delegated] = await Promise.all([
+      agentDelegationService.childSessionIds(scope, kind),
+      workTaskRepo.ready(),
+    ]);
+    // 两种内部会话的归属仍由各自 Host owner 保存，普通投影只合并排除集合。
+    return [...new Set([...delegated, ...workTaskRepo.conversationSessionIds(scope, kind)])];
+  };
   let delegationMcp: ReturnType<typeof createDelegationMcp> | undefined;
   let issuesMcp: ReturnType<typeof createForgeIssuesMcp> | undefined;
   const liveDelegationParents = new Map<string, string>();
@@ -2397,6 +2406,7 @@ export function createLocalServices(options: {
   const zcodeTaskIndexSyncer = createZCodeTaskIndexSyncer({
     agentService: zcodeAgentService,
     taskIndexRepo,
+    hiddenSessionIds: (scope) => hiddenConversationSessionIds(scope, "api"),
   });
   // The plugin can be toggled at runtime. Do not let a previously created resolver continue
   // health-checking/restarting Helper after disable, and create it lazily after enable.
@@ -2461,10 +2471,7 @@ export function createLocalServices(options: {
     },
     resolveDynamicWorkflowClientConfig: () =>
       codingPlanSubscriptionService.getDynamicWorkflowClientConfig(),
-    delegatedSessionIds: async (scope) => {
-      if (!agentDelegationService) throw new Error("delegation.owner-unavailable");
-      return agentDelegationService.childSessionIds(scope, "acp");
-    },
+    hiddenSessionIds: (scope) => hiddenConversationSessionIds(scope, "acp"),
     memoryContext: createProjectMemoryContext({
       cliStorageRoot: join(getZCodeDataRootDir(), "cli"),
       isEnabled: async () => (await settingService.get()).memoryEnabled === true,
@@ -2584,10 +2591,7 @@ export function createLocalServices(options: {
     taskIndexSyncer: zcodeTaskIndexSyncer,
     settingService,
     cuaProductMcpServerResolver,
-    delegatedSessionIds: async (scope) => {
-      if (!agentDelegationService) throw new Error("delegation.owner-unavailable");
-      return agentDelegationService.childSessionIds(scope, "api");
-    },
+    hiddenSessionIds: (scope) => hiddenConversationSessionIds(scope, "api"),
   });
   const botRemoteWorkspaceService = createBotRemoteWorkspaceService({
     parentPort: options?.parentPort,

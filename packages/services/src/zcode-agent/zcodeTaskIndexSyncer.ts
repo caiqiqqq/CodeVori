@@ -174,6 +174,8 @@ export interface ZCodeTaskIndexSyncer {
 interface CreateZCodeTaskIndexSyncerOptions {
   agentService: IZCodeAgentService;
   taskIndexRepo: TaskIndexRepo;
+  /** Host 持久归属；内部会话不能被自动摄入提升为普通任务。 */
+  hiddenSessionIds?: (scope: ZCodeAgentWorkspaceTarget) => Promise<string[]>;
 }
 
 /** phase 终态集合（sessions-index 的 conflated 最新态里判定迁移用）。 */
@@ -315,6 +317,10 @@ export function createZCodeTaskIndexSyncer(
   const terminalEventEmitter = new Emitter<ZCodeTaskIndexTerminalEvent>();
   const readyEventEmitter = new Emitter<ZCodeTaskIndexReadyEvent>();
   let disposed = false;
+
+  async function isHiddenSession(target: ZCodeAgentSessionTarget): Promise<boolean> {
+    return (await options.hiddenSessionIds?.(target))?.includes(target.sessionId) ?? false;
+  }
 
   const indexTopicFor = (state: WorkspaceIngestState) =>
     sessionsIndexTopic(resolveWorkspaceKey(state.target));
@@ -570,7 +576,6 @@ export function createZCodeTaskIndexSyncer(
     summary: SessionSummary,
     options?: { moveGroupedTaskToTop?: boolean },
   ): void {
-    emitTerminalAndReady(target, summary);
     const failed = summary.phase === "error";
     const unreadSignal = resolveTerminalUnreadSignal(summary);
     logger.debug(undefined, "task 终态未读裁决", {
@@ -678,32 +683,50 @@ export function createZCodeTaskIndexSyncer(
     // 进入基线（gateway 每个事件都 fan-out），不会漏掉真实收口。
     const becameTerminal =
       previous !== undefined && !isTerminalPhase(previous.phase) && isTerminalPhase(next.phase);
-    if (becameTerminal) {
-      applyTerminalTransition(target, next, {
-        moveGroupedTaskToTop: becameVisibleTask,
+    // 修复原因：底层会话不等于普通对话。原先每个非 draft 摘要都会补普通行、
+    // grouped 排序并广播，待办首发因此被再次登记到侧栏。必须在写入前询问 Host owner。
+    // terminal/ready 属执行通知，不能因为普通列表不收录就阻断待办和队列收口。
+    if (becameTerminal) emitTerminalAndReady(target, next);
+    const generation = state.indexSubscriptionGeneration;
+    void (async () => {
+      if (await isHiddenSession(target)) return;
+      if (!isLiveState(state) || state.indexSubscriptionGeneration !== generation) return;
+      if (becameTerminal) {
+        applyTerminalTransition(target, next, {
+          moveGroupedTaskToTop: becameVisibleTask,
+        });
+        return;
+      }
+      if (becameVisibleTask) {
+        // 普通新会话才在首次可见时分配 grouped 顺序；内部会话没有此产品转换。
+        await resyncTaskIndexRowFromAgent(target, "session.became-visible", {
+          moveGroupedTaskToTop: true,
+        });
+        return;
+      }
+      const title = next.title.trim();
+      if (title && (previous === undefined || previous.title !== next.title)) {
+        applyTitleChange(target, title);
+      }
+    })().catch((error: unknown) => {
+      logger.warn(undefined, "普通会话索引摄入未获归属确认", {
+        workspacePath: target.workspacePath,
+        sessionId: target.sessionId,
+        error,
       });
-      return;
-    }
-    if (becameVisibleTask) {
-      // v4 预热 session 从 draft 提升，或 online delta 首次出现新 session 时，
-      // 不经过 zcodeSessionService.createSession。此处是最早且不依赖标题时序的新任务边界；
-      // 立即回源写入 task 行与 grouped root 最小 sort_order，避免缺序节点落到末尾。
-      void resyncTaskIndexRowFromAgent(target, "session.became-visible", {
-        moveGroupedTaskToTop: true,
-      });
-      return;
-    }
-    const title = next.title.trim();
-    if (title && (previous === undefined || previous.title !== next.title)) {
-      applyTitleChange(target, title);
-    }
+    });
   }
 
   async function seedMissingRowsFromInitialSnapshot(
     state: WorkspaceIngestState,
     summaries: Iterable<SessionSummary>,
   ): Promise<void> {
-    const candidates = [...summaries].filter((summary) => summary.phase !== "draft");
+    const generation = state.indexSubscriptionGeneration;
+    const hidden = new Set(await options.hiddenSessionIds?.(state.target));
+    if (!isLiveState(state) || state.indexSubscriptionGeneration !== generation) return;
+    const candidates = [...summaries].filter(
+      (summary) => summary.phase !== "draft" && !hidden.has(summary.sessionId),
+    );
     if (candidates.length === 0) return;
     // 纯 V4 UI 不经过 zcodeSessionService.initializeWorkspace；若把首帧
     // 当成“已有 sqlite 存量”的静默基线，远端新库就会永远是 0 行。这里只做原子
@@ -714,6 +737,7 @@ export function createZCodeTaskIndexSyncer(
     let failedCount = 0;
     let firstError: unknown;
     for (let offset = 0; offset < candidates.length; offset += INITIAL_BASELINE_SEED_BATCH_SIZE) {
+      if (!isLiveState(state) || state.indexSubscriptionGeneration !== generation) return;
       const batch = candidates.slice(offset, offset + INITIAL_BASELINE_SEED_BATCH_SIZE);
       const results = await Promise.allSettled(
         batch.map((summary) =>
@@ -1018,7 +1042,11 @@ export function createZCodeTaskIndexSyncer(
         // 防止远端/新安装的空 sqlite 因纯 V4 路径永远没有存量。
         state.summaries = nextSummaries;
         state.seeded = true;
-        void seedMissingRowsFromInitialSnapshot(state, nextSummaries.values());
+        void seedMissingRowsFromInitialSnapshot(state, nextSummaries.values()).catch(
+          (error: unknown) => {
+            logger.warn(undefined, "普通会话初始索引未获归属确认", { error });
+          },
+        );
         const generation = state.indexSubscriptionGeneration;
         void repairSubagentTaskIndex({
           target: state.target,
@@ -1673,6 +1701,10 @@ export function createZCodeTaskIndexSyncer(
     const meta = buildMetaFromSnapshot(snapshot, options);
     // 旧 child 标签页的显式 resume 仍会同步快照；只读详情不能重新写成主任务。
     if (snapshot.session.sessionKind === "subagent_child") return meta;
+    // 显式恢复/终态回源也会走此入口，必须和 sessions-index 摄入遵守相同归属规则。
+    if (await isHiddenSession({ ...snapshot.session.workspace, sessionId: meta.taskId }))
+      return meta;
+    if (disposed) return meta;
     // 同时把 snapshot.messages 里可见的聊天正文索引下去，
     // 让 TaskSearchDialog 正文搜索能命中；旧 sqlite 行下次到这里时自然回填。
     const searchableText = buildSearchableTextFromSnapshot(snapshot);
