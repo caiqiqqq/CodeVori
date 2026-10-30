@@ -196,6 +196,7 @@ export class WorkTaskService implements IWorkTaskService {
   }
   private async tick() {
     await this.options.repo.ready();
+    const concurrency = await this.options.getConcurrency?.();
     if (this.closed) return;
     const now = Date.now();
     for (const run of this.runs.values()) {
@@ -205,7 +206,10 @@ export class WorkTaskService implements IWorkTaskService {
       this.options.repo.renew(run.task, this.owner, now, LEASE_MS);
     this.options.repo.recoverExpired(now);
     let task: WorkTask | null;
-    while (!this.closed && (task = this.options.repo.claimNext(this.owner, now, LEASE_MS))) {
+    while (
+      !this.closed &&
+      (task = this.options.repo.claimNext(this.owner, now, LEASE_MS, concurrency))
+    ) {
       const claimed = task;
       const abort = new AbortController();
       const run: Run = { task: claimed, abort, promise: Promise.resolve() };

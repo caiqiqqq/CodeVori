@@ -11,6 +11,8 @@ import {
   type WorkTaskScope,
   type WorkTaskEvent,
   WORK_TASK_ACTIVE_STATUSES,
+  DEFAULT_WORK_TASK_CONCURRENCY,
+  workTaskExecutionConcurrencySchema,
 } from "@zcode/shared";
 
 const require = createRequire(import.meta.url);
@@ -30,7 +32,16 @@ export function claimNextWorkTask(
   owner: string,
   now: number,
   leaseMs: number,
+  concurrency = DEFAULT_WORK_TASK_CONCURRENCY,
 ): WorkTask | null {
+  const limit = workTaskExecutionConcurrencySchema.parse(concurrency);
+  const owned = db.prepare("SELECT data FROM work_tasks WHERE owner IS NOT NULL").all() as {
+    data: string;
+  }[];
+  const ownedTasks = owned.map((row) => workTaskSchema.parse(JSON.parse(row.data)));
+  // 取消受理不等于进程已停止：owner 释放前继续占位；已完成任务的目录清理不占执行名额。
+  if (ownedTasks.filter((task) => task.worktreeCleanup?.phase !== "running").length >= limit)
+    return null;
   const queued = db
     .prepare(
       "SELECT data FROM work_tasks WHERE status='queued' AND owner IS NULL ORDER BY queue_position,id",
@@ -40,20 +51,12 @@ export function claimNextWorkTask(
     const task = workTaskSchema.parse(JSON.parse(row.data));
     // 直接执行共用项目目录，不能让两个已认领任务交错切分支；隔离任务仍可并发。
     if (task.useWorktree === false) {
-      const owned = db.prepare("SELECT data FROM work_tasks WHERE owner IS NOT NULL").all() as {
-        data: string;
-      }[];
-      if (owned.some((item) => workTaskSchema.parse(JSON.parse(item.data)).useWorktree === false))
-        continue;
+      if (ownedTasks.some((item) => item.useWorktree === false)) continue;
     }
     if (isWorkTaskMerging(task)) {
-      const owned = db.prepare("SELECT data FROM work_tasks WHERE owner IS NOT NULL").all() as {
-        data: string;
-      }[];
       // 同一仓库可来自不同项目子目录；目标分支锁不能只按 workspace scope 计算。
       if (
-        owned.some((item) => {
-          const other = workTaskSchema.parse(JSON.parse(item.data));
+        ownedTasks.some((other) => {
           return (
             isWorkTaskMerging(other) &&
             other.merge?.projectPath === task.merge?.projectPath &&
@@ -63,7 +66,7 @@ export function claimNextWorkTask(
       )
         continue;
     }
-    // 旧项目并发值仅兼容读写；独立任务不等待其他任务收口，合并目标锁仍在上方保留。
+    // 旧项目并发值仅兼容读写；统一执行上限与原目录/合并锁共同约束认领。
     return writeWorkTask(
       db,
       {

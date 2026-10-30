@@ -290,6 +290,8 @@ export interface AppSettings {
   taskAutoArchiveEnabled?: boolean;
   /** 自动归档阈值；当任务最后更新时间早于该天数时允许被归档 */
   taskAutoArchiveOlderThanDays?: number;
+  /** 当前 Host 数据目录内待办任务的执行并发上限，正整数，默认 4，不设产品最高值。 */
+  workTaskConcurrency?: number;
   /** Windows 与 Linux 桌面端关闭窗口时隐藏到托盘 */
   closeToTrayOnWindows?: boolean;
   /** Linux 首次启用托盘选项的默认值迁移标记。 */

@@ -3374,6 +3374,13 @@ const enUS: Record<string, string> = {
     "Keep complete model requests and responses without compression, size limits, or automatic deletion.",
   "settings.performanceMode": "Performance mode",
   "settings.performanceModeDescription": "Simplify rendered output to improve performance.",
+  "settings.workTaskConcurrency": "Concurrent to-do tasks",
+  "settings.workTaskConcurrencyDescription":
+    "Only applies to to-do tasks across projects in this environment. Defaults to 4; enter any positive integer with no maximum. Extra to-do tasks wait for available slots. Regular conversations, delegation and automations are unaffected.",
+  "settings.workTaskConcurrencyInvalid": "Enter an integer greater than 0.",
+  "settings.workTaskConcurrencySave": "Save concurrent to-do task limit",
+  "settings.workTaskConcurrencySaveError":
+    "Could not save the concurrency limit. Please try again.",
   "settings.taskAutoArchive": "Auto-archive old tasks",
   "settings.taskAutoArchiveDescription":
     "Periodically scan recently opened workspaces and automatically archive completed, unread-free, unpinned tasks after the retention window.",

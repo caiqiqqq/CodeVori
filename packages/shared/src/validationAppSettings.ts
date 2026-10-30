@@ -12,6 +12,7 @@ import {
   embeddedBrowserViewportPreferenceSchema,
 } from "./browser-use/command-metadata.js";
 import { providerFamilyConnectionSelectionSettingsSchema } from "./provider-family-connection-selection.js";
+import { DEFAULT_WORK_TASK_CONCURRENCY, workTaskExecutionConcurrencySchema } from "./work-task.js";
 
 /** 引导职业枚举；单独导出供 onboarding 记录回填 settings 时做窄化校验。 */
 const appSettingsOccupationSchema = z.enum([
@@ -485,6 +486,7 @@ const appSettingsObjectSchema = z.object({
   computerUseComposerEntryHidden: z.boolean().default(true),
   taskAutoArchiveEnabled: z.boolean().default(false),
   taskAutoArchiveOlderThanDays: z.number().int().positive().max(365).default(7),
+  workTaskConcurrency: workTaskExecutionConcurrencySchema.default(DEFAULT_WORK_TASK_CONCURRENCY),
   closeToTrayOnWindows: z.boolean().default(true),
   closeToTrayLinuxMigrationInitialized: z.boolean().default(false),
   closeToTrayOnWindowsMigrationInitialized: z.boolean().default(true),
@@ -564,6 +566,7 @@ export const appSettingsPatchSchema = z.object({
   computerUseComposerEntryHidden: z.boolean().optional(),
   taskAutoArchiveEnabled: z.boolean().optional(),
   taskAutoArchiveOlderThanDays: z.number().int().positive().max(365).optional(),
+  workTaskConcurrency: workTaskExecutionConcurrencySchema.optional(),
   closeToTrayOnWindows: z.boolean().optional(),
   closeToTrayLinuxMigrationInitialized: z.boolean().optional(),
   keepAwakeWhileRunning: z.boolean().optional(),

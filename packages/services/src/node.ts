@@ -2739,6 +2739,7 @@ export function createLocalServices(options: {
   agentDelegationService.startScheduler();
   const workTaskService = new WorkTaskService({
     repo: workTaskRepo,
+    getConcurrency: async () => (await settingService.get()).workTaskConcurrency ?? 4,
     forge: gitService,
     repositoryIssues: gitService,
     result: createWorkTaskResult({

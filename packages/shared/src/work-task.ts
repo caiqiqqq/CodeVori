@@ -142,6 +142,10 @@ export const WORK_TASK_ACTIVE_STATUSES: readonly WorkTaskStatus[] = [
   "awaiting_input",
 ];
 
+/** 应用级待办调度上限；旧项目 concurrency 字段继续独立兼容。 */
+export const workTaskExecutionConcurrencySchema = z.number().int().min(1);
+export const DEFAULT_WORK_TASK_CONCURRENCY = 4;
+
 export const workTaskWorktreeSchema = z
   .object({
     rootPath: z.string().min(1),
