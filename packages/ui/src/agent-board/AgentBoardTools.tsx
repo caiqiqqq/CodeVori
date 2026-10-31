@@ -88,8 +88,17 @@ export function AgentBoardTools({
         event.preventDefault();
         if (event.target instanceof HTMLElement) event.target.focus();
       }}
-      // 非模态详情与普通 Shell 工具并列；工具菜单或文件树获焦不能关闭当前会话。
-      onInteractOutside={(event) => event.preventDefault()}
+      // 只有外部主键点击关闭聊天；切焦和原 Shell 工具操作不能撤销当前会话 target。
+      onFocusOutside={(event) => event.preventDefault()}
+      onPointerDownOutside={(event) => {
+        // Portal 弹出层虽不在聊天/工具 DOM 内，也应先完成自身交互。
+        const inWorkspaceSurface =
+          event.target instanceof Element &&
+          event.target.closest(
+            '[data-workspace-side-frame], [data-workspace-side-pane-resize-handle], [data-workspace-terminal-frame], [data-workspace-terminal-resize-handle], [data-slot="popover-content"]',
+          );
+        if (event.detail.originalEvent.button !== 0 || inWorkspaceSurface) event.preventDefault();
+      }}
       onEscapeKeyDown={(event) => {
         if (open) {
           event.preventDefault();
