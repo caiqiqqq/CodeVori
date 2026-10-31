@@ -106,6 +106,20 @@ try {
   };
   await open("Remote ACP 0");
   await facts("host-0:/same", 24);
+  // macOS 原生窗控高于 DOM 弹窗；普通详情与展开审查后都必须避开顶部 48px。
+  const assertMacCaptionSafe = async () => {
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="agent-board-conversation-column"]')
+          ?.getBoundingClientRect().y >= 48,
+    );
+    const column = await page.getByTestId("agent-board-conversation-column").boundingBox();
+    assert.ok(column.y >= 48, "conversation title must stay below native macOS controls");
+    assert.ok(column.y + column.height <= 951, "caption inset must preserve the composer bottom");
+  };
+  await page.evaluate(() => document.documentElement.classList.add("platform-mac-desktop"));
+  await assertMacCaptionSafe();
   await page.getByRole("textbox", { name: "消息草稿" }).fill("保留原对话草稿");
   await mini().click();
   await page.getByRole("button", { name: /^更改\s*\+24\s*-5$/ }).click();
@@ -116,6 +130,34 @@ try {
   const reviewBox = await review().boundingBox();
   assert.ok(chatBox.width >= 380 && reviewBox.width >= 380);
   assert.ok(reviewBox.x >= chatBox.x + chatBox.width - 1, "review must sit beside the chat");
+  await assertMacCaptionSafe();
+  assert.ok(reviewBox.y >= 48, "expanded review tabs must also avoid native window controls");
+  await page.screenshot({
+    path: join(artifacts, "mac-caption-safe-review.png"),
+    animations: "disabled",
+  });
+  // Web/Windows/Linux 不应继承 macOS 的顶部留白。
+  for (const platform of ["", "platform-windows-desktop", "platform-linux-desktop"]) {
+    await page.evaluate((platform) => {
+      document.documentElement.classList.remove(
+        "platform-mac-desktop",
+        "platform-windows-desktop",
+        "platform-linux-desktop",
+      );
+      if (platform) document.documentElement.classList.add(platform);
+    }, platform);
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="agent-board-conversation-column"]')
+          ?.getBoundingClientRect().y < 2,
+    );
+    assert.ok(
+      (await conversation().boundingBox()).y < 2,
+      "non-macOS layout keeps its original top edge",
+    );
+  }
+  await page.evaluate(() => document.documentElement.classList.remove("platform-linux-desktop"));
   await page.getByRole("textbox", { name: "消息草稿" }).fill("审查时也能继续输入");
   const splitter = page.locator("[data-workspace-side-pane-resize-handle]");
   const grip = await splitter.boundingBox();
@@ -129,6 +171,18 @@ try {
     .getByRole("button", { name: /fixture.ts/ })
     .click();
   await codeContains("after host-0");
+  // 详情与主界面共用侧栏外壳：48px 标签栏、标签搜索、可用的新增入口和独立折叠。
+  const tools = () => page.locator("#browser");
+  assert.equal(await tools().locator("[data-workspace-side-frame]").count(), 1);
+  assert.equal((await tools().getByRole("tablist").boundingBox()).height, 48);
+  await tools().getByRole("button", { name: "新增标签", exact: true }).click();
+  // 普通侧栏已有审查时不再重复提供该入口；其余工具仍完整可用。
+  assert.equal(await page.locator("[data-side-pane-add-item=review]").count(), 0);
+  await page.locator("[data-side-pane-add-item=terminal]").waitFor();
+  await page.locator("[data-side-pane-add-item=browser]").waitFor();
+  await page.keyboard.press("Escape");
+  await codeContains("after host-0");
+  assert.equal(await tools().locator("[data-side-pane-tab-id]").count(), 1);
   await page.getByRole("button", { name: /建表脚本/ }).click();
   await page.getByTestId("preview-pane").waitFor({ state: "visible" });
   assert.equal(await page.getByRole("dialog").count(), 1);
@@ -137,6 +191,25 @@ try {
     2,
   );
   await review().waitFor({ state: "hidden" });
+  await tools().getByRole("button", { name: "搜索标签页", exact: true }).click();
+  await page.getByPlaceholder("搜索标签页...").fill("审查");
+  await page.getByRole("option").filter({ hasText: "审查" }).click();
+  await codeContains("after host-0");
+  await tools().getByRole("button", { name: "收起侧边面板", exact: true }).click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector("[data-workspace-side-frame]")?.getAttribute("aria-hidden") === "true",
+  );
+  assert.equal(await page.getByRole("dialog").count(), 1);
+  await page.getByRole("button", { name: /建表脚本/ }).click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector("[data-workspace-side-frame]")?.getAttribute("aria-hidden") ===
+      "false",
+  );
+  assert.equal(await tools().locator("[data-side-pane-tab-id]").count(), 2);
+  await page.locator('[data-side-pane-tab-id="git"]').click();
+  await codeContains("after host-0");
   assert.equal(
     await page.getByRole("textbox", { name: "消息草稿" }).inputValue(),
     "审查时也能继续输入",

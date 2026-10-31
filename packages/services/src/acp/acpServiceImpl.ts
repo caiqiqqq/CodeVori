@@ -240,6 +240,7 @@ export function createAcpService(
     /** 普通投影排除待办/委派绑定；精确读取与内部执行仍可访问原会话。 */
     hiddenSessionIds?: (scope: AcpWorkspace) => Promise<string[]>;
     connect?: AcpConnectionFactory;
+    savedWorkflows?: import("./acpSavedWorkflows.js").AcpSavedWorkflowService;
     agentManager?: AcpAgentManager;
     memoryContext?: ProjectMemoryContext;
     mcpSyncService?: Pick<IMcpSyncService, "loadMcpFromUserDirectory">;
@@ -957,6 +958,7 @@ export function createAcpService(
   };
   const workflowHost = new AcpWorkflowHost({
     directory,
+    savedWorkflows: options.savedWorkflows,
     connect,
     mcp: workflowMcp,
     mutate,

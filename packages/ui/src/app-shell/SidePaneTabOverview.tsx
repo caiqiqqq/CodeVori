@@ -49,7 +49,7 @@ export function SidePaneTabOverview({
   };
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
-  onReopenClosedTab: (tabId: string) => void;
+  onReopenClosedTab?: (tabId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -230,7 +230,7 @@ export function SidePaneTabOverview({
               </CommandGroup>
             ) : null}
 
-            {filteredRecentClosedItems.length > 0 ? (
+            {onReopenClosedTab && filteredRecentClosedItems.length > 0 ? (
               <CommandGroup
                 heading={labels.recentlyClosedTabs}
                 className="border-border border-b p-1 last:border-b-0 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-2 **:[[cmdk-group-heading]]:text-ui-base **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-foreground-subtle"

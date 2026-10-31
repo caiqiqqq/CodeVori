@@ -55,9 +55,8 @@ export async function listSavedWorkflowsOp(
   const params = parseParams(zcodeWorkflowsListParamsSchema, rawParams);
   const cwd = params.workspace.workspacePath;
   const scope = scopeOf(params);
-  // 中枢的 PROJECT 组只列本项目那一份，全局组只列全局那一份——**永远**传定向 scope，绝不走
-  // 无向变体（两根 first-wins 会把 global 混进 project 组，把被遮蔽的 global 从全局组里藏掉）。
-  const listed = listSavedWorkflows({ cwd, scope });
+  // 管理页默认定向 scope，保证两组独立。ACP 明确 includeGlobal 时才复用原生两根 first-wins。
+  const listed = listSavedWorkflows({ cwd, ...(params.includeGlobal ? {} : { scope }) });
   // 扫过的目录（即使不存在也回）：GUI 的文件监听靠它 watch。
   return {
     workflows: listed.entries,

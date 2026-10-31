@@ -235,6 +235,12 @@ try {
     await link().click();
     await preview().waitFor();
     await codeContains("CREATE TABLE");
+    // 普通侧栏展开时短暂锁住旧像素宽度；等待它恢复自适应后验证最终手机布局。
+    await page.waitForFunction(() => {
+      const preview = document.querySelector('[data-testid="preview-pane"]');
+      const box = preview?.getBoundingClientRect();
+      return box && box.x >= 0 && box.width <= innerWidth;
+    });
     const box = await preview().boundingBox();
     assert.ok(box.x >= 0 && box.width <= width);
     await page.screenshot({
