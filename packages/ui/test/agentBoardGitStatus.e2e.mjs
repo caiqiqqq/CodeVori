@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- 同一端到端流程覆盖远端隔离、工具标签、草稿及工作树切换，保留真实组合交互。 */
 // Real board, scoped Git hooks and status UI; synthetic Host and SessionPane transport.
 import assert from "node:assert/strict";
+import { assertWorkTaskHeaderActions } from "./workspaceToolsBoardScenario.mjs";
 import { writeFile, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
@@ -353,6 +354,16 @@ try {
     f.notifyWork();
   });
   await open("Git worktree task");
+  await page.waitForFunction(
+    () =>
+      Math.abs(
+        document.querySelector('[data-testid="agent-board-details"]')?.getBoundingClientRect()
+          .width - 640,
+      ) < 2,
+  );
+  await assertWorkTaskHeaderActions(
+    page.getByTestId("work-task-content").locator(":scope > header"),
+  );
   await facts("local:/fixture/execution-tree", 12);
   await mini().click();
   await page.getByRole("button", { name: /^更改\s*\+12\s*-5$/ }).click();
@@ -369,6 +380,16 @@ try {
   await page.waitForFunction(
     () =>
       document.querySelector("[data-workspace-side-frame]")?.getAttribute("aria-hidden") === "true",
+  );
+  await page.waitForFunction(
+    () =>
+      Math.abs(
+        document.querySelector('[data-testid="agent-board-details"]')?.getBoundingClientRect()
+          .width - 640,
+      ) < 2,
+  );
+  await assertWorkTaskHeaderActions(
+    page.getByTestId("work-task-content").locator(":scope > header"),
   );
   await facts("local:/fixture/merge-tree", 12);
   await mini().click();

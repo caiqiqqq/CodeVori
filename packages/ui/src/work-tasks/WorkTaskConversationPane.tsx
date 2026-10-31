@@ -83,7 +83,7 @@ export function WorkTaskConversationPane({
       {task ? (
         <>
           <header className="flex min-w-0 shrink-0 flex-wrap items-center gap-1 border-b border-border px-3 py-2">
-            <div className="flex min-w-0 flex-1 basis-64 items-center gap-1">
+            <div className="flex min-w-0 flex-1 basis-40 items-center gap-1">
               <WorkTaskIconButton
                 label={t("backToBoard")}
                 data-testid="work-task-back"
@@ -95,6 +95,12 @@ export function WorkTaskConversationPane({
               <h2 className="min-w-0 flex-1 truncate text-ui-base font-medium" title={task.title}>
                 {task.title}
               </h2>
+            </div>
+            {/* 标题可收缩，状态和操作作为同一组靠右；看板与独立待办共用这一布局。 */}
+            <div
+              className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1"
+              data-testid="work-task-header-actions"
+            >
               <WorkTaskStatus task={task} />
               {task.merge?.session && onToggleMergeConversation ? (
                 <WorkTaskIconButton
@@ -125,34 +131,34 @@ export function WorkTaskConversationPane({
               <WorkTaskIconButton label={t("closeConversation")} onClick={() => onClose(task.id)}>
                 <X className="size-4" />
               </WorkTaskIconButton>
+              {canReviewWorkTaskCompletion(task) ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={panel.busy || task.worktreeCleanup?.phase === "running"}
+                  onClick={() => onComplete(task)}
+                  data-testid="work-task-complete"
+                >
+                  <Check className="size-4" />
+                  {t(task.status === "done" ? "retryForge" : "complete")}
+                </Button>
+              ) : null}
+              {workspaceTools && toolTarget ? (
+                <div className="shrink-0" data-testid="work-task-workspace-tools">
+                  <WorkspaceHeaderActionSection
+                    {...workspaceTools}
+                    onToggleSidePane={
+                      hasReview && !workspaceTools.isSidePaneOpen && workspaceTools.onOpenReview
+                        ? workspaceTools.onOpenReview
+                        : workspaceTools.onToggleSidePane
+                    }
+                    workspaceAbsPath={toolTarget.workspacePath}
+                    workspaceIdentity={toolTarget.workspaceIdentity}
+                  />
+                </div>
+              ) : null}
             </div>
-            {canReviewWorkTaskCompletion(task) ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                disabled={panel.busy || task.worktreeCleanup?.phase === "running"}
-                onClick={() => onComplete(task)}
-                data-testid="work-task-complete"
-              >
-                <Check className="size-4" />
-                {t(task.status === "done" ? "retryForge" : "complete")}
-              </Button>
-            ) : null}
-            {workspaceTools && toolTarget ? (
-              <div className="ml-auto shrink-0" data-testid="work-task-workspace-tools">
-                <WorkspaceHeaderActionSection
-                  {...workspaceTools}
-                  onToggleSidePane={
-                    hasReview && !workspaceTools.isSidePaneOpen && workspaceTools.onOpenReview
-                      ? workspaceTools.onOpenReview
-                      : workspaceTools.onToggleSidePane
-                  }
-                  workspaceAbsPath={toolTarget.workspacePath}
-                  workspaceIdentity={toolTarget.workspaceIdentity}
-                />
-              </div>
-            ) : null}
             {task.source ? (
               <div className="min-w-0 basis-full" data-testid="work-task-source-header">
                 <WorkTaskSourceLink task={task} />

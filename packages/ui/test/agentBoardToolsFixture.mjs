@@ -15,7 +15,7 @@ function ToolsBoard(props){
  const projection=useWorkTaskWorkspaceTools({workspacePath:'/fixture/project-2'},true,'agent-board');
  const target=projection.target,scope=target??{workspacePath:'/fixture/project-2'};
  const {services:toolServices}=useWorkspaceServicesResolution(scope.workspacePath,scope.remoteSessionId,scope.workspaceIdentity);
- const panels=useAppPanels({workspaceAbsPath:scope.workspacePath,workspaceIdentity:scope.workspaceIdentity,workspaceRemoteSessionId:scope.remoteSessionId,activeTaskId:target?.nativeSessionId??null,sidePaneOwnerId:target?.sidePaneOwnerId??null,supportsEmbeddedBrowser:true,defaultWhiteboardNamePrefix:'Board'});
+ const panels=useAppPanels({workspaceAbsPath:scope.workspacePath,workspaceIdentity:scope.workspaceIdentity,workspaceRemoteSessionId:scope.remoteSessionId,activeTaskId:target?.nativeSessionId??null,sidePaneOwnerId:target?.sidePaneOwnerId??null,collapsedSidePaneEntryKey:target?JSON.stringify(target):null,supportsEmbeddedBrowser:true,defaultWhiteboardNamePrefix:'Board'});
  window.__panels=panels;window.__toolsTarget=target;
  const [source,setSource]=useState('unstaged');
  const panelRef=useRef(null),panelElementRef=useRef(null);

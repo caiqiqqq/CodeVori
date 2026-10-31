@@ -91,8 +91,8 @@ export function AgentBoardDetails({
         >
           {(git) => (
             <>
-              <div className="flex items-start justify-between gap-2 border-b border-border p-4">
-                <div className="min-w-0">
+              <div className="flex items-start gap-2 border-b border-border p-4">
+                <div className="min-w-0 flex-1">
                   <DialogTitle className="truncate">{selected.title}</DialogTitle>
                   <DialogDescription className="truncate">
                     {projects.find((p) => p.key === selected.projectKey)?.label} ·{" "}
@@ -108,18 +108,23 @@ export function AgentBoardDetails({
                     </p>
                   ) : null}
                 </div>
-                {workspaceTools ? (
-                  <div data-testid="agent-board-tools-toggle">
-                    <WorkspaceHeaderActionSection
-                      {...workspaceTools.header}
-                      workspaceAbsPath={scope.workspacePath}
-                      workspaceIdentity={scope.workspaceIdentity}
-                    />
-                  </div>
-                ) : null}
-                <Button variant="ghost" size="icon" aria-label={t("close")} onClick={onClose}>
-                  <X className="size-4" />
-                </Button>
+                <div
+                  className="ml-auto flex shrink-0 items-center gap-1"
+                  data-testid="agent-board-header-actions"
+                >
+                  <Button variant="ghost" size="icon" aria-label={t("close")} onClick={onClose}>
+                    <X className="size-4" />
+                  </Button>
+                  {workspaceTools ? (
+                    <div data-testid="agent-board-tools-toggle">
+                      <WorkspaceHeaderActionSection
+                        {...workspaceTools.header}
+                        workspaceAbsPath={scope.workspacePath}
+                        workspaceIdentity={scope.workspaceIdentity}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               </div>
               <div className="flex flex-wrap gap-2 border-b border-border px-4 py-2">
                 <Button
