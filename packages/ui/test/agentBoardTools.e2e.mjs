@@ -21,7 +21,7 @@ try {
       process.env.ZCODE_E2E_CHROMIUM ??
       "/Users/caiqi/Library/Caches/ms-playwright/chromium-1217/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
   });
-  const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+  const page = await browser.newPage({ viewport: { width: 1500, height: 950 }, hasTouch: true });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("**/v4/SessionPane.tsx*", (r) =>
@@ -50,6 +50,13 @@ try {
       .getByRole("button")
       .first()
       .click();
+  await page.evaluate(() => {
+    const button = document.createElement("button");
+    button.textContent = "Outside navigation";
+    button.style.cssText = "position:fixed;top:0;left:0;z-index:100";
+    document.body.append(button);
+  });
+  const outside = page.getByRole("button", { name: "Outside navigation", exact: true });
   const details = page.getByTestId("agent-board-details");
   const assertDrawer = async () => {
     await page.waitForFunction(() => {
@@ -74,6 +81,17 @@ try {
       "board stays accessible beside the drawer",
     );
   };
+  await open("Remote ACP 0");
+  await assertDrawer();
+  await page.getByRole("textbox", { name: "会话草稿" }).fill("外点前草稿");
+  await details.getByRole("heading", { name: "Remote ACP 0", exact: true }).click();
+  assert.equal(await page.getByRole("textbox", { name: "会话草稿" }).inputValue(), "外点前草稿");
+  await outside.focus();
+  await outside.click({ button: "right" });
+  assert.equal(await details.count(), 1, "focus changes and secondary clicks keep the drawer");
+  await page.getByRole("heading", { name: /^Agent 看板/ }).click();
+  await details.waitFor({ state: "hidden" });
+  await page.waitForFunction(() => window.__toolsTarget === null);
   await open("Remote ACP 0");
   await assertDrawer();
   const longTitle = "检查超长会话标题下的右侧操作位置".repeat(8);
@@ -128,27 +146,33 @@ try {
   );
   await tools.locator("[data-side-pane-tab-id]").filter({ hasText: "Shared file" }).waitFor();
   assert.equal(await tools.locator("[data-side-pane-tab-id]").count(), 2);
+  await tools.locator("[data-side-pane-tab-id]").filter({ hasText: "Shared file" }).click();
+  await tools.locator("[data-side-pane-add-trigger]").click();
+  await page.locator('[data-side-pane-add-item="browser"]').click();
+  assert.equal(
+    await details.count(),
+    1,
+    "tool tabs and their portaled menus preserve the conversation",
+  );
+  await tools.locator("[data-side-pane-tab-id]").filter({ hasText: "Shared file" }).click();
   assert.equal(
     await page.evaluate(
       () => window.__draft === document.querySelector('textarea[aria-label="会话草稿"]'),
     ),
     true,
   );
-  await page.keyboard.press("Escape");
+  await tools.getByRole("button", { name: "收起侧边面板", exact: true }).click();
   await assertDrawer();
   assert.equal(await page.getByRole("textbox", { name: "会话草稿" }).inputValue(), "保留草稿");
   await page.getByTestId("agent-board-tools-toggle").getByTestId("side-pane-toggle").click();
   await tools.locator("[data-side-pane-tab-id]").filter({ hasText: "Shared file" }).waitFor();
-  await page
-    .getByTestId("agent-board-header-actions")
-    .getByRole("button", { name: "返回看板", exact: true })
-    .click();
+  await outside.click();
   await details.waitFor({ state: "hidden" });
   await open(longTitle);
   await assertDrawer();
   assert.equal(
     await page.evaluate(() => window.__panels.sidePaneState.tabs.length),
-    2,
+    3,
     "reopening collapses without deleting tabs",
   );
   await page.getByRole("textbox", { name: "会话草稿" }).fill("保留草稿");
@@ -220,9 +244,64 @@ try {
   // The visible board can switch the drawer directly without closing it first.
   await open("Remote API session");
   await assertDrawer();
+  await outside.click();
+  await details.waitFor({ state: "hidden" });
+  await page.waitForFunction(() => window.__toolsTarget === null);
+  await page.evaluate(() => {
+    const f = window.__board;
+    f.services.workTaskService.getEvents = async () => [];
+    f.workRows.push({
+      workspacePath: "/fixture/project-3",
+      id: "outside-work",
+      title: "Outside work task",
+      prompt: "Task prompt",
+      status: "review",
+      execution: {
+        kind: "api",
+        mode: "build",
+        modelSelection: { providerId: "fixture", modelId: "model" },
+      },
+      session: { kind: "api", id: "outside-work-session" },
+      worktree: {
+        path: "/fixture/outside-work-tree",
+        branchName: "task/outside",
+        baseCommit: "base",
+      },
+      runText: "Task prompt",
+      commandId: "command",
+      sessionRequestId: "request",
+      archived: false,
+      stopPending: false,
+      runSeq: 1,
+      createdAt: 100,
+      updatedAt: 4000,
+    });
+    f.notifyWork();
+  });
+  await open("Outside work task");
+  await page.getByTestId("work-task-content").waitFor();
+  await page.getByTestId("work-task-complete").click();
+  const completion = page.getByTestId("work-task-completion-dialog");
+  await completion.waitFor();
+  await completion.getByTestId("work-task-completion-title").click();
+  assert.equal(await details.count(), 1, "work task confirmation keeps the underlying drawer");
+  await page.keyboard.press("Escape");
+  await completion.waitFor({ state: "hidden" });
+  await page
+    .getByTestId("work-task-content")
+    .getByRole("heading", { name: "Outside work task", exact: true })
+    .click();
+  await outside.click();
+  await details.waitFor({ state: "hidden" });
+  await page.waitForFunction(() => window.__toolsTarget === null);
+  await open("Remote ACP 1");
+  await page.setViewportSize({ width: 390, height: 900 });
+  await outside.tap();
+  await details.waitFor({ state: "hidden" });
+  await page.waitForFunction(() => window.__toolsTarget === null);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: ordinary tools launcher/renderer/owner, review/browser/terminal, multiple tabs, draft retention, remote identities and mobile layout",
+    "PASS: outside click/tap dismisses Native/ACP/WorkTask details; focus, secondary clicks, internal tools/menus/confirmation preserve them; scope cleanup, card switching, retained tabs/drafts and mobile layout",
   );
 } finally {
   await browser?.close();
