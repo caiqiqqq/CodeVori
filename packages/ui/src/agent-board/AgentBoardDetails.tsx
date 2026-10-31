@@ -12,7 +12,8 @@ import {
 } from "./agentBoardModel.js";
 import type { BoardAction } from "@/hooks/useAgentBoardData.js";
 import type { BoardConversationOptions } from "./AgentBoardConversation.js";
-import { AgentBoardTools } from "./AgentBoardTools.js";
+import { WorkspaceHeaderActionSection } from "@/WorkspaceHeaderSections/WorkspaceHeaderActionSection.js";
+import { AgentBoardTools, type AgentBoardWorkspaceTools } from "./AgentBoardTools.js";
 const WorkTaskDetails = lazy(() =>
   import("./AgentBoardWorkTaskDetails.js").then((m) => ({ default: m.AgentBoardWorkTaskDetails })),
 );
@@ -26,6 +27,8 @@ export function AgentBoardDetails({
   busy,
   run,
   options,
+  workspaceTools,
+  container,
   onClose,
   onOpenSession,
 }: {
@@ -35,6 +38,8 @@ export function AgentBoardDetails({
   busy: boolean;
   run(item: BoardItem, action: BoardAction): Promise<void>;
   options?: BoardConversationOptions;
+  workspaceTools?: AgentBoardWorkspaceTools;
+  container: HTMLElement | null;
   onClose(): void;
   onOpenSession(item: BoardItem): void;
 }) {
@@ -56,6 +61,8 @@ export function AgentBoardDetails({
           item={selected}
           workTasks={workTasks}
           options={options}
+          workspaceTools={workspaceTools}
+          container={container}
           onClose={onClose}
           onOpenSession={onOpenSession}
         />
@@ -63,6 +70,7 @@ export function AgentBoardDetails({
     );
   return (
     <Dialog
+      modal={false}
       open={Boolean(selected)}
       onOpenChange={(open) => {
         if (!open) onClose();
@@ -71,10 +79,15 @@ export function AgentBoardDetails({
       {selected ? (
         <AgentBoardTools
           key={selected.key}
-          scope={scope}
-          enabled={selected.online}
-          isDesktop={options?.isDesktop}
-          onOpenBrowserUrl={options?.onOpenBrowserUrl}
+          target={{
+            ...scope,
+            taskId: selected.key,
+            nativeSessionId: selected.kind === "native" ? selected.task.taskId : null,
+            sidePaneOwnerId:
+              selected.kind === "native" ? selected.task.taskId : selected.session.id,
+          }}
+          tools={workspaceTools}
+          container={container}
         >
           {(git) => (
             <>
@@ -95,6 +108,15 @@ export function AgentBoardDetails({
                     </p>
                   ) : null}
                 </div>
+                {workspaceTools ? (
+                  <div data-testid="agent-board-tools-toggle">
+                    <WorkspaceHeaderActionSection
+                      {...workspaceTools.header}
+                      workspaceAbsPath={scope.workspacePath}
+                      workspaceIdentity={scope.workspaceIdentity}
+                    />
+                  </div>
+                ) : null}
                 <Button variant="ghost" size="icon" aria-label={t("close")} onClick={onClose}>
                   <X className="size-4" />
                 </Button>

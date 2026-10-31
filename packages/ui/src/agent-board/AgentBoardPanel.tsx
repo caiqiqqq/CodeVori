@@ -34,9 +34,12 @@ import {
 } from "./agentBoardModel.js";
 import type { BoardConversationOptions } from "./AgentBoardConversation.js";
 
+import type { AgentBoardWorkspaceTools } from "./AgentBoardTools.js";
+
 type Props = {
   workspaceTabs: readonly Omit<WorkspaceTabState, "id" | "kind">[];
   conversationOptions?: BoardConversationOptions;
+  workspaceTools?: AgentBoardWorkspaceTools;
   onOpenSession(item: BoardItem): void;
   onCreateSession(tab: WorkspaceTabState): void;
 };
@@ -64,6 +67,7 @@ export function AgentBoardView({
   onOpenSession,
   onCreateSession,
   conversationOptions,
+  workspaceTools,
   canCreateSession,
   workTasks,
 }: Omit<Props, "workspaceTabs"> & ReturnType<typeof useAgentBoardData>) {
@@ -91,6 +95,7 @@ export function AgentBoardView({
     if (current)
       preferences.setItemStaged(current, !isBoardItemStaged(current, preferences.stagedItems));
   };
+  const [detailContainer, setDetailContainer] = useState<HTMLElement | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -212,7 +217,8 @@ export function AgentBoardView({
       }}
     >
       <section
-        className="flex h-full min-h-0 flex-col bg-background text-ui-base text-foreground"
+        ref={setDetailContainer}
+        className="relative flex h-full min-h-0 min-w-0 flex-col bg-background text-ui-base text-foreground"
         data-testid="agent-board"
       >
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-4 md:px-6">
@@ -380,6 +386,8 @@ export function AgentBoardView({
           busy={busy}
           run={run}
           options={conversationOptions}
+          workspaceTools={workspaceTools}
+          container={detailContainer}
           onClose={() => setSelectedKey(null)}
           onOpenSession={onOpenSession}
         />

@@ -195,7 +195,8 @@ export function App({
       workspaceIdentity,
       remoteSessionId: workspaceRemoteSessionId,
     },
-    workspaceMainView === "work-tasks",
+    workspaceMainView === "work-tasks" || workspaceMainView === "agent-board",
+    workspaceMainView,
   );
   const panelWorkspacePath = workTaskTools.target?.workspacePath ?? workspaceAbsPath;
   const panelWorkspaceIdentity = workTaskTools.target
@@ -214,6 +215,7 @@ export function App({
     panelRemoteSessionId,
     panelWorkspaceIdentity,
     panelRemoteTarget,
+    Boolean(workTaskTools.target),
   );
   const { rpcReady: workspaceRpcReady } = useWorkspaceServicesResolution(
     workspaceAbsPath,
@@ -468,6 +470,7 @@ export function App({
     workspacePath: panelWorkspacePath,
     activeTaskId: panelActiveTaskId,
     includeExtendedData: hasGitTab,
+    scopeIsExplicit: Boolean(workTaskTools.target),
     // 关键逻辑：真实 Git 只在 workspace 变化、Git pane 打开、或用户显式点刷新时重拉。
     // task 切换 / last-turn 摘要变化只更新本地衍生数据，不再顺带重跑 Git 命令。
     refreshToken: gitRefreshVersion,
@@ -492,7 +495,7 @@ export function App({
     useMemo(() => getGitWorktreeStatus(gitState.datasets), [gitState.datasets]);
   const handleOpenGitReview = useCallback(
     (sourceId?: GitChangeSourceId) => {
-      if (workspaceReadOnlyReason) {
+      if (panelReadOnlyReason) {
         return;
       }
       if (sourceId) {
@@ -500,7 +503,7 @@ export function App({
       }
       handleOpenGit();
     },
-    [handleOpenGit, workspaceReadOnlyReason],
+    [handleOpenGit, panelReadOnlyReason],
   );
   const handleOpenScopedGitReview = useScopedGitReview({
     scope: {

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { writeFile, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
-import { agentBoardFixture } from "./agentBoardFixture.mjs";
+import { agentBoardToolsFixture as agentBoardFixture } from "./agentBoardToolsFixture.mjs";
 const renderer = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__agent-board-git-${process.pid}`;
 const html = join(renderer, `${name}.html`),
@@ -76,10 +76,10 @@ try {
       .click();
   };
   const mini = () => page.getByRole("button", { name: /展开状态$/ });
-  const review = () => page.getByTestId("agent-board-git-review");
+  const review = () => page.getByTestId("git-pane");
   const closeReview = () =>
     page
-      .getByTestId("agent-board-side-pane")
+      .locator("[data-workspace-side-frame]")
       .getByRole("button", { name: "关闭 审查", exact: true })
       .click();
   const codeContains = (text) =>
@@ -90,7 +90,7 @@ try {
           : Array.from(node.shadowRoot?.childNodes ?? node.childNodes)
               .map(read)
               .join("");
-      const root = document.querySelector('[data-testid="agent-board-git-review"]');
+      const root = document.querySelector('[data-testid="git-pane"]');
       return root && read(root).includes(text);
     }, text);
   const facts = async (branch, added) => {
@@ -159,7 +159,7 @@ try {
   }
   await page.evaluate(() => document.documentElement.classList.remove("platform-linux-desktop"));
   await page.getByRole("textbox", { name: "消息草稿" }).fill("审查时也能继续输入");
-  const splitter = page.getByRole("separator", { name: "调整侧边栏宽度" });
+  const splitter = page.locator("[data-workspace-side-pane-resize-handle]");
   const grip = await splitter.boundingBox();
   await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
   await page.mouse.down();
@@ -172,18 +172,22 @@ try {
     .click();
   await codeContains("after host-0");
   // 详情与主界面共用侧栏外壳：48px 标签栏、标签搜索、可用的新增入口和独立折叠。
-  const tools = () => page.getByTestId("agent-board-side-pane");
+  const tools = () => page.locator("#browser");
   assert.equal(await tools().locator("[data-workspace-side-frame]").count(), 1);
   assert.equal((await tools().getByRole("tablist").boundingBox()).height, 48);
   await tools().getByRole("button", { name: "新增标签", exact: true }).click();
-  await page.getByRole("menuitem", { name: "审查", exact: true }).click();
+  // 普通侧栏已有审查时不再重复提供该入口；其余工具仍完整可用。
+  assert.equal(await page.locator("[data-side-pane-add-item=review]").count(), 0);
+  await page.locator("[data-side-pane-add-item=terminal]").waitFor();
+  await page.locator("[data-side-pane-add-item=browser]").waitFor();
+  await page.keyboard.press("Escape");
   await codeContains("after host-0");
   assert.equal(await tools().locator("[data-side-pane-tab-id]").count(), 1);
   await page.getByRole("button", { name: /建表脚本/ }).click();
-  await page.getByTestId("agent-board-file-preview").waitFor({ state: "visible" });
+  await page.getByTestId("preview-pane").waitFor({ state: "visible" });
   assert.equal(await page.getByRole("dialog").count(), 1);
   assert.equal(
-    await page.getByTestId("agent-board-side-pane").locator("[data-side-pane-tab-id]").count(),
+    await page.locator("[data-workspace-side-frame]").locator("[data-side-pane-tab-id]").count(),
     2,
   );
   await review().waitFor({ state: "hidden" });
@@ -192,10 +196,17 @@ try {
   await page.getByRole("option").filter({ hasText: "审查" }).click();
   await codeContains("after host-0");
   await tools().getByRole("button", { name: "收起侧边面板", exact: true }).click();
-  await tools().waitFor({ state: "hidden" });
+  await page.waitForFunction(
+    () =>
+      document.querySelector("[data-workspace-side-frame]")?.getAttribute("aria-hidden") === "true",
+  );
   assert.equal(await page.getByRole("dialog").count(), 1);
   await page.getByRole("button", { name: /建表脚本/ }).click();
-  await tools().waitFor({ state: "visible" });
+  await page.waitForFunction(
+    () =>
+      document.querySelector("[data-workspace-side-frame]")?.getAttribute("aria-hidden") ===
+      "false",
+  );
   assert.equal(await tools().locator("[data-side-pane-tab-id]").count(), 2);
   await page.locator('[data-side-pane-tab-id="git"]').click();
   await codeContains("after host-0");
@@ -206,7 +217,7 @@ try {
   // 重复文件点击复用标签，审查再次激活应保留已展开的差异。
   await page.getByRole("button", { name: /建表脚本/ }).click();
   assert.equal(
-    await page.getByTestId("agent-board-side-pane").locator("[data-side-pane-tab-id]").count(),
+    await page.locator("[data-workspace-side-frame]").locator("[data-side-pane-tab-id]").count(),
     2,
   );
   await page.locator('[data-side-pane-tab-id="git"]').click();
@@ -224,10 +235,10 @@ try {
   await page.setViewportSize({ width: 1500, height: 950 });
   await conversation().waitFor({ state: "visible" });
   await codeContains("after host-0");
-  await page.waitForFunction((width) => {
-    const review = document.querySelector('[data-testid="agent-board-git-review"]');
-    return review && Math.abs(review.getBoundingClientRect().width - width) < 4;
-  }, resizedReviewBox.width);
+  assert.ok(
+    (await review().boundingBox()).width >= 380,
+    "ordinary shell restores a usable desktop split",
+  );
   assert.deepEqual(await page.evaluate(() => window.__board.gitDiffCalls.at(-1)), {
     host: "host-0",
     workspacePath: "/same",
@@ -240,7 +251,10 @@ try {
     "review must stay in the board",
   );
   await page.keyboard.press("Escape");
-  await review().waitFor({ state: "hidden" });
+  await page.waitForFunction(
+    () =>
+      document.querySelector("[data-workspace-side-frame]")?.getAttribute("aria-hidden") === "true",
+  );
   assert.equal(await page.getByRole("dialog").count(), 1, "Escape first closes only review");
   assert.equal(
     await page.getByRole("textbox", { name: "消息草稿" }).inputValue(),
@@ -352,7 +366,10 @@ try {
   );
   // 仍打开审查时切换绑定，旧工作树标签必须立即丢弃。
   await page.getByTestId("work-task-toggle-merge-conversation").click();
-  await page.getByTestId("agent-board-side-pane").waitFor({ state: "hidden" });
+  await page.waitForFunction(
+    () =>
+      document.querySelector("[data-workspace-side-frame]")?.getAttribute("aria-hidden") === "true",
+  );
   await facts("local:/fixture/merge-tree", 12);
   await mini().click();
   await page.getByRole("button", { name: /^更改\s*\+12\s*-5$/ }).click();
@@ -392,7 +409,7 @@ try {
       .waitFor({ state: "visible" });
     await page.waitForFunction(() => {
       const rows = document.querySelectorAll(
-        '[data-testid="agent-board-git-review"] [data-git-pane-change-virtual-row]',
+        '[data-testid="git-pane"] [data-git-pane-change-virtual-row]',
       );
       return (
         rows.length >= 2 &&
@@ -421,7 +438,11 @@ try {
     await codeContains("after host-0");
     assert.equal(await page.evaluate(() => window.__board.gitDiffCalls.at(-1).sourceId), "staged");
     await page.keyboard.press("Escape");
-    await review().waitFor({ state: "hidden" });
+    await page.waitForFunction(
+      () =>
+        document.querySelector("[data-workspace-side-frame]")?.getAttribute("aria-hidden") ===
+        "true",
+    );
     await page.evaluate(() => window.__board.setGitMode("dirty"));
     await page.keyboard.press("Escape");
   }
@@ -435,6 +456,7 @@ try {
     .getByRole("button", { name: /fixture.ts/ })
     .click();
   await review().getByText("暂时无法预览这个 Diff", { exact: true }).waitFor();
+  await page.keyboard.press("Escape");
   await page.evaluate(() => {
     const registry = window.__remoteStore.getState();
     const session = registry.sessionsById["host-0"];
@@ -445,7 +467,10 @@ try {
     registry.unregisterSession("host-0");
     window.__board.gitCalls.length = 0;
   });
-  await review().waitFor({ state: "hidden" });
+  await page.waitForFunction(
+    () =>
+      document.querySelector("[data-workspace-side-frame]")?.getAttribute("aria-hidden") === "true",
+  );
   await page.waitForFunction(() => window.__gitPane.gitSummary.isGitAvailable === false);
   assert.deepEqual(
     await page.evaluate(() => window.__board.gitCalls),
@@ -457,7 +482,11 @@ try {
     window.__board.reconnectGit();
   });
   await page.waitForFunction(() => window.__gitPane.gitSummary.isGitAvailable);
-  assert.equal(await review().count(), 0, "reconnection must not restore a dismissed review");
+  assert.equal(
+    await page.locator("[data-workspace-side-frame]").getAttribute("aria-hidden"),
+    "true",
+    "reconnection keeps the ordinary collapsed preference",
+  );
   assert.equal(
     await page.getByTestId("navigation").innerText(),
     "",
@@ -475,9 +504,7 @@ try {
   console.error(
     await page?.evaluate(() => ({
       dialogs: document.querySelectorAll('[role="dialog"]').length,
-      review: document
-        .querySelector('[data-testid="agent-board-git-review"]')
-        ?.outerHTML.slice(0, 300),
+      review: document.querySelector('[data-testid="git-pane"]')?.outerHTML.slice(0, 300),
     })),
   );
   throw error;
