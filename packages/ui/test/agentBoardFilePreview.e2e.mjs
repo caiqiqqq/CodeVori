@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { writeFile, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
-import { agentBoardFixture } from "./agentBoardFixture.mjs";
+import { agentBoardToolsFixture as agentBoardFixture } from "./agentBoardToolsFixture.mjs";
 const renderer = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__agent-board-file-${process.pid}`;
 const html = join(renderer, `${name}.html`),
@@ -24,6 +24,7 @@ try {
       "/Users/caiqi/Library/Caches/ms-playwright/chromium-1217/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
   });
   const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+  page.setDefaultTimeout(10000);
   const errors = [];
   page.on("pageerror", (error) => {
     errors.push(error.message);
@@ -61,10 +62,10 @@ try {
       .click();
   };
   const link = () => page.getByRole("button", { name: /三张运行表的建表脚本/ });
-  const preview = () => page.getByTestId("agent-board-file-preview");
+  const preview = () => page.getByTestId("preview-pane");
   const close = () =>
     page
-      .getByTestId("agent-board-side-pane")
+      .locator("[data-workspace-side-frame]")
       .locator("[data-side-pane-tab-id][data-active]")
       .getByRole("button", { name: /^关闭 / })
       .click();
@@ -76,7 +77,7 @@ try {
           : Array.from(node.shadowRoot?.childNodes ?? node.childNodes)
               .map(read)
               .join("");
-      const root = document.querySelector('[data-testid="agent-board-file-preview"]');
+      const root = document.querySelector('[data-testid="preview-pane"]');
       return root && read(root).includes(text);
     }, text);
   for (const [title, host, workspace] of [
@@ -158,7 +159,7 @@ try {
   await codeContains("CREATE TABLE");
   await link().click();
   assert.equal(
-    await page.getByTestId("agent-board-side-pane").locator("[data-side-pane-tab-id]").count(),
+    await page.locator("[data-workspace-side-frame]").locator("[data-side-pane-tab-id]").count(),
     1,
   );
   await page.evaluate(() =>
@@ -171,7 +172,7 @@ try {
   );
   await page.locator("[data-side-pane-tab-id]").filter({ hasText: "Second SQL" }).waitFor();
   assert.equal(
-    await page.getByTestId("agent-board-side-pane").locator("[data-side-pane-tab-id]").count(),
+    await page.locator("[data-workspace-side-frame]").locator("[data-side-pane-tab-id]").count(),
     2,
   );
   await page.locator("[data-side-pane-tab-id]").filter({ hasText: "create_tables.sql" }).click();
@@ -185,7 +186,10 @@ try {
     .filter({ hasText: "Second SQL" })
     .waitFor();
   await close();
-  await page.getByTestId("agent-board-side-pane").waitFor({ state: "hidden" });
+  await page.waitForFunction(
+    () =>
+      document.querySelector("[data-workspace-side-frame]")?.getAttribute("aria-hidden") === "true",
+  );
   // 缺省 scope 继承当前远端；显式 source 属于另一 Host 时保留原身份。
   for (const explicit of [false, true]) {
     await page.evaluate(

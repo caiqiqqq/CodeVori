@@ -2,8 +2,14 @@ import { useCallback, useState } from "react";
 import type { WorkTaskScope } from "@zcode/shared";
 import type { WorkTaskWorkspaceToolTarget } from "@/lib/workTaskWorkspaceTools.js";
 
-export function useWorkTaskWorkspaceTools(scope: WorkTaskScope, enabled: boolean) {
+export function useWorkTaskWorkspaceTools(
+  scope: WorkTaskScope,
+  enabled: boolean,
+  viewKey = "work-tasks",
+) {
+  // 看板和待办复用同一投影通道，但跨视图的旧清理不能撤销新目标。
   const sourceKey = JSON.stringify([
+    viewKey,
     scope.workspaceIdentity?.trim() || scope.workspacePath,
     scope.remoteSessionId ?? "",
   ]);

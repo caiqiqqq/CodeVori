@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { isWorkTaskMerging } from "@zcode/shared";
 import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
 import { canReviewWorkTaskCompletion } from "@/lib/workTaskBoard.js";
@@ -11,18 +11,23 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { BoardItem } from "./agentBoardModel.js";
 import type { BoardConversationOptions } from "./AgentBoardConversation.js";
 import { workTaskConversationBinding } from "@/lib/workTaskConversation.js";
-import { AgentBoardTools } from "./AgentBoardTools.js";
+import { workTaskWorkspaceToolTarget } from "@/lib/workTaskWorkspaceTools.js";
+import { AgentBoardTools, type AgentBoardWorkspaceTools } from "./AgentBoardTools.js";
 
 export function AgentBoardWorkTaskDetails({
   item,
   workTasks,
   options,
+  workspaceTools,
+  container,
   onClose,
   onOpenSession,
 }: {
   item: Extract<BoardItem, { kind: "work-task" }>;
   workTasks: ReturnType<typeof useWorkTasks>;
   options?: BoardConversationOptions;
+  workspaceTools?: AgentBoardWorkspaceTools;
+  container: HTMLElement | null;
   onClose(): void;
   onOpenSession(item: BoardItem): void;
 }) {
@@ -33,27 +38,23 @@ export function AgentBoardWorkTaskDetails({
   const panel = workTasks.forScope(task);
   const showMerge = isWorkTaskMerging(task) || merge;
   const binding = workTaskConversationBinding(task, showMerge);
-  // 待办的代码归属执行或合并工作树；没有本地会话绑定时不读取根目录或远端替代值。
-  const gitScope = useMemo(
-    () => ({ workspacePath: binding?.workspacePath ?? task.workspacePath }),
-    [binding?.workspacePath, task.workspacePath],
-  );
+  const toolTarget = workTaskWorkspaceToolTarget(task, showMerge);
   const completing = modal === "complete" && canReviewWorkTaskCompletion(task);
   // 原任务已离开验收阶段时丢弃弹窗草稿，后续新一轮不能自动重开旧确认。
   if (modal === "complete" && !completing) setModal(null);
   return (
     <>
       <Dialog
+        modal={false}
         open
         onOpenChange={(open) => {
           if (!open) onClose();
         }}
       >
         <AgentBoardTools
-          scope={gitScope}
-          enabled={item.online && Boolean(binding)}
-          isDesktop={options?.isDesktop}
-          onOpenBrowserUrl={options?.onOpenBrowserUrl}
+          target={toolTarget}
+          tools={workspaceTools}
+          container={container}
           showCloseButton={!item.online}
         >
           {(git) => (
@@ -66,6 +67,7 @@ export function AgentBoardWorkTaskDetails({
                 <WorkTaskConversationPane
                   task={task}
                   panel={panel}
+                  workspaceTools={workspaceTools?.header}
                   options={{
                     ...options,
                     ...git,
@@ -73,7 +75,8 @@ export function AgentBoardWorkTaskDetails({
                     statusPanel: binding
                       ? {
                           ...git,
-                          workspaceKey: gitScope.workspacePath,
+                          workspaceKey:
+                            toolTarget.workspaceIdentity?.trim() || toolTarget.workspacePath,
                         }
                       : undefined,
                   }}

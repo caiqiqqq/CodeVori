@@ -397,7 +397,10 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   const isOfficeMode = useIsOfficeMode();
   const baseServices = useBaseWorkspaceServices();
   const tabStoreApi = useTabStoreApi();
-  const workTaskToolTarget = workspaceMainView === "work-tasks" ? workTaskTools?.target : null;
+  const workTaskToolTarget =
+    workspaceMainView === "work-tasks" || workspaceMainView === "agent-board"
+      ? workTaskTools?.target
+      : null;
   const panelWorkspacePath = workTaskToolTarget?.workspacePath ?? workspaceAbsPath;
   const panelWorkspaceIdentity = workTaskToolTarget
     ? workTaskToolTarget.workspaceIdentity
@@ -413,6 +416,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     ? workTaskTools?.readOnlyReason
     : workspaceReadOnlyReason;
   const hasWorkspaceToolsView = workspaceMainView === "chat" || Boolean(workTaskToolTarget);
+  const boardToolsActive = workspaceMainView === "agent-board" && Boolean(workTaskToolTarget);
   const [workTaskReviewContainer, setWorkTaskReviewContainer] = useState<HTMLElement | null>(null);
   const isLinuxDesktop = Boolean(isDesktop && !isMacDesktop && !isWindowsDesktop);
   // Windows/Linux 也需要外层留白，避免独立面板贴住窗口边缘；桌面统一使用 4px 间距。
@@ -1895,7 +1899,9 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
         onOpenTerminalTab={handleOpenTerminalTab}
         onOpenReviewTab={handleToggleGit}
         onWorkTaskReviewContainerChange={
-          workTaskToolTarget ? setWorkTaskReviewContainer : undefined
+          workspaceMainView === "work-tasks" && workTaskToolTarget
+            ? setWorkTaskReviewContainer
+            : undefined
         }
         onOpenSelectionSideConversation={handleOpenSelectionSideConversationLauncher}
         onRevealGitFileInTree={handleRevealGitFileInTree}
@@ -2108,7 +2114,12 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
           <ResizablePanelGroup
             layoutId="workspace-body-layout"
             panelIds={WORKSPACE_BODY_PANEL_IDS}
-            className="min-h-0 flex-1"
+            className={cn(
+              "min-h-0 flex-1",
+              boardToolsActive &&
+                isSidePaneOpen &&
+                "@max-[768px]/workspace-shell:[&>#conversation-column]:hidden! @max-[768px]/workspace-shell:[&>#browser]:flex-1! @max-[768px]/workspace-shell:[&>[data-workspace-side-pane-resize-handle]]:hidden!",
+            )}
           >
             <ResizablePanel
               id="conversation-column"
@@ -2308,6 +2319,41 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                               >
                                 <AgentBoardPanel
                                   workspaceTabs={workspaceTabs}
+                                  workspaceTools={
+                                    workTaskTools
+                                      ? {
+                                          target: workTaskTools.target,
+                                          onTargetChange: workTaskTools.onTargetChange,
+                                          isOpen: isSidePaneOpen,
+                                          onToggle: handleToggleSidePane,
+                                          actions: {
+                                            gitSummary: gitState.summary,
+                                            gitLoading: gitState.loading,
+                                            gitDirtyFileCount,
+                                            gitWorktreeReviewSourceId,
+                                            gitWorktreeChangeSummary,
+                                            onRefreshGit: handleRefreshGit,
+                                            onOpenGitReview: handleOpenGitReview,
+                                            onOpenCodeViewer: handleOpenCodeViewer,
+                                            onOpenFileLink: handleOpenMarkdownFileLink,
+                                          },
+                                          header: {
+                                            isDesktop,
+                                            readOnlyReason: panelReadOnlyReason,
+                                            remoteTarget: workspaceTabs.find(
+                                              (tab) =>
+                                                (tab.workspaceIdentity?.trim() ||
+                                                  tab.workspacePath) === panelWorkspaceKey,
+                                            )?.remoteTarget,
+                                            isTerminalOpen,
+                                            isSidePaneOpen,
+                                            onToggleTerminal: handleToggleTerminal,
+                                            onToggleSidePane: handleToggleSidePane,
+                                            toggleSidePaneShortcutLabel,
+                                          },
+                                        }
+                                      : undefined
+                                  }
                                   onCreateSession={(tab) =>
                                     handleCreateProjectDraft(
                                       tab.workspacePath,

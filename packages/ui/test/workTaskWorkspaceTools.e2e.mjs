@@ -1,5 +1,9 @@
 // Shared shell/panels with a synthetic Host; no user tasks, PTYs or model requests.
 import assert from "node:assert/strict";
+import {
+  installBoardToolsScenario,
+  verifyBoardToolsScenario,
+} from "./workspaceToolsBoardScenario.mjs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,14 +24,11 @@ try {
   await writeFile(
     moduleFile,
     `
-    import React,{useState,useRef} from 'react';
-    import {createRoot} from 'react-dom/client';
+    import React,{useState,useRef} from 'react';import {createRoot} from 'react-dom/client';
     import {WorkspaceShellLayout} from '../../../ui/src/app-shell/WorkspaceShellLayout.tsx';
-    import {useAppPanels} from '../../../ui/src/hooks/useAppPanels.ts';
-    import {useGitRepository} from '../../../ui/src/hooks/useGitRepository.ts';
+    import {useAppPanels} from '../../../ui/src/hooks/useAppPanels.ts';import {useGitRepository} from '../../../ui/src/hooks/useGitRepository.ts';
     import {useWorkTaskWorkspaceTools} from '../../../ui/src/hooks/useWorkTaskWorkspaceTools.ts';
-    import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
-    import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
+    import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
     import {StoreProvider} from '../../../ui/src/store/StoreProvider.tsx';
     import {TabStoreProvider} from '../../../ui/src/store/TabStoreProvider.tsx';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
@@ -55,7 +56,7 @@ try {
       const [statusKey,setStatusKey]=useState<string|null>(null);state.statusKey=setStatusKey;
       const [variant,setVariant]=useState<any>(null);
       const [mainView,setMainView]=useState<any>('work-tasks');const [workspacePath,setWorkspacePath]=useState('/synthetic/main');
-      const tools=useWorkTaskWorkspaceTools({workspacePath},mainView==='work-tasks');state.target=tools.target;state.oldClear=state.oldClear||tools.onTargetChange;state.root=setWorkspacePath;state.view=setMainView;
+      const tools=useWorkTaskWorkspaceTools({workspacePath},mainView==='work-tasks'||mainView==='agent-board',mainView);state.target=tools.target;state.oldClear=state.oldClear||tools.onTargetChange;state.root=setWorkspacePath;state.view=setMainView;
       const path=tools.target?.workspacePath??workspacePath;
       const panels=useAppPanels({workspaceAbsPath:path,activeTaskId:tools.target?.nativeSessionId??null,sidePaneOwnerId:tools.target?.sidePaneOwnerId??'main-draft',isDesktop:false,supportsEmbeddedBrowser:false,defaultWhiteboardNamePrefix:'Board',platform});
       const gitState=useGitRepository({workspacePath:path,activeTaskId:tools.target?.nativeSessionId??null,includeExtendedData:panels.sidePaneState?.tabs.some(tab=>tab.type==='git')});
@@ -119,6 +120,7 @@ try {
     "GitPane.tsx",
     `export function GitPane(props){return window.__React.createElement('div',{'data-testid':'tool-git','data-workspace':props.workspacePath,'data-git-key':props.gitState.workspaceKey},props.workspacePath)}`,
   );
+  await installBoardToolsScenario(stub);
   await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://localhost:5174"}/${name}.html`);
   const panel = page.getByTestId("work-tasks-panel");
   await panel
@@ -386,9 +388,10 @@ try {
     "/synthetic/other",
   );
   assert.equal(await page.evaluate(() => window.__tools.target), null);
+  await verifyBoardToolsScenario(page, side);
   assert.deepEqual(errors, []);
   process.stdout.write(
-    `PASS: shared task/normal shell tools, API/ACP review merge slots and reopen retention, terminal cwd, Git worktree scopes, pending project tools, draft/node retention, project/root changes, stale cleanup and archive. Screenshots: ${artifacts}\n`,
+    `PASS: shared board/task/normal shell tools, API/ACP review merge slots and reopen retention, terminal cwd, Git worktree scopes, pending project tools, draft/node retention, project/root changes, stale cleanup and archive. Screenshots: ${artifacts}\n`,
   );
 } catch (error) {
   if (browser)
