@@ -61,3 +61,23 @@ export async function verifyBoardToolsScenario(page, side) {
   await page.getByTestId("shell-board").waitFor({ state: "visible" });
   await frame.dispose();
 }
+
+export async function assertWorkTaskHeaderActions(headerLocator) {
+  assert.equal(await headerLocator.getByTestId("workspace-help-menu-trigger").count(), 0);
+  await headerLocator.page().waitForFunction(() => {
+    const header = document.querySelector('[data-testid="work-task-content"] > header');
+    const actions = header?.querySelector('[data-testid="work-task-header-actions"]');
+    if (!header || !actions) return false;
+    return (
+      Math.abs(header.getBoundingClientRect().right - actions.getBoundingClientRect().right - 12) <
+      2
+    );
+  });
+  assert.equal(
+    await headerLocator
+      .getByTestId("work-task-header-actions")
+      .getByTestId("work-task-workspace-tools")
+      .count(),
+    1,
+  );
+}

@@ -1,6 +1,7 @@
 // Shared shell/panels with a synthetic Host; no user tasks, PTYs or model requests.
 import assert from "node:assert/strict";
 import {
+  assertWorkTaskHeaderActions,
   installBoardToolsScenario,
   verifyBoardToolsScenario,
 } from "./workspaceToolsBoardScenario.mjs";
@@ -58,7 +59,7 @@ try {
       const [mainView,setMainView]=useState<any>('work-tasks');const [workspacePath,setWorkspacePath]=useState('/synthetic/main');
       const tools=useWorkTaskWorkspaceTools({workspacePath},mainView==='work-tasks'||mainView==='agent-board',mainView);state.target=tools.target;state.oldClear=state.oldClear||tools.onTargetChange;state.root=setWorkspacePath;state.view=setMainView;
       const path=tools.target?.workspacePath??workspacePath;
-      const panels=useAppPanels({workspaceAbsPath:path,activeTaskId:tools.target?.nativeSessionId??null,sidePaneOwnerId:tools.target?.sidePaneOwnerId??'main-draft',isDesktop:false,supportsEmbeddedBrowser:false,defaultWhiteboardNamePrefix:'Board',platform});
+      const panels=useAppPanels({workspaceAbsPath:path,activeTaskId:tools.target?.nativeSessionId??null,sidePaneOwnerId:tools.target?.sidePaneOwnerId??'main-draft',collapsedSidePaneEntryKey:mainView==='agent-board'&&tools.target?JSON.stringify(tools.target):null,isDesktop:false,supportsEmbeddedBrowser:false,defaultWhiteboardNamePrefix:'Board',platform});
       const gitState=useGitRepository({workspacePath:path,activeTaskId:tools.target?.nativeSessionId??null,includeExtendedData:panels.sidePaneState?.tabs.some(tab=>tab.type==='git')});
       state.git={workspaceKey:gitState.workspaceKey,summary:gitState.summary,loading:gitState.loading};
       const sidebarContainerRef=useRef(null);
@@ -151,7 +152,8 @@ try {
   for (const id of ["api", "acp"]) {
     await card(id).click();
     await page.locator(`[data-testid="tool-session"][data-session="${id}-session"]`).waitFor();
-    assert.equal(await selectedHeader().getByTestId("workspace-help-menu-trigger").count(), 0);
+
+    await assertWorkTaskHeaderActions(selectedHeader());
     const path = `/synthetic/trees/${id}/project`;
     await page.waitForFunction((path) => window.__tools.target?.workspacePath === path, path);
     let session = await page.getByTestId("tool-session").elementHandle();
@@ -256,6 +258,7 @@ try {
           `Web navigation must sit above the task header at ${width}px: ${JSON.stringify({ navigation, header })}`,
         );
         assert.ok(header.x >= 0 && header.x + header.width <= width);
+        await assertWorkTaskHeaderActions(selectedHeader());
         const source = await selectedHeader().getByTestId("work-task-source-link").boundingBox();
         assert.ok(source && source.y >= header.y && source.x + source.width <= width);
         await selectedHeader().getByRole("button", { name: "任务详情", exact: true }).tap();
@@ -390,9 +393,7 @@ try {
   assert.equal(await page.evaluate(() => window.__tools.target), null);
   await verifyBoardToolsScenario(page, side);
   assert.deepEqual(errors, []);
-  process.stdout.write(
-    `PASS: shared board/task/normal shell tools, API/ACP review merge slots and reopen retention, terminal cwd, Git worktree scopes, pending project tools, draft/node retention, project/root changes, stale cleanup and archive. Screenshots: ${artifacts}\n`,
-  );
+  console.log("PASS: workspace tools; screenshots:", artifacts);
 } catch (error) {
   if (browser)
     for (const context of browser.contexts())

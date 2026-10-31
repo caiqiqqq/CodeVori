@@ -50,8 +50,39 @@ try {
       .getByRole("button")
       .first()
       .click();
+  const details = page.getByTestId("agent-board-details");
+  const assertDrawer = async () => {
+    await page.waitForFunction(() => {
+      const box = document
+        .querySelector('[data-testid="agent-board-details"]')
+        ?.getBoundingClientRect();
+      return (
+        box && Math.abs(box.width - 640) < 2 && box.x > 0 && Math.abs(box.right - innerWidth) < 2
+      );
+    });
+    const actions = await page.getByTestId("agent-board-header-actions").boundingBox();
+    const drawer = await details.boundingBox();
+    assert.ok(
+      actions && drawer && Math.abs(drawer.x + drawer.width - actions.x - actions.width - 16) < 2,
+    );
+    assert.equal(
+      await details.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return !element.contains(document.elementFromPoint(box.left - 20, box.top + 100));
+      }),
+      true,
+      "board stays accessible beside the drawer",
+    );
+  };
   await open("Remote ACP 0");
+  await assertDrawer();
+  const longTitle = "检查超长会话标题下的右侧操作位置".repeat(8);
+  await page.evaluate((title) => window.__board.updateAcp(0, { title }), longTitle);
+  await assertDrawer();
   await page.getByRole("textbox", { name: "会话草稿" }).fill("保留草稿");
+  await page.evaluate(() => {
+    window.__draft = document.querySelector('textarea[aria-label="会话草稿"]');
+  });
   assert.deepEqual(
     await page.evaluate(() =>
       [
@@ -97,6 +128,32 @@ try {
   );
   await tools.locator("[data-side-pane-tab-id]").filter({ hasText: "Shared file" }).waitFor();
   assert.equal(await tools.locator("[data-side-pane-tab-id]").count(), 2);
+  assert.equal(
+    await page.evaluate(
+      () => window.__draft === document.querySelector('textarea[aria-label="会话草稿"]'),
+    ),
+    true,
+  );
+  await page.keyboard.press("Escape");
+  await assertDrawer();
+  assert.equal(await page.getByRole("textbox", { name: "会话草稿" }).inputValue(), "保留草稿");
+  await page.getByTestId("agent-board-tools-toggle").getByTestId("side-pane-toggle").click();
+  await tools.locator("[data-side-pane-tab-id]").filter({ hasText: "Shared file" }).waitFor();
+  await page
+    .getByTestId("agent-board-header-actions")
+    .getByRole("button", { name: "返回看板", exact: true })
+    .click();
+  await details.waitFor({ state: "hidden" });
+  await open(longTitle);
+  await assertDrawer();
+  assert.equal(
+    await page.evaluate(() => window.__panels.sidePaneState.tabs.length),
+    2,
+    "reopening collapses without deleting tabs",
+  );
+  await page.getByRole("textbox", { name: "会话草稿" }).fill("保留草稿");
+  await page.getByTestId("agent-board-tools-toggle").getByTestId("side-pane-toggle").click();
+  await tools.locator("[data-side-pane-tab-id]").filter({ hasText: "Shared file" }).waitFor();
   await page.evaluate(() => window.__panels.handleCloseAllSidePaneTabs());
   await page
     .getByTestId("agent-board-tools-toggle")
@@ -133,6 +190,7 @@ try {
     "ordinary renderer must remain mounted",
   );
   await open("Remote ACP 1");
+  await assertDrawer();
   await page.waitForFunction(() => window.__toolsTarget?.workspaceIdentity === "remote:1");
   await page.evaluate(() =>
     window.__pane.onOpenCodeViewer({ type: "text", title: "Other host", content: "host 1" }),
@@ -157,6 +215,11 @@ try {
       await page.getByTestId("agent-board-conversation-column").waitFor({ state: "hidden" });
     }
   }
+  await page.keyboard.press("Escape");
+  await assertDrawer();
+  // The visible board can switch the drawer directly without closing it first.
+  await open("Remote API session");
+  await assertDrawer();
   assert.deepEqual(errors, []);
   console.log(
     "PASS: ordinary tools launcher/renderer/owner, review/browser/terminal, multiple tabs, draft retention, remote identities and mobile layout",

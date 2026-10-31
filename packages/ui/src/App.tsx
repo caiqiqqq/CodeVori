@@ -305,6 +305,10 @@ export function App({
     workspaceRemoteSessionId: panelRemoteSessionId,
     activeTaskId: panelActiveTaskId,
     sidePaneOwnerId: panelOwnerId,
+    collapsedSidePaneEntryKey:
+      workspaceMainView === "agent-board" && workTaskTools.target
+        ? JSON.stringify(workTaskTools.target)
+        : null,
     isDesktop,
     isWorkspaceVisible,
     supportsEmbeddedBrowser,

@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createUuid } from "@zcode/shared";
 import type { EmbeddedBrowserOpenUrlRequest, IPlatformService } from "@zcode/shared";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
@@ -135,6 +135,8 @@ export function useAppPanels(options: {
   activeTaskId: string | null;
   /** 草稿态与正式任务共用稳定 id，作为侧栏对话隔离边界。 */
   sidePaneOwnerId: string | null;
+  /** 显式进入紧凑会话布局；key 改变时仅收起当前 owner，保留工具标签。 */
+  collapsedSidePaneEntryKey?: string | null;
   isDesktop?: boolean;
   /**
    * 展示语义：视图当前是否呈现给用户（设置页覆盖时为 false）。
@@ -166,6 +168,7 @@ export function useAppPanels(options: {
     workspaceRemoteSessionId,
     activeTaskId,
     sidePaneOwnerId,
+    collapsedSidePaneEntryKey = null,
     isDesktop,
     supportsEmbeddedBrowser: explicitSupportsEmbeddedBrowser,
     defaultWhiteboardNamePrefix,
@@ -200,8 +203,9 @@ export function useAppPanels(options: {
     initialSidePaneMemoryState.sidePaneState,
   );
   const [isSidePaneCollapsed, setIsSidePaneCollapsed] = useState(
-    getSidePaneCollapsedPreference(initialSidePaneMemoryState, sidePaneOwnerId) ??
-      initialSidePaneMemoryState.isSidePaneCollapsed,
+    Boolean(collapsedSidePaneEntryKey) ||
+      (getSidePaneCollapsedPreference(initialSidePaneMemoryState, sidePaneOwnerId) ??
+        initialSidePaneMemoryState.isSidePaneCollapsed),
   );
   // 交互说明：侧栏显隐按钮放在 App 外层，而不是 Sidebar 内部。
   // 这样即使侧栏被隐藏，入口也仍然留在左上角，不会出现"收起后没有地方再展开"的问题；
@@ -218,6 +222,7 @@ export function useAppPanels(options: {
   const activeWorkspaceKeyRef = useRef(activeWorkspaceKey);
   activeWorkspaceKeyRef.current = activeWorkspaceKey;
   const activeTabByOwnerRef = useRef<Map<string, string>>(new Map());
+  const previousCollapsedSidePaneEntryKeyRef = useRef<string | null>(null);
   const activeSidePaneMemoryKeyRef = useRef<string | null>(sidePaneMemoryKey);
   const latestSidePaneMemoryRef = useRef({
     sidePaneState,
@@ -270,7 +275,7 @@ export function useAppPanels(options: {
     [commitSidePaneState, workspaceRemoteSessionId],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previousKey = activeSidePaneMemoryKeyRef.current;
     if (previousKey === sidePaneMemoryKey) {
       return;
@@ -321,7 +326,20 @@ export function useAppPanels(options: {
     [hasVisibleSidePaneTabs],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // 看板重新进入同一会话时也先展示聊天，不能由上次打开的工具撑满看板。
+    // 在 scope 恢复后、绘制前写入原 owner 偏好，不创建第二份工具显隐状态。
+    if (
+      collapsedSidePaneEntryKey &&
+      previousCollapsedSidePaneEntryKeyRef.current !== collapsedSidePaneEntryKey
+    ) {
+      saveTaskSidePaneCollapsedPreference(
+        activeSidePaneMemoryKeyRef.current,
+        sidePaneOwnerId,
+        true,
+      );
+    }
+    previousCollapsedSidePaneEntryKeyRef.current = collapsedSidePaneEntryKey;
     commitSidePaneState((current) => {
       const scopeKey = `${activeWorkspaceKey}::${sidePaneOwnerId ?? "__draft__"}`;
       const preferredTabId =
@@ -338,6 +356,7 @@ export function useAppPanels(options: {
         collapsedPreference,
       );
       setIsSidePaneCollapsed(resolved.isSidePaneCollapsed);
+      latestSidePaneMemoryRef.current.isSidePaneCollapsed = resolved.isSidePaneCollapsed;
       logger.debug("[App] 同步对话右侧面板 scope", {
         activeTabId: resolved.sidePaneState?.activeTabId ?? null,
         activeTaskId,
@@ -348,7 +367,13 @@ export function useAppPanels(options: {
       });
       return resolved.sidePaneState;
     });
-  }, [activeTaskId, activeWorkspaceKey, commitSidePaneState, sidePaneOwnerId]);
+  }, [
+    activeTaskId,
+    activeWorkspaceKey,
+    collapsedSidePaneEntryKey,
+    commitSidePaneState,
+    sidePaneOwnerId,
+  ]);
 
   const handleOpenCodeViewer = useCallback(
     (source: CodeViewerSource) => {
