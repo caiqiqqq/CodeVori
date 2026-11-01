@@ -158,7 +158,7 @@ export class NodePluginAdapter implements PluginPort {
       const runtimeEnv = request.env ?? process.env;
       if (
         loaded.id === ZCODE_CUA_OFFICIAL_PLUGIN_ID &&
-        (process.platform !== "darwin" ||
+        (!["darwin", "win32"].includes(process.platform) ||
           !runtimeEnv.ZCODE_OPEN_CUA_NATIVE?.trim() ||
           !isZCodeCuaInternalFeatureEnabled(runtimeEnv))
       ) {

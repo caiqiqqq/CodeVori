@@ -10,7 +10,7 @@ test("local macOS builds retain valid ad-hoc signing without a release certifica
   assert.equal(config.mac.notarize, false);
 });
 
-test("computer control native copies participate in signing without resigning existing runtime assets", () => {
+test("Intel executor is signed with the app while verified native libraries retain their signatures", () => {
   const ignored = (path) => config.mac.signIgnore.some((pattern) => new RegExp(pattern).test(path));
   const resources = "/tmp/Example.app/Contents/Resources";
   assert.equal(
@@ -18,38 +18,47 @@ test("computer control native copies participate in signing without resigning ex
     false,
   );
   assert.equal(ignored(`${resources}/open-computer-use/OpenZCodeNative`), false);
+  for (const name of ["ax_native.node", "cocoa-runloop.node"]) {
+    assert.equal(ignored(`${resources}/open-computer-use/${name}`), true);
+    assert.equal(ignored(`${resources}/glm/packages/zcode-cua-plugin/dist/native/${name}`), true);
+  }
   assert.equal(ignored(`${resources}/glm/zcode`), true);
   assert.equal(ignored(`${resources}/tools/rg`), true);
 });
 
 test(
-  "macOS staged plugin contains native, MCP, skills and licenses",
-  { skip: process.platform !== "darwin" },
+  "built desktop plugin contains the exact target native resources, MCP, skills and notices",
+  { skip: !["darwin", "win32"].includes(process.platform) },
   async () => {
-    const root = resolve(
-      import.meta.dirname,
-      `../bundled-agents/darwin-${process.arch}/glm/packages/zcode-cua-plugin`,
-    );
+    const root = resolve(import.meta.dirname, "../../zcode-cua-plugin");
+    const intel = process.platform === "darwin" && process.arch === "x64";
+    const nativeFiles = intel
+      ? ["OpenZCodeNative"]
+      : [
+          "ax_native.node",
+          "helper.mjs",
+          "runtime.json",
+          ...(process.platform === "darwin" ? ["cocoa-runloop.node"] : []),
+        ];
     for (const path of [
       "dist/mcp/server.js",
-      "dist/native/OpenZCodeNative",
+      ...nativeFiles.map((name) => `dist/native/${name}`),
       "dist/LICENSE",
       "dist/NOTICE",
       "skills/computer-use/SKILL.md",
     ])
       await access(resolve(root, path));
-    assert.ok((await stat(resolve(root, "dist/native/OpenZCodeNative"))).mode & 0o111);
-    assert.equal(
-      JSON.parse(await readFile(resolve(root, ".zcode-plugin/plugin.json"), "utf8")).version,
-      "0.6.4",
-    );
-    const resource = config.extraResources.find(
-      (resource) => resource.to === "open-computer-use/OpenZCodeNative",
-    );
+    if (intel) assert.ok((await stat(resolve(root, "dist/native/OpenZCodeNative"))).mode & 0o111);
+    const manifest = JSON.parse(await readFile(resolve(root, ".zcode-plugin/plugin.json"), "utf8"));
+    const metadata = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
+    assert.equal(manifest.version, metadata.version);
+    const resource = config.extraResources.find((resource) => resource.to === "open-computer-use");
     assert.ok(resource);
-    assert.deepEqual(
-      await readFile(resource.from),
-      await readFile(resolve(root, "dist/native/OpenZCodeNative")),
-    );
+    assert.deepEqual(resource.filter, nativeFiles);
+    for (const name of nativeFiles)
+      assert.deepEqual(
+        await readFile(resolve(resource.from, name)),
+        await readFile(resolve(root, "dist/native", name)),
+      );
   },
 );

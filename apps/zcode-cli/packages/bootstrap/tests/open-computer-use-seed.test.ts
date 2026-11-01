@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { resolveOfficialPluginRoots } from "../src/app/bundled-plugins.js";
 import { OFFICIAL_PLUGIN_DEFINITIONS } from "../src/app/official-plugin-definitions.js";
 
-test("computer control seed includes independent MCP, executable native and notices without broker authority", { skip: process.platform !== "darwin" }, async () => {
+test("computer control seed includes independent MCP, verified native addon and notices without broker authority", { skip: !["darwin", "win32"].includes(process.platform) }, async () => {
   const root = await mkdtemp(join(tmpdir(), "zcode-open-cua-seed-"));
   const original = process.env.ZCODE_OPEN_CUA_NATIVE;
   try {
@@ -15,7 +15,11 @@ test("computer control seed includes independent MCP, executable native and noti
     const definition = OFFICIAL_PLUGIN_DEFINITIONS.find((item) => item.name === "computer-use")!;
     const cached = join(root, "cache", "zcode-plugins-official", "computer-use", definition.version);
     for (const path of definition.requiredSeedPaths!) await access(join(cached, path));
-    assert.ok((await stat(join(cached, "dist/native/OpenZCodeNative"))).mode & 0o111);
+    if (!(process.platform === "darwin" && process.arch === "x64")) {
+      const runtime = JSON.parse(await readFile(join(cached, "dist/native/runtime.json"), "utf8"));
+      assert.equal(runtime.platform, process.platform);
+      assert.equal(runtime.arch, process.arch);
+    }
     const manifest = JSON.parse(await readFile(join(cached, ".zcode-plugin/plugin.json"), "utf8"));
     // 原生修复必须跟随缓存版本一起更新，不能让新执行器继续占用旧版本目录。
     assert.equal(manifest.version, definition.version);

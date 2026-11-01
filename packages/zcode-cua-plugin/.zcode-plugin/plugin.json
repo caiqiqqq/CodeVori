@@ -1,12 +1,12 @@
 {
   "name": "computer-use",
-  "version": "0.6.5",
-  "description": "Control local macOS applications through accessibility, screenshots and scoped input using Open ZCode Computer Use.",
+  "version": "0.7.0",
+  "description": "Local macOS and Windows computer control with verified native AX/UIA components",
   "author": {
-    "name": "Open ZCode Computer Use contributors",
-    "url": "https://github.com/hqhq1025/open-zcode-computer-use"
+    "name": "CodeVori contributors",
+    "url": "https://github.com/caiqiqqq/CodeVori"
   },
-  "homepage": "https://github.com/hqhq1025/open-zcode-computer-use",
+  "homepage": "https://github.com/caiqiqqq/CodeVori",
   "license": "MIT",
   "skills": "./skills",
   "mcpServers": {

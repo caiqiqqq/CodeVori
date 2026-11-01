@@ -140,15 +140,18 @@ function verifyWindowIdentity(result, appRef) {
 
 function createSession(key, options) {
   const platform = options.platform ?? process.platform;
-  const openMac =
+  const nativeCompatibility =
     !options.brokerSocketPath &&
     isOpenComputerUseSupported({ platform, macOsVersion: options.macOsVersion });
   const service =
     options.createService?.(key) ??
-    (openMac ? createOpenComputerUseService({ platform, env: options.env }) : undefined);
+    (nativeCompatibility
+      ? createOpenComputerUseService({ platform, env: options.env })
+      : undefined);
   return {
     service,
-    openMac,
+    nativeCompatibility,
+    legacyIntel: platform === "darwin" && process.arch === "x64",
     observations: [],
     stopped: false,
     closed: false,
@@ -254,39 +257,7 @@ export function createComputerUseRuntime(options = {}) {
         if (toolName === "get_app_state") bound.detail = "full";
         let dispatched = false;
         try {
-          let name = toolName;
-          if (toolName === "paste" && session.openMac) {
-            return failure(
-              "Native paste is unavailable in the open macOS executor.",
-              "action_unavailable",
-            );
-          }
-          if (toolName === "left_click" && session.openMac) {
-            const button = args.mouse_button ?? "left";
-            const count = args.click_count ?? 1;
-            name =
-              button === "left"
-                ? { 1: "left_click", 2: "double_click", 3: "triple_click" }[count]
-                : count === 1
-                  ? { right: "right_click", middle: "middle_click" }[button]
-                  : undefined;
-            if (!name)
-              return failure("Unsupported mouse button or click count.", "action_unavailable");
-            delete bound.mouse_button;
-            delete bound.click_count;
-          }
-          if (toolName === "key" && session.openMac && args.hold_seconds !== undefined) {
-            if (
-              typeof args.hold_seconds !== "number" ||
-              args.hold_seconds < 0 ||
-              args.hold_seconds > 30
-            ) {
-              return failure("hold_seconds must be between 0 and 30.", "invalid_arguments");
-            }
-            name = "hold_key";
-            bound.duration = args.hold_seconds;
-            delete bound.hold_seconds;
-          }
+          const name = toolName;
           dispatched = true;
           let result = await session.service.callTool(name, bound, {
             signal,
@@ -294,7 +265,7 @@ export function createComputerUseRuntime(options = {}) {
           });
           if (
             toolName === "get_app_state" &&
-            session.openMac &&
+            session.legacyIntel &&
             result.isError === true &&
             result.structuredContent?.code === "app_not_found" &&
             (args.app_ref.name || args.app_ref.bundle_id) &&
@@ -320,9 +291,12 @@ export function createComputerUseRuntime(options = {}) {
               "cancelled",
               "possibly_sent",
             );
-          if (toolName === "get_app_state")
+          if (
+            toolName === "get_app_state" ||
+            (ACTIONS.has(toolName) && textPayload(result)?.state_id)
+          )
             return normalizeObservation(result, session, args.app_ref);
-          if (toolName === "list_windows" && session.openMac) {
+          if (toolName === "list_windows" && session.nativeCompatibility) {
             return verifyWindowIdentity(result, args.app_ref);
           }
           if (toolName === "stop_computer_control" && result.isError !== true) {

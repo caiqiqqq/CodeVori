@@ -339,7 +339,7 @@ function readSeaManifest(sea: SeaModule): SeaOfficialPluginManifest | undefined 
 
 function resolveFilesystemPluginRoot(definition: OfficialPluginDefinition): string | undefined {
   // 仅桌面 Main 指定本机 native 的 Host 播种电脑控制；远端/CLI 不能误连本机桌面。
-  if (definition.name === "computer-use" && (!process.env.ZCODE_OPEN_CUA_NATIVE || process.platform !== "darwin")) return undefined;
+  if (definition.name === "computer-use" && (!process.env.ZCODE_OPEN_CUA_NATIVE || !["darwin", "win32"].includes(process.platform))) return undefined;
   for (const baseDir of candidateBaseDirs()) {
     for (const relativePath of definition.rootCandidates) {
       const rootPath = resolve(baseDir, relativePath);

@@ -35,7 +35,7 @@ test("initialization does not start native; the first tool starts exactly once",
   await runtime.start();
   assert.deepEqual(calls, []);
   await runtime.callTool("list_apps", {});
-  await runtime.callTool("list_displays", {});
+  await runtime.callTool("list_apps", {});
   assert.equal(calls.filter((call) => call === "start").length, 1);
   await runtime.close();
   assert.equal(calls.at(-1), "close");
@@ -43,7 +43,7 @@ test("initialization does not start native; the first tool starts exactly once",
 });
 
 test("unsupported platforms and old macOS fail before native startup", async () => {
-  for (const options of [{ platform: "win32" }, { platform: "linux" }, { macOsVersion: "13.6" }]) {
+  for (const options of [{ platform: "linux" }, { macOsVersion: "13.6" }]) {
     const { runtime, calls } = fixture(options);
     assert.equal((await runtime.callTool("list_apps", {})).isError, true);
     assert.deepEqual(calls, []);
@@ -75,7 +75,7 @@ test("permission refresh closes stale native without recreating the MCP connecti
   const { runtime, calls } = fixture({ readRefreshMarker: async () => marker });
   await runtime.callTool("list_apps", {});
   marker = "second";
-  await runtime.callTool("list_displays", {});
+  await runtime.callTool("list_apps", {});
   assert.deepEqual(
     calls.filter((call) => typeof call === "string"),
     ["start", "close", "start"],
@@ -242,4 +242,16 @@ test("cancellation drains a sent action before closing and releasing the desktop
   assert.equal(released, true);
   assert.equal(calls.filter((call) => call === "close").length, 1);
   assert.equal((await runtime.callTool("list_apps")).isError, true);
+});
+
+test("Windows uses the same lazy native lifecycle and stop latch", async () => {
+  const { runtime, calls } = fixture({ platform: "win32" });
+  assert.notEqual((await runtime.callTool("list_apps")).isError, true);
+  await runtime.callTool("stop_computer_control");
+  assert.equal(
+    (await runtime.callTool("list_apps")).structuredContent.code,
+    "computer_control_stopped",
+  );
+  assert.equal(calls.filter((call) => call === "start").length, 1);
+  await runtime.close();
 });

@@ -9,9 +9,14 @@ const root = resolve(import.meta.dirname, "../../..");
 const plugin = resolve(root, "packages/zcode-cua-plugin");
 for (const asset of [
   "dist/mcp/server.js",
-  "dist/native/OpenZCodeNative",
+  ...(process.platform === "darwin" && process.arch === "x64"
+    ? ["dist/native/OpenZCodeNative"]
+    : ["dist/native/ax_native.node", "dist/native/helper.mjs", "dist/native/runtime.json"]),
   "dist/LICENSE",
   "dist/NOTICE",
+  ...(process.platform === "darwin" && process.arch === "arm64"
+    ? ["dist/native/cocoa-runloop.node"]
+    : []),
 ])
   await access(resolve(plugin, asset));
 const child = spawn(
@@ -60,7 +65,7 @@ async function request(method, params = {}) {
 const timeout = setTimeout(() => child.kill("SIGTERM"), 30000);
 try {
   assert.equal((await request("initialize")).serverInfo.name, "open-zcode-computer-use");
-  assert.equal((await request("tools/list")).tools.length, 30);
+  assert.equal((await request("tools/list")).tools.length, 14);
   assert.equal(
     (
       await request("tools/call", {
@@ -70,19 +75,16 @@ try {
     ).isError,
     true,
   );
-  const displays = await request("tools/call", { name: "list_displays", arguments: {} });
+  const displays = await request("tools/call", { name: "list_apps", arguments: {} });
   assert.notEqual(displays.isError, true, JSON.stringify(displays));
   const stopped = await request("tools/call", { name: "stop_computer_control", arguments: {} });
   assert.notEqual(stopped.isError, true, JSON.stringify(stopped));
   assert.equal(JSON.parse(stopped.content.find((item) => item.type === "text").text).stopped, true);
-  assert.equal(
-    (await request("tools/call", { name: "list_displays", arguments: {} })).isError,
-    true,
-  );
+  assert.equal((await request("tools/call", { name: "list_apps", arguments: {} })).isError, true);
   child.stdin.end();
   assert.deepEqual(await exited, [0, null]);
   console.log(
-    "PASS: real plugin-host MCP handshake, 30 tools, subagent rejection, native display read, stop latch and clean EOF; executable overrides ignored.",
+    "PASS: real plugin-host MCP handshake, 14 tools, subagent rejection, native app enumeration, stop latch and clean EOF; executable overrides ignored.",
   );
 } finally {
   clearTimeout(timeout);

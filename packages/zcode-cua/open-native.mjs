@@ -1,19 +1,17 @@
-import { execFile } from "node:child_process";
-import { access, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { release } from "node:os";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { openComputerUseStateDirectory, withDesktopControlLease } from "./open-control-lease.mjs";
-import { HostClient, runNativeUtility } from "./vendor/open-zcode-computer-use/src/host-client.mjs";
+import { createNativeService, nativePermissions } from "./native-client.mjs";
 
-const execFileAsync = promisify(execFile);
 export const OPEN_CUA_NATIVE_ENV = "ZCODE_OPEN_CUA_NATIVE";
 export const OPEN_CUA_PERMISSION_APP_ENV = "ZCODE_OPEN_CUA_PERMISSION_APP_PATH";
 export const OPEN_CUA_MINIMUM_MACOS_VERSION = "14.0";
 
 export function isOpenComputerUseSupported({ platform = process.platform, macOsVersion } = {}) {
+  if (platform === "win32") return true;
   if (platform !== "darwin") return false;
   const major =
     macOsVersion === undefined
@@ -22,10 +20,19 @@ export function isOpenComputerUseSupported({ platform = process.platform, macOsV
   return Number.isFinite(major) && major >= 14;
 }
 
-export function resolveOpenComputerUseNative({ env = process.env, arch = process.arch } = {}) {
+export function resolveOpenComputerUseNative({
+  env = process.env,
+  arch = process.arch,
+  platform = process.platform,
+} = {}) {
   return (
     env[OPEN_CUA_NATIVE_ENV]?.trim() ||
-    fileURLToPath(new URL(`./native-bin/darwin-${arch}/OpenZCodeNative`, import.meta.url))
+    fileURLToPath(
+      new URL(
+        `./native-bin/${platform}-${arch}/${platform === "darwin" && arch === "x64" ? "OpenZCodeNative" : "ax_native.node"}`,
+        import.meta.url,
+      ),
+    )
   );
 }
 
@@ -52,21 +59,12 @@ export async function refreshOpenComputerUsePermissions() {
 
 export async function readOpenComputerUsePermissions(options = {}) {
   if (!isOpenComputerUseSupported(options)) {
-    return { available: false, reason: "开源电脑控制仅支持 macOS 14 或更新版本。" };
+    return { available: false, reason: "电脑控制支持 macOS 14+ 和 Windows 本地桌面。" };
   }
   try {
     const executable = options.executable ?? resolveOpenComputerUseNative(options);
     await access(executable);
-    const run =
-      options.runUtility ??
-      (async () => {
-        const { stdout } = await execFileAsync(executable, ["permissions"], {
-          timeout: 10_000,
-          maxBuffer: 64 * 1024,
-          encoding: "utf8",
-        });
-        return JSON.parse(stdout);
-      });
+    const run = options.runUtility ?? (() => nativePermissions(executable));
     const report = await run();
     if (
       typeof report?.accessibility !== "boolean" ||
@@ -83,23 +81,20 @@ export async function readOpenComputerUsePermissions(options = {}) {
           options.probe ??
           (() =>
             withDesktopControlLease(async () => {
-              const host = new HostClient({ executable, allowGlobalPointer: false });
+              const { service } = createNativeService({ executable });
               try {
-                await host.start();
-                const displays = await runNativeUtility("displays", [], { executable });
-                if (!displays[0]) return false;
-                const capture = await host.call("screen.capture", {
-                  session: host.session,
-                  displayId: displays[0].displayId,
+                await service.start();
+                const result = await service.callTool("list_apps", {});
+                const apps = JSON.parse(result.content[0].text);
+                const app = apps.find((candidate) => candidate.pid !== process.pid);
+                if (!app) return false;
+                const capture = await service.callTool("get_app_state", {
+                  app_ref: { pid: app.pid },
+                  include_screenshot: true,
                 });
-                return (
-                  capture.ok !== false &&
-                  capture.image?.widthPx > 0 &&
-                  capture.image?.heightPx > 0 &&
-                  (await stat(capture.image.path)).size > 8
-                );
+                return !capture.isError && capture.content.some((part) => part.type === "image");
               } finally {
-                await host.close();
+                await service.close();
               }
             }))
         )();
@@ -109,7 +104,7 @@ export async function readOpenComputerUsePermissions(options = {}) {
     }
     return {
       available: true,
-      platform: "darwin",
+      platform: options.platform ?? process.platform,
       grantOwner: displayName,
       grantOwnerDisplayName: displayName,
       accessibility: report.accessibility ? "granted" : "denied",

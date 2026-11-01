@@ -5,7 +5,12 @@ import { createOpenComputerUseMcpServer } from "@zcode/zcode-cua/open-mcp";
 export async function main() {
   const server = createOpenComputerUseMcpServer({
     // 运行时必须消费同一插件的 native；不读取工作区指定的 executable 或上游环境覆盖。
-    executable: fileURLToPath(new URL("../native/OpenZCodeNative", import.meta.url)),
+    executable: fileURLToPath(
+      new URL(
+        `../native/${process.platform === "darwin" && process.arch === "x64" ? "OpenZCodeNative" : "ax_native.node"}`,
+        import.meta.url,
+      ),
+    ),
   }).listen();
   const shutdown = async () => {
     await server.close();

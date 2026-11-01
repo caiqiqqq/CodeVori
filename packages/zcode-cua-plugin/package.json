@@ -1,8 +1,8 @@
 {
   "name": "@zcode/zcode-cua-plugin",
-  "version": "0.6.5",
+  "version": "0.7.0",
   "private": true,
-  "description": "Built-in macOS computer control powered by Open ZCode Computer Use",
+  "description": "Local macOS and Windows computer control with verified native AX/UIA components",
   "license": "MIT",
   "type": "module",
   "scripts": {

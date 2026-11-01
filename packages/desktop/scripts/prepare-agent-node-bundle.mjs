@@ -90,7 +90,7 @@ const browserUseRequiredRuntimePaths = [
   "skills/web-gui-tester/SKILL.md",
 ];
 const officialPluginPackages = [
-  ...(platform === "darwin"
+  ...(["darwin", "win32"].includes(platform)
     ? [
         {
           packageName: "@zcode/zcode-cua-plugin",
@@ -98,7 +98,14 @@ const officialPluginPackages = [
           requiresRuntime: true,
           requiredRuntimePaths: [
             "dist/mcp/server.js",
-            "dist/native/OpenZCodeNative",
+            ...(platform === "darwin" && arch === "x64"
+              ? ["dist/native/OpenZCodeNative"]
+              : [
+                  "dist/native/ax_native.node",
+                  "dist/native/helper.mjs",
+                  "dist/native/runtime.json",
+                  ...(platform === "darwin" ? ["dist/native/cocoa-runloop.node"] : []),
+                ]),
             "dist/LICENSE",
             "dist/NOTICE",
           ],

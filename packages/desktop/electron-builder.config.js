@@ -589,17 +589,25 @@ export default {
       to: `device-bridge/${deviceBridgeAsset(desktopPackageRoot, targetPlatform).name}`,
     },
     { from: resolve(workspaceRoot, noticesFileName), to: noticesFileName },
-    ...(targetPlatform.os === "darwin"
+    ...(["darwin", "win32"].includes(targetPlatform.os)
       ? [
           {
-            from: resolve(
-              workspaceRoot,
-              "packages/zcode-cua/native-bin",
-              targetPlatform.key,
-              "OpenZCodeNative",
-            ),
-            to: "open-computer-use/OpenZCodeNative",
+            from: resolve(workspaceRoot, "packages/zcode-cua/native-bin", targetPlatform.key),
+            to: "open-computer-use",
+            filter:
+              targetPlatform.os === "darwin" && targetPlatform.arch === "x64"
+                ? ["OpenZCodeNative"]
+                : [
+                    "ax_native.node",
+                    "helper.mjs",
+                    "runtime.json",
+                    ...(targetPlatform.os === "darwin" ? ["cocoa-runloop.node"] : []),
+                  ],
           },
+        ]
+      : []),
+    ...(targetPlatform.os === "darwin"
+      ? [
           {
             // CUA 权限浮窗的吸附数据源（CGWindowListCopyWindowInfo，不需要任何 TCC 权限）。
             // 主进程按 process.resourcesPath 解析；缺失时 watcher fail-open，浮窗仍可用
@@ -716,7 +724,10 @@ export default {
     // CUA Helper 在独立 job 中已完成 Developer ID 签名和 notarization staple；
     // electron-builder 若再次签名嵌套 Helper 会改变 CDHash，使最终用户包中的 staple 失效。
     signIgnore: [
-      // 新插件 native 没有历史预签名阶段；跳过它会让公证失败，必须由主包签名覆盖。
+      "open-computer-use[/\\\\](?:ax_native|cocoa-runloop)\\.node$",
+      "zcode-cua-plugin[/\\\\]dist[/\\\\]native[/\\\\](?:ax_native|cocoa-runloop)\\.node$",
+      // 外来 addon 保持官方签名；Cocoa bridge 在写入哈希前签名，均不能重复签名改写。
+      // Intel 兼容可执行文件仍随主包签名。
       "[/\\\\]Contents[/\\\\]Resources[/\\\\]glm([/\\\\]|$)(?!packages[/\\\\]zcode-cua-plugin[/\\\\]dist[/\\\\]native[/\\\\]OpenZCodeNative$)",
       "[/\\\\]Contents[/\\\\]Resources[/\\\\]tools([/\\\\]|$)",
     ],
