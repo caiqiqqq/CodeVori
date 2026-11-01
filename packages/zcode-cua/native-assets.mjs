@@ -7,7 +7,8 @@ export const NATIVE_ASSETS = Object.freeze({
   "darwin-arm64": {
     version: "3.16.3",
     sha256: "9e8421b8660a92b00625ee6869a46e33e0f80ff8527cf7d4ddc9f66990e02adb",
-    url: "https://cdn-zcode.z.ai/zcode/electron/releases/3.16.3/mac-arm64/ZCode-3.16.3-mac-arm64.zip",
+    // 原因：官方下载目录使用 macos-arm64，mac-arm64 会让干净环境构建返回 404。
+    url: "https://cdn-zcode.z.ai/zcode/electron/releases/3.16.3/macos-arm64/ZCode-3.16.3-mac-arm64.zip",
     archiveSha512:
       "QUPUGmQk9jmhf7TJPKcxBtX3AzEVxLbQaIfRCQ13zibKzLgFgU7hx2qPyBZY3bK1OhClhlL3ddNwOriKRSIXIA==",
     member:
