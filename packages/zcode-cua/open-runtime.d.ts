@@ -9,6 +9,7 @@ export interface OpenComputerUseOptions {
   platform?: NodeJS.Platform;
   arch?: string;
   macOsVersion?: string;
+  /** Absolute path to verified ax_native.node, or the Intel Mac compatibility executable. */
   executable?: string;
   probeScreenCapture?: boolean;
 }

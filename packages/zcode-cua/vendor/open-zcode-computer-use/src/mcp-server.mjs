@@ -4,14 +4,17 @@ import readline from "node:readline";
 import { pathToFileURL } from "node:url";
 import { ComputerUseService } from "./computer-use-service.mjs";
 import { HostClient } from "./host-client.mjs";
-import { TOOL_BY_NAME, TOOLS } from "./tool-definitions.mjs";
+import { TOOLS } from "./tool-definitions.mjs";
 
 export class OpenZCodeMCPServer {
   constructor({
     input = process.stdin,
     output = process.stdout,
+    tools = TOOLS,
     service = new ComputerUseService({ host: new HostClient() }),
   } = {}) {
+    this.tools = tools;
+    this.toolByName = new Map(tools.map((tool) => [tool.name, tool]));
     this.input = input;
     this.output = output;
     this.service = service;
@@ -106,7 +109,7 @@ export class OpenZCodeMCPServer {
         this.sendResult(message.id, {});
         return;
       case "tools/list":
-        this.sendResult(message.id, { tools: TOOLS });
+        this.sendResult(message.id, { tools: this.tools });
         return;
       case "tools/call":
         if (this.requests.has(message.id)) {
@@ -131,7 +134,7 @@ export class OpenZCodeMCPServer {
   async handleToolCall(message, signal) {
     const name = message.params?.name;
     const args = message.params?.arguments ?? {};
-    if (!TOOL_BY_NAME.has(name)) {
+    if (!this.toolByName.has(name)) {
       this.sendError(message.id, -32602, `Unknown tool: ${String(name)}`);
       return;
     }
@@ -148,7 +151,7 @@ export class OpenZCodeMCPServer {
       });
       return;
     }
-    const validationErrors = validateSchema(TOOL_BY_NAME.get(name).inputSchema, args);
+    const validationErrors = validateSchema(this.toolByName.get(name).inputSchema, args);
     if (validationErrors.length > 0) {
       this.sendError(message.id, -32602, `Invalid arguments: ${validationErrors.join("; ")}`);
       return;

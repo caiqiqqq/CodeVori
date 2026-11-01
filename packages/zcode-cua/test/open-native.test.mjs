@@ -39,7 +39,7 @@ test("normal permission queries never capture; explicit granted queries may prob
 
 test("permission checks fail closed for unsupported, missing and malformed native", async () => {
   for (const extra of [
-    { platform: "win32" },
+    { platform: "linux" },
     { macOsVersion: "13.5" },
     { executable: "/nonexistent/open-cua-native" },
     { runUtility: async () => ({ accessibility: "true", screenRecording: true }) },
@@ -60,9 +60,20 @@ test("legacy executable and pointer overrides do not select the builtin native",
     env: { OPEN_ZCODE_CUA_NATIVE: "/untrusted/executable" },
     arch: "arm64",
   });
-  assert.ok(result.endsWith("native-bin/darwin-arm64/OpenZCodeNative"));
+  assert.ok(result.endsWith("native-bin/darwin-arm64/ax_native.node"));
   assert.equal(
     resolveOpenComputerUseNative({ env: { ZCODE_OPEN_CUA_NATIVE: process.execPath } }),
     process.execPath,
+  );
+});
+
+test("Windows permission checks do not require macOS TCC", async () => {
+  const result = await readOpenComputerUsePermissions({ ...options, platform: "win32" });
+  assert.equal(result.available, true);
+  assert.equal(result.platform, "win32");
+  assert.ok(
+    resolveOpenComputerUseNative({ env: {}, platform: "win32", arch: "x64" }).endsWith(
+      "native-bin/win32-x64/ax_native.node",
+    ),
   );
 });

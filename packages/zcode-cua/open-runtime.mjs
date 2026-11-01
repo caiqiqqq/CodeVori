@@ -1,6 +1,5 @@
-import { ComputerUseService } from "./vendor/open-zcode-computer-use/src/computer-use-service.mjs";
-import { HostClient, runNativeUtility } from "./vendor/open-zcode-computer-use/src/host-client.mjs";
-import { TOOLS, TOOL_BY_NAME } from "./vendor/open-zcode-computer-use/src/tool-definitions.mjs";
+import { createNativeService } from "./native-client.mjs";
+import { NATIVE_TOOLS, INTERNAL_TOOL_BY_NAME } from "./native-tools.mjs";
 import { validateSchema } from "./vendor/open-zcode-computer-use/src/mcp-server.mjs";
 import { toolError } from "./vendor/open-zcode-computer-use/src/results.mjs";
 import { withDesktopControlLease } from "./open-control-lease.mjs";
@@ -19,7 +18,7 @@ export {
   refreshOpenComputerUsePermissions,
   resolveOpenComputerUseNative,
 } from "./open-native.mjs";
-export const OPEN_COMPUTER_USE_TOOLS = TOOLS;
+export const OPEN_COMPUTER_USE_TOOLS = NATIVE_TOOLS;
 const PHYSICAL_POINTER_TOOLS = new Set(["mouse_move", "left_mouse_down", "left_mouse_up"]);
 
 function failure(message, code, delivery = "not_sent") {
@@ -40,19 +39,7 @@ export function createOpenComputerUseService(options = {}) {
     if (closed) throw new Error("电脑控制连接已关闭。");
   };
   const createService =
-    options.createService ??
-    (() => {
-      const host = new HostClient({ executable, allowGlobalPointer: false });
-      const service = new ComputerUseService({
-        host,
-        nativeUtility: (command, args, utilityOptions) => {
-          assertActive();
-          return runNativeUtility(command, args, { ...utilityOptions, executable });
-        },
-        assertActive,
-      });
-      return { host, service };
-    });
+    options.createService ?? (() => createNativeService({ executable, assertActive }));
   let current;
   let starting;
   let generation;
@@ -100,9 +87,9 @@ export function createOpenComputerUseService(options = {}) {
           return failure("子智能体不能操作电脑。", "SUBAGENT_COMPUTER_USE_UNAVAILABLE");
         }
         if (!isOpenComputerUseSupported(options)) {
-          return failure("开源电脑控制仅支持 macOS 14 或更新版本。", "unsupported_platform");
+          return failure("电脑控制支持 macOS 14+ 和 Windows 本地桌面。", "unsupported_platform");
         }
-        const tool = TOOL_BY_NAME.get(name);
+        const tool = INTERNAL_TOOL_BY_NAME.get(name);
         if (!tool) return failure("未知的电脑控制工具。", "unknown_tool");
         if (PHYSICAL_POINTER_TOOLS.has(name)) {
           return failure(

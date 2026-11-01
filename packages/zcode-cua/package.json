@@ -1,8 +1,8 @@
 {
   "name": "@zcode/zcode-cua",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "private": true,
-  "description": "Open-source macOS Computer Use runtime, with fail-closed compatibility ports for the proprietary CUA broker.",
+  "description": "Local macOS and Windows computer control with verified native AX/UIA components",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
@@ -69,5 +69,9 @@
   },
   "dependencies": {
     "proper-lockfile": "4.1.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "node-api-headers": "1.9.0"
   }
 }

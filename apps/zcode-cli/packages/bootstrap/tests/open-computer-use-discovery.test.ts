@@ -42,8 +42,8 @@ test("desktop control discovery rejects enabled stale cache on remote Hosts and 
       assert.deepEqual(result.mcpServers, {});
     }
     const local = discover({ ZCODE_OPEN_CUA_NATIVE: "/application/native" });
-    assert.equal(local.plugins.some(plugin => plugin.id === id), process.platform === "darwin");
-    assert.equal(Object.keys(local.mcpServers).length, process.platform === "darwin" ? 1 : 0);
+    assert.equal(local.plugins.some(plugin => plugin.id === id), ["darwin", "win32"].includes(process.platform));
+    assert.equal(Object.keys(local.mcpServers).length, ["darwin", "win32"].includes(process.platform) ? 1 : 0);
     assert.equal(config.enabledPlugins[id], true);
   } finally {
     await rm(root, { recursive: true, force: true });

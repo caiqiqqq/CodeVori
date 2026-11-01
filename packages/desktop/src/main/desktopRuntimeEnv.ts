@@ -519,15 +519,23 @@ export function buildHostProcessEnv(hostProcessLocalEnv: Record<string, string>)
 
   return {
     ...inheritedEnv,
-    ...(process.platform === "darwin"
+    ...(["darwin", "win32"].includes(process.platform)
       ? {
           ZCODE_OPEN_CUA_NATIVE: packagedDesktop
-            ? join(process.resourcesPath, "open-computer-use", "OpenZCodeNative")
+            ? join(
+                process.resourcesPath,
+                "open-computer-use",
+                process.platform === "darwin" && process.arch === "x64"
+                  ? "OpenZCodeNative"
+                  : "ax_native.node",
+              )
             : resolve(
                 import.meta.dirname,
                 "../../../zcode-cua/native-bin",
-                `darwin-${process.arch}`,
-                "OpenZCodeNative",
+                `${process.platform}-${process.arch}`,
+                process.platform === "darwin" && process.arch === "x64"
+                  ? "OpenZCodeNative"
+                  : "ax_native.node",
               ),
           ZCODE_OPEN_CUA_PERMISSION_APP_PATH: resolveCurrentCuaApplicationPath() ?? "",
         }

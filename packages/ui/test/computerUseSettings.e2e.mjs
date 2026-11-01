@@ -68,7 +68,7 @@ try {
   server = await createServer({
     configFile: join(desktop, "vite.config.ts"),
     root: join(desktop, "src/renderer"),
-    server: { host: "127.0.0.1", port: 0 },
+    server: { host: "127.0.0.1", port: 0, strictPort: false },
     logLevel: "warn",
   });
   await server.listen();
@@ -162,7 +162,25 @@ try {
   );
   await toggle.click();
   await page.waitForFunction(() => window.__cua.enabled === false);
-  for (const mode of ["windows", "linux", "remote"]) {
+  await page.evaluate(() => window.__cua.setMode("windows"));
+  const windowsToggle = page.getByRole("switch").first();
+  await windowsToggle.waitFor();
+  const priorWindows = await page.evaluate(() => window.__cua.calls.length);
+  await windowsToggle.click();
+  await page.waitForFunction(() => window.__cua.enabled === true);
+  assert.equal(await page.getByText("授权", { exact: true }).count(), 0);
+  const windowsCalls = await page.evaluate(
+    (prior) => window.__cua.calls.slice(prior),
+    priorWindows,
+  );
+  assert.ok(windowsCalls.some((call) => call.op === "toggle"));
+  assert.equal(
+    windowsCalls.some((call) => ["status", "onboarding", "restart"].includes(call.op)),
+    false,
+  );
+  await windowsToggle.click();
+  await page.waitForFunction(() => window.__cua.enabled === false);
+  for (const mode of ["linux", "remote"]) {
     const prior = await page.evaluate(() => window.__cua.calls.length);
     await page.evaluate((mode) => window.__cua.setMode(mode), mode);
     await page.getByText("当前环境暂不支持电脑控制", { exact: true }).waitFor();

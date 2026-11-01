@@ -124,7 +124,7 @@ export function validateToolRequest(name, args) {
     args.text_range !== null &&
     (!Array.isArray(args.text_range) ||
       args.text_range.length !== 2 ||
-      args.text_range.some((part) => !Number.isInteger(part) || part < 0))
+      args.text_range.some((part) => !Number.isSafeInteger(part) || part < 0 || part > 0x7fffffff))
   ) {
     return "invalid text_range";
   }
@@ -155,6 +155,19 @@ export function validateToolRequest(name, args) {
   ) {
     return "invalid hold_seconds";
   }
+  if (
+    args.repeat !== undefined &&
+    args.repeat !== null &&
+    (!Number.isInteger(args.repeat) || args.repeat < 1 || args.repeat > 100)
+  )
+    return "invalid repeat";
+  if (
+    args.modifiers !== undefined &&
+    (typeof args.modifiers !== "string" || args.modifiers.length > 256)
+  )
+    return "invalid modifiers";
+  if (args.text !== undefined && args.text.length > (name === "key" ? 256 : 65536))
+    return "text exceeds native input limit";
   if (args.include_screenshot !== undefined && typeof args.include_screenshot !== "boolean")
     return "invalid include_screenshot";
   if (args.disable_diffing !== undefined && typeof args.disable_diffing !== "boolean")

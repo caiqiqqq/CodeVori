@@ -75,7 +75,9 @@ const OFFICIAL_CUA_REQUIRED_SEED_PATHS = [
   "docs/computer-use.md",
   "skills/computer-use/SKILL.md",
   "dist/mcp/server.js",
-  "dist/native/OpenZCodeNative",
+  ...(process.platform === "darwin" && process.arch === "x64"
+    ? ["dist/native/OpenZCodeNative"]
+    : ["dist/native/ax_native.node", "dist/native/helper.mjs", "dist/native/runtime.json", ...(process.platform === "darwin" ? ["dist/native/cocoa-runloop.node"] : [])]),
   "dist/LICENSE",
   "dist/NOTICE",
 ] as const;
@@ -341,8 +343,8 @@ export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = 
     // description，这里只放 zh-CN 覆盖；resolveLocalizedText 在 en-US 时回退到 manifest。
     listing: {
       author: {
-        name: "Open ZCode Computer Use contributors",
-        url: "https://github.com/hqhq1025/open-zcode-computer-use",
+        name: "CodeVori contributors",
+        url: "https://github.com/caiqiqqq/CodeVori",
       },
       category: "productivity",
       displayName: "Computer Use",
@@ -365,7 +367,7 @@ export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = 
     runtimeTopLevelPaths: ["dist"],
     // 这里的 version 追踪上游 zcode-cua runtime 版本，使插件 UI 展示、缓存路径、
     // marketplace 条目都对齐；具体版本由原子 producer bump 工作流维护。
-    version: "0.6.5",
+    version: "0.7.0",
   },
 ];
 

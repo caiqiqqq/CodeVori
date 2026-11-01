@@ -7789,9 +7789,9 @@ const enUS: Record<string, string> = {
     "The Computer Use plugin is not enabled. Enable it in Plugins to use Computer Use.",
   "settings.computerUse.unsupported.title": "Computer Use is unavailable here",
   "settings.computerUse.unsupported.remoteDescription":
-    "Computer Use requires local macOS 14 or later. SSH, WSL, Docker and other remote workspaces are not supported.",
+    "Computer Use requires local macOS 14 or later, or Windows. SSH, WSL, Docker and other remote workspaces are not supported.",
   "settings.computerUse.unsupported.linuxDescription":
-    "Computer Use requires local macOS 14 or later. Windows and Linux are not supported.",
+    "Computer Use supports local macOS 14 or later and Windows. Linux is not supported.",
   "settings.computerUse.unsupported.badge": "Unavailable here",
   "settings.computerUse.unsupported.group": "Unavailable built-in capabilities",
   "scheduledPreview.keepAwakeEnabled": "Keep awake enabled",

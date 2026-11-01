@@ -168,7 +168,7 @@ test("subagents, invalid calls, stopped sessions and missing backends fail befor
   assert.equal((await execute(runtime, "list_apps")).isError, true);
   await runtime.dispose();
 
-  const unavailable = createComputerUseRuntime({ platform: "win32" });
+  const unavailable = createComputerUseRuntime({ platform: "linux" });
   const failure = await execute(unavailable, "list_apps");
   assert.equal(failure.isError, true);
   assert.equal(failure.structuredContent.code, "action_unavailable");
@@ -229,7 +229,7 @@ test("aborted queued commands do not dispatch", async () => {
   await runtime.dispose();
 });
 
-test("macOS click options and held keys map to native operations", async () => {
+test("macOS click options and held keys reach the 14-method native interface", async () => {
   const { runtime, calls } = fixture({ platform: "darwin", macOsVersion: "14.0" });
   const app_ref = { pid: 42 };
   await execute(runtime, "get_app_state", { app_ref });
@@ -251,12 +251,11 @@ test("macOS click options and held keys map to native operations", async () => {
   await execute(runtime, "key", { app_ref, text: "enter", hold_seconds: 0.2 });
   assert.deepEqual(
     calls.map(({ name }) => name),
-    ["get_app_state", "double_click", "triple_click", "right_click", "middle_click", "hold_key"],
+    ["get_app_state", "left_click", "left_click", "left_click", "left_click", "key"],
   );
-  assert.equal(calls.at(-1).args.duration, 0.2);
+  assert.equal(calls.at(-1).args.hold_seconds, 0.2);
   const paste = await execute(runtime, "paste", { app_ref, text: "hello" });
-  assert.equal(paste.isError, true);
-  assert.equal(paste.structuredContent.action_sent, false);
-  assert.equal(calls.at(-1).name, "hold_key");
+  assert.notEqual(paste.isError, true);
+  assert.equal(calls.at(-1).name, "paste");
   await runtime.dispose();
 });

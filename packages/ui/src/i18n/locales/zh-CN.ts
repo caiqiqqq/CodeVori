@@ -7370,9 +7370,9 @@ const zhCN: Record<string, string> = {
   "settings.computerUse.pluginDisabledHint": "电脑控制插件未启用。前往插件开启后即可使用电脑控制。",
   "settings.computerUse.unsupported.title": "当前环境暂不支持电脑控制",
   "settings.computerUse.unsupported.remoteDescription":
-    "电脑控制仅支持本机 macOS 14 或更新版本，不支持 SSH、WSL、Docker 或其他远端工作区。",
+    "电脑控制支持本机 macOS 14 或更新版本和 Windows，不支持 SSH、WSL、Docker 或其他远端工作区。",
   "settings.computerUse.unsupported.linuxDescription":
-    "电脑控制仅支持本机 macOS 14 或更新版本，暂不支持 Windows 和 Linux。",
+    "电脑控制支持本机 macOS 14 或更新版本和 Windows，暂不支持 Linux。",
   "settings.computerUse.unsupported.badge": "当前环境不可用",
   "settings.computerUse.unsupported.group": "不可用的内置能力",
   "scheduledPreview.keepAwakeEnabled": "已开启保持唤醒",

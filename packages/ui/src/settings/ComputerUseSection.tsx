@@ -78,12 +78,13 @@ export function ComputerUseSection({
     !remoteSessionId &&
     !remoteTarget &&
     !(workspaceIdentity?.trim() && isRemoteWorkspaceIdentity(workspaceIdentity.trim()));
-  // 开源 runtime 只有 macOS 实现；不能仅因为是本地桌面就显示可用开关。
+  // macOS 和 Windows 共用插件开关；TCC 权限引导仍只属于本机 macOS。
   const supportsLocalMacWorkspace =
     !isWindowsDesktop &&
     (isMacDesktop ?? supportsLocalMacCuaPermissionOnboarding(platform)) &&
     isLocalWorkspace;
-  const supportsComputerUseSettings = supportsLocalMacWorkspace;
+  const supportsComputerUseSettings =
+    supportsLocalMacWorkspace || (isWindowsDesktop && isLocalWorkspace);
   const availability = resolveComputerUseAvailability({
     isDesktop: isDesktop || isWindowsDesktop || supportsLocalMacWorkspace,
     isMacDesktop: isMacDesktop || supportsLocalMacWorkspace,

@@ -1,22 +1,22 @@
 ---
 name: computer-use
-description: 在本地 macOS 上操作桌面应用，读取辅助功能界面、截图、点击、输入和验证操作结果。
+description: 在本地 macOS 或 Windows 上操作桌面应用，读取辅助功能界面、截图、点击、输入和验证操作结果。
 ---
 
 # 电脑控制
 
-通过此插件的 `computer-use` MCP 工具操作本地 macOS。不要使用浏览器控制工具替代
+通过此插件的 `computer-use` MCP 工具操作本地 macOS 或 Windows。不要使用浏览器控制工具替代
 原生应用操作，不要写 AppleScript、shell 或其他控制脚本绕过这些工具的状态校验。
 
 先调用 `request_access` 读取权限；缺失时请用户在 ZCode 设置的电脑控制区域完成授权。
-该工具不会自动弹系统权限窗口。仅支持 macOS 14+；其他平台停止并说明不支持。
+该工具不会自动弹系统权限窗口。支持本地 macOS 14+ 和 Windows；Linux、远端、WSL、Docker 不支持。Windows 不需要 macOS 隐私授权，但需要交互桌面并受 UIPI 权限级别限制。
 
-用 `list_apps` 取得真实 app 标识，用 `open_application` 和 `list_windows` 定位目标。
+用 `list_apps` 取得真实 app 标识，用 `list_windows` 定位窗口；`get_app_state` 会尝试启动精确匹配的已安装应用。
 调用 `get_app_state` 后根据辅助功能节点选取元素；界面无法语义定位时才使用最新截图
 中的坐标和 frame_id。每次只执行一次操作，再重新观察。不得从历史文本猜测元素、窗口、
 state_id 或 frame_id，不得在动作已消费后复用旧引用。
 
-优先使用 `left_click`、`set_value`、`select_text`、`perform_action` 等 AX 操作；键盘
+优先使用 `left_click`、`set_value`、`select_text`、`perform_action` 等 AX/UIA 操作；键盘
 和输入必须绑定目标 app/window。物理指针接管、mouse_move、分离按下/抬起未启用。
 不要把原生进程接受事件当作任务已经完成，应检查实际界面结果。
 
@@ -26,3 +26,6 @@ state_id 或 frame_id，不得在动作已消费后复用旧引用。
 
 保持现有智能体工具审批。涉及发布、发送消息、购买、删除或其他不可恢复副作用时，
 必须有用户授权。不要将完整剪贴板、截图中的秘密或无关个人内容写入日志。
+
+每个状态最多有效 30 秒。Windows 不支持高权限窗口；不得通过提权或改用全局输入绕过该边界。
+`paste` 缺少保护剪贴板的原生接口时返回不可用，改用 `type` 或 `set_value`。
