@@ -37,6 +37,11 @@ test("every native asset is pinned to one release and exact platform; Intel comp
     assert.equal(Buffer.from(asset.archiveSha512, "base64").length, 64);
     assert.ok(asset.url.startsWith("https://cdn-zcode.z.ai/"));
   }
+  // 原因：CDN 目录与安装包文件名的平台名不同，不能从文件名推导下载目录。
+  assert.equal(
+    new URL(NATIVE_ASSETS["darwin-arm64"].url).pathname,
+    "/zcode/electron/releases/3.16.3/macos-arm64/ZCode-3.16.3-mac-arm64.zip",
+  );
   assert.ok(
     resolveOpenComputerUseNative({ env: {}, platform: "darwin", arch: "x64" }).endsWith(
       "darwin-x64/OpenZCodeNative",
