@@ -1,16 +1,14 @@
-import { execFile } from "node:child_process";
 import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { assertRemoteReleaseSource, fileHash, validateSource } from "./github-release.mjs";
 import { validateClientRelease } from "./publish-device-node.mjs";
+import { findReleaseByTag, github } from "./github-release-remote.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const output = join(root, "dist-device-node");
 const marker = "device-node-manifest.json";
 const checksumName = "SHA256SUMS-device-node";
-const exec = promisify(execFile);
 
 function assertSource(manifest, context) {
   if (manifest.source !== context.commit || manifest.dirty !== false)
@@ -103,24 +101,26 @@ async function main() {
       await collectNodeAssets(join(root, "output/device-node/clients", version), output, context);
       break;
     }
-    case "verify":
-    case "publish": {
-      const files = await verifyNodeAssets(output, context);
+    case "verify": {
+      await verifyNodeAssets(output, context);
       // 发布必须有校验表；collect 内首次校验允许文件尚未创建。
       await stat(join(output, checksumName));
-      if (process.argv[2] === "verify") break;
-      const gh = (...args) => exec("gh", args, { cwd: root, maxBuffer: 2_000_000 });
-      await assertRemoteReleaseSource(context, gh);
-      const release = JSON.parse(
-        (await gh("api", `repos/${process.env.GITHUB_REPOSITORY}/releases/tags/${context.tag}`))
-          .stdout,
-      );
-      await uploadNodeAssets(context, output, files, release.assets, gh);
       break;
     }
+    case "publish":
+      await publishNodeAssets(context, output, github);
+      break;
     default:
       throw new Error("Use collect|verify|publish");
   }
+}
+
+export async function publishNodeAssets(context, directory, gh = github) {
+  const files = await verifyNodeAssets(directory, context);
+  await stat(join(directory, checksumName));
+  await assertRemoteReleaseSource(context, gh);
+  const release = await findReleaseByTag(context.tag, gh);
+  await uploadNodeAssets(context, directory, files, release.assets, gh);
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((error) => {

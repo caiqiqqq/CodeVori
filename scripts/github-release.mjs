@@ -5,6 +5,7 @@ import { appendFile, copyFile, mkdir, readFile, readdir, stat, writeFile } from 
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { findReleaseByTag, github } from "./github-release-remote.mjs";
 
 const exec = promisify(execFile);
 const root = resolve(import.meta.dirname, "..");
@@ -145,12 +146,13 @@ export async function publishAssets(
     targets = releaseTargets,
     checksumName = "SHA256SUMS",
     updateNotes = true,
+    gh = github,
   } = {},
 ) {
   if (!context.tag) throw new Error("Publishing requires a release tag");
   const files = await verifyAssets(directory, context, targets);
-  const gh = (...args) => exec("gh", args, { cwd: root, maxBuffer: 1024 * 1024 });
   await assertRemoteReleaseSource(context, gh);
+  const release = await findReleaseByTag(context.tag, gh);
   await writeFile(
     resolve(directory, checksumName),
     files.map((file) => `${file.sha256}  ${file.name}\n`).join(""),
@@ -165,7 +167,8 @@ export async function publishAssets(
     process.env.GITHUB_REPOSITORY,
     "--clobber",
   );
-  if (!updateNotes) return;
+  // 原因：构建产物上传不拥有手写更新说明，重跑不能把用户的版本说明覆盖成通用模板。
+  if (!updateNotes || release.body?.trim()) return;
   const notes = `CodeVori ${context.tag}\n\nCodeVori 是基于 [ZCode](https://github.com/zai-org/ZCode) 二次开发的 AI 编程工作台，部分功能参考 [Codeg](https://github.com/xintaofei/codeg) 项目。本项目独立维护，保留原作者署名、Apache-2.0 许可证及第三方版权声明。\n\n安装包由 GitHub Actions 从本版本标签构建，源码与安装包版本均为 ${context.version}。提供 macOS Apple Silicon / Intel、Windows x64、Linux x64 安装包，文件校验值见 SHA256SUMS。\n\nmacOS 使用 ad-hoc 本地签名，未经 Apple 公证；Windows 安装包未使用发布证书签名。\n\n源码提交：${context.commit}\n\n[问题反馈](https://github.com/caiqiqqq/CodeVori/issues)\n`;
   const notesPath = resolve(assetsDirectory, "release-notes.md");
   await writeFile(notesPath, notes);

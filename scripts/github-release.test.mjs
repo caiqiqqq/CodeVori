@@ -179,3 +179,30 @@ test("empty mobile artifacts cannot be collected or published", async (t) => {
   await writeFile(join(directory, artifactNames("0.0.1", "android-arm64-test")[0]), "");
   await assert.rejects(verifyAssets(directory, context, mobileReleaseTargets), /Empty installer/);
 });
+
+test("desktop upload preserves hand-written draft release notes", async (t) => {
+  const { directory } = await fixture(t);
+  const previous = process.env.GITHUB_REPOSITORY;
+  process.env.GITHUB_REPOSITORY = "owner/repo";
+  t.after(() => {
+    if (previous === undefined) delete process.env.GITHUB_REPOSITORY;
+    else process.env.GITHUB_REPOSITORY = previous;
+  });
+  const calls = [];
+  const gh = async (...args) => {
+    calls.push(args);
+    if (args[1] === `repos/owner/repo/git/ref/tags/${context.tag}`)
+      return { stdout: JSON.stringify({ object: { type: "commit", sha: context.commit } }) };
+    if (args[1] === "repos/owner/repo/releases?per_page=100&page=1")
+      return { stdout: JSON.stringify([{ id: 8, tag_name: context.tag }]) };
+    if (args[1] === "repos/owner/repo/releases/8")
+      return {
+        stdout: JSON.stringify({ id: 8, tag_name: context.tag, body: "Hand-written changelog" }),
+      };
+    if (args[0] === "release" && args[1] === "upload") return { stdout: "" };
+    throw new Error(`Unexpected GitHub operation: ${args.join(" ")}`);
+  };
+  await publishAssets(context, { directory, gh });
+  assert.equal(calls.filter((args) => args[0] === "release" && args[1] === "upload").length, 1);
+  assert.ok(!calls.some((args) => args[1] === "edit"));
+});

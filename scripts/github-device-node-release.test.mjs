@@ -10,6 +10,7 @@ import {
   collectNodeAssets,
   verifyNodeAssets,
   uploadNodeAssets,
+  publishNodeAssets,
 } from "./github-device-node-release.mjs";
 
 const context = { tag: "v0.0.5", commit: "a".repeat(40) };
@@ -117,4 +118,31 @@ test("workflow gates publication on desktop and client builds and verifies befor
   assert.match(yaml, /package-device-node\.mjs --clients-only/);
   assert.match(yaml, /github-device-node-release\.mjs verify[\s\S]*github-release\.mjs publish/);
   assert.match(yaml, /github-device-node-release\.mjs publish/);
+});
+
+test("draft publication resolves the matching release by ID and uploads clients without tag API", async (t) => {
+  const previous = process.env.GITHUB_REPOSITORY;
+  process.env.GITHUB_REPOSITORY = "owner/repo";
+  t.after(() => {
+    if (previous === undefined) delete process.env.GITHUB_REPOSITORY;
+    else process.env.GITHUB_REPOSITORY = previous;
+  });
+  const { directory, output } = await fixture(t);
+  await collectNodeAssets(directory, output, context);
+  const calls = [];
+  const gh = async (...args) => {
+    calls.push(args);
+    const endpoint = args[1];
+    if (endpoint === `repos/owner/repo/git/ref/tags/${context.tag}`)
+      return { stdout: JSON.stringify({ object: { type: "commit", sha: context.commit } }) };
+    if (endpoint === "repos/owner/repo/releases?per_page=100&page=1")
+      return { stdout: JSON.stringify([{ id: 27, tag_name: context.tag, draft: true }]) };
+    if (endpoint === "repos/owner/repo/releases/27")
+      return { stdout: JSON.stringify({ id: 27, tag_name: context.tag, draft: true, assets: [] }) };
+    if (args[0] === "release" && endpoint === "upload") return { stdout: "" };
+    throw new Error(`Unexpected GitHub operation: ${args.join(" ")}`);
+  };
+  await publishNodeAssets(context, output, gh);
+  assert.equal(calls.filter((args) => args[0] === "release").length, 2);
+  assert.ok(!calls.some((args) => args[1].includes("releases/tags/")));
 });

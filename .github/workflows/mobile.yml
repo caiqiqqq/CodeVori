@@ -47,6 +47,7 @@ jobs:
     outputs:
       commit: ${{ steps.source.outputs.commit }}
       version: ${{ steps.source.outputs.version }}
+      skip: ${{ steps.existing.outputs.skip }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,9 +61,15 @@ jobs:
         id: source
         run: node scripts/github-mobile-release.mjs validate
       - run: node --test scripts/github-release.test.mjs
+      - name: Skip completed release publications
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/github-release-status.mjs mobile
 
   build:
     needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
     name: Build ${{ matrix.target }}
     timeout-minutes: 90
     strategy:
@@ -156,7 +163,7 @@ jobs:
 
   publish:
     needs: [prepare, build]
-    if: github.event_name != 'pull_request' && (github.event.release.tag_name != '' || inputs.tag != '')
+    if: needs.prepare.outputs.skip != 'true' && github.event_name != 'pull_request' && (github.event.release.tag_name != '' || inputs.tag != '')
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:
