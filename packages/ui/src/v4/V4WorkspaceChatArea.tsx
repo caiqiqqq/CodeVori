@@ -108,6 +108,7 @@ interface V4WorkspaceChatAreaProps {
   /** 主 pane 的只读 ACP 标题投影，壳不得据此执行原生任务操作。 */
   onPrimaryAcpSessionChange?: (session: AcpConversationProjection | null) => void;
   onPrimaryAcpSessionArchived?: (sessionId: string) => void;
+  suppressAcpPreferenceForDraft?: boolean;
   acpOpenRequest?: AcpConversationOpenRequest | null;
   gitSummary?: GitRepositorySummary | null;
   gitDirtyFileCount?: number;
@@ -177,6 +178,7 @@ export function V4WorkspaceChatArea({
   onPrimaryDraftDropTargetControllerChange,
   onPrimaryAcpSessionChange,
   onPrimaryAcpSessionArchived,
+  suppressAcpPreferenceForDraft = false,
   acpOpenRequest,
   gitSummary,
   gitDirtyFileCount,
@@ -331,6 +333,7 @@ export function V4WorkspaceChatArea({
       onPrimaryDraftDropTargetControllerChange,
       onPrimaryAcpSessionChange,
       onPrimaryAcpSessionArchived,
+      suppressAcpPreferenceForDraft,
       acpOpenRequest,
       gitSummary,
       gitDirtyFileCount,
@@ -382,6 +385,7 @@ export function V4WorkspaceChatArea({
       onPrimaryDraftDropTargetControllerChange,
       onPrimaryAcpSessionChange,
       onPrimaryAcpSessionArchived,
+      suppressAcpPreferenceForDraft,
       acpOpenRequest,
       gitSummary,
       gitDirtyFileCount,

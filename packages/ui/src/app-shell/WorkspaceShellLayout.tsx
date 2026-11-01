@@ -448,6 +448,10 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   const [acpOpenRequest, setAcpOpenRequest] = useState<
     (AcpConversationOpenRequest & { draftFocusVersion: number }) | null
   >(null);
+  const [archiveExitDraft, setArchiveExitDraft] = useState<{
+    workspaceKey: string;
+    draftFocusVersion: number;
+  } | null>(null);
   const acpOpenRequestIdRef = useRef(0);
   const fileTreeOpenRequestIdRef = useRef(0);
   const [fileTreeOpenRequest, setFileTreeOpenRequest] = useState<SidebarFileTreeOpenRequest | null>(
@@ -492,6 +496,13 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       : null;
   const handlePrimaryAcpSessionArchived = useCallback(
     (archivedSessionId: string) => {
+      // 修复原因：归档关闭分屏会重挂主草稿；Host 的 ACP 偏好不能在同一次草稿里重新预连接。
+      setArchiveExitDraft({
+        workspaceKey,
+        draftFocusVersion: useZCodeSessionStore
+          .getState()
+          .getWorkspaceState(workspaceAbsPath, workspaceIdentity).draftFocusVersion,
+      });
       // 修复原因：旧打开请求留在 shell 时，pane 重挂载会重新选中刚归档的 ACP 对话。
       setAcpOpenRequest((previous) =>
         previous?.session.id === archivedSessionId &&
@@ -509,7 +520,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
           : previous,
       );
     },
-    [activeTaskId, workspaceAbsPath, workspaceKey],
+    [activeTaskId, workspaceAbsPath, workspaceIdentity, workspaceKey],
   );
   const acpHeaderTitle = visibleAcpSession?.title ?? null;
   const screenshotSurfaceRequest = useBrowserScreenshotSurfaceRequest(sidePaneState?.tabs ?? []);
@@ -2556,6 +2567,11 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                 }
                                 onPrimaryAcpSessionChange={handlePrimaryAcpSessionChange}
                                 onPrimaryAcpSessionArchived={handlePrimaryAcpSessionArchived}
+                                suppressAcpPreferenceForDraft={
+                                  archiveExitDraft?.workspaceKey === workspaceKey &&
+                                  archiveExitDraft.draftFocusVersion ===
+                                    workspaceShellZCodeState.draftFocusVersion
+                                }
                                 acpOpenRequest={acpOpenRequest}
                                 gitSummary={gitState.summary}
                                 gitDirtyFileCount={gitDirtyFileCount}

@@ -339,6 +339,8 @@ export interface SessionPaneProps {
   onAcpSessionChange?: (session: AcpConversationProjection | null) => void;
   /** Host 确认归档后，由宿主清理匹配的 pane binding 和打开请求。 */
   onAcpSessionArchived?: (sessionId: string) => void;
+  /** 归档返回的本次主草稿，不重新应用 Host 的 ACP 执行器偏好。 */
+  suppressAcpPreferenceForDraft?: boolean;
   acpOpenRequest?: AcpConversationOpenRequest | null;
   acpBoundSessionId?: string;
   /** 隐藏副屏的 child 已不存在时，由宿主移除对应 tab。 */
@@ -544,6 +546,7 @@ export function SessionPane({
   onSessionCreated,
   onAcpSessionChange,
   onAcpSessionArchived,
+  suppressAcpPreferenceForDraft = false,
   acpOpenRequest,
   acpBoundSessionId,
   onSelectionSideChatUnavailable,
@@ -1605,6 +1608,7 @@ export function SessionPane({
     ]);
     if (
       !focused ||
+      suppressAcpPreferenceForDraft ||
       sessionId ||
       acpBoundSessionId ||
       pendingAcpTabOpenRequest ||
@@ -1632,6 +1636,7 @@ export function SessionPane({
     readOnly,
     selectionSideChat,
     focused,
+    suppressAcpPreferenceForDraft,
     composerPreference.ready,
     composerPreference.snapshot,
     composerDraft,
