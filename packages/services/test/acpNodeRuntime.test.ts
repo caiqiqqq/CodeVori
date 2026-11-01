@@ -52,6 +52,8 @@ test("一键安装通过同一 Host 管理运行环境，失败保留旧指针�
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
   let badChecksum = false;
+  let missingChecksum = false;
+  let officialChecksumStatus = 200;
   let wrongVersion = false;
   let rejectDownload = false;
   let releaseDownload: (() => void) | undefined;
@@ -114,17 +116,26 @@ fs.writeFileSync(${JSON.stringify(join(root, "installed.json"))},JSON.stringify(
     fetcher = async (input) => {
       const url = String(input);
       requests.push(url);
-      assert.ok(url.startsWith("https://npmmirror.com/mirrors/node/"));
+      const official = url.startsWith("https://nodejs.org/dist/");
+      assert.ok(url.startsWith("https://npmmirror.com/mirrors/node/") || official);
+      if (official) assert.equal(url, `https://nodejs.org/dist/v${releaseVersion}/SHASUMS256.txt`);
       if (url.endsWith("index.json"))
         return Response.json([
           { version: `v${releaseVersion}`, lts: "Krypton", files: [archive.marker] },
         ]);
-      if (url.endsWith("SHASUMS256.txt"))
+      if (url.endsWith("SHASUMS256.txt")) {
+        if (!official && missingChecksum) return new Response("missing", { status: 404 });
+        if (official && officialChecksumStatus !== 200)
+          return new Response("missing", { status: officialChecksumStatus });
         return new Response(
           `${badChecksum ? "0".repeat(64) : createHash("sha256").update(payload).digest("hex")}  ${archive.file}\n`,
         );
+      }
       if (pendingDownload) await pendingDownload;
-      if (rejectDownload) throw new Error("fixture download unavailable");
+      if (rejectDownload)
+        throw Object.assign(new Error("proxy http://user:secret@proxy.invalid failed"), {
+          code: "ECONNREFUSED",
+        });
       return new Response(payload, { headers: { "content-length": String(payload.length) } });
     };
     await manager.listAgents({ checkUpdates: true });
@@ -164,10 +175,19 @@ fs.writeFileSync(${JSON.stringify(join(root, "installed.json"))},JSON.stringify(
     assert.equal(installed.nodeInstallSupported, true);
     assert.ok(events.some((event) => event.includes("正在下载")));
     assert.ok(events.some((event) => event.startsWith("completed:")));
+    assert.ok(!requests.some((url) => url.startsWith("https://nodejs.org/")));
     const pointer = join(directory, "runtime/active.json");
     const previous = await readFile(pointer, "utf8");
-    for (const mode of ["checksum", "download", "version"]) {
-      badChecksum = mode === "checksum";
+    for (const mode of [
+      "checksum",
+      "download",
+      "version",
+      "official-checksum",
+      "official-missing",
+    ]) {
+      badChecksum = mode === "checksum" || mode === "official-checksum";
+      missingChecksum = mode.startsWith("official-");
+      officialChecksumStatus = mode === "official-missing" ? 404 : 200;
       rejectDownload = mode === "download";
       wrongVersion = mode === "version";
       if (wrongVersion) {
@@ -175,7 +195,15 @@ fs.writeFileSync(${JSON.stringify(join(root, "installed.json"))},JSON.stringify(
         await createTar({ file: archivePath, cwd: content, gzip: true }, [archive.root]);
         payload = await readFile(archivePath);
       }
-      await assert.rejects(operate());
+      await assert.rejects(operate(), (error: Error) => {
+        if (rejectDownload) {
+          assert.ok(error.message.includes(releaseVersion));
+          assert.ok(error.message.includes("安装包"));
+          assert.ok(error.message.includes(archive.file));
+          assert.ok(!error.message.includes("secret"));
+        }
+        return true;
+      });
       assert.equal(await readFile(pointer, "utf8"), previous);
       assert.equal(
         (await manager.listAgents()).find((item) => item.agent === "openclaw")!.nodeVersion,
@@ -183,10 +211,17 @@ fs.writeFileSync(${JSON.stringify(join(root, "installed.json"))},JSON.stringify(
       );
     }
     badChecksum = rejectDownload = wrongVersion = false;
+    missingChecksum = true;
+    officialChecksumStatus = 200;
     await writeFile(join(content, archive.entry), nodeContents(), { mode: 0o755 });
     await createTar({ file: archivePath, cwd: content, gzip: true }, [archive.root]);
     payload = await readFile(archivePath);
     await operate();
+    assert.ok(
+      requests.includes(`https://nodejs.org/dist/v${releaseVersion}/SHASUMS256.txt`),
+      "missing mirror checksums use the same-version official manifest",
+    );
+    assert.ok(events.some((event) => event.includes("404") && event.includes(releaseVersion)));
     assert.equal((await operate("install")).managedVersion, "2026.10.5");
     const invocation = JSON.parse(await readFile(join(root, "installed.json"), "utf8"));
     assert.equal(invocation.registry, "https://registry.npmmirror.com");

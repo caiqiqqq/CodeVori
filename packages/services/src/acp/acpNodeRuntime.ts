@@ -61,10 +61,55 @@ export function selectNodeRelease(
   return valid(release.version)!;
 }
 
-async function getResponse(url: string, fetcher: typeof fetch) {
-  const response = await fetcher(url, { signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) throw new Error(`Node.js 国内镜像请求失败：HTTP ${response.status}`);
+class NodeHttpError extends Error {
+  constructor(
+    readonly status: number,
+    stage: string,
+    url: string,
+  ) {
+    super(`Node.js ${stage}失败：HTTP ${status}（${url}）`);
+  }
+}
+
+async function getResponse(url: string, fetcher: typeof fetch, stage: string, init?: RequestInit) {
+  let response: Response;
+  try {
+    response = await fetcher(url, { signal: AbortSignal.timeout(30_000), ...init });
+  } catch (cause) {
+    // 原始网络错误可能带代理凭据；只显示公开下载地址和安全类别，保留 cause 供诊断。
+    const reason =
+      cause instanceof Error && cause.name === "TimeoutError" ? "请求超时" : "网络请求失败";
+    throw new Error(`Node.js ${stage}失败：${reason}（${url}）`, { cause });
+  }
+  if (!response.ok) throw new NodeHttpError(response.status, stage, url);
   return response;
+}
+
+export async function nodeChecksum(
+  version: string,
+  file: string,
+  fetcher: typeof fetch,
+  log: (message: string) => void,
+): Promise<string> {
+  let url = `${NODE_MIRROR}/v${version}/SHASUMS256.txt`;
+  const stage = `${version} 校验文件请求`;
+  let response: Response;
+  try {
+    response = await getResponse(url, fetcher, stage);
+  } catch (error) {
+    // 镜像可能已有 Windows zip 却缺少校验清单；仅 404 读取官方同版本清单，不能跳过哈希校验。
+    if (!(error instanceof NodeHttpError) || error.status !== 404) throw error;
+    log(`Node.js ${version} 镜像校验文件返回 HTTP 404，正在获取官方同版本校验文件…`);
+    url = `https://nodejs.org/dist/v${version}/SHASUMS256.txt`;
+    response = await getResponse(url, fetcher, stage);
+  }
+  const sha256 = (await response.text())
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/))
+    .find((parts) => parts[1] === file)?.[0];
+  if (!sha256 || !/^[a-f\d]{64}$/i.test(sha256))
+    throw new Error(`Node.js ${version} 校验文件缺少 ${file} 的有效 SHA-256（${url}）`);
+  return sha256;
 }
 
 async function versionOf(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<string> {
@@ -138,27 +183,25 @@ export function createAcpNodeRuntime(
     async install(range: string, log: (message: string) => void) {
       log("正在从国内镜像选择兼容的 Node.js LTS…");
       const version = selectNodeRelease(
-        await (await getResponse(`${NODE_MIRROR}/index.json`, fetcher ?? fetch)).json(),
+        await (
+          await getResponse(`${NODE_MIRROR}/index.json`, fetcher ?? fetch, "版本索引请求")
+        ).json(),
         range,
       );
       const archive = nodeArchive(version);
       const baseUrl = `${NODE_MIRROR}/v${version}`;
-      const sums = await (await getResponse(`${baseUrl}/SHASUMS256.txt`, fetcher ?? fetch)).text();
-      const sha256 = sums
-        .split(/\r?\n/)
-        .map((line) => line.trim().split(/\s+/))
-        .find((parts) => parts[1] === archive.file)?.[0];
-      if (!sha256 || !/^[a-f\d]{64}$/i.test(sha256))
-        throw new Error("国内镜像缺少有效的 Node.js SHA-256 校验和");
+      const downloadUrl = `${baseUrl}/${archive.file}`;
+      const sha256 = await nodeChecksum(version, archive.file, fetcher ?? fetch, log);
       const destination = join(directory, "versions", version);
       let lastPercent = -1;
       let lastMb = -1;
       await installAcpBinary(
         destination,
-        `${baseUrl}/${archive.file}`,
+        downloadUrl,
         { version, entry: archive.entry, sibling: archive.npm, sha256 },
         {
-          fetcher,
+          fetcher: (input, init) =>
+            getResponse(String(input), fetcher ?? fetch, `${version} 安装包请求`, init),
           skipArchiveLinks: true,
           onProgress(bytes, total) {
             const mb = Math.floor(bytes / 1_000_000);
@@ -191,7 +234,13 @@ export function createAcpNodeRuntime(
               throw new Error("下载的 Node.js / npm 版本不符合目标要求");
           },
         },
-      );
+      ).catch((cause: unknown) => {
+        // 通用安装器会安全归一化代理错误；在此补回本次 Node 版本、阶段和公开下载地址。
+        throw new Error(
+          `Node.js ${version} 安装包处理失败（${downloadUrl}）：${cause instanceof Error ? cause.message : "安装失败"}`,
+          { cause },
+        );
+      });
       await mkdir(directory, { recursive: true, mode: 0o700 });
       const temporary = join(directory, `active.${randomUUID()}.tmp`);
       try {
