@@ -303,6 +303,7 @@ export interface WorkbenchShellBinding {
   ) => void;
   onPrimaryAcpSessionChange?: (session: AcpConversationProjection | null) => void;
   onPrimaryAcpSessionArchived?: (sessionId: string) => void;
+  suppressAcpPreferenceForDraft?: boolean;
   acpOpenRequest?: AcpConversationOpenRequest | null;
   gitSummary?: GitRepositorySummary | null;
   gitDirtyFileCount?: number;
@@ -650,6 +651,9 @@ export function WorkbenchLeafPane({
           onSessionCreated={handleSessionCreated}
           onSessionDeleted={handleSessionDeleted}
           onAcpSessionArchived={handleAcpSessionArchived}
+          suppressAcpPreferenceForDraft={
+            isPrimary && isShellWorkspace && shell.suppressAcpPreferenceForDraft
+          }
           focused={focused}
           onSplitRight={canSplit && onSplit ? handleSplitRight : undefined}
           onSplitDown={canSplit && onSplit ? handleSplitDown : undefined}

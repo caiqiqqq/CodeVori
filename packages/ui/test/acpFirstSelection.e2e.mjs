@@ -36,22 +36,24 @@ try {
     const key=scope=>scope.workspaceIdentity?.trim()||scope.workspacePath;
     const sharedId=crypto.randomUUID();
     const snapshots=new Map(Object.entries(scopes).map(([label,scope])=>[key(scope),{...scope,id:label.startsWith('host')?sharedId:crypto.randomUUID(),agent:'codex',acpSessionId:'native-'+label,title:'history-'+label,revision:1,status:'idle',entries:[{id:'user:'+label,kind:'user',text:'history-content-'+label}],configOptions:[],modeState:null,contextUsage:null,usageTurns:[],goal:null,pendingPermission:null,error:null,queue:{items:[],autoDrain:true}}]));
-    const calls=[],held=new Map(),delays=new Set(),listeners=new Set();
+    const calls=[],archived=[],held=new Map(),delays=new Set(),listeners=new Set(),preferenceListeners=new Set();
+    const preference={revision:1,acpModels:{}};
     const copy=scope=>structuredClone(snapshots.get(key(scope)));
     const wait=async(op,scope)=>{calls.push([op,key(scope),scope.remoteSessionId]);if(delays.delete(op+':'+key(scope)))await new Promise(resolve=>held.set(op+':'+key(scope),resolve))};
     const forbidden=()=>{throw Error('Unexpected native/model operation')};
     const acpService={list:async scope=>{await wait('list',scope);return [copy(scope)]},read:async scope=>copy(scope),refresh:async scope=>{await wait('refresh',scope);return copy(scope)},
       onDynamicSessionChanged:scope=>listener=>{listeners.add(listener);return {dispose:()=>listeners.delete(listener)}},
       listAvailableAgents:async()=>[{agent:'codex',available:true}],listAgentConfigs:async()=>[],listPlugins:async()=>[],onDynamicAgentConfigsChanged:()=>()=>({dispose(){}}),
-      create:async scope=>{calls.push(['create',key(scope)]);throw Error('History selection must never create a draft')},remove:async()=>{},submitPrompt:forbidden};
-    const services={acpService,settingService:{get:async()=>({})},clientConfigService:{getSnapshot:async()=>({pluginStoreOrder:null})},clientScenesService:{list:async()=>({code:0,data:[]})},subagentsService:{list:async()=>({agents:[],capability:null})},modelSelectionService:{getView:async()=>({revision:1,providers:[]}),onDidChange:()=>({dispose(){}})}};
+      create:async scope=>{calls.push(['create',key(scope)]);throw Error('Authentication required')},remove:async()=>{},submitPrompt:forbidden};
+    const composerPreferenceService={get:async()=>({...preference}),onDynamicChanged:()=>listener=>{preferenceListeners.add(listener);return {dispose:()=>preferenceListeners.delete(listener)}},update:async()=>({...preference})};
+    const services={acpService,composerPreferenceService,settingService:{get:async()=>({})},clientConfigService:{getSnapshot:async()=>({pluginStoreOrder:null})},clientScenesService:{list:async()=>({code:0,data:[]})},subagentsService:{list:async()=>({agents:[],capability:null})},modelSelectionService:{getView:async()=>({revision:1,providers:[]}),onDidChange:()=>({dispose(){}})}};
     const native={layer:{acquire:forbidden},sendCommand:forbidden,attachmentPut:forbidden,onRuntimeRestart:()=>()=>{},onRuntimeLifecycle:()=>()=>{}};
     function Fixture(){
       const initial=new URLSearchParams(location.search).get('initial')||'source';
-      const [label,setLabel]=useState(initial),[request,setRequest]=useState(null),[attachment,setAttachment]=useState(1);
+      const [label,setLabel]=useState(initial),[request,setRequest]=useState(null),[attachment,setAttachment]=useState(1),[paneEpoch,setPaneEpoch]=useState(0),[suppressPreference,setSuppressPreference]=useState(false);
       const scope=scopes[label];
-      window.__first={calls,held,open:next=>{setLabel(next);setRequest(previous=>({requestId:(previous?.requestId??0)+1,session:copy(scopes[next])}))},reconnect:()=>setAttachment(n=>n+1),hold:(op,next)=>delays.add(op+':'+key(scopes[next])),release:(op,next)=>{const id=op+':'+key(scopes[next]);held.get(id)?.();held.delete(id)},newDraft:()=>{setRequest(null);useZCodeSessionStore.getState().startDraft(scope.workspacePath,undefined,scope.workspaceIdentity)}};
-      return <main className='h-dvh bg-background text-foreground'><SessionPane paneId='workspace-main' {...scope} remoteSessionId={new URLSearchParams(location.search).has('replayable')?'attachment-'+attachment:undefined} sessionId={null} focused acpOpenRequest={request}/></main>;
+      window.__first={calls,held,archived,preference,open:next=>{setLabel(next);setRequest(previous=>({requestId:(previous?.requestId??0)+1,session:copy(scopes[next])}))},reconnect:()=>setAttachment(n=>n+1),hold:(op,next)=>delays.add(op+':'+key(scopes[next])),release:(op,next)=>{const id=op+':'+key(scopes[next]);held.get(id)?.();held.delete(id)},newDraft:()=>{setSuppressPreference(false);setRequest(null);useZCodeSessionStore.getState().startDraft(scope.workspacePath,undefined,scope.workspaceIdentity)},preferAcp:()=>{preference.target={kind:'acp',agent:'codex'};preference.revision++;for(const listener of preferenceListeners)listener({...preference})},archive:next=>{const session=snapshots.get(key(scopes[next]));const nextSession={...session,archived:true,revision:session.revision+1};snapshots.set(key(scopes[next]),nextSession);for(const listener of listeners)listener({kind:'updated',session:nextSession})}};
+      return <main className='h-dvh bg-background text-foreground'><SessionPane key={paneEpoch} paneId='workspace-main' {...scope} remoteSessionId={new URLSearchParams(location.search).has('replayable')?'attachment-'+attachment:undefined} sessionId={null} focused acpOpenRequest={request} suppressAcpPreferenceForDraft={suppressPreference} onAcpSessionArchived={id=>{archived.push(id);setSuppressPreference(true);setRequest(null);setPaneEpoch(value=>value+1)}}/></main>;
     }
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={{isWeb:true} as never}><TabStoreProvider><ServiceProvider services={services as never}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><V4ConversationContext.Provider value={native as never}><Fixture/></V4ConversationContext.Provider></TooltipProvider></ZCodeIntlProvider></ServiceProvider></TabStoreProvider></PlatformProvider>);
   `,
@@ -141,11 +143,25 @@ try {
       0,
       "First open under a different identity must preserve history",
     );
+    await open("target");
+    await history("target").waitFor();
+    await page.evaluate(() => window.__first.preferAcp());
+    await page.waitForTimeout(150);
+    await page.evaluate(() => window.__first.archive("target"));
+    await page.waitForTimeout(200);
+    assert.ok((await page.evaluate(() => window.__first.archived.length)) > 0);
+    await history("target").waitFor({ state: "detached" });
+    await page.waitForTimeout(100);
+    assert.equal(await count("create"), 0, "Archive must not preconnect the preferred ACP agent");
+    assert.equal(await page.evaluate(() => window.__first.preference.target.agent), "codex");
+    await page.evaluate(() => window.__first.newDraft());
+    await page.waitForFunction(() => window.__first.calls.some((call) => call[0] === "create"));
+    await page.getByText("Authentication required", { exact: true }).waitFor();
     assert.deepEqual(errors, []);
     await page.close();
   }
   console.log(
-    `PASS: real SessionPane first cross-workspace open, same-workspace open, identity isolation, stale refresh, new draft and replayable reconnect. Artifacts: ${artifacts}`,
+    `PASS: real SessionPane selection, archive remount without ACP preconnect, next-draft auth, and replayable reconnect. Artifacts: ${artifacts}`,
   );
 } finally {
   await browser?.close();
