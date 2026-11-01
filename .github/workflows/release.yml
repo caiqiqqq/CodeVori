@@ -29,6 +29,7 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
       commit: ${{ steps.release.outputs.commit }}
+      skip: ${{ steps.existing.outputs.skip }}
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
@@ -45,9 +46,15 @@ jobs:
         run: node scripts/github-release.mjs validate
       - name: Test release validation
         run: node --test scripts/github-release.test.mjs
+      - name: Skip completed release publications
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/github-release-status.mjs desktop
 
   build:
     needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
     name: Build ${{ matrix.os }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
@@ -110,6 +117,7 @@ jobs:
 
   build-device-node:
     needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
     name: Build six execution clients
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -147,6 +155,7 @@ jobs:
 
   publish:
     needs: [prepare, build, build-device-node]
+    if: needs.prepare.outputs.skip != 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:

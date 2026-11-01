@@ -35,7 +35,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build workflow type declarations for a clean checkout
         run: pnpm --filter @zcode/dynamic-workflow-runtime... build
-      - run: node --test scripts/github-release.test.mjs
+      - run: node --test scripts/github-release.test.mjs scripts/github-release-remote.test.mjs packages/desktop/test/electronBuilderRetry.test.mjs
       - name: Execution client release and server mirror regressions
         run: |
           node --test scripts/package-device-node.test.mjs scripts/github-device-node-release.test.mjs

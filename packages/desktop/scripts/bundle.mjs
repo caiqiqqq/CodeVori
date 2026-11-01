@@ -13,6 +13,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { collectRuntimeModuleClosureEntries } from "./runtime-dependency-closure.mjs";
 import { resolveDesktopProductIdentity } from "./desktop-product-identity.mjs";
+import { shouldRetryElectronBuilderFailure } from "./electron-builder-retry.mjs";
 import {
   findDesktopNativePackageViolations,
   parseAsarListWithPackState,
@@ -452,27 +453,6 @@ async function runTimedAsync(label, fn) {
   }
 }
 
-function shouldRetryElectronBuilderFailure(output) {
-  const normalizedOutput = output.toLowerCase();
-  const transientSignals = [
-    "github.com/electron-userland/electron-builder-binaries/releases/download",
-    "electron-builder-binaries/",
-    "nsis-resources-",
-    'get "https://',
-    " eof",
-    "read: connection reset by peer",
-    "connection reset by peer",
-    "connectex",
-    "timed out",
-    "timeout",
-    "socket hang up",
-    "unexpected end of file",
-    "err_electron_builder_cannot_execute",
-  ];
-
-  return transientSignals.some((signal) => normalizedOutput.includes(signal));
-}
-
 async function runElectronBuilderWithRetry(args, envPatch) {
   const retryEnvPatch = { ...envPatch };
   let didFallbackElectronBuilderMirror = false;
@@ -596,7 +576,7 @@ async function runElectronBuilderWithRetry(args, envPatch) {
     // 统一折叠成 ERR_ELECTRON_BUILDER_CANNOT_EXECUTE，导致流水线把可恢复抖动误判成配置失败。
     // 这里仅对下载类信号做有限次重试，既提高首轮 cache miss 时的稳定性，也避免把真实构建错误无限吞掉。
     console.warn(
-      `[bundle] electron-builder 下载资源失败，${electronBuilderRetryDelayMs}ms 后重试 (${attempt}/${electronBuilderRetryCount})`,
+      `[bundle] electron-builder 遇到可恢复故障，${electronBuilderRetryDelayMs}ms 后重试 (${attempt}/${electronBuilderRetryCount})`,
     );
     await sleep(electronBuilderRetryDelayMs);
   }
