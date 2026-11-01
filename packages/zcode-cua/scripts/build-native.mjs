@@ -17,6 +17,7 @@ import { build } from "esbuild";
 import { getTargetPlatform } from "../../desktop/scripts/target-platform.mjs";
 import { NATIVE_ASSETS, verifyNativeAsset } from "../native-assets.mjs";
 import { buildCocoaRunLoop } from "./build-cocoa-runloop.mjs";
+import { extractNativeAsset } from "./extract-native-asset.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const target = getTargetPlatform();
@@ -69,11 +70,7 @@ try {
     if (createHash("sha512").update(bytes).digest("base64") !== asset.archiveSha512)
       throw new Error("Official installer SHA512 mismatch.");
     await writeFile(archive, bytes);
-    await promisify(execFile)("tar", ["-xf", archive, "-C", temporary, asset.member], {
-      timeout: 120_000,
-      maxBuffer: 1024 * 1024,
-      windowsHide: true,
-    });
+    await extractNativeAsset(archive, asset.member);
     source = join(temporary, asset.member);
   }
   await verifyNativeAsset(source, {
