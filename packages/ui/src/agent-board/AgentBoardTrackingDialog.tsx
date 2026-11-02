@@ -1,17 +1,17 @@
 import { useState } from "react";
-import { CircleCheck, LoaderCircle } from "lucide-react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Button } from "@/components/ui/button.js";
 import { Checkbox } from "@/components/ui/checkbox.js";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
 import {
   boardAgentLabel,
-  boardStatusIndicator,
   matchesBoardTracking,
   type BoardItem,
   type BoardProject,
   type BoardTracking,
 } from "./agentBoardModel.js";
+
+import { AgentBoardTrackingItems } from "./AgentBoardTrackingItems.js";
 
 function toggleKey(keys: string[], key: string, checked: boolean) {
   return checked ? [...new Set([...keys, key])] : keys.filter((k) => k !== key);
@@ -69,20 +69,25 @@ export function AgentBoardTrackingDialog({
         ),
       })),
   ];
+  const projectByKey = new Map(projects.map((project) => [project.key, project]));
   const visibleGroups = groups
+    .filter((group) => group.key !== "work-tasks" || group.items.length > 0)
     .map((group) => ({
       ...group,
       items: `${group.label} ${group.path}`.toLocaleLowerCase().includes(query)
         ? group.items
         : group.items.filter((item) =>
-            `${item.title} ${boardAgentLabel(item)}`.toLocaleLowerCase().includes(query),
+            `${item.title} ${boardAgentLabel(item)} ${item.kind === "work-task" ? `${projectByKey.get(item.projectKey)?.label ?? ""} ${item.projectKey} ${item.workspacePath}` : ""}`
+              .toLocaleLowerCase()
+              .includes(query),
           ),
     }))
-    .filter(
-      (group) =>
-        !query ||
-        group.items.length > 0 ||
-        `${group.label} ${group.path}`.toLocaleLowerCase().includes(query),
+    .filter((group) =>
+      group.key === "work-tasks"
+        ? group.items.length > 0
+        : !query ||
+          group.items.length > 0 ||
+          `${group.label} ${group.path}`.toLocaleLowerCase().includes(query),
     );
   const setItem = (item: BoardItem, checked: boolean) =>
     setDraft((current) => ({
@@ -174,48 +179,13 @@ export function AgentBoardTrackingDialog({
                   />
                   {t(group.key === "work-tasks" ? "trackWholeWorkTasks" : "trackWholeGroup")}
                 </label>
-                <div className="mt-2 space-y-1">
-                  {group.items.map((item) => {
-                    const status = boardStatusIndicator(item);
-                    return (
-                      <label
-                        key={item.key}
-                        className="flex min-w-0 items-start gap-2 rounded-lg px-1 py-2 hover:bg-surface-hover"
-                      >
-                        <Checkbox
-                          className="mt-0.5"
-                          checked={matchesBoardTracking(item, { ...draft, mode: "custom" })}
-                          onCheckedChange={(checked) => setItem(item, checked === true)}
-                        />
-                        <span className="min-w-0">
-                          <span className="line-clamp-2">{item.title || t("untitled")}</span>
-                          <span className="inline-flex flex-wrap items-center gap-1 text-ui-caption text-foreground-subtle">
-                            <span>{boardAgentLabel(item)} ·</span>
-                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                              {/* 候选状态原先只有文字；沿用真实状态，离线或等待不播放运行动画。 */}
-                              {status === "completed" ? (
-                                <CircleCheck
-                                  aria-hidden="true"
-                                  className="size-3 shrink-0 text-success"
-                                />
-                              ) : status === "running" ? (
-                                <LoaderCircle
-                                  aria-hidden="true"
-                                  strokeWidth={3}
-                                  className={`size-3 shrink-0 text-task-running-indicator ${item.online ? "animate-spin motion-reduce:animate-none" : ""}`}
-                                />
-                              ) : null}
-                              {t(`status.${status}`)}
-                            </span>
-                          </span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                  {group.items.length === 0 ? (
-                    <p className="py-2 text-ui-caption text-foreground-subtle">{t("empty")}</p>
-                  ) : null}
-                </div>
+                <AgentBoardTrackingItems
+                  items={group.items}
+                  projects={projectByKey}
+                  byProject={group.key === "work-tasks"}
+                  tracking={draft}
+                  onCheckedChange={setItem}
+                />
               </details>
             ))}
           </fieldset>
