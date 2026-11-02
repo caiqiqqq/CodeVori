@@ -8,9 +8,14 @@ import {
 } from "@zcode/shared/node";
 import type { AcpWorkspace } from "@zcode/shared";
 import { readProjectMemoryFileFromStableHandle } from "./projectMemoryStableRead.js";
+import { saveProjectMemories, type ProjectMemoryCandidate } from "./projectMemoryWriter.js";
 
 export interface ProjectMemoryContext {
   buildPromptContext(workspace: AcpWorkspace): Promise<string | undefined>;
+  saveMemories(
+    workspace: AcpWorkspace,
+    candidates: readonly ProjectMemoryCandidate[],
+  ): Promise<void>;
 }
 
 const INDEX_FILE = "MEMORY.md";
@@ -18,12 +23,32 @@ const INDEX_FILE = "MEMORY.md";
 const isMissing = (error: unknown) =>
   typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 
+function validateMemoryRoot(storageRoot: string, root: string): () => Promise<void> {
+  const directories = [
+    storageRoot,
+    join(storageRoot, "memories"),
+    join(storageRoot, "memories", "projects"),
+    dirname(root),
+    root,
+  ];
+  return async () => {
+    for (const directory of directories) {
+      const metadata = await lstat(directory);
+      if (!metadata.isDirectory() || metadata.isSymbolicLink())
+        throw new Error("Project Memory path is not a regular directory");
+    }
+    const within = relative(await realpath(storageRoot), await realpath(root));
+    if (within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within))
+      throw new Error("Project Memory path is outside the selected Host profile");
+  };
+}
+
 /** Selected Host reads the same files as API; the external Agent retains file-write permissions. */
 export function createProjectMemoryContext(input: {
   cliStorageRoot: string;
   isEnabled(): Promise<boolean>;
 }): ProjectMemoryContext {
-  return {
+  const context: ProjectMemoryContext = {
     async buildPromptContext(workspace) {
       // 修复原因：ACP 原先完全绕过工作区记忆；关闭时必须在任何文件 IO 前返回。
       if (!(await input.isEnabled())) return undefined;
@@ -36,16 +61,7 @@ export function createProjectMemoryContext(input: {
         dirname(root),
         root,
       ];
-      const validate = async () => {
-        for (const directory of directories) {
-          const metadata = await lstat(directory);
-          if (!metadata.isDirectory() || metadata.isSymbolicLink())
-            throw new Error("Project Memory path is not a regular directory");
-        }
-        const within = relative(await realpath(storageRoot), await realpath(root));
-        if (within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within))
-          throw new Error("Project Memory path is outside the selected Host profile");
-      };
+      const validate = validateMemoryRoot(storageRoot, root);
       // 逐级验证后创建下一层，不跟随预先存在的记忆目录链接。
       for (const directory of directories) {
         try {
@@ -97,5 +113,13 @@ export function createProjectMemoryContext(input: {
           : []),
       ].join("\n\n");
     },
+    async saveMemories(workspace, candidates) {
+      if (!(await context.buildPromptContext(workspace)))
+        throw new Error("Project Memory is disabled");
+      const storageRoot = resolve(input.cliStorageRoot);
+      const root = resolveProjectMemoryRoot({ ...workspace, cliStorageRoot: storageRoot });
+      await saveProjectMemories(root, candidates, validateMemoryRoot(storageRoot, root));
+    },
   };
+  return context;
 }

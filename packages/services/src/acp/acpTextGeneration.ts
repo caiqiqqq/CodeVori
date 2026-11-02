@@ -38,9 +38,18 @@ export class AcpTextGeneration {
   ) {}
 
   generate(input: AcpGenerateText) {
+    return this.start(input, false);
+  }
+
+  /** Internal Host memory extraction runs on the selected Host, including identity-scoped workspaces. */
+  generateForMemory(input: AcpGenerateText) {
+    return this.start(input, true);
+  }
+
+  private start(input: AcpGenerateText, allowRemoteWorkspace: boolean) {
     input = acpGenerateTextSchema.parse(input);
     if (this.closed) throw new Error("work-task.result-canceled");
-    if (input.workspaceIdentity || input.remoteSessionId)
+    if (!allowRemoteWorkspace && (input.workspaceIdentity || input.remoteSessionId))
       throw new Error("work-task.remote-unsupported");
     if (
       this.pending.has(input.requestId) ||
@@ -52,7 +61,7 @@ export class AcpTextGeneration {
     )
       throw new Error("work-task.result-busy");
     const abort = new AbortController();
-    const finished = this.run(input, abort.signal)
+    const finished = this.run(input, abort.signal, allowRemoteWorkspace)
       .catch((error: unknown) => {
         if (abort.signal.aborted) throw new Error("work-task.result-canceled");
         if (error instanceof Error && error.message.startsWith("work-task.")) throw error;
@@ -83,13 +92,14 @@ export class AcpTextGeneration {
     await Promise.allSettled([...this.pending.values()].map((run) => run.finished));
   }
 
-  private async run(input: AcpGenerateText, signal: AbortSignal) {
+  private async run(input: AcpGenerateText, signal: AbortSignal, allowRemoteWorkspace: boolean) {
     const session = await this.deps.read(input);
     if (
       session.id !== input.id ||
       resolveWorkspaceKey(session) !== resolveWorkspaceKey(input) ||
-      session.workspaceIdentity ||
-      session.remoteSessionId ||
+      session.workspacePath !== input.workspacePath ||
+      session.remoteSessionId !== input.remoteSessionId ||
+      (!allowRemoteWorkspace && (session.workspaceIdentity || session.remoteSessionId)) ||
       session.pendingPermission ||
       session.revision !== input.expectedRevision ||
       session.status !== "idle" ||

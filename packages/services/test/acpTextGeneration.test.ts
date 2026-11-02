@@ -236,6 +236,29 @@ test("wrong scope/revision, busy source, unsupported adapter and remote source n
   );
 });
 
+test("Host memory generation accepts an exact remote workspace identity without changing public summary scope", async () => {
+  const f = fixture();
+  f.session.workspaceIdentity = "remote:fixture";
+  f.session.remoteSessionId = "remote-session";
+  const request = {
+    ...f.request,
+    workspaceIdentity: "remote:fixture",
+    remoteSessionId: "remote-session",
+  };
+  assert.throws(() => f.owner.generate(request), /remote-unsupported/);
+  const result = await f.owner.generateForMemory(request);
+  assert.equal(result.text, "Summary");
+  assert.equal(f.counts().promptCalls, 1);
+  await assert.rejects(
+    f.owner.generateForMemory({
+      ...request,
+      remoteSessionId: "another-session",
+      requestId: randomUUID(),
+    }),
+    /source-changed/,
+  );
+});
+
 test("Codex uses the native text runner with the original model and no ACP prompt", async () => {
   const f = fixture();
   f.session.agent = "codex";
