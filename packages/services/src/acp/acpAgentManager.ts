@@ -36,7 +36,11 @@ import {
   ensureAntigravityAuthFile,
 } from "./acpAntigravityAuth.js";
 import { installAcpBinary, managedAcpBinary } from "./acpBinaryInstaller.js";
-import { readCodexNativeConfig, updateCodexNativeConfig } from "./acpCodexConfig.js";
+import {
+  applyCodexNativeEnvironment,
+  readCodexNativeConfig,
+  updateCodexNativeConfig,
+} from "./acpCodexConfig.js";
 import { listCodexOfficialModels } from "./acpCodexModels.js";
 import {
   applyGeminiCredentialPolicy,
@@ -841,18 +845,7 @@ export function createAcpAgentManager(
       };
       delete launchEnv.ZCODE_ADAPTER_CHANNEL;
       if (agent === "codex") {
-        const native = await readCodexNativeConfig(await codexHome());
-        // 修复原因：旧环境变量可能覆盖 Codex 原生订阅认证、API URL 和默认模型；
-        // Codeg 将原生配置投影到启动环境，新连接也必须以当前原生文件为准。
-        if (native.authMode === "subscription" || native.managedProvider) {
-          for (const key of ["OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL"])
-            delete launchEnv[key];
-        }
-        if (native.authMode === "custom") {
-          if (native.apiKey) launchEnv.OPENAI_API_KEY = native.apiKey;
-          if (native.apiUrl) launchEnv.OPENAI_BASE_URL = native.apiUrl;
-          if (native.model) launchEnv.OPENAI_MODEL = native.model;
-        }
+        await applyCodexNativeEnvironment(await codexHome(), launchEnv);
       }
       if (agent === "pi" && !nativePath)
         throw new Error("Pi is not installed: install pi or set PI_ACP_PI_COMMAND");

@@ -229,11 +229,12 @@ export const acpCodexConfigUpdateSchema = acpCodexConfigSchema
   .pick({
     authMode: true,
     apiUrl: true,
-    apiKey: true,
     model: true,
   })
   .extend({
     expectedVersion: z.string().min(1),
+    // 省略保留原生凭据；显式空字符串才表示清除。
+    apiKey: z.string().optional(),
   })
   .refine((value) => value.authMode !== "custom" || Boolean(value.apiUrl.trim()), {
     message: "自定义接口需要 API URL",

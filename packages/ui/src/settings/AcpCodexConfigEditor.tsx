@@ -110,7 +110,8 @@ export function AcpCodexConfigEditor({ service }: { service: IAcpService }) {
         expectedVersion: draft.version,
         authMode: draft.authMode,
         apiUrl: draft.apiUrl,
-        apiKey: draft.apiKey,
+        // 外部 provider 可能在 TOML 中认证；未编辑 Key 时不能把空投影写回认证文件。
+        ...(draft.apiKey !== baseline?.apiKey ? { apiKey: draft.apiKey } : {}),
         model: draft.model,
       });
       // 修复原因：异步保存期间的用户输入不能被旧回执覆盖，需保留新的草稿。
