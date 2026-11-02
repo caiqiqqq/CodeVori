@@ -151,6 +151,11 @@ import {
 } from "./acpCompaction.js";
 import { failureFromAcpError, recordAcpSessionFailure } from "./acpSessionFailures.js";
 import { AcpTextGeneration } from "./acpTextGeneration.js";
+import {
+  captureAcpMemorySnapshot,
+  createAcpMemoryExtraction,
+  type AcpMemorySnapshot,
+} from "./acpMemoryExtraction.js";
 import type { AcpSessionFailure } from "@zcode/shared";
 
 export type AcpUpdate =
@@ -243,6 +248,10 @@ export function createAcpService(
     savedWorkflows?: import("./acpSavedWorkflows.js").AcpSavedWorkflowService;
     agentManager?: AcpAgentManager;
     memoryContext?: ProjectMemoryContext;
+    /** Auxiliary text seam for isolated ACP memory extraction tests. */
+    memoryGenerateText?: (
+      input: import("@zcode/shared").AcpGenerateText,
+    ) => Promise<{ text: string }>;
     mcpSyncService?: Pick<IMcpSyncService, "loadMcpFromUserDirectory">;
     skillsService?: Pick<ISkillsService, "buildPromptContext"> &
       Partial<Pick<ISkillsService, "list">>;
@@ -390,12 +399,49 @@ export function createAcpService(
   };
   const traceEmitter = new Emitter<AcpExecutionTraceChanged>();
   let disposed = false;
-  const textGeneration = new AcpTextGeneration({
+  const textGenerationDeps = {
     read: (input) => service.read(input),
     connect,
     manager: agentManager,
     customConnect: !!options.connect && !options.agentManager,
-  });
+  } satisfies ConstructorParameters<typeof AcpTextGeneration>[0];
+  const textGeneration = new AcpTextGeneration(textGenerationDeps);
+  // 后台记忆提取不能占用用户主动触发的辅助摘要请求槽位。
+  const memoryTextGeneration = options.memoryContext?.saveMemories
+    ? new AcpTextGeneration(textGenerationDeps)
+    : undefined;
+  const memoryExtraction = options.memoryContext?.saveMemories
+    ? createAcpMemoryExtraction({
+        context: options.memoryContext,
+        generate:
+          options.memoryGenerateText ?? ((input) => memoryTextGeneration!.generateForMemory(input)),
+        read: (session) =>
+          service.read({
+            id: session.id,
+            workspacePath: session.workspacePath,
+            ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
+            ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
+          }),
+        persist: (snapshot, candidates) =>
+          queueGate.run(snapshot.id, async () => {
+            const current = sessions.get(snapshot.id);
+            if (
+              disposed ||
+              removed.has(snapshot.id) ||
+              !current ||
+              current.revision !== snapshot.revision ||
+              current.status !== "idle" ||
+              current.queue.items.length ||
+              workspaceKey(current) !== workspaceKey(snapshot) ||
+              current.workspacePath !== snapshot.workspacePath ||
+              current.remoteSessionId !== snapshot.remoteSessionId
+            )
+              return false;
+            await options.memoryContext!.saveMemories(snapshot, candidates);
+            return true;
+          }),
+      })
+    : undefined;
   const usageHistoryReader = createCodexUsageHistoryReader(
     join(directory, "usage-cache", "codex-history-v1.json"),
   );
@@ -1981,6 +2027,7 @@ export function createAcpService(
       }
       const admittedAt = Date.now();
       timing?.phase("admission_queue");
+      let memorySnapshot: AcpMemorySnapshot | undefined;
       await queueGate.run(session.id, async () => {
         timing?.phase("admission_backup");
         if (!ownsRun() || disposed || removed.has(session.id)) return;
@@ -2105,12 +2152,19 @@ export function createAcpService(
             },
             completedAt,
           );
+          if (
+            !session.error &&
+            (!port.lastStopReason || port.lastStopReason === "end_turn") &&
+            session.status === "idle"
+          )
+            memorySnapshot = captureAcpMemorySnapshot(session);
           active.delete(session.id);
           // 修复原因：工作流可在主回合占用 ACP 连接时先完成；释放连接后必须主动派送结果。
           scheduleQueueDrain(session);
           scheduleWorkflowNotifications(session);
         }
       });
+      if (memorySnapshot) memoryExtraction?.schedule(memorySnapshot);
     } catch (error) {
       if (!admitted) promptAdmissions.get(`${session.id}:${commandId}`)?.reject(error);
       const interruptedAt = Date.now();
@@ -2395,6 +2449,7 @@ export function createAcpService(
       await rm(diagnosticFile(session.id), { force: true });
       await sessionStore.remove(session.id);
       removed.add(session.id);
+      memoryExtraction?.forget(session.id);
       stopping.delete(session.id);
       sessions.delete(session.id);
       streamingWrites.delete(session.id);
@@ -3415,6 +3470,8 @@ export function createAcpService(
       disposed = true;
       streamDiagnostics.clear();
       projections.clear();
+      memoryExtraction?.dispose();
+      memoryTextGeneration?.dispose();
       textGeneration.dispose();
       usageHistoryReader.dispose();
       for (const admission of promptAdmissions.values())
@@ -3437,7 +3494,28 @@ export function createAcpService(
         port.closed ? [port.closed] : [],
       );
       const inFlight = [...connecting.values()];
+      // 与原生 API 的有界记忆 drain 一致：已结束回合的后台写入先完成，再关闭辅助模型。
+      let memoryDrained = true;
+      if (memoryExtraction) {
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+          memoryDrained = await Promise.race([
+            memoryExtraction.settle().then(() => true),
+            new Promise<boolean>((resolve) => {
+              timeout = setTimeout(() => resolve(false), 60_000);
+              timeout.unref?.();
+            }),
+          ]);
+        } finally {
+          if (timeout) clearTimeout(timeout);
+        }
+      }
       this.disposeAll();
+      // 超时后辅助模型可能不响应取消；关闭流程不能再次无限等待同一请求。
+      if (memoryDrained) {
+        await memoryExtraction?.settle();
+        await memoryTextGeneration?.settle();
+      }
       await textGeneration.settle();
       await Promise.allSettled(inFlight);
       await Promise.allSettled(closed);
