@@ -64,7 +64,7 @@ try {
         .querySelector('[data-testid="agent-board-details"]')
         ?.getBoundingClientRect();
       return (
-        box && Math.abs(box.width - 640) < 2 && box.x > 0 && Math.abs(box.right - innerWidth) < 2
+        box && Math.abs(box.width - 960) < 2 && box.x > 0 && Math.abs(box.right - innerWidth) < 2
       );
     });
     const actions = await page.getByTestId("agent-board-header-actions").boundingBox();
@@ -242,11 +242,14 @@ try {
   await page.keyboard.press("Escape");
   await assertDrawer();
   // The visible board can switch the drawer directly without closing it first.
+  // 加宽后的抽屉会覆盖中间列；在宽桌面验证左侧可见卡片直接切换，不点击被遮挡卡片。
+  await page.setViewportSize({ width: 2200, height: 900 });
   await open("Remote API session");
   await assertDrawer();
   await outside.click();
   await details.waitFor({ state: "hidden" });
   await page.waitForFunction(() => window.__toolsTarget === null);
+  await page.setViewportSize({ width: 1500, height: 900 });
   await page.evaluate(() => {
     const f = window.__board;
     f.services.workTaskService.getEvents = async () => [];
