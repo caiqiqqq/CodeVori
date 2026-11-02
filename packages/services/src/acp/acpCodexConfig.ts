@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { parse } from "smol-toml";
 import {
   PRODUCT_NAME,
@@ -51,23 +52,51 @@ function parseNative(files: NativeFiles) {
   return { config, auth };
 }
 
-function project(files: NativeFiles): AcpCodexConfig {
-  const { config, auth } = parseNative(files);
+function selectedProvider(config: Record<string, unknown>) {
   const providers = config.model_providers;
-  const selectedProvider = typeof config.model_provider === "string" ? config.model_provider : "";
+  const name = typeof config.model_provider === "string" ? config.model_provider : "";
   const provider =
     providers && typeof providers === "object" && !Array.isArray(providers)
-      ? (providers as Record<string, unknown>)[selectedProvider]
+      ? (providers as Record<string, unknown>)[name]
       : undefined;
-  const apiUrl =
-    provider && typeof provider === "object" && !Array.isArray(provider)
-      ? (provider as Record<string, unknown>).base_url
-      : undefined;
+  return {
+    name,
+    table:
+      provider && typeof provider === "object" && !Array.isArray(provider)
+        ? (provider as Record<string, unknown>)
+        : {},
+  };
+}
+
+function credential(config: Record<string, unknown>, auth: Record<string, unknown>) {
+  const { name, table } = selectedProvider(config);
+  // CC Switch 将 Key 放在 provider 内；该凭据不能被无关的 auth.json 覆盖或迁移。
+  if (typeof table.experimental_bearer_token === "string")
+    return { source: "provider", value: table.experimental_bearer_token } as const;
+  if (table.env_key) return { source: "external", value: "" } as const;
+  if (table.requires_openai_auth === true)
+    return {
+      source: "auth",
+      value: typeof auth.OPENAI_API_KEY === "string" ? auth.OPENAI_API_KEY : "",
+    } as const;
+  if (table.env_http_headers || table.http_headers)
+    return { source: "external", value: "" } as const;
+  if (name && table.requires_openai_auth !== true)
+    return { source: "provider", value: "" } as const;
+  return {
+    source: "auth",
+    value: typeof auth.OPENAI_API_KEY === "string" ? auth.OPENAI_API_KEY : "",
+  } as const;
+}
+
+function project(files: NativeFiles): AcpCodexConfig {
+  const { config, auth } = parseNative(files);
+  const { name, table } = selectedProvider(config);
   const tokens = auth.tokens;
   return {
     version: version(files),
-    authMode: auth.auth_mode === "chatgpt" && !selectedProvider ? "subscription" : "custom",
-    managedProvider: selectedProvider === ZCODE_PROVIDER,
+    authMode: auth.auth_mode === "chatgpt" && !name ? "subscription" : "custom",
+    managedProvider: name === ZCODE_PROVIDER,
     hasSubscriptionCredentials: Boolean(
       tokens &&
       typeof tokens === "object" &&
@@ -75,15 +104,30 @@ function project(files: NativeFiles): AcpCodexConfig {
       (typeof (tokens as Record<string, unknown>).access_token === "string" ||
         typeof (tokens as Record<string, unknown>).id_token === "string"),
     ),
-    apiUrl: typeof apiUrl === "string" ? apiUrl : "",
-    apiKey: typeof auth.OPENAI_API_KEY === "string" ? auth.OPENAI_API_KEY : "",
+    apiUrl: typeof table.base_url === "string" ? table.base_url : "",
+    apiKey: credential(config, auth).value,
     model: typeof config.model === "string" ? config.model : "",
   };
 }
 
+function checkedPatch(
+  original: string,
+  next: string,
+  change: (config: Record<string, unknown>) => void,
+): string {
+  const expected = parseNative({ config: original, auth: "" }).config;
+  change(expected);
+  const actual = parseNative({ config: next, auth: "" }).config;
+  // 文本定位不能误改多行字符串或其他同名字段；写盘前确认仅发生预期的结构变化。
+  if (!isDeepStrictEqual(actual, expected))
+    throw new Error("无法安全更新 Codex 原生配置；原文件未被覆盖。");
+  return next;
+}
+
 /** Root assignment stops at the first TOML table, leaving all other sections intact. */
 function patchRoot(text: string, key: string, value: string | null): string {
-  const lines = text ? text.replace(/\r\n/g, "\n").split("\n") : [];
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text ? text.split(/\r?\n/) : [];
   const end = lines.findIndex((line) => /^\s*\[/.test(line));
   const rootEnd = end < 0 ? lines.length : end;
   const match = new RegExp(`^\\s*${key}\\s*=`);
@@ -94,43 +138,89 @@ function patchRoot(text: string, key: string, value: string | null): string {
   } else if (value !== null) {
     lines.splice(rootEnd, 0, `${key} = ${JSON.stringify(value)}`);
   }
-  return lines.join("\n").replace(/\n*$/, "\n");
+  return checkedPatch(text, lines.join(eol).replace(/(?:\r?\n)*$/, eol), (config) => {
+    if (value === null) delete config[key];
+    else config[key] = value;
+  });
 }
 
-/** Only the dedicated provider table is editable; foreign provider tables survive unchanged. */
-function patchProvider(text: string, baseUrl: string): string {
-  const lines = text.trimEnd().split("\n");
-  const start = lines.findIndex((line) => /^\s*\[model_providers\.zcode\]\s*(?:#.*)?$/.test(line));
-  const fields = [
-    ["name", PRODUCT_NAME],
-    ["base_url", baseUrl],
-    ["wire_api", "responses"],
-  ] as const;
+/** Patch one field without serializing unrelated provider credentials or comments. */
+function patchProviderField(
+  text: string,
+  provider: string,
+  key: string,
+  value: string | boolean,
+): string {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text.trimEnd().split(/\r?\n/);
+  const validate = (next: string) =>
+    checkedPatch(text, next, (config) => {
+      const providers = (config.model_providers ??= {}) as Record<string, Record<string, unknown>>;
+      const table = (providers[provider] ??= {});
+      table[key] = value;
+    });
+  const start = lines.findIndex((line) => {
+    if (!/^\s*\[(?!\[)/.test(line)) return false;
+    try {
+      const header = parse(`${line}\n__zcode_target = true\n`);
+      const providers = header.model_providers as
+        | Record<string, Record<string, unknown>>
+        | undefined;
+      return providers?.[provider]?.__zcode_target === true;
+    } catch {
+      return false;
+    }
+  });
   if (start < 0) {
     const parsed = parse(text);
     const providers = parsed.model_providers as Record<string, unknown> | undefined;
-    if (providers && Object.hasOwn(providers, ZCODE_PROVIDER))
-      throw new Error("Codex 的 zcode provider 使用了不支持的 TOML 写法；原文件未被覆盖。");
-    return `${text.trimEnd()}\n\n[model_providers.zcode]\n${fields.map(([key, value]) => `${key} = ${JSON.stringify(value)}`).join("\n")}\nrequires_openai_auth = true\n`.replace(
-      /^\n+/,
-      "",
+    if (providers && Object.hasOwn(providers, provider))
+      throw new Error("Codex provider 使用了不支持的 TOML 写法；原文件未被覆盖。");
+    const name = /^[\w-]+$/.test(provider) ? provider : JSON.stringify(provider);
+    return validate(
+      `${text.trimEnd()}${eol}${eol}[model_providers.${name}]${eol}${key} = ${JSON.stringify(value)}${eol}`.trimStart(),
     );
   }
   const next = lines.findIndex((line, index) => index > start && /^\s*\[/.test(line));
   const end = next < 0 ? lines.length : next;
   const section = lines.slice(start + 1, end);
-  for (const [key, value] of fields) {
-    const index = section.findIndex((line) => new RegExp(`^\\s*${key}\\s*=`).test(line));
-    if (index < 0) section.push(`${key} = ${JSON.stringify(value)}`);
-    else section[index] = `${key} = ${JSON.stringify(value)}`;
-  }
-  for (const key of ["requires_openai_auth", "env_key"]) {
-    const index = section.findIndex((line) => new RegExp(`^\\s*${key}\\s*=`).test(line));
-    if (index >= 0) section.splice(index, 1);
-  }
-  section.push("requires_openai_auth = true");
+  const index = section.findIndex((line) =>
+    new RegExp(`^\\s*(?:${key}|"${key}"|'${key}')\\s*=`).test(line),
+  );
+  if (index < 0) section.push(`${key} = ${JSON.stringify(value)}`);
+  else section[index] = `${key} = ${JSON.stringify(value)}`;
   lines.splice(start + 1, end - start - 1, ...section);
-  return lines.join("\n").replace(/\n*$/, "\n");
+  return validate(lines.join(eol).replace(/(?:\r?\n)*$/, eol));
+}
+
+/** Codex owns native credential resolution; only its explicit env dependencies survive. */
+export async function applyCodexNativeEnvironment(
+  home: string,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  const { config, auth } = parseNative(await readNativeFiles(home));
+  const { name, table } = selectedProvider(config);
+  // 尚无原生认证时保留已有的环境认证入口；只移除会覆盖原生默认模型的旧值。
+  if (
+    (!name || name === "openai") &&
+    !Object.keys(table).length &&
+    auth.auth_mode !== "chatgpt" &&
+    !auth.OPENAI_API_KEY
+  ) {
+    if (typeof config.model === "string" && config.model.trim()) delete env.OPENAI_MODEL;
+    return;
+  }
+  const referenced = new Set([
+    table.env_key,
+    ...Object.values(
+      table.env_http_headers && typeof table.env_http_headers === "object"
+        ? table.env_http_headers
+        : {},
+    ),
+  ]);
+  // 旧 OPENAI_* 覆盖会旁路当前 provider；env_key / env_http_headers 则是原生显式依赖。
+  for (const key of ["OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL"])
+    if (!referenced.has(key)) delete env[key];
 }
 
 async function atomicWrite(path: string, contents: string): Promise<void> {
@@ -156,26 +246,70 @@ export async function updateCodexNativeConfig(
   const original = await readNativeFiles(home);
   if (version(original) !== update.expectedVersion)
     throw new Error("Codex 原生配置已变更，请刷新后重试；未覆盖新配置。");
-  const { auth } = parseNative(original);
+  const { config, auth } = parseNative(original);
+  const before = project(original);
   const nextAuth = { ...auth };
-  let nextConfig = patchRoot(original.config, "model", update.model.trim() || null);
+  let authChanged = false;
+  let nextConfig =
+    update.model.trim() === before.model
+      ? original.config
+      : patchRoot(original.config, "model", update.model.trim() || null);
   if (update.authMode === "subscription") {
-    nextConfig = patchRoot(nextConfig, "model_provider", null);
-    nextAuth.auth_mode = "chatgpt";
-    nextAuth.OPENAI_API_KEY = null;
+    if (before.authMode !== "subscription") {
+      nextConfig = patchRoot(nextConfig, "model_provider", null);
+      nextAuth.auth_mode = "chatgpt";
+      nextAuth.OPENAI_API_KEY = null;
+      authChanged = true;
+    }
   } else {
     const url = new URL(update.apiUrl.trim());
     if (!["http:", "https:"].includes(url.protocol))
       throw new Error("API URL 必须使用 HTTP 或 HTTPS。");
-    nextConfig = patchProvider(
-      patchRoot(nextConfig, "model_provider", ZCODE_PROVIDER),
-      update.apiUrl.trim(),
+    const { name } = selectedProvider(config);
+    const provider = name || ZCODE_PROVIDER;
+    if (!name) {
+      nextConfig = patchRoot(nextConfig, "model_provider", provider);
+      const providers = config.model_providers as Record<string, unknown> | undefined;
+      if (!providers?.[provider]) {
+        for (const [key, value] of [
+          ["name", PRODUCT_NAME],
+          ["wire_api", "responses"],
+          ["requires_openai_auth", true],
+        ] as const)
+          nextConfig = patchProviderField(nextConfig, provider, key, value);
+      }
+    }
+    // 只改模型不能触碰 provider 认证；URL 也只在用户确实修改时原位更新。
+    if (!name || update.apiUrl.trim() !== before.apiUrl)
+      nextConfig = patchProviderField(nextConfig, provider, "base_url", update.apiUrl.trim());
+    const source = credential(
+      parseNative({ config: nextConfig, auth: original.auth }).config,
+      auth,
     );
-    nextAuth.auth_mode = "apikey";
-    if (update.apiKey.trim()) nextAuth.OPENAI_API_KEY = update.apiKey.trim();
-    else delete nextAuth.OPENAI_API_KEY;
+    const key = update.apiKey?.trim();
+    if (key !== undefined && (key !== before.apiKey || !name)) {
+      if (source.source === "external")
+        throw new Error("此 provider 的凭据由环境变量或 headers 管理，请在 Codex 原生配置中修改。");
+      if (source.source === "provider")
+        nextConfig = patchProviderField(nextConfig, provider, "experimental_bearer_token", key);
+      else {
+        nextAuth.auth_mode = "apikey";
+        if (key) nextAuth.OPENAI_API_KEY = key;
+        else delete nextAuth.OPENAI_API_KEY;
+        authChanged = true;
+      }
+    }
+    if (!name && source.source === "auth" && !(key ?? source.value))
+      throw new Error("自定义接口需要 API Key；原文件未被覆盖。");
+    if (!name && source.source === "auth" && nextAuth.auth_mode !== "apikey") {
+      nextAuth.auth_mode = "apikey";
+      authChanged = true;
+    }
   }
-  const updated = { config: nextConfig, auth: `${JSON.stringify(nextAuth, null, 2)}\n` };
+  const updated = {
+    config: nextConfig,
+    auth: authChanged ? `${JSON.stringify(nextAuth, null, 2)}\n` : original.auth,
+  };
   parseNative(updated);
   // 修复原因：Codex CLI 或另一个窗口可能在表单打开后更新凭据；旧版本不能覆盖新文件。
   if (version(await readNativeFiles(home)) !== update.expectedVersion)
