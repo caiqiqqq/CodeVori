@@ -105,12 +105,13 @@ export function AgentBoardTools({
           tools?.onToggle();
         }
       }}
-      // 看板入口先保留左侧卡片；只有原工具 owner 展开后才占满会话列。
+      // 640px 抽屉达不到共享时间线的 864px 导航阈值；宽屏增至 960px 即可复用问题导航。
+      // 随容器收窄时优先给看板保留 16rem，手机由 max-w-full 限制为可用宽度。
       className={cn(
         "absolute inset-y-0 right-0 flex h-full w-full translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0",
         open
           ? "left-0 max-w-full border-0 shadow-none"
-          : "left-auto max-w-160 border-0 border-l border-border shadow-xl",
+          : "left-auto w-[clamp(640px,calc(100%_-_16rem),960px)] max-w-full border-0 border-l border-border shadow-xl",
       )}
     >
       <div
