@@ -513,6 +513,8 @@ interface ConversationComposerProps {
    * 分屏时仅 primary pane 监听，避免一次点击插入两份。
    */
   listenAddToChatEvents?: boolean;
+  /** 网页元素可在 ACP 作为文本尾块发送，独立于其他原生上下文事件门控。 */
+  listenWebElementContextEvents?: boolean;
   imageReferenceEnabled?: boolean;
   /**
    * 外部一次性文本预填请求（Example Prompt 等）。
@@ -603,6 +605,7 @@ function ConversationComposerImpl({
   onOpenModelSettings,
   onOpenCodeViewer,
   listenAddToChatEvents = true,
+  listenWebElementContextEvents = listenAddToChatEvents,
   imageReferenceEnabled = listenAddToChatEvents,
   externalTextInsertRequest = null,
   onExternalTextInsertApplied,
@@ -801,7 +804,7 @@ function ConversationComposerImpl({
     workspaceIdentity,
     // queue 撤回等待 ACK 时 composer 处于 disabled；此时也要阻止全局 add-to-chat
     // 写入网页上下文，避免权威删除成功后撞上 ACK 窗口内的新草稿。
-    listenAddToChatEvents: listenAddToChatEvents && !disabled,
+    listenAddToChatEvents: listenWebElementContextEvents && !disabled,
     scopeId: draftScopeId,
   });
   const {
@@ -1270,7 +1273,11 @@ function ConversationComposerImpl({
   const routingAllowsSend = draftMode || (snapshot !== null && mode !== "reject");
   const attachmentsReady = !attachmentsApi.hasUnreadyAttachments;
   const canSend = acpAgent
-    ? !disabled && !pending && acpReady && (hasText || hasAttachments) && attachmentsReady
+    ? !disabled &&
+      !pending &&
+      acpReady &&
+      (hasText || hasAttachments || hasWebElementContexts) &&
+      attachmentsReady
     : !disabled &&
       !pending &&
       hasDraftToSubmit &&
@@ -1441,8 +1448,13 @@ function ConversationComposerImpl({
         return;
       }
       if (acpAgent) {
-        if ((!trimmed && !hasAttachments) || !acpReady || !onSendAcpText) return;
-        // 原生结构化上下文仍需专门的 Host 接口；附件走 ACP 内容块。
+        if (
+          (!trimmed && !hasAttachments && webElementContexts.length === 0) ||
+          !acpReady ||
+          !onSendAcpText
+        )
+          return;
+        // 网页元素复用 API 的文本尾块；其余原生结构化上下文仍需专门的 Host 接口。
         const blocked = getAcpComposerBlockingReason({
           codeComments: getCodeCommentContexts().length > 0,
           webElements: webElementContexts.length > 0,
@@ -1463,6 +1475,7 @@ function ConversationComposerImpl({
         const target = acpTargetRef.current;
         const submittedRevision = contentRevisionRef.current;
         const submittedAttachmentIds = attachmentsApi.attachments.map((item) => item.id);
+        const submittedWebElements = webElementContexts;
         if (pendingRef.current) return;
         const submission = {};
         submissionRef.current = submission;
@@ -1474,11 +1487,19 @@ function ConversationComposerImpl({
             Boolean(remoteSessionId || workspaceIdentity?.trim()),
           );
           const workspaceFiles = acpWorkspaceFilesFromEditor(submittedDraft.editorStateJson);
+          const promptText = serializeComposerPromptContexts(trimmed, {
+            codeComments: [],
+            conversationSelections: [],
+            webElements: submittedWebElements,
+            pptxElements: [],
+          });
           const admittedSessionId = await onSendAcpText({
-            text: trimmed,
+            text: promptText,
             attachments,
             workspaceFiles,
           });
+          // Host 已接纳后只移除本次冻结的元素；等待 ACK 期间新选的元素留给下一条消息。
+          submittedWebElements.forEach((context) => removeWebElementContext(context.id));
           // 修复原因：Agent prompt 会等整轮结束；Host 接纳 user row 或队列项即清空本次草稿。
           // 清掉仍排队的草稿落盘，避免迟到 debounce 在清空后重新写回已发送正文。
           if (
@@ -2757,7 +2778,7 @@ function ConversationComposerImpl({
             // 导致空文本仅附代码评论时 Enter 被编辑器判为空，必须改点发送按钮。
             (!acpAgent && hasCodeCommentContexts) ||
             hasAttachments ||
-            (!acpAgent && hasWebElementContexts) ||
+            hasWebElementContexts ||
             (!acpAgent && hasPptxElementReferences) ||
             (!acpAgent && hasConversationSelectionReferences)
           }

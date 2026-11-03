@@ -1,5 +1,6 @@
 export interface AcpComposerContext {
   codeComments: boolean;
+  /** 网页元素复用 API 的文本尾块，可通过 ACP text 发送。 */
   webElements: boolean;
   pptxElements: boolean;
   selections: boolean;
@@ -23,15 +24,9 @@ export function hasAcpConversationContent(
   );
 }
 
-/** 原生结构化上下文仍需独立 Host 契约；附件通过 ACP 内容块发送。 */
+/** 其余原生结构化上下文仍需独立 Host 契约；网页元素走文本，附件走内容块。 */
 export function getAcpComposerBlockingReason(context: AcpComposerContext): "context" | null {
-  if (
-    context.codeComments ||
-    context.webElements ||
-    context.pptxElements ||
-    context.selections ||
-    context.sharedContext
-  ) {
+  if (context.codeComments || context.pptxElements || context.selections || context.sharedContext) {
     return "context";
   }
   return null;
