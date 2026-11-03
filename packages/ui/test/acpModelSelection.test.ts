@@ -89,7 +89,7 @@ test("a new draft never falls back to Agent history; an explicit id stays exact"
   assert.equal(selectAcpSession([], "claude", null), null);
 });
 
-test("one composer routes ACP content while native-only context remains blocked", () => {
+test("ACP accepts web element context while other native-only context remains blocked", () => {
   const clean = {
     codeComments: false,
     webElements: false,
@@ -98,6 +98,9 @@ test("one composer routes ACP content while native-only context remains blocked"
     sharedContext: false,
   };
   assert.equal(getAcpComposerBlockingReason(clean), null);
+  assert.equal(getAcpComposerBlockingReason({ ...clean, webElements: true }), null);
+  assert.equal(getAcpComposerBlockingReason({ ...clean, codeComments: true }), "context");
+  assert.equal(getAcpComposerBlockingReason({ ...clean, pptxElements: true }), "context");
   assert.equal(getAcpComposerBlockingReason({ ...clean, sharedContext: true }), "context");
   assert.equal(getAcpComposerBlockingReason({ ...clean, selections: true }), "context");
 });

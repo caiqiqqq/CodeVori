@@ -4985,6 +4985,7 @@ export function SessionPane({
       centered={visibleEmptyDraft}
       blockingRequestId={acpAgent ? null : blockingInteractionId}
       listenAddToChatEvents={focused && !acpAgent}
+      listenWebElementContextEvents={focused}
       imageReferenceEnabled={focused && !readOnly}
       externalTextInsertRequest={
         focused && !acpAgent && sessionId === null ? composerTextInsertRequest : null
