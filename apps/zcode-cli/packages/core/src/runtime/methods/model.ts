@@ -2,12 +2,13 @@ import {
   finishProviderToolCard,
   persistProviderToolRoundContent,
   providerToolOutputText,
+  providerResultEvents,
   settleUnfinishedProviderToolCards,
   startProviderToolCard,
   type ProviderToolRound,
 } from "../provider-tool-rounds/contract.js";
 
-import { beginLocalTurnPreparation } from "@zcode/contracts";
+import { beginLocalTurnPreparation, type ModelTextResult } from "@zcode/contracts";
 import { runWithModelInvocationContext, traceContextToLogContext } from "../deps.js";
 import type { ModelReasoningContentBlock, ModelToolCall, ModelUsage, ToolCallId } from "../deps.js";
 import {
@@ -149,6 +150,7 @@ export async function runModelTextRequest(
   const contextUsageBreakdown = this.buildContextUsageBreakdownFromSnapshot(contextUsageSnapshot);
   this.logContextUsageSnapshot(projectedOptions, contextUsageSnapshot);
 
+  let generatedResult: ModelTextResult | undefined;
   if (!this.shouldStreamModelText()) {
     const result = await runWithModelInvocationContext(modelInvocationContext, () =>
       model.generateText(modelRequest),
@@ -159,11 +161,15 @@ export async function runModelTextRequest(
       source: "generateText",
       traceContext: projectedOptions.traceContext,
     });
-    return {
+    const normalizedResult = {
       ...result,
       ...(contextUsageBreakdown.length > 0 ? { contextUsageBreakdown } : {}),
       toolCalls: normalizedToolCalls,
     };
+    if (!normalizedToolCalls?.some((call) => call.providerExecuted)) return normalizedResult;
+    // 修复：关闭流式时也必须显示 provider 工具，并按原内容顺序持久化。复用同一分轮路径，
+    // 不能仅把聚合 toolCalls 过滤出执行器后丢掉结果和卡片。
+    generatedResult = normalizedResult;
   }
 
   let text = "";
@@ -250,9 +256,9 @@ export async function runModelTextRequest(
     }
   };
 
-  const modelStream = runWithModelInvocationContext(modelInvocationContext, () =>
-    model.streamText(modelRequest),
-  );
+  const modelStream = generatedResult
+    ? providerResultEvents(generatedResult)
+    : runWithModelInvocationContext(modelInvocationContext, () => model.streamText(modelRequest));
   finishAssembly();
   try {
     for await (const event of modelStream) {
@@ -619,6 +625,9 @@ export async function runModelTextRequest(
   }
 
   return {
+    ...(generatedResult
+      ? { sources: generatedResult.sources, toolResults: generatedResult.toolResults }
+      : {}),
     ...(contextUsageBreakdown.length > 0 ? { contextUsageBreakdown } : {}),
     finishReason,
     providerMetadata,

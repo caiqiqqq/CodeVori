@@ -20,17 +20,15 @@ export function shouldResyncForStaleAuthority(value: unknown): boolean {
 
 /**
  * 修复：旧 revision 的详情查询被拒后，只有同一 store 的新权威投影才能触发重查。
- * 监听先于 recovery 建立；即使新快照已经抵达，也会在末尾即时检查。
+ * 监听先于 recovery 建立；用 store 的权威帧序号区分真实恢复与历史分页的本地对象替换。
  */
-export function waitForRecoveredAuthority<T extends object>(
-  store: {
-    getState(): { status: string; snapshot: T | null };
-    subscribe(listener: () => void): () => void;
-    recoverFromStaleAuthority(): void;
-  },
-  previous: T,
-): Promise<T> {
+export function waitForRecoveredAuthority<T extends object>(store: {
+  getState(): { status: string; snapshot: T | null; authorityVersion: number };
+  subscribe(listener: () => void): () => void;
+  recoverFromStaleAuthority(): void;
+}): Promise<T> {
   return new Promise((resolve, reject) => {
+    const previousAuthorityVersion = store.getState().authorityVersion;
     let unsubscribe = () => {};
     let settled = false;
     const check = () => {
@@ -40,7 +38,7 @@ export function waitForRecoveredAuthority<T extends object>(
         settled = true;
         unsubscribe();
         reject(new Error(`Conversation authority recovery ${state.status}`));
-      } else if (state.snapshot && state.snapshot !== previous) {
+      } else if (state.snapshot && state.authorityVersion !== previousAuthorityVersion) {
         settled = true;
         unsubscribe();
         resolve(state.snapshot);

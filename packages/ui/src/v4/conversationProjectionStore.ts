@@ -109,6 +109,8 @@ export interface OptimisticCommand {
 export interface ConversationStoreState {
   status: ConversationStoreStatus;
   snapshot: ConversationSnapshot | null;
+  /** 权威帧接受序号；本地历史分页不推进，供 stale 详情查询等待真正恢复。 */
+  authorityVersion: number;
   subscriptionId: string | null;
   lastError: string | null;
   /** 首次 conversation subscribe 的低频 Host/CLI timing；不进入 snapshot 事实。 */
@@ -143,6 +145,7 @@ export interface SessionOpenRendererTiming {
 const INITIAL_STATE: ConversationStoreState = {
   status: "connecting",
   snapshot: null,
+  authorityVersion: 0,
   subscriptionId: null,
   lastError: null,
   rendererTiming: undefined,
@@ -664,6 +667,7 @@ export class ConversationProjectionStore {
       // 规则 1：整体替换权威成员集合；只复用值相同的行引用，不合并旧历史。
       this.setState({
         snapshot,
+        authorityVersion: this.state.authorityVersion + 1,
         planDirectoryRevision: this.state.planDirectoryRevision + 1,
         // snapshot 整体替换后 real-user query 集合可能已变，终态缓存必须失效。
         turnNavigatorDirectoryRevision: this.state.turnNavigatorDirectoryRevision + 1,
@@ -699,7 +703,12 @@ export class ConversationProjectionStore {
     // 规则 2a：迟到/重复 logical frame 永远静默丢弃。若它是 ACK 后的 aligned
     // recovery `(N,N]`，则只收口 flight，不重复 apply。
     if (current && frame.toSeq <= current.seq) {
-      if (context.recovery) this.markRecoveryFrameSeen();
+      if (context.recovery) {
+        // 修复：aligned recovery 可以确认同一水位仍有效，没有新 snapshot 对象也必须
+        // 结束详情等待；普通重复帧和本地分页都不能冒充这个权威确认。
+        this.setState({ authorityVersion: this.state.authorityVersion + 1 });
+        this.markRecoveryFrameSeen();
+      }
       return;
     }
     if (!current || frame.fromSeq !== current.seq) {
@@ -731,6 +740,7 @@ export class ConversationProjectionStore {
     );
     this.setState({
       snapshot: next,
+      authorityVersion: this.state.authorityVersion + 1,
       // row.removed 已给出权威裁剪边界，可以同步删掉缓存目录中的旧分支计划；
       // 完整 query 继续负责补回 wire tail 之外、但仍属于当前分支的早期计划。
       ...(removedFromRowId === null

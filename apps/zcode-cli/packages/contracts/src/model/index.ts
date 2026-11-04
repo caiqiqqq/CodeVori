@@ -697,6 +697,7 @@ export interface ModelToolResult {
   name: string;
   input: unknown;
   output: unknown;
+  isError?: boolean;
   providerExecuted?: boolean;
   providerMetadata?: Record<string, unknown>;
 }
@@ -708,6 +709,13 @@ export interface ModelTextResult {
   reasoning?: ModelReasoningContentBlock[];
   toolCalls?: ModelToolCall[];
   toolResults?: ModelToolResult[];
+  /** generateText 的有序内容；复用流事件契约，避免正文和 provider 工具被聚合后丢失轮次。 */
+  outputEvents?: Array<
+    Extract<
+      ModelStreamEvent,
+      { type: "text_delta" | "reasoning_delta" | "tool_call" | "provider_tool_result" }
+    >
+  >;
   sources?: ModelSource[];
   providerMetadata?: Record<string, unknown>;
 }
