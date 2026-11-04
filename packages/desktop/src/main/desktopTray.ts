@@ -1,4 +1,4 @@
-import { app, Menu, nativeImage, Tray, type NativeImage } from "electron";
+import { app, Menu, nativeImage, Tray } from "electron";
 import { join } from "node:path";
 import {
   DesktopCommandIds,
@@ -8,12 +8,9 @@ import {
   type DesktopCommandId,
   type Locale,
 } from "@zcode/shared";
-import { createUnreadDotBitmap } from "./unreadBadge.js";
 
 let desktopTray: Tray | null = null;
 let rebuildDesktopTrayContextMenu: (() => void) | null = null;
-let desktopTrayBaseIcon: NativeImage | null = null;
-let desktopTrayUnreadCount = 0;
 
 function resolveDesktopTrayIconPath(platform: NodeJS.Platform) {
   if (platform === "linux") {
@@ -44,11 +41,12 @@ export function createDesktopTray(options: {
   }
 
   try {
-    desktopTrayBaseIcon = nativeImage.createFromPath(resolveDesktopTrayIconPath(platform));
-    if (desktopTrayBaseIcon.isEmpty()) {
+    // 修复：托盘图标始终使用原始资源；未读数由窗口任务栏叠加图标单独呈现。
+    const trayIcon = nativeImage.createFromPath(resolveDesktopTrayIconPath(platform));
+    if (trayIcon.isEmpty()) {
       throw new Error("tray icon asset is empty");
     }
-    desktopTray = new Tray(desktopTrayBaseIcon);
+    desktopTray = new Tray(trayIcon);
   } catch (error) {
     options.logger.warn("[desktop-tray] failed to create tray icon", error);
     return null;
@@ -110,7 +108,6 @@ export function createDesktopTray(options: {
   };
 
   rebuildDesktopTrayContextMenu = rebuildContextMenu;
-  updateWindowsDesktopTrayUnreadCount(desktopTrayUnreadCount);
   desktopTray.on("click", showTrayWindow);
   desktopTray.on("double-click", showTrayWindow);
   rebuildContextMenu();
@@ -124,23 +121,4 @@ export function isDesktopTrayReady(): boolean {
 
 export function updateWindowsDesktopTrayMenu() {
   rebuildDesktopTrayContextMenu?.();
-}
-
-export function updateWindowsDesktopTrayUnreadCount(count: number) {
-  desktopTrayUnreadCount = count;
-  if (process.platform !== "win32" || !desktopTray || !desktopTrayBaseIcon) return;
-  if (count === 0) {
-    desktopTray.setImage(desktopTrayBaseIcon);
-    return;
-  }
-  const width = 32;
-  const height = 32;
-  const bitmap = desktopTrayBaseIcon.resize({ width, height }).toBitmap();
-  if (bitmap.length !== width * height * 4) return;
-  desktopTray.setImage(
-    nativeImage.createFromBitmap(createUnreadDotBitmap(bitmap, width, height), {
-      width,
-      height,
-    }),
-  );
 }

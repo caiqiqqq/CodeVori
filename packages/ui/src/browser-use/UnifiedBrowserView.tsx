@@ -4,6 +4,7 @@ import type {
   BrowserViewScreenshotSurfacePreparePayload,
   EmbeddedBrowserViewportPreference,
 } from "@zcode/shared";
+import { browserPreviewSourceUrl } from "@zcode/shared";
 import { cn } from "@/components/lib/utils.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useWebElementPicker } from "@/hooks/useWebElementPicker.js";
@@ -441,9 +442,48 @@ export function UnifiedBrowserView({
     }
   }, []);
 
+  // 修复：下载响应不会提交页面。恢复地址只取 guest 已提交的 URL，避免把附件地址
+  // 持久化后在每次会话恢复时重新下载。
+  const settleRestorableUrl = useCallback((target: ElectronWebviewTag) => {
+    const committedUrl = safeWebviewCall(() => target.getURL(), "") || DEFAULT_BROWSER_URL;
+    lastRestorableUrlRef.current = committedUrl === DEFAULT_BROWSER_URL ? null : committedUrl;
+    onUrlChangeRef.current?.(committedUrl);
+  }, []);
+
+  const downloadNavigationRef = useRef({ urls: new Set<string>(), failedUrl: "" });
+  const isDownloadNavigationFailure = useCallback((url: string, message: string) => {
+    if (!message.includes("ERR_FAILED")) return false;
+    downloadNavigationRef.current.failedUrl = url;
+    return downloadNavigationRef.current.urls.has(url);
+  }, []);
+
   // ---- webview 事件接线 + did-attach 上报 guestId ----
+  const loadBrowserUrl = useCallback(
+    async (target: ElectronWebviewTag, url: string) => {
+      // 修复：file 的目录授权只能由 main 判定；renderer 不再直接让 guest 读取任意本地文件。
+      if (!platform.browserViewLoadUrl) throw new Error("Browser navigation is unavailable");
+      await platform.browserViewLoadUrl({ webContentsId: target.getWebContentsId(), url });
+    },
+    [platform],
+  );
+
   useEffect(() => {
     if (!webview) return;
+
+    const stopDownloadSubscription = platform.onBrowserViewDownloadStarted?.((payload) => {
+      if (safeWebviewCall(() => webview.getWebContentsId(), -1) !== payload.webContentsId) return;
+      const navigation = downloadNavigationRef.current;
+      payload.urls.forEach((url) => navigation.urls.add(url));
+      // will-download 与导航拒绝的回调顺序不固定；晚到时也要清除下载错误。
+      if (navigation.urls.has(navigation.failedUrl)) {
+        setBrowserState((prev) => ({
+          ...prev,
+          errorMessage: null,
+          loadErrorCode: null,
+          isLoading: false,
+        }));
+      }
+    });
 
     const handleDidAttach = () => {
       // navigationHistory.restore 只能用于从未加载过页面的新 guest。若等到
@@ -473,10 +513,13 @@ export function UnifiedBrowserView({
         setBrowserState((prev) => ({ ...prev, isReady: true }));
         void (async () => {
           try {
-            await webview.loadURL(pending);
+            await loadBrowserUrl(webview, pending);
           } catch (loadError: unknown) {
             const message = loadError instanceof Error ? loadError.message : String(loadError);
-            if (!message.includes("ERR_ABORTED")) {
+            if (
+              !message.includes("ERR_ABORTED") &&
+              !isDownloadNavigationFailure(pending, message)
+            ) {
               setBrowserState((prev) => ({
                 ...prev,
                 errorMessage: intl.formatMessage({ id: "browser.loadFailed" }, { message }),
@@ -484,6 +527,7 @@ export function UnifiedBrowserView({
               }));
             }
           } finally {
+            settleRestorableUrl(webview);
             // 只把外部请求写入 pendingUrl 后就回执是不够的：失败 guest 永远不会消费它。
             // 替代 guest 到达 dom-ready 并完成一次 loadURL 尝试，才算真正接管该导航意图。
             completePendingGuestNavigation(pendingCompletion);
@@ -496,6 +540,7 @@ export function UnifiedBrowserView({
     };
 
     const handleDidStartLoading = () => {
+      downloadNavigationRef.current = { urls: new Set(), failedUrl: "" };
       void cancelWebElementPicking();
       setBrowserState((prev) => ({
         ...prev,
@@ -523,6 +568,8 @@ export function UnifiedBrowserView({
     const handleDidFailLoad = (event: ElectronWebviewDidFailLoadEvent) => {
       // 忽略子帧失败与 -3(ERR_ABORTED，被后续导航打断)。
       if (!event.isMainFrame || event.errorCode === -3) return;
+      if (event.errorCode === -2 && isDownloadNavigationFailure(event.validatedURL, "ERR_FAILED"))
+        return;
       logger.warn("[browser-use] 页面加载失败", {
         errorCode: event.errorCode,
         errorDescription: event.errorDescription,
@@ -530,7 +577,6 @@ export function UnifiedBrowserView({
       });
       setBrowserState((prev) => ({
         ...prev,
-        currentUrl: event.validatedURL || prev.currentUrl,
         errorMessage: intl.formatMessage(
           { id: "browser.loadFailed" },
           { message: event.errorDescription },
@@ -633,6 +679,7 @@ export function UnifiedBrowserView({
     webview.addEventListener("render-process-gone", handleRenderProcessGone);
 
     return () => {
+      stopDownloadSubscription?.();
       webview.removeEventListener("did-attach", handleDidAttach);
       webview.removeEventListener("dom-ready", handleDomReady);
       webview.removeEventListener("did-start-loading", handleDidStartLoading);
@@ -649,10 +696,13 @@ export function UnifiedBrowserView({
     completePendingGuestNavigation,
     detachBrowserGuestBeforeReplacement,
     intl,
+    isDownloadNavigationFailure,
     isResidencyRestore,
     isSelected,
     platform,
     reportBrowserGuest,
+    loadBrowserUrl,
+    settleRestorableUrl,
     setGuestZoomFactor,
     syncBrowserState,
     webview,
@@ -788,8 +838,6 @@ export function UnifiedBrowserView({
       // launch-failed 后 isReady=false，只把地址栏 URL 写进 pendingUrl 不够：
       // 失效 guest 永远不会再触发 dom-ready，失败态与排队导航都会永久卡住。
       if (browserState.guestFailure && (source === "toolbar" || source === "request")) {
-        lastRestorableUrlRef.current = nextUrl;
-        onUrlChange?.(nextUrl);
         const rebuilt = await rebuildBrowserGuest(
           nextUrl,
           source === "request" ? "external-navigation" : "address-navigation",
@@ -812,8 +860,6 @@ export function UnifiedBrowserView({
 
       setAddressValue(displayBrowserUrl(nextUrl));
       setHasNavigated(true);
-      lastRestorableUrlRef.current = nextUrl;
-      onUrlChange?.(nextUrl);
       setBrowserState((prev) => ({ ...prev, errorMessage: null, loadErrorCode: null }));
       lastRequestedUrlRef.current = nextUrl;
 
@@ -824,15 +870,18 @@ export function UnifiedBrowserView({
       }
 
       try {
-        await webview.loadURL(nextUrl);
+        await loadBrowserUrl(webview, nextUrl);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (message.includes("ERR_ABORTED")) return;
+        if (message.includes("ERR_ABORTED") || isDownloadNavigationFailure(nextUrl, message))
+          return;
         setBrowserState((prev) => ({
           ...prev,
           errorMessage: intl.formatMessage({ id: "browser.loadFailed" }, { message }),
           isLoading: false,
         }));
+      } finally {
+        settleRestorableUrl(webview);
       }
     },
     [
@@ -841,8 +890,10 @@ export function UnifiedBrowserView({
       browserState.isReady,
       completePendingGuestNavigation,
       intl,
-      onUrlChange,
+      isDownloadNavigationFailure,
+      loadBrowserUrl,
       rebuildBrowserGuest,
+      settleRestorableUrl,
       waitForGuestNavigationTakeover,
       webview,
     ],
@@ -920,7 +971,7 @@ export function UnifiedBrowserView({
   const handleOpenExternal = useCallback(() => {
     if (!webview || !browserState.isReady) return;
     runWebviewAction(() => {
-      const currentUrl = webview.getURL();
+      const currentUrl = browserPreviewSourceUrl(webview.getURL());
       // 安全边界：系统默认浏览器入口只允许 Web URL 和 file URL，仍禁止 about/data 等内联协议。
       if (!isDefaultBrowserOpenableUrl(currentUrl)) return;
       platform.openExternal(currentUrl);

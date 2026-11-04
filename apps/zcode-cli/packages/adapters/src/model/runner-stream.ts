@@ -129,8 +129,7 @@ export async function* runStreamText(input: {
     );
     attempt += 1
   ) {
-    const retryBudgetAttempt =
-      attempt - Number(signatureRepairAttempted);
+    const retryBudgetAttempt = attempt - Number(signatureRepairAttempted);
     const startedAt = Date.now();
     // SSE idle timeout 后的重试如果仍固定首请求窗口，容易被同一段 provider 静默窗口反复打断；
     // core recovery 和 adapter 内部 retry 都统一按重试次数每次增加 30s。
@@ -154,9 +153,7 @@ export async function* runStreamText(input: {
     let statusContext = createAttemptStatusContext(
       {
         ...baseStatusContext,
-        maxAttempts: statusMaxAttempts(
-          Number(signatureRepairAttempted),
-        ),
+        maxAttempts: statusMaxAttempts(Number(signatureRepairAttempted)),
       },
       attempt,
     );
@@ -393,6 +390,7 @@ export async function* runStreamText(input: {
           input.request.preserveProviderStreamBoundaries !== true &&
           isZeroOutputModelCompletion({
             finishReason: diagnostics.finishReason,
+            rawFinishReason: diagnostics.rawFinishReason,
             reasoningLength: diagnostics.reasoningDeltaChars,
             textLength: diagnostics.textDeltaChars,
             toolCallCount: diagnostics.toolCallCount,

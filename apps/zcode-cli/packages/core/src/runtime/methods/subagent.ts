@@ -3,8 +3,6 @@ import { RESPOND_TO_COORDINATOR_TOOL_NAME } from "@zcode/contracts";
 import type { SubagentRunOptions } from "@zcode/contracts";
 import {
   defaultScheduler,
-  PermissionService,
-  defaultPermissionConfig,
   buildExploreAllowedTools,
   buildExploreAgentPrompt,
   createExploreSubagentPort,
@@ -170,7 +168,6 @@ export function createDefaultSubagentPort(
       const childMode = resolveSubagentPermissionMode(
         this.getPlanEnabled() ? "plan" : this.config.mode,
         request.permissionMode,
-        builtInExplore,
       );
       const childCuaPolicy = createOfficialCuaPolicy(
         officialCuaServerNames,
@@ -312,10 +309,8 @@ export function createDefaultSubagentPort(
             parentToolCallId,
             enqueue: (input) => this.enqueueSubagentMessage(input),
           }),
-          // Explore 使用独立只读权限配置；general-purpose 和自定义 agent 继承父权限服务。
-          permissionService: builtInExplore
-            ? new PermissionService(defaultPermissionConfig)
-            : this.permissionService,
+          // Explore 曾重建默认权限服务，导致父会话禁用规则失效；所有子任务共享父权限判定。
+          permissionService: this.permissionService,
           toolScheduler: deps.toolScheduler ?? defaultScheduler,
           executionPort: deps.executionPort,
           fileSystemPort: deps.fileSystemPort,
@@ -473,15 +468,16 @@ function createSubagentOverrideModelFactory(
 function resolveSubagentPermissionMode(
   parentMode: AgentRuntimeInternal["config"]["mode"],
   permissionMode: ExploreSubagentRuntimeRequest["permissionMode"],
-  builtInExplore: boolean,
 ): AgentRuntimeInternal["config"]["mode"] {
+  // 父 Plan 是执行限制，子 profile 不能降级；Explore 也不能再隐式切到 yolo。
+  if (parentMode === "plan") return parentMode;
   switch (permissionMode) {
     case "auto":
       return "auto";
     case "plan":
       return "plan";
     case undefined:
-      return builtInExplore ? "yolo" : parentMode;
+      return parentMode;
     default:
       return parentMode;
   }

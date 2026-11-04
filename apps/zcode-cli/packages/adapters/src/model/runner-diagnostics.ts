@@ -407,13 +407,46 @@ export function isSuspiciousStreamDiagnostics(diagnostics: StreamDiagnostics): b
   });
 }
 
+const CONTEXT_LIMIT_FINISH_REASONS = new Set([
+  "context_exceeded",
+  "context_length_exceeded",
+  "context_window_exceeded",
+  "model_context_exceeded",
+  "model_context_window_exceeded",
+  "prompt_too_long",
+]);
+
+const EMPTY_COMPLETION_RETRY_EXCLUSIONS = new Set([
+  ...CONTEXT_LIMIT_FINISH_REASONS,
+  "refusal",
+  "content-filter",
+  "content_filter",
+  // GLM（MaaS）输出侧安全审核的终止原因，语义同 content_filter。
+  "sensitive",
+]);
+
+function excludesEmptyCompletionRetry(value: unknown): boolean {
+  return (
+    typeof value === "string" && EMPTY_COMPLETION_RETRY_EXCLUSIONS.has(value.trim().toLowerCase())
+  );
+}
+
 export function isZeroOutputModelCompletion(input: {
   finishReason?: string;
+  rawFinishReason?: unknown;
   reasoningLength: number;
   textLength: number;
   toolCallCount: number;
   usage?: ModelUsage;
 }): boolean {
+  // 上下文超限、拒绝和内容过滤已有明确原因；此前零输出会先被原样重试。
+  // 这三类结果直接交给 core；普通输出额度和其他原因保持现有空响应重试边界。
+  if (
+    excludesEmptyCompletionRetry(input.finishReason) ||
+    excludesEmptyCompletionRetry(input.rawFinishReason)
+  ) {
+    return false;
+  }
   return (
     input.finishReason !== undefined &&
     input.reasoningLength === 0 &&

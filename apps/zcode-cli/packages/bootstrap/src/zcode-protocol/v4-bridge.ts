@@ -92,6 +92,7 @@ import {
 import {
   afterStateMutation,
   activateSessionForResume,
+  validateSessionActivationWorkspace,
   createSessionRecordForV4,
   ensureSessionModelAvailableForNextTurn,
   listSessionSubagents,
@@ -1444,6 +1445,8 @@ export function createConversationV4Gateway(
   return new ConversationV4Gateway({
     cliVersion: context.deps.version,
     sessionExists: (sessionId) => context.sessions.has(sessionId),
+    validateSessionWorkspace: (sessionId, workspace) =>
+      validateSessionActivationWorkspace(context, sessionId, workspace),
     onDebug: (message) => log?.debug(message),
     onTargetCompleted: (sessionId) => {
       const record = context.sessions.get(sessionId);

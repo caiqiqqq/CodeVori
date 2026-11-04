@@ -798,6 +798,14 @@ export type ModelStreamEvent =
       toolCall: ModelToolCall;
     }
   | {
+      /** 服务端已执行的工具结果，仅展示与回放，不进入本地执行器。 */
+      type: "provider_tool_result";
+      toolCallId: string;
+      toolName: string;
+      output: unknown;
+      isError: boolean;
+    }
+  | {
       type: "finish";
       finishReason: string;
       providerMetadata?: Record<string, unknown>;

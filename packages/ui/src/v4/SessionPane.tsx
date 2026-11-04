@@ -228,7 +228,10 @@ import {
   hasPluginReferenceUserRows,
   isSessionPluginCatalogReady,
 } from "@/v4/pluginReferenceIconProjection.js";
-import { shouldResyncForStaleAuthority } from "@/v4/staleAuthorityRecovery.js";
+import {
+  shouldResyncForStaleAuthority,
+  waitForRecoveredAuthority,
+} from "@/v4/staleAuthorityRecovery.js";
 import { createCommandEnvelope } from "@/v4/commandFactory.js";
 import { createConfigCommandBarrier } from "@/v4/configCommandBarrier.js";
 import { recordV4CommandAck } from "@/v4/commandAckObservability.js";
@@ -2004,34 +2007,48 @@ export function SessionPane({
       // 虚拟行卸载会丢失行内 state，复挂载后预览卡片会重复拉取包含完整
       // patch 的 fileChanges；缓存必须放在 SessionPane，才能与文件变更面板共享同一请求。
       let request: Promise<V4ConversationFileChangesResult>;
+      let recoveredAuthority = false;
       request = fileChanges({
         sessionId,
         target,
         baseRevision: current.revision,
         baseLogEpoch: current.logEpoch,
-      }).then(
-        (result) => {
-          // 运行中成功结果仍可能只是当前 revision 的局部 diff；只共享
-          // in-flight Promise，settled 后删除，避免最终卡片复用早期结果。
-          if (
-            options.cachePolicy === "in-flight" &&
-            fileChangesRequestCache.get(cacheKey) === request
-          ) {
-            fileChangesRequestCache.delete(cacheKey);
-          }
-          return result;
-        },
-        (error: unknown) => {
-          // 失败不能污染后续重试；仅删除当前 Promise，避免旧请求误删同 key 的新请求。
-          if (fileChangesRequestCache.get(cacheKey) === request) {
-            fileChangesRequestCache.delete(cacheKey);
-          }
-          if (shouldResyncForStaleAuthority(error)) {
-            lease?.store?.recoverFromStaleAuthority();
-          }
-          throw error;
-        },
-      );
+      })
+        .catch(async (error: unknown) => {
+          if (!shouldResyncForStaleAuthority(error) || !lease?.store) throw error;
+          // 修复：产物卡查询与投影推进竞态时，等待权威快照后重查一次，
+          // 而非把 stale 记成空文件列表；重查不使用旧 revision，也不定时盲试。
+          const recovered = await waitForRecoveredAuthority(lease.store, current);
+          recoveredAuthority = true;
+          return fileChanges({
+            sessionId,
+            target,
+            baseRevision: recovered.revision,
+            baseLogEpoch: recovered.logEpoch,
+          });
+        })
+        .then(
+          (result) => {
+            // 运行中成功结果仍可能只是当前 revision 的局部 diff；只共享
+            // in-flight Promise，settled 后删除，避免最终卡片复用早期结果。
+            if (
+              (options.cachePolicy === "in-flight" || recoveredAuthority) &&
+              fileChangesRequestCache.get(cacheKey) === request
+            ) {
+              fileChangesRequestCache.delete(cacheKey);
+            }
+            return result;
+          },
+          (error: unknown) => {
+            // 失败不能污染后续重试；仅删除当前 Promise，避免旧请求误删同 key 的新请求。
+            if (fileChangesRequestCache.get(cacheKey) === request) {
+              fileChangesRequestCache.delete(cacheKey);
+            }
+            // 二次 stale 仍交回现有投影恢复，传播错误而不无限重查或缓存错误状态。
+            if (shouldResyncForStaleAuthority(error)) lease?.store?.recoverFromStaleAuthority();
+            throw error;
+          },
+        );
       fileChangesRequestCache.set(cacheKey, request);
       while (fileChangesRequestCache.size > MAX_CONVERSATION_FILE_CHANGES_CACHE_ENTRIES) {
         const oldestKey = fileChangesRequestCache.keys().next().value;

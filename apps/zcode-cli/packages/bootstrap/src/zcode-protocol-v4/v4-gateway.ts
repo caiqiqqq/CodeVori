@@ -211,6 +211,8 @@ interface BinaryReadCacheEntry {
 
 export interface V4GatewayHost {
   cliVersion?: string;
+  /** 校验调用者归属，不能由共享 READY 或热 publisher 代替。 */
+  validateSessionWorkspace?(sessionId: string, workspace?: ZCodeWorkspaceRef): Promise<void>;
   /** 会话是否在宿主注册表中活跃（inbox 的 sessionNotFound 裁决依据）。 */
   sessionExists(sessionId: string): boolean;
   /**
@@ -1388,6 +1390,7 @@ export class ConversationV4Gateway {
     if (sessionId === null) {
       throw new Error(`Unsupported topic: ${params.topic}`);
     }
+    await this.host.validateSessionWorkspace?.(sessionId, params.workspace);
     const isLiveConversation = this.hasLiveConversation(sessionId);
     this.host.onDebug?.(
       `subscribe conversation session=${sessionId} coldResume=${String(!isLiveConversation)}`,
@@ -1411,6 +1414,8 @@ export class ConversationV4Gateway {
     const cliSessionRestoreMs = !isLiveConversation
       ? Math.max(0, Math.round(performance.now() - restoreStartedAt))
       : undefined;
+    // 修复原因：等待期间可能加入另一请求的 READY，返回前须按当前权威 record 再校验。
+    await this.host.validateSessionWorkspace?.(sessionId, params.workspace);
     // 旧入口允许 UI 自选 deliveryProfile，桌面调用遗漏时还会默认成
     // replayable。现在只认 host attachment 注入的可信 clientMode。
     const profileName = params.clientMode === "desktop-continuous" ? "continuous" : "replayable";

@@ -9,6 +9,7 @@ import {
 } from "@zcode/shared/zcode-protocol-v4";
 import { ConversationProjectionStore } from "../src/v4/conversationProjectionStore.js";
 import { SessionDataLayer } from "../src/v4/sessionDataLayer.js";
+import { waitForRecoveredAuthority } from "../src/v4/staleAuthorityRecovery.js";
 import type { ConversationProjectionTransport } from "../src/v4/transport.js";
 
 (
@@ -142,6 +143,23 @@ function fixture() {
     },
   };
 }
+
+test("stale detail waits for the real same-sub recovery snapshot across an epoch change", async () => {
+  const f = fixture();
+  const { store, close } = await f.open();
+  try {
+    const original = store.getState().snapshot!;
+    const subscription = store.getState().subscriptionId;
+    f.setEpoch("recovered-epoch");
+    const recovered = await waitForRecoveredAuthority(store, original);
+    assert.equal(recovered.logEpoch, "recovered-epoch");
+    assert.notEqual(recovered, original);
+    assert.equal(store.getState().subscriptionId, subscription);
+    assert.equal(store.getState().status, "live");
+  } finally {
+    await close();
+  }
+});
 
 for (const delivery of ["online", "recovery"] as const) {
   test(`${delivery}: equal snapshots/upserts share rows, streamed text updates keep old snapshots intact`, async () => {

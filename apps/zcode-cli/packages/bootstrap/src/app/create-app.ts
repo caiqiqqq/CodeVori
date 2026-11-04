@@ -795,7 +795,7 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
     scheduleStartupLogRetentionCleanup(loggerFactory, logger);
     const inputFacade = createInputFacade({
       artifactStore,
-      customCommandPromptResolver: async (text, resolverOptions) => {
+      customCommandPromptResolver: async (text) => {
         const builtinPrompt = resolveZCodeBuiltinPromptCommand(text, {
           // 动态工作流关闭时内置 `/workflow` 不得展开。目录侧已经把它从 `/` 面板
           // 剔除，但用户仍可手打命令名，两条路径必须给出同一个结论。TUI 缺席时不设门禁；
@@ -808,13 +808,9 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
         }
         return await resolveZCodeCustomCommandPrompt(text, {
           env: options.env,
-          executionPort,
           logger,
           projectConfigPath: options.projectConfigPath,
-          sessionId,
-          signal: resolverOptions?.abortSignal,
           skipUserConfig: options.skipUserConfig,
-          traceContext: resolverOptions?.traceContext ?? traceContext,
           userConfigPath: options.userConfigPath,
           workingDirectory,
         });

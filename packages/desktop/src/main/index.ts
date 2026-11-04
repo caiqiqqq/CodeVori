@@ -1,4 +1,8 @@
 import { createLocalTtftExporter } from "./localTtftExporter.js";
+import {
+  BROWSER_LOCAL_PREVIEW_PRIVILEGES,
+  installBrowserLocalPreview,
+} from "./browser-local-preview/index.js";
 import { enableDesktopAccessibility } from "./desktopAccessibility.js";
 import { executeForgeWebMedia } from "./electronForgeWebMedia.js";
 /* eslint-disable max-lines */
@@ -273,6 +277,7 @@ import { mainMemoryDiagnosticsRegistry } from "./mainMemoryDiagnostics.js";
 import { reportMainException } from "./mainLoopDiagnostics.js";
 
 registerLocalMediaPreviewScheme(protocol);
+protocol.registerSchemesAsPrivileged([BROWSER_LOCAL_PREVIEW_PRIVILEGES]);
 const localMediaPreviewPathRegistry = createLocalMediaPreviewPathRegistry();
 
 // e2e 由 Chromedriver 管理远程调试端口；如果这里继续固定到 9229，
@@ -2039,6 +2044,7 @@ app.whenReady().then(async () => {
   installBrowserRestoreBootstrapProtocol(
     session.fromPartition(EMBEDDED_BROWSER_PARTITION).protocol,
   );
+  installBrowserLocalPreview(session.fromPartition(EMBEDDED_BROWSER_PARTITION));
   const permissionFile = createEmbeddedBrowserSitePermissionFile(
     join(app.getPath("userData"), "embedded-browser-site-permissions.json"),
   );

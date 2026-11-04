@@ -21,22 +21,13 @@ import type {
   SettingsSyncSourceRootSummary,
   SettingsSyncTaskImportResult,
 } from "@zcode/shared";
-import {
-  copyFile,
-  cp,
-  link,
-  lstat,
-  mkdir,
-  readFile,
-  readdir,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { copyFile, cp, link, lstat, mkdir, readFile, readdir, rm, symlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { parse as parseToml } from "smol-toml";
 import { CommandFileParser } from "../commands/commandFileParser.js";
+import { updateJsonObjectFile } from "#src/fs/atomicFileUtils.js";
 import type { ISettingService } from "../setting/setting.js";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { walkSkillMarkdownPaths } from "../skills/skillDiscoveryWalk.js";
@@ -1109,19 +1100,16 @@ async function addMcpServerToZcodeConfig(
   name: string,
   config: McpServerConfig,
 ): Promise<void> {
-  const parsed = await readJsonFileOrEmpty(filePath);
-  const currentMcp = isRecord(parsed.mcp) ? parsed.mcp : {};
-  const servers = readZcodeMcpServers(parsed);
-  await writeJsonFile(filePath, {
-    ...parsed,
+  await updateJsonObjectFile(filePath, (current) => ({
+    ...current,
     mcp: {
-      ...currentMcp,
+      ...(isRecord(current.mcp) ? current.mcp : {}),
       servers: {
-        ...servers,
+        ...readZcodeMcpServers(current),
         [name]: config,
       },
     },
-  });
+  }));
 }
 
 function readStringArray(value: unknown): string[] {
@@ -1130,25 +1118,13 @@ function readStringArray(value: unknown): string[] {
     : [];
 }
 
-async function writeJsonFile(filePath: string, value: Record<string, unknown>): Promise<void> {
-  await mkdir(dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
-}
-
 async function addPluginDirToConfig(filePath: string, pluginPath: string): Promise<void> {
-  const parsed = await readJsonFileOrEmpty(filePath);
-  const plugins = isRecord(parsed.plugins) ? parsed.plugins : {};
-  const dirs = readStringArray(plugins.dirs);
   const resolvedPluginPath = resolve(pluginPath);
-  if (dirs.map((item) => resolve(item)).includes(resolvedPluginPath)) {
-    return;
-  }
-  await writeJsonFile(filePath, {
-    ...parsed,
-    plugins: {
-      ...plugins,
-      dirs: [...dirs, resolvedPluginPath],
-    },
+  await updateJsonObjectFile(filePath, (current) => {
+    const plugins = isRecord(current.plugins) ? current.plugins : {};
+    const dirs = readStringArray(plugins.dirs);
+    if (dirs.map((item) => resolve(item)).includes(resolvedPluginPath)) return current;
+    return { ...current, plugins: { ...plugins, dirs: [...dirs, resolvedPluginPath] } };
   });
 }
 
@@ -2052,7 +2028,13 @@ async function importPluginsForAgent(
     try {
       await mkdir(dirname(targetCandidate.targetPath), { recursive: true });
       await importPluginDirectory(candidate.sourcePath, targetCandidate.targetPath, importMode);
-      await addPluginDirToConfig(selectedConfigPath, targetCandidate.targetPath);
+      try {
+        await addPluginDirToConfig(selectedConfigPath, targetCandidate.targetPath);
+      } catch (error) {
+        // 官方 3.17.2：登记失败清理本次新建目录，否则修复配置后重试会被 targetExists 永久跳过。
+        await rm(targetCandidate.targetPath, { recursive: true, force: true });
+        throw error;
+      }
       importedCount += 1;
       const existingPluginIds = existingPluginIdsByConfigPath.get(selectedConfigPath);
       if (existingPluginIds) {

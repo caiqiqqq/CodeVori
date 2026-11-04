@@ -15,7 +15,6 @@ import {
   createUnreadDotBitmap,
   formatWindowsUnreadDescription,
 } from "./unreadBadge.js";
-import { updateWindowsDesktopTrayUnreadCount } from "./desktopTray.js";
 import { shouldHideWindowToTray } from "./desktopTraySupport.js";
 import { attachDesktopWindowSizePersistence, type DesktopWindowSize } from "./desktopWindowSize.js";
 import {
@@ -344,7 +343,6 @@ export function syncApplicationUnreadBadge(windowUnreadCountMap: Map<number, num
       win.setOverlayIcon(overlay, description);
     }
   }
-  updateWindowsDesktopTrayUnreadCount(totalUnreadCount);
 }
 
 export function handleWindowUnreadCountSync(

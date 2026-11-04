@@ -84,6 +84,7 @@ import {
   type ZCodeSessionResumeParams,
   type ZCodeSessionPersistence,
   type ZCodeStateUpdatedNotification,
+  type ZCodeWorkspaceRef,
 } from "@zcode/shared";
 import {
   buildSessionSnapshot,
@@ -1449,6 +1450,7 @@ async function activateSessionForResumeUnlocked(
   await context.sessionResidentPool?.waitForDeactivation(params.sessionId);
   const existing = context.sessions.get(params.sessionId);
   if (existing) {
+    await validateSessionActivationWorkspace(context, params.sessionId, params.workspace);
     return { record: existing };
   }
   let session = await getPersistedSession(context, params.sessionId);
@@ -1470,6 +1472,7 @@ async function activateSessionForResumeUnlocked(
     );
   }
   session = await repairLegacyRemoteSessionWorkspaceForResume(context, session);
+  await validateSessionActivationWorkspace(context, params.sessionId, params.workspace, session);
   const workspace =
     params.workspace ??
     buildWorkspaceRef({
@@ -1543,6 +1546,48 @@ export async function resumeSession(context: ZCodeProtocolAgentServerContext, ra
   const params = parseParams(zcodeSessionResumeParamsSchema, rawParams);
   const activated = await activateSessionForResume(context, params);
   return await snapshot(context, activated.record, activated.knownSession);
+}
+
+/** 恢复和 V4 订阅共用归属校验，不因热会话或 READY promise 复用绕过身份边界。 */
+export async function validateSessionActivationWorkspace(
+  context: ZCodeProtocolAgentServerContext,
+  sessionId: string,
+  workspace?: ZCodeWorkspaceRef,
+  knownSession?: SessionInfo,
+): Promise<void> {
+  if (!workspace) return;
+  const active = context.sessions.get(sessionId);
+  if (active) {
+    if (
+      active.workspace.workspaceKey !== workspace.workspaceKey ||
+      active.workspace.workspacePath !== workspace.workspacePath ||
+      active.workspace.workspaceIdentity !== workspace.workspaceIdentity ||
+      active.workspace.remoteSessionId !== workspace.remoteSessionId
+    )
+      throw new Error("Session does not belong to this workspace");
+    return;
+  }
+  const session = knownSession ?? (await getPersistedSession(context, sessionId));
+  const identity = workspace.workspaceIdentity?.trim() || workspace.workspacePath;
+  const storedPath = session?.path ?? session?.directory;
+  // V4 前置检查早于旧 WSL 数据迁移：只读识别现有迁移器支持的精确形态，
+  // 持久化仍由生命周期闸门内的 resume 完成，不能从请求中推断或重绑旧会话身份。
+  const legacyRemote =
+    session && !session.workspaceID && session.directory === storedPath
+      ? resolveLegacyRemoteWorkspace(context, storedPath!)
+      : null;
+  const expectedIdentity =
+    session?.workspaceID?.trim() || legacyRemote?.workspaceIdentity || storedPath;
+  const expectedPath = legacyRemote?.workspacePath ?? storedPath;
+  // 修复原因：冷恢复曾直接采用请求 workspace，能把另一身份的持久会话重绑到当前项目。
+  // 先核对持久身份与真实路径，再构造 app；无显式 workspace 的旧入口仍从存储恢复。
+  if (
+    !session ||
+    workspace.workspaceKey !== identity ||
+    expectedIdentity !== identity ||
+    expectedPath !== workspace.workspacePath
+  )
+    throw new Error("Session does not belong to this workspace");
 }
 
 async function repairLegacyRemoteSessionWorkspaceForResume(

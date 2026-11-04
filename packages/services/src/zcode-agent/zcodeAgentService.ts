@@ -1,4 +1,5 @@
 import { requestPluginReferenceCatalog } from "#src/zcode-agent/pluginReferenceCatalogRequest.js";
+import { createMcpStatusWorkspaceRegistry } from "#src/zcode-agent/mcpStatusWorkspaceRegistry.js";
 import {
   localTtftFactsSchema,
   sessionDebugSnapshotSchema,
@@ -1218,6 +1219,7 @@ export function createZCodeAgentService(
   });
   const sessionEventSequenceStates = new Map<string, SessionEventSequenceState>();
   const wiredClients = new WeakSet<ZCodeProtocolClient>();
+  const mcpStatusWorkspaces = createMcpStatusWorkspaceRegistry();
   const clientDisposables = new WeakMap<ZCodeProtocolClient, IDisposable[]>();
   const pendingPermissions = new Map<string, PendingPermissionRequest>();
   const pendingUserInputs = new Map<string, PendingPermissionRequest>();
@@ -2418,6 +2420,23 @@ export function createZCodeAgentService(
             });
             return;
           }
+          // 修复：mcp-status 共用管理进程，CLI 回调里的 workspace 是不可信请求参数；
+          // 只有本 Host 先向该 client 登记的探测目标才能申请身份头；当前协议仅允许 MCP 请求。
+          const authWorkspace =
+            lane === "mcp-status"
+              ? mcpStatusWorkspaces.resolve(client, parsed.data.workspace)
+              : parsed.data.workspace;
+          if (!authWorkspace) {
+            logger.warn(request.trace?.traceId, "MCP 设置探测身份头请求未通过工作区登记", {
+              lane,
+              registeredWorkspaceKey: parsed.data.workspace.workspaceKey,
+            });
+            void client.respondError(request.id, {
+              code: -32602,
+              message: "Request workspace is not owned by this CLI",
+            });
+            return;
+          }
           // host 侧二次校验必须发生在**读取凭据之前**：未命中即返回，resolveHeaders 不被调用，
           // 因此不会有任何凭据被读入内存。
           void (async () => {
@@ -2440,7 +2459,7 @@ export function createZCodeAgentService(
                 pluginId: parsed.data.pluginId,
                 requestId: parsed.data.requestId,
                 targetOrigin: parsed.data.targetOrigin,
-                workspaceKey: parsed.data.workspace.workspaceKey,
+                workspaceKey: authWorkspace.workspaceKey,
               });
               void client.respond(request.id, {
                 ok: false,
@@ -2462,7 +2481,7 @@ export function createZCodeAgentService(
                 mcpKey: parsed.data.mcpKey,
                 pluginId: parsed.data.pluginId,
                 targetOrigin: parsed.data.targetOrigin,
-                workspace: parsed.data.workspace,
+                workspace: authWorkspace,
               });
               // host 侧不能只在失败时留日志，成功路径完全静默会无法回答"到底发了哪几个头"。
               // 只记 header 名与套餐维度：凭证值绝不入日志（日志留存周期不受控）。
@@ -2470,7 +2489,7 @@ export function createZCodeAgentService(
                 const firstIssuance = officialMcpIssuanceAudit.markFirst(
                   parsed.data.pluginId,
                   parsed.data.mcpKey,
-                  parsed.data.workspace.workspaceKey,
+                  authWorkspace.workspaceKey,
                 );
                 const logIssuance = firstIssuance ? logger.info : logger.debug;
                 logIssuance(request.trace?.traceId, "官方 MCP 身份头已解析", {
@@ -3933,6 +3952,8 @@ export function createZCodeAgentService(
     async listMcpServerStatuses(params: ZCodeAgentListMcpServerStatusesParams) {
       const requestMcpList = async (options?: { omitMcpServers?: boolean; omitMode?: boolean }) => {
         const client = await getMcpStatusClient();
+        // 登记发生在每次请求前；重试或控制面进程重建后也不会漏掉合法目标。
+        mcpStatusWorkspaces.register(client, buildWorkspaceRef(params));
         return client.request(
           zcodeProtocolMethods.mcpList,
           {

@@ -1,7 +1,7 @@
-import { mkdir, writeFile, rename, rm, readdir, stat } from "node:fs/promises";
+import { mkdir, writeFile, rename, rm, readdir, readFile, stat } from "node:fs/promises";
 import { dirname, basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { acquireFileLock } from "@zcode/shared/node";
+import { acquireFileLock, atomicWritePrivateTextFile, withFileLock } from "@zcode/shared/node";
 import { isInjectedFsFaultError, maybeThrowInjectedFsFault } from "./fsFaultInjection.js";
 
 const DEFAULT_RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400, 800, 1600, 3200] as const;
@@ -163,4 +163,56 @@ export async function atomicWriteJson(
   options?: AtomicWriteTextOptions,
 ): Promise<void> {
   await atomicWriteText(filePath, JSON.stringify(data, null, 2), options);
+}
+
+export class JsonObjectFileUnreadableError extends Error {
+  constructor(
+    readonly filePath: string,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "JsonObjectFileUnreadableError";
+  }
+}
+
+export async function readJsonObjectFileForUpdate(
+  filePath: string,
+): Promise<Record<string, unknown>> {
+  let raw: string;
+  try {
+    raw = await readFile(filePath, "utf-8");
+  } catch (error) {
+    if (getErrorCode(error) === "ENOENT") return {};
+    throw new JsonObjectFileUnreadableError(filePath, `Failed to read config file ${filePath}`, {
+      cause: error,
+    });
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    throw new JsonObjectFileUnreadableError(filePath, `Config file ${filePath} is not valid JSON`, {
+      cause: error,
+    });
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new JsonObjectFileUnreadableError(
+      filePath,
+      `Config file ${filePath} must contain a JSON object`,
+    );
+  }
+  return parsed as Record<string, unknown>;
+}
+
+export async function updateJsonObjectFile(
+  filePath: string,
+  update: (current: Record<string, unknown>) => Record<string, unknown>,
+): Promise<void> {
+  // 参考官方 3.17.2：损坏配置必须停止写入，不能把读取失败当成空对象后覆盖用户其他字段。
+  // 读取与替换处于同一文件锁内，避免两个设置入口并发读取旧值后互相覆盖。
+  await withFileLock(filePath, async () => {
+    const next = update(await readJsonObjectFileForUpdate(filePath));
+    await atomicWritePrivateTextFile(filePath, `${JSON.stringify(next, null, 2)}\n`, []);
+  });
 }

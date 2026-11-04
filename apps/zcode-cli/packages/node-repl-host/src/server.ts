@@ -23,6 +23,7 @@ import {
   type NodeReplCuaBrokerConnection,
 } from "./cua-bridge.js";
 import { createNodeReplCuaBroker, type NodeReplCuaBroker } from "./cua-broker.js";
+import { createNoProgressGuard } from "./no-progress-guard.js";
 import {
   isDirectMcpEntrypoint,
   createNodeReplShutdown,
@@ -163,6 +164,7 @@ export function createNodeReplMcpRuntime(
   input: { executeJs?: NodeReplExecutor; cuaRuntime?: ComputerUseRuntime } = {},
 ): NodeReplMcpRuntime {
   const executeJs = input.executeJs ?? executeJsInWorker;
+  const noProgressGuard = createNoProgressGuard();
   const cuaRuntime = input.cuaRuntime ?? captureComputerUseRuntimeFromEnvironment();
   const cuaBroker = cuaRuntime
     ? createNodeReplCuaBroker({ runtime: cuaRuntime, platform: process.platform })
@@ -224,7 +226,10 @@ export function createNodeReplMcpRuntime(
             syncTimeoutMs: Math.min(timeoutMs, MAX_SYNC_TIMEOUT_MS),
             cuaBroker: cuaBroker?.connection,
           });
-          return toMcpRunResult(run);
+          const result = toMcpRunResult(run);
+          const hint = noProgressGuard.observe({ requestMeta, code: args.code, result });
+          if (hint) result.content.push({ type: "text", text: hint.text });
+          return result;
         } finally {
           activeCalls.delete(callController);
         }

@@ -1,3 +1,8 @@
+import {
+  createProviderToolRoundEntries,
+  providerToolRoundsCompactGroupKey,
+  withCompactGroupKey,
+} from "../provider-tool-rounds/contract.js";
 import { beginLocalTurnPreparation } from "@zcode/contracts";
 import {
   CompactTrigger,
@@ -22,6 +27,8 @@ import {
   objectKeys,
   projectExecutionErrorPayload,
   finalizeSuspiciousEmptyModelResult,
+  createContentFilteredModelResultError,
+  isContentFilteredEmptyModelResult,
   isContextExceededFinishReason,
   isSuspiciousEmptyModelResult,
   readRawFinishReason,
@@ -376,19 +383,39 @@ async function runModelBackedTurnStepImpl(
         traceContext: modelTraceContext,
       });
       const reasoning = latestStreamSnapshot.reasoning.filter(hasAssistantReasoningContent);
-      if (latestStreamSnapshot.text.length > 0 || reasoning.length > 0) {
+      const modelRef = state.model
+        ? { providerId: state.model.providerId, modelId: state.model.modelId }
+        : undefined;
+      // 已收起的服务端内置工具轮在流中就已落盘，取消时同样要进入 live history。
+      const providerRoundEntries = createProviderToolRoundEntries(
+        latestStreamSnapshot.providerToolRounds,
+        modelRef,
+        hasAssistantReasoningContent,
+      );
+      const hasCurrentRound = latestStreamSnapshot.text.length > 0 || reasoning.length > 0;
+      if (hasCurrentRound || providerRoundEntries.length > 0) {
         // 取消时 durable snapshot 已经持久化，但成功路径的 live history commit
         // 和 historyRoundCount 不会执行，导致当前进程与 cold resume 的 provider history 不一致。
-        commitTurnRequestEntries(this, state.turnRequestState, [
-          createRuntimeAssistantEntry(
-            latestStreamSnapshot.text,
-            undefined,
-            reasoning,
-            state.model
-              ? { providerId: state.model.providerId, modelId: state.model.modelId }
-              : undefined,
+        commitTurnRequestEntries(
+          this,
+          state.turnRequestState,
+          withCompactGroupKey(
+            [
+              ...providerRoundEntries,
+              ...(hasCurrentRound
+                ? [
+                    createRuntimeAssistantEntry(
+                      latestStreamSnapshot.text,
+                      undefined,
+                      reasoning,
+                      modelRef,
+                    ),
+                  ]
+                : []),
+            ],
+            providerToolRoundsCompactGroupKey(latestStreamSnapshot.providerToolRounds),
           ),
-        ]);
+        );
         recordModelHistoryRound(state);
       }
     }
@@ -449,7 +476,13 @@ async function runModelBackedTurnStepImpl(
     this.messageHistory.setCacheHit(result.usage.cacheReadTokens);
   }
 
-  let toolCalls = this.extractToolCallsFromResult(result);
+  // 服务端调用已分轮提交；最终续写和文件变更只判断剩余调用，空结果判断仍计入已执行工具。
+  const extractedToolCalls = this.extractToolCallsFromResult(result);
+  const providerRoundCallIds = new Set(
+    (result.providerToolRounds ?? []).map((round) => round.toolCall.id),
+  );
+  let toolCalls = extractedToolCalls.filter((toolCall) => !providerRoundCallIds.has(toolCall.id));
+  const providerExecutedToolCallCount = extractedToolCalls.length - toolCalls.length;
   const providerToolCallCount = toolCalls.length;
   const localTerminalResponse = state.automationCreateLimitReached === true;
   if (state.automationCreateLimitReached && toolCalls.length > 0) {
@@ -524,8 +557,36 @@ async function runModelBackedTurnStepImpl(
   }
   if (
     !localTerminalResponse &&
+    isContentFilteredEmptyModelResult(
+      result.finishReason,
+      rawFinishReason,
+      responseLength,
+      toolCalls.length + providerExecutedToolCallCount,
+    )
+  ) {
+    this.logger?.warn("Model output was blocked by provider content filter", {
+      ...traceContextToLogContext(modelTraceContext),
+      event: "model.response.content_filtered",
+      finishReason: result.finishReason,
+      module: "core.runtime",
+      rawFinishReason,
+      status: "completed",
+    });
+    throw createContentFilteredModelResultError({
+      finishReason: result.finishReason,
+      model: executionModelSelection,
+      rawFinishReason,
+    });
+  }
+  if (
+    !localTerminalResponse &&
     outputTokenContinuation === "none" &&
-    isSuspiciousEmptyModelResult(result.finishReason, responseLength, toolCalls.length, usage)
+    isSuspiciousEmptyModelResult(
+      result.finishReason,
+      responseLength,
+      toolCalls.length + providerExecutedToolCallCount,
+      usage,
+    )
   ) {
     this.logger?.warn("Model returned an empty non-stop result", {
       ...traceContextToLogContext(modelTraceContext),
