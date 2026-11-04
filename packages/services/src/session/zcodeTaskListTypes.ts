@@ -1,6 +1,6 @@
 import type { WorkspacePurpose, ZCodeTaskMeta } from "@zcode/shared";
 
-export type ZCodeTaskListKind = "pinned" | "archived" | "timeline" | "active";
+export type ZCodeTaskListKind = "pinned" | "archived" | "timeline" | "active" | "unread";
 export type ZCodeTaskListSortBy = "created" | "updated";
 
 export interface ZCodeTaskListWorkspaceScope {

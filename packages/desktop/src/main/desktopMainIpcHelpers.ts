@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { realpath } from "node:fs/promises";
+import { stat, realpath } from "node:fs/promises";
 import { normalize } from "node:path";
 import type { BrowserWindow } from "electron";
 import { shell } from "electron";
@@ -72,6 +72,15 @@ export async function openPathInFileManager(
     // 路径不存在或无法解析时仍尝试用规范化后的原路径打开，便于定位权限等问题。
   }
 
+  // 文件管理器入口必须定位文件；openPath(file) 会误用默认应用打开内容。
+  try {
+    if ((await stat(target)).isFile()) {
+      shell.showItemInFolder(target);
+      return { success: true };
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
   if (process.platform === "darwin") {
     return openDarwinPathInFileManager(target, logger);
   }

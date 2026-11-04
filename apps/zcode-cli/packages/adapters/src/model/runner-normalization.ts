@@ -254,6 +254,8 @@ export function normalizeToolResults(
       result?: unknown;
       providerExecuted?: boolean;
       providerMetadata?: unknown;
+      type?: string;
+      error?: unknown;
     };
 
     const id = value.toolCallId ?? value.id ?? crypto.randomUUID();
@@ -265,7 +267,8 @@ export function normalizeToolResults(
       input: normalizedInputByToolCallId.has(id)
         ? normalizedInputByToolCallId.get(id)
         : value.input,
-      output: value.output ?? value.result,
+      output: value.type === "tool-error" ? value.error : (value.output ?? value.result),
+      isError: value.type === "tool-error",
       providerExecuted: value.providerExecuted,
       providerMetadata: isRecord(value.providerMetadata)
         ? (value.providerMetadata as Record<string, unknown>)

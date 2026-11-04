@@ -1933,6 +1933,9 @@ export class TaskIndexRepo {
       where.push("pinned = 1", "archived = 0");
     } else if (params.kind === "archived") {
       where.push("archived = 1");
+    } else if (params.kind === "unread") {
+      // 必须在分页前筛选，否则前一页已读任务会遮住较早的未读任务（包括置顶）。
+      where.push("archived = 0", "unread_at IS NOT NULL");
     } else {
       where.push("pinned = 0", "archived = 0");
     }

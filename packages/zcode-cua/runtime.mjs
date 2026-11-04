@@ -262,6 +262,8 @@ export function createComputerUseRuntime(options = {}) {
           let result = await session.service.callTool(name, bound, {
             signal,
             runtimeScope: context.runtimeScope,
+            cursorSessionId: context.sessionId,
+            actionTitle: context.actionTitle,
           });
           if (
             toolName === "get_app_state" &&
@@ -277,12 +279,19 @@ export function createComputerUseRuntime(options = {}) {
                 app: args.app_ref,
                 activate: false,
               },
-              { signal, runtimeScope: context.runtimeScope },
+              {
+                signal,
+                runtimeScope: context.runtimeScope,
+                cursorSessionId: context.sessionId,
+                actionTitle: context.actionTitle,
+              },
             );
             if (launch.isError === true) return launch;
             result = await session.service.callTool(name, bound, {
               signal,
               runtimeScope: context.runtimeScope,
+              cursorSessionId: context.sessionId,
+              actionTitle: context.actionTitle,
             });
           }
           if (signal?.aborted)

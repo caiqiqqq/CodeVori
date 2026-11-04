@@ -72,6 +72,34 @@ modules:
     layerOrder: [domain, adapters]
     owner: device-connectivity
 
+  - id: cli-official-command-endpoint
+    roots:
+      - apps/zcode-cli/packages/bootstrap/src/official-command-endpoint
+      - apps/zcode-cli/packages/bootstrap/tests/official-command-endpoint
+    managed: true
+    requires:
+      - shared
+      - zcode-cli
+    publicEntrypoints:
+      - apps/zcode-cli/packages/bootstrap/src/official-command-endpoint/index.ts
+      - apps/zcode-cli/packages/bootstrap/src/official-command-endpoint/contract.ts
+    layers:
+      adapters: .
+    owner: identity
+
+  - id: zcode-site-panel
+    roots:
+      - apps/zcode-cli/packages/zcode-site-plugin/src
+    managed: true
+    requires:
+      - shared
+    publicEntrypoints:
+      - apps/zcode-cli/packages/zcode-site-plugin/src/index.ts
+      - apps/zcode-cli/packages/zcode-site-plugin/src/contract.ts
+    layers:
+      app: .
+    owner: plugin
+
 global:
   maxFileLines: 400
   maxContractLines: 300

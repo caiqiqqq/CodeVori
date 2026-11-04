@@ -5,6 +5,7 @@ import type { SessionLease } from "@/v4/sessionDataLayer.js";
 const CLOSED_STATE: ConversationStoreState = {
   status: "closed",
   snapshot: null,
+  authorityVersion: 0,
   subscriptionId: null,
   lastError: null,
   optimisticCommands: [],

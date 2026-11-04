@@ -968,6 +968,7 @@ function RootInner({
   }, [remoteConnectionInProgress, resetRemoteConnectionLogs]);
 
   const settingsLayerProps = {
+    onReconnectRemoteWorkspace: handleReconnectRemoteWorkspace,
     isDesktop,
     isMacDesktop,
     isWindowsDesktop,

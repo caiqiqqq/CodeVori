@@ -22,8 +22,9 @@ import {
 } from "../src/runtime/provider-tool-rounds/contract.js";
 import { selectCompactEntries } from "../src/runtime/helpers/compact-selection.js";
 
-for (const cancel of [false, true])
-  test(`provider call without a result settles on ${cancel ? "cancel" : "stream end"}`, async () => {
+for (const scenario of ["stream end", "cancel", "nonstream end"])
+  test(`provider call without a result settles on ${scenario}`, async () => {
+    const cancel = scenario === "cancel";
     const root = await mkdtemp(join(tmpdir(), "zcode-provider-recovery-"));
     const store = new SqliteSessionStore({ dbPath: join(root, "session.sqlite") });
     const abort = new AbortController();
@@ -42,6 +43,14 @@ for (const cancel of [false, true])
       options: { maxOutputTokens: 32000 },
       bind() {
         return this;
+      },
+      async generateText() {
+        return {
+          finishReason: "stop",
+          text: "",
+          usage: { inputTokens: 10, outputTokens: 5 },
+          toolCalls: [{ id: "call", name: "analyze_image", input: {}, providerExecuted: true }],
+        };
       },
       async *streamText() {
         yield { type: "text_delta", text: "读取图片" };
@@ -62,7 +71,7 @@ for (const cancel of [false, true])
       {
         modelSelection: { providerId: "fixture", modelId: "fixture" },
         workingDirectory: root,
-        modelStreaming: "on",
+        modelStreaming: scenario === "nonstream end" ? "off" : "on",
         compact: { enabled: false },
         memory: { enabled: false },
       },

@@ -2018,7 +2018,7 @@ export function SessionPane({
           if (!shouldResyncForStaleAuthority(error) || !lease?.store) throw error;
           // 修复：产物卡查询与投影推进竞态时，等待权威快照后重查一次，
           // 而非把 stale 记成空文件列表；重查不使用旧 revision，也不定时盲试。
-          const recovered = await waitForRecoveredAuthority(lease.store, current);
+          const recovered = await waitForRecoveredAuthority(lease.store);
           recoveredAuthority = true;
           return fileChanges({
             sessionId,

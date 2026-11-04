@@ -2,7 +2,10 @@ import { posix } from "node:path";
 
 export const REMOTE_AGENT_OFFICIAL_PLUGIN_DIR_NAME = "packages";
 
-export const REMOTE_AGENT_OFFICIAL_PLUGIN_PACKAGE_NAMES = ["browser-use-plugin"] as const;
+export const REMOTE_AGENT_OFFICIAL_PLUGIN_PACKAGE_NAMES = [
+  "browser-use-plugin",
+  "zcode-site-plugin",
+] as const;
 
 export const REMOTE_AGENT_OFFICIAL_PLUGIN_INCLUDED_TOP_LEVEL_PATHS = [
   ".mcp.json",
@@ -24,6 +27,14 @@ export const REMOTE_AGENT_OFFICIAL_PLUGIN_INCLUDED_TOP_LEVEL_PATHS = [
 ] as const;
 
 export const REMOTE_AGENT_OFFICIAL_PLUGIN_REQUIRED_RELATIVE_PATHS = [
+  "zcode-site-plugin/dist/server.mjs",
+  "zcode-site-plugin/dist/ui/panel.html",
+  "zcode-site-plugin/scripts/zcode-site.mjs",
+  "zcode-site-plugin/scripts/site-client.mjs",
+  "zcode-site-plugin/scripts/site-project.mjs",
+  "zcode-site-plugin/scripts/site-help.mjs",
+  "zcode-site-plugin/scripts/stage.mjs",
+  "zcode-site-plugin/skills/site-deploy/SKILL.md",
   ...REMOTE_AGENT_OFFICIAL_PLUGIN_PACKAGE_NAMES.map(
     (packageName) => `${packageName}/.zcode-plugin/plugin.json`,
   ),

@@ -23,6 +23,7 @@ import type {
 } from "./desktopRemoteUsageArmsTelemetry.js";
 import type { RemoteAssetDirs } from "./desktopRuntimeEnv.js";
 import { ProviderProvisioningEnvironmentCoordinator } from "./providerProvisioningEnvironmentCoordinator.js";
+import { createRemoteServiceStopRequests } from "./remoteServiceStopRequests.js";
 
 interface RemoteWorkspaceSessionContext {
   workspacePath: string;
@@ -161,6 +162,7 @@ export function createRemoteWorkspaceSessionManager(options: {
   providerProvisioningCoordinator?: ProviderProvisioningEnvironmentCoordinator;
 }) {
   const pendingByRequestKey = new Map<string, PendingConnect>();
+  const serviceStopRequests = createRemoteServiceStopRequests();
   const routesBySessionId = new Map<string, RemoteAttachmentRoute>();
   const listenedHosts = new WeakSet<ElectronUtilityProcess>();
   const reconnectsByWorkspaceKey = new Map<string, Promise<string>>();
@@ -580,6 +582,10 @@ export function createRemoteWorkspaceSessionManager(options: {
     child.on("message", (message: unknown) => {
       const parsed = hostResponseMessageSchema.safeParse(message);
       if (!parsed.success) return;
+      if (parsed.data.type === HostResponseTypes.RemoteWorkspaceServiceStopResult) {
+        serviceStopRequests.receive(child, parsed.data);
+        return;
+      }
       if (parsed.data.type === HostResponseTypes.RemoteWorkspaceConnectionLog) {
         const pending = pendingByRequestKey.get(requestKey(webContentsId, parsed.data.requestId));
         if (!pending) return;
@@ -643,6 +649,7 @@ export function createRemoteWorkspaceSessionManager(options: {
     });
     child.once("exit", () => {
       const error = new Error("窗口 Local Host 已退出");
+      serviceStopRequests.rejectHost(child, error);
       for (const [requestId, pendingExecution] of pendingProviderProvisioningExecutions) {
         if (pendingExecution.child !== child) continue;
         pendingProviderProvisioningExecutions.delete(requestId);
@@ -792,6 +799,20 @@ export function createRemoteWorkspaceSessionManager(options: {
     };
   }
 
+  async function stopRemoteWorkspaceService(
+    sessionId: string,
+    expectedWebContentsId: number,
+  ): Promise<void> {
+    const route = routesBySessionId.get(sessionId);
+    if (!route || route.webContentsId !== expectedWebContentsId)
+      throw new Error("Remote session is not owned by this window");
+    const child = options.windowHostProcessMap.get(route.webContentsId);
+    if (!child) throw new Error("Window Host unavailable");
+    ensureHostListener(child, route.webContentsId);
+    // 原先 IPC 只确认 postMessage，Host 失败只能等 UI 关闭超时；现在透传真实停止结果。
+    await serviceStopRequests.send(child, sessionId);
+  }
+
   function disposeRemoteWorkspaceSession(sessionId: string, _reason?: string): void {
     const route = routesBySessionId.get(sessionId);
     if (!route) return;
@@ -822,6 +843,8 @@ export function createRemoteWorkspaceSessionManager(options: {
   }
 
   function disposeRemoteWorkspaceSessionsForWindow(webContentsId: number): void {
+    const child = options.windowHostProcessMap.get(webContentsId);
+    if (child) serviceStopRequests.rejectHost(child, new Error("窗口已关闭"));
     for (const [sessionId, route] of Array.from(routesBySessionId)) {
       if (route.webContentsId !== webContentsId) continue;
       retireActiveRoute(route, "window-closed", () => {
@@ -1009,6 +1032,7 @@ export function createRemoteWorkspaceSessionManager(options: {
     createBotRemoteWorkspaceRuntimePort,
     getRemoteConnectionStats,
     disposeRemoteWorkspaceSession,
+    stopRemoteWorkspaceService,
     disposeRemoteWorkspaceSessionsForWindow,
     disposeAllAndWaitForAppShutdown: async (_reason: string) => {
       appShutdownStarted = true;

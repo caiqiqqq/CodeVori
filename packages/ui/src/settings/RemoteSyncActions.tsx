@@ -321,6 +321,7 @@ export function RemoteSyncDialogs({
           remoteTarget={mcpDialogProps.remoteTarget}
           workspacePath={mcpWorkspacePath}
           localWorkspacePath={mcpLocalWorkspacePath}
+          workspaceIdentity={workspaceIdentity}
           onSynced={onMcpSynced}
         />
       ) : null}

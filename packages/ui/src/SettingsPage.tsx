@@ -1,3 +1,6 @@
+import { RemoteWorkspaceServicesSection } from "@/settings/RemoteWorkspaceServicesSection.js";
+import { RemoteDataSyncSection } from "@/settings/RemoteDataSyncSection.js";
+import { ProjectsSection } from "@/settings/ProjectsSection.js";
 /* oxlint-disable eslint(max-lines) */
 import { ArrowLeft, type LucideIcon } from "lucide-react";
 import {
@@ -288,6 +291,7 @@ export function SettingsPage({
   onBack,
   onCreateTask,
   onOpenWorkspace,
+  onReconnectRemoteWorkspace,
   allowOpenWorkspace = true,
   onLogout,
   user,
@@ -300,6 +304,7 @@ export function SettingsPage({
   onBack?: () => void;
   onCreateTask?: (request?: CreateTaskRequest) => void;
   onOpenWorkspace?: () => void;
+  onReconnectRemoteWorkspace?: (workspaceKey: string) => Promise<void>;
   allowOpenWorkspace?: boolean;
   onLogout?: () => void;
   user?: UserInfo | null;
@@ -1798,7 +1803,12 @@ export function SettingsPage({
                             }
                           />
                         ) : activeSection === "devices" ? (
-                          <DeviceBridgeSettingsSection />
+                          <div className="space-y-6">
+                            <RemoteWorkspaceServicesSection
+                              reconnect={onReconnectRemoteWorkspace}
+                            />
+                            <DeviceBridgeSettingsSection />
+                          </div>
                         ) : activeSection === "desktopLan" ? (
                           <DesktopLanAccessSection />
                         ) : activeSection === "appearance" ? (
@@ -1833,6 +1843,10 @@ export function SettingsPage({
                             {/* Git 配置和账号属于本机 Host，不跟随远程 workspace 切换。 */}
                             <VersionControlSection />
                           </ServiceProvider>
+                        ) : activeSection === "remoteSync" ? (
+                          <RemoteDataSyncSection isDesktop={Boolean(isDesktop)} />
+                        ) : activeSection === "projects" ? (
+                          <ProjectsSection />
                         ) : activeSection === "worktrees" ? (
                           <ServiceProvider services={localHostServices}>
                             {/* 工作树目录是本机全局设置；远程 workspace 不能读写远端 Host 的设置。 */}

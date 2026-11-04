@@ -6,6 +6,7 @@ export interface ComputerUseRuntimeContext {
   workspaceIdentity?: string;
   remoteSessionId?: string;
   turnId?: string;
+  actionTitle?: string;
   clientMode?: "web-remote-replayable" | "desktop-continuous";
   deliveryKind?: "web-remote-replayable" | "desktop-continuous";
   trace?: Record<string, unknown>;
@@ -35,7 +36,12 @@ export interface ComputerUseRuntimeOptions {
     callTool(
       name: string,
       args: Record<string, unknown>,
-      options?: { signal?: AbortSignal; runtimeScope?: "main" | "subagent" },
+      options?: {
+        signal?: AbortSignal;
+        runtimeScope?: "main" | "subagent";
+        cursorSessionId?: string;
+        actionTitle?: string;
+      },
     ): Promise<unknown>;
     close(): Promise<void>;
   };

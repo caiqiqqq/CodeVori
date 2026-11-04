@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 31,
+  "revision": 32,
   "config": {
     "providerConfigRules": {
       "templateRules": [
@@ -158,6 +158,8 @@
               "baseUrl": "https://api.moonshot.cn/anthropic"
             },
             "builtinModelIds": [
+              "kimi-k3.1-pro",
+              "kimi-k3.1-pro-highspeed",
               "kimi-k3",
               "kimi-k2.7-code",
               "kimi-k2.6",
@@ -187,6 +189,7 @@
               "baseUrl": "https://api.minimaxi.com/anthropic"
             },
             "builtinModelIds": [
+              "MiniMax-M3.1-Flash",
               "MiniMax-M3",
               "MiniMax-M2.7",
               "MiniMax-M2.7-highspeed",
@@ -440,6 +443,8 @@
               "baseUrl": "https://openrouter.ai/api"
             },
             "builtinModelIds": [
+              "moonshotai/kimi-k3.1-pro",
+              "minimax/minimax-m3.1-flash",
               "anthropic/claude-fable-5.1",
               "openai/gpt-6-astra",
               "openai/gpt-5.6-sol",
@@ -522,6 +527,8 @@
               "baseUrl": "https://opencode.ai/zen/go/v1"
             },
             "builtinModelIds": [
+              "kimi-k3.1-pro",
+              "minimax-m3.1-flash",
               "glm-5.3-flash",
               "glm-5.3",
               "kimi-k3",
@@ -706,6 +713,72 @@
             "logo": {
               "type": "builtin",
               "key": "opencode"
+            }
+          }
+        },
+        {
+          "templateId": "kimi-code-cn",
+          "templateNameMap": {
+            "zh-CN": "Kimi Code（国内）",
+            "en-US": "Kimi Code (China)"
+          },
+          "config": {
+            "access": {
+              "type": "api-key",
+              "apiKeyManagementUrl": "https://www.kimi.com/code/console"
+            },
+            "api": {
+              "type": "openai-chat-completions",
+              "baseUrl": "https://api.kimi.com/coding/v1"
+            },
+            "builtinModelIds": ["k3.1-pro", "k3.1-pro-highspeed"],
+            "logo": {
+              "type": "builtin",
+              "key": "moonshot-kimi"
+            }
+          }
+        },
+        {
+          "templateId": "kimi-code-intl",
+          "templateNameMap": {
+            "zh-CN": "Kimi Code（国际）",
+            "en-US": "Kimi Code (International)"
+          },
+          "config": {
+            "access": {
+              "type": "api-key",
+              "apiKeyManagementUrl": "https://www.kimi.com/code/console"
+            },
+            "api": {
+              "type": "openai-chat-completions",
+              "baseUrl": "https://api.kimi.ai/coding/v1"
+            },
+            "builtinModelIds": ["k3.1-pro", "k3.1-pro-highspeed"],
+            "logo": {
+              "type": "builtin",
+              "key": "moonshot-kimi"
+            }
+          }
+        },
+        {
+          "templateId": "minimax-m-plan-cn",
+          "templateNameMap": {
+            "zh-CN": "MiniMax M Plan（中国）",
+            "en-US": "MiniMax M Plan (China)"
+          },
+          "config": {
+            "access": {
+              "type": "api-key",
+              "apiKeyManagementUrl": "https://platform.minimax.cn/console/plan"
+            },
+            "api": {
+              "type": "anthropic-messages",
+              "baseUrl": "https://api.minimax.cn/anthropic"
+            },
+            "builtinModelIds": ["MiniMax-M3.1-Flash"],
+            "logo": {
+              "type": "builtin",
+              "key": "minimax"
             }
           }
         }
@@ -6102,6 +6175,366 @@
           "templateId": "xiaomi-mimo-token-plan",
           "config": {
             "enabled": true
+          }
+        },
+        {
+          "templateId": "moonshot-kimi",
+          "modelId": "kimi-k3.1-pro",
+          "config": {
+            "enabled": true,
+            "properties": {
+              "contextWindow": 1048576,
+              "inputFormat": {
+                "supportsText": true,
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": false,
+                "supportsPdf": false
+              },
+              "supportsToolCall": true,
+              "supportsJsonSchemaOutput": false,
+              "supportsNativeWebSearch": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": ["low", "high", "max"],
+                "map": "{\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              },
+              "maxOutputTokens": {
+                "max": 131072,
+                "map": "{\"max_tokens\": maxOutputTokens}"
+              }
+            }
+          }
+        },
+        {
+          "templateId": "moonshot-kimi",
+          "modelId": "kimi-k3.1-pro-highspeed",
+          "config": {
+            "enabled": true,
+            "properties": {
+              "contextWindow": 1048576,
+              "inputFormat": {
+                "supportsText": true,
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": false,
+                "supportsPdf": false
+              },
+              "supportsToolCall": true,
+              "supportsJsonSchemaOutput": false,
+              "supportsNativeWebSearch": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": ["low", "high", "max"],
+                "map": "{\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              },
+              "maxOutputTokens": {
+                "max": 131072,
+                "map": "{\"max_tokens\": maxOutputTokens}"
+              }
+            }
+          }
+        },
+        {
+          "templateId": "kimi-code-cn",
+          "modelId": "k3.1-pro",
+          "config": {
+            "enabled": true,
+            "properties": {
+              "contextWindow": 1048576,
+              "inputFormat": {
+                "supportsText": true,
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": false,
+                "supportsPdf": false
+              },
+              "supportsToolCall": true,
+              "supportsJsonSchemaOutput": false,
+              "supportsNativeWebSearch": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": ["low", "high", "max"],
+                "map": "{\"reasoning_effort\": reasoningLevel}"
+              },
+              "maxOutputTokens": {
+                "max": 131072,
+                "map": "{\"max_tokens\": maxOutputTokens}"
+              }
+            }
+          }
+        },
+        {
+          "templateId": "kimi-code-cn",
+          "modelId": "k3.1-pro-highspeed",
+          "config": {
+            "enabled": true,
+            "properties": {
+              "contextWindow": 1048576,
+              "inputFormat": {
+                "supportsText": true,
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": false,
+                "supportsPdf": false
+              },
+              "supportsToolCall": true,
+              "supportsJsonSchemaOutput": false,
+              "supportsNativeWebSearch": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": ["low", "high", "max"],
+                "map": "{\"reasoning_effort\": reasoningLevel}"
+              },
+              "maxOutputTokens": {
+                "max": 131072,
+                "map": "{\"max_tokens\": maxOutputTokens}"
+              }
+            }
+          }
+        },
+        {
+          "templateId": "kimi-code-intl",
+          "modelId": "k3.1-pro",
+          "config": {
+            "enabled": true,
+            "properties": {
+              "contextWindow": 1048576,
+              "inputFormat": {
+                "supportsText": true,
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": false,
+                "supportsPdf": false
+              },
+              "supportsToolCall": true,
+              "supportsJsonSchemaOutput": false,
+              "supportsNativeWebSearch": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": ["low", "high", "max"],
+                "map": "{\"reasoning_effort\": reasoningLevel}"
+              },
+              "maxOutputTokens": {
+                "max": 131072,
+                "map": "{\"max_tokens\": maxOutputTokens}"
+              }
+            }
+          }
+        },
+        {
+          "templateId": "kimi-code-intl",
+          "modelId": "k3.1-pro-highspeed",
+          "config": {
+            "enabled": true,
+            "properties": {
+              "contextWindow": 1048576,
+              "inputFormat": {
+                "supportsText": true,
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": false,
+                "supportsPdf": false
+              },
+              "supportsToolCall": true,
+              "supportsJsonSchemaOutput": false,
+              "supportsNativeWebSearch": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": ["low", "high", "max"],
+                "map": "{\"reasoning_effort\": reasoningLevel}"
+              },
+              "maxOutputTokens": {
+                "max": 131072,
+                "map": "{\"max_tokens\": maxOutputTokens}"
+              }
+            }
+          }
+        },
+        {
+          "templateId": "openrouter",
+          "modelId": "moonshotai/kimi-k3.1-pro",
+          "config": {
+            "enabled": true,
+            "properties": {
+              "contextWindow": 1048576,
+              "inputFormat": {
+                "supportsText": true,
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": false,
+                "supportsPdf": false
+              },
+              "supportsToolCall": true,
+              "supportsJsonSchemaOutput": true,
+              "supportsNativeWebSearch": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": ["low", "high", "max"],
+                "map": "{\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              },
+              "maxOutputTokens": {
+                "max": 943718,
+                "map": "{\"max_tokens\": maxOutputTokens}"
+              }
+            }
+          }
+        },
+        {
+          "templateId": "opencode-go-chat",
+          "modelId": "kimi-k3.1-pro",
+          "config": {
+            "enabled": true,
+            "properties": {
+              "contextWindow": 1048576,
+              "inputFormat": {
+                "supportsText": true,
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": false,
+                "supportsPdf": false
+              },
+              "supportsToolCall": true,
+              "supportsJsonSchemaOutput": false,
+              "supportsNativeWebSearch": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": ["max"],
+                "map": "{\"reasoning_effort\": reasoningLevel}"
+              },
+              "maxOutputTokens": {
+                "max": 131072,
+                "map": "{\"max_tokens\": maxOutputTokens}"
+              }
+            }
+          }
+        },
+        {
+          "templateId": "minimax",
+          "modelId": "MiniMax-M3.1-Flash",
+          "config": {
+            "enabled": true,
+            "properties": {
+              "contextWindow": 1000000,
+              "inputFormat": {
+                "supportsText": true,
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": false,
+                "supportsPdf": false
+              },
+              "supportsToolCall": true,
+              "supportsJsonSchemaOutput": false,
+              "supportsNativeWebSearch": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": ["low", "medium", "high", "xhigh", "max"],
+                "map": "{\n  \"thinking\": {\n    \"type\": \"adaptive\"\n  },\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              },
+              "maxOutputTokens": {
+                "max": 524288,
+                "map": "{\"max_tokens\": maxOutputTokens}"
+              }
+            }
+          }
+        },
+        {
+          "templateId": "minimax-m-plan-cn",
+          "modelId": "MiniMax-M3.1-Flash",
+          "config": {
+            "enabled": true,
+            "properties": {
+              "contextWindow": 1000000,
+              "inputFormat": {
+                "supportsText": true,
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": false,
+                "supportsPdf": false
+              },
+              "supportsToolCall": true,
+              "supportsJsonSchemaOutput": false,
+              "supportsNativeWebSearch": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": ["low", "medium", "high", "xhigh", "max"],
+                "map": "{\n  \"thinking\": {\n    \"type\": \"adaptive\"\n  },\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              },
+              "maxOutputTokens": {
+                "max": 524288,
+                "map": "{\"max_tokens\": maxOutputTokens}"
+              }
+            }
+          }
+        },
+        {
+          "templateId": "openrouter",
+          "modelId": "minimax/minimax-m3.1-flash",
+          "config": {
+            "enabled": true,
+            "properties": {
+              "contextWindow": 1048576,
+              "inputFormat": {
+                "supportsText": true,
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": false,
+                "supportsPdf": false
+              },
+              "supportsToolCall": true,
+              "supportsJsonSchemaOutput": true,
+              "supportsNativeWebSearch": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": ["low", "medium", "high", "xhigh", "max"],
+                "map": "{\n  \"output_config\": {\n    \"effort\": reasoningLevel\n  }\n}"
+              },
+              "maxOutputTokens": {
+                "max": 524288,
+                "map": "{\"max_tokens\": maxOutputTokens}"
+              }
+            }
+          }
+        },
+        {
+          "templateId": "opencode-go-chat",
+          "modelId": "minimax-m3.1-flash",
+          "config": {
+            "enabled": true,
+            "properties": {
+              "contextWindow": 1000000,
+              "inputFormat": {
+                "supportsText": true,
+                "supportsImage": true,
+                "supportsVideo": true,
+                "supportsAudio": false,
+                "supportsPdf": false
+              },
+              "supportsToolCall": true,
+              "supportsJsonSchemaOutput": false,
+              "supportsNativeWebSearch": false
+            },
+            "optionSpecs": {
+              "reasoningLevel": {
+                "values": ["max"],
+                "map": "{\n  \"reasoning_effort\": reasoningLevel\n}"
+              },
+              "maxOutputTokens": {
+                "max": 131072,
+                "map": "{\"max_tokens\": maxOutputTokens}"
+              }
+            }
           }
         }
       ],

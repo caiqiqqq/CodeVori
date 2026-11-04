@@ -13,6 +13,7 @@ import { AiSdkModelAdapterError } from "./errors.js";
 import { resolveAnthropicRequestMetadataUserId } from "./anthropic-request-metadata.js";
 import { createGenerateTextOptions } from "./runner-options.js";
 import { detectProviderBusinessFinishError } from "./provider-finish-business-error.js";
+import { normalizeGenerateOutputEvents } from "./generate-output-events.js";
 import {
   normalizeReasoning,
   normalizeSources,
@@ -323,6 +324,7 @@ export async function runGenerateText(input: {
         reasoning,
         toolCalls,
         toolResults,
+        outputEvents: normalizeGenerateOutputEvents(result, toolCalls),
         sources,
         providerMetadata: result.providerMetadata as Record<string, unknown> | undefined,
       };

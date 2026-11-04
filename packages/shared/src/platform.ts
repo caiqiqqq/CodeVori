@@ -652,6 +652,9 @@ export interface IPlatformService {
   /** 释放当前窗口里已创建的远程 session */
   disposeRemoteSession(sessionId: string): Promise<void>;
 
+  /** 停止当前窗口该设备共享的远端 stdio 服务；同时关闭其工作区 attachment。 */
+  stopRemoteService?(sessionId: string): Promise<void>;
+
   /** 检查本机 Docker daemon 是否可用 */
   isDockerAvailable(): Promise<boolean>;
 

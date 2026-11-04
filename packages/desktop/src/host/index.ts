@@ -2714,6 +2714,33 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
   }
 
   if (msg.type === HostMessageTypes.DisposeRemoteWorkspaceSession) {
+    if (msg.stopService) {
+      void windowRemoteConnectionRegistry.stopService(msg.remoteSessionId).then(
+        () =>
+          parentPort.postMessage({
+            type: HostResponseTypes.RemoteWorkspaceServiceStopResult,
+            requestId: msg.requestId,
+            remoteSessionId: msg.remoteSessionId,
+            result: { ok: true },
+          }),
+        (error) => {
+          logger.warn("failed to stop remote service", error);
+          parentPort.postMessage({
+            type: HostResponseTypes.RemoteWorkspaceServiceStopResult,
+            requestId: msg.requestId,
+            remoteSessionId: msg.remoteSessionId,
+            result: {
+              ok: false,
+              error:
+                error instanceof Error
+                  ? error.message || "Remote service stop failed"
+                  : "Remote service stop failed",
+            },
+          });
+        },
+      );
+      return;
+    }
     const disposedSession = windowRemoteConnectionRegistry.getSession(msg.remoteSessionId);
     windowHostAttachmentRegistry.detachRemoteSessionAttachments(msg.remoteSessionId);
     void windowRemoteConnectionRegistry

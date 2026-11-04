@@ -39,7 +39,10 @@ import {
 import { browserCommandResultSchema } from "../browser-use/result.js";
 import { integratedTerminalShellSelectionSchema } from "../validationAppSettings.js";
 import { zcodeTaskModeSchema } from "../zcode-task-mode-schema.js";
-import { OFFICIAL_MCP_AUTH_PORT_FAILURE_REASONS } from "../official-mcp-auth.js";
+import {
+  OFFICIAL_AUTH_CONSUMER_KINDS,
+  OFFICIAL_MCP_AUTH_PORT_FAILURE_REASONS,
+} from "../official-mcp-auth.js";
 import {
   zcodeDeliveryKindSchema,
   zcodeMessageVisibilitySchema,
@@ -2467,10 +2470,28 @@ export const zcodeOfficialMcpAuthHeadersRequestParamsSchema = z
     requestId: nonEmptyString,
     workspace: zcodeWorkspaceRefSchema,
     pluginId: nonEmptyString,
-    mcpKey: nonEmptyString,
+    consumer: z.enum(OFFICIAL_AUTH_CONSUMER_KINDS).optional(),
+    mcpKey: nonEmptyString.optional(),
     targetOrigin: nonEmptyString,
   })
-  .strict();
+  .strict()
+  .superRefine((params, ctx) => {
+    const isCommand = params.consumer === "plugin-command";
+    if (isCommand && params.mcpKey !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "plugin-command must not carry mcpKey",
+        path: ["mcpKey"],
+      });
+    }
+    if (!isCommand && params.mcpKey === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "mcpKey is required for mcp-server",
+        path: ["mcpKey"],
+      });
+    }
+  });
 export type ZCodeOfficialMcpAuthHeadersRequestParams = z.infer<
   typeof zcodeOfficialMcpAuthHeadersRequestParamsSchema
 >;

@@ -170,6 +170,17 @@ export class PermissionService {
       );
     }
 
+    // 修复：项目 ask 提前返回会把 Plan 的硬拒绝降级成可批准执行，也会丢失 MCP 的
+    // user-once 标记，让 hook/prepareApproval 免确认放行。先保留 Plan 的收紧结论，
+    // 只读 allow 则仍留给项目 ask 继续收紧，不能反过来抹掉用户配置的确认。
+    const planDecision = planEnabled ? this.checkPlanMode(context, capability) : undefined;
+    if (planDecision?.decision === "deny" || planDecision?.approvalMode === "user-once") {
+      return planDecision;
+    }
+    if (planEnabled && context.mode === "guarded" && toolCapability?.userApprovalRule) {
+      return this.guardedSingleUseAsk(context, capability, toolCapability.userApprovalRule);
+    }
+
     if (this.matchesProjectRules(projectRules, "ask", context, capability, rulePolicy)) {
       return this.ask(
         context,
@@ -180,14 +191,6 @@ export class PermissionService {
     }
 
     if (planEnabled) {
-      const planDecision = this.checkPlanMode(context, capability);
-      if (planDecision?.decision === "deny") return planDecision;
-      // 修复原因：上方 guarded 单次确认带 !planEnabled，开着 Plan 时被整个跳过，下方又补回 guarded
-      // 放行；危险命令规则一旦匹配到能通过闸门的工具，guarded + Plan 就会免确认执行。
-      // 闸门没拒绝时在这里补做单次确认，Plan 的拒绝仍优先。
-      if (context.mode === "guarded" && toolCapability?.userApprovalRule) {
-        return this.guardedSingleUseAsk(context, capability, toolCapability.userApprovalRule);
-      }
       if (planDecision) return planDecision;
       // 闸门放过后按原模式判定；yolo/guarded 的放行在上方因 planEnabled 被跳过，这里补回。
       if (context.mode === "yolo" || context.mode === "guarded") {

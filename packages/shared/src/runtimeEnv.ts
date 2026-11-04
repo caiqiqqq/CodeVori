@@ -1,3 +1,6 @@
+// 官方插件命令只接收会话能力 token；继承环境中的旧 token 必须清除。
+export const ZCODE_OFFICIAL_ENDPOINT_ENV_KEY = "ZCODE_OFFICIAL_ENDPOINT";
+export const ZCODE_OFFICIAL_ENDPOINT_TOKEN_ENV_KEY = "ZCODE_OFFICIAL_ENDPOINT_TOKEN";
 export const ZCODE_RUNTIME_ENV_KEY = "ZCODE_RUNTIME_ENV";
 export const ZCODE_HTTP_PROXY_ENV_KEY = "ZCODE_HTTP_PROXY";
 export const ZCODE_NO_PROXY_ENV_KEY = "ZCODE_NO_PROXY";
@@ -65,6 +68,8 @@ const SANITIZED_RUNTIME_ENV_KEYS = [
   // 已授权 Helper（confused-deputy）。这里统一从所有子进程 env 剔除；zcode-cua server 的定向
   // env 注入在 buildMcpStdioEnv 之后 spread，因此仍能拿到（见 adapters/mcp StdioClientTransport）。
   ZCODE_CUA_BROKER_SOCKET_ENV_KEY,
+  ZCODE_OFFICIAL_ENDPOINT_ENV_KEY,
+  ZCODE_OFFICIAL_ENDPOINT_TOKEN_ENV_KEY,
   // 遗留 bearer token：当前 broker 是 identity 模式（socket + authority，无口令，见
   // captureZCodeCuaBrokerCredentials），本进程不再产生也不再消费它。仍然剔除，因为用户机上
   // 可能装着旧版 Helper —— 那些版本认 bearer token，一旦这个变量随 agent 全局 env 漏给别的
@@ -101,6 +106,8 @@ const NON_TOOL_PASSTHROUGH_RUNTIME_ENV_KEYS = [
   "NODE_NO_WARNINGS",
   // CUA broker 凭据不得经 tool-env-passthrough 恢复到 Bash/tool 子进程（否则等于绕过上面的剔除）。
   ZCODE_CUA_BROKER_SOCKET_ENV_KEY,
+  ZCODE_OFFICIAL_ENDPOINT_ENV_KEY,
+  ZCODE_OFFICIAL_ENDPOINT_TOKEN_ENV_KEY,
   "ZCODE_CUA_PERMISSION_BROKER_REFRESH_MARKER",
   "ZCODE_CUA_PLUGIN_AUTHORITY",
   ZCODE_REMOTE_RUNTIME_NETWORK_AUTHORITY_ENV_KEY,

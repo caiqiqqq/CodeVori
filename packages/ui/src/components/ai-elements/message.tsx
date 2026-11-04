@@ -1131,11 +1131,20 @@ function MessageFileLink({ className, fileIconSrc, fileLink, onOpen }: MessageFi
   const { intl } = useZCodeIntl();
   const platform = usePlatform();
   const services = useOptionalServices();
-  const fileActions = useFileContextActions();
   const openInEditorContext = useWorkspaceOpenInEditorTarget({
     workspacePath: fileLink.workspacePath,
     workspaceIdentity: fileLink.workspaceIdentity,
     workspaceRemoteSessionId: fileLink.workspaceRemoteSessionId,
+  });
+  const fileActions = useFileContextActions({
+    canOpenLocalFileManager: Boolean(platform.canSelectFilePath),
+    isRemoteWorkspace: Boolean(
+      fileLink.workspaceIdentity ||
+      fileLink.workspaceRemoteSessionId ||
+      openInEditorContext.isRemoteWorkspace,
+    ),
+    remoteTarget: openInEditorContext.remoteTarget,
+    workspaceIdentity: fileLink.workspaceIdentity,
   });
   const [editors, setEditors] = useState<EditorInfo[]>([]);
   const [editorsLoaded, setEditorsLoaded] = useState(false);
@@ -1232,6 +1241,15 @@ function MessageFileLink({ className, fileIconSrc, fileLink, onOpen }: MessageFi
         <ContextMenuItem onSelect={onOpen}>
           {intl.formatMessage({ id: "common.open" })}
         </ContextMenuItem>
+        {fileActions.canRevealInFileManager({ path: fileLink.path }) ? (
+          <ContextMenuItem
+            onSelect={() =>
+              void fileActions.revealInFileManager({ path: fileLink.path, kind: fileLink.pathKind })
+            }
+          >
+            {intl.formatMessage({ id: "fileActions.revealInFileManager" })}
+          </ContextMenuItem>
+        ) : null}
         <ContextMenuSeparator />
         {selectedEditor ? (
           sortedEditors.map((editor) => (

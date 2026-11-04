@@ -5,6 +5,7 @@ import {
   ArrowRightIcon,
   DownloadIcon,
   CopyIcon,
+  PencilIcon,
   MessageSquarePlusIcon,
   MinusIcon,
   PlusIcon,
@@ -20,6 +21,7 @@ import { useOptionalPlatform } from "@/hooks/usePlatform.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useImagePreviewActions } from "@/hooks/useImagePreviewActions.js";
 import { ImageDownloadError, readBoundedImageBlob } from "@/lib/imagePreviewData.js";
+import { ImagePreviewEditor } from "@/image-preview-editor/ImagePreviewEditor.js";
 import { logger } from "@/logger.js";
 
 export interface ImagePreviewDialogItem {
@@ -125,6 +127,7 @@ export function ImagePreviewDialog({
   const platform = useOptionalPlatform();
   const imageActions = useImagePreviewActions();
   const [imageActionPending, setImageActionPending] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [activeIndex, setActiveIndex] = useState(initialIndex);
   const [previewScale, setPreviewScale] = useState(1);
   const [previewOffset, setPreviewOffset] = useState(defaultPreviewOffset);
@@ -162,6 +165,7 @@ export function ImagePreviewDialog({
   const navigate = (direction: -1 | 1) => {
     if (items.length <= 1) return;
     const next = (activeIndex + direction + items.length) % items.length;
+    setEditing(false);
     setActiveIndex(next);
     onActiveIndexChange?.(next);
     resetPreviewTransform();
@@ -169,6 +173,7 @@ export function ImagePreviewDialog({
 
   useEffect(() => {
     if (!open) return;
+    setEditing(false);
     setActiveIndex(Math.min(Math.max(initialIndex, 0), Math.max(items.length - 1, 0)));
     resetPreviewTransform();
   }, [initialIndex, items.length, open]);
@@ -186,14 +191,14 @@ export function ImagePreviewDialog({
   }, [activeIndex, open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || editing) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "ArrowLeft") navigate(-1);
       else if (event.key === "ArrowRight") navigate(1);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeIndex, items.length, open]);
+  }, [activeIndex, items.length, open, editing]);
 
   const clampPreviewOffset = (offset: PreviewOffset, scale: number) => {
     const image = previewImageRef.current;
@@ -388,8 +393,18 @@ export function ImagePreviewDialog({
           {activeItem?.alt || intl.formatMessage({ id: "chat.attachments.preview.title" })}
         </DialogTitle>
         <div className="pointer-events-auto absolute right-4 top-4 z-20 flex items-center gap-2 [app-region:no-drag] platform-mac-desktop:top-12 platform-linux-desktop:right-6 platform-linux-desktop:top-4 platform-windows-desktop:right-6 platform-windows-desktop:top-[calc(env(titlebar-area-height,48px)_+_0.5rem)]">
-          {!activeItemIsVideo ? (
+          {!activeItemIsVideo && !editing ? (
             <>
+              <Button
+                type="button"
+                aria-label={intl.formatMessage({ id: "imageEditor.edit" })}
+                disabled={!activeItem?.src}
+                onClick={() => setEditing(true)}
+                size="icon-md"
+                variant="secondary"
+              >
+                <PencilIcon />
+              </Button>
               <Button
                 type="button"
                 aria-label={intl.formatMessage({ id: "markdownImage.copy" })}
@@ -441,7 +456,7 @@ export function ImagePreviewDialog({
             </Button>
           </DialogClose>
         </div>
-        {hasMultiple ? (
+        {hasMultiple && !editing ? (
           <>
             <Button
               type="button"
@@ -517,6 +532,15 @@ export function ImagePreviewDialog({
                 </p>
               ) : null}
             </div>
+          ) : activeItem.src && editing ? (
+            <ImagePreviewEditor
+              src={activeItem.src}
+              alt={activeItem.alt}
+              filename={activeItem.filename}
+              imageTestId={imageTestId}
+              onSaved={() => onOpenChange(false)}
+              onClose={() => setEditing(false)}
+            />
           ) : activeItem.src ? (
             <div
               className="flex size-full min-h-0 min-w-0 touch-none cursor-grab items-center justify-center overflow-hidden active:cursor-grabbing"
@@ -542,7 +566,7 @@ export function ImagePreviewDialog({
             </div>
           ) : null
         ) : null}
-        {!activeItemIsVideo ? (
+        {!activeItemIsVideo && !editing ? (
           <div className="pointer-events-auto absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-popover-border bg-popover/95 p-1 shadow-md [app-region:no-drag]">
             <Button
               type="button"

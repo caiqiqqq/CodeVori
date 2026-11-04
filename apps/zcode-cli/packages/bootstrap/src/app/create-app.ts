@@ -1,3 +1,6 @@
+import { withOfficialCommandEnv } from "../official-command-endpoint/index.js";
+import { resolveMcpNodeFallbackProvider } from "./mcp-node-fallback.js";
+import { startWorkflowQuotaAutoResume } from "./dynamic-workflow-quota-resume.js";
 import { isAbsolute, join, resolve } from "node:path";
 import {
   createInMemorySessionEventStore,
@@ -380,6 +383,7 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
         ? undefined
         : (options.mcpPortFactory?.({ workingDirectory }) ??
           createMcpAdapter({
+            nodeFallback: resolveMcpNodeFallbackProvider({ cliStorageRoot, logger }),
             clientVersion: appVersion,
             env: options.env,
             logger,
@@ -391,7 +395,7 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
             workingDirectory,
           })));
     const ownsMcpPort = options.mcpPort === undefined && mcpPort !== undefined;
-    const executionPort =
+    const baseExecutionPort =
       options.executionPort ??
       createNodeExecutionAdapter({
         onToolExecResource: options.onToolExecResource,
@@ -403,6 +407,20 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
         outputRootDir: join(storageRoot, "cli", "exec"),
         processEnv: options.env ?? process.env,
       });
+    // Bash 的前台/后台沿同一执行端口注入会话能力，保持后台任务 owner 与生命周期。
+    const executionPort = options.officialCommandEnv
+      ? withOfficialCommandEnv(
+          baseExecutionPort,
+          () =>
+            options.officialCommandEnv!(sessionId, {
+              workspacePath: workingDirectory ?? process.cwd(),
+              ...(options.runtimeConfig?.memory?.workspaceIdentity
+                ? { workspaceIdentity: options.runtimeConfig.memory.workspaceIdentity }
+                : {}),
+            }),
+          logger,
+        )
+      : baseExecutionPort;
     const ownsExecutionPort = options.executionPort === undefined;
     const pdfDocumentPort =
       options.pdfDocumentPort ?? createPopplerPdfDocumentAdapter({ executionPort });
@@ -845,12 +863,43 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       traceContext,
       workingDirectory,
     });
+    // 额度停止的 run 到点自动续跑（dynamic-workflow-quota-resume.ts）。续跑与 UI 的「恢复」同一条路
+    // （port.resume → 重臂追踪：终态通知、后台任务条目、常驻护栏），外加统一执行边界：冷启动补做时
+    // 会话可能还没从存储恢复。
+    const quotaAutoResume =
+      dynamicWorkflowRunPort === undefined ||
+      dynamicWorkflowJournal === undefined ||
+      typeof dynamicWorkflowRunPort.resume !== "function"
+        ? undefined
+        : startWorkflowQuotaAutoResume({
+            journal: dynamicWorkflowJournal,
+            logger,
+            parentSessionId: sessionId,
+            resume: async (runId) => {
+              await prepareUserExecutionBoundary({ traceContext });
+              const result = await dynamicWorkflowRunPort.resume!(runId);
+              if (result.ok) {
+                await getRuntime().trackResumedDynamicWorkflowRun({
+                  runId: result.runId,
+                  ...(result.toolCallId === undefined ? {} : { toolCallId: result.toolCallId }),
+                  traceContext,
+                });
+              }
+              return result;
+            },
+            subscribeRunSettled: (listener) => dynamicWorkflowRunPort.subscribeRunSettled(listener),
+          });
     const sessionFacade = createSessionFacade({
       // App 关闭时停下本会话拥有的 dwf run：
       // 引擎活在本 App 的闭包里，关掉 App 而不停它，journal 行会停在 running 等下一次孤儿收敛。
       ...(dynamicWorkflowRunPort === undefined
         ? {}
-        : { closeDynamicWorkflowRuns: () => dynamicWorkflowRunPort.close() }),
+        : {
+            closeDynamicWorkflowRuns: () => {
+              quotaAutoResume?.dispose();
+              return dynamicWorkflowRunPort.close();
+            },
+          }),
       configResult,
       configuredMcpServers,
       ...(options.configuredDefaultModelSelection

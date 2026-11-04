@@ -295,3 +295,97 @@ test("a failed joined workspace releases its current WSL owner", async () => {
     await registry.dispose();
   }
 });
+
+test("explicit stop closes every project of one physical owner and preserves other devices", async () => {
+  const fixture = createFixture();
+  try {
+    const a = await fixture.connect("shared", "a");
+    const b = await fixture.connect("shared", "b");
+    const other = await fixture.connect("other", "a");
+    await fixture.registry.stopService(a.remoteSessionId);
+    assert.equal(fixture.disposals, 1);
+    assert.equal(fixture.registry.getSession(a.remoteSessionId), null);
+    assert.equal(fixture.registry.getSession(b.remoteSessionId), null);
+    assert.equal(fixture.registry.getSession(other.remoteSessionId)?.state, "online");
+    await assert.rejects(fixture.registry.stopService(a.remoteSessionId), /不可用/);
+    const replacement = await fixture.connect("shared", "a");
+    assert.equal(fixture.connections, 3);
+    assert.equal(fixture.registry.getSession(replacement.remoteSessionId)?.state, "online");
+  } finally {
+    await fixture.registry.dispose();
+  }
+});
+
+test("late stop completion cannot remove a replacement connection", async () => {
+  let release!: () => void;
+  let next = 0,
+    connections = 0;
+  const closed: string[] = [];
+  const registry = createWindowRemoteConnectionRegistry({
+    createId: () => `stop-${++next}`,
+    onSessionClosed: (event) => closed.push(event.remoteSessionId),
+    connect: async () => ({
+      services: { owner: ++connections },
+      dispose:
+        connections === 1
+          ? () =>
+              new Promise<void>((resolve) => {
+                release = resolve;
+              })
+          : () => {},
+    }),
+  });
+  const connect = (requestId: string) =>
+    registry.connect({
+      requestId,
+      target: { kind: "docker", container: "fixture" },
+      remoteAssets: {},
+    });
+  try {
+    const old = await connect("old");
+    const stopping = registry.stopService(old.remoteSessionId);
+    const replacement = await connect("replacement");
+    release();
+    await stopping;
+    assert.deepEqual(closed, [old.remoteSessionId]);
+    assert.equal(registry.getSession(replacement.remoteSessionId)?.state, "online");
+    assert.equal(registry.getStats().logicalSessionCount, 1);
+  } finally {
+    release?.();
+    await registry.dispose();
+  }
+});
+
+test("failed stop releases invalidated sessions and reports the transport error", async () => {
+  let next = 0;
+  const closed: { remoteSessionId: string; error?: string }[] = [];
+  const registry = createWindowRemoteConnectionRegistry({
+    createId: () => `failed-stop-${++next}`,
+    onSessionClosed: (event) => closed.push(event),
+    connect: async ({ target }) => ({
+      services: {},
+      dispose: () => {
+        if (target.kind === "docker" && target.container === "failing")
+          throw Error("transport stop failed");
+      },
+    }),
+  });
+  const connect = (container: string, requestId: string) =>
+    registry.connect({ requestId, target: { kind: "docker", container }, remoteAssets: {} });
+  try {
+    const a = await connect("failing", "a");
+    const b = await connect("failing", "b");
+    const other = await connect("other", "other");
+    await assert.rejects(registry.stopService(a.remoteSessionId), /transport stop failed/);
+    assert.equal(registry.getSession(a.remoteSessionId), null);
+    assert.equal(registry.getSession(b.remoteSessionId), null);
+    assert.deepEqual(
+      closed.map((event) => event.remoteSessionId),
+      [a.remoteSessionId, b.remoteSessionId],
+    );
+    assert.ok(closed.every((event) => event.error === "transport stop failed"));
+    assert.equal(registry.getSession(other.remoteSessionId)?.state, "online");
+  } finally {
+    await registry.dispose();
+  }
+});

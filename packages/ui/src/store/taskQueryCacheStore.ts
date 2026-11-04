@@ -116,9 +116,10 @@ function buildCachedTaskListResult(params: {
 function matchesTaskMembership(
   descriptor: TaskListCacheDescriptor,
   membership: TaskListMembershipState,
+  unreadAt?: number,
 ): boolean {
   const kind = descriptor.kind === "workspace" ? "timeline" : descriptor.kind;
-  return matchesTaskListMembershipKind(membership, kind);
+  return matchesTaskListMembershipKind(membership, kind, unreadAt);
 }
 
 function matchesTaskSearch(descriptor: TaskListCacheDescriptor, task: ZCodeTaskMeta): boolean {
@@ -139,7 +140,10 @@ function matchesTaskDescriptor(
     return false;
   }
 
-  return matchesTaskMembership(descriptor, membership) && matchesTaskSearch(descriptor, task);
+  return (
+    matchesTaskMembership(descriptor, membership, task.unreadAt) &&
+    matchesTaskSearch(descriptor, task)
+  );
 }
 
 function sortTaskKeysByDescriptor(params: {

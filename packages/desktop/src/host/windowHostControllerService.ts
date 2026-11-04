@@ -575,7 +575,7 @@ export function createWindowHostControllerRuntime(options: {
               };
           return (
             selectedSources.has(sourceKey(scope)) &&
-            matchesTaskListMembershipKind(row.membership, query.kind)
+            matchesTaskListMembershipKind(row.membership, query.kind, row.meta.unreadAt)
           );
         })
         .map((row) => ({

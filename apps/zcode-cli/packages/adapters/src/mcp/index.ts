@@ -1,3 +1,9 @@
+import {
+  applyMcpNodeFallbackEnv,
+  type McpNodeFallback,
+  type McpNodeFallbackProvider,
+} from "./node-fallback.js";
+export { createMcpNodeFallbackProvider, type McpNodeFallbackProvider } from "./node-fallback.js";
 import { randomUUID } from "node:crypto";
 import { MCP_APP_META_KEY, readMcpAppResource } from "@zcode/shared";
 import { resolve } from "node:path";
@@ -104,6 +110,7 @@ const MCP_STDIO_STDERR_LOG_MAX_CHARS = 4_000;
 const MAX_TRACKED_SERVER_REQUEST_IDS = 64;
 
 export interface CreateMcpAdapterOptions {
+  nodeFallback?: McpNodeFallbackProvider;
   clientName?: string;
   clientVersion?: string;
   connectionContext?: McpConnectionContext;
@@ -196,6 +203,7 @@ class NodeMcpAdapter implements McpPort {
   private readonly logger?: Logger;
   private readonly mcpOAuth?: McpOAuthRuntimeOptions;
   private readonly network?: NetworkEgressEnvPolicy;
+  private readonly nodeFallback?: McpNodeFallbackProvider;
   private readonly officialMcpAuth?: CreateMcpAdapterOptions["officialMcpAuth"];
   private readonly telemetry?: McpTelemetryTracker;
   private readonly connectionGenerations = new Map<string, number>();
@@ -235,6 +243,7 @@ class NodeMcpAdapter implements McpPort {
     });
     this.mcpOAuth = options.mcpOAuth;
     this.network = options.network;
+    this.nodeFallback = options.nodeFallback;
     this.officialMcpAuth = options.officialMcpAuth;
     this.telemetry = options.telemetry;
     this.workingDirectory = options.workingDirectory;
@@ -1057,6 +1066,16 @@ class NodeMcpAdapter implements McpPort {
       config.type === "stdio" ? "process_start_failed" : "network_unreachable";
 
     try {
+      // 回退准备包含文件 IO，沿用连接超时/取消边界，避免启动永久停在 connecting。
+      const nodeFallback =
+        config.type === "stdio" && this.nodeFallback
+          ? await withTimeout(
+              this.nodeFallback.resolve(),
+              timeoutMs,
+              `MCP server ${name} node fallback preparation timed out`,
+              signal,
+            )
+          : undefined;
       const transportBundle = await this.createTransport(
         config,
         name,
@@ -1064,6 +1083,7 @@ class NodeMcpAdapter implements McpPort {
         oauthAuthorizationTimeoutMs,
         workingDirectory,
         signal,
+        nodeFallback,
       );
       transport = transportBundle.transport;
       getRecentStderr = this.attachStdioLogging(name, transport);
@@ -1447,6 +1467,7 @@ class NodeMcpAdapter implements McpPort {
     _oauthAuthorizationTimeoutMs?: number,
     workingDirectory?: string,
     signal?: AbortSignal,
+    nodeFallback?: McpNodeFallback,
   ): Promise<{ transport: McpTransport }> {
     if (config.type === "stdio") {
       return {
@@ -1456,10 +1477,13 @@ class NodeMcpAdapter implements McpPort {
           cwd: config.cwd
             ? resolve(workingDirectory ?? this.workingDirectory ?? process.cwd(), config.cwd)
             : (workingDirectory ?? this.workingDirectory),
-          env: {
-            ...buildMcpStdioEnv({ env: this.env, network: this.network }),
-            ...config.env,
-          },
+          env: applyMcpNodeFallbackEnv(
+            {
+              ...buildMcpStdioEnv({ env: this.env, network: this.network }),
+              ...config.env,
+            },
+            nodeFallback,
+          ),
           stderr: "pipe",
           ...(isOfficialAuthConfig(config) && config.official
             ? {
@@ -1965,3 +1989,5 @@ function isPeerAnsweredError(error: unknown): boolean {
   if (error instanceof ProtocolError) return true;
   return isRecord(error) && typeof error.code === "number";
 }
+
+export { createMcpTransportFetch } from "./network.js";

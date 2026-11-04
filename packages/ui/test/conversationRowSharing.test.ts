@@ -115,6 +115,19 @@ function fixture() {
     setEpoch(value: string) {
       epoch = value;
     },
+    alignedRecovery() {
+      emit(
+        {
+          topic,
+          subscriptionId: activeSubscription,
+          fromSeq: seq,
+          toSeq: seq,
+          sentAt: 1,
+          payload: { kind: "deltas", deltas: [] },
+        },
+        "recovery",
+      );
+    },
     delta(deltas: ConversationDelta[], deliveryKind: TopicFrameDeliveryKind = "online") {
       const fromSeq = seq++;
       emit(
@@ -151,11 +164,57 @@ test("stale detail waits for the real same-sub recovery snapshot across an epoch
     const original = store.getState().snapshot!;
     const subscription = store.getState().subscriptionId;
     f.setEpoch("recovered-epoch");
-    const recovered = await waitForRecoveredAuthority(store, original);
+    const recovered = await waitForRecoveredAuthority(store);
     assert.equal(recovered.logEpoch, "recovered-epoch");
     assert.notEqual(recovered, original);
     assert.equal(store.getState().subscriptionId, subscription);
     assert.equal(store.getState().status, "live");
+  } finally {
+    await close();
+  }
+});
+
+test("history pagination cannot end the artifact authority recovery wait", async () => {
+  const f = fixture();
+  const { store, close } = await f.open();
+  const resync = f.transport.resync;
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.transport.resync = async (params) => {
+    await gate;
+    return resync(params);
+  };
+  let settled = false;
+  const pending = waitForRecoveredAuthority(store).then((snapshot) => {
+    settled = true;
+    return snapshot;
+  });
+  try {
+    await store.loadOlder();
+    assert.equal(store.getState().snapshot!.rows.window.length, 4);
+    assert.equal(settled, false, "local history rows are not a recovered authority");
+    f.setEpoch("recovered-epoch");
+    release();
+    assert.equal((await pending).logEpoch, "recovered-epoch");
+  } finally {
+    release();
+    await close();
+    await pending.catch(() => {});
+  }
+});
+
+test("aligned recovery ends the artifact wait without replacing the snapshot", async () => {
+  const f = fixture();
+  const { store, close } = await f.open();
+  const original = store.getState().snapshot!;
+  f.transport.resync = async ({ subscriptionId }) => {
+    f.alignedRecovery();
+    return { ack: { subscriptionId, mode: "resume", logEpoch: original.logEpoch } };
+  };
+  try {
+    assert.equal(await waitForRecoveredAuthority(store), original);
   } finally {
     await close();
   }

@@ -77,7 +77,12 @@ const OFFICIAL_CUA_REQUIRED_SEED_PATHS = [
   "dist/mcp/server.js",
   ...(process.platform === "darwin" && process.arch === "x64"
     ? ["dist/native/OpenZCodeNative"]
-    : ["dist/native/ax_native.node", "dist/native/helper.mjs", "dist/native/runtime.json", ...(process.platform === "darwin" ? ["dist/native/cocoa-runloop.node"] : [])]),
+    : [
+        "dist/native/ax_native.node",
+        "dist/native/helper.mjs",
+        "dist/native/runtime.json",
+        ...(process.platform === "darwin" ? ["dist/native/cocoa-runloop.node"] : []),
+      ]),
   "dist/LICENSE",
   "dist/NOTICE",
 ] as const;
@@ -92,6 +97,37 @@ const OFFICIAL_ZCODE_GUIDE_REQUIRED_SEED_PATHS = [
 ] as const;
 
 export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = [
+  {
+    name: "zcode-site",
+    version: "0.4.2",
+    defaultEnabled: true,
+    listing: {
+      author: ZAI_AUTHOR,
+      category: "developer-tools",
+      displayName: "ZCode Sites",
+      description_i18n: {
+        "zh-CN": "一键部署网站，查看部署记录、日志与用量。",
+        "en-US": "Deploy websites and manage deployments, logs and usage.",
+      },
+    },
+    requiredSeedPaths: [
+      "dist/server.mjs",
+      "dist/ui/panel.html",
+      "scripts/zcode-site.mjs",
+      "scripts/site-client.mjs",
+      "scripts/site-project.mjs",
+      "scripts/site-help.mjs",
+      "scripts/stage.mjs",
+      "skills/site-deploy/SKILL.md",
+    ],
+    runtimeTopLevelPaths: ["scripts"],
+    rootCandidates: [
+      "packages/zcode-site-plugin",
+      "../zcode-site-plugin",
+      "../../zcode-site-plugin",
+      "../../../zcode-site-plugin",
+    ],
+  },
   {
     // 无 listing：宿主不进市场、不对用户露出。它必须始终可用，因为 node_repl 的注册门禁
     // 是「Browser Use 或 Computer Use 任一启用」，宿主自己不参与那个判断。

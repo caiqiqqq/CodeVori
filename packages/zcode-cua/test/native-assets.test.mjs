@@ -32,7 +32,7 @@ test("native importer rejects arbitrary bytes and unsupported targets before loa
 test("every native asset is pinned to one release and exact platform; Intel compatibility has its own path", () => {
   assert.deepEqual(Object.keys(NATIVE_ASSETS).sort(), ["darwin-arm64", "win32-arm64", "win32-x64"]);
   for (const asset of Object.values(NATIVE_ASSETS)) {
-    assert.equal(asset.version, "3.16.3");
+    assert.equal(asset.version, "3.17.2");
     assert.match(asset.sha256, /^[a-f0-9]{64}$/);
     assert.equal(Buffer.from(asset.archiveSha512, "base64").length, 64);
     assert.ok(asset.url.startsWith("https://cdn-zcode.z.ai/"));
@@ -40,7 +40,7 @@ test("every native asset is pinned to one release and exact platform; Intel comp
   // 原因：CDN 目录与安装包文件名的平台名不同，不能从文件名推导下载目录。
   assert.equal(
     new URL(NATIVE_ASSETS["darwin-arm64"].url).pathname,
-    "/zcode/electron/releases/3.16.3/macos-arm64/ZCode-3.16.3-mac-arm64.zip",
+    "/zcode/electron/releases/3.17.2/macos-arm64/ZCode-3.17.2-mac-arm64.zip",
   );
   assert.ok(
     resolveOpenComputerUseNative({ env: {}, platform: "darwin", arch: "x64" }).endsWith(
@@ -81,7 +81,7 @@ test("bundled native manifest detects modified helper before launch", async (t) 
       JSON.stringify({
         platform: "darwin",
         arch: "arm64",
-        version: "3.16.3",
+        version: "3.17.2",
         sha256: NATIVE_ASSETS["darwin-arm64"].sha256,
         helperSha256: "0".repeat(64),
       }),

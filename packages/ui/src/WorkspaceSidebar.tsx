@@ -663,6 +663,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
       setWorkspaceTaskOrganizeBy(taskOrganizeBy);
     }
   }, [taskOrganizeBy]);
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const taskViewMode = resolveSidebarTaskViewMode({
     taskOrganizeBy,
   });
@@ -716,9 +717,10 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     setCreateGroupedTaskDraftAction(() => action);
   }, []);
   const shouldShowPinnedTasks =
+    !unreadOnly &&
     // grouped 主体会主动过滤 pinned task；如果同页不渲染全局置顶区，
     // 从 Header 置顶当前任务后整条 row 会无处展示，看起来像 session 被删除。
-    taskViewMode === "workspace" || taskViewMode === "timeline" || taskViewMode === "grouped";
+    (taskViewMode === "workspace" || taskViewMode === "timeline" || taskViewMode === "grouped");
   const workspaceScrollRef = useRef<HTMLDivElement | null>(null);
   const [showWorkspaceTopMask, setShowWorkspaceTopMask] = useState(false);
   const [showWorkspaceBottomMask, setShowWorkspaceBottomMask] = useState(false);
@@ -1177,6 +1179,16 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              variant={unreadOnly ? "secondary" : "ghost"}
+              size="sm"
+              data-testid="sidebar-unread-filter"
+              aria-pressed={unreadOnly}
+              onClick={() => setUnreadOnly((value) => !value)}
+            >
+              {intl.formatMessage({ id: "workspaceSidebar.unreadOnly" })}
+            </Button>
             {taskViewMode === "grouped" ? (
               <ControlHintTooltip
                 title={workspaceReadOnlyReason ?? intl.formatMessage({ id: "taskGroup.newGroup" })}
@@ -1291,6 +1303,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     ),
     [
       activePrimaryTaskMode,
+      unreadOnly,
       createGroupedTaskGroupAction,
       handlePrimaryTaskModeChange,
       handleToggleAllTaskGroups,
@@ -1462,7 +1475,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                   />
                 ) : null}
                 <div className="flex min-h-0 flex-col gap-3 px-2">
-                  {taskViewMode === "grouped" ? (
+                  {!unreadOnly && taskViewMode === "grouped" ? (
                     <WorkspaceGroupedTasksSection
                       workspaceTabs={workspaceTabs}
                       activeWorkspacePath={selectedWorkspacePath}
@@ -1482,8 +1495,9 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                       onStickyGroupHeaderChange={setGroupedStickyHeader}
                       onOpenAutomations={handleOpenAutomationsMain}
                     />
-                  ) : taskViewMode === "timeline" ? (
+                  ) : unreadOnly || taskViewMode === "timeline" ? (
                     <WorkspaceTimelineTasksSection
+                      unreadOnly={unreadOnly}
                       workspaceTabs={workspaceTabs}
                       activeWorkspacePath={selectedWorkspacePath}
                       activeWorkspaceIdentity={selectedWorkspaceIdentity}

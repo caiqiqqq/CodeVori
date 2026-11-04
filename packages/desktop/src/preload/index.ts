@@ -271,6 +271,8 @@ contextBridge.exposeInMainWorld("zcode", {
     workspaceIdentity?: string;
   }): Promise<void> =>
     ipcRenderer.invoke(PlatformChannels.BindRemoteWorkspaceSessionContext, context),
+  stopRemoteService: (sessionId: string): Promise<void> =>
+    ipcRenderer.invoke(PlatformChannels.StopRemoteService, sessionId),
   disposeRemoteSession: (sessionId: string): Promise<void> =>
     ipcRenderer.invoke(PlatformChannels.DisposeRemoteSession, sessionId),
   isDockerAvailable: (): Promise<boolean> => ipcRenderer.invoke(PlatformChannels.IsDockerAvailable),

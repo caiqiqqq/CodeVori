@@ -28,6 +28,12 @@ export function DeviceBridgeSettingsSection() {
   useEffect(() => {
     if (inspectedNode && !inspectedPeer) setInspectedNode(null);
   }, [inspectedNode, inspectedPeer]);
+  const [search, setSearch] = useState("");
+  const visiblePeers = (state?.peers ?? []).filter((peer) =>
+    `${peer.name} ${peer.os} ${peer.nodeId}`
+      .toLocaleLowerCase()
+      .includes(search.trim().toLocaleLowerCase()),
+  );
   const [apiKey, setApiKey] = useState("");
   useEffect(() => {
     setApiKey("");
@@ -141,7 +147,16 @@ export function DeviceBridgeSettingsSection() {
               {t("refresh")}
             </Button>
           </div>
-          {!state?.peers.length ? (
+          <div className="px-4 pb-3">
+            <Input
+              aria-label={t("search")}
+              placeholder={t("search")}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              data-testid="device-bridge-search"
+            />
+          </div>
+          {!visiblePeers.length ? (
             <p
               className="border-t border-border p-4 text-ui-sm text-foreground-subtle"
               data-testid="device-bridge-empty"
@@ -150,10 +165,10 @@ export function DeviceBridgeSettingsSection() {
             </p>
           ) : (
             <ul className="divide-y divide-border border-t border-border">
-              {state.peers.map((peer) => (
+              {visiblePeers.map((peer) => (
                 <li
                   key={peer.nodeId}
-                  className="min-w-0 space-y-3 p-4"
+                  className="min-w-0 space-y-2 px-4 py-2"
                   data-testid={`device-bridge-peer-${peer.nodeId}`}
                 >
                   <div className="flex min-w-0 items-start gap-3">
@@ -165,7 +180,7 @@ export function DeviceBridgeSettingsSection() {
                         </h4>
                         <DeviceBridgePeerStatus
                           peer={peer}
-                          networkReady={state.phase === "running" && authorized}
+                          networkReady={state?.phase === "running" && authorized}
                         />
                       </div>
                       <p className="text-ui-sm text-foreground-subtle">{peer.os}</p>
@@ -222,7 +237,7 @@ export function DeviceBridgeSettingsSection() {
                     <Button
                       className={buttonClass}
                       variant="outline"
-                      disabled={busy || !authorized || !state.managementConfigured}
+                      disabled={busy || !authorized || !state?.managementConfigured}
                       onClick={async () => {
                         if (
                           await confirm({

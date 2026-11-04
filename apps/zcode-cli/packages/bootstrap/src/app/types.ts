@@ -173,6 +173,10 @@ export interface ZCodeAppOptions {
   mcpPortFactory?: (input: { workingDirectory?: string }) => McpPort;
   permissionBroker?: PermissionBrokerPort;
   eventSink?: SessionEventSink;
+  officialCommandEnv?: (
+    sessionId: string,
+    workspace: { workspacePath: string; workspaceIdentity?: string },
+  ) => Promise<Record<string, string>>;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform | string;
   projectConfigPath?: string;

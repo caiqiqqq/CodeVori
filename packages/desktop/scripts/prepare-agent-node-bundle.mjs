@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { stageBundledNpm } from "./bundled-npm-assets.mjs";
 
 // 桌面打包态的 agent 运行时资产：把 agent 的 JS bundle（zcode.cjs）放进 bundled-agents/<platform>/glm，
 // 由 app 内置的 Electron Node runtime（ELECTRON_RUN_AS_NODE）执行，替代以前随包内置的独立 Node 二进制。
@@ -90,6 +91,22 @@ const browserUseRequiredRuntimePaths = [
   "skills/web-gui-tester/SKILL.md",
 ];
 const officialPluginPackages = [
+  {
+    packageName: "@zcode/zcode-site-plugin",
+    relativePath: "apps/zcode-cli/packages/zcode-site-plugin",
+    requiresRuntime: true,
+    requiredRuntimePaths: [
+      "dist/server.mjs",
+      "dist/ui/panel.html",
+      "scripts/zcode-site.mjs",
+      "scripts/site-client.mjs",
+      "scripts/site-project.mjs",
+      "scripts/site-help.mjs",
+      "scripts/stage.mjs",
+    ],
+    runtimeBuildScript: "scripts/build.mjs",
+    stagedPath: "packages/zcode-site-plugin",
+  },
   ...(["darwin", "win32"].includes(platform)
     ? [
         {
@@ -317,3 +334,8 @@ buildOfficialPluginRuntimes();
 stageBundle();
 stageOfficialPlugins();
 await stageBundledSkillPack();
+
+await stageBundledNpm({
+  cacheDir: resolve(repoRoot, "node_modules", ".cache", "zcode-bundled-npm"),
+  glmDir,
+});
