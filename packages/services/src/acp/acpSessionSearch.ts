@@ -56,6 +56,13 @@ export function searchAcpSessions(
       matches,
     });
   }
+  return finishAcpSessionSearch(items, input);
+}
+
+export function finishAcpSessionSearch(
+  items: AcpSessionSearchItem[],
+  input: AcpSessionSearchInput,
+): AcpSessionSearchItem[] {
   items.sort(
     (left, right) =>
       right.updatedAt - left.updatedAt ||
