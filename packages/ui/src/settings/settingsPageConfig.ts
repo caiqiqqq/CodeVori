@@ -62,6 +62,13 @@ const BASE_SETTINGS_SECTION_GROUPS: Array<{
 ];
 
 const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
+  { id: "projects", icon: FolderTree, titleId: "settings.projects.title", groupId: "basics" },
+  {
+    id: "remoteSync",
+    icon: Network,
+    titleId: "settings.remoteSync.title",
+    groupId: "dataAndStats",
+  },
   {
     id: "general",
     icon: Settings2,

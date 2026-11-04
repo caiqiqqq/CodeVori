@@ -1,3 +1,7 @@
+import {
+  createOfficialCommandEndpoint,
+  type OfficialCommandEndpoint,
+} from "./official-command-endpoint/index.js";
 import { createConfig, resolvePath } from "@zcode/adapters/config";
 import { join } from "node:path";
 import { createNodeToolArtifactStore } from "@zcode/adapters/storage";
@@ -5,6 +9,7 @@ import { createNodeModelSelectionFacade } from "@zcode/provider-node";
 import { createNodeLoggerFactory } from "@zcode/adapters/logging";
 import {
   createMcpAdapterConnectionPool,
+  createMcpTransportFetch,
   createMcpTelemetryTracker,
   type McpConnectionPool,
   type McpTelemetryTracker,
@@ -35,6 +40,7 @@ import { StartupTimer, startupNow } from "./startup-logging.js";
 import { installZCodeProtocolAiSdkWarningLogger } from "./zcode-protocol/ai-sdk-warning-logger.js";
 import {
   createOfficialMcpAuthHeadersPort,
+  createOfficialCommandAuthHeadersPort,
   type OfficialMcpAuthRequestContext,
 } from "./zcode-protocol/official-mcp-auth-port.js";
 import {
@@ -126,6 +132,7 @@ export async function runZCodeProtocolAgent(
   let sessionStore: SqliteSessionStore | undefined;
   let serverForCleanup: ZCodeProtocolAgentServer | undefined;
   let nodeReplBrowserBroker: NodeReplBrowserBroker | undefined;
+  let officialCommandEndpoint: OfficialCommandEndpoint | undefined;
   let mcpConnectionPool: McpConnectionPool | undefined;
   let mcpPort: McpPort | undefined;
   let mcpTelemetryTracker: McpTelemetryTracker | undefined;
@@ -203,9 +210,8 @@ export async function runZCodeProtocolAgent(
     let officialMcpAuthContext: OfficialMcpAuthRequestContext | undefined;
     // stdio 官方 MCP 没有 url 可供校验，targetOrigin 只能由宿主给出。
     // 与下面 trustedOrigins 的 resolveZCodeApiOrigin 必须是同一个表达式，否则两侧判定分叉。
-    const resolveZCodeApiOrigin = (): string =>
-      resolveRuntimeZCodeEndpointOrigin(options.env ?? process.env);
-    const workspaceIdentity = (options.env ?? process.env)[ZCODE_WORKSPACE_IDENTITY_ENV]?.trim();
+    const resolveZCodeApiOrigin = (): string => resolveRuntimeZCodeEndpointOrigin(runtimeEnv);
+    const workspaceIdentity = runtimeEnv[ZCODE_WORKSPACE_IDENTITY_ENV]?.trim();
     const officialMcpAuth = {
       authHeadersPort: createOfficialMcpAuthHeadersPort({
         resolveContext: () => officialMcpAuthContext,
@@ -229,10 +235,24 @@ export async function runZCodeProtocolAgent(
       // 信任判定只看一条：目标 origin 等于当前 ZCode API origin（https）。pluginId 不参与。
       // origin 运行时解析（跟随 production/test 与自建环境），不硬编码域名。
       trustedOrigins: createOfficialMcpTrustedOriginRegistry({
-        devTrustedOriginsRaw: (options.env ?? process.env)[OFFICIAL_MCP_DEV_TRUSTED_ORIGINS_ENV],
+        devTrustedOriginsRaw: runtimeEnv[OFFICIAL_MCP_DEV_TRUSTED_ORIGINS_ENV],
         resolveZCodeApiOrigin,
       }),
     };
+    officialCommandEndpoint = createOfficialCommandEndpoint({
+      resolveHeaders: createOfficialCommandAuthHeadersPort({
+        resolveContext: () => officialMcpAuthContext,
+        logger,
+      }).resolveHeaders,
+      resolveZCodeApiOrigin,
+      appVersion: runtimeEnv.ZCODE_APP_VERSION?.trim() || options.version,
+      fetch: createMcpTransportFetch({
+        env: runtimeEnv,
+        network: configResult.config.network,
+      }),
+      logger,
+    });
+    const activeOfficialCommandEndpoint = officialCommandEndpoint;
     mcpConnectionPool =
       configResult.config.features.mcp === false
         ? undefined
@@ -290,6 +310,8 @@ export async function runZCodeProtocolAgent(
                   }),
               }
             : {}),
+          officialCommandEnv: (sessionId, workspace) =>
+            activeOfficialCommandEndpoint.envForSession(sessionId, workspace),
           sourceTitle: "electron",
           artifactStore,
           onToolExecResource: (params) =>
@@ -369,6 +391,9 @@ export async function runZCodeProtocolAgent(
     throw error;
   } finally {
     options.lifecycle?.requestShutdown();
+    await officialCommandEndpoint
+      ?.close()
+      .catch(() => logger.warn("Official command endpoint close failed"));
     await cleanupProtocolRuntime({
       logger,
       deadlineAt: options.lifecycle?.deadlineAt,

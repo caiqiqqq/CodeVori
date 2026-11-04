@@ -27,9 +27,14 @@ export function createNativeService({ executable, assertActive = () => {} }) {
       assertActive();
       await host.start();
     },
-    async callTool(name, args) {
+    async callTool(name, args, cursorContext) {
       assertActive();
-      const result = await host.call("tool.call", { session: host.session, name, args });
+      const result = await host.call("tool.call", {
+        session: host.session,
+        name,
+        args,
+        cursorContext,
+      });
       if (name === "stop_computer_control" && !result.isError) service.stopped = true;
       return result;
     },

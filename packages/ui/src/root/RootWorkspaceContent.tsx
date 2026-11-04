@@ -198,6 +198,7 @@ export function RootWorkspaceContent({
             onBack={activeWorkspacePath ? handleBackFromSettings : undefined}
             onCreateTask={handleCreateTask}
             onOpenWorkspace={handleOpenWorkspace}
+            onReconnectRemoteWorkspace={handleReconnectRemoteWorkspace}
             allowOpenWorkspace={allowOpenWorkspace}
             onLogout={handleLogout}
             user={user}

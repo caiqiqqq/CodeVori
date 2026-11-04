@@ -52,6 +52,7 @@ export interface WorkspaceSettingsLayerProps {
   onBack?: () => void;
   onCreateTask?: (request?: CreateTaskRequest) => void;
   onOpenWorkspace?: () => void;
+  onReconnectRemoteWorkspace?: (workspaceKey: string) => Promise<void>;
   allowOpenWorkspace?: RootProps["allowOpenWorkspace"];
   onLogout?: () => void;
   user?: UserInfo | null;

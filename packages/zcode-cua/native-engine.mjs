@@ -1,3 +1,4 @@
+import { createSessionCursor } from "./native-session-cursor.mjs";
 import { randomUUID } from "node:crypto";
 import { toolError, toolResult } from "./vendor/open-zcode-computer-use/src/results.mjs";
 import { dispatchNativeAction } from "./native-input.mjs";
@@ -14,13 +15,14 @@ export class NativeEngine {
     now = Date.now,
     withRunLoop = (run) => run(),
   }) {
-    this.native = native;
+    this.session = randomUUID();
+    this.cursor = createSessionCursor(native, this.session);
+    this.native = this.cursor.native;
     this.platform = platform;
     this.now = now;
     this.withRunLoop = withRunLoop;
     this.states = new Map();
     this.stopped = false;
-    this.session = randomUUID();
   }
 
   permissions() {
@@ -317,7 +319,7 @@ export class NativeEngine {
     return dispatchNativeAction(this, name, args);
   }
 
-  async callTool(name, supplied = {}) {
+  async callTool(name, supplied = {}, cursorContext = {}) {
     const args = { ...supplied };
     // 仅服务内部兼容旧 facade 的翻译，MCP 不再发布这些别名。
     const clicks = {
@@ -336,6 +338,8 @@ export class NativeEngine {
       name = "key";
     }
     try {
+      if (!["stop_computer_control", "request_access"].includes(name))
+        this.cursor.bind(cursorContext);
       const invalid = validateToolRequest(name, args);
       if (invalid) fail("invalid_arguments", invalid);
       if (this.stopped && !["stop_computer_control", "request_access"].includes(name))
@@ -377,6 +381,7 @@ export class NativeEngine {
   }
 
   async close() {
+    this.cursor.close();
     await this.native.cancelInputHoldsForSession?.(this.session);
     for (const state of this.states.values()) this.release(state);
   }

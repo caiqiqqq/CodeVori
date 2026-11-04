@@ -1,6 +1,15 @@
 /* eslint-disable max-lines -- 共享能力外壳聚合 Scope，并承载 Plugin tabs 与独立 Commands 入口。 */
+import { updatePluginsSerially } from "@/settings/pluginUpdateAll.js";
 import { PluginAddMenu } from "@/settings/PluginAddMenu.js";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Loader2,
   Monitor,
@@ -377,6 +386,68 @@ function PluginList({
     },
     [pluginManagementService, refreshAfterPluginChange, updatePlugin],
   );
+  const [updatingAll, setUpdatingAll] = useState(false);
+  const updateAllAbortRef = useRef<AbortController | null>(null);
+  useLayoutEffect(
+    () => () => updateAllAbortRef.current?.abort(),
+    [targetKey, configScope, pluginManagementService, targetServiceResolution.rpcReady],
+  );
+  const updatablePluginIds = [...scopedPluginGroups.installed, ...scopedPluginGroups.builtIn]
+    .filter((plugin) => canUpdatePluginItem(storeItemById.get(plugin.id)))
+    .map((plugin) => plugin.id);
+  const handleUpdateAll = async () => {
+    if (updateAllAbortRef.current && !updateAllAbortRef.current.signal.aborted) return;
+    const batch = new AbortController();
+    updateAllAbortRef.current = batch;
+    const contextKey = () => {
+      const state = usePluginManagementStore.getState();
+      return JSON.stringify([state.workspacePath, state.workspaceIdentity, state.configScope]);
+    };
+    const started = contextKey();
+    setUpdatingAll(true);
+    try {
+      const result = await updatePluginsSerially(
+        updatablePluginIds,
+        (id) => updatePlugin(id, pluginManagementService),
+        {
+          isCurrent: () => !batch.signal.aborted && contextKey() === started,
+          needsUpdate: (id) => {
+            const state = usePluginManagementStore.getState();
+            return (
+              state.operationId !== `plugin:update:${id}` &&
+              canUpdatePluginItem({
+                orphaned: false,
+                installedMeta: state.installedPlugins.find((plugin) => plugin.id === id),
+              })
+            );
+          },
+        },
+      );
+      // 每项更新已重载 owner；旧批次不得再 initialize，把新 Scope 覆盖回旧目标。
+      toast(
+        intl.formatMessage(
+          {
+            id: result.aborted
+              ? "settings.plugins.updateAll.aborted"
+              : result.failed.length
+                ? "settings.plugins.updateAll.partial"
+                : "settings.plugins.updateAll.done",
+          },
+          {
+            count: String(result.succeeded.length),
+            succeeded: String(result.succeeded.length),
+            failed: String(result.failed.length),
+            plugins: result.failed.join(", "),
+          },
+        ),
+      );
+    } finally {
+      if (updateAllAbortRef.current === batch) {
+        updateAllAbortRef.current = null;
+        setUpdatingAll(false);
+      }
+    }
+  };
   const selectedPlugin = plugins.find((plugin) => plugin.id === selectedPluginId) ?? null;
   // 插件自身 warning 诊断（如声明的技能路径扫描为空）：详情高级区展示，避免静默失败。
   const pluginWarningsForSelected = selectedPlugin
@@ -787,6 +858,21 @@ function PluginList({
             </span>
           </h3>
           <div className="flex flex-wrap items-center gap-2">
+            {updatablePluginIds.length ? (
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="plugin-settings-update-all"
+                disabled={updatingAll || operationId !== null}
+                onClick={() => void handleUpdateAll()}
+              >
+                {updatingAll ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                {intl.formatMessage(
+                  { id: "settings.plugins.updateAll" },
+                  { count: String(updatablePluginIds.length) },
+                )}
+              </Button>
+            ) : null}
             {connectedRemoteSyncTarget ? (
               <ControlHintTooltip
                 title={intl.formatMessage({

@@ -262,6 +262,7 @@ export function RemoteSkillSyncDialog(props: RemoteSkillSyncDialogProps) {
     remoteSkillSyncService,
     remoteTarget,
     workspacePath,
+    workspaceIdentity,
     onSynced,
   } = props;
   const [step, setStep] = useState<Step>("loading");
@@ -271,6 +272,7 @@ export function RemoteSkillSyncDialog(props: RemoteSkillSyncDialogProps) {
   const [importResult, setImportResult] = useState<SkillSyncImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const syncInFlightRef = useRef(false);
+  const syncAbortRef = useRef<AbortController | null>(null);
   // 加载请求可能跨越语言切换，effect 闭包中的 intl 会过期；错误提示必须读取最近一次渲染的实例。
   const latestIntlRef = useRef(intl);
   latestIntlRef.current = intl;
@@ -281,6 +283,8 @@ export function RemoteSkillSyncDialog(props: RemoteSkillSyncDialogProps) {
     }
 
     let cancelled = false;
+    syncAbortRef.current?.abort();
+    syncAbortRef.current = null;
     setStep("loading");
     setRows([]);
     setSelectedIds(new Set());
@@ -317,8 +321,11 @@ export function RemoteSkillSyncDialog(props: RemoteSkillSyncDialogProps) {
 
     return () => {
       cancelled = true;
+      // 目标切换或 Dialog 卸载会绕过关闭按钮，停止旧 generation 后续写入和 UI 更新。
+      syncAbortRef.current?.abort();
+      syncAbortRef.current = null;
     };
-  }, [localSkillSyncService, open, remoteSkillSyncService]);
+  }, [localSkillSyncService, open, remoteSkillSyncService, workspacePath, workspaceIdentity]);
 
   const visibleRows = useMemo(
     () => filterRemoteSkillSyncRows(rows, showExistingRemoteSkills),
@@ -368,12 +375,15 @@ export function RemoteSkillSyncDialog(props: RemoteSkillSyncDialogProps) {
     }
 
     syncInFlightRef.current = true;
+    const controller = new AbortController();
+    syncAbortRef.current = controller;
     setError(null);
     setStep("preflighting");
     try {
       const access = await runRemoteSyncPreflightWithTimeout(() =>
         remoteSkillSyncService.checkRemoteUserSkillWriteAccess(),
       );
+      if (controller.signal.aborted) return;
       if (!access.ok) {
         throw new Error(
           intl.formatMessage(
@@ -386,14 +396,18 @@ export function RemoteSkillSyncDialog(props: RemoteSkillSyncDialogProps) {
       const archive = await localSkillSyncService.exportSkillsArchive({
         skillIds: selectedSyncIds,
       });
+      if (controller.signal.aborted) return;
       const result = await remoteSkillSyncService.importSkillsArchive({
         archive: archive.archive,
         overwrite: false,
       });
+      if (controller.signal.aborted) return;
       await onSynced();
+      if (controller.signal.aborted) return;
       setImportResult(result);
       setStep("complete");
     } catch (syncError) {
+      if (controller.signal.aborted) return;
       setError(
         isRemoteSyncPreflightTimeoutError(syncError)
           ? intl.formatMessage(
@@ -404,7 +418,10 @@ export function RemoteSkillSyncDialog(props: RemoteSkillSyncDialogProps) {
       );
       setStep("selection");
     } finally {
-      syncInFlightRef.current = false;
+      if (syncAbortRef.current === controller) {
+        syncAbortRef.current = null;
+        syncInFlightRef.current = false;
+      }
     }
   };
 

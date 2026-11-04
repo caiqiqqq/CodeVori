@@ -259,6 +259,7 @@ export const hostDisposeRemoteWorkspaceSessionMessageSchema = z
     type: z.literal("dispose-remote-workspace-session"),
     requestId: nonEmptyStringSchema,
     remoteSessionId: nonEmptyStringSchema,
+    stopService: z.boolean().optional(),
   })
   .strict();
 
@@ -545,6 +546,21 @@ export const hostRemoteWorkspaceClosedResponseSchema = z
     error: z.string().optional(),
   })
   .strict();
+
+export const hostRemoteWorkspaceServiceStopResultResponseSchema = z
+  .object({
+    type: z.literal("remote-workspace-service-stop-result"),
+    requestId: nonEmptyStringSchema,
+    remoteSessionId: nonEmptyStringSchema,
+    result: z.discriminatedUnion("ok", [
+      z.object({ ok: z.literal(true) }).strict(),
+      z.object({ ok: z.literal(false), error: nonEmptyStringSchema }).strict(),
+    ]),
+  })
+  .strict();
+export type HostRemoteWorkspaceServiceStopResultResponse = z.infer<
+  typeof hostRemoteWorkspaceServiceStopResultResponseSchema
+>;
 
 export const hostLogResponseSchema = z.object({
   type: z.literal("log"),
@@ -998,6 +1014,7 @@ export const hostResponseMessageSchema = z.discriminatedUnion("type", [
   hostRemoteWorkspaceConnectedResponseSchema,
   hostRemoteWorkspaceConnectFailedResponseSchema,
   hostRemoteWorkspaceClosedResponseSchema,
+  hostRemoteWorkspaceServiceStopResultResponseSchema,
   hostLogResponseSchema,
   hostAgentProcessSpawnedResponseSchema,
   hostAgentProcessReadyResponseSchema,

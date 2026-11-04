@@ -11,6 +11,8 @@ const pump =
   process.platform === "darwin"
     ? createRequire(import.meta.url)(join(dirname(addonPath), "cocoa-runloop.node")).pump
     : null;
+// 动画和会话光标独立于单次工具等待，不能仅在粘贴期间泵 Cocoa 事件。
+const cursorPump = pump ? setInterval(pump, 16) : null;
 const engine = new NativeEngine({
   native,
   withRunLoop: async (run) => {
@@ -25,6 +27,7 @@ const engine = new NativeEngine({
 if (mode === "permissions") {
   process.stdout.write(`${JSON.stringify(engine.permissions())}\n`);
   await engine.close();
+  if (cursorPump) clearInterval(cursorPump);
   process.exit(0);
 }
 if (mode !== "host") throw new Error("Unknown computer control helper mode.");
@@ -46,7 +49,11 @@ async function receive(line) {
     case "tool.call":
       if (!session || request.params.session !== session || stopping)
         throw new Error("Invalid native session.");
-      result = await engine.callTool(request.params.name, request.params.args);
+      result = await engine.callTool(
+        request.params.name,
+        request.params.args,
+        request.params.cursorContext,
+      );
       break;
     case "session.end":
       stopping = true;

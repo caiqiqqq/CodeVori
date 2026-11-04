@@ -6,7 +6,7 @@ import { buildTaskEntityKey } from "@/lib/taskQueryCache.js";
 import { compareZCodeTaskListItems } from "@/lib/taskListOrdering.js";
 import { attachTaskListRowActivity, getTaskListRowActivity } from "@/v4/taskListRowActivity.js";
 
-type TaskListKind = "pinned" | "archived" | "timeline" | "active";
+type TaskListKind = "pinned" | "archived" | "timeline" | "active" | "unread";
 type TaskListSortBy = "created" | "updated";
 
 interface BuildTaskListParams {
@@ -185,7 +185,8 @@ export function buildTaskListResult(params: BuildTaskListParams): BuildTaskListR
     if (params.deletedIds?.has(task.taskId)) return false;
     const pinned = params.pinnedIds.has(task.taskId);
     const archived = params.archivedIds.has(task.taskId);
-    if (!matchesTaskListMembershipKind({ pinned, archived }, params.kind)) return false;
+    if (!matchesTaskListMembershipKind({ pinned, archived }, params.kind, task.unreadAt))
+      return false;
     if (query && !task.title.toLocaleLowerCase().includes(query)) return false;
     return true;
   });

@@ -43,6 +43,7 @@ interface OpenSplitButtonProps {
   onOpenCodeViewer?: (source: CodeViewerSource) => void;
   hideOpenWithMenu?: boolean;
   stopPropagation?: boolean;
+  fullCard?: boolean;
 }
 
 export function OpenSplitButton({
@@ -52,10 +53,11 @@ export function OpenSplitButton({
   onOpenCodeViewer,
   hideOpenWithMenu = false,
   stopPropagation = false,
+  fullCard = false,
 }: OpenSplitButtonProps) {
   const { intl } = useZCodeIntl();
   const platform = usePlatform();
-  const fileActions = useFileContextActions();
+
   const previewSource = target.type === "file" ? target.previewSource : undefined;
   const matchedOpenContext = useWorkspaceOpenInEditorTarget({
     workspacePath: previewSource?.workspacePath,
@@ -68,6 +70,12 @@ export function OpenSplitButton({
     previewSource?.workspaceRemoteSessionId ||
     matchedOpenContext.isRemoteWorkspace,
   );
+  const fileActions = useFileContextActions({
+    canOpenLocalFileManager: Boolean(platform.canSelectFilePath),
+    isRemoteWorkspace: isRemoteSource,
+    remoteTarget: openInEditorRemoteTarget,
+    workspaceIdentity: previewSource?.workspaceIdentity,
+  });
   const [editors, setEditors] = useState<EditorInfo[]>([]);
   const [editorsLoaded, setEditorsLoaded] = useState(false);
   const [loadingEditors, setLoadingEditors] = useState(false);
@@ -227,7 +235,11 @@ export function OpenSplitButton({
           type="button"
           variant="ghost"
           size="default"
-          className="h-7 rounded-none border-0 gap-1 pr-1.5"
+          className={
+            fullCard
+              ? "h-7 rounded-none border-0 gap-1 pr-1.5 after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-ring"
+              : "h-7 rounded-none border-0 gap-1 pr-1.5"
+          }
           disabled={!canPreview}
           onClick={(event) => {
             stopEventPropagation(event);
@@ -241,7 +253,7 @@ export function OpenSplitButton({
             type="button"
             variant="ghost"
             size="icon-md"
-            className="!w-5 rounded-none border-0 text-foreground-subtlest"
+            className="relative z-10 !w-5 rounded-none border-0 text-foreground-subtlest"
             aria-label={intl.formatMessage({ id: "appHeader.selectOpenApp" })}
             title={intl.formatMessage({ id: "appHeader.selectOpenApp" })}
             onClick={stopEventPropagation}
@@ -277,6 +289,15 @@ export function OpenSplitButton({
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
+            {fileActions.canRevealInFileManager({ path: target.path }) ? (
+              <DropdownMenuItem
+                onSelect={() =>
+                  void fileActions.revealInFileManager({ path: target.path, kind: "file" })
+                }
+              >
+                {intl.formatMessage({ id: "fileActions.revealInFileManager" })}
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem
               onSelect={() => void fileActions.copyAbsolutePath({ path: target.path })}
             >

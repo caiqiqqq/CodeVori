@@ -92,6 +92,22 @@ const browserUseRequiredRuntimePaths = [
   "skills/web-gui-tester/SKILL.md",
 ];
 const remoteOfficialPluginPackages = [
+  {
+    packageName: "@zcode/zcode-site-plugin",
+    relativePath: "apps/zcode-cli/packages/zcode-site-plugin",
+    requiresRuntime: true,
+    requiredRuntimePaths: [
+      "dist/server.mjs",
+      "dist/ui/panel.html",
+      "scripts/zcode-site.mjs",
+      "scripts/site-client.mjs",
+      "scripts/site-project.mjs",
+      "scripts/site-help.mjs",
+      "scripts/stage.mjs",
+    ],
+    runtimeBuildScript: "scripts/build.mjs",
+    stagedPath: "packages/zcode-site-plugin",
+  },
   // 44b25ed46c「remove bundled plugins except browser use and cua」删掉了其余
   // 内置插件源码，但漏改这份清单，bootstrap:with-remote 在 staging 第一个 manifest 就抛
   // missing。此处与 packages/desktop/scripts/prepare-agent-node-bundle.mjs 的桌面 seed

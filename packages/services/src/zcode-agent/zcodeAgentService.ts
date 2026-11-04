@@ -938,6 +938,7 @@ interface CreateZCodeAgentServiceOptions extends Omit<
    */
   officialMcpAuthHeadersResolver?: {
     resolveHeaders(request: {
+      consumer?: "mcp-server" | "plugin-command";
       mcpKey: string;
       pluginId: string;
       targetOrigin: string;
@@ -2437,6 +2438,16 @@ export function createZCodeAgentService(
             });
             return;
           }
+          // 命令身份不得借用设置探测 CLI 的登记；继续复用聊天 owner 的工作区路由。
+          if (lane === "mcp-status" && parsed.data.consumer === "plugin-command") {
+            void client.respondError(request.id, {
+              code: -32602,
+              message: "Command auth is unavailable in MCP status lane",
+            });
+            return;
+          }
+          const consumer = parsed.data.consumer ?? "mcp-server";
+          const mcpKey = parsed.data.mcpKey ?? "";
           // host 侧二次校验必须发生在**读取凭据之前**：未命中即返回，resolveHeaders 不被调用，
           // 因此不会有任何凭据被读入内存。
           void (async () => {
@@ -2444,7 +2455,7 @@ export function createZCodeAgentService(
             const trust = trustedOrigins
               ? await trustedOrigins
                   .isTrusted({
-                    mcpKey: parsed.data.mcpKey,
+                    mcpKey,
                     origin: parsed.data.targetOrigin,
                     pluginId: parsed.data.pluginId,
                   })
@@ -2455,7 +2466,7 @@ export function createZCodeAgentService(
               // 只记录非敏感的请求上下文；凭据未被读取，自然也无从泄露。
               logger.warn(request.trace?.traceId, "官方 MCP 身份头请求未通过 host 侧可信校验", {
                 detail: trust.detail ?? "unknown",
-                mcpKey: parsed.data.mcpKey,
+                mcpKey,
                 pluginId: parsed.data.pluginId,
                 requestId: parsed.data.requestId,
                 targetOrigin: parsed.data.targetOrigin,
@@ -2478,7 +2489,8 @@ export function createZCodeAgentService(
             try {
               const resolveStartedAt = Date.now();
               const result = await resolver.resolveHeaders({
-                mcpKey: parsed.data.mcpKey,
+                consumer,
+                mcpKey,
                 pluginId: parsed.data.pluginId,
                 targetOrigin: parsed.data.targetOrigin,
                 workspace: authWorkspace,
@@ -2488,14 +2500,14 @@ export function createZCodeAgentService(
               if (result.ok) {
                 const firstIssuance = officialMcpIssuanceAudit.markFirst(
                   parsed.data.pluginId,
-                  parsed.data.mcpKey,
+                  mcpKey,
                   authWorkspace.workspaceKey,
                 );
                 const logIssuance = firstIssuance ? logger.info : logger.debug;
                 logIssuance(request.trace?.traceId, "官方 MCP 身份头已解析", {
                   firstIssuance,
                   ...summarizeOfficialMcpIdentityHeaders(result.headers),
-                  mcpKey: parsed.data.mcpKey,
+                  mcpKey,
                   pluginId: parsed.data.pluginId,
                   requestId: parsed.data.requestId,
                   resolveDurationMs: Date.now() - resolveStartedAt,
@@ -2503,7 +2515,7 @@ export function createZCodeAgentService(
                 });
               } else {
                 logger.info(request.trace?.traceId, "官方 MCP 身份头不可用", {
-                  mcpKey: parsed.data.mcpKey,
+                  mcpKey,
                   pluginId: parsed.data.pluginId,
                   reason: result.reason,
                   requestId: parsed.data.requestId,
@@ -2517,7 +2529,7 @@ export function createZCodeAgentService(
               // 且此处绝不能让 MCP 退化成匿名请求。凭证原文不进日志。
               logger.warn(request.trace?.traceId, "官方 MCP 身份头解析失败", {
                 error: error instanceof Error ? error.message : String(error),
-                mcpKey: parsed.data.mcpKey,
+                mcpKey,
                 pluginId: parsed.data.pluginId,
                 requestId: parsed.data.requestId,
                 targetOrigin: parsed.data.targetOrigin,

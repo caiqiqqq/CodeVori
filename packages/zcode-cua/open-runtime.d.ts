@@ -26,7 +26,12 @@ export interface OpenComputerUseService {
   callTool(
     name: string,
     args?: Record<string, unknown>,
-    options?: { signal?: AbortSignal; runtimeScope?: "main" | "subagent" },
+    options?: {
+      signal?: AbortSignal;
+      runtimeScope?: "main" | "subagent";
+      cursorSessionId?: string;
+      actionTitle?: string;
+    },
   ): Promise<{
     isError?: boolean;
     content: unknown[];

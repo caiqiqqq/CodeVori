@@ -50,6 +50,7 @@ export function WorkspaceTimelineTasksSection({
   activeAcpSessionId,
   taskSortBy,
   groupByDate = true,
+  unreadOnly = false,
   taskRowVariant = "timeline",
   worktreeWorkspaceKeys,
   expanded = true,
@@ -64,6 +65,7 @@ export function WorkspaceTimelineTasksSection({
   activeAcpSessionId?: string | null;
   taskSortBy: "created" | "updated";
   groupByDate?: boolean;
+  unreadOnly?: boolean;
   taskRowVariant?: "default" | "timeline";
   worktreeWorkspaceKeys?: ReadonlySet<string>;
   expanded?: boolean;
@@ -151,8 +153,8 @@ export function WorkspaceTimelineTasksSection({
     hasMore: localHasMore,
     loading: localLoading,
   } = useGlobalTaskList({
-    kind: "timeline",
-    workspaceTabs: scopedWorkspaceTabs,
+    kind: unreadOnly ? "unread" : "timeline",
+    workspaceTabs: unreadOnly ? workspaceTabs : scopedWorkspaceTabs,
     sortBy: taskSortBy,
     searchQuery: "",
     expanded: false,
@@ -181,15 +183,17 @@ export function WorkspaceTimelineTasksSection({
     [workspaceTabs],
   );
   const remoteItems = useMemo(() => {
+    if (unreadOnly) return [];
     return remoteWorkspaceKeys.flatMap(
       (workspaceKey) => remoteTimelineItemsByWorkspaceKey[workspaceKey] ?? [],
     );
-  }, [remoteTimelineItemsByWorkspaceKey, remoteWorkspaceKeys]);
+  }, [remoteTimelineItemsByWorkspaceKey, remoteWorkspaceKeys, unreadOnly]);
   const sortedItems = useMemo(() => {
-    return [...localItems, ...remoteItems].sort((left, right) =>
-      compareZCodeTaskListItems(left, right, taskSortBy),
-    );
-  }, [localItems, remoteItems, taskSortBy]);
+    // 查询换代期间可能仍有上一页投影，未读视图不得短暂露出已读行。
+    return [...localItems, ...remoteItems]
+      .filter((item) => !unreadOnly || typeof item.unreadAt === "number")
+      .sort((left, right) => compareZCodeTaskListItems(left, right, taskSortBy));
+  }, [localItems, remoteItems, taskSortBy, unreadOnly]);
   const items = sortedItems.slice(0, visibleTaskLimit);
   const displayItems = useMemo(() => {
     const combined = [
@@ -200,7 +204,10 @@ export function WorkspaceTimelineTasksSection({
         updatedAt: item.updatedAt,
       })),
       ...acpSessions
-        .filter((item) => !item.pinned && !item.archived)
+        .filter(
+          (item) =>
+            !item.archived && (unreadOnly ? typeof item.unreadAt === "number" : !item.pinned),
+        )
         .map((item) => ({
           kind: "acp" as const,
           item,
@@ -220,7 +227,7 @@ export function WorkspaceTimelineTasksSection({
         return right[field] - left[field] || right.createdAt - left.createdAt;
       })
       .slice(0, visibleTaskLimit);
-  }, [acpSessions, sortedItems, taskSortBy, visibleTaskLimit]);
+  }, [acpSessions, sortedItems, taskSortBy, visibleTaskLimit, unreadOnly]);
   const itemByKey = useMemo(() => {
     const nextItemByKey = new Map<string, ZCodeTaskMeta>();
     for (const item of items) {
@@ -257,29 +264,35 @@ export function WorkspaceTimelineTasksSection({
       }))
       .filter((group) => group.items.length > 0);
   }, [groupByDate, displayItems, locale, taskSortBy, workspaceServiceLookup]);
-  const remoteTotal = remoteWorkspaceKeys.reduce(
-    (sum, workspaceKey) =>
-      sum +
-      (remoteTimelineTotalByWorkspaceKey[workspaceKey] ??
-        remoteTimelineItemsByWorkspaceKey[workspaceKey]?.length ??
-        0),
-    0,
-  );
-  const visibleAcpCount = acpSessions.filter((item) => !item.pinned && !item.archived).length;
+  const remoteTotal = unreadOnly
+    ? 0
+    : remoteWorkspaceKeys.reduce(
+        (sum, workspaceKey) =>
+          sum +
+          (remoteTimelineTotalByWorkspaceKey[workspaceKey] ??
+            remoteTimelineItemsByWorkspaceKey[workspaceKey]?.length ??
+            0),
+        0,
+      );
+  const visibleAcpCount = acpSessions.filter(
+    (item) => !item.archived && (unreadOnly ? typeof item.unreadAt === "number" : !item.pinned),
+  ).length;
   const total = localTotal + remoteTotal + visibleAcpCount;
-  const remoteHasMore = remoteWorkspaceKeys.some(
-    (workspaceKey) => remoteTimelineHasMoreByWorkspaceKey[workspaceKey],
-  );
-  const syncingRemoteWorkspaces = workspaceTabs.some((tab) => {
-    if (!tab.workspaceIdentity && !tab.remoteTarget && !tab.remoteSessionId) {
-      return false;
-    }
-    return Boolean(
-      remoteTimelineLoadingByWorkspaceKey[
-        buildTaskWorkspaceKey(tab.workspacePath, tab.workspaceIdentity)
-      ],
-    );
-  });
+  const remoteHasMore =
+    !unreadOnly &&
+    remoteWorkspaceKeys.some((workspaceKey) => remoteTimelineHasMoreByWorkspaceKey[workspaceKey]);
+  const syncingRemoteWorkspaces =
+    !unreadOnly &&
+    workspaceTabs.some((tab) => {
+      if (!tab.workspaceIdentity && !tab.remoteTarget && !tab.remoteSessionId) {
+        return false;
+      }
+      return Boolean(
+        remoteTimelineLoadingByWorkspaceKey[
+          buildTaskWorkspaceKey(tab.workspacePath, tab.workspaceIdentity)
+        ],
+      );
+    });
   const loading = localLoading || syncingRemoteWorkspaces;
   const hasKnownMore = localHasMore || remoteHasMore || total > displayItems.length;
   const currentLimitFilled = sortedItems.length + visibleAcpCount >= visibleTaskLimit;
@@ -289,7 +302,7 @@ export function WorkspaceTimelineTasksSection({
 
   useEffect(() => {
     setVisibleTaskLimit(collapsedLimit);
-  }, [expanded, taskSortBy, workspaceTabsSignature]);
+  }, [expanded, taskSortBy, workspaceTabsSignature, unreadOnly]);
 
   useEffect(() => {
     // 这条日志会随着远端 timeline 同步和 tab 恢复多次触发。
@@ -312,6 +325,8 @@ export function WorkspaceTimelineTasksSection({
   }, [remoteItems.length, scopedWorkspaceTabs, workspaceTabs]);
 
   useEffect(() => {
+    // 未读通过 Controller 在所有 source 的完整投影上分页，避免复用 timeline 首屏缓存漏项。
+    if (unreadOnly) return;
     const remoteTabs = workspaceTabs.filter(
       (tab) => tab.workspaceIdentity || tab.remoteTarget || tab.remoteSessionId,
     );
@@ -336,7 +351,7 @@ export function WorkspaceTimelineTasksSection({
         limit: visibleTaskLimit,
       });
     }
-  }, [taskSortBy, visibleTaskLimit, workspaceServiceLookup, workspaceTabs]);
+  }, [taskSortBy, visibleTaskLimit, workspaceServiceLookup, workspaceTabs, unreadOnly]);
 
   const handleCancelArchiveConfirm = useCallback(() => {
     setPendingArchiveItemKey(null);

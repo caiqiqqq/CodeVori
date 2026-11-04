@@ -120,12 +120,13 @@ export const windowHostControllerTaskRowSchema = z
   });
 export type WindowHostControllerTaskRow = z.infer<typeof windowHostControllerTaskRowSchema>;
 
-export type TaskListMembershipKind = "pinned" | "archived" | "timeline" | "active";
+export type TaskListMembershipKind = "pinned" | "archived" | "timeline" | "active" | "unread";
 
 /** Host 查询和各 Renderer 投影共用的 task list membership 判定。 */
 export function matchesTaskListMembershipKind(
   membership: Pick<WindowHostControllerTaskRow["membership"], "pinned" | "archived">,
   kind: TaskListMembershipKind,
+  unreadAt?: number,
 ): boolean {
   switch (kind) {
     case "pinned":
@@ -134,6 +135,8 @@ export function matchesTaskListMembershipKind(
       return membership.archived;
     case "timeline":
       return !membership.pinned && !membership.archived;
+    case "unread":
+      return !membership.archived && typeof unreadAt === "number";
     case "active":
       return !membership.archived;
   }

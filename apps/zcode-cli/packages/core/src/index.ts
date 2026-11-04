@@ -185,3 +185,10 @@ export type {
   SessionEventSink,
 } from "@zcode/contracts";
 export { LogLevel, SessionEventType } from "@zcode/contracts";
+
+export {
+  supportsBackgroundTaskWaiter,
+  supportsBashBackgroundLifecycle,
+  type BackgroundTaskWaiterExecutionPort,
+  type BashBackgroundLifecycleExecutionPort,
+} from "./tool/handlers/bash-background-lifecycle.js";

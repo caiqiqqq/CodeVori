@@ -3,7 +3,6 @@ import type { OpenInEditorRemoteTarget } from "@zcode/shared";
 import { toast } from "@/components/ui/toast.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { getContainingDirectoryPath } from "@/lib/path.js";
 import { logger } from "@/logger.js";
 
 interface FileContextActionOptions {
@@ -19,16 +18,6 @@ interface FileContextActionTarget {
   relativePath?: string;
   deleted?: boolean;
   kind?: "file" | "directory";
-}
-
-function resolveFileManagerOpenPath(target: FileContextActionTarget): string {
-  if (target.kind === "directory") {
-    return target.path;
-  }
-
-  // 交互语义：审查面板里的“在文件管理器中打开”用于回到文件所在目录，
-  // 不能把文件路径直接交给系统，否则部分平台会打开默认应用而不是文件夹。
-  return getContainingDirectoryPath(target.path) ?? target.path;
 }
 
 export function useFileContextActions(options: FileContextActionOptions = {}) {
@@ -83,18 +72,23 @@ export function useFileContextActions(options: FileContextActionOptions = {}) {
         return;
       }
 
-      const openPath = resolveFileManagerOpenPath(target);
+      // 保留文件路径交由平台定位并选中，不能先丢弃文件名只打开父目录。
+      const openPath = target.path;
       // 审查区过去把所有远程工作区统一禁用；如果直接放开，又会把 WSL 的
       // Linux 路径交给本机文件管理器。只有精确解析到 WSL target 时才走 Explorer，
-      // 并保留该入口“打开文件所在目录”的既有语义，由 main 在平台边界转换为 UNC。
-      const result =
+      // 保留文件/目录类型，由 main 在平台边界转换为 UNC 并定位文件。
+      const result = await (
         remoteTarget?.kind === "wsl"
-          ? await platform.openInEditor("explorer", openPath, {
-              pathKind: "directory",
+          ? platform.openInEditor("explorer", openPath, {
+              pathKind: target.kind ?? "file",
               remoteTarget,
               workspaceIdentity,
             })
-          : await platform.openInFileManager(openPath);
+          : platform.openInFileManager(openPath)
+      ).catch((error: unknown) => ({
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }));
       if (result.success) {
         return;
       }

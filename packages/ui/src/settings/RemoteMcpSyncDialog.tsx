@@ -36,6 +36,7 @@ interface RemoteMcpSyncDialogProps {
   remoteTarget: RemoteTarget;
   workspacePath: string;
   localWorkspacePath?: string;
+  workspaceIdentity?: string;
   onSynced: () => Promise<void> | void;
 }
 
@@ -357,6 +358,7 @@ export function RemoteMcpSyncDialog(props: RemoteMcpSyncDialogProps) {
     remoteMcpSyncService,
     remoteTarget,
     workspacePath,
+    workspaceIdentity,
   } = props;
   const [step, setStep] = useState<Step>("loading");
   const [rows, setRows] = useState<RemoteMcpSyncRow[]>([]);
@@ -366,6 +368,7 @@ export function RemoteMcpSyncDialog(props: RemoteMcpSyncDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [localHomeDir, setLocalHomeDir] = useState("");
   const syncInFlightRef = useRef(false);
+  const syncAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -373,6 +376,8 @@ export function RemoteMcpSyncDialog(props: RemoteMcpSyncDialogProps) {
     }
 
     let cancelled = false;
+    syncAbortRef.current?.abort();
+    syncAbortRef.current = null;
     setStep("loading");
     setRows([]);
     setSelectedIds(new Set());
@@ -407,8 +412,18 @@ export function RemoteMcpSyncDialog(props: RemoteMcpSyncDialogProps) {
 
     return () => {
       cancelled = true;
+      // 目标切换或 Dialog 卸载会绕过关闭按钮，停止旧 generation 后续写入和 UI 更新。
+      syncAbortRef.current?.abort();
+      syncAbortRef.current = null;
     };
-  }, [localMcpSyncService, open, remoteMcpSyncService]);
+  }, [
+    localMcpSyncService,
+    open,
+    remoteMcpSyncService,
+    workspacePath,
+    workspaceIdentity,
+    localWorkspacePath,
+  ]);
 
   const visibleRows = useMemo(
     () => filterRemoteMcpSyncRows(rows, showExistingRemoteMcp),
@@ -458,12 +473,15 @@ export function RemoteMcpSyncDialog(props: RemoteMcpSyncDialogProps) {
     }
 
     syncInFlightRef.current = true;
+    const controller = new AbortController();
+    syncAbortRef.current = controller;
     setError(null);
     setStep("preflighting");
     try {
       const access = await runRemoteSyncPreflightWithTimeout(() =>
         remoteMcpSyncService.checkRemoteUserMcpWriteAccess(),
       );
+      if (controller.signal.aborted) return;
       if (!access.ok) {
         throw new Error(
           intl.formatMessage(
@@ -476,6 +494,7 @@ export function RemoteMcpSyncDialog(props: RemoteMcpSyncDialogProps) {
       const exported = await localMcpSyncService.exportMcpServers({
         serverIds: selectedSyncIds,
       });
+      if (controller.signal.aborted) return;
       const result = await remoteMcpSyncService.importMcpServers(
         buildRemoteMcpSyncImportParams({
           exported,
@@ -484,10 +503,13 @@ export function RemoteMcpSyncDialog(props: RemoteMcpSyncDialogProps) {
           remoteWorkspacePath: workspacePath,
         }),
       );
+      if (controller.signal.aborted) return;
       await onSynced();
+      if (controller.signal.aborted) return;
       setImportResult(result);
       setStep("complete");
     } catch (syncError) {
+      if (controller.signal.aborted) return;
       setError(
         isRemoteSyncPreflightTimeoutError(syncError)
           ? intl.formatMessage(
@@ -500,7 +522,10 @@ export function RemoteMcpSyncDialog(props: RemoteMcpSyncDialogProps) {
       );
       setStep("selection");
     } finally {
-      syncInFlightRef.current = false;
+      if (syncAbortRef.current === controller) {
+        syncAbortRef.current = null;
+        syncInFlightRef.current = false;
+      }
     }
   };
 

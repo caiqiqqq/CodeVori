@@ -5,29 +5,29 @@ import { dirname, join } from "node:path";
 // 原因：公开 producer 是占位包；只能从已核对的正式发行物导入，不能把任意 .node 当作官方组件。
 export const NATIVE_ASSETS = Object.freeze({
   "darwin-arm64": {
-    version: "3.16.3",
-    sha256: "9e8421b8660a92b00625ee6869a46e33e0f80ff8527cf7d4ddc9f66990e02adb",
+    version: "3.17.2",
+    sha256: "b169b8dc8be0dc747fdba5d8e17d4c814e13068b711a238d421b808c660ceaea",
     // 原因：官方下载目录使用 macos-arm64，mac-arm64 会让干净环境构建返回 404。
-    url: "https://cdn-zcode.z.ai/zcode/electron/releases/3.16.3/macos-arm64/ZCode-3.16.3-mac-arm64.zip",
+    url: "https://cdn-zcode.z.ai/zcode/electron/releases/3.17.2/macos-arm64/ZCode-3.17.2-mac-arm64.zip",
     archiveSha512:
-      "QUPUGmQk9jmhf7TJPKcxBtX3AzEVxLbQaIfRCQ13zibKzLgFgU7hx2qPyBZY3bK1OhClhlL3ddNwOriKRSIXIA==",
+      "Vp5+uPF5LXkIwbOVkpXLSI0qFjhNmY/9YwEjOnNiRIdznP1JX7PZE2mfo1/Sc6YwLn8jl77Ozf5oHV9QDTRoFw==",
     member:
       "ZCode.app/Contents/Resources/cua-helper/ZCode Computer Use.app/Contents/Resources/ax_native.node",
   },
   "win32-x64": {
-    version: "3.16.3",
-    sha256: "0dee894c4be5cd0b886aafaaea68aa505c6999a5e65afeb6527b08ba0e04274c",
-    url: "https://cdn-zcode.z.ai/zcode/electron/releases/3.16.3/windows-x64/ZCode-3.16.3-win-x64.exe",
+    version: "3.17.2",
+    sha256: "11f8bc9c053636fd7199a1e5802a82df652db6bf5ae232165bc530da7530b534",
+    url: "https://cdn-zcode.z.ai/zcode/electron/releases/3.17.2/windows-x64/ZCode-3.17.2-win-x64.exe",
     archiveSha512:
-      "13o4qvOqKiRT8XeMECr5kx1aGIxNp8v43naAoBKRx5lorBOaove3lOe2YqiI5SjO9djXz7/cfYfhsBbEJJuGZw==",
+      "3n9TNUmQFG/3uKdvJldemQIBoBmgrxexgI+47mNYh+iVPvyHyAOGWC97fk8kGhRcyOJ8FfHvSiqkgreOMwjhfQ==",
     member: "resources/tools/cua-helper/build/Release/ax_native.node",
   },
   "win32-arm64": {
-    version: "3.16.3",
-    sha256: "f3ea55590ff21278403ed21a633861727a0de8163ae4ee217153d62598d98355",
-    url: "https://cdn-zcode.z.ai/zcode/electron/releases/3.16.3/windows-arm64/ZCode-3.16.3-win-arm64.exe",
+    version: "3.17.2",
+    sha256: "43b4d37b8a022dcfe6a6292f433b2ca1792e5256f70f497e25ca47719bf6e1f4",
+    url: "https://cdn-zcode.z.ai/zcode/electron/releases/3.17.2/windows-arm64/ZCode-3.17.2-win-arm64.exe",
     archiveSha512:
-      "on/J3jGMg8jgIbl9BznySD3CnvVWZ6va9JLnA+JIfd313wVKv0qHiWIk7MNIlxSJyWYjANmaIk7jpl3zdPENjA==",
+      "qXW+jsTnZpCIsp4gVNJEm/RZJMElcW3HToXCcwXyAChD7xrnbf+qgQNA1zWgg0LapULL0k1uCzHZBWbXnfdJ3Q==",
     member: "resources/tools/cua-helper/build/Release/ax_native.node",
   },
 });

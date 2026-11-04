@@ -197,6 +197,7 @@ export const PlatformChannels = {
   BindRemoteWorkspaceSessionContext: "zcode:bind-remote-workspace-session-context",
   /** 释放当前窗口里的远程 session */
   DisposeRemoteSession: "zcode:dispose-remote-session",
+  StopRemoteService: "zcode:stop-remote-service",
   /** Renderer → Main：检查本机 Docker daemon 是否可用 */
   IsDockerAvailable: "zcode:is-docker-available",
   /** Renderer → Main：列出本机可用的 WSL 发行版 */
@@ -571,6 +572,8 @@ export const HostResponseTypes = {
   RemoteWorkspaceConnectFailed: "remote-workspace-connect-failed",
   /** window Host → main：已连接的远程 logical session 关闭 */
   RemoteWorkspaceClosed: "remote-workspace-closed",
+  /** Host 完成显式停止后回传结果；closed 事件继续作为连接事实。 */
+  RemoteWorkspaceServiceStopResult: "remote-workspace-service-stop-result",
   /** host 进程日志上报 */
   Log: "log",
   /** host 内拉起新的 agent 子进程 */
@@ -731,6 +734,7 @@ export interface PlatformChannelMap {
     request: BindRemoteWorkspaceSessionContextRequest;
     response: void;
   };
+  [PlatformChannels.StopRemoteService]: { request: string; response: void };
   [PlatformChannels.DisposeRemoteSession]: {
     request: string;
     response: void;

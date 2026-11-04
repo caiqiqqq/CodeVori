@@ -79,7 +79,7 @@ export function createOpenComputerUseService(options = {}) {
   return {
     // MCP 的启动只建立传输；native 在有效工具请求时才启动。
     async start() {},
-    callTool(name, args = {}, { signal, runtimeScope } = {}) {
+    callTool(name, args = {}, { signal, runtimeScope, cursorSessionId, actionTitle } = {}) {
       return serialize(async () => {
         if (closed) return failure("电脑控制连接已关闭，请重新打开会话。", "connection_closed");
         if (signal?.aborted) return failure("电脑操作已取消。", "cancelled");
@@ -127,7 +127,10 @@ export function createOpenComputerUseService(options = {}) {
                 assertActive();
                 if (closed) return failure("电脑操作已取消。", "cancelled");
                 dispatched = true;
-                const result = await active.service.callTool(name, args);
+                const result = await active.service.callTool(name, args, {
+                  cursorSessionId,
+                  actionTitle,
+                });
                 return closed
                   ? failure(
                       "电脑操作已取消，已发送的操作不会自动重试。",

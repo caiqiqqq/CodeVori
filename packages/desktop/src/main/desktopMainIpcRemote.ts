@@ -93,6 +93,7 @@ export function registerRemoteIpcHandlers(options: {
     lifecycle?: { remoteUsageTelemetryEligible?: boolean },
   ) => Promise<string>;
   getRemoteConnectionStats: () => RemoteConnectionStats;
+  stopRemoteWorkspaceService: (sessionId: string, expectedWebContentsId: number) => Promise<void>;
   disposeRemoteWorkspaceSession: (
     sessionId: string,
     reason: string,
@@ -447,6 +448,12 @@ export function registerRemoteIpcHandlers(options: {
       );
     },
   );
+
+  ipcMain.handle(PlatformChannels.StopRemoteService, (event, sessionId: unknown) => {
+    if (typeof sessionId !== "string" || !sessionId.trim())
+      throw new Error("Invalid remote session id");
+    return options.stopRemoteWorkspaceService(sessionId, event.sender.id);
+  });
 
   ipcMain.handle(PlatformChannels.DisposeRemoteSession, async (_event, sessionId: string) => {
     options.disposeRemoteWorkspaceSession(sessionId, `dispose-remote-session:${sessionId}`, 150);

@@ -711,6 +711,41 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
     return resolveScopedHandle(scope).capabilities;
   }
 
+  async function stopService(remoteSessionId: string): Promise<void> {
+    const session = sessionsById.get(remoteSessionId);
+    if (!session) throw new WindowRemoteConnectionUnavailableError(remoteSessionId);
+    const entry = session.entry;
+    // logical detach 会保留 SSH cache；显式停止必须释放设备共享的真实 transport owner。
+    const affected = [...entry.sessions];
+    let failure: string | undefined;
+    try {
+      await disposeEntry(entry);
+    } catch (error) {
+      failure =
+        error instanceof Error
+          ? error.message || "Remote service stop failed"
+          : "Remote service stop failed";
+      throw error;
+    } finally {
+      // dispose 已使 owner 失效；即使底层失败也必须移除逻辑在线投影，错误另由请求回执传回。
+      for (const id of affected) {
+        const current = sessionsById.get(id);
+        // 旧停止结果不能触碰已重连到另一 owner 的会话。
+        if (!current || current.entry !== entry) continue;
+        sessionsById.delete(id);
+        current.state = "disconnected";
+        current.sourceAvailability = "offline";
+        options.onSessionClosed?.({
+          remoteSessionId: id,
+          exitCode: failure ? null : 0,
+          signal: null,
+          ...(failure ? { error: failure } : {}),
+        });
+      }
+      entry.sessions.clear();
+    }
+  }
+
   async function disposeSession(remoteSessionId: string): Promise<void> {
     const session = sessionsById.get(remoteSessionId);
     if (!session) {
@@ -818,6 +853,7 @@ export function createWindowRemoteConnectionRegistry<TServices, TCapabilities = 
       return resolveScopedServices(scope);
     },
     disposeSession,
+    stopService,
     async dispose(): Promise<void> {
       if (disposePromise) {
         return disposePromise;
