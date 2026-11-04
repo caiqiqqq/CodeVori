@@ -323,6 +323,7 @@ export function OnboardingFinishStep(props: {
   settingsImportedCount: number;
   settingsSkippedCount: number;
   settingsFailedCount: number;
+  settingsWorkspaceRequiredCount: number;
 }) {
   const { intl } = useZCodeIntl();
 
@@ -341,6 +342,17 @@ export function OnboardingFinishStep(props: {
         {props.finishExecution.error ? (
           <div className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-ui-base text-foreground">
             {props.finishExecution.error}
+          </div>
+        ) : null}
+        {props.settingsWorkspaceRequiredCount > 0 ? (
+          <div
+            data-testid="onboarding-finish-workspace-required"
+            className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-ui-base text-foreground"
+          >
+            {intl.formatMessage(
+              { id: "onboarding.finish.workspaceRequired" },
+              { count: String(props.settingsWorkspaceRequiredCount) },
+            )}
           </div>
         ) : null}
       </div>

@@ -445,6 +445,7 @@ export function OnboardingDialog(props: {
             settingsImportedCount={settingsSync.state.result?.successCount ?? 0}
             settingsSkippedCount={settingsSync.state.result?.skippedCount ?? 0}
             settingsFailedCount={settingsSync.state.result?.failedCount ?? 0}
+            settingsWorkspaceRequiredCount={settingsSync.state.workspaceRequiredCount}
           />
         ) : (
           <OnboardingMigrationStep

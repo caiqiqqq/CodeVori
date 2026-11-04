@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, readFile, readdir, realpath, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type {
   SkillSyncArchiveExportResult,
@@ -75,13 +75,25 @@ export function createSkillSyncService(options?: { maxArchiveBytes?: number }): 
         }
         return candidate;
       });
+      // 修复原因：父子技能各是独立候选，但父目录归档已包含子目录；同时选择时
+      // 再写一次相同 tar 路径会重复覆盖，体积与大小计算也会虚增。
+      const roots = selected.filter(
+        (candidate, index) =>
+          !selected.some((other, otherIndex) => {
+            if (index === otherIndex) return false;
+            const child = relative(dirname(other.path), dirname(candidate.path));
+            return child === ""
+              ? otherIndex < index
+              : !child.startsWith("..") && !isAbsolute(child);
+          }),
+      );
       const archiveEntries = await Promise.all(
-        selected.map(async (candidate) => ({
+        roots.map(async (candidate) => ({
           sourcePath: await realpath(dirname(candidate.path)),
           archivePath: candidate.directoryName,
         })),
       );
-      const selectedBytes = selected.reduce((total, candidate) => total + candidate.sizeBytes, 0);
+      const selectedBytes = roots.reduce((total, candidate) => total + candidate.sizeBytes, 0);
       if (selectedBytes > maxArchiveBytes) {
         throw createSkillSyncSizeLimitError({
           actualBytes: selectedBytes,

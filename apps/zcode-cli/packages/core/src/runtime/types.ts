@@ -1,3 +1,4 @@
+import type { ProviderToolRound } from "./provider-tool-rounds/contract.js";
 import type { RuntimeInputPresentation } from "@zcode/contracts";
 /* eslint-disable max-lines -- Runtime 类型集中承载 core/runtime 对外结构，拆分需要单独迁移。 */
 import { PermissionService, ToolScheduler } from "./deps.js";
@@ -833,6 +834,7 @@ export interface RunModelTextRequestOptions {
 }
 
 export interface RuntimeModelStreamSnapshot {
+  providerToolRounds?: readonly ProviderToolRound[];
   reasoning: ModelReasoningContentBlock[];
   text: string;
 }
@@ -846,6 +848,7 @@ export interface StreamedToolExecutionResult {
 }
 
 export interface RuntimeModelTextResult {
+  providerToolRounds?: ProviderToolRound[];
   contextUsageBreakdown?: ContextUsageBreakdownItem[];
   finishReason: string;
   providerMetadata?: Record<string, unknown>;

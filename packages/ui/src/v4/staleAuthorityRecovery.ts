@@ -17,3 +17,45 @@ function faultReasonCode(value: unknown): string | undefined {
 export function shouldResyncForStaleAuthority(value: unknown): boolean {
   return STALE_AUTHORITY_REASON_CODES.has(faultReasonCode(value) ?? "");
 }
+
+/**
+ * 修复：旧 revision 的详情查询被拒后，只有同一 store 的新权威投影才能触发重查。
+ * 监听先于 recovery 建立；即使新快照已经抵达，也会在末尾即时检查。
+ */
+export function waitForRecoveredAuthority<T extends object>(
+  store: {
+    getState(): { status: string; snapshot: T | null };
+    subscribe(listener: () => void): () => void;
+    recoverFromStaleAuthority(): void;
+  },
+  previous: T,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let unsubscribe = () => {};
+    let settled = false;
+    const check = () => {
+      if (settled) return;
+      const state = store.getState();
+      if (state.status === "error" || state.status === "closed") {
+        settled = true;
+        unsubscribe();
+        reject(new Error(`Conversation authority recovery ${state.status}`));
+      } else if (state.snapshot && state.snapshot !== previous) {
+        settled = true;
+        unsubscribe();
+        resolve(state.snapshot);
+      }
+    };
+    unsubscribe = store.subscribe(check);
+    try {
+      store.recoverFromStaleAuthority();
+      check();
+    } catch (error) {
+      if (!settled) {
+        settled = true;
+        unsubscribe();
+        reject(error);
+      }
+    }
+  });
+}

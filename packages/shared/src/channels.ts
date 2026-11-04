@@ -438,6 +438,10 @@ export const PlatformChannels = {
   GetInstalledEditors: "zcode:get-installed-editors",
   /** Renderer → Main：按 bundle id 获取系统应用图标 */
   GetApplicationIcon: "zcode:get-application-icon",
+  /** Renderer → Main：内置浏览器 guest 导航及本地 HTML 预览准入。 */
+  BrowserViewLoadUrl: "zcode:browser-view-load-url",
+  /** Main → Renderer：内置浏览器 guest 开始下载。 */
+  BrowserViewDownloadStarted: "zcode:browser-view-download-started",
   /** Renderer → Main：用指定编辑器打开路径 */
   OpenInEditor: "zcode:open-in-editor",
   /** Renderer → Main：执行桌面窗口级命令 */
@@ -1040,6 +1044,14 @@ export interface PlatformChannelMap {
   [PlatformChannels.BrowserViewDetachGuest]: {
     request: { key: string; webContentsId: number };
     response: boolean;
+  };
+  [PlatformChannels.BrowserViewLoadUrl]: {
+    request: { webContentsId: number; url: string };
+    response: void;
+  };
+  [PlatformChannels.BrowserViewDownloadStarted]: {
+    request: { webContentsId: number; urls: string[] };
+    response: void;
   };
   [PlatformChannels.BrowserViewCloseTabFromRenderer]: {
     request: BrowserViewCloseTabRequest;

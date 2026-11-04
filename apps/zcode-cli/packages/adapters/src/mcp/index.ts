@@ -59,6 +59,7 @@ import {
   type McpConnectionContext,
   type McpConnectionPool,
 } from "./pool.js";
+import { buildMcpFailureStatusMessage, sanitizeMcpStdioStderr } from "./startup-diagnostics.js";
 import {
   createCredentialKeyPrefix,
   type McpOAuthAuthorizationContext,
@@ -1407,14 +1408,15 @@ class NodeMcpAdapter implements McpPort {
     const displayMessage = responseDiagnostic?.serverRequestId
       ? `${message} - ${responseDiagnostic.serverRequestId}`
       : message;
+    const recentStderr = getRecentStderr?.();
     const status = this.createStatus(config, "failed", {
-      error: displayMessage,
+      // 修复：缺依赖等原因只写在 stderr；状态页需要脱敏后的同次连接证据。
+      error: buildMcpFailureStatusMessage(displayMessage, recentStderr, config.type),
       failureKind,
       ...(responseDiagnostic?.serverRequestId
         ? { serverRequestId: responseDiagnostic.serverRequestId }
         : {}),
     });
-    const recentStderr = getRecentStderr?.();
     const mcpTransportPid = getStdioTransportPid(transport);
     await this.closeClientAndTransport(name, client, transport);
     if (!this.isCurrentConnection(name, generation)) {
@@ -1931,26 +1933,6 @@ function createBoundedTextBuffer(maxChars: number): {
       return value;
     },
   };
-}
-
-function sanitizeMcpStdioStderr(text: string): string {
-  const sensitiveKey = String.raw`(?:api[_-]?key|access[_-]?key|secret(?:[_-]?key)?|private[_-]?key|token|password|passwd|pass|mysql_pass|mysql_password)`;
-  let result = text.replace(/(bearer\s+)[^\s"']+/gi, "$1[Redacted]");
-  result = result.replace(
-    /(\bauthorization\b\s*[:=]\s*)(bearer\s+)?[^\r\n]+/gi,
-    (_match, prefix: string, bearer: string | undefined) =>
-      `${prefix}${bearer ? "Bearer " : ""}[Redacted]`,
-  );
-  result = result.replace(new RegExp(`([?&]${sensitiveKey}=)[^&\\s]+`, "gi"), "$1[Redacted]");
-  result = result.replace(
-    new RegExp(`(["']${sensitiveKey}["']\\s*:\\s*)(["'])(?:(?!\\2).)*\\2`, "gi"),
-    "$1$2[Redacted]$2",
-  );
-  result = result.replace(
-    new RegExp(`(\\b${sensitiveKey}\\b\\s*[:=]\\s*)(["']?)[^\\s"',;)}]+`, "gi"),
-    "$1$2[Redacted]",
-  );
-  return result.replace(/([a-z][a-z0-9+.-]*:\/\/)[^:\s/@]+:[^@\s/]+@/gi, "$1[Redacted]@");
 }
 
 function getStdioTransportPid(transport?: McpTransport): number | undefined {

@@ -21,7 +21,7 @@ import {
 import { parseWorkspaceHookTrustStoreContent } from "@zcode/shared/workspace-hook-trust-store-file";
 import { createServiceLogger, type ServiceLogger } from "#src/logger/serviceLogger.js";
 import type { IHooksService } from "./hooks.js";
-import { atomicWriteWorkspaceHookConfig } from "./workspaceHookConfigMutation.js";
+import { updateJsonObjectFile } from "#src/fs/atomicFileUtils.js";
 import {
   fromLegacyHooksConfig,
   fromProjectSnapshot,
@@ -267,20 +267,22 @@ async function loadHooksImpl(
   };
 }
 
+// 官方 3.17.2：读取失败不得按空配置写回，防止损坏文件中的其他字段被覆盖。
 async function writeZCodeHooksConfig(
   workspacePath: string | undefined,
   hooks: Hook[],
 ): Promise<void> {
-  const configPath = getConfigPath("zcode", workspacePath);
-  const existingConfig = (await readJsonFile<ZCodeConfigFile>(configPath)) ?? {};
-  const enabled = resolveNextRootEnabled(existingConfig.hooks?.enabled, hooks);
-  await atomicWriteWorkspaceHookConfig(configPath, {
-    ...existingConfig,
-    hooks: {
-      ...existingConfig.hooks,
-      ...(enabled !== undefined ? { enabled } : {}),
-      events: toZCodeHooksEvents(hooks),
-    },
+  await updateJsonObjectFile(getConfigPath("zcode", workspacePath), (current) => {
+    const existingConfig = current as ZCodeConfigFile;
+    const enabled = resolveNextRootEnabled(existingConfig.hooks?.enabled, hooks);
+    return {
+      ...existingConfig,
+      hooks: {
+        ...existingConfig.hooks,
+        ...(enabled !== undefined ? { enabled } : {}),
+        events: toZCodeHooksEvents(hooks),
+      },
+    };
   });
 }
 

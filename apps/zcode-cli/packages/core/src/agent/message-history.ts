@@ -54,6 +54,8 @@ export interface RuntimeMessageMessageEntry {
   tokens?: TokenUsageInfo;
   /** 仅在当前 query 内生效；不得进入 canonical history 或 Session persistence。 */
   queryScope?: "output_token_continuation";
+  /** 一条持久化 assistant 的分轮共享此键，保证 compact 边界一致。 */
+  compactGroupKey?: string;
 }
 
 export interface RuntimeAttachmentEntry {
@@ -420,6 +422,7 @@ export function cloneRuntimeMessageEntry(entry: RuntimeMessageEntry): RuntimeMes
     metadata: cloneRuntimeMessageMetadata(entry.metadata),
     ...(entry.tokens ? { tokens: cloneTokenUsageInfo(entry.tokens) } : {}),
     ...(entry.queryScope ? { queryScope: entry.queryScope } : {}),
+    ...(entry.compactGroupKey ? { compactGroupKey: entry.compactGroupKey } : {}),
   };
 }
 

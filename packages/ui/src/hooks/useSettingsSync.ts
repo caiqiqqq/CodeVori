@@ -11,6 +11,12 @@ import { useServices } from "@/hooks/useServices.js";
 import { useZCodeSessionService } from "@/hooks/useZCodeSessionService.js";
 import { invalidateDeferredDraftSessionForSkillChange } from "@/lib/zcodeDraftSkillInvalidation.js";
 import type { SettingsSyncUiState, SettingsSyncUiTask } from "@/settings-sync/types.js";
+import {
+  countSelectionItems,
+  EMPTY_IMPORT_RESULT,
+  mergeWorkspaceRequiredResults,
+  selectionRequiresWorkspace,
+} from "@/settings-sync/workspaceMigration.js";
 
 const IMPORTING_TASK_DELAY_MS = 320;
 const FORCE_SHOW_ONBOARDING_ON_EVERY_REFRESH = false;
@@ -28,6 +34,7 @@ function createInitialState(): SettingsSyncUiState {
     selectedKeys: [],
     tasks: [],
     result: null,
+    workspaceRequiredCount: 0,
     error: null,
   };
 }
@@ -110,12 +117,7 @@ function buildTasksFromSelections(selections: SettingsSyncSelection[]): Settings
     id: `${selection.agent}:${selection.category}:${selection.sourceScope ?? "all"}:${selection.targetScope ?? "auto"}:${index}`,
     agent: selection.agent,
     category: selection.category,
-    discoveredCount:
-      selection.skillPaths?.length ??
-      selection.commandPaths?.length ??
-      selection.pluginPaths?.length ??
-      selection.mcpServerPaths?.length ??
-      1,
+    discoveredCount: countSelectionItems(selection),
     status: "pending" as const,
   }));
 }
@@ -395,10 +397,6 @@ export function useSettingsSync(params: { workspacePath?: string; workspaceIdent
       additionalSelections: SettingsSyncSelection[] = [],
       options: { includeCurrentSelections?: boolean } = {},
     ) => {
-      if (!params.workspacePath) {
-        return;
-      }
-
       const includeCurrentSelections = options.includeCurrentSelections ?? true;
       // 数据迁移向导可临时隐藏代理设置步骤；隐藏时不能把默认选中的 providers 暗中导入。
       const stateSelections =
@@ -407,6 +405,19 @@ export function useSettingsSync(params: { workspacePath?: string; workspaceIdent
       if (selections.length === 0) {
         return;
       }
+      // 修复（决定 24）：原来没有 workspacePath 时直接 return，从数据同步页「迁移」进入时
+      // 技能 / MCP / 命令导入被整体静默跳过，结果页仍显示完成。导入服务支持没有项目：
+      // 用户级的项照常导入；需要项目的项不导入，记为失败并计数，由完成页写明原因。
+      const workspaceRequired = new Set(
+        params.workspacePath ? [] : selections.filter(selectionRequiresWorkspace),
+      );
+      const importableSelections = selections.filter(
+        (selection) => !workspaceRequired.has(selection),
+      );
+      const workspaceRequiredCount = [...workspaceRequired].reduce(
+        (sum, selection) => sum + countSelectionItems(selection),
+        0,
+      );
       const runId = runningImportRef.current + 1;
       runningImportRef.current = runId;
       const initialTasks =
@@ -423,6 +434,7 @@ export function useSettingsSync(params: { workspacePath?: string; workspaceIdent
         step: "importing",
         tasks: initialTasks,
         result: null,
+        workspaceRequiredCount,
         error: null,
       }));
 
@@ -431,11 +443,20 @@ export function useSettingsSync(params: { workspacePath?: string; workspaceIdent
         selections,
       });
 
-      const importPromise = settingsSyncService.importSelected({
-        workspacePath: params.workspacePath,
-        workspaceIdentity: params.workspaceIdentity,
-        selections,
-      });
+      const importPromise =
+        importableSelections.length > 0
+          ? settingsSyncService
+              .importSelected({
+                workspacePath: params.workspacePath,
+                workspaceIdentity: params.workspaceIdentity,
+                selections: importableSelections,
+              })
+              .then((imported) =>
+                mergeWorkspaceRequiredResults(selections, workspaceRequired, imported),
+              )
+          : Promise.resolve(
+              mergeWorkspaceRequiredResults(selections, workspaceRequired, EMPTY_IMPORT_RESULT),
+            );
 
       for (let index = 0; index < initialTasks.length; index += 1) {
         if (runningImportRef.current !== runId) {

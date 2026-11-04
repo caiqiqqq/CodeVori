@@ -25,6 +25,7 @@ export {
   ZCODE_BUILTIN_PROVIDER_CONFIG_FILE_ENV,
 } from "@zcode/provider-node";
 
+export { readJsonObjectFileForUpdate, updateJsonObjectFile } from "./fs/atomicFileUtils.js";
 export { createFileService } from "./file/fileService.js";
 export {
   attributeHostProcessTree,

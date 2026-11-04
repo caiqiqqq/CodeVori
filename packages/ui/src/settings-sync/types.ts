@@ -24,5 +24,6 @@ export interface SettingsSyncUiState {
   selectedKeys: string[];
   tasks: SettingsSyncUiTask[];
   result: SettingsSyncImportResult | null;
+  workspaceRequiredCount: number;
   error: string | null;
 }

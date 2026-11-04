@@ -359,7 +359,10 @@ function isCompactPromptTooLongRetryMarker(entry: RuntimeMessageEntry): boolean 
 function groupRuntimeEntriesByCompactRound(
   entries: readonly RuntimeMessageEntry[],
 ): RuntimeMessageEntry[][] {
-  return groupByAssistantStartedRounds(entries, runtimeEntryRole);
+  // 服务端工具切轮仍属于同一持久化消息，压缩时不能分成多个独立保留组。
+  return groupByAssistantStartedRounds(entries, runtimeEntryRole, (entry) =>
+    isRuntimeAttachmentEntry(entry) ? undefined : entry.compactGroupKey,
+  );
 }
 
 function positiveInt(value: number | undefined): number | undefined {

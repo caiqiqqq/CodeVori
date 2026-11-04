@@ -1,8 +1,11 @@
+import { attachWindowsWindowRepaint } from "./desktopWindowRepaint.js";
 /* eslint-disable max-lines -- 桌面窗口 chrome、webview 安全策略和 popup 路由共享同一 BrowserWindow 生命周期上下文。 */
 import { app, BrowserWindow, Menu, nativeImage, nativeTheme, screen, shell } from "electron";
 import { join } from "node:path";
 import type {
   ContextMenuParams,
+  DownloadItem,
+  Event as ElectronEvent,
   Input,
   MenuItemConstructorOptions,
   WebContents,
@@ -42,6 +45,7 @@ const ALLOWED_EMBEDDED_BROWSER_PROTOCOLS = new Set([
   "data:",
   "http:",
   "https:",
+  "zcode-html:",
   "zcode-browser-restore:",
 ]);
 const ALLOWED_EMBEDDED_BROWSER_NEW_WINDOW_PROTOCOLS = new Set(["http:", "https:"]);
@@ -146,44 +150,6 @@ export function applyWindowsTitleBarTheme(
   );
 }
 
-function attachWindowsWindowRepaint(targetWindow: BrowserWindow) {
-  if (process.platform !== "win32") {
-    return;
-  }
-
-  let pendingRepaintTimer: ReturnType<typeof setTimeout> | null = null;
-  const repaint = () => {
-    if (targetWindow.isDestroyed() || targetWindow.webContents.isDestroyed()) {
-      return;
-    }
-
-    targetWindow.webContents.invalidate();
-  };
-
-  const scheduleRepaint = () => {
-    repaint();
-    if (pendingRepaintTimer !== null) {
-      clearTimeout(pendingRepaintTimer);
-    }
-    pendingRepaintTimer = setTimeout(() => {
-      pendingRepaintTimer = null;
-      repaint();
-    }, 32);
-  };
-
-  targetWindow.on("resized", () => {
-    // Windows 手动拉伸结束后，Electron/Chromium 偶发只更新窗口 bounds，
-    // 但 renderer 最后一帧没有完整 repaint，新扩展区域会留下宿主底色。resized 是低频结束事件，
-    // 这里补一次完整窗口重绘，确保内容层按最终 viewport 尺寸重新铺满。
-    scheduleRepaint();
-  });
-  targetWindow.on("show", () => {
-    // Windows Acrylic 窗口 hide 到托盘后再次 show 时可能继续复用失效的合成 surface，
-    // renderer 与 host 仍存活但窗口只剩宿主底色；复用 resize 的有界双帧重绘，不 reload renderer 或会话。
-    scheduleRepaint();
-  });
-}
-
 function isAllowedEmbeddedBrowserUrl(url: string): boolean {
   try {
     return ALLOWED_EMBEDDED_BROWSER_PROTOCOLS.has(new URL(url).protocol);
@@ -250,6 +216,20 @@ function attachEmbeddedBrowserWindowOpenHandler(options: {
     | undefined;
   logger: { warn: (...args: unknown[]) => void };
 }) {
+  // 修复：下载导航以 ERR_FAILED 结束；把真实 will-download 的 URL 链发给宿主，
+  // renderer 才能区分附件下载与页面失败，并恢复已提交的页面地址。
+  const downloadSession = options.guestWebContents.session;
+  const onDownload = (_event: ElectronEvent, item: DownloadItem, contents: WebContents) => {
+    if (contents !== options.guestWebContents || options.hostWebContents.isDestroyed()) return;
+    options.hostWebContents.send(PlatformChannels.BrowserViewDownloadStarted, {
+      webContentsId: contents.id,
+      urls: item.getURLChain(),
+    });
+  };
+  downloadSession.on("will-download", onDownload);
+  options.guestWebContents.once("destroyed", () => {
+    downloadSession.removeListener("will-download", onDownload);
+  });
   let externalBrowserModifierActive = false;
 
   options.guestWebContents.on("before-input-event", (_event, input) => {

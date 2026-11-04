@@ -114,6 +114,25 @@ export interface BrowserViewCloseTabRequest {
 }
 
 export const LOCAL_MEDIA_PREVIEW_SCHEME = "zcode-media";
+export const BROWSER_LOCAL_PREVIEW_SCHEME = "zcode-html";
+
+/** 将签名预览地址还原为地址栏可读的 file URL；授权始终由 main 验证。 */
+export function browserPreviewSourceUrl(input: string): string {
+  try {
+    const url = new URL(input);
+    if (url.protocol !== `${BROWSER_LOCAL_PREVIEW_SCHEME}:`) return input;
+    const [, directory, ...segments] = url.pathname.split("/");
+    const root = new URL(decodeURIComponent(directory ?? ""));
+    if (root.protocol !== "file:" || root.host || !root.pathname.endsWith("/")) return input;
+    const source = new URL(segments.join("/"), root);
+    if (!source.href.startsWith(root.href)) return input;
+    source.search = url.search;
+    source.hash = url.hash;
+    return source.href;
+  } catch {
+    return input;
+  }
+}
 
 export function buildLocalMediaPreviewUrl(path: string): string {
   const url = new URL(`${LOCAL_MEDIA_PREVIEW_SCHEME}://local/preview`);
@@ -784,6 +803,9 @@ export interface IPlatformService {
   /** 注册内置浏览器 webview 请求打开新页面的回调，返回 disposer */
   onOpenBrowserUrl?(handler: (request: EmbeddedBrowserOpenUrlRequest) => void): () => void;
   /** 注册 agent 首次 browser 命令建好受控 view 的回调（自动开 browser-use tab），返回 disposer */
+  onBrowserViewDownloadStarted?(
+    handler: (payload: { webContentsId: number; urls: string[] }) => void,
+  ): () => void;
   onBrowserViewReady?(
     handler: (payload: {
       workspaceKey: string;
@@ -901,6 +923,9 @@ export interface IPlatformService {
 
   /** 重建 `<webview>` 前让 main 精确断开旧 guest 的 CDP；false 时不得销毁旧节点。 */
   browserViewDetachGuest?(payload: { key: string; webContentsId: number }): Promise<boolean>;
+
+  /** main 校验宿主、guest 和本地文件准入后导航；内置浏览器不得自行打开 file URL。 */
+  browserViewLoadUrl?(payload: { webContentsId: number; url: string }): Promise<void>;
 
   /** 用户显式关闭 Browser tab；与 budget suspend 使用不同 IPC authority。 */
   browserViewCloseTab?(payload: BrowserViewCloseTabRequest): Promise<void>;

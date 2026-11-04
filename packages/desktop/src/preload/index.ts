@@ -504,6 +504,14 @@ contextBridge.exposeInMainWorld("zcode", {
     ipcRenderer.on(PlatformChannels.BrowserViewRestore, handler);
     return () => ipcRenderer.removeListener(PlatformChannels.BrowserViewRestore, handler);
   },
+  onBrowserViewDownloadStarted: (
+    callback: (payload: { webContentsId: number; urls: string[] }) => void,
+  ): (() => void) => {
+    const handler = (_event: unknown, payload: { webContentsId: number; urls: string[] }) =>
+      callback(payload);
+    ipcRenderer.on(PlatformChannels.BrowserViewDownloadStarted, handler);
+    return () => ipcRenderer.removeListener(PlatformChannels.BrowserViewDownloadStarted, handler);
+  },
   /** 注册 main 进程触发新建任务的回调，返回 disposer */
   onNewTask: (callback: () => void): (() => void) => {
     const handler = () => callback();
@@ -710,6 +718,8 @@ contextBridge.exposeInMainWorld("zcode", {
   /** React 卸载旧 `<webview>` 前同步等待 main 断开 native CDP session。 */
   browserViewDetachGuest: (payload: { key: string; webContentsId: number }): Promise<boolean> =>
     ipcRenderer.invoke(PlatformChannels.BrowserViewDetachGuest, payload),
+  browserViewLoadUrl: (payload: { webContentsId: number; url: string }): Promise<void> =>
+    ipcRenderer.invoke(PlatformChannels.BrowserViewLoadUrl, payload),
   browserViewCloseTab: (payload: BrowserViewCloseTabRequest): Promise<void> =>
     ipcRenderer.invoke(PlatformChannels.BrowserViewCloseTabFromRenderer, payload),
   browserViewReportResidency: (payload: BrowserViewResidencyReportPayload): Promise<void> =>
