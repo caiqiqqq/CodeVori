@@ -130,7 +130,11 @@ import {
 } from "./acpAgentConfigs.js";
 import { projectAcpContextUsage } from "./acpContextUsage.js";
 import type { AcpToolDetails } from "./acpToolDetails.js";
-import { excludeHiddenAcpSessions, searchAcpSessions } from "./acpSessionSearch.js";
+import {
+  excludeHiddenAcpSessions,
+  finishAcpSessionSearch,
+  searchAcpSessions,
+} from "./acpSessionSearch.js";
 import { createCodexUsageHistoryReader, type CodexUsageHistory } from "./acpNativeUsage.js";
 import { recordAcpPromptUsage, summarizeAcpUsage } from "./acpUsageStats.js";
 import {
@@ -175,6 +179,7 @@ export interface AcpPermission {
 }
 export interface AcpConnectionPort {
   sessionId: string;
+  /** Settles after adapter process-tree and terminal cleanup, including unexpected exit. */
   closed?: Promise<void>;
   promptCapabilities?: PromptCapabilities;
   provisionedMcpNames?: ReadonlySet<string>;
@@ -618,7 +623,11 @@ export function createAcpService(
       .catch(() => {})
       .then(async () => {
         timing?.phase("snapshot_write");
-        const persistedBytes = await sessionStore.commit(snapshot);
+        const persistedBytes = await sessionStore.commit(snapshot, {
+          // 修复原因：token 流每片都可持久化，但摘要索引只在非流式接受事实或终态刷新，
+          // 避免把摘要 sidecar 变成另一条高频写入队列。
+          refreshSummary: !streaming || snapshot.status !== "running",
+        });
         timing?.setFacts({ snapshotBytes: persistedBytes });
         if (!disposed && !removed.has(session.id)) {
           // 只有快照/增量日志提交成功后的通知才代表可显示事实；诊断不进入磁盘会话。
@@ -1652,11 +1661,10 @@ export function createAcpService(
     }
   };
 
-  // 修复原因：列表和搜索共用同一 Host 历史读取，搜索只投影摘要，不复制整份正文或另建持久索引。
+  // 完整内部列表也先按摘要归属过滤，不能为了一个 workspace 加载其他 workspace 正文。
   const listScopedSessions = async (workspace: AcpWorkspace): Promise<AcpSession[]> => {
     const target = acpWorkspaceSchema.parse(workspace);
-    const found = await listAllSessions();
-    return found
+    const summaries = (await listAllSummaries())
       .filter(
         (value) =>
           workspaceKey(value) === workspaceKey(target) &&
@@ -1668,42 +1676,108 @@ export function createAcpService(
         const unusedIdle =
           value.revision === 0 &&
           value.status === "idle" &&
-          value.entries.length === 0 &&
+          value.history.entryCount === 0 &&
+          value.queue.items.length === 0 &&
           value.goal === null;
         return !unusedIdle || connections.has(value.id);
       });
+    const found: AcpSession[] = [];
+    for (const summary of summaries) {
+      try {
+        if (!removed.has(summary.id)) found.push(await load(summary.id));
+      } catch (error) {
+        logger.warn(undefined, "ACP session metadata unreadable", {
+          error: failureMessage(error),
+        });
+      }
+    }
+    return found;
   };
-  const listVisibleSessions = async (workspace: AcpWorkspace): Promise<AcpSession[]> => {
-    // 修复原因：create 已建连接、待办尚未保存绑定时，内部 list 会保留空会话供执行器访问。
-    // 普通摘要不能沿用此资格，否则创建空档会先把空会话登记成普通对话。
-    const sessions = (await listScopedSessions(workspace)).filter(isAcpHistorySession);
-    if (!options.hiddenSessionIds) return sessions;
-    return excludeHiddenAcpSessions(sessions, await options.hiddenSessionIds(workspace));
-  };
-  const listAllSessions = async (): Promise<AcpSession[]> => {
+  let summariesRead: Promise<AcpSessionSummary[]> | null = null;
+  const readAllSummaries = async (): Promise<AcpSessionSummary[]> => {
     const names = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return [];
       throw error;
     });
-    const found = await Promise.all(
-      names
-        .filter((name) => /^[0-9a-f-]{36}\.json$/i.test(name))
-        .map(async (name) => {
-          try {
-            return await load(name.slice(0, -5));
-          } catch (error) {
-            logger.warn(undefined, "ACP session metadata unreadable", {
-              error: failureMessage(error),
-            });
-            return null;
+    const found: AcpSessionSummary[] = [];
+    // 修复原因：列表逐个读取冷摘要，不能并发 hydrate 全部正文并留在 Host 缓存。
+    for (const name of names) {
+      if (!/^[0-9a-f-]{36}\.json$/i.test(name)) continue;
+      const id = name.slice(0, -5);
+      if (removed.has(id)) continue;
+      try {
+        const summary = await sessionStore.readSummary(id);
+        // 修复原因：列表不再调用 load()，冷会话的旧 running 状态仍须显示为中断；
+        // 这里只派生显示状态，恢复写入继续由完整打开路径统一执行。
+        if (!sessions.has(id)) {
+          if (summary.status === "running") {
+            summary.status = "interrupted";
+            summary.error = "ACP Agent 已断开，请重试发送新的消息。";
           }
-        }),
-    );
-    return found
-      .filter((value): value is AcpSession => Boolean(value))
-      .filter((value) => !removed.has(value.id));
+          summary.pendingPermission = null;
+          summary.pendingElicitation = null;
+          summary.terminals = summary.terminals.map((terminal) =>
+            terminal.status === "running" ? { ...terminal, status: "interrupted" } : terminal,
+          );
+          if (summary.queue.items.length) {
+            summary.queue = {
+              ...summary.queue,
+              items: summary.queue.items.map((item) => ({ ...item, state: "queued" })),
+              autoDrain: false,
+              pauseReason: "error",
+            };
+          }
+        }
+        if (!removed.has(id)) found.push(summary);
+      } catch (error) {
+        logger.warn(undefined, "ACP session summary unreadable", {
+          error: failureMessage(error),
+        });
+      }
+    }
+    return found;
   };
-
+  const listAllSummaries = async (): Promise<AcpSessionSummary[]> => {
+    // 列表、未读和归档查询可在同一窗口并发初始化；共享本次 IO，完成后即释放。
+    const flight = (summariesRead ??= readAllSummaries());
+    try {
+      return await flight;
+    } finally {
+      if (summariesRead === flight) summariesRead = null;
+    }
+  };
+  const listVisibleSummaries = async (workspace: AcpWorkspace): Promise<AcpSessionSummary[]> => {
+    // 修复原因：create 已建连接、待办尚未保存绑定时，内部 list 会保留空会话供执行器访问。
+    // 普通摘要不能沿用此资格，否则创建空档会先把空会话登记成普通对话。
+    const target = acpWorkspaceSchema.parse(workspace);
+    const summariesById = new Map(
+      (await listAllSummaries())
+        .filter(
+          (value) =>
+            workspaceKey(value) === workspaceKey(target) &&
+            value.workspacePath === target.workspacePath,
+        )
+        .filter(isAcpHistorySession)
+        .map((value) => [value.id, value] as const),
+    );
+    // 已加载会话的 live projection 覆盖 sidecar；它本来就属于 Host resident 状态，
+    // 但冷会话绝不能为了列表被加载进 sessions Map。
+    for (const owner of sessions.values()) {
+      const live = sessionStore.current(owner.id);
+      if (
+        live &&
+        !removed.has(live.id) &&
+        workspaceKey(live) === workspaceKey(target) &&
+        live.workspacePath === target.workspacePath &&
+        isAcpHistorySession(live)
+      ) {
+        summariesById.set(live.id, summarizeAcpSession(live));
+      }
+    }
+    const summaries = [...summariesById.values()];
+    if (!options.hiddenSessionIds) return summaries;
+    return excludeHiddenAcpSessions(summaries, await options.hiddenSessionIds(workspace));
+  };
   const ensureOpen = (session: AcpSession): void => {
     if (disposed || removed.has(session.id)) throw new Error("ACP session closed");
     if (session.deletionState) throw new Error("conversation deletion pending; retry deletion");
@@ -2583,9 +2657,7 @@ export function createAcpService(
       return (await listScopedSessions(workspace)).map((value) => structuredClone(value));
     },
     async listSummaries(workspace) {
-      return (await listVisibleSessions(workspace)).map((value) =>
-        structuredClone(summarizeAcpSession(value)),
-      );
+      return (await listVisibleSummaries(workspace)).map((value) => structuredClone(value));
     },
     onDynamicSessionSummaryChanged(workspace) {
       return (listener) =>
@@ -2660,7 +2732,7 @@ export function createAcpService(
     },
     async listArchivedWorkspaces() {
       const scopes = new Map<string, { scope: AcpWorkspace; sessionIds: string[] }>();
-      for (const session of await listAllSessions()) {
+      for (const session of await listAllSummaries()) {
         if (!session.archived) continue;
         const key = JSON.stringify([workspaceKey(session), session.workspacePath]);
         const group = scopes.get(key) ?? {
@@ -2701,7 +2773,28 @@ export function createAcpService(
     async getUsageStats(request) {
       if (request.range !== "all" && request.range !== "7d" && request.range !== "30d")
         throw new Error("Invalid app usage range");
-      const current = await listAllSessions();
+      const current: AcpSession[] = [];
+      for (const summary of await listAllSummaries()) {
+        try {
+          const session = await sessionStore.readTransient(summary.id);
+          if (removed.has(session.id)) continue;
+          // 修复原因：统计只需要用户轮次与计量事实，不能保留全部助手正文、工具输出，
+          // 更不能因打开统计页把所有冷历史提升到 Host resident Map。
+          current.push({
+            ...session,
+            entries: session.entries
+              .filter((entry) => entry.kind === "user")
+              .map((entry) => ({
+                id: entry.id,
+                kind: "user",
+                text: "",
+                ...(entry.createdAt === undefined ? {} : { createdAt: entry.createdAt }),
+              })),
+          });
+        } catch (error) {
+          logger.warn(undefined, "ACP usage session unreadable", { error: failureMessage(error) });
+        }
+      }
       // 修复原因：统计页从未接入 Codex 原生请求，因而全是未知轮次；只读回溯
       // 不启动 Agent，也不把会话累计硬塞给当前用户消息。并发区间查询共用一次 IO。
       if (!usageHistoryRead) {
@@ -2729,7 +2822,32 @@ export function createAcpService(
     },
     async search(input) {
       const query = acpSessionSearchInputSchema.parse(input);
-      return searchAcpSessions(await listVisibleSessions(query), query);
+      const visible = await listVisibleSummaries(query);
+      if (!query.query?.trim()) return searchAcpSessions(visible, query);
+      const hits = [];
+      for (const summary of visible) {
+        if (summary.archived) continue;
+        try {
+          const session = await sessionStore.readTransient(summary.id);
+          if (
+            removed.has(session.id) ||
+            workspaceKey(session) !== workspaceKey(query) ||
+            session.workspacePath !== query.workspacePath
+          )
+            continue;
+          // 旧快照的 mtime 活动时间在完整打开前仅由摘要索引派生。
+          const searchable =
+            session.legacySavedAt === undefined && summary.legacySavedAt !== undefined
+              ? { ...session, legacySavedAt: summary.legacySavedAt }
+              : session;
+          hits.push(...searchAcpSessions([{ ...searchable, status: summary.status }], query));
+        } catch (error) {
+          logger.warn(undefined, "ACP session search body unreadable", {
+            error: failureMessage(error),
+          });
+        }
+      }
+      return finishAcpSessionSearch(hits, query);
     },
     async read(input) {
       const session = await scoped(input);

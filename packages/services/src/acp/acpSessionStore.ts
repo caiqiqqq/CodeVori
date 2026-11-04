@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm, stat, truncate } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
-import { acpEntrySchema, acpSessionSchema, type AcpSession } from "@zcode/shared";
+import {
+  acpEntrySchema,
+  acpSessionSchema,
+  acpSessionSummarySchema,
+  summarizeAcpSession,
+  type AcpSession,
+  type AcpSessionSummary,
+} from "@zcode/shared";
 
 const metadataSchema = acpSessionSchema.omit({ entries: true });
 const recordSchema = z
@@ -15,6 +22,38 @@ const recordSchema = z
   })
   .strict();
 type Captured = { snapshot: AcpSession; entries: string[] };
+const fileStampSchema = z.object({
+  dev: z.string(),
+  ino: z.string(),
+  size: z.string(),
+  mtimeNs: z.string(),
+  ctimeNs: z.string(),
+});
+const summarySourceSchema = z.object({
+  checkpoint: fileStampSchema,
+  journal: fileStampSchema.nullable(),
+});
+const summaryRecordSchema = z.object({
+  version: z.literal(1),
+  source: summarySourceSchema,
+  summary: acpSessionSummarySchema,
+});
+type SummarySource = z.infer<typeof summarySourceSchema>;
+
+async function fileStamp(path: string) {
+  const info = await stat(path, { bigint: true });
+  return {
+    dev: String(info.dev),
+    ino: String(info.ino),
+    size: String(info.size),
+    mtimeNs: String(info.mtimeNs),
+    ctimeNs: String(info.ctimeNs),
+  };
+}
+
+function sameSource(left: SummarySource, right: SummarySource): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
 
 function freezeSnapshot<T>(value: T): T {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
@@ -80,9 +119,34 @@ export class AcpSessionStore {
     }
   }
 
-  async read(id: string, { repairTail = true } = {}): Promise<AcpSession> {
-    const cached = this.committed.get(id);
-    if (cached) return structuredClone(cached.snapshot);
+  private async summarySource(id: string): Promise<SummarySource> {
+    const path = this.file(id);
+    const [checkpoint, journal] = await Promise.all([
+      fileStamp(path),
+      fileStamp(`${path}.journal`).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      }),
+    ]);
+    return { checkpoint, journal };
+  }
+
+  private async writeSummary(id: string, snapshot: AcpSession, source?: SummarySource) {
+    const path = this.file(id);
+    await this.atomicWrite(
+      `${path}.summary`,
+      JSON.stringify({
+        version: 1,
+        source: source ?? (await this.summarySource(id)),
+        summary: summarizeAcpSession(snapshot),
+      }),
+    );
+  }
+
+  private async readSnapshot(
+    id: string,
+    repairTail: boolean,
+  ): Promise<{ snapshot: AcpSession; size: number }> {
     const path = this.file(id);
     const checkpoint = await open(path, "r");
     const [contents, checkpointInfo] = await (async () => {
@@ -126,13 +190,72 @@ export class AcpSessionStore {
       snapshot = { ...record.metadata, entries };
     }
     snapshot = freezeSnapshot(acpSessionSchema.parse(snapshot));
+    return { snapshot, size: end };
+  }
+
+  async read(id: string, { repairTail = true } = {}): Promise<AcpSession> {
+    const cached = this.committed.get(id);
+    if (cached) return structuredClone(cached.snapshot);
+    const { snapshot, size } = await this.readSnapshot(id, repairTail);
     const value = { snapshot, entries: snapshot.entries.map((entry) => JSON.stringify(entry)) };
     this.committed.set(id, value);
-    this.sizes.set(id, end);
+    this.sizes.set(id, size);
     return structuredClone(snapshot);
   }
 
-  async commit(snapshot: AcpSession): Promise<number> {
+  /** Cold full-text operations may read a body without promoting it to the committed cache. */
+  async readTransient(id: string): Promise<AcpSession> {
+    const cached = this.committed.get(id);
+    return cached
+      ? structuredClone(cached.snapshot)
+      : (await this.readSnapshot(id, false)).snapshot;
+  }
+
+  /** A sidecar is valid only for the exact checkpoint and journal revision it describes. */
+  async readSummary(id: string): Promise<AcpSessionSummary> {
+    const cached = this.committed.get(id);
+    if (cached) return summarizeAcpSession(cached.snapshot);
+    const path = this.file(id);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const before = await this.summarySource(id);
+      const sidecar = await readFile(`${path}.summary`, "utf8")
+        .then((contents) => summaryRecordSchema.safeParse(JSON.parse(contents)))
+        .then((result) => (result.success ? result.data : null))
+        .catch(() => null);
+      if (sidecar && sidecar.summary.id === id && sameSource(sidecar.source, before)) {
+        const after = await this.summarySource(id);
+        if (sameSource(before, after)) return sidecar.summary;
+        continue;
+      }
+      try {
+        const { snapshot } = await this.readSnapshot(id, false);
+        const after = await this.summarySource(id);
+        if (!sameSource(before, after)) continue;
+        // 修复原因：旧会话尚未完整打开时仍需沿用 checkpoint 的活动时间。
+        const checkpointTime = Number(BigInt(after.checkpoint.mtimeNs) / 1_000_000n);
+        const legacySavedAt =
+          snapshot.legacySavedAt === undefined &&
+          snapshot.entries.some((entry) => entry.kind === "user") &&
+          !snapshot.entries.some((entry) => typeof entry.createdAt === "number") &&
+          checkpointTime > 0
+            ? checkpointTime
+            : snapshot.legacySavedAt;
+        const indexed =
+          legacySavedAt === snapshot.legacySavedAt ? snapshot : { ...snapshot, legacySavedAt };
+        const summary = summarizeAcpSession(indexed);
+        await this.writeSummary(id, indexed, after).catch((error: unknown) =>
+          this.onCheckpointError?.(error),
+        );
+        return summary;
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("changed while reading")) continue;
+        throw error;
+      }
+    }
+    throw new Error("ACP session changed while reading summary; retry");
+  }
+
+  async commit(snapshot: AcpSession, options: { refreshSummary?: boolean } = {}): Promise<number> {
     const id = snapshot.id;
     const path = this.file(id);
     // Existing sessions are read by the owner before mutation. New sessions have no checkpoint.
@@ -156,6 +279,10 @@ export class AcpSessionStore {
       await this.atomicWrite(path, serialized);
       this.committed.set(id, { snapshot, entries });
       this.sizes.set(id, 0);
+      if (options.refreshSummary !== false)
+        await this.writeSummary(id, snapshot).catch((error: unknown) =>
+          this.onCheckpointError?.(error),
+        );
       return Buffer.byteLength(serialized);
     }
     if (snapshot.revision <= previous.snapshot.revision)
@@ -192,6 +319,10 @@ export class AcpSessionStore {
       // 日志已成功持久化：checkpoint 维护失败不能把已接纳输入报成失败。
       await this.checkpoint(id).catch((error: unknown) => this.onCheckpointError?.(error));
     }
+    if (options.refreshSummary !== false)
+      await this.writeSummary(id, snapshot).catch((error: unknown) =>
+        this.onCheckpointError?.(error),
+      );
     return bytes;
   }
 
@@ -210,6 +341,10 @@ export class AcpSessionStore {
     if (this.committed.has(id)) await this.checkpoint(id);
     await rm(`${this.file(id)}.journal`, { force: true });
     await rm(this.file(id), { force: true });
+    // 摘要不是接受事实；遗留 sidecar 也不会在缺少 checkpoint 时被列表发现。
+    await rm(`${this.file(id)}.summary`, { force: true }).catch((error: unknown) =>
+      this.onCheckpointError?.(error),
+    );
     this.committed.delete(id);
     this.captured.delete(id);
     this.sizes.delete(id);

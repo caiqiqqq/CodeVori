@@ -6,6 +6,34 @@ const OUTPUT_CLOSED_ERROR_CODES = new Set([
   "EBADF",
   "ERR_STREAM_DESTROYED",
 ]);
+const SHUTDOWN_DEADLINE_MS = 1500;
+
+/** Entrypoint-owned shutdown; the deadline applies only once shutdown has been requested. */
+export function createNodeReplShutdown(input: {
+  close: () => Promise<void>;
+  exit: () => void;
+}): () => void {
+  let started = false;
+  return () => {
+    if (started) return;
+    started = true;
+    let exited = false;
+    const finish = () => {
+      if (exited) return;
+      exited = true;
+      clearTimeout(deadline);
+      input.exit();
+    };
+    // 修复原因：SDK close 可能一直等待已断开的传输，EOF/signal 虽已触发却留有
+    // 孤儿 REPL。先启动有 ref 的截止定时器；重复请求不能延长退出时间。
+    const deadline = setTimeout(finish, SHUTDOWN_DEADLINE_MS);
+    try {
+      void input.close().then(finish, finish);
+    } catch {
+      finish();
+    }
+  };
+}
 
 /**
  * REPL cell 的同步错误由 NodeReplSession 兜底，但 fire-and-forget 的异步错误

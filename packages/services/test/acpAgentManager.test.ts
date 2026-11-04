@@ -184,6 +184,7 @@ test("composer availability uses launch readiness without running adapter versio
     const systemLaunch = await manager.resolveLaunch("codex");
     const managedLaunch = await manager.resolveLaunch("claude");
     assert.equal(systemLaunch.command, join(bin, "codex-acp"));
+    assert.equal(systemLaunch.env.CODEX_ACP_PROMPT_SUGGESTIONS, "false");
     assert.equal(managedLaunch.command, join(bin, "node"));
     assert.equal(managedLaunch.args[0], join(managed, "bin", "cli.js"));
     // 修复原因：连接前只需启动解析；--version 是设置页诊断，等待它会延迟认证错误出现。
@@ -302,7 +303,11 @@ test("Agent SDK 管理隔离托管安装、识别已有适配器并在重启后�
       restarted.updateAgent({ agent: "codex", enabled: true, env: { PATH: "x" } }),
       /Invalid input/,
     );
-    await restarted.updateAgent({ agent: "codex", enabled: true, env: { TEST_AGENT: "yes" } });
+    await restarted.updateAgent({
+      agent: "codex",
+      enabled: true,
+      env: { TEST_AGENT: "yes", CODEX_ACP_PROMPT_SUGGESTIONS: "true" },
+    });
 
     const packageDir = join(
       managerRoot,
@@ -331,6 +336,7 @@ test("Agent SDK 管理隔离托管安装、识别已有适配器并在重启后�
     assert.equal(launch.command, join(bin, "node"));
     assert.equal(launch.args[0], join(packageDir, "bin", "cli.js"));
     assert.equal(launch.env.TEST_AGENT, "yes");
+    assert.equal(launch.env.CODEX_ACP_PROMPT_SUGGESTIONS, "false");
     const subscription = restarted.onAgentOperation((event) => events.push(event.phase));
     await restarted.manageAgent({
       agent: "codex",

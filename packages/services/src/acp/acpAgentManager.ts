@@ -54,6 +54,7 @@ import { ACP_NPM_REGISTRY, createAcpNodeRuntime } from "./acpNodeRuntime.js";
 import { AcpAgentOperations } from "./acpAgentOperations.js";
 import { AcpInstallCleanupError, runAcpInstallProcess } from "./acpInstallProcess.js";
 import { mergeAcpInstallNetworkEnv } from "./acpInstallNetworkEnv.js";
+import { prepareManagedCodexAcpEntrypoint } from "./acpCodexEntrypoint.js";
 
 /** Offline release defaults. Remote checks replace only version/distribution metadata on this Host. */
 const catalog = {
@@ -846,12 +847,16 @@ export function createAcpAgentManager(
       delete launchEnv.ZCODE_ADAPTER_CHANNEL;
       if (agent === "codex") {
         await applyCodexNativeEnvironment(await codexHome(), launchEnv);
+        // Host 不消费适配器内部建议，禁止每轮为建议另起继承用户 MCP 的线程。
+        launchEnv.CODEX_ACP_PROMPT_SUGGESTIONS = "false";
       }
       if (agent === "pi" && !nativePath)
         throw new Error("Pi is not installed: install pi or set PI_ACP_PI_COMMAND");
-      const executablePath = source === "managed" ? managed?.script : systemPath;
+      let executablePath = source === "managed" ? managed?.script : systemPath;
       if (!ready || !executablePath)
         throw new Error(`${definition.command} is not installed on this Host`);
+      if (agent === "codex" && source === "managed" && managed)
+        executablePath = await prepareManagedCodexAcpEntrypoint(executablePath, managed.version);
       if (agent === "gemini") {
         if (source === "managed" && !nodePath)
           throw new Error("Node.js is required to run the managed ACP adapter");

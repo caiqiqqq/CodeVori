@@ -9,10 +9,7 @@ import {
   type Implementation,
   type ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
-import {
-  shouldSpawnInDetachedProcessGroup,
-  terminateProcessTree,
-} from "../process/processTreeTerminator.js";
+import { shouldSpawnInDetachedProcessGroup } from "../process/processTreeTerminator.js";
 import type { AcpConnectionFactory, AcpConnectionPort, AcpUpdate } from "./acpServiceImpl.js";
 import { projectAcpConfigOptions, projectAcpModeState } from "./acpConfigOptions.js";
 import { readCodexNativeUsage } from "./acpNativeUsage.js";
@@ -28,6 +25,7 @@ import { OperationDiagnostics } from "@zcode/rpc";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { acpTextConnectionPolicy } from "./acpTextConnectionPolicy.js";
 import { AcpPromptLifecycle } from "./acpPromptLifecycle.js";
+import { createAcpConnectionCleanup } from "./acpConnectionCleanup.js";
 
 const diagnosticLogger = createServiceLogger("acp-connection");
 const diagnostics = new OperationDiagnostics(
@@ -54,6 +52,7 @@ async function connectWithDiagnostics(
     args: [...acpAgentDefinition(input.agent).args],
     env: process.env,
   };
+  const ownedProcessStartedAtMs = Date.now();
   const child = spawn(launch.command, launch.args, {
     cwd: input.workspacePath,
     env: launch.env,
@@ -62,23 +61,29 @@ async function connectWithDiagnostics(
     detached: shouldSpawnInDetachedProcessGroup(),
     windowsHide: true,
   });
-  let closed = false;
   const terminals = new AcpTerminals(input.workspacePath, launch.env, (terminal) =>
     input.onUpdate({ kind: "terminal", terminal }),
   );
-  let terminalsClosed: Promise<void> = Promise.resolve();
   let exitReason = "ACP Agent 已退出";
-  const closedPromise = new Promise<void>((resolve) => child.once("close", () => resolve()));
+  let ownedProcessExitedAtMs: number | undefined;
+  const cleanup = createAcpConnectionCleanup({
+    child,
+    disposeTerminals: () => terminals.dispose(),
+    log: diagnosticLogger,
+    ownedProcessStartedAtMs,
+    resolveOwnedProcessExitedAtMs: () => ownedProcessExitedAtMs,
+  });
   const exited = new Promise<never>((_, reject) => {
     child.once("error", (error) => {
       exitReason = error.message;
       reject(error);
     });
     child.once("exit", (code, signal) => {
+      ownedProcessExitedAtMs = Date.now();
       diagnostics.event(`acp.exit.${input.agent}.${signal ?? "exit"}`, {
         pid: child.pid ?? null,
         exitCode: code,
-        requested: closed,
+        requested: cleanup.requested,
         signaled: signal !== null,
       });
       exitReason = `ACP Agent 已退出 (${signal ?? code ?? "unknown"})`;
@@ -88,20 +93,10 @@ async function connectWithDiagnostics(
   // Adapter stderr may contain private paths or credentials; keep it out of snapshots/logs.
   child.stderr.resume();
   child.once("exit", () => {
-    if (!closed) input.onExit(exitReason);
+    const unexpected = !cleanup.requested;
+    cleanup.close();
+    if (unexpected) input.onExit(exitReason);
   });
-
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    terminalsClosed = terminals.dispose();
-    // close 为非等待接口；closed Promise 保留清理结果，避免无人等待时 rejection。
-    void terminalsClosed.catch(() => {});
-    terminateProcessTree(
-      child,
-      process.platform !== "win32" && child.pid ? { ownedProcessGroupId: child.pid } : {},
-    );
-  };
 
   let sessionId = input.sessionId;
   let agentInfo: Implementation | null | undefined;
@@ -130,27 +125,27 @@ async function connectWithDiagnostics(
   const client: Client = {
     async createTerminal(request) {
       if (input.textOnly) throw new Error("Auxiliary generation has no terminal capability");
-      if (closed || !promptLifecycle.accepting || request.sessionId !== sessionId)
+      if (cleanup.requested || !promptLifecycle.accepting || request.sessionId !== sessionId)
         throw new Error("ACP terminal session is not active");
       return terminals.create(request);
     },
     terminalOutput(request) {
-      if (closed || request.sessionId !== sessionId)
+      if (cleanup.requested || request.sessionId !== sessionId)
         throw new Error("ACP terminal session mismatch");
       return terminals.output(request.terminalId);
     },
     waitForTerminalExit(request) {
-      if (closed || request.sessionId !== sessionId)
+      if (cleanup.requested || request.sessionId !== sessionId)
         throw new Error("ACP terminal session mismatch");
       return terminals.wait(request.terminalId);
     },
     killTerminal(request) {
-      if (closed || request.sessionId !== sessionId)
+      if (cleanup.requested || request.sessionId !== sessionId)
         throw new Error("ACP terminal session mismatch");
       return terminals.kill(request.terminalId);
     },
     releaseTerminal(request) {
-      if (closed || request.sessionId !== sessionId)
+      if (cleanup.requested || request.sessionId !== sessionId)
         throw new Error("ACP terminal session mismatch");
       return terminals.release(request.terminalId);
     },
@@ -248,7 +243,7 @@ async function connectWithDiagnostics(
   };
   const transport = connectAcpClientTransport({
     client,
-    isActiveSession: (id) => !closed && receivingLiveUpdates && id === sessionId,
+    isActiveSession: (id) => !cleanup.requested && receivingLiveUpdates && id === sessionId,
     onElicitation: input.onElicitation,
     stream: ndJsonStream(
       Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
@@ -368,7 +363,7 @@ async function connectWithDiagnostics(
     let nativeUsage = await readNativeUsage();
     return {
       sessionId: activeSessionId,
-      closed: closedPromise.then(() => terminalsClosed),
+      closed: cleanup.closed,
       async stopTerminal(terminalId) {
         await terminals.kill(terminalId);
       },
@@ -413,10 +408,13 @@ async function connectWithDiagnostics(
           terminals.interrupt(),
         ]);
       },
-      close,
+      close: cleanup.close,
     };
   } catch (error) {
-    close();
+    cleanup.close();
+    await cleanup.closed.catch((cleanupError) => {
+      throw new AggregateError([error, cleanupError], "ACP initialization and cleanup failed");
+    });
     throw error;
   } finally {
     if (startTimer) clearTimeout(startTimer);
