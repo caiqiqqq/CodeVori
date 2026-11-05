@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { LocalTtftRecorder } from "./local-ttft.js";
 import { localTtftNow, localTtftFactsSchema } from "@zcode/shared/zcode-protocol-v4";
 import {
@@ -129,6 +130,7 @@ import {
 import { AttachmentUploadRegistry } from "./attachment-upload-registry.js";
 import {
   ColdSessionResumeCoordinator,
+  V4SubscribeSessionUnavailableError,
   type ColdSessionResumeOutcome,
 } from "./cold-session-resume.js";
 import { CommandInbox } from "./command-inbox.js";
@@ -223,7 +225,11 @@ export interface V4GatewayHost {
     sessionId: string,
     resumeThoughtLevel?: string,
     workspace?: ZCodeWorkspaceRef,
+    additionalDirectories?: string[],
+    persistedMessages?: MessageWithParts[],
   ): Promise<ColdSessionResumeOutcome>;
+  loadPersistedMessages?(sessionId: string): Promise<MessageWithParts[]>;
+  retainSessionRuntime?(sessionId: string): Promise<() => void>;
   /**
    * 下行物理帧出口（宿主负责投递：stdio notification / MessagePort / ws）。
    *
@@ -576,6 +582,14 @@ export class ConversationV4Gateway {
   private readonly hydrationInFlight = new Map<string, Promise<ConversationTopicPublisher>>();
   /** cold activation 到 hydration 的 READY 水位；只阻塞本次恢复期间的 command/query。 */
   private readonly readyFlights = new Map<string, Promise<ConversationTopicPublisher>>();
+  private readonly historyOpenings = new Map<
+    string,
+    {
+      history: Promise<ConversationTopicPublisher>;
+      start: () => void;
+      cancel: () => void;
+    }
+  >();
   /** load await 窗口内的 raw accepted events；重建后按 cursor/eventId 补回。 */
   private readonly hydrationBuffers = new Map<string, HydrationBuffer>();
   /** transcript 合成序列与 runtime raw 序列之间的 per-session 单调映射。 */
@@ -655,7 +669,11 @@ export class ConversationV4Gateway {
     this.coldResume = new ColdSessionResumeCoordinator(host);
     this.inbox = new CommandInbox({
       getRevision: (sessionId) => {
-        if (!this.host.sessionExists(sessionId)) return null;
+        if (
+          !this.host.sessionExists(sessionId) &&
+          !this.publishers.get(sessionId)?.getSnapshot().runtimeInitialization
+        )
+          return null;
         // 已知会话但尚无事件 → 投影未建，revision 视为 0（draft 起点）。
         return this.publishers.get(sessionId)?.getSnapshot().revision ?? 0;
       },
@@ -673,6 +691,22 @@ export class ConversationV4Gateway {
         return resolution.status === "stale"
           ? { verdict: "stale", reasonCode: resolution.reasonCode }
           : { verdict: "reject", reasonCode: resolution.reasonCode };
+      },
+      // 修复原因：历史首帧先到时 runtime 尚不可执行；在 inbox 去重之后拒绝新命令。
+      guard: (envelope) => {
+        const initialization =
+          envelope.sessionId === null
+            ? undefined
+            : this.publishers.get(envelope.sessionId)?.getSnapshot().runtimeInitialization;
+        return initialization && initialization.status !== "ready"
+          ? {
+              verdict: "reject",
+              reasonCode:
+                initialization.status === "failed"
+                  ? "guard.runtimeInitializationFailed"
+                  : "guard.runtimeInitializing",
+            }
+          : { verdict: "allow" };
       },
       lookupTranscriptCommand: (key) => this.host.lookupTranscriptCommand?.(key) ?? null,
       lookupTimelineCommand: (key) => this.host.lookupTimelineCommand?.(key) ?? null,
@@ -1402,15 +1436,37 @@ export class ConversationV4Gateway {
     // - 有 publisher 且事件日志完整（流式 live）→ 保留，重放会双计且打断流。
     const restoreStartedAt = performance.now();
     const existingReady = this.readyFlights.get(sessionId);
-    const publisher = existingReady
-      ? await existingReady
-      : !isLiveConversation
-        ? await this.ensureColdReadyPublisher(
+    const historyFirst = params.historyFirst === true && Boolean(this.host.loadPersistedMessages);
+    const initialState = this.publishers.get(sessionId)?.getSnapshot().runtimeInitialization;
+    if (!historyFirst && initialState?.status === "failed") {
+      throw new V4SubscribeSessionUnavailableError(
+        sessionId,
+        "fault.subscribe.resumeFailed",
+        initialState.message,
+      );
+    }
+    const publisher =
+      historyFirst &&
+      (this.historyOpenings.has(sessionId) ||
+        initialState?.status === "failed" ||
+        (!isLiveConversation && !existingReady))
+        ? await this.ensureHistoryReadyPublisher(
             sessionId,
             params.resumeThoughtLevel,
             params.workspace,
+            params.additionalDirectories,
+            params.retryInitialization,
           )
-        : await this.hydratePublisher(sessionId);
+        : existingReady
+          ? await existingReady
+          : !isLiveConversation
+            ? await this.ensureColdReadyPublisher(
+                sessionId,
+                params.resumeThoughtLevel,
+                params.workspace,
+                params.additionalDirectories,
+              )
+            : await this.hydratePublisher(sessionId);
     const cliSessionRestoreMs = !isLiveConversation
       ? Math.max(0, Math.round(performance.now() - restoreStartedAt))
       : undefined;
@@ -1440,12 +1496,17 @@ export class ConversationV4Gateway {
       dispatch = this.subscribeDispatch(result.ack, result.reservation, () => {
         const state = this.flushStates.get(routeKey);
         if (state) this.scheduleFlush(routeKey, state, publisher);
+        this.historyOpenings.get(sessionId)?.start();
       });
       dispatch.ack = {
         ...dispatch.ack,
         openTiming: {
           version: 1,
-          ...(cliSessionRestoreMs !== undefined ? { cliSessionRestoreMs } : {}),
+          ...(cliSessionRestoreMs !== undefined
+            ? historyFirst
+              ? { historyReadyMs: cliSessionRestoreMs }
+              : { cliSessionRestoreMs }
+            : {}),
           initialFrameEncodeMs: Math.max(
             0,
             Math.round(performance.now() - initialFrameEncodeStartedAt),
@@ -1581,11 +1642,16 @@ export class ConversationV4Gateway {
   async rowsRange(rawParams: unknown): Promise<V4ConversationRowsRangeResult> {
     const params = v4ConversationRowsRangeParamsSchema.parse(rawParams);
     const existingReady = this.readyFlights.get(params.sessionId);
-    const publisher = existingReady
-      ? await existingReady
-      : !this.hasLiveConversation(params.sessionId)
-        ? await this.ensureColdReadyPublisher(params.sessionId)
-        : await this.hydratePublisher(params.sessionId);
+    const publisher = this.historyOpenings.has(params.sessionId)
+      ? await this.historyOpenings.get(params.sessionId)!.history
+      : this.publishers.get(params.sessionId)?.getSnapshot().runtimeInitialization?.status ===
+          "failed"
+        ? this.publishers.get(params.sessionId)!
+        : existingReady
+          ? await existingReady
+          : !this.hasLiveConversation(params.sessionId)
+            ? await this.ensureColdReadyPublisher(params.sessionId)
+            : await this.hydratePublisher(params.sessionId);
     return publisher.getRowsRange(
       {
         ...(params.beforeRowId !== undefined ? { beforeRowId: params.beforeRowId } : {}),
@@ -2425,7 +2491,7 @@ export class ConversationV4Gateway {
       const parsed = parseCommandEnvelope(rawParams);
       const sessionId = parsed.ok ? parsed.envelope.sessionId : null;
       const ready = sessionId === null ? undefined : this.readyFlights.get(sessionId);
-      if (ready) await ready;
+      if (ready && sessionId !== null && !this.historyOpenings.has(sessionId)) await ready;
     }
 
     timing.phase("inbox_wait_validate");
@@ -2831,6 +2897,7 @@ export class ConversationV4Gateway {
     this.hydrationBuffers.delete(sessionId);
     this.hydrationInFlight.delete(sessionId);
     this.readyFlights.delete(sessionId);
+    this.historyOpenings.get(sessionId)?.cancel();
     this.rawSequenceStates.delete(sessionId);
     if (options.clearCommandInbox) this.inbox.clearSession(sessionId);
     this.telemetryNormalizer.clearSession(sessionId);
@@ -2883,6 +2950,8 @@ export class ConversationV4Gateway {
     this.hydrationBuffers.clear();
     this.hydrationInFlight.clear();
     this.readyFlights.clear();
+    for (const opening of this.historyOpenings.values()) opening.cancel();
+    this.historyOpenings.clear();
     this.rawSequenceStates.clear();
     this.telemetryEventIds.clear();
     this.detachedLiveSessions.clear();
@@ -2945,6 +3014,138 @@ export class ConversationV4Gateway {
     }
   }
 
+  /** 首帧先落 transport queue，再启动会同步扫描插件的 runtime；重连不重跑失败 hook。 */
+  private ensureHistoryReadyPublisher(
+    sessionId: string,
+    thought?: string,
+    workspace?: ZCodeWorkspaceRef,
+    additionalDirectories?: string[],
+    retryAttempt?: string,
+  ): Promise<ConversationTopicPublisher> {
+    const existing = this.historyOpenings.get(sessionId);
+    if (existing) return existing.history;
+    const publisher = this.publishers.get(sessionId);
+    const failed = publisher?.getSnapshot().runtimeInitialization;
+    if (failed?.status === "failed" && failed.attemptId !== retryAttempt)
+      return Promise.resolve(publisher!);
+    // 失败 app 已回收，旧 raw tail 不属于下一次 runtime 的事件水位。
+    if (failed?.status === "failed") this.rawSequenceStates.delete(sessionId);
+    const attemptId = randomUUID();
+    const initializationStartedAt = performance.now();
+    let resolveReady!: (publisher: ConversationTopicPublisher) => void;
+    let rejectReady!: (error: unknown) => void;
+    const ready = new Promise<ConversationTopicPublisher>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+    // 没有旧客户端等待时失败也由状态条消费，避免无人 await 的 rejection。
+    void ready.catch(() => undefined);
+    this.readyFlights.set(sessionId, ready);
+    let messages: MessageWithParts[] | undefined;
+    let started = false;
+    const clear = () => {
+      messages = undefined;
+      if (this.readyFlights.get(sessionId) === ready) this.readyFlights.delete(sessionId);
+      if (this.historyOpenings.get(sessionId) === opening) this.historyOpenings.delete(sessionId);
+    };
+    const opening = {
+      cancel: () => {
+        rejectReady(new Error("cold opening disposed"));
+        clear();
+      },
+      history: Promise.resolve()
+        .then(async () => {
+          messages = await this.host.loadPersistedMessages!(sessionId);
+          if (this.disposed || this.historyOpenings.get(sessionId) !== opening)
+            throw new Error("cold opening disposed");
+          const result = await this.hydratePublisher(sessionId, messages, true);
+          this.setInitialization(sessionId, result, { status: "initializing", attemptId });
+          return result;
+        })
+        .catch((error: unknown) => {
+          rejectReady(error);
+          clear();
+          throw error;
+        }),
+      start: () => {
+        if (started) return;
+        started = true;
+        // post-response commit 已确认首帧入队；下一轮让 stdio I/O 有机会交付，不用定时猜测 UI。
+        setImmediate(() => {
+          let disposeOnFailure: (() => Promise<void>) | undefined;
+          let releaseRuntime: (() => void) | undefined;
+          void (async () => {
+            if (this.disposed || this.historyOpenings.get(sessionId) !== opening)
+              throw new Error("cold opening disposed");
+            releaseRuntime = await this.host.retainSessionRuntime?.(sessionId);
+            if (this.disposed || this.historyOpenings.get(sessionId) !== opening)
+              throw new Error("cold opening disposed");
+            const restored = await this.coldResume.ensureResumed(
+              sessionId,
+              thought,
+              workspace,
+              additionalDirectories,
+              messages,
+              (outcome) => {
+                disposeOnFailure = outcome.disposeOnFailure;
+              },
+            );
+            if (this.disposed || this.historyOpenings.get(sessionId) !== opening)
+              throw new Error("cold opening disposed");
+            const result = await this.hydratePublisher(sessionId, restored ?? messages, true);
+            this.setInitialization(sessionId, result, { status: "ready", attemptId });
+            this.host.onDebug?.(
+              `v4 runtime ready session=${sessionId} attempt=${attemptId} runtimeReadyMs=${Math.round(performance.now() - initializationStartedAt)}`,
+            );
+            resolveReady(result);
+          })()
+            .catch(async (error: unknown) => {
+              // activation 成功而最终物化失败时，也必须拆掉本次 app，下一次重试才会完整 resume。
+              await disposeOnFailure?.();
+              if (!this.disposed && this.historyOpenings.get(sessionId) === opening) {
+                const result = this.publishers.get(sessionId);
+                if (result)
+                  this.setInitialization(sessionId, result, {
+                    status: "failed",
+                    attemptId,
+                    reasonCode: "fault.subscribe.resumeFailed",
+                    message: error instanceof Error ? error.message : String(error),
+                  });
+                this.host.onError?.("v4.initialize", error, { sessionId, attemptId });
+              }
+              rejectReady(error);
+            })
+            .finally(() => {
+              releaseRuntime?.();
+              clear();
+            });
+        });
+      },
+    };
+    this.historyOpenings.set(sessionId, opening);
+    return opening.history;
+  }
+
+  private setInitialization(
+    sessionId: string,
+    publisher: ConversationTopicPublisher,
+    state: NonNullable<ConversationSnapshot["runtimeInitialization"]>,
+  ): void {
+    publisher.setRuntimeInitialization(state);
+    const sequence = this.rawSequenceStates.get(sessionId);
+    if (sequence) {
+      sequence.lastTransportSeq = publisher.getSnapshot().seq;
+      sequence.offset = sequence.lastTransportSeq - sequence.sourceEventSeq;
+    }
+    for (const connectionId of new Set(
+      [...this.flushStates.values()]
+        .filter((entry) => entry.sessionId === sessionId)
+        .map((entry) => entry.connectionId),
+    )) {
+      if (!this.pausedConnections.has(connectionId)) this.flushConnection(connectionId);
+    }
+  }
+
   /**
    * 冷恢复 READY 只在明确需要 activation 的入口创建；hydratePublisher 保持 projection-only。
    * 注册 promise 早于 activation，避免 record 提前入册后并发 command/query 越过恢复水位。
@@ -2953,6 +3154,7 @@ export class ConversationV4Gateway {
     sessionId: string,
     resumeThoughtLevel?: string,
     workspace?: ZCodeWorkspaceRef,
+    additionalDirectories?: string[],
   ): Promise<ConversationTopicPublisher> {
     const existingFlight = this.readyFlights.get(sessionId);
     if (existingFlight) return existingFlight;
@@ -2962,6 +3164,7 @@ export class ConversationV4Gateway {
         sessionId,
         resumeThoughtLevel,
         workspace,
+        additionalDirectories,
       );
       return this.hydratePublisher(sessionId, persistedMessages);
     });
@@ -2985,7 +3188,8 @@ export class ConversationV4Gateway {
   ): Promise<ConversationTopicPublisher> {
     const existing = this.publishers.get(sessionId);
     // 已 hydrate 过的 live publisher：直接复用（避免重复重建 / 双计）。
-    if (existing && this.hydratedSessions.has(sessionId)) return Promise.resolve(existing);
+    if (!forceRebuild && existing && this.hydratedSessions.has(sessionId))
+      return Promise.resolve(existing);
 
     const inFlight = this.hydrationInFlight.get(sessionId);
     if (inFlight) return inFlight;
@@ -3036,6 +3240,7 @@ export class ConversationV4Gateway {
             persistedMessages: persistedMessages?.length ?? 0,
             sessionId,
           });
+          if (this.historyOpenings.has(sessionId)) throw error;
           return { events: [] as SessionEvent[], synthesized: false, sourceEventSeq: 0 };
         })
       : { events: [] as SessionEvent[], synthesized: false, sourceEventSeq: 0 };

@@ -73,6 +73,7 @@ import type {
   EventId,
   ForkCommitBundle,
   GoalStatus,
+  MessageWithParts,
   MessageId,
   ModelSelection,
   SessionEvent,
@@ -92,6 +93,7 @@ import {
 import {
   afterStateMutation,
   activateSessionForResume,
+  discardFailedSessionResume,
   validateSessionActivationWorkspace,
   createSessionRecordForV4,
   ensureSessionModelAvailableForNextTurn,
@@ -1464,10 +1466,20 @@ export function createConversationV4Gateway(
         });
     },
     // Gateway 的单一 READY promise 负责并发与水位；binder 只恢复 runtime。
+    retainSessionRuntime: async (sessionId) =>
+      (await context.sessionResidentPool?.acquireOperation(sessionId)) ?? (() => undefined),
+    loadPersistedMessages: async (sessionId) => {
+      const store = context.deps.sessionStore;
+      if (!store || !(await store.getSession(sessionId as SessionId)))
+        throw new Error("fault.subscribe.sessionNotFound");
+      return store.messages({ sessionID: sessionId as SessionId });
+    },
     resumePersistedSession: async (
       sessionId,
       resumeThoughtLevel,
       workspace?: ZCodeWorkspaceRef,
+      additionalDirectories?: string[],
+      persistedMessages?: MessageWithParts[],
     ) => {
       const persisted = await context.deps.sessionStore?.getSession(sessionId as SessionId);
       if (!persisted) {
@@ -1479,6 +1491,7 @@ export function createConversationV4Gateway(
         });
         return { status: "notFound" };
       }
+      const existingRecord = context.sessions.get(sessionId);
       const activated = await activateSessionForResume(
         context,
         {
@@ -1486,13 +1499,20 @@ export function createConversationV4Gateway(
           // session.path 可能是规范化后的执行 cwd，不能覆盖当前 attachment
           // 已知的 workspace 身份。旧 session 没有 attachment 上下文时仍走原有持久化回退。
           ...(workspace ? { workspace } : {}),
+          ...(additionalDirectories !== undefined ? { additionalDirectories } : {}),
           ...(resumeThoughtLevel ? { thoughtLevel: resumeThoughtLevel } : {}),
         },
-        { reusePersistedMessages: true },
+        { reusePersistedMessages: true, persistedMessages },
       );
       return {
         status: "resumed",
         persistedMessages: activated.persistedMessages,
+        ...(!existingRecord
+          ? {
+              disposeOnFailure: () =>
+                discardFailedSessionResume(context, sessionId, activated.record),
+            }
+          : {}),
       };
     },
     emitWireFrame: (wire) =>

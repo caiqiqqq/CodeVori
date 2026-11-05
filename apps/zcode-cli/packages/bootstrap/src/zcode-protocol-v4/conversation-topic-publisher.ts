@@ -34,6 +34,7 @@ import {
   coalesceConversationDeltas,
   filterConversationDeltasForProfile,
   filterConversationRowsForProfile,
+  statePatchSchema,
   utf8JsonByteLength,
 } from "@zcode/shared/zcode-protocol-v4";
 import {
@@ -264,6 +265,17 @@ export class ConversationTopicPublisher {
 
   getSnapshot(): ConversationSnapshot {
     return this.projection.getSnapshot();
+  }
+
+  /** 冷会话的初始化状态经既有 delta 日志发布，保持订阅水位连续。 */
+  setRuntimeInitialization(
+    state: NonNullable<ConversationSnapshot["runtimeInitialization"]>,
+  ): void {
+    this.projection.setRuntimeInitialization(state);
+    this.wireSnapshotBytesUpperBound = this.measureWireSnapshotBytes(this.getWireSnapshot());
+    this.appendDeltas(this.currentSeq, [
+      { op: "state.updated", patch: statePatchSchema.parse(this.getSnapshot()) },
+    ]);
   }
 
   /** 测试/闸门共用的 logical TopicFrame 字节口径（不是裸 snapshot 大小）。 */
@@ -573,7 +585,11 @@ export class ConversationTopicPublisher {
       if (deltas === null) throw new ProjectionPayloadTooLargeError(candidateBytes);
       this.wireSnapshotBytesUpperBound = nextUpperBound;
     }
-    this.log.push({ seq: event.sequenceNumber, deltas });
+    this.appendDeltas(event.sequenceNumber, deltas);
+  }
+
+  private appendDeltas(seq: number, deltas: ConversationDelta[]): void {
+    this.log.push({ seq, deltas });
     while (this.log.length > this.retention) {
       const evicted = this.log.shift();
       if (evicted) this.floorSeq = evicted.seq;
@@ -638,8 +654,38 @@ export class ConversationTopicPublisher {
       }
     }
 
+    const previous = this.projection.getSnapshot();
+    if (previous.runtimeInitialization) {
+      candidate.projection.setRuntimeInitialization(
+        previous.runtimeInitialization,
+        previous.seq + 1,
+        previous.revision + 1,
+      );
+    }
     this.projection = candidate.projection;
-    if (usedBatchHydration) {
+    const current = this.getSnapshot();
+    if (
+      previous.runtimeInitialization &&
+      previous.rows.window.length === current.rows.window.length &&
+      previous.rows.window.every(
+        (row, index) =>
+          row.rowId === current.rows.window[index]?.rowId &&
+          row.kind === current.rows.window[index]?.kind,
+      )
+    ) {
+      // 修复原因：激活完成后若历史结构未变，整张快照会清除已分页的旧行与滚动锚点。
+      const deltas: ConversationDelta[] = [
+        { op: "state.updated", patch: statePatchSchema.parse(current) },
+      ];
+      current.rows.window.forEach((row, index) => {
+        if (JSON.stringify(row) !== JSON.stringify(previous.rows.window[index]))
+          deltas.push({ op: "row.upserted", row });
+      });
+      this.wireSnapshotBytesUpperBound = this.measureWireSnapshotBytes(this.getWireSnapshot());
+      this.appendDeltas(current.seq, deltas);
+      return;
+    }
+    if (usedBatchHydration || previous.runtimeInitialization) {
       // 批量重放会把派生 actions 延迟到最终 materialization；若允许客户端
       // 用逐事件旧快照的中间 base 续这份日志，batch 从未持有的旧 canEdit/canRetry 无法被
       // 定点撤销。rehydrate 本来就要求所有现有订阅 resync，因此在当前 seq 建立 snapshot

@@ -35,6 +35,7 @@ export const hostCapabilitiesSchema = z.object({
    * `state.updated`，并且先经 `clampWorkflowRunsForLegacy` 裁到旧界。
    */
   workflowRunDeltas: z.boolean().optional(),
+  historyFirst: z.boolean().optional(),
 });
 export type HostCapabilities = z.infer<typeof hostCapabilitiesSchema>;
 
@@ -82,6 +83,7 @@ export const clientHelloSchema = z
          * 是 `.strict()` 的，老 Host 见到不认识的键会整条 clientHello 解析失败、连接握不上手。
          */
         workflowRunDeltas: z.boolean().optional(),
+        historyFirst: z.boolean().optional(),
       })
       .strict()
       .optional(),
@@ -114,6 +116,7 @@ export const subscribeParamsSchema = z
     base: z.object({ logEpoch: z.string(), seq: z.number() }).optional(),
     // QoS hint，只影响调度，不影响语义。
     visibility: z.enum(["foreground", "background"]).optional(),
+    retryInitialization: z.string().min(1).optional(),
   })
   .strict();
 export type SubscribeParams = z.infer<typeof subscribeParamsSchema>;
@@ -143,6 +146,7 @@ export const conversationOpenTimingSchema = z
     cliBootstrapMs: openTimingMsSchema,
     cliSessionRestoreMs: openTimingMsSchema,
     initialFrameEncodeMs: openTimingMsSchema,
+    historyReadyMs: openTimingMsSchema,
     cliProcessState: z.enum(["spawned", "reused"]).optional(),
     sessionRuntimeState: z.enum(["cold", "warm"]).optional(),
     snapshotRowCount: openTimingCountSchema,
@@ -434,6 +438,8 @@ export const v4ConversationSubscribeParamsSchema = subscribeParamsSchema.extend(
    * 不是某一次订阅可以自选的口味。缺席 = 按旧消费者处理（整键 patch + 旧界裁剪）。
    */
   workflowRunDeltas: z.boolean().optional(),
+  historyFirst: z.boolean().optional(),
+  additionalDirectories: z.array(z.string().trim().min(1)).max(256).optional(),
 });
 export type V4ConversationSubscribeParams = z.infer<typeof v4ConversationSubscribeParamsSchema>;
 

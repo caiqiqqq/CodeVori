@@ -6803,6 +6803,8 @@ const enUS: Record<string, string> = {
   "chat.slash.emptyResults": "No matching slash commands",
   // Errors
   "chat.error.connectionLost": "Connection to agent lost",
+  "chat.initialization.failed": "Initialization failed. Sending is unavailable.",
+  "chat.initialization.retry": "Retry",
   "chat.error.processExited": "Agent process exited unexpectedly",
   "chat.error.dismiss": "Dismiss error",
   "chat.error.retry": "Retry",

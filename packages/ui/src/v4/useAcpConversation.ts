@@ -347,10 +347,18 @@ export function useAcpConversation(
         // 修复原因：用户已点选的精确历史 id 可能早于 list 回包；旧快照缺失不能把
         // 这个意图抹掉并触发自动创建。真实删除由 removed 事件或新建任务处理。
         setLoadedTargetKey(listKey);
-        setErrorState(null);
+        // 修复原因：目录回包可能晚于当前会话 refresh 失败；只清目录错误，不覆盖
+        // 精确会话的连接错误和重试入口。
+        setErrorState((previous) => (previous?.agent ? previous : null));
       })
       .catch((cause) => {
-        if (live && targetKeyRef.current === targetKey)
+        // 精确选择的正文与连接由自己的 Host 路径负责；目录失败不能盖住当前会话。
+        const activeAgent = agentRef.current;
+        if (
+          live &&
+          targetKeyRef.current === targetKey &&
+          (!activeAgent || !selectedIdsRef.current[activeAgent])
+        )
           setErrorState({ agent: null, message: messageOf(cause) });
       });
     return () => {
@@ -647,7 +655,9 @@ export function useAcpConversation(
 
   useEffect(() => {
     // 修复原因：重开/远控重连 running 会话也需确认同一 Host 连接，才能接纳后续排队输入。
-    if (!selected || !loaded || selected.provisional) return;
+    // 修复原因：普通列表只是目录；精确会话的正文已由 Host 确认时，等待列表会额外
+    // 阻塞连接恢复、发送和配置。列表重载仍通过 loaded 依赖触发当前目标重新核验。
+    if (!selected || selected.provisional) return;
     // 修复原因：Codeg 选择历史会话时就恢复 ACP，实时配置和认证错误应在发送前可见。
     refreshSession(selected);
     // 修复原因：重开同一会话会清除 readyIds，但 selected 对象可能不变（回复结束后尤其如此）。
@@ -695,7 +705,7 @@ export function useAcpConversation(
 
   const send = useCallback(
     async (input: Omit<AcpPromptInput, "commandId">): Promise<string> => {
-      if (!agent || !selected || !loaded || busy || !readyIds.current.has(selected.id)) {
+      if (!agent || !selected || busy || !readyIds.current.has(selected.id)) {
         throw new Error("ACP session is not ready");
       }
       // 同一 Agent 可有多个分屏会话；A 的 admission/retry 不能占用 B 的发送锁或幂等键。
@@ -775,7 +785,7 @@ export function useAcpConversation(
         });
       }
     },
-    [agent, busy, loaded, selected, service, target, targetKey, intl, projectionLease],
+    [agent, busy, selected, service, target, targetKey, intl, projectionLease],
   );
 
   const stop = useCallback(() => {
@@ -841,13 +851,7 @@ export function useAcpConversation(
   );
   const setConfigOption = useCallback(
     async (configId: string, value: string | boolean): Promise<void> => {
-      if (
-        !loaded ||
-        !selected ||
-        !readyIds.current.has(selected.id) ||
-        selected.status === "running" ||
-        busy
-      )
+      if (!selected || !readyIds.current.has(selected.id) || selected.status === "running" || busy)
         throw new Error("ACP session is not ready");
       changeBusy(selected.agent, 1, selected.id);
       setErrorState(null);
@@ -869,7 +873,7 @@ export function useAcpConversation(
         changeBusy(selected.agent, -1, selected.id);
       }
     },
-    [busy, changeBusy, loaded, selected, service, target, targetKey],
+    [busy, changeBusy, selected, service, target, targetKey],
   );
   const decide = useCallback(
     (requestId: string, optionId: string) => {
@@ -964,17 +968,18 @@ export function useAcpConversation(
       void projectionLease.store.retry();
       return;
     }
-    if (!loaded) {
+    // 精确会话的恢复失败先重试该目标；普通目录是否仍在读取与它无关。
+    if (selected && !readyIds.current.has(selected.id)) {
+      refreshed.current.delete(selected.id);
+      refreshRequests.current.delete(selected.id);
+      refreshSession(selected);
+    } else if (!loaded) {
       setReloadKey((key) => key + 1);
     } else if (!selected && !selectedIds[agent]) {
       attempted.current.add(agent);
       connectNew(agent);
     } else if (!selected) {
       setReloadKey((key) => key + 1);
-    } else if (!readyIds.current.has(selected.id)) {
-      refreshed.current.delete(selected.id);
-      refreshRequests.current.delete(selected.id);
-      refreshSession(selected);
     } else {
       setErrorState(null);
     }

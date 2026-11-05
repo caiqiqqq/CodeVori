@@ -6457,6 +6457,8 @@ const zhCN: Record<string, string> = {
   "chat.slash.emptyResults": "没有匹配的 slash command",
   // 错误
   "chat.error.connectionLost": "与代理的连接已断开",
+  "chat.initialization.failed": "初始化失败，暂时无法发送",
+  "chat.initialization.retry": "重试",
   "chat.error.processExited": "代理进程意外退出",
   "chat.error.dismiss": "关闭错误提示",
   "chat.error.retry": "重试",

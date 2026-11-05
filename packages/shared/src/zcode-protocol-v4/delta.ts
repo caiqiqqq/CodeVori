@@ -26,6 +26,7 @@ import {
   sessionUsageStateSchema,
   subagentProjectionStateSchema,
   workspaceHookAdmissionStateSchema,
+  runtimeInitializationSchema,
 } from "./snapshot.js";
 import {
   WORKFLOW_RUNS_LIMITS,
@@ -38,6 +39,7 @@ import {
 // StatePatch：键级整体替换（Object.assign），键集合封闭。键内绝不深合并。
 export const statePatchSchema = z.object({
   revision: z.number().optional(),
+  runtimeInitialization: runtimeInitializationSchema.optional(),
   control: sessionControlSchema.optional(),
   sharedContextImport: sharedContextImportStateSchema.optional(),
   availability: sessionActionAvailabilitySchema.optional(),

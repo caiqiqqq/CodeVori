@@ -467,12 +467,26 @@ export const workspaceHookAdmissionStateSchema = z.object({
 });
 export type WorkspaceHookAdmissionSnapshotState = z.infer<typeof workspaceHookAdmissionStateSchema>;
 
+// 修复原因：持久历史可读与 runtime 可执行是两个水位，冷订阅须显式告知客户端。
+export const runtimeInitializationSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("initializing"), attemptId: z.string().min(1) }),
+  z.object({ status: z.literal("ready"), attemptId: z.string().min(1) }),
+  z.object({
+    status: z.literal("failed"),
+    attemptId: z.string().min(1),
+    reasonCode: z.string(),
+    message: z.string(),
+  }),
+]);
+export type RuntimeInitialization = z.infer<typeof runtimeInitializationSchema>;
+
 export const conversationSnapshotSchema = z.object({
   protocolVersion: z.literal(1),
   sessionId: z.string(),
   logEpoch: z.string(),
   // 快照对齐水位（= 所在帧 toSeq；从内存投影原子取值）。
   seq: z.number(),
+  runtimeInitialization: runtimeInitializationSchema.optional(),
   revision: z.number(),
   // A 区
   control: sessionControlSchema,
