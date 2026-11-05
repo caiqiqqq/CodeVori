@@ -36,7 +36,7 @@ import {
   buildRemoteWorkspacePersistPatch,
   restorePersistedRemoteWorkspaceSessions,
 } from "@/root/remoteWorkspaceSessionPersistence.js";
-import { resolveUnavailableLocalWorkspacePaths } from "@/root/localWorkspaceAvailability.js";
+import { resolveLocalWorkspaceAvailability } from "@/root/localWorkspaceAvailability.js";
 import { useReconnectingRemoteWorkspaceLogs } from "@/root/useReconnectingRemoteWorkspaceLogs.js";
 import {
   reconnectRemoteWorkspaceHistoryEntry,
@@ -960,13 +960,16 @@ export function useRemoteWorkspaceHistory({
           logger.warn("[Root] 恢复阶段解析 conversation workspace 失败", { error });
         }
       }
-      const unavailableWorkspacePaths = ensureConversationWorkspaceOnRestore
-        ? await resolveUnavailableLocalWorkspacePaths(
+      const availability = ensureConversationWorkspaceOnRestore
+        ? await resolveLocalWorkspaceAvailability(
             settings.lastWorkspaceSession ?? [],
             (path) => services.fileService.stat({ path }),
             unavailableWorkspacePath,
           )
-        : new Set(unavailableWorkspacePath ? [unavailableWorkspacePath] : []);
+        : {
+            missingPaths: new Set<string>(),
+            unavailablePaths: new Set(unavailableWorkspacePath ? [unavailableWorkspacePath] : []),
+          };
       // 启动恢复远程 workspace 时只还原任务列表里的断开态 tab。
       // 之前这里之后还有后台 effect 会自动发起 SSH/WSL/Docker 重连，用户只是打开应用查看任务列表也会触发远端连接和 runtime 上传。
       // 现在把重连入口收口到用户点击“重连”或从远程历史主动打开，避免启动阶段产生隐藏副作用。
@@ -975,14 +978,17 @@ export function useRemoteWorkspaceHistory({
         settings,
         tabStoreApi,
         allowRemoteWorkspaceRestore,
-        unavailableWorkspacePaths,
+        unavailableWorkspacePaths: availability.unavailablePaths,
+        missingWorkspacePaths: availability.missingPaths,
         conversationWorkspacePath,
         restoreMode: deferInactiveWorkspaceRestore ? "active-first" : "all",
       });
       return {
-        ...(conversationWorkspacePath
-          ? { excludedRecentProjectPaths: [conversationWorkspacePath] }
-          : {}),
+        excludedRecentProjectPaths: [
+          ...(conversationWorkspacePath ? [conversationWorkspacePath] : []),
+          ...availability.missingPaths,
+        ],
+        prunedLocalWorkspacePaths: [...availability.missingPaths],
         ...(workspaceRestore?.deferredRestore
           ? { deferredRestore: workspaceRestore.deferredRestore }
           : {}),
