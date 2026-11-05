@@ -2566,6 +2566,7 @@ const zhCN: Record<string, string> = {
   "terminal.contextMenu.copy": "复制",
   "terminal.contextMenu.paste": "粘贴",
   "chat.history.loadingOlderMessages": "正在加载更早消息...",
+  "chat.history.loadingConversation": "正在读取会话历史…",
   "chat.history.loadOlderMessages": "加载更早消息",
   "chat.pendingCommand.discarded": "CLI 重启前已提交的输入没有进入对话。请确认是否重新发送。",
   "chat.pendingCommand.resend": "重新发送",

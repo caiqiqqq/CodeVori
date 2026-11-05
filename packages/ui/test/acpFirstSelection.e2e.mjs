@@ -26,7 +26,7 @@ try {
     import {SessionPane} from '../../../ui/src/v4/SessionPane.tsx';
     import {V4ConversationContext} from '../../../ui/src/v4/V4ConversationContext.tsx';
     import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
-    import {ServiceProvider} from '../../../ui/test/acpProjectionFixture.tsx';
+    import {ServiceProvider,withAcpProjectionFixture} from '../../../ui/test/acpProjectionFixture.tsx';
     import {TabStoreProvider} from '../../../ui/src/store/TabStoreProvider.tsx';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
@@ -45,6 +45,9 @@ try {
       onDynamicSessionChanged:scope=>listener=>{listeners.add(listener);return {dispose:()=>listeners.delete(listener)}},
       listAvailableAgents:async()=>[{agent:'codex',available:true}],listAgentConfigs:async()=>[],listPlugins:async()=>[],onDynamicAgentConfigsChanged:()=>()=>({dispose(){}}),
       create:async scope=>{calls.push(['create',key(scope)]);throw Error('Authentication required')},remove:async()=>{},submitPrompt:forbidden};
+    withAcpProjectionFixture(acpService as never);
+    const readConversation=acpService.readConversation;
+    acpService.readConversation=async input=>{await wait('conversation',input);return readConversation(input)};
     const composerPreferenceService={get:async()=>({...preference}),onDynamicChanged:()=>listener=>{preferenceListeners.add(listener);return {dispose:()=>preferenceListeners.delete(listener)}},update:async()=>({...preference})};
     const services={acpService,composerPreferenceService,settingService:{get:async()=>({})},clientConfigService:{getSnapshot:async()=>({pluginStoreOrder:null})},clientScenesService:{list:async()=>({code:0,data:[]})},subagentsService:{list:async()=>({agents:[],capability:null})},modelSelectionService:{getView:async()=>({revision:1,providers:[]}),onDidChange:()=>({dispose(){}})}};
     const native={layer:{acquire:forbidden},sendCommand:forbidden,attachmentPut:forbidden,onRuntimeRestart:()=>()=>{},onRuntimeLifecycle:()=>()=>{}};
@@ -87,7 +90,12 @@ try {
     await page.goto(url);
     await page.getByTestId("v4-composer-input").waitFor();
     // Previously the delayed ACP activation erased this first cross-workspace selection.
+    await page.evaluate(() => window.__first.hold("conversation", "target"));
     await open("target");
+    await page.waitForFunction(() => window.__first.held.has("conversation:/synthetic/target"));
+    await page.getByRole("status").filter({ hasText: "正在读取会话历史…" }).waitFor();
+    assert.equal(await history("source").count(), 0);
+    await page.evaluate(() => window.__first.release("conversation", "target"));
     await history("target").waitFor();
     await page.waitForFunction(() => window.__first.calls.some((call) => call[0] === "refresh"));
     assert.equal(await count("create"), 0);

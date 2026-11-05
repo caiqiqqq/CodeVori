@@ -711,7 +711,7 @@ export function SessionPane({
     () => delegation.openEditor("new"),
     [delegation.openEditor],
   );
-  useEffect(() => {
+  useLayoutEffect(() => {
     acpConversation.resetSelection();
     setAcpAgent(null);
   }, [sessionId, workspaceIdentity, workspacePath, acpConversation.resetSelection]);
@@ -742,7 +742,7 @@ export function SessionPane({
     worktreeAutoSend,
     worktreeDraftIntent,
   ]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const workspaceKey = workspaceIdentity?.trim() || workspacePath;
     const previous = draftFocusOwnerRef.current;
     draftFocusOwnerRef.current = { workspaceKey, version: draftFocusVersion };
@@ -796,6 +796,8 @@ export function SessionPane({
   const pendingAcpTabOpenRequest =
     sessionId === null &&
     acpOpenRequest?.session.workspacePath === workspacePath &&
+    (acpOpenRequest.draftFocusVersion === undefined ||
+      acpOpenRequest.draftFocusVersion === draftFocusVersion) &&
     (acpOpenRequest.session.workspaceIdentity?.trim() || workspacePath) ===
       (workspaceIdentity?.trim() || workspacePath) &&
     (lastAcpOpenRequestIdRef.current?.requestId !== acpOpenRequest.requestId ||
@@ -803,11 +805,13 @@ export function SessionPane({
       lastAcpOpenRequestIdRef.current.workspaceKey !== acpOpenScopeKey)
       ? acpOpenRequest
       : null;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (
       !acpOpenRequest ||
       sessionId !== null ||
       acpOpenRequest.session.workspacePath !== workspacePath ||
+      (acpOpenRequest.draftFocusVersion !== undefined &&
+        acpOpenRequest.draftFocusVersion !== draftFocusVersion) ||
       (acpOpenRequest.session.workspaceIdentity?.trim() || workspacePath) !==
         (workspaceIdentity?.trim() || workspacePath) ||
       (lastAcpOpenRequestIdRef.current?.requestId === acpOpenRequest.requestId &&
@@ -832,12 +836,17 @@ export function SessionPane({
     acpConversation.selectById,
     acpOpenRequest,
     acpOpenScopeKey,
+    draftFocusVersion,
     sessionId,
     workspaceIdentity,
     workspacePath,
   ]);
+  const acpOpenTargetMismatched = Boolean(
+    pendingAcpTabOpenRequest &&
+    pendingAcpTabOpenRequest.session.id !== acpConversation.targetSessionId,
+  );
   const acpHasConversationContent = hasAcpConversationContent(acpConversation.selected);
-  const acpRows = acpConversation.rows;
+  const acpRows = acpOpenTargetMismatched ? [] : acpConversation.rows;
   const activeSearchResultHighlightRequest = useMemo(() => {
     if (searchResultHighlightRequest?.kind !== "acp") return searchResultHighlightRequest;
     if (acpConversation.selected?.id !== searchResultHighlightRequest.acpSessionId) return null;
@@ -4275,7 +4284,17 @@ export function SessionPane({
   const isDraft = sessionId === null;
   // 修复原因：ACP 首轮已由 Host 接受后，原生 taskId 仍为空；布局必须看当前可见
   // 对话是否为空，不能把原生 draftMode 误当作首页样式的事实。
-  const visibleEmptyDraft = isDraft && (!acpAgent || !acpHasConversationContent);
+  // 修复原因：精确历史 ID 已选但 Host 正文尚未到达时，不能把它画成新建任务首页。
+  // 目标身份来自打开意图或 hook 中的选择，缓存行与列表元数据都不决定这个状态。
+  const visibleEmptyDraft =
+    isDraft &&
+    !pendingAcpTabOpenRequest &&
+    (!acpAgent || (!acpConversation.targetSessionId && !acpHasConversationContent));
+  const acpHistoryLoading = Boolean(
+    (pendingAcpTabOpenRequest || (acpAgent && acpConversation.targetSessionId)) &&
+    (acpOpenTargetMismatched || !acpConversation.snapshot) &&
+    (acpOpenTargetMismatched || !acpConversation.error),
+  );
   const acpHeaderTitle =
     acpAgent && !visibleEmptyDraft
       ? acpConversation.selected?.title || acpAgentDefinition(acpAgent).name
@@ -5334,7 +5353,8 @@ export function SessionPane({
         ref={conversationLayoutContainerRef}
         className="@container/conversation relative flex min-h-0 flex-1 flex-col"
       >
-        {acpAgent && visibleEmptyDraft ? (
+        {acpAgent &&
+        (visibleEmptyDraft || (acpConversation.error && !acpHasConversationContent)) ? (
           <AcpHomeStatus agent={acpAgent} conversation={acpConversation} />
         ) : null}
         {!acpAgent && (
@@ -5480,7 +5500,9 @@ export function SessionPane({
               }
               sessionKey={
                 acpAgent
-                  ? (acpConversation.selected?.id ?? `acp:${acpAgent}`)
+                  ? (pendingAcpTabOpenRequest?.session.id ??
+                    acpConversation.targetSessionId ??
+                    `acp:${acpAgent}`)
                   : (sessionId ?? "draft")
               }
               scrollMemoryKey={acpAgent ? null : timelineScrollMemoryKey}
@@ -5551,20 +5573,25 @@ export function SessionPane({
                 ) : null
               }
               footerSlot={
-                <>
-                  {acpAgent && acpHasConversationContent ? (
-                    <AcpConversationStatus
-                      agent={acpAgent}
-                      conversation={acpConversation}
-                      rows={acpRows}
-                    />
-                  ) : null}
-                </>
+                acpAgent &&
+                acpHasConversationContent &&
+                !acpOpenTargetMismatched &&
+                !acpHistoryLoading ? (
+                  <AcpConversationStatus
+                    agent={acpAgent}
+                    conversation={acpConversation}
+                    rows={acpRows}
+                  />
+                ) : null
               }
               emptyState={
                 visibleEmptyDraft ? (
                   <div data-testid={TID_CHAT_EMPTY} className="w-full">
                     <ConversationDraftEmptyState />
+                  </div>
+                ) : acpHistoryLoading ? (
+                  <div role="status" className="p-6 text-ui-sm text-foreground-subtle">
+                    {intl.formatMessage({ id: "chat.history.loadingConversation" })}
                   </div>
                 ) : null
               }

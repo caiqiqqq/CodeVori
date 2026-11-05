@@ -2793,6 +2793,7 @@ const enUS: Record<string, string> = {
   "terminal.contextMenu.copy": "Copy",
   "terminal.contextMenu.paste": "Paste",
   "chat.history.loadingOlderMessages": "Loading earlier messages...",
+  "chat.history.loadingConversation": "Loading conversation history…",
   "chat.history.loadOlderMessages": "Load earlier messages",
   "chat.pendingCommand.discarded":
     "An input submitted before the CLI restarted did not reach the conversation. Confirm whether to send it again.",

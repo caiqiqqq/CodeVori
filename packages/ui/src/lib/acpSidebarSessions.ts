@@ -33,6 +33,8 @@ export interface AcpSidebarSession {
 export interface AcpConversationOpenRequest {
   requestId: number;
   session: AcpSidebarSession;
+  /** Shell draft generation; split-pane callers may omit it. */
+  draftFocusVersion?: number;
 }
 
 export interface AcpConversationProjection {

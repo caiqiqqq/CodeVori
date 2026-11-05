@@ -291,6 +291,8 @@ export class ConversationProjectionStore {
   private observedModelTransitionEventId: string | null = null;
   // 订阅代际：并发 connect 只认最新一代，过期结果立即退订防服务端悬挂。
   private generation = 0;
+  // 全量问题导航补页仅属于可见视图；退租后即使 store 继续保温，也不再提交其结果。
+  private optionalHistoryHydrationGeneration = 0;
   // 首次订阅尚未拿到 ACK 时，runtime available 只是当前启动流程的正常完成信号；
   // 记录在途数量，避免生命周期通知再次启动 connect，制造同 topic 的订阅替换竞态。
   private connectInFlight = 0;
@@ -1113,6 +1115,7 @@ export class ConversationProjectionStore {
     if (!sessionId || initialBeforeRowId === undefined) return stale(snapshot.logEpoch);
 
     const initialLogEpoch = snapshot.logEpoch;
+    const hydrationGeneration = this.optionalHistoryHydrationGeneration;
     const preserveIncompleteLeadingTurn = shouldAutoLoadIncompleteLeadingTurn(snapshot, false);
     const pages: ConversationRow[][] = [];
     let beforeRowId = initialBeforeRowId;
@@ -1132,7 +1135,9 @@ export class ConversationProjectionStore {
           beforeRowId,
           limit: PROTOCOL_V4_LIMITS.rowsRangeMaxLimit,
         });
-        if (this.closed) return stale(initialLogEpoch);
+        // 修复原因：最后一个窗格退租后 store 仍保温，旧补页不能继续抢占 RPC/Renderer。
+        if (this.closed || hydrationGeneration !== this.optionalHistoryHydrationGeneration)
+          return stale(initialLogEpoch);
         const current = this.state.snapshot;
         if (
           !current ||
@@ -1166,6 +1171,7 @@ export class ConversationProjectionStore {
 
       const current = this.state.snapshot;
       if (
+        hydrationGeneration !== this.optionalHistoryHydrationGeneration ||
         !current ||
         current.logEpoch !== initialLogEpoch ||
         current.rows.window[0]?.rowId !== initialBeforeRowId
@@ -1237,6 +1243,11 @@ export class ConversationProjectionStore {
     } finally {
       if (!this.closed && !committed) this.setState({ loadingOlder: false });
     }
+  }
+
+  /** 最后一个视图退租时，只撤销可选补页；会话订阅与运行继续保温。 */
+  stopOptionalHistoryHydration(): void {
+    this.optionalHistoryHydrationGeneration++;
   }
 
   /**

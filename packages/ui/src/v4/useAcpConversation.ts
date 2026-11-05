@@ -89,6 +89,7 @@ export function useAcpConversation(
   ]);
   const [draftEpoch, setDraftEpoch] = useState(0);
   const [busyCounts, setBusyCounts] = useState<Record<string, number>>({});
+  const [refreshBusy, setRefreshBusy] = useState<{ key: string; request: object } | null>(null);
   const changeBusy = useCallback(
     (activeAgent: AcpAgent | null, delta: number, sessionId?: string) => {
       if (!activeAgent) return;
@@ -127,9 +128,8 @@ export function useAcpConversation(
     : null;
   // 修复原因：同 Agent 的 A 恢复可能迟迟不返回；切到 B 后只等待 B 的操作，
   // 不能让 A 的计数占住 B 的配置/发送按钮。草稿连接仍绑定独立 epoch。
-  const busy = Boolean(
-    agent && busyCounts[`${targetKey}:${draftEpoch}:${agent}:${selected?.id ?? "draft"}`],
-  );
+  const busyKey = agent ? `${targetKey}:${draftEpoch}:${agent}:${selected?.id ?? "draft"}` : null;
+  const busy = Boolean(busyKey && (busyCounts[busyKey] || refreshBusy?.key === busyKey));
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const sessionsRef = useRef(sessions);
@@ -208,7 +208,7 @@ export function useAcpConversation(
     [targetKey, workspaceIdentity, workspacePath],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (selectedWorkspaceKeyRef.current === workspaceKey) return;
     // 首次跨工作区打开历史时，延迟激活的订阅曾清掉刚选中的 id。
     // 作用域清理先于 pane 消费打开意图，且不依赖激活；仅 attachment 重连不清选择。
@@ -379,7 +379,7 @@ export function useAcpConversation(
     workspacePath,
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!projectionKey || !selectedId || !agent) return;
     let live = true;
     const id = selectedId;
@@ -571,6 +571,7 @@ export function useAcpConversation(
     attempted.current.clear();
     refreshed.current.clear();
     refreshRequests.current.clear();
+    setRefreshBusy(null);
     readyIds.current.clear();
     retries.current.clear();
     archivedOpenIds.current.clear();
@@ -612,7 +613,10 @@ export function useAcpConversation(
       refreshed.current.add(session.id);
       const request = {};
       refreshRequests.current.set(session.id, request);
-      changeBusy(session.agent, 1, session.id);
+      setRefreshBusy({
+        key: `${targetKey}:${draftEpoch}:${session.agent}:${session.id}`,
+        request,
+      });
       void diagnostics
         .run("acp.refreshSummary", () => service.refreshSummary({ ...target, id: session.id }))
         .then((next) => {
@@ -648,9 +652,11 @@ export function useAcpConversation(
           )
             setErrorState({ agent: session.agent, message: messageOf(cause) });
         })
-        .finally(() => changeBusy(session.agent, -1, session.id));
+        .finally(() =>
+          setRefreshBusy((current) => (current?.request === request ? null : current)),
+        );
     },
-    [changeBusy, closeArchivedSelection, service, target, targetKey],
+    [closeArchivedSelection, draftEpoch, service, target, targetKey],
   );
 
   useEffect(() => {
@@ -927,6 +933,7 @@ export function useAcpConversation(
         if (session.archived) archivedOpenIds.current.set(agent, session.id);
         else archivedOpenIds.current.delete(agent);
         setSelectedIds((previous) => ({ ...previous, [agent]: session.id }));
+        setRefreshBusy(null);
         setErrorState(null);
         if (!session.provisional) {
           readyIds.current.delete(session.id);
@@ -954,6 +961,7 @@ export function useAcpConversation(
       if (allowArchived) archivedOpenIds.current.set(nextAgent, id);
       else archivedOpenIds.current.delete(nextAgent);
       setSelectedIds((current) => ({ ...current, [nextAgent]: id }));
+      setRefreshBusy(null);
       readyIds.current.delete(id);
       refreshed.current.delete(id);
       refreshRequests.current.delete(id);
@@ -1014,6 +1022,7 @@ export function useAcpConversation(
   const displayError = error ?? projection.lastError;
   return {
     selected,
+    targetSessionId: selectedId ?? null,
     rows: projection.snapshot?.rows.window ?? [],
     snapshot: projection.snapshot,
     totalCount: projection.snapshot?.rows.totalCount ?? 0,
