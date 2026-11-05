@@ -145,15 +145,24 @@ try {
       await window.__bound.setConfig();
     });
     assert.deepEqual(
-      await page.evaluate(() => window.__bound.calls.filter(([op]) => op === 'send' || op === 'config').map(([op,id]) => [op,id])),
-      [['send','A'],['config','A']],
+      await page.evaluate(() =>
+        window.__bound.calls
+          .filter(([op]) => op === "send" || op === "config")
+          .map(([op, id]) => [op, id]),
+      ),
+      [
+        ["send", "A"],
+        ["config", "A"],
+      ],
     );
     await page.evaluate(() => {
       window.__bound.delayList = false;
       window.__bound.release("list");
     });
     assert.match(await page.getByTestId("history").innerText(), /历史 A/);
-    await page.waitForFunction(() => document.querySelector('[data-testid="state"]')?.dataset.loaded === "true");
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="state"]')?.dataset.loaded === "true",
+    );
     await page.evaluate(() => window.__bound.reloadList());
     await page.waitForFunction(() => window.__bound.pending.has("refresh:A"));
     assert.match(await page.getByTestId("history").innerText(), /历史 A/);
@@ -166,18 +175,20 @@ try {
       window.__bound.failList = true;
       window.__bound.reloadList();
     });
-    await page.waitForFunction(() => window.__bound.pending.has('list'));
+    await page.waitForFunction(() => window.__bound.pending.has("list"));
     await ready("A");
-    await page.evaluate(() => window.__bound.release('list'));
+    await page.evaluate(() => window.__bound.release("list"));
     await page.waitForTimeout(50);
-    assert.equal(await state.getAttribute('data-error'), '');
-    assert.equal(await state.getAttribute('data-ready'), 'true');
+    assert.equal(await state.getAttribute("data-error"), "");
+    assert.equal(await state.getAttribute("data-ready"), "true");
     await page.evaluate(() => {
       window.__bound.failList = false;
       window.__bound.delayList = false;
       window.__bound.reloadList();
     });
-    await page.waitForFunction(() => document.querySelector('[data-testid="state"]')?.dataset.loaded === 'true');
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="state"]')?.dataset.loaded === "true",
+    );
     await page.evaluate(() => window.__bound.emit("A"));
     await page.waitForFunction(() =>
       document.querySelector('[data-testid="history"]')?.textContent.includes("实时 A"),
@@ -209,6 +220,29 @@ try {
     });
     await ready("A");
     assert.doesNotMatch(await page.getByTestId("history").innerText(), /历史 B/);
+    await open("B");
+    await ready("B");
+    // A 的旧连接跨 B 切回后才完成时，不能继续占住新 A 的输入门禁。
+    await page.evaluate(() => {
+      window.__bound.delayRefresh = "A";
+    });
+    await open("A");
+    await page.waitForFunction(() => window.__bound.pending.has("refresh:A"));
+    await page.evaluate(() => {
+      window.__bound.staleRefreshA = window.__bound.pending.get("refresh:A");
+      window.__bound.pending.delete("refresh:A");
+    });
+    await open("B");
+    await ready("B");
+    await open("A");
+    await page.waitForFunction(() => window.__bound.pending.has("refresh:A"));
+    await page.evaluate(() => window.__bound.release("refresh:A"));
+    await ready("A");
+    await page.evaluate(() => {
+      window.__bound.staleRefreshA();
+      window.__bound.delayRefresh = null;
+    });
+    assert.equal(await state.getAttribute("data-ready"), "true");
     await open("B");
     await ready("B");
     await page.evaluate(() => window.__bound.reconnect());
@@ -247,15 +281,19 @@ try {
     assert.equal(await page.getByLabel("正在读取智能体选项…", { exact: true }).count(), 0);
     await page.getByRole("button", { name: "重试", exact: true }).click();
     await page.waitForFunction(
-      () => window.__bound.calls.filter(([op, id]) => op === "refresh" && id === "failed-refresh").length === 2,
+      () =>
+        window.__bound.calls.filter(([op, id]) => op === "refresh" && id === "failed-refresh")
+          .length === 2,
     );
     assert.equal(await state.getAttribute("data-loaded"), "false");
     await page.evaluate(() => {
       window.__bound.delayList = false;
       window.__bound.release("list");
     });
-    await page.waitForFunction(() => document.querySelector('[data-testid="state"]')?.dataset.loaded === 'true');
-    assert.match(await state.getAttribute('data-error'), /Agent connection failed/);
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="state"]')?.dataset.loaded === "true",
+    );
+    assert.match(await state.getAttribute("data-error"), /Agent connection failed/);
     assert.equal(
       await page.evaluate(() =>
         window.__bound.calls.some(([op]) => op === "create" || op === "remove"),

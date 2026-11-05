@@ -156,6 +156,7 @@ export class SessionDataLayer {
       });
       return;
     }
+    entry.store.stopOptionalHistoryHydration();
     // 关 pane ≠ 停 session：这里只是退订视图，session 在 CLI 里照跑。
     entry.keepWarmTimer = setTimeout(() => {
       this.entries.delete(topic);

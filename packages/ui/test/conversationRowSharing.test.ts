@@ -275,6 +275,46 @@ for (const method of ["loadOlder", "loadAllOlder"] as const) {
   });
 }
 
+test("released view stops optional full-history hydration before committing older rows", async () => {
+  const f = fixture();
+  const rowsRange = f.transport.rowsRange;
+  let calls = 0;
+  let releaseRange = () => {};
+  const gate = new Promise<void>((resolve) => {
+    releaseRange = resolve;
+  });
+  f.transport.rowsRange = async (params) => {
+    calls++;
+    await gate;
+    return rowsRange(params);
+  };
+  const layer = new SessionDataLayer({ transport: f.transport, keepWarmMs: 1_000 });
+  const lease = layer.acquire("session");
+  try {
+    if (!lease.store.getState().snapshot) {
+      await new Promise<void>((resolve) => {
+        const off = lease.store.subscribe(() => {
+          if (!lease.store.getState().snapshot) return;
+          off();
+          resolve();
+        });
+      });
+    }
+    const initialRows = lease.store.getState().snapshot!.rows.window;
+    const hydration = lease.store.loadAllOlder();
+    assert.equal(calls, 1);
+    lease.release();
+    releaseRange();
+    assert.equal((await hydration).status, "stale");
+    assert.equal(calls, 1);
+    assert.equal(lease.store.getState().snapshot!.rows.window, initialRows);
+  } finally {
+    releaseRange();
+    lease.release();
+    layer.dispose();
+  }
+});
+
 test("stale history cannot enter projection or replace pool entries", async () => {
   const f = fixture();
   const { store, close } = await f.open();
