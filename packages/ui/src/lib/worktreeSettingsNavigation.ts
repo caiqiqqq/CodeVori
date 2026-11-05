@@ -6,9 +6,11 @@ export type WorktreeHistoryConversationTarget =
   | { kind: "api"; workspacePath: string; workspaceIdentity?: string; taskId: string }
   | { kind: "acp"; session: AcpSidebarSession };
 
-export type WorktreeSettingsConversationTarget =
+export type WorktreeSettingsConversationTarget = (
   | WorktreeHistoryConversationTarget
-  | { kind: "work-task"; scope: WorkTaskScope; id: string };
+  | { kind: "work-task"; scope: WorkTaskScope; id: string }
+  | { kind: "api-notification"; taskId: string }
+) & { fromNotification?: boolean };
 
 export async function resolveWorktreeSettingsConversation(
   service: Pick<IWorkTaskService, "list"> | undefined,

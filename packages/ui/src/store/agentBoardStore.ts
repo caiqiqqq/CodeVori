@@ -42,6 +42,7 @@ interface BoardStore extends Preferences {
   setGroup(group: Preferences["group"]): void;
   setAgent(agent: string): void;
   setSearch(search: string): void;
+  revealItem(item: BoardItem): void;
   setTracking(tracking: BoardTracking): void;
   includeItem(item: BoardTrackingTarget): void;
   selectStandalone(): void;
@@ -263,6 +264,15 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
       setGroup: (group) => save({ group }),
       setAgent: (agent) => save({ agent }),
       setSearch: (search) => save({ search }),
+      revealItem: (item) =>
+        save({
+          project: null,
+          category: "all",
+          group: "status",
+          view: item.archived ? "archived" : "all",
+          agent: "all",
+          search: "",
+        }),
     };
   });
 }

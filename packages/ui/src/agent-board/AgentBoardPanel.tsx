@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- 看板筛选、分组、拖动和详情共用同一份会话投影与选择状态。 */
 import { BoardViewTab, boardViews } from "./AgentBoardViewTab.js";
 import { AgentBoardStatusOrder } from "./AgentBoardStatusOrder.js";
 import {
@@ -20,6 +21,7 @@ import { toast } from "@/components/ui/toast.js";
 import { Button } from "@/components/ui/button.js";
 import { agentBoardStore } from "@/store/agentBoardStore.js";
 import { useAgentBoardData } from "@/hooks/useAgentBoardData.js";
+import { useAgentBoardNotificationSelection } from "./useAgentBoardNotificationSelection.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
 import { logger } from "@/logger.js";
 import {
@@ -42,6 +44,9 @@ type Props = {
   workspaceTools?: AgentBoardWorkspaceTools;
   onOpenSession(item: BoardItem): void;
   onCreateSession(tab: WorkspaceTabState): void;
+  notificationItemKey?: string;
+  onNotificationItemOpened?: () => void;
+  onNotificationItemMissing?: () => void;
 };
 export function AgentBoardPanel({ workspaceTabs, ...props }: Props) {
   const tabs = useMemo(
@@ -70,6 +75,9 @@ export function AgentBoardView({
   workspaceTools,
   canCreateSession,
   workTasks,
+  notificationItemKey,
+  onNotificationItemOpened,
+  onNotificationItemMissing,
 }: Omit<Props, "workspaceTabs"> & ReturnType<typeof useAgentBoardData>) {
   const { intl } = useZCodeIntl();
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
@@ -96,7 +104,15 @@ export function AgentBoardView({
       preferences.setItemStaged(current, !isBoardItemStaged(current, preferences.stagedItems));
   };
   const [detailContainer, setDetailContainer] = useState<HTMLElement | null>(null);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useAgentBoardNotificationSelection({
+    rawItems,
+    loading,
+    error,
+    notificationItemKey,
+    acknowledgeRead,
+    onNotificationItemOpened,
+    onNotificationItemMissing,
+  });
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [managing, setManaging] = useState(false);

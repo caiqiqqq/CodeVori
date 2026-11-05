@@ -5,6 +5,7 @@ import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
 import {
   consumeWorktreeSettingsConversation,
   listenWorktreeSettingsConversation,
+  type WorktreeSettingsConversationTarget,
 } from "@/lib/worktreeSettingsNavigation.js";
 import { useTabStoreApi } from "@/store/TabStoreProvider.js";
 import { workTaskNavigationStore } from "@/store/workTaskNavigationStore.js";
@@ -13,16 +14,23 @@ export function useWorktreeSettingsConversation({
   selectApi,
   selectAcp,
   openWorkTasks,
+  onNotification,
 }: {
   selectApi: (workspacePath: string, id: string, workspaceIdentity?: string) => void;
   selectAcp: (session: AcpSidebarSession) => void;
   openWorkTasks: (scope: WorkTaskScope) => void;
+  onNotification?: (target: WorktreeSettingsConversationTarget) => void;
 }) {
   const tabs = useTabStoreApi();
   useEffect(
     () =>
       listenWorktreeSettingsConversation((target) => {
         consumeWorktreeSettingsConversation(target);
+        if (target.fromNotification && onNotification) {
+          onNotification(target);
+          return;
+        }
+        if (target.kind === "api-notification") return;
         if (target.kind === "work-task") {
           // 原因：通知携带远端 scope，path-only addTab 会错误激活本机同路径项目。
           const state = tabs.getState();
@@ -69,6 +77,6 @@ export function useWorktreeSettingsConversation({
           else selectApi(workspacePath, target.taskId, workspaceIdentity);
         }
       }),
-    [tabs, selectApi, selectAcp, openWorkTasks],
+    [tabs, selectApi, selectAcp, openWorkTasks, onNotification],
   );
 }
