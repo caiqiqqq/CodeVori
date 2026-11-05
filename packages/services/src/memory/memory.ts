@@ -17,6 +17,8 @@ export interface ProjectMemoryFileSummary {
 export interface ProjectMemoryWorkspaceSummary {
   id: string;
   label: string;
+  displayPath?: string;
+  workspaceIdentity?: string;
   updatedAt: number;
   files: ProjectMemoryFileSummary[];
 }

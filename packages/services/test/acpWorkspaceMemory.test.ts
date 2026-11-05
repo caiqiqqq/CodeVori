@@ -35,6 +35,34 @@ test("memory path retains API storage keys and identity isolation", () => {
   );
 });
 
+test("ACP Host reads the same project fact from a linked Git worktree", async () => {
+  const root = await mkdtemp(join(tmpdir(), "acp-repository-memory-"));
+  const cliStorageRoot = join(root, "cli");
+  const main = join(root, "main", "zcode");
+  const linked = join(root, "linked", "zcode");
+  try {
+    await mkdir(join(main, ".git", "worktrees", "linked"), { recursive: true });
+    await mkdir(linked, { recursive: true });
+    const gitDir = join(main, ".git", "worktrees", "linked");
+    await writeFile(join(linked, ".git"), `gitdir: ${gitDir}\n`);
+    await writeFile(join(gitDir, "commondir"), "../..\n");
+    const context = createProjectMemoryContext({ cliStorageRoot, isEnabled: async () => true });
+    await context.saveMemories({ workspacePath: main }, [
+      {
+        name: "shared-fact",
+        description: "Shared repository fact",
+        type: "project",
+        content: "Shared across worktrees.",
+      },
+    ]);
+    const linkedPrompt = await context.buildPromptContext({ workspacePath: linked });
+    assert.match(linkedPrompt ?? "", /shared-fact\.md/);
+    assert.match(linkedPrompt ?? "", /Shared repository fact/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("disabled memory performs no IO; enabled context reads existing API index and bounds it", async () => {
   const root = await mkdtemp(join(tmpdir(), "acp-memory-"));
   const cliStorageRoot = join(root, "cli");

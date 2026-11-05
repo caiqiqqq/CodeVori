@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   resolveProjectMemoryRoot as sharedRoot,
@@ -9,9 +12,11 @@ import { buildMemorySection } from "../src/context/sections/memory.js";
 import { resolveEnabledProjectMemoryRoot } from "../src/runtime/helpers/project-memory.js";
 import type { AgentRuntimeConfig } from "../src/runtime/types.js";
 
-test("API context and ACP share path and instructions without changing runtime gating", () => {
+test("API context and ACP share path and instructions without changing runtime gating", async () => {
+  const cliStorageRoot = await mkdtemp(join(tmpdir(), "zcode-cli-memory-"));
+  try {
   const input = {
-    cliStorageRoot: "store",
+    cliStorageRoot,
     workspacePath: "fixture",
     workspaceIdentity: "fixture:a",
   };
@@ -26,19 +31,22 @@ test("API context and ACP share path and instructions without changing runtime g
       workspaceIdentity: input.workspaceIdentity,
     },
   } as AgentRuntimeConfig;
-  assert.equal(resolveEnabledProjectMemoryRoot(config, input.workspacePath), root);
+  assert.equal(await resolveEnabledProjectMemoryRoot(config, input.workspacePath), root);
   assert.equal(
-    resolveEnabledProjectMemoryRoot(
+    await resolveEnabledProjectMemoryRoot(
       { ...config, memory: { ...config.memory!, use: false } },
       input.workspacePath,
     ),
     undefined,
   );
   assert.equal(
-    resolveEnabledProjectMemoryRoot(
+    await resolveEnabledProjectMemoryRoot(
       { ...config, memory: { ...config.memory!, enabled: false } },
       input.workspacePath,
     ),
     undefined,
   );
+  } finally {
+    await rm(cliStorageRoot, { recursive: true, force: true });
+  }
 });

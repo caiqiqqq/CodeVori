@@ -1,19 +1,30 @@
 import type { AgentRuntimeConfig } from "../types.js";
-import { resolveProjectMemoryRoot } from "../../memory/project-root.js";
+import { prepareProjectMemoryScope, resolveProjectMemoryScope } from "@zcode/shared/node";
 
-export function resolveEnabledProjectMemoryRoot(
+export function isProjectMemoryConfigured(config: AgentRuntimeConfig): boolean {
+  const memory = config.memory;
+  return Boolean(
+    memory?.enabled &&
+      memory.use !== false &&
+      memory.cliStorageRoot &&
+      isMainMemoryTaskType(config.taskType),
+  );
+}
+
+export async function resolveEnabledProjectMemoryRoot(
   config: AgentRuntimeConfig,
   workspacePath: string,
-): string | undefined {
-  const memory = config.memory;
-  if (!memory?.enabled || memory.use === false || !memory.cliStorageRoot) return undefined;
-  if (!isMainMemoryTaskType(config.taskType)) return undefined;
+): Promise<string | undefined> {
+  if (!isProjectMemoryConfigured(config)) return undefined;
+  const memory = config.memory!;
 
-  return resolveProjectMemoryRoot({
-    cliStorageRoot: memory.cliStorageRoot,
+  const scope = await resolveProjectMemoryScope({
+    cliStorageRoot: memory.cliStorageRoot!,
     workspaceIdentity: memory.workspaceIdentity,
     workspacePath,
   });
+  await prepareProjectMemoryScope(scope);
+  return scope.root;
 }
 
 function isMainMemoryTaskType(taskType: AgentRuntimeConfig["taskType"]): boolean {

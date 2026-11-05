@@ -148,7 +148,7 @@ export async function loadProjectMemoryRoot(
   this: AgentRuntimeInternal,
   traceContext: TraceContext,
 ): Promise<string | undefined> {
-  const memoryRoot = resolveEnabledProjectMemoryRoot(this.config, this.workspaceRoot);
+  const memoryRoot = await resolveEnabledProjectMemoryRoot(this.config, this.workspaceRoot);
   if (!memoryRoot) {
     this.logMemorySkipped(traceContext, "disabled_or_excluded", {
       taskType: this.config.taskType,

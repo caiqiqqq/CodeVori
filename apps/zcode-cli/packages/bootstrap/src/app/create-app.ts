@@ -290,7 +290,7 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       };
     }
     startupTimer.mark("ZCode runtime configuration resolved", {
-      context: runtimeConfigLogContext(runtimeConfig, workingDirectory),
+      context: await runtimeConfigLogContext(runtimeConfig, workingDirectory),
       event: "bootstrap.app.startup.runtime_config.completed",
       stage: "resolve_runtime_config",
     });

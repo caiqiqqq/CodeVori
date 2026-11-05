@@ -269,12 +269,12 @@ function mergeRuntimeHooks(
   };
 }
 
-export function runtimeConfigLogContext(
+export async function runtimeConfigLogContext(
   runtimeConfig: AgentRuntimeConfig,
   workingDirectory: string,
-) {
+): Promise<Record<string, unknown>> {
   const memoryRoot = runtimeConfig.memory?.cliStorageRoot
-    ? getProjectMemoryRoot(
+    ? await getProjectMemoryRoot(
         runtimeConfig.memory.cliStorageRoot,
         workingDirectory,
         runtimeConfig.memory.workspaceIdentity,

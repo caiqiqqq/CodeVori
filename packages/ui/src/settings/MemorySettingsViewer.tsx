@@ -99,6 +99,10 @@ export function MemorySettingsViewer({
             workspaceOptions={workspaces.map((workspace) => ({
               key: workspace.id,
               label: workspace.label,
+              description: [workspace.displayPath, workspace.workspaceIdentity]
+                .filter(Boolean)
+                .join(" · "),
+              showDescription: Boolean(workspace.displayPath || workspace.workspaceIdentity),
             }))}
             onScopeKeyChange={onScopeKeyChange}
             triggerIconTestId={TID_SETTINGS_MEMORY_SCOPE_ICON}

@@ -1,8 +1,9 @@
-import { lstat, mkdir, realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   buildProjectMemoryInstructions,
-  resolveProjectMemoryRoot,
+  prepareProjectMemoryScope,
+  resolveProjectMemoryScope,
   PROJECT_MEMORY_INDEX_LINE_LIMIT,
   PROJECT_MEMORY_INDEX_CHARACTER_LIMIT,
 } from "@zcode/shared/node";
@@ -53,34 +54,10 @@ export function createProjectMemoryContext(input: {
       // 修复原因：ACP 原先完全绕过工作区记忆；关闭时必须在任何文件 IO 前返回。
       if (!(await input.isEnabled())) return undefined;
       const storageRoot = resolve(input.cliStorageRoot);
-      const root = resolveProjectMemoryRoot({ ...workspace, cliStorageRoot: storageRoot });
-      const directories = [
-        storageRoot,
-        join(storageRoot, "memories"),
-        join(storageRoot, "memories", "projects"),
-        dirname(root),
-        root,
-      ];
+      const scope = await resolveProjectMemoryScope({ ...workspace, cliStorageRoot: storageRoot });
+      const root = scope.root;
       const validate = validateMemoryRoot(storageRoot, root);
-      // 逐级验证后创建下一层，不跟随预先存在的记忆目录链接。
-      for (const directory of directories) {
-        try {
-          await mkdir(directory, { recursive: directory === storageRoot });
-        } catch (error) {
-          if (
-            !(
-              typeof error === "object" &&
-              error !== null &&
-              "code" in error &&
-              error.code === "EEXIST"
-            )
-          )
-            throw error;
-        }
-        const metadata = await lstat(directory);
-        if (!metadata.isDirectory() || metadata.isSymbolicLink())
-          throw new Error("Project Memory path is not a regular directory");
-      }
+      await prepareProjectMemoryScope(scope);
       await validate();
       let index = "";
       try {
@@ -117,7 +94,10 @@ export function createProjectMemoryContext(input: {
       if (!(await context.buildPromptContext(workspace)))
         throw new Error("Project Memory is disabled");
       const storageRoot = resolve(input.cliStorageRoot);
-      const root = resolveProjectMemoryRoot({ ...workspace, cliStorageRoot: storageRoot });
+      const { root } = await resolveProjectMemoryScope({
+        ...workspace,
+        cliStorageRoot: storageRoot,
+      });
       await saveProjectMemories(root, candidates, validateMemoryRoot(storageRoot, root));
     },
   };
