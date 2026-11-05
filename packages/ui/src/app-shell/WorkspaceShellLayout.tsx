@@ -56,7 +56,12 @@ import {
 import type { AcpAgent } from "@zcode/shared";
 import { useWorktreeDraftSelection } from "@/hooks/useWorktreeDraftSelection.js";
 import { useWorktreeSettingsConversation } from "@/hooks/useWorktreeSettingsConversation.js";
-import { requestWorkTaskConversation } from "@/lib/worktreeSettingsNavigation.js";
+import {
+  requestWorkTaskConversation,
+  requestWorktreeSettingsConversation,
+  type WorktreeSettingsConversationTarget,
+} from "@/lib/worktreeSettingsNavigation.js";
+import type { BoardItem } from "@/agent-board/agentBoardModel.js";
 import { ChatEmptyWorkspacePreviewMenu } from "@/ChatEmptyState.js";
 import { DesktopTopOverlay } from "@/DesktopTopOverlay.js";
 import { DesktopWindowFrame } from "@/DesktopWindowFrame.js";
@@ -139,6 +144,11 @@ const RepositoryPanel = lazy(() =>
 const AgentBoardPanel = lazy(() =>
   import("@/agent-board/AgentBoardPanel.js").then((module) => ({
     default: module.AgentBoardPanel,
+  })),
+);
+const AgentBoardNotificationResolver = lazy(() =>
+  import("@/agent-board/AgentBoardNotificationResolver.js").then((module) => ({
+    default: module.AgentBoardNotificationResolver,
   })),
 );
 const WorkTasksPanel = lazy(() =>
@@ -1537,10 +1547,59 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     selectApi: handleSelectTaskInChat,
     selectAcp: handleSelectAcpSession,
   });
+  const [pendingNotificationTarget, setPendingNotificationTarget] =
+    useState<WorktreeSettingsConversationTarget | null>(null);
+  const [notificationBoardSelection, setNotificationBoardSelection] = useState<{
+    target: WorktreeSettingsConversationTarget;
+    key: string;
+  } | null>(null);
+  const pendingNotificationRef = useRef<WorktreeSettingsConversationTarget | null>(null);
+  const notificationBoardSelectionRef = useRef<typeof notificationBoardSelection>(null);
+  const handleNotification = useCallback((target: WorktreeSettingsConversationTarget) => {
+    // 后一次通知覆盖尚未解析的前一次，不能让迟到看板读取反向导航。
+    pendingNotificationRef.current = target;
+    notificationBoardSelectionRef.current = null;
+    setNotificationBoardSelection(null);
+    setPendingNotificationTarget(target);
+  }, []);
+  const handleNotificationResolved = useCallback(
+    (target: WorktreeSettingsConversationTarget, item: BoardItem | undefined) => {
+      if (pendingNotificationRef.current !== target) return;
+      pendingNotificationRef.current = null;
+      setPendingNotificationTarget(null);
+      if (
+        item &&
+        handleOpenAgentBoard?.({
+          workspacePath: item.workspacePath,
+          workspaceIdentity: item.workspaceIdentity,
+          remoteSessionId: item.remoteSessionId,
+        })
+      ) {
+        const selection = { target, key: item.key };
+        notificationBoardSelectionRef.current = selection;
+        setNotificationBoardSelection(selection);
+      } else if (target.kind !== "api-notification")
+        requestWorktreeSettingsConversation({ ...target, fromNotification: false });
+    },
+    [handleOpenAgentBoard],
+  );
+  const handleNotificationBoardOpened = useCallback(() => {
+    notificationBoardSelectionRef.current = null;
+    setNotificationBoardSelection(null);
+  }, []);
+  const handleNotificationBoardMissing = useCallback(() => {
+    const selection = notificationBoardSelectionRef.current;
+    if (!selection) return;
+    notificationBoardSelectionRef.current = null;
+    setNotificationBoardSelection(null);
+    if (selection.target.kind !== "api-notification")
+      requestWorktreeSettingsConversation({ ...selection.target, fromNotification: false });
+  }, []);
   useWorktreeSettingsConversation({
     selectAcp: handleSelectAcpSession,
     selectApi: handleSelectTaskInChat,
     openWorkTasks: handleOpenWorkTasks,
+    onNotification: handleNotification,
   });
   const activeWorkspacePurpose =
     workspaceTabs.find(
@@ -1969,6 +2028,15 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       isWindowsDesktop={isWindowsDesktop}
       headerTestId={TID_APP_HEADER}
     >
+      {pendingNotificationTarget ? (
+        <Suspense fallback={null}>
+          <AgentBoardNotificationResolver
+            target={pendingNotificationTarget}
+            workspaceTabs={workspaceTabs}
+            onResolved={handleNotificationResolved}
+          />
+        </Suspense>
+      ) : null}
       <CommandCenterDialog
         open={commandCenterOpen}
         commands={commandCenterCommands}
@@ -2330,6 +2398,9 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                               >
                                 <AgentBoardPanel
                                   workspaceTabs={workspaceTabs}
+                                  notificationItemKey={notificationBoardSelection?.key}
+                                  onNotificationItemOpened={handleNotificationBoardOpened}
+                                  onNotificationItemMissing={handleNotificationBoardMissing}
                                   workspaceTools={
                                     workTaskTools
                                       ? {

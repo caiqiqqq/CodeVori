@@ -7,6 +7,7 @@ import { useTabStore } from "@/store/TabStoreProvider.js";
 import { logger } from "@/logger.js";
 import { ACP_TASK_NOTIFICATION_PREFIX } from "@/lib/taskNotificationOrchestrator.js";
 import { WORK_TASK_NOTIFICATION_PREFIX } from "@/lib/workTaskNotifications.js";
+import { requestWorktreeSettingsConversation } from "@/lib/worktreeSettingsNavigation.js";
 import { seedImportedSessionDraft } from "@/v4/composer/newTaskDraft.js";
 import { dismissToast, toast, updateToast } from "@/components/ui/toast.js";
 import { matchesPrimaryShortcut } from "@/lib/keyboardShortcuts.js";
@@ -212,27 +213,42 @@ export function useRootPlatformEffects({
       )
         return;
       logger.info("[Root] onTaskNotificationClick:", taskId);
-      // 遍历所有 workspace 找到 taskId 所属的 workspace，然后激活对应 tab 并切换任务
+      // 遍历所有 workspace 找到 taskId 所属的 workspace，交给通知导航判断看板成员。
       const workspaces = useZCodeSessionStore.getState().workspaces;
       for (const [workspacePath, workspaceState] of Object.entries(workspaces)) {
         const taskMeta = workspaceState.taskListCache?.find((task) => task.taskId === taskId);
         const hasTask = workspaceState.activeTaskId === taskId || Boolean(taskMeta);
         if (hasTask) {
-          const targetWorkspacePath = taskMeta?.workspacePath ?? workspacePath;
-          const targetWorkspaceIdentity = taskMeta?.workspaceIdentity;
-          // 通知点击会从全局 workspace store 反查 task。
-          // 远端任务必须用 task meta 自带的 workspaceIdentity 激活和选中，否则会落到 path-only 桶。
-          activateTabByPath(
-            targetWorkspacePath,
-            targetWorkspaceIdentity ? { workspaceIdentity: targetWorkspaceIdentity } : undefined,
+          const workspaceTab = tabs.find(
+            (tab): tab is Extract<WindowTabState, { kind: "workspace" }> =>
+              tab.kind === "workspace" &&
+              (tab.workspaceIdentity?.trim() || tab.workspacePath) === workspacePath,
           );
-          useZCodeSessionStore
-            .getState()
-            .setActiveTaskId(targetWorkspacePath, taskId, targetWorkspaceIdentity);
+          const targetWorkspacePath =
+            taskMeta?.workspacePath ?? workspaceTab?.workspacePath ?? workspacePath;
+          const targetWorkspaceIdentity =
+            taskMeta?.workspaceIdentity ?? workspaceTab?.workspaceIdentity;
+          // 通知点击会从全局 workspace store 反查 task。
+          // 远端任务必须传递 task meta 的 workspaceIdentity，否则会落到 path-only 桶。
+          requestWorktreeSettingsConversation({
+            kind: "api",
+            workspacePath: targetWorkspacePath,
+            workspaceIdentity: targetWorkspaceIdentity,
+            taskId,
+            fromNotification: true,
+          });
           return;
         }
       }
-      logger.warn("[Root] onTaskNotificationClick: task not found in any workspace:", taskId);
+      requestWorktreeSettingsConversation({
+        kind: "api-notification",
+        taskId,
+        fromNotification: true,
+      });
+      logger.info(
+        "[Root] onTaskNotificationClick: task not in workspace cache; checking board:",
+        taskId,
+      );
     });
     const disposeUpdateCheckResult = platform.onUpdateCheckResult
       ? platform.onUpdateCheckResult((payload) => {

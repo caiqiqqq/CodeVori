@@ -110,7 +110,13 @@ export function useWorkTaskNotifications({
     const disposeClick = platform?.onTaskNotificationClick((id) => {
       if (!isCurrent()) return;
       const target = targets.get(id);
-      if (target) requestWorktreeSettingsConversation({ kind: "work-task", scope, id: target.id });
+      if (target)
+        requestWorktreeSettingsConversation({
+          kind: "work-task",
+          scope,
+          id: target.id,
+          fromNotification: true,
+        });
     });
     return () => {
       live = false;

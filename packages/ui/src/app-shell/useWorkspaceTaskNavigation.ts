@@ -290,10 +290,36 @@ export function useWorkspaceTaskNavigation({
       workspaceIdentity,
     ],
   );
-  const handleOpenAgentBoard = useCallback(() => {
-    taskNavPushAgentBoard(workspaceAbsPath, workspaceIdentity);
-    onNavigateToAgentBoard?.({ workspacePath: workspaceAbsPath, workspaceIdentity });
-  }, [taskNavPushAgentBoard, onNavigateToAgentBoard, workspaceAbsPath, workspaceIdentity]);
+  const handleOpenAgentBoard = useCallback(
+    (target?: { workspacePath: string; workspaceIdentity?: string; remoteSessionId?: string }) => {
+      const scope = target ?? { workspacePath: workspaceAbsPath, workspaceIdentity };
+      if (target) {
+        const key = buildTaskWorkspaceKey(scope.workspacePath, scope.workspaceIdentity);
+        const tab = tabStoreApi
+          .getState()
+          .tabs.find(
+            (candidate) =>
+              isWorkspaceTab(candidate) &&
+              candidate.workspacePath === scope.workspacePath &&
+              buildTaskWorkspaceKey(candidate.workspacePath, candidate.workspaceIdentity) === key &&
+              (!target.remoteSessionId || candidate.remoteSessionId === target.remoteSessionId),
+          );
+        // 通知可能来自另一项目或已断开的远端；只激活精确存在的 tab。
+        if (!tab) return false;
+        tabStoreApi.getState().activateTab(tab.id);
+      }
+      taskNavPushAgentBoard(scope.workspacePath, scope.workspaceIdentity);
+      onNavigateToAgentBoard?.(scope);
+      return true;
+    },
+    [
+      tabStoreApi,
+      taskNavPushAgentBoard,
+      onNavigateToAgentBoard,
+      workspaceAbsPath,
+      workspaceIdentity,
+    ],
+  );
   const handleOpenWorkTasks = useCallback(
     (target?: { workspacePath: string; workspaceIdentity?: string }) => {
       // 设置页可打开另一项目的待办，导航历史必须使用明确的主项目 scope。

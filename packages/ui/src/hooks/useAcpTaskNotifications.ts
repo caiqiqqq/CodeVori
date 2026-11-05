@@ -163,7 +163,8 @@ export function useAcpTaskNotifications({
     const disposeClick = platform?.onTaskNotificationClick((id) => {
       if (!isCurrent() || !id.startsWith(ACP_TASK_NOTIFICATION_PREFIX)) return;
       const session = targets.get(id.slice(ACP_TASK_NOTIFICATION_PREFIX.length));
-      if (session) requestWorktreeSettingsConversation({ kind: "acp", session });
+      if (session)
+        requestWorktreeSettingsConversation({ kind: "acp", session, fromNotification: true });
     });
     // 先订阅再读取，迟到的 list 不覆盖实时 revision，也不会复活已删除会话。
     void acpService.listSummaries(workspace).then(
