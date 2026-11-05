@@ -25,6 +25,7 @@ try {
     import React,{useEffect,useRef,useState} from 'react';
     import {createRoot} from 'react-dom/client';
     import {WorkspaceShellLayout} from '../../../ui/src/app-shell/WorkspaceShellLayout.tsx';
+    import {useWorkspaceTaskNavigation} from '../../../ui/src/app-shell/useWorkspaceTaskNavigation.ts';
     import {useConversationWorkspaceActions} from '../../../ui/src/root/useConversationWorkspaceActions.ts';
     import {useDesktopWindowView} from '../../../ui/src/root/desktopWindowSession.ts';
     import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
@@ -56,6 +57,7 @@ try {
       const active=useZCodeSessionStore(s=>s.getWorkspaceState(path).activeTaskId);
       const [view,setView]=useState('work-tasks'),[desktop,setDesktop]=useState(true),[locale,setLocale]=useState('zh-CN'),[callback,setCallback]=useState(true),[readOnly,setReadOnly]=useState(false);
       const ref=useRef(null);
+      const nav=useWorkspaceTaskNavigation({intl:{formatMessage:({id})=>id},workspaceAbsPath:path,activateTabByPath:tabStore.getState().activateTabByPath,onNavigateToAgentBoard:()=>setView('agent-board')});
       const actions=useConversationWorkspaceActions({services,addTab:tabStore.getState().addTab,setWorkspaceActionError:error=>state.error=error});
       state.prepare=({view='work-tasks',source=conversation,desktop=true,locale='zh-CN',callback=true,readOnly=false,following=false,defer=false,fail=false}={})=>{
         useDesktopWindowView.setState({following,snapshot:following?{workspaces:[{workspacePath:conversation,workspacePurpose:'conversation'}]}:null});
@@ -77,7 +79,7 @@ try {
           reconnectingRemoteWorkspaceKeys={[]} remoteWorkspaceErrorByWorkspaceKey={{}}
           onCreateTask={()=>{state.fallback++;useZCodeSessionStore.getState().startDraft(path)}} onCreateConversationTask={callback?actions.handleCreateConversationTask:undefined}
           onConnectRemote={noop} onSelectRemoteProject={noop} onCancelRemoteProject={noop} onReconnectRemoteWorkspace={noop} handleSelectTask={noop} handleStartDraftInWorkspace={noop}
-          handleTaskNavBack={noop} handleTaskNavForward={noop} handleOpenAutomations={noop} handleOpenPluginStore={noop} handleOpenRepository={noop} handleOpenWorkTasks={noop}
+          handleTaskNavBack={noop} handleTaskNavForward={noop} handleOpenAutomations={noop} handleOpenPluginStore={noop} handleOpenRepository={noop} handleOpenAgentBoard={nav.handleOpenAgentBoard} handleOpenWorkTasks={noop}
           updateReadyVersion={null} updateState={null} desktopWindowChromeState={null} macWindowControlsLeftPaddingPx={0} sidebarContainerRef={ref} taskFindDialogProps={{}}
           taskNativeSessionLogFile={{path:null,provider:null,exists:false,loading:false}} taskSessionFile={{path:null}}/>
       </div></TooltipProvider></ZCodeIntlProvider>;
@@ -118,6 +120,7 @@ try {
     ["work-tasks/WorkTasksPanel.tsx", "WorkTasksPanel"],
     ["repository-panel/RepositoryPanel.tsx", "RepositoryPanel"],
     ["settings/PluginStorePage.tsx", "PluginStorePage"],
+    ["agent-board/AgentBoardPanel.tsx", "AgentBoardPanel"],
   ])
     await stub(path, `export function ${symbol}(){return null}`);
   await stub(
@@ -224,6 +227,15 @@ try {
   await button.click();
   assert.equal(await page.evaluate(() => window.__newTask.fallback), 0);
   assert.equal(await page.getByTestId("navigation").getAttribute("data-view"), "work-tasks");
+  await prepare({ view: "chat" });
+  await page.getByTestId("agent-board-sidebar-open").click();
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="navigation"]')?.dataset.view === "agent-board",
+  );
+  assert.equal(
+    await page.getByTestId("agent-board-sidebar-open").getAttribute("aria-pressed"),
+    "true",
+  );
   assert.deepEqual(await page.evaluate(() => window.__newTask.writes), []);
   assert.deepEqual(errors, []);
   console.log(

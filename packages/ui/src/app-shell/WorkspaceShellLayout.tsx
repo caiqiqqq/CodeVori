@@ -2139,7 +2139,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                     pluginStoreActive={workspaceMainView === "plugin-store"}
                     onOpenRepository={() => handleOpenRepository()}
                     repositoryActive={workspaceMainView === "repository"}
-                    onOpenAgentBoard={handleOpenAgentBoard}
+                    // 原因：按钮会传入点击事件；只有通知解析才能提供看板目标 workspace。
+                    onOpenAgentBoard={() => handleOpenAgentBoard?.()}
                     agentBoardActive={workspaceMainView === "agent-board"}
                     onOpenWorkTasks={() => handleOpenWorkTasks()}
                     workTasksActive={workspaceMainView === "work-tasks"}

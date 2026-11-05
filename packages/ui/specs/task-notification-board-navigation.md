@@ -7,6 +7,8 @@ conversation is present in the board's current data and included by the board tr
 The board opens the conversation details and reveals the item even when a saved view, project,
 agent, or search filter would otherwise hide it. If the item is absent, excluded, or the board
 read fails, the existing conversation or work-task navigation runs unchanged.
+Opening Agent Board from the workspace sidebar uses the current workspace with no explicit
+notification target. The click event is never interpreted as a workspace target.
 
 ## Ownership and order
 
@@ -22,6 +24,8 @@ read fails, the existing conversation or work-task navigation runs unchanged.
   unresolved older click; no task or board membership is written by this decision.
 - Remote identities and remote session IDs must remain exact. Same-path or same-ID sessions
   in other workspaces cannot satisfy a notification.
+- The sidebar sends a no-argument open command to the existing workspace navigation owner;
+  only notification resolution supplies an explicit workspace and remote session target.
 
 ```mermaid
 sequenceDiagram
@@ -46,3 +50,4 @@ sequenceDiagram
 - Excluded or missing items follow their previous chat or work-task route.
 - A saved filter cannot hide the selected board item.
 - Same-name paths, equal session IDs, and remote attachments remain isolated.
+- Clicking the workspace sidebar Agent Board button opens the board from chat or other views.
