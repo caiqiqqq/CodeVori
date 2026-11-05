@@ -35,8 +35,9 @@ try {
     import {connectProviderSettingsSnapshot} from '../../../ui/src/lib/providerSettingsSnapshot.ts';
     import {applyTheme} from '../../../ui/src/useTheme.ts';
     import '../../../ui/src/styles.css';
-    const a='/fixture/project-a',b='/fixture/project-b',tree='/fixture/worktrees/b',tasks='/fixture/tasks';
-    const tabs=[{id:'a',kind:'workspace',label:'项目 A',workspacePath:a},{id:'b',kind:'workspace',label:'项目 B',workspacePath:b},{id:'tree',kind:'workspace',label:'B 工作树',workspacePath:tree},{id:'tasks',kind:'workspace',label:'任务',workspacePurpose:'conversation',workspacePath:tasks}];
+    const pathOnly=new URLSearchParams(location.search).has('pathOnly');
+    const a=pathOnly?'/Users/caiqi/aicode/zcode':'/fixture/project-a',b=pathOnly?'/Users/caiqi/.code/worktrees/519e/zcode':'/fixture/project-b',tree='/fixture/worktrees/b',tasks='/fixture/tasks';
+    const tabs=[{id:'a',kind:'workspace',label:pathOnly?'同名项目':'项目 A',workspacePath:a},{id:'b',kind:'workspace',label:pathOnly?'同名项目':'项目 B',workspacePath:b,...(pathOnly?{availability:'unavailable-local-directory'}:{})},{id:'tree',kind:'workspace',label:'B 工作树',workspacePath:tree},{id:'tasks',kind:'workspace',label:'任务',workspacePurpose:'conversation',workspacePath:tasks}];
     const now=Date.now(),ids=['a','b','tree','tasks'];
     const acp=tabs.map((tab,i)=>({id:ids[i],agent:'codex',title:['主项目会话','跨项目会话','工作树会话','独立任务会话'][i],workspacePath:tab.workspacePath,status:'ready',revision:1,createdAt:now-i*1000,updatedAt:now-i*1000,entries:[{kind:'user',text:'fixture',createdAt:now-i*1000}]}));
     const api={taskId:'b',workspacePath:b,title:'同 ID 的 API 会话',provider:'glm',status:'idle',model:'bigmodel/GLM-5',createdAt:now,updatedAt:now};
@@ -112,11 +113,34 @@ try {
           }),
         );
       }
-      await page.goto(`${process.env.ZCODE_E2E_VITE_URL ?? "http://localhost:5174"}/${name}.html`);
+      await page.goto(
+        `${process.env.ZCODE_E2E_VITE_URL ?? "http://localhost:5174"}/${name}.html${process.env.ZCODE_E2E_PATH_ONLY === "1" ? "?pathOnly=1" : ""}`,
+      );
       const fixture = page.getByTestId("sidebar-focus-fixture");
       await fixture.waitFor().catch((error) => {
         throw new Error(errors.join("\n") || error.message);
       });
+      if (process.env.ZCODE_E2E_PATH_ONLY === "1") {
+        const projectList = fixture.getByTestId("workspace-list");
+        for (const [path, hint] of [
+          ["/Users/caiqi/aicode/zcode", "…/aicode/zcode"],
+          ["/Users/caiqi/.code/worktrees/519e/zcode", "…/519e/zcode"],
+        ]) {
+          await projectList
+            .getByTestId(`workspace-item-${path}`)
+            .getByText(hint, { exact: true })
+            .waitFor();
+        }
+        assert.equal(await projectList.locator('[data-testid^="workspace-item-"]').count(), 2);
+        await projectList
+          .getByTestId("workspace-item-/Users/caiqi/.code/worktrees/519e/zcode")
+          .getByLabel(/工作区目录不存在或无法访问/)
+          .waitFor();
+        await page.screenshot({ path: join(output, `same-name-${width}-${theme}.png`) });
+        await page.close();
+        console.log(`PASS ${width}px ${theme}: same-name projects show distinct paths`);
+        continue;
+      }
       await page.evaluate((theme) => window.__focus.theme(theme), theme);
       const row = (id) => fixture.locator(`[data-acp-session-id="${id}"]`);
       const selected = async (id) => {

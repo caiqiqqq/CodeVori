@@ -143,6 +143,7 @@ function getSshWorkspaceTooltipDetails(tab: WorkspaceTabState): SshWorkspaceTool
 
 export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   tab,
+  workspacePathHint,
   isActiveWorkspace,
   hasActiveDescendant = false,
   isExpanded,
@@ -173,6 +174,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   projectTaskList,
 }: {
   tab: WorkspaceTabState;
+  workspacePathHint?: string;
   isActiveWorkspace: boolean;
   hasActiveDescendant?: boolean;
   isExpanded: boolean;
@@ -856,11 +858,13 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
       <span className="relative flex size-4 shrink-0 items-center justify-center">
         {renderWorkspaceIcon()}
       </span>
-      <div
-        className="min-w-0 truncate text-ui-base text-foreground-subtle"
-        title={tab.workspacePath}
-      >
-        {workspaceSidebarLabel}
+      <div className="min-w-0 flex-1" title={tab.workspacePath}>
+        <div className="truncate text-ui-base text-foreground-subtle">{workspaceSidebarLabel}</div>
+        {workspacePathHint ? (
+          <div className="truncate font-mono text-ui-xs text-foreground-subtlest">
+            {workspacePathHint}
+          </div>
+        ) : null}
       </div>
       {!isExpanded && taskListHasUnread ? (
         <span

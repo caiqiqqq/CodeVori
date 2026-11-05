@@ -5,6 +5,24 @@ import {
   appSettingsSchema,
 } from "../../shared/src/validationAppSettings.js";
 import { createTabStore, isWorkspaceTab } from "../src/store/tabStore.js";
+import { getRepeatedWorkspaceLabels, getWorkspacePathHint } from "../src/lib/workspaceAlias.js";
+
+test("same-name project paths are identified for inline disambiguation", () => {
+  const repeated = getRepeatedWorkspaceLabels([
+    { label: "zcode", workspacePath: "/projects/zcode" },
+    { label: "zcode", workspacePath: "/worktrees/519e/zcode" },
+    { label: "other", workspacePath: "/projects/other" },
+  ]);
+  assert.deepEqual([...repeated], ["zcode"]);
+  assert.equal(
+    getWorkspacePathHint("/Users/caiqi/aicode/zcode", ["/Users/caiqi/.code/worktrees/519e/zcode"]),
+    "…/aicode/zcode",
+  );
+  assert.equal(
+    getWorkspacePathHint("/Users/caiqi/.code/worktrees/519e/zcode", ["/Users/caiqi/aicode/zcode"]),
+    "…/519e/zcode",
+  );
+});
 
 test("legacy settings have no aliases and invalid display aliases are rejected", () => {
   assert.deepEqual(appSettingsSchema.parse({}).workspaceAliases, {});
