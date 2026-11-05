@@ -25,6 +25,8 @@ interface TabPersistenceRestoreLifecycle {
 interface TabPersistenceRestoreResult {
   /** 恢复期间识别出的 app-owned 路径，不得回填为最近项目。 */
   excludedRecentProjectPaths?: readonly string[];
+  /** 已确认不存在的本地项目，需要在完整恢复后从持久化窗口会话清理。 */
+  prunedLocalWorkspacePaths?: readonly string[];
   /** active workspace 已恢复后，在首帧后的 idle period 补齐 inactive workspace。 */
   deferredRestore?: () => void;
 }
@@ -213,9 +215,22 @@ export function useTabPersistence({
         // 还必须清理历史残留，否则项目选择器仍会再次把它渲染为 workspace。
         const merged = buildRestoredRecentProjectPaths(settings, excludedRecentProjectPaths);
         const persistedRecent = settings.recentProjects ?? [];
+        const prunedLocalWorkspacePaths = restoreResult?.prunedLocalWorkspacePaths ?? [];
+        const persistPrunedSession = () => {
+          if (prunedLocalWorkspacePaths.length === 0) return;
+          // 修复原因：仅从恢复投影跳过缺失项目，未写回设置时重启后还会再次出现。
+          // active-first 的完整补齐结束后才写入，保留用户期间新开的项目。
+          settingService
+            .update({
+              ...(buildPersistPatch ?? buildDefaultPersistPatch)(store.getState()),
+              recentProjects: merged,
+            })
+            .catch((err) => logger.error("[useTabPersistence] 清理缺失项目入口失败:", err));
+        };
         if (
-          merged.length !== persistedRecent.length ||
-          merged.some((p, i) => p !== persistedRecent[i])
+          prunedLocalWorkspacePaths.length === 0 &&
+          (merged.length !== persistedRecent.length ||
+            merged.some((p, i) => p !== persistedRecent[i]))
         ) {
           settingService.update({ recentProjects: merged }).catch((err) => {
             logger.error("[useTabPersistence] 同步 recentProjects 失败:", err);
@@ -239,6 +254,7 @@ export function useTabPersistence({
               initialRestoreFullyCompletedRef.current = true;
               try {
                 deferredRestore();
+                persistPrunedSession();
               } catch (error) {
                 logger.error("[useTabPersistence] 补齐 inactive workspace 失败:", error);
               } finally {
@@ -254,6 +270,7 @@ export function useTabPersistence({
             });
           } else {
             initialRestoreFullyCompletedRef.current = true;
+            persistPrunedSession();
           }
         }
       })

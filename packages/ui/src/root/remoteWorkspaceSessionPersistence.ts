@@ -58,6 +58,7 @@ export function restorePersistedRemoteWorkspaceSessions({
   tabStoreApi,
   allowRemoteWorkspaceRestore = true,
   unavailableWorkspacePaths,
+  missingWorkspacePaths,
   conversationWorkspacePath,
   restoreMode = "all",
 }: {
@@ -65,6 +66,7 @@ export function restorePersistedRemoteWorkspaceSessions({
   tabStoreApi: TabStore;
   allowRemoteWorkspaceRestore?: boolean;
   unavailableWorkspacePaths?: ReadonlySet<string>;
+  missingWorkspacePaths?: ReadonlySet<string>;
   conversationWorkspacePath?: string;
   restoreMode?: "all" | "active-first";
 }): { deferredRestore?: () => void } | undefined {
@@ -82,6 +84,7 @@ export function restorePersistedRemoteWorkspaceSessions({
     settings.lastActiveTabIndex,
   );
   let restoredActiveIndex = 0;
+  let activeSessionWasMissing = false;
   let canonicalConversationRestoredIndex: number | null = null;
   let shouldActivateCanonicalConversation = false;
 
@@ -113,6 +116,16 @@ export function restorePersistedRemoteWorkspaceSessions({
         logger.warn("[Root] 跳过重复的本地 workspace 恢复", {
           workspacePath: persistedEntry.workspacePath,
         });
+        continue;
+      }
+
+      if (
+        persistedEntry.workspacePath !== conversationWorkspacePath &&
+        missingWorkspacePaths?.has(persistedEntry.workspacePath)
+      ) {
+        // 修复原因：已删除的工作树此前仍作为只读项目恢复，侧栏继续出现同名空项目。
+        // 这里只跳过窗口入口；任务和附件由各自服务保留。
+        if (index === activeSessionIndex) activeSessionWasMissing = true;
         continue;
       }
 
@@ -186,6 +199,18 @@ export function restorePersistedRemoteWorkspaceSessions({
     if (shouldActivateCanonicalConversation) {
       restoredActiveIndex = canonicalConversationRestoredIndex;
     }
+  }
+
+  if (activeSessionWasMissing) {
+    const fallbackIndex = restoredTabs.findIndex(
+      (tab) =>
+        typeof tab === "string" ||
+        (!tab.workspaceIdentity &&
+          !tab.remoteSessionId &&
+          !tab.remoteTarget &&
+          tab.availability !== "unavailable-local-directory"),
+    );
+    restoredActiveIndex = Math.max(fallbackIndex, 0);
   }
 
   if (restoredTabs.length > 0) {
