@@ -428,6 +428,7 @@ interface ConversationComposerProps {
    */
   blockingRequestId?: string | null;
   disabled?: boolean;
+  onRetryInitialization?: () => void;
   /** 只改变同一个编辑器的提交目标；ACP 会话与转录由 Host 持有。 */
   acpAgent?: AcpAgent | null;
   acpSessionId?: string | null;
@@ -559,6 +560,7 @@ function ConversationComposerImpl({
   centered = false,
   blockingRequestId = null,
   disabled = false,
+  onRetryInitialization,
   acpAgent = null,
   acpSessionId = null,
   acpContextUsage = null,
@@ -2733,6 +2735,29 @@ function ConversationComposerImpl({
             onDismiss={onDismissError}
             onOpenModelSettings={onOpenModelSettings}
           />
+        </div>
+      ) : null}
+      {snapshot?.runtimeInitialization?.status === "failed" ? (
+        // 修复原因：恢复失败仍须保留历史正文，错误和重试放在固定的输入区上方。
+        <div
+          data-testid="v4-session-initialization"
+          role="alert"
+          className="mb-2 flex w-full flex-wrap items-center gap-2 rounded-lg border border-card-border bg-card px-3 py-2 text-ui-base text-foreground-subtle"
+        >
+          <span className="min-w-0 flex-1">
+            {intl.formatMessage({ id: "chat.initialization.failed" })}
+          </span>
+          {onRetryInitialization ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-testid="v4-session-initialization-retry"
+              onClick={onRetryInitialization}
+            >
+              {intl.formatMessage({ id: "chat.initialization.retry" })}
+            </Button>
+          ) : null}
         </div>
       ) : null}
       <div

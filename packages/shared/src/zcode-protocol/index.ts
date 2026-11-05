@@ -80,6 +80,7 @@ export const ZCODE_PROTOCOL_VERSION = 1 as const;
 export const ZCODE_PROTOCOL_V4_WIRE_VERSION = 3 as const;
 export const zcodeRuntimeCapabilitiesSchema = z.object({
   independentPlanState: z.boolean().optional(),
+  historyFirst: z.boolean().optional(),
 });
 export const zcodeProtocolErrorCodes = {
   sessionUnavailable: -32004,
@@ -1598,6 +1599,7 @@ export type ZCodeSessionCreateParams = z.infer<typeof zcodeSessionCreateParamsSc
 
 export const zcodeSessionResumeParamsSchema = z
   .object({
+    additionalDirectories: z.array(z.string().trim().min(1)).max(256).optional(),
     sessionId: nonEmptyString,
     workspace: zcodeWorkspaceRefSchema.optional(),
     // 旧 session 尚无 runtime/model_selection entry 时，由同 task 的索引元数据提供迁移 hint。

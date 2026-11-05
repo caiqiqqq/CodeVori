@@ -209,6 +209,9 @@ export function createAgentConversationTransport(
           sessionId,
           ...(params.base ? { base: params.base } : {}),
           ...(params.visibility ? { visibility: params.visibility } : {}),
+          ...(params.retryInitialization
+            ? { retryInitialization: params.retryInitialization }
+            : {}),
         });
         if (subscribeRuntimeGeneration !== runtimeGeneration) {
           // 旧 runtime 的迟到 ACK 可能复用新 runtime 的 subId；此处只能

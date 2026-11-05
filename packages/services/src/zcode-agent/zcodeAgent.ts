@@ -358,6 +358,7 @@ export interface ZCodeAgentConversationSubscribeParams extends ZCodeAgentSession
   /** 水位不变量：仅当客户端真持有该时刻一致状态才允许带。 */
   base?: { logEpoch: string; seq: number };
   visibility?: "foreground" | "background";
+  retryInitialization?: string;
 }
 
 export interface ZCodeAgentConversationUnsubscribeParams extends ZCodeAgentWorkspaceTarget {

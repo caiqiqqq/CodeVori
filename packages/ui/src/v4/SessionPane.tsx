@@ -896,6 +896,10 @@ export function SessionPane({
   const [lease, setLease] = useState<SessionLease | null>(null);
   const state = useConversationProjection(lease);
   const snapshot = state.snapshot;
+  const runtimeReady =
+    sessionId === null ||
+    (snapshot?.sessionId === sessionId &&
+      (!snapshot.runtimeInitialization || snapshot.runtimeInitialization.status === "ready"));
   const newlyCreatedSessionIdRef = useRef<string | null>(null);
   const shareDraft = useConversationShareSelectionStore((storeState) =>
     sessionId ? storeState.drafts[sessionId] : undefined,
@@ -5013,10 +5017,12 @@ export function SessionPane({
         Boolean(acpAgent && acpQueueEditing.pendingId) ||
         (!acpAgent &&
           (connecting ||
+            !runtimeReady ||
             draftRuntimeRebuilding ||
             queueEditActiveForCurrentComposer ||
             quotaBanner.state.blocksSubmit))
       }
+      onRetryInitialization={handleRetrySubscribe}
       acpAgent={acpAgent}
       acpSessionId={acpConversation.selected?.id ?? null}
       acpTokenUsage={acpTokenUsage}
@@ -5026,7 +5032,6 @@ export function SessionPane({
       acpReady={
         (!pendingAcpTabOpenRequest ||
           pendingAcpTabOpenRequest.session.id === acpConversation.selected?.id) &&
-        acpConversation.loaded &&
         acpConversation.ready &&
         !acpConversation.sending &&
         !acpConversation.busy

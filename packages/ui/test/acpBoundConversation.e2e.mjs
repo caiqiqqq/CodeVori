@@ -34,7 +34,7 @@ try {
       pendingPermission:null,error:null
     })]));
     const listeners = new Set(), calls = [], pending = new Map();
-    const controls = {calls, pending, delayRead:null, delayList:true, delayRefresh:'A'};
+    const controls = {calls, pending, delayRead:null, delayList:true, delayRefresh:'A', failList:false};
     window.__bound = controls;
     const service = {
       list:async()=>{throw new Error('Ordinary list must never expose work-task sessions')},
@@ -55,6 +55,13 @@ try {
         if(target.id==='failed-refresh') throw new Error('Agent connection failed');
         return summarizeAcpSession({...sessions.get(target.id),...target});
       },
+      sendConversationCommand:async input=>{
+        calls.push(['send',input.id,input.workspaceIdentity,input.remoteSessionId]);
+        return {...scope,id:input.id,commandId:input.commandId,
+          ack:{commandId:input.commandId,status:'accepted',revisionAtDecision:2},
+          disposition:'started',sessionStatus:'running'};
+      },
+      setConfigOption:async input=>{calls.push(['config',input.id,input.workspaceIdentity,input.remoteSessionId])},
       create:async()=>{calls.push(['create']);throw new Error('Must not replace a bound conversation')},
       remove:async()=>{calls.push(['remove']);throw new Error('Must preserve bound history')},
     };
@@ -67,6 +74,7 @@ try {
     // 模拟普通列表排除待办/委派归属；精确正文订阅仍保留访问和实时更新。
     service.listSummaries=async()=>{
       if(controls.delayList) await new Promise(resolve=>pending.set('list',resolve));
+      if(controls.failList) throw new Error('Directory unavailable');
       return [];
     };
     service.onDynamicSessionSummaryChanged=()=>()=>({dispose(){}});
@@ -83,6 +91,8 @@ try {
       controls.reconnect=()=>setTarget({...scope,remoteSessionId:'attachment:two'});
       controls.switchHost=()=>{setAgent(null);setTarget({...scope,workspaceIdentity:'host:two',remoteSessionId:'attachment:other'})};
       controls.reloadList=view.retryList;
+      controls.send=()=>view.send({text:'继续',attachments:[],workspaceFiles:[]});
+      controls.setConfig=()=>view.setConfigOption('mode','default');
       const open=id=>{view.selectById('codex',id);setAgent('codex')};
       return <main>
         {['A','B','missing','failed-refresh'].map(id=><button key={id} onClick={()=>open(id)}>打开 {id}</button>)}
@@ -118,26 +128,56 @@ try {
         return state?.dataset.id === id && state.dataset.ready === "true";
       }, id);
 
-    // 隐藏会话无需等普通列表/Agent 恢复即可展示 Host 正文，列表迟到也不能清掉它。
+    // 精确会话的连接就绪也不能等待普通目录：API 会话按自己的投影就绪，
+    // ACP 在 Host refreshSummary 确认后同样应允许当前会话操作。
     await open("A");
     await page.waitForFunction(() =>
       document.querySelector('[data-testid="history"]')?.textContent.includes("历史 A"),
     );
     assert.equal(await state.getAttribute("data-loaded"), "false");
+    await page.waitForFunction(() => window.__bound.pending.has("refresh:A"));
+    await page.evaluate(() => window.__bound.release("refresh:A"));
+    await ready("A");
+    assert.equal(await state.getAttribute("data-loaded"), "false");
+    assert.equal(await page.getByLabel("正在读取智能体选项…", { exact: true }).count(), 0);
+    await page.evaluate(async () => {
+      await window.__bound.send();
+      await window.__bound.setConfig();
+    });
+    assert.deepEqual(
+      await page.evaluate(() => window.__bound.calls.filter(([op]) => op === 'send' || op === 'config').map(([op,id]) => [op,id])),
+      [['send','A'],['config','A']],
+    );
     await page.evaluate(() => {
       window.__bound.delayList = false;
       window.__bound.release("list");
     });
-    await page.waitForFunction(() => window.__bound.pending.has("refresh:A"));
     assert.match(await page.getByTestId("history").innerText(), /历史 A/);
-    await page.evaluate(() => window.__bound.release("refresh:A"));
-    await ready("A");
-    assert.equal(await page.getByLabel("正在读取智能体选项…", { exact: true }).count(), 0);
+    await page.waitForFunction(() => document.querySelector('[data-testid="state"]')?.dataset.loaded === "true");
     await page.evaluate(() => window.__bound.reloadList());
     await page.waitForFunction(() => window.__bound.pending.has("refresh:A"));
     assert.match(await page.getByTestId("history").innerText(), /历史 A/);
     await page.evaluate(() => window.__bound.release("refresh:A"));
     await ready("A");
+    // 列表单独失败不能覆盖已通过精确正文和 Host 连接确认的当前会话。
+    await page.evaluate(() => {
+      window.__bound.delayRefresh = null;
+      window.__bound.delayList = true;
+      window.__bound.failList = true;
+      window.__bound.reloadList();
+    });
+    await page.waitForFunction(() => window.__bound.pending.has('list'));
+    await ready("A");
+    await page.evaluate(() => window.__bound.release('list'));
+    await page.waitForTimeout(50);
+    assert.equal(await state.getAttribute('data-error'), '');
+    assert.equal(await state.getAttribute('data-ready'), 'true');
+    await page.evaluate(() => {
+      window.__bound.failList = false;
+      window.__bound.delayList = false;
+      window.__bound.reloadList();
+    });
+    await page.waitForFunction(() => document.querySelector('[data-testid="state"]')?.dataset.loaded === 'true');
     await page.evaluate(() => window.__bound.emit("A"));
     await page.waitForFunction(() =>
       document.querySelector('[data-testid="history"]')?.textContent.includes("实时 A"),
@@ -196,10 +236,26 @@ try {
       () =>
         window.__bound.calls.filter(([op, id]) => op === "read" && id === "missing").length === 2,
     );
+    await page.evaluate(() => {
+      window.__bound.delayList = true;
+      window.__bound.reloadList();
+    });
     await open("failed-refresh");
     await page.getByRole("alert").filter({ hasText: "Agent connection failed" }).waitFor();
+    assert.equal(await state.getAttribute("data-loaded"), "false");
     assert.match(await page.getByTestId("history").innerText(), /历史 failed-refresh/);
     assert.equal(await page.getByLabel("正在读取智能体选项…", { exact: true }).count(), 0);
+    await page.getByRole("button", { name: "重试", exact: true }).click();
+    await page.waitForFunction(
+      () => window.__bound.calls.filter(([op, id]) => op === "refresh" && id === "failed-refresh").length === 2,
+    );
+    assert.equal(await state.getAttribute("data-loaded"), "false");
+    await page.evaluate(() => {
+      window.__bound.delayList = false;
+      window.__bound.release("list");
+    });
+    await page.waitForFunction(() => document.querySelector('[data-testid="state"]')?.dataset.loaded === 'true');
+    assert.match(await state.getAttribute('data-error'), /Agent connection failed/);
     assert.equal(
       await page.evaluate(() =>
         window.__bound.calls.some(([op]) => op === "create" || op === "remove"),

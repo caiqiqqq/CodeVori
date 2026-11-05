@@ -21,3 +21,21 @@ export function ensureIndependentPlanSupport(
   checks.set(client, check);
   return check;
 }
+
+const historyChecks = new WeakMap<object, Promise<boolean>>();
+/** 修复原因：旧 CLI 的 strict subscribe 会拒绝新字段，先确认执行端能力。 */
+export function supportsHistoryFirst(
+  client: Pick<ZCodeProtocolClient, "request">,
+): Promise<boolean> {
+  const existing = historyChecks.get(client);
+  if (existing) return existing;
+  const check = client
+    .request(zcodeProtocolMethods.runtimeCapabilities, {}, zcodeRuntimeCapabilitiesSchema)
+    .then((result) => result.historyFirst === true)
+    .catch(() => {
+      historyChecks.delete(client);
+      return false;
+    });
+  historyChecks.set(client, check);
+  return check;
+}

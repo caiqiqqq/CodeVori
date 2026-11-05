@@ -500,6 +500,20 @@ export class ProductProjection {
     return this.snapshot;
   }
 
+  /** 修复原因：历史首帧与运行时激活是两个水位；状态变化必须推进投影序号。 */
+  setRuntimeInitialization(
+    state: NonNullable<ConversationSnapshot["runtimeInitialization"]>,
+    minimumSeq = this.snapshot.seq + 1,
+    minimumRevision = this.snapshot.revision + 1,
+  ): void {
+    this.snapshot = {
+      ...this.snapshot,
+      runtimeInitialization: state,
+      seq: Math.max(this.snapshot.seq, minimumSeq),
+      revision: Math.max(this.snapshot.revision, minimumRevision),
+    };
+  }
+
   /** assistant 守恒：被拒收的正文流事件数（>0 = 投影可能缺段，需重 hydration）。 */
   getDroppedContentStreamEventCount(): number {
     return this.droppedContentStreamEventCount;

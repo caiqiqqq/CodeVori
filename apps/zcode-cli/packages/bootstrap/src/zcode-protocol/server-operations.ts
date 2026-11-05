@@ -1412,6 +1412,23 @@ interface ActivatedSessionForResume {
   persistedMessages?: MessageWithParts[];
 }
 
+/** 修复原因：最终投影物化失败后不能留下半激活 record，重试必须重新恢复 app。 */
+export async function discardFailedSessionResume(
+  context: ZCodeProtocolAgentServerContext,
+  sessionId: string,
+  record: ZCodeProtocolSessionRecord,
+): Promise<void> {
+  if (context.sessions.get(sessionId) !== record) return;
+  record.unsubscribe?.();
+  context.sessions.delete(sessionId);
+  try {
+    await record.app.close?.();
+  } catch {
+    /* 保留原始恢复错误。 */
+  }
+  await record.eventStore.deleteSession(sessionId as SessionId).catch(() => undefined);
+}
+
 /**
  * 只恢复 session runtime 生命周期，不物化任何协议表示。
  *
@@ -1422,7 +1439,7 @@ interface ActivatedSessionForResume {
 export async function activateSessionForResume(
   context: ZCodeProtocolAgentServerContext,
   params: ZCodeSessionResumeParams,
-  options: { reusePersistedMessages?: boolean } = {},
+  options: { reusePersistedMessages?: boolean; persistedMessages?: MessageWithParts[] } = {},
 ): Promise<ActivatedSessionForResume> {
   const activate = () => activateSessionForResumeUnlocked(context, params, options);
   // 修复原因：恢复持久内容与 purge 必须共用生命周期栅栏，避免旧读取在删除后重新登记 runtime。
@@ -1434,7 +1451,7 @@ export async function activateSessionForResume(
 async function activateSessionForResumeUnlocked(
   context: ZCodeProtocolAgentServerContext,
   params: ZCodeSessionResumeParams,
-  options: { reusePersistedMessages?: boolean } = {},
+  options: { reusePersistedMessages?: boolean; persistedMessages?: MessageWithParts[] } = {},
 ): Promise<ActivatedSessionForResume> {
   const resumeStartedAt = Date.now();
   const activeBeforeWait = context.sessions.has(params.sessionId);
@@ -1482,7 +1499,8 @@ async function activateSessionForResumeUnlocked(
       workspaceIdentity: session.workspaceID,
       workspacePath: session.path ?? session.directory,
     });
-  let persistedMessages = await readPersistedSessionMessages(context, params.sessionId);
+  let persistedMessages =
+    options.persistedMessages ?? (await readPersistedSessionMessages(context, params.sessionId));
   const mode = derivePersistedSessionMode(persistedMessages);
   // shell 设置变更只对新 session 生效；冷恢复必须使用创建时落库的
   // Bash shell 快照。runtime.resumeFromStore 会读取快照；这里只负责不把
@@ -1515,31 +1533,37 @@ async function activateSessionForResumeUnlocked(
   if (session.time?.updated) record.updatedAt = session.time.updated;
   context.assertServing?.();
   context.sessions.set(params.sessionId, record);
-  const resumeResult = await runSessionModelConfigMutation(record.app, async () => {
-    const result = options.reusePersistedMessages
-      ? await record.app.resume({ persistedMessages })
-      : await record.app.resume();
-    // 仅用于首次投影种子，包含有效模型+空档位；它不是第二份可执行 Runtime 选择。
-    record.restoredModelSelection = result.modelSelection;
-    return result;
-  });
-  if (options.reusePersistedMessages && resumeResult.persistedMessagesReloadRequired) {
-    persistedMessages = await readPersistedSessionMessages(context, params.sessionId);
+  try {
+    const resumeResult = await runSessionModelConfigMutation(record.app, async () => {
+      const result = options.reusePersistedMessages
+        ? await record.app.resume({ persistedMessages })
+        : await record.app.resume();
+      // 仅用于首次投影种子，包含有效模型+空档位；它不是第二份可执行 Runtime 选择。
+      record.restoredModelSelection = result.modelSelection;
+      return result;
+    });
+    if (options.reusePersistedMessages && resumeResult.persistedMessagesReloadRequired) {
+      persistedMessages = await readPersistedSessionMessages(context, params.sessionId);
+    }
+    context.logger?.info("ZCode Protocol session resume completed", {
+      activeSessionCount: context.sessions.size,
+      durationMs: Math.max(0, Date.now() - resumeStartedAt),
+      event: "zcode_protocol.session.resume_completed",
+      module: "bootstrap.zcode_protocol",
+      persistedMessageCount: persistedMessages.length,
+      sessionId: params.sessionId,
+      traceId: record.traceContext.traceId,
+    });
+    return {
+      knownSession: session,
+      record,
+      ...(options.reusePersistedMessages ? { persistedMessages } : {}),
+    };
+  } catch (error) {
+    // 修复原因：恢复失败后不能把半初始化 app 留在注册表中阻断下次重试。
+    await discardFailedSessionResume(context, params.sessionId, record);
+    throw error;
   }
-  context.logger?.info("ZCode Protocol session resume completed", {
-    activeSessionCount: context.sessions.size,
-    durationMs: Math.max(0, Date.now() - resumeStartedAt),
-    event: "zcode_protocol.session.resume_completed",
-    module: "bootstrap.zcode_protocol",
-    persistedMessageCount: persistedMessages.length,
-    sessionId: params.sessionId,
-    traceId: record.traceContext.traceId,
-  });
-  return {
-    knownSession: session,
-    record,
-    ...(options.reusePersistedMessages ? { persistedMessages } : {}),
-  };
 }
 
 export async function resumeSession(context: ZCodeProtocolAgentServerContext, rawParams: unknown) {
