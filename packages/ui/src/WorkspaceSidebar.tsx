@@ -108,6 +108,7 @@ import {
   type WorkspaceTaskVisibleLimitByKey,
 } from "@/lib/workspaceTaskPagination.js";
 import { partitionWorkspaceTabsByPurpose } from "@/lib/workspacePurpose.js";
+import { getRepeatedWorkspaceLabels, getWorkspacePathHint } from "@/lib/workspaceAlias.js";
 import {
   areAllGroupedTaskGroupsExpanded,
   pruneCollapsedGroupedTaskGroupIds,
@@ -433,6 +434,31 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     () => projectGroups.map((group) => group.tab),
     [projectGroups],
   );
+  const repeatedProjectLabels = useMemo(
+    () => getRepeatedWorkspaceLabels(topLevelProjectTabs),
+    [topLevelProjectTabs],
+  );
+  // 修复原因：主项目和已失效工作树都只显示目录末段时会撞名；用路径后缀区分，身份与任务 scope 不变。
+  const projectPathHints = useMemo(() => {
+    const hints = new Map<string, string>();
+    for (const tab of topLevelProjectTabs) {
+      if (
+        !repeatedProjectLabels.has(tab.label) &&
+        tab.availability !== "unavailable-local-directory"
+      )
+        continue;
+      hints.set(
+        tab.id,
+        getWorkspacePathHint(
+          tab.workspacePath,
+          topLevelProjectTabs
+            .filter((peer) => peer.id !== tab.id && peer.label === tab.label)
+            .map((peer) => peer.workspacePath),
+        ),
+      );
+    }
+    return hints;
+  }, [repeatedProjectLabels, topLevelProjectTabs]);
   const workTaskProjects = useMemo(
     () => projectGroups.filter((group) => !group.isLinkedWorktree).map((group) => group.tab),
     [projectGroups],
@@ -1633,6 +1659,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                               <SortableWorkspaceSidebarItem
                                                 key={tab.id}
                                                 tab={tab}
+                                                workspacePathHint={projectPathHints.get(tab.id)}
                                                 isActiveWorkspace={
                                                   workspaceKey === activeWorkspaceKey
                                                 }

@@ -14,6 +14,7 @@ export { restrictVerticalDragWithinContainer } from "@/lib/restrictVerticalDragW
 
 export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSidebarItem({
   tab,
+  workspacePathHint,
   isActiveWorkspace,
   hasActiveDescendant = false,
   isExpanded,
@@ -42,6 +43,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   projectTaskList,
 }: {
   tab: WorkspaceTabState;
+  workspacePathHint?: string;
   isActiveWorkspace: boolean;
   hasActiveDescendant?: boolean;
   isExpanded: boolean;
@@ -122,6 +124,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   return (
     <WorkspaceSidebarItem
       tab={tab}
+      workspacePathHint={workspacePathHint}
       isActiveWorkspace={isActiveWorkspace}
       hasActiveDescendant={hasActiveDescendant}
       isExpanded={isExpanded}

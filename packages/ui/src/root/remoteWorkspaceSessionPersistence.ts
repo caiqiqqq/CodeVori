@@ -57,14 +57,14 @@ export function restorePersistedRemoteWorkspaceSessions({
   settings,
   tabStoreApi,
   allowRemoteWorkspaceRestore = true,
-  unavailableWorkspacePath,
+  unavailableWorkspacePaths,
   conversationWorkspacePath,
   restoreMode = "all",
 }: {
   settings: AppSettings;
   tabStoreApi: TabStore;
   allowRemoteWorkspaceRestore?: boolean;
-  unavailableWorkspacePath?: string;
+  unavailableWorkspacePaths?: ReadonlySet<string>;
   conversationWorkspacePath?: string;
   restoreMode?: "all" | "active-first";
 }): { deferredRestore?: () => void } | undefined {
@@ -121,7 +121,7 @@ export function restorePersistedRemoteWorkspaceSessions({
         ? "conversation"
         : persistedEntry.workspacePurpose;
       const availability =
-        !isConversationWorkspace && persistedEntry.workspacePath === unavailableWorkspacePath
+        !isConversationWorkspace && unavailableWorkspacePaths?.has(persistedEntry.workspacePath)
           ? "unavailable-local-directory"
           : undefined;
       restoredTabs.push(
