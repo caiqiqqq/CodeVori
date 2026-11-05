@@ -1,6 +1,6 @@
 import { basename, join } from "node:path";
 import { createProjectId, type ProjectId } from "@zcode/contracts";
-import { resolveProjectMemoryRoot } from "@zcode/core";
+import { resolveProjectMemoryScope } from "@zcode/shared/node";
 
 export function getCliStorageRoot(storageRoot: string): string {
   return basename(storageRoot) === "cli" ? storageRoot : join(storageRoot, "cli");
@@ -14,16 +14,17 @@ export function getModelIoDir(cliStorageRoot: string, isDevelopment: boolean): s
   return join(cliStorageRoot, isDevelopment ? "debug" : "rollout");
 }
 
-export function getProjectMemoryRoot(
+export async function getProjectMemoryRoot(
   cliStorageRoot: string,
   workingDirectory: string,
   workspaceIdentity?: string,
-): string {
-  return resolveProjectMemoryRoot({
+): Promise<string> {
+  const scope = await resolveProjectMemoryScope({
     cliStorageRoot,
     workspaceIdentity,
     workspacePath: workingDirectory,
   });
+  return scope.root;
 }
 
 export function projectIdFromDirectory(directory: string): ProjectId {

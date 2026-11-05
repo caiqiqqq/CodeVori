@@ -14,7 +14,7 @@ import {
   createProjectMemoryAgentToolExecutor,
   type ProjectMemoryAgentContext,
 } from "./project-memory-agent.js";
-import { resolveEnabledProjectMemoryRoot } from "./project-memory.js";
+import { isProjectMemoryConfigured } from "./project-memory.js";
 
 const EXTRACTION_MAX_TURNS = 5;
 const EXTRACTION_DRAIN_TIMEOUT_MS = 60_000;
@@ -26,7 +26,7 @@ export type ProjectMemoryExtractionScheduler =
   MemoryExtractionScheduler<ProjectMemoryExtractionSnapshot>;
 
 export function isProjectMemoryEnabled(this: AgentRuntimeInternal): boolean {
-  return resolveEnabledProjectMemoryRoot(this.config, this.workspaceRoot) !== undefined;
+  return isProjectMemoryConfigured(this.config);
 }
 
 export function scheduleProjectMemoryExtraction(
@@ -37,7 +37,7 @@ export function scheduleProjectMemoryExtraction(
   // 原因：headless 只关闭自动 Extraction，必须在读取快照或访问文件前返回，避免后台副作用。
   if (runtime.config.memory?.extractionEnabled === false) return;
   // Bash cd 只改变执行 cwd，project Memory 身份必须继续使用会话 workspace root。
-  const memoryRoot = resolveEnabledProjectMemoryRoot(runtime.config, runtime.workspaceRoot);
+  const memoryRoot = runtime.memoryRoot;
   if (!memoryRoot) return;
   if (runtime.isRemoteWorkspace()) return;
   if (!runtime.sessionStore || !runtime.fileSystemPort) return;

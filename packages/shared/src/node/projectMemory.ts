@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { basename, join, resolve } from "node:path";
+import { lstat, readFile, realpath } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 export const PROJECT_MEMORY_INDEX_LINE_LIMIT = 200;
 export const PROJECT_MEMORY_INDEX_CHARACTER_LIMIT = 25_000;
@@ -9,6 +10,16 @@ export interface ProjectMemoryRootInput {
   workspaceIdentity?: string;
   workspacePath: string;
 }
+
+export interface ProjectMemoryScope {
+  root: string;
+  legacyRoot?: string;
+  kind: "repository" | "workspace" | "identity";
+  displayPath: string;
+  workspaceIdentity?: string;
+}
+
+/** Keep the original path algorithm for existing project-memory directories. */
 
 export function resolveProjectMemoryRoot(input: ProjectMemoryRootInput): string {
   const workspaceIdentity = input.workspaceIdentity?.trim();
@@ -24,6 +35,89 @@ export function resolveProjectMemoryRoot(input: ProjectMemoryRootInput): string 
     : sanitizeProjectSlug(basename(normalizedWorkspacePath) || "project");
 
   return join(input.cliStorageRoot, "memories", "projects", `${slug}-${hash}`, "memory");
+}
+
+/**
+ * A local linked worktree shares its common Git directory with the main checkout.
+ * Identity-backed and non-Git workspaces keep the existing isolation key.
+ */
+export async function resolveProjectMemoryScope(
+  input: ProjectMemoryRootInput,
+): Promise<ProjectMemoryScope> {
+  const workspacePath = resolve(input.workspacePath);
+  const legacyRoot = resolveProjectMemoryRoot(input);
+  const workspaceIdentity = input.workspaceIdentity?.trim();
+  if (workspaceIdentity) {
+    return { root: legacyRoot, kind: "identity", displayPath: workspacePath, workspaceIdentity };
+  }
+
+  const repository = await findGitCommonDirectory(workspacePath);
+  if (!repository) {
+    return { root: legacyRoot, kind: "workspace", displayPath: workspacePath };
+  }
+
+  const hash = createHash("sha256")
+    .update(`repository:${repository.commonDirectory}`)
+    .digest("hex")
+    .slice(0, 16);
+  const displayPath =
+    basename(repository.commonDirectory) === ".git"
+      ? dirname(repository.commonDirectory)
+      : repository.workspaceRoot;
+  const slug = sanitizeProjectSlug(basename(displayPath) || "project");
+  return {
+    root: join(input.cliStorageRoot, "memories", "projects", `${slug}-${hash}`, "memory"),
+    legacyRoot,
+    kind: "repository",
+    displayPath,
+  };
+}
+
+async function findGitCommonDirectory(
+  workspacePath: string,
+): Promise<{ commonDirectory: string; workspaceRoot: string } | undefined> {
+  let directory = workspacePath;
+  while (true) {
+    const marker = join(directory, ".git");
+    let metadata;
+    try {
+      metadata = await lstat(marker);
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+    }
+    if (metadata?.isDirectory()) {
+      return { commonDirectory: await realpath(marker), workspaceRoot: directory };
+    }
+    if (metadata?.isFile()) {
+      const match = /^gitdir:\s*(.+)\s*$/im.exec(await readFile(marker, "utf8"));
+      if (match) {
+        const gitDirPath = match[1]!.trim();
+        const gitDirectory: string = await realpath(
+          isAbsolute(gitDirPath) ? gitDirPath : resolve(directory, gitDirPath),
+        );
+        let commonDirectory: string = gitDirectory;
+        try {
+          const relativeCommonDirectory = (
+            await readFile(join(gitDirectory, "commondir"), "utf8")
+          ).trim();
+          if (relativeCommonDirectory) {
+            commonDirectory = await realpath(resolve(gitDirectory, relativeCommonDirectory));
+          }
+        } catch (error) {
+          if (!isNotFound(error)) throw error;
+        }
+        return { commonDirectory, workspaceRoot: directory };
+      }
+    }
+    if (metadata) return undefined;
+    const parent = dirname(directory);
+    if (parent === directory) return undefined;
+    directory = parent;
+  }
+}
+
+function isNotFound(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function sanitizeProjectSlug(value: string): string {

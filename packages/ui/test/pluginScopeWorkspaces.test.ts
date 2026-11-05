@@ -76,3 +76,15 @@ test("explicit options deduplicate by key and disambiguate only after deduplicat
     { key: "c", label: "iot-forway", description: "c" },
   ]);
 });
+
+test("explicit memory scope can retain its repository path subtitle", () => {
+  const options = resolvePluginScopeWorkspaceOptions([
+    {
+      key: "repository",
+      label: "zcode",
+      description: "/projects/zcode",
+      showDescription: true,
+    },
+  ]);
+  assert.equal(options[0]?.description, "/projects/zcode");
+});

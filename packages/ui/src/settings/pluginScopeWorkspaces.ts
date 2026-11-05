@@ -7,6 +7,7 @@ export interface PluginScopeWorkspaceOption {
   label: string;
   remote?: boolean;
   description?: string;
+  showDescription?: boolean;
 }
 
 export function getPluginWorkspaceKey(tab: WorkspaceTabState): string {
@@ -61,6 +62,8 @@ export function resolvePluginScopeWorkspaceOptions(
   return Array.from(byKey.values(), (option) => ({
     ...option,
     description:
-      (labelCounts.get(option.label) ?? 0) > 1 ? option.description || option.key : undefined,
+      option.showDescription || (labelCounts.get(option.label) ?? 0) > 1
+        ? option.description || option.key
+        : undefined,
   }));
 }

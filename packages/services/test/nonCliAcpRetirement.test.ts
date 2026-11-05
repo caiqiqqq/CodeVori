@@ -52,12 +52,116 @@ test("current Project Memory catalog and files remain readable", async () => {
     const catalog = await service.listProjectMemories();
     assert.equal(catalog.length, 1);
     assert.equal(catalog[0]?.id, workspaceId);
+    assert.match(catalog[0]?.label ?? "", /example.*01234567/);
     assert.deepEqual(
       catalog[0]?.files.map((file) => file.name),
       ["MEMORY.md", "workflow.md"],
     );
     const file = await service.readProjectMemoryFile({ workspaceId, fileName: "workflow.md" });
     assert.equal(file.content, "Use the current project workflow.\n");
+  } finally {
+    setDataBaseDir(null);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("Project Memory catalog shows repository path and hides migrated legacy roots", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zcode-memory-catalog-"));
+  setDataBaseDir(dir);
+  try {
+    const projectsRoot = join(getZCodeDataRootDir(), "cli", "memories", "projects");
+    const activeRoot = join(projectsRoot, "zcode-1111111111111111", "memory");
+    const legacyRoot = join(projectsRoot, "zcode-2222222222222222", "memory");
+    await mkdir(activeRoot, { recursive: true });
+    await mkdir(legacyRoot, { recursive: true });
+    await writeFile(join(activeRoot, "MEMORY.md"), "- [Fact](fact.md)\n");
+    await writeFile(
+      join(activeRoot, ".project.json"),
+      JSON.stringify({
+        version: 1,
+        kind: "repository",
+        displayPath: "/example/main/zcode",
+      }),
+    );
+    await writeFile(join(legacyRoot, "MEMORY.md"), "- [Old](old.md)\n");
+    await writeFile(
+      join(legacyRoot, ".migrated-to"),
+      JSON.stringify({ destination: activeRoot, sourceDigest: "fixture" }),
+    );
+    const catalog = await createMemoryService().listProjectMemories();
+    assert.equal(catalog.length, 1);
+    assert.equal(catalog[0]?.label, "zcode");
+    assert.equal(catalog[0]?.displayPath, "/example/main/zcode");
+    await rm(join(activeRoot, "MEMORY.md"));
+    const recovered = await createMemoryService().listProjectMemories();
+    assert.equal(recovered.length, 1);
+    assert.match(recovered[0]?.label ?? "", /zcode · 22222222/);
+  } finally {
+    setDataBaseDir(null);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("Project Memory catalog identifies remote workspaces with the same path", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zcode-remote-memory-catalog-"));
+  setDataBaseDir(dir);
+  try {
+    const projectsRoot = join(getZCodeDataRootDir(), "cli", "memories", "projects");
+    for (const [id, identity] of [
+      ["project-3333333333333333", "remote:host-a:/work/zcode"],
+      ["project-4444444444444444", "remote:host-b:/work/zcode"],
+    ]) {
+      const memoryRoot = join(projectsRoot, id, "memory");
+      await mkdir(memoryRoot, { recursive: true });
+      await writeFile(join(memoryRoot, "MEMORY.md"), "- [Fact](fact.md)\n");
+      await writeFile(
+        join(memoryRoot, ".project.json"),
+        JSON.stringify({
+          version: 1,
+          kind: "identity",
+          displayPath: "/work/zcode",
+          workspaceIdentity: identity,
+        }),
+      );
+    }
+    const catalog = await createMemoryService().listProjectMemories();
+    assert.equal(catalog.length, 2);
+    assert.deepEqual(
+      new Set(catalog.map((entry) => entry.label)),
+      new Set(["zcode · 33333333", "zcode · 44444444"]),
+    );
+    assert.deepEqual(
+      new Set(catalog.map((entry) => entry.workspaceIdentity)),
+      new Set(["remote:host-a:/work/zcode", "remote:host-b:/work/zcode"]),
+    );
+  } finally {
+    setDataBaseDir(null);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("Project Memory catalog disambiguates separate repositories with one basename", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zcode-clone-memory-catalog-"));
+  setDataBaseDir(dir);
+  try {
+    const projectsRoot = join(getZCodeDataRootDir(), "cli", "memories", "projects");
+    for (const [id, displayPath] of [
+      ["zcode-5555555555555555", "/projects/first/zcode"],
+      ["zcode-6666666666666666", "/projects/second/zcode"],
+    ]) {
+      const memoryRoot = join(projectsRoot, id, "memory");
+      await mkdir(memoryRoot, { recursive: true });
+      await writeFile(join(memoryRoot, "MEMORY.md"), "- [Fact](fact.md)\n");
+      await writeFile(
+        join(memoryRoot, ".project.json"),
+        JSON.stringify({ version: 1, kind: "repository", displayPath }),
+      );
+    }
+    const catalog = await createMemoryService().listProjectMemories();
+    assert.deepEqual(
+      new Set(catalog.map((entry) => entry.label)),
+      new Set(["zcode · 55555555", "zcode · 66666666"]),
+    );
   } finally {
     setDataBaseDir(null);
     await rm(dir, { recursive: true, force: true });
