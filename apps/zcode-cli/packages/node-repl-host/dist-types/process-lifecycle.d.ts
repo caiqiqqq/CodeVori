@@ -1,3 +1,8 @@
+/** Entrypoint-owned shutdown; the deadline applies only once shutdown has been requested. */
+export declare function createNodeReplShutdown(input: {
+    close: () => Promise<void>;
+    exit: () => void;
+}): () => void;
 /**
  * REPL cell 的同步错误由 NodeReplSession 兜底，但 fire-and-forget 的异步错误
  * （如未 await 的 tab.* 调用在 turn 中断时被 reject）会按 Node 默认策略击穿整个 server
