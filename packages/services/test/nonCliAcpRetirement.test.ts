@@ -52,7 +52,7 @@ test("current Project Memory catalog and files remain readable", async () => {
     const catalog = await service.listProjectMemories();
     assert.equal(catalog.length, 1);
     assert.equal(catalog[0]?.id, workspaceId);
-    assert.match(catalog[0]?.label ?? "", /example.*01234567/);
+    assert.equal(catalog[0]?.label, "example");
     assert.deepEqual(
       catalog[0]?.files.map((file) => file.name),
       ["MEMORY.md", "workflow.md"],
@@ -95,7 +95,7 @@ test("Project Memory catalog shows repository path and hides migrated legacy roo
     await rm(join(activeRoot, "MEMORY.md"));
     const recovered = await createMemoryService().listProjectMemories();
     assert.equal(recovered.length, 1);
-    assert.match(recovered[0]?.label ?? "", /zcode · 22222222/);
+    assert.equal(recovered[0]?.label, "zcode");
   } finally {
     setDataBaseDir(null);
     await rm(dir, { recursive: true, force: true });
@@ -126,10 +126,7 @@ test("Project Memory catalog identifies remote workspaces with the same path", a
     }
     const catalog = await createMemoryService().listProjectMemories();
     assert.equal(catalog.length, 2);
-    assert.deepEqual(
-      new Set(catalog.map((entry) => entry.label)),
-      new Set(["zcode · 33333333", "zcode · 44444444"]),
-    );
+    assert.ok(catalog.every((entry) => entry.label === "zcode"));
     assert.deepEqual(
       new Set(catalog.map((entry) => entry.workspaceIdentity)),
       new Set(["remote:host-a:/work/zcode", "remote:host-b:/work/zcode"]),
@@ -158,9 +155,11 @@ test("Project Memory catalog disambiguates separate repositories with one basena
       );
     }
     const catalog = await createMemoryService().listProjectMemories();
+    assert.equal(catalog.length, 2);
+    assert.ok(catalog.every((entry) => entry.label === "zcode"));
     assert.deepEqual(
-      new Set(catalog.map((entry) => entry.label)),
-      new Set(["zcode · 55555555", "zcode · 66666666"]),
+      new Set(catalog.map((entry) => entry.displayPath)),
+      new Set(["/projects/first/zcode", "/projects/second/zcode"]),
     );
   } finally {
     setDataBaseDir(null);

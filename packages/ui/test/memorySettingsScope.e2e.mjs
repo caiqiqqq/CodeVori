@@ -30,7 +30,8 @@ try {
     import '../../../ui/src/styles.css';
     const memoryService:any={listProjectMemories:async()=>[
       {id:'zcode-1111111111111111',label:'zcode',displayPath:'/workspace/main/zcode',updatedAt:2,files:[]},
-      {id:'zcode-2222222222222222',label:'zcode · 22222222',updatedAt:1,files:[]}
+      {id:'zcode-2222222222222222',label:'zcode',updatedAt:1,files:[]},
+      {id:'iot-forway-113ceb1f7cc55ff8',label:'iot-forway',updatedAt:0,files:[]}
     ]};
     createRoot(document.getElementById('root')!).render(
       <ZCodeIntlProvider initialLocale="zh-CN"><TooltipProvider>
@@ -52,22 +53,30 @@ try {
   page = await browser.newPage({ viewport: { width: 320, height: 720 } });
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/${name}.html`);
-  const trigger = page.getByRole("button", { name: /zcode/i });
+  const trigger = page.locator('[data-plugin-scope-trigger="true"]');
   await trigger.waitFor();
   await trigger.click();
   const options = page.getByRole("menuitemradio");
-  assert.equal(await options.count(), 2);
+  assert.equal(await options.count(), 3);
   await page.getByText("/workspace/main/zcode", { exact: true }).waitFor();
   await page.waitForFunction(() => {
     const menu = document.querySelector('[data-slot="dropdown-menu-content"]');
     return menu && getComputedStyle(menu).opacity === "1";
   });
   await page.screenshot({ path: join(artifacts, "mobile.png") });
-  await page.getByRole("menuitemradio", { name: /zcode · 22222222/ }).click();
-  assert.match((await trigger.textContent()) ?? "", /22222222/);
+  await options.nth(1).click();
+  assert.equal((await trigger.textContent())?.trim(), "zcode");
+  assert.equal(await trigger.getAttribute("data-plugin-scope-key"), "zcode-2222222222222222");
+  await options.first().waitFor({ state: "hidden" });
   await trigger.click();
-  await page.getByRole("menuitemradio", { name: /workspace\/main\/zcode/ }).click();
+  await options.nth(2).click();
+  assert.equal((await trigger.textContent())?.trim(), "iot-forway");
+  assert.equal(await trigger.getAttribute("data-plugin-scope-key"), "iot-forway-113ceb1f7cc55ff8");
+  await options.first().waitFor({ state: "hidden" });
+  await trigger.click();
+  await options.nth(0).click();
   assert.equal(await trigger.getAttribute("title"), "/workspace/main/zcode");
+  await options.first().waitFor({ state: "hidden" });
   await page.setViewportSize({ width: 1280, height: 800 });
   await trigger.click();
   await page.getByText("/workspace/main/zcode", { exact: true }).waitFor();

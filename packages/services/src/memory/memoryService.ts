@@ -289,25 +289,15 @@ export function createMemoryService(): IMemoryService {
       const baseLabel = displayPath
         ? basename(displayPath) || resolveWorkspaceLabel(workspaceId)
         : resolveWorkspaceLabel(workspaceId);
-      const hashLabel = `${baseLabel} · ${workspaceId.slice(-16, -8)}`;
       workspaces.push({
         id: workspaceId,
-        label: metadata?.kind === "identity" || !displayPath ? hashLabel : baseLabel,
+        // 修复原因：目录哈希只用于隔离记忆，显示在项目名称中会让旧目录看起来像被重命名。
+        label: baseLabel,
         displayPath,
         workspaceIdentity: metadata?.workspaceIdentity,
         updatedAt: Math.max(...files.map((file) => file.updatedAt)),
         files,
       });
-    }
-
-    const labelCounts = new Map<string, number>();
-    for (const workspace of workspaces) {
-      labelCounts.set(workspace.label, (labelCounts.get(workspace.label) ?? 0) + 1);
-    }
-    for (const workspace of workspaces) {
-      if ((labelCounts.get(workspace.label) ?? 0) > 1) {
-        workspace.label = `${workspace.label} · ${workspace.id.slice(-16, -8)}`;
-      }
     }
 
     workspaces.sort(
