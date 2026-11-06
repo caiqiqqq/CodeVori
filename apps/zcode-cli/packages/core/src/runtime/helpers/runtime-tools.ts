@@ -20,7 +20,9 @@ import {
   resolveRuntimeDynamicWorkflowToolsIncluded,
 } from "./tool-allowlist.js";
 import { isStaleBranchRuntimeTaskEvent } from "../methods/runtime-command-generation.js";
-import { resolveEnabledProjectMemoryRoot } from "./project-memory.js";
+import { isProjectMemoryConfigured } from "./project-memory.js";
+import { createProjectMemoryToolEntries } from "../../memory/project-memory-tools.js";
+import { isToolNameDisallowed } from "../../tool/tool-visibility.js";
 import { sessionHasLoadedSkill } from "../../agent/loaded-skills.js";
 
 const DEFAULT_SUBAGENT_BACKGROUND_BASH_MAX_MS = 3_600_000;
@@ -84,6 +86,23 @@ function registerRuntimeBuiltInTools(runtime: AgentRuntimeInternal, deps: AgentR
     // 里与 turn 级名单合并，见 tool-allowlist.ts 的根因注释。
     disallowedTools: resolveRuntimeDisallowedTools(runtime.config),
   });
+  if (isProjectMemoryConfigured(runtime.config) && !runtime.isRemoteWorkspace()) {
+    for (const entry of createProjectMemoryToolEntries(() => {
+      if (!isProjectMemoryConfigured(runtime.config)) throw new Error("Project Memory is disabled");
+      return {
+        cliStorageRoot: runtime.config.memory!.cliStorageRoot!,
+        workspacePath: runtime.workspaceRoot,
+        workspaceIdentity: runtime.config.memory!.workspaceIdentity,
+      };
+    })) {
+      const allowed = resolveBuiltInToolAllowlist(runtime.config);
+      if (
+        (!allowed || allowed.includes(entry.metadata.name)) &&
+        !isToolNameDisallowed(entry.metadata.name, resolveRuntimeDisallowedTools(runtime.config))
+      )
+        runtime.registry.register(entry);
+    }
+  }
 }
 
 function createRuntimeHookRunner(

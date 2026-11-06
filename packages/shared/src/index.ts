@@ -349,3 +349,9 @@ export * from "./desktopWindow.js";
 
 export * from "./deviceNode.js";
 export * from "./mcp-app.js";
+export {
+  projectMemoryTools,
+  readProjectMemoryInputSchema,
+  saveProjectMemoryInputSchema,
+  type ProjectMemorySaveReceipt,
+} from "./projectMemoryTools.js";

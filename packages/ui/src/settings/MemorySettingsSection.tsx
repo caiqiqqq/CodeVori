@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type IMemoryService, type ProjectMemoryWorkspaceSummary } from "@zcode/services";
+import { type ProjectMemoryWorkspaceSummary } from "@zcode/services";
+import {
+  useProjectMemoryUpdates,
+  type MemoryCatalogService,
+} from "@/hooks/useProjectMemoryUpdates.js";
 import { TID_SETTINGS_MEMORY_SWITCH } from "@zcode/shared";
 import { runUserAction, runUserActionAsync } from "@/lib/userActionTelemetry.js";
 import { Switch } from "@/components/ui/switch.js";
@@ -9,8 +13,6 @@ import {
   type MemoryViewerLoadingState,
 } from "@/settings/MemorySettingsViewer.js";
 import { SettingsGroupCard, SettingsRow } from "@/settings/SettingsPageParts.js";
-
-type MemoryCatalogService = Pick<IMemoryService, "listProjectMemories">;
 
 function normalizeWorkspaceDisplayName(value: string): string {
   const slug = value
@@ -49,12 +51,16 @@ export function MemorySettingsSection({
   onMemoryEnabledChange,
   projectMemoryViewerAvailable,
   workspaceDisplayNames = [],
+  workspacePath,
+  workspaceIdentity,
 }: {
   memoryEnabled: boolean;
   memoryService: MemoryCatalogService;
   onMemoryEnabledChange: (enabled: boolean) => Promise<void>;
   projectMemoryViewerAvailable: boolean;
   workspaceDisplayNames?: readonly string[];
+  workspacePath?: string;
+  workspaceIdentity?: string;
 }) {
   const { intl } = useZCodeIntl();
   const catalogRequestIdRef = useRef(0);
@@ -62,6 +68,10 @@ export function MemorySettingsSection({
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<ProjectMemoryWorkspaceSummary[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+  const manuallySelected = useRef(false);
+  useEffect(() => {
+    manuallySelected.current = false;
+  }, [workspacePath, workspaceIdentity]);
 
   const refreshCatalog = useCallback(async (): Promise<ProjectMemoryWorkspaceSummary[] | null> => {
     const requestId = catalogRequestIdRef.current + 1;
@@ -88,11 +98,16 @@ export function MemorySettingsSection({
     }
   }, [memoryService]);
 
+  const preferredWorkspaceId = useProjectMemoryUpdates(
+    memoryService,
+    memoryEnabled && projectMemoryViewerAvailable,
+    refreshCatalog,
+    workspacePath,
+    workspaceIdentity,
+  );
+
   useEffect(() => {
-    if (memoryEnabled && projectMemoryViewerAvailable) {
-      void refreshCatalog();
-      return;
-    }
+    if (memoryEnabled && projectMemoryViewerAvailable) return;
 
     catalogRequestIdRef.current += 1;
     setCatalogState("idle");
@@ -135,12 +150,16 @@ export function MemorySettingsSection({
       return;
     }
     if (
+      !manuallySelected.current ||
       !selectedWorkspaceId ||
       !displayWorkspaces.some((workspace) => workspace.id === selectedWorkspaceId)
     ) {
-      setSelectedWorkspaceId(firstWorkspace.id);
+      setSelectedWorkspaceId(
+        displayWorkspaces.find((workspace) => workspace.id === preferredWorkspaceId)?.id ??
+          firstWorkspace.id,
+      );
     }
-  }, [displayWorkspaces, selectedWorkspaceId]);
+  }, [displayWorkspaces, selectedWorkspaceId, preferredWorkspaceId]);
 
   const handleRefresh = useCallback(async () => {
     await runUserActionAsync({
@@ -187,7 +206,8 @@ export function MemorySettingsSection({
           selectedWorkspace={selectedWorkspace}
           workspaces={displayWorkspaces}
           onRefresh={handleRefresh}
-          onScopeKeyChange={(workspaceId) =>
+          onScopeKeyChange={(workspaceId) => {
+            manuallySelected.current = true;
             runUserAction({
               input: {
                 featureId: "settings.memory",
@@ -197,8 +217,8 @@ export function MemorySettingsSection({
               operation: () => setSelectedWorkspaceId(workspaceId),
               completed: { resultSource: "local_commit" },
               failureStage: "local_commit",
-            })
-          }
+            });
+          }}
         />
       )}
     </div>

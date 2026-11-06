@@ -126,6 +126,10 @@ function evaluateMemoryAgentToolPolicy(
   // No such tool 错误处理。此分支只闭合原 call id，不进入工具执行面。
   if (!contract) return denyUnavailableMemoryAgentTool(input.toolCall.name);
 
+  // 统一记忆工具由 Runtime 绑定项目目录，不接受外部路径，与主轮共用落盘和版本校验。
+  if (input.toolCall.name === "ReadProjectMemory" || input.toolCall.name === "SaveProjectMemory")
+    return { allowed: true };
+
   if (
     input.toolCall.name === "Agent" ||
     input.toolCall.name.startsWith("mcp__") ||

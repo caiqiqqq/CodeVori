@@ -23,6 +23,7 @@ import { AcpConversationProjection } from "./acpConversationProjection.js";
 import { AcpSessionStore } from "./acpSessionStore.js";
 import { AcpCompactionTiming } from "./acpCompactionTiming.js";
 import {
+  projectMemoryTools,
   acpConversationTargetSchema,
   PhaseTimer,
   acpConversationReadSchema,
@@ -361,6 +362,8 @@ export function createAcpService(
   const workflowMcp = createAcpWorkflowMcp(directory);
   const workflowRegistrations = new Map<string, { revoke(): void }>();
   const issuesRegistrations = new Map<string, { revoke(): void }>();
+  const memoryRegistrations = new Map<string, { revoke(): void }>();
+  const directMemorySaves = new Map<string, string>();
   const attachmentRegistrations = new Map<string, { revoke(): void }>();
   const interactionQueues = new Map<
     string,
@@ -1070,6 +1073,9 @@ export function createAcpService(
     delegationRegistrations.delete(id);
     issuesRegistrations.get(id)?.revoke();
     issuesRegistrations.delete(id);
+    memoryRegistrations.get(id)?.revoke();
+    memoryRegistrations.delete(id);
+    directMemorySaves.delete(id);
     attachmentRegistrations.get(id)?.revoke();
     attachmentRegistrations.delete(id);
     connections.get(id)?.close();
@@ -1098,6 +1104,7 @@ export function createAcpService(
     let updatedModeId: string | undefined;
     let issuesRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
     let attachmentRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
+    let memoryRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
     // 修复原因：若仅在设置页检查启用/安装状态，create 与 session/load 仍会从旧静态命令
     // 启动禁用的 Agent。每次新连接都向同一个 Host 设置所有者重新解析，复用连接不重启。
     const connectionTask = (async () => {
@@ -1172,6 +1179,64 @@ export function createAcpService(
         throw new Error("ACP session closed while registering attachments MCP");
       }
       attachmentRegistrations.set(session.id, attachmentRegistration);
+      const memoryCommands = options.memoryContext?.tools;
+      const memoryWorkspace = {
+        workspacePath: session.workspacePath,
+        workspaceIdentity: session.workspaceIdentity,
+        remoteSessionId: session.remoteSessionId,
+      };
+      const assertMemoryActive = () => {
+        if (
+          disposed ||
+          generations.get(session.id) !== generation ||
+          removed.has(session.id) ||
+          workspaceKey(session) !== workspaceKey(memoryWorkspace) ||
+          session.workspacePath !== memoryWorkspace.workspacePath ||
+          session.remoteSessionId !== memoryWorkspace.remoteSessionId
+        )
+          throw new Error("ACP project memory connection is no longer active");
+      };
+      memoryRegistration =
+        memoryCommands && (await memoryCommands.isEnabled())
+          ? await workflowMcp.register("zcode-memory", {
+              names: projectMemoryTools.map((tool) => tool.name),
+              tools: [...projectMemoryTools],
+              async call(name, args) {
+                assertMemoryActive();
+                const commandId = active.get(session.id);
+                const commandToken = activeTokens.get(session.id);
+                const assertCurrentCommand = () => {
+                  assertMemoryActive();
+                  // 中文依据：连接可跨轮复用，旧轮迟到的保存不能借同一连接写入下一轮。
+                  if (
+                    !commandId ||
+                    active.get(session.id) !== commandId ||
+                    activeTokens.get(session.id) !== commandToken
+                  )
+                    throw new Error("ACP project memory command is no longer active");
+                };
+                const result = await memoryCommands.call(
+                  memoryWorkspace,
+                  name,
+                  args,
+                  assertCurrentCommand,
+                );
+                if (name === "SaveProjectMemory" && commandId)
+                  directMemorySaves.set(session.id, commandId);
+                return result;
+              },
+            })
+          : undefined;
+      if (memoryRegistration) {
+        try {
+          assertMemoryActive();
+        } catch (error) {
+          memoryRegistration.revoke();
+          if (disposed) workflowMcp.dispose();
+          throw error;
+        }
+        memoryRegistrations.set(session.id, memoryRegistration);
+      }
       return connect({
         agent: session.agent,
         workspacePath: session.workspacePath,
@@ -1182,6 +1247,7 @@ export function createAcpService(
           ...(delegationRegistration ? [delegationRegistration.record] : []),
           ...(issuesRegistration ? [issuesRegistration.record] : []),
           attachmentRegistration.record,
+          ...(memoryRegistration ? [memoryRegistration.record] : []),
         ],
         ...(plugins ? { pluginServers: plugins.servers } : {}),
         ...(launch ? { launch } : {}),
@@ -1396,6 +1462,8 @@ export function createAcpService(
           workflowRegistrations.delete(session.id);
           issuesRegistrations.get(session.id)?.revoke();
           issuesRegistrations.delete(session.id);
+          memoryRegistrations.get(session.id)?.revoke();
+          memoryRegistrations.delete(session.id);
           attachmentRegistrations.get(session.id)?.revoke();
           attachmentRegistrations.delete(session.id);
           // Adapter root 已退出仍需回收其进程组内可能存活的 App Server 后代。
@@ -1577,6 +1645,10 @@ export function createAcpService(
     try {
       return await task;
     } catch (error) {
+      if (memoryRegistration && memoryRegistrations.get(session.id) === memoryRegistration) {
+        memoryRegistration.revoke();
+        memoryRegistrations.delete(session.id);
+      }
       // 握手失败时 connectionTask 可能在拿到 port 前拒绝，仍需回收已签发的议题 capability。
       if (issuesRegistration && issuesRegistrations.get(session.id) === issuesRegistration) {
         issuesRegistration.revoke();
@@ -2229,9 +2301,11 @@ export function createAcpService(
           if (
             !session.error &&
             (!port.lastStopReason || port.lastStopReason === "end_turn") &&
-            session.status === "idle"
+            session.status === "idle" &&
+            directMemorySaves.get(session.id) !== commandId
           )
             memorySnapshot = captureAcpMemorySnapshot(session);
+          directMemorySaves.delete(session.id);
           active.delete(session.id);
           // 修复原因：工作流可在主回合占用 ACP 连接时先完成；释放连接后必须主动派送结果。
           scheduleQueueDrain(session);

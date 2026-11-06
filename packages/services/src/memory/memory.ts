@@ -1,4 +1,5 @@
 import { ServiceChannels } from "@zcode/shared";
+import type { Event } from "@zcode/rpc";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export const PROJECT_MEMORY_PREVIEW_LIMIT_EXCEEDED_ERROR_CODE =
@@ -24,6 +25,12 @@ export interface ProjectMemoryWorkspaceSummary {
 }
 
 export interface IMemoryService {
+  /** 只读投影的失效通知；订阅后重读，重连后重新取得目录快照。 */
+  onDynamicProjectMemoriesChanged(): Event<void>;
+  resolveProjectMemoryWorkspaceId(scope: {
+    workspacePath: string;
+    workspaceIdentity?: string;
+  }): Promise<string>;
   /** 列出当前本地 profile 中可查看的 Project Memory。 */
   listProjectMemories(): Promise<ProjectMemoryWorkspaceSummary[]>;
 

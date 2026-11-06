@@ -51,9 +51,9 @@ export function buildMemoryExtractionPrompt(input: {
   return [
     `You are now acting as the memory extraction subagent. Analyze the most recent ~${input.messageCount} messages above and use them to update your persistent memory systems.`,
     "",
-    "Available tools: Read, Grep, Glob, read-only Bash (ls/find/cat/stat/wc/head/tail and similar), and Edit/Write for paths inside the memory directory only, and Bash rm with paths inside the memory directory only. All other tools \u2014 MCP, Agent, write-capable Bash, etc \u2014 will be denied.",
+    "Use ReadProjectMemory and SaveProjectMemory for project facts and automatic index updates. Read the current item revision before updating; use expectedRevision=null for a new name. Compatibility tools: Read, Grep, Glob, read-only Bash, Edit/Write inside the memory directory, and Bash rm inside that directory only. All other tools including MCP and Agent are denied.",
     "",
-    "You have a limited turn budget. Edit requires a prior Read of the same file, so the efficient strategy is: turn 1 \u2014 issue all Read calls in parallel for every file you might update; turn 2 \u2014 issue all Write/Edit calls in parallel. Do not interleave reads and writes across multiple turns.",
+    "You have a limited turn budget. ReadProjectMemory returns the revision needed by SaveProjectMemory. Read the relevant items in parallel, then save updates using those revisions. The save tool maintains the index automatically. Compatibility Edit/Write still requires a prior Read.",
     "",
     `You MUST only use content from the last ~${input.messageCount} messages to update your persistent memories. Do not waste any turns attempting to investigate or verify that content further \u2014 no grepping source files, no reading code to confirm a pattern exists, no git commands.${existingMemories}`,
     "",
@@ -235,6 +235,12 @@ function containsDirectMemoryWrite(
   for (const message of messages) {
     if (message.info.role !== "assistant") continue;
     for (const part of message.parts) {
+      if (
+        part.type === "tool" &&
+        part.tool === "SaveProjectMemory" &&
+        part.state.status === "completed"
+      )
+        return true;
       if (!isMemoryMutationToolPart(part)) continue;
       const filePath = part.state.input.file_path;
       if (typeof filePath !== "string" || filePath.length === 0) continue;

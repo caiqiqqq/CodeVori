@@ -137,6 +137,7 @@ export function createAcpMemoryExtraction(deps: {
       .find((line) => line.startsWith("Workspace MEMORY.md index (JSON-encoded text): "));
     const index =
       indexLine?.slice("Workspace MEMORY.md index (JSON-encoded text): ".length) ?? '""';
+    const versions = await deps.context.readVersions?.(session);
     const result = await deps.generate({
       id: session.id,
       workspacePath: session.workspacePath,
@@ -158,7 +159,14 @@ export function createAcpMemoryExtraction(deps: {
     )
       return;
     const parsed = responseSchema.parse(JSON.parse(result.text));
-    if (parsed.memories.length && !(await deps.persist(session, parsed.memories))) return;
+    // 中文依据：会话 revision 不覆盖其他会话写入的项目事实，必须同时校验生成前的事实版本。
+    const candidates = versions
+      ? parsed.memories.map((memory) => ({
+          ...memory,
+          expectedRevision: Object.hasOwn(versions, memory.name) ? versions[memory.name]! : null,
+        }))
+      : parsed.memories;
+    if (candidates.length && !(await deps.persist(session, candidates))) return;
     cursors.set(session.id, settled.id);
   }
 

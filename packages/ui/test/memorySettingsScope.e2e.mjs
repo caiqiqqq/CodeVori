@@ -27,17 +27,28 @@ try {
     import {MemorySettingsSection} from '../../../ui/src/settings/MemorySettingsSection.tsx';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
+    import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
     import '../../../ui/src/styles.css';
-    const memoryService:any={listProjectMemories:async()=>[
+    let files:any[]=[];
+    (window as any).catalogReads=0;
+    let notify=()=>{};
+    const memoryService:any={
+      onDynamicProjectMemoriesChanged:()=>listener=>{notify=listener; return {dispose(){notify=()=>{}}}},
+      resolveProjectMemoryWorkspaceId:async()=> 'iot-forway-113ceb1f7cc55ff8',
+      listProjectMemories:async()=>{(window as any).catalogReads++;return [
       {id:'zcode-1111111111111111',label:'zcode',displayPath:'/workspace/main/zcode',updatedAt:2,files:[]},
       {id:'zcode-2222222222222222',label:'zcode',updatedAt:1,files:[]},
-      {id:'iot-forway-113ceb1f7cc55ff8',label:'iot-forway',updatedAt:0,files:[]}
-    ]};
+      {id:'iot-forway-113ceb1f7cc55ff8',label:'iot-forway',updatedAt:0,files}
+    ]}};
+    (window as any).saveFixtureMemory=()=>{
+      files=[{name:'delegation-agent-routing.md',path:'/fixtures/delegation-agent-routing.md',kind:'item',size:100,updatedAt:Date.now()}];
+      notify();
+    };
     createRoot(document.getElementById('root')!).render(
-      <ZCodeIntlProvider initialLocale="zh-CN"><TooltipProvider>
+      <PlatformProvider platform={{getInstalledEditors:async()=>[]} as any}><ZCodeIntlProvider initialLocale="zh-CN"><TooltipProvider>
         <MemorySettingsSection memoryEnabled={true} memoryService={memoryService}
-          onMemoryEnabledChange={async()=>{}} projectMemoryViewerAvailable={true}/>
-      </TooltipProvider></ZCodeIntlProvider>
+          onMemoryEnabledChange={async()=>{}} projectMemoryViewerAvailable={true} workspacePath="/workspace/iot-forway"/>
+      </TooltipProvider></ZCodeIntlProvider></PlatformProvider>
     );
   `,
   );
@@ -55,6 +66,14 @@ try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/${name}.html`);
   const trigger = page.locator('[data-plugin-scope-trigger="true"]');
   await trigger.waitFor();
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-plugin-scope-trigger="true"]')
+        ?.getAttribute("data-plugin-scope-key") === "iot-forway-113ceb1f7cc55ff8",
+  );
+  await page.evaluate(() => window.saveFixtureMemory());
+  await page.getByText("delegation-agent-routing.md", { exact: true }).waitFor();
   await trigger.click();
   const options = page.getByRole("menuitemradio");
   assert.equal(await options.count(), 3);
@@ -66,6 +85,10 @@ try {
   await page.screenshot({ path: join(artifacts, "mobile.png") });
   await options.nth(1).click();
   assert.equal((await trigger.textContent())?.trim(), "zcode");
+  assert.equal(await trigger.getAttribute("data-plugin-scope-key"), "zcode-2222222222222222");
+  const beforeRefresh = await page.evaluate(() => window.catalogReads);
+  await page.evaluate(() => window.saveFixtureMemory());
+  await page.waitForFunction((previous) => window.catalogReads > previous, beforeRefresh);
   assert.equal(await trigger.getAttribute("data-plugin-scope-key"), "zcode-2222222222222222");
   await options.first().waitFor({ state: "hidden" });
   await trigger.click();
