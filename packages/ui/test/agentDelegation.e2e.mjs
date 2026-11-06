@@ -7,6 +7,10 @@ import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { workTaskPromptAssetsFixture } from "./workTaskPromptAssetsFixture.mjs";
 import { assertApiDelegationMentions } from "./delegationApiMentionAssertions.mjs";
+import {
+  assertDelegationStatusPanel,
+  assertDelegationUnavailableViews,
+} from "./delegationStatusPanelAssertions.mjs";
 import { assertDelegationSettings } from "./delegationSettingsAssertions.mjs";
 import {
   assertDelegationRecovery,
@@ -31,6 +35,7 @@ try {
       import React, { useState } from "react";
       import { createRoot } from "react-dom/client";
       import { AgentDelegationPanel } from "../../../ui/src/delegation/AgentDelegationPanel.tsx";
+      import { ConversationStatusPanel } from "../../../ui/src/v4/ConversationStatusPanel.tsx";
       import { DelegationSettingsSection } from "../../../ui/src/settings/DelegationSettingsSection.tsx";
       import { AcpAgentsSection } from "../../../ui/src/settings/AcpAgentsSection.tsx";
       import { createSettingsPageConfig, resolveSettingsSectionForPlatform } from "../../../ui/src/settings/settingsPageConfig.ts";
@@ -49,17 +54,19 @@ try {
       import { connectProviderSettingsSnapshot } from "../../../ui/src/lib/providerSettingsSnapshot.ts";
       import "../../../ui/src/styles.css";
       const clone = value => structuredClone(value);
-      const state = window.__delegation = { calls: [], sent: [], settings: { concurrency: 2, maxDepth: 2, allowNested: false }, rows: [], kind: 'acp' };
+      const state = window.__delegation = { calls: [], sent: [], settings: { concurrency: 2, maxDepth: 2, allowNested: false }, rows: [], kind: 'acp', nativeVisible: false };
       const apiTarget = providerId => ({ kind: 'api', providerName: providerId === 'api-provider' ? '测试 API' : '第二 API', execution: { kind: 'api', modelSelection: { providerId, modelId: 'model/中文 v2', options: { reasoningLevel: 'high' } }, mode: 'build' }, reasoningLevels: ['low', 'high'] });
       state.apiReference = getDelegationAgentReference(apiTarget('api-provider'));
       const callbacks = new Set();
       const changed = () => callbacks.forEach(fn => fn());
       const result = { conclusion: '**委派结果**\\n已核对接口', changedFiles: ['src/main.ts'], tests: ['fixture test'], risks: ['未调用真实模型'], blockers: [], structured: true };
-      const initial = kind => ({ id: crypto.randomUUID(), requestId: crypto.randomUUID(), parent: { workspacePath: '/synthetic/project', kind, sessionId: kind + '-parent' }, title: kind.toUpperCase() + ' 子任务', execution: kind === 'api' ? apiTarget('api-provider').execution : { kind: 'acp', agent: 'codex', config: [] }, intent: 'analysis', status: 'failed', session: { kind, id: kind + '-child' }, attempts: [{ sequence: 1, commandId: crypto.randomUUID(), status: 'failed', endedAt: 1, error: 'work-task.not-repository', result, delivery: 'uncertain' }] });
+      const initial = kind => ({ id: crypto.randomUUID(), requestId: crypto.randomUUID(), parent: { workspacePath: '/synthetic/project', kind, sessionId: kind + '-parent' }, title: kind.toUpperCase() + ' 子任务', execution: kind === 'api' ? apiTarget('api-provider').execution : { kind: 'acp', agent: 'codex', config: [] }, intent: 'analysis', status: 'failed', session: { kind, id: kind + '-child' }, createdAt: Date.now(), attempts: [{ sequence: 1, commandId: crypto.randomUUID(), status: 'failed', endedAt: 1, error: 'work-task.not-repository', result, delivery: 'uncertain' }] });
       state.seed = () => { state.rows.push(initial('acp'), initial('api')); changed(); };
       state.setStatus = status => { state.rows.find(task => task.parent.kind === state.kind).status = status; changed(); };
       state.addRunning = () => { state.rows.push({ ...initial(state.kind), status: 'running' }); changed(); };
-      state.clear = () => { state.rows.length = 0; state.calls.length = 0; changed(); };
+      state.addUnbound = () => { state.rows.push({ ...initial(state.kind), status: 'queued', session: undefined }); changed(); };
+      state.setNative = visible => { state.nativeVisible = visible; changed(); };
+      state.clear = () => { state.rows.length = 0; state.calls.length = 0; delete state.navigation; changed(); };
       const delegation = {
         targets: async () => [{ agent: 'codex', enabled: true, ready: true }, { agent: 'claude', enabled: true, ready: true }, apiTarget('api-provider'), apiTarget('second-provider')],
         list: async parent => clone(state.rows.filter(task => task.parent.kind === parent.kind && task.parent.sessionId === parent.sessionId)),
@@ -95,6 +102,7 @@ try {
         const [view, setView] = useState('session');
         const [settingsKey, setSettingsKey] = useState(0);
         const [settingsSection, setSettingsSection] = useState('delegation');
+        const [summaryVariant, setSummaryVariant] = useState('mini');
         const { intl } = useZCodeIntl();
         const sections = createSettingsPageConfig().settingsSections.filter(section => ['delegation', 'acpAgents'].includes(section.id));
         const currentSection = sections.find(section => section.id === settingsSection)!;
@@ -109,6 +117,14 @@ try {
         state.switchKind = () => { const next = kind === 'acp' ? 'api' : 'acp'; state.kind = next; setKind(next); };
         return <main className="mx-auto w-full max-w-3xl bg-background p-3 text-foreground">
           <button data-testid="switch" onClick={state.switchKind}>切换会话</button>
+          <div className="relative h-12">
+            <ConversationStatusPanel workspacePath={parent.workspacePath} parentSessionId={parent.sessionId || undefined}
+              runningSubagents={kind === 'api' && state.nativeVisible ? [{ agentId: 'native', childSessionId: 'native-child', subagentType: 'Explore', title: '原生子任务', status: 'running', startedAt: Date.now() }] : []}
+              delegationTasks={delegation.tasks} onOpenDelegationTask={task => void delegation.open(task)}
+              onCancelDelegationTask={id => void delegation.cancel(id)}
+              onOpenSubagentSession={request => state.calls.push({ op: 'native-open', ...request })}
+              summaryPanelVariantOverride={summaryVariant} onVariantChange={setSummaryVariant} />
+          </div>
           <div className="my-3 text-ui-base" data-testid="original-conversation">原会话 · {kind.toUpperCase()}</div>
           <AgentDelegationPanel key={kind} parent={parent as never} controller={delegation} />
           <ChatPromptEditor workspacePath={parent.workspacePath} taskId={kind === 'api' ? parent.sessionId || null : null} acpMode={kind === 'acp'} acpAgent={kind === 'acp' ? 'codex' : null} acpSessionId={kind === 'acp' ? parent.sessionId || null : null}
@@ -158,16 +174,7 @@ try {
       await page.waitForFunction(() => document.activeElement?.closest('[role="dialog"]'));
       return dialog;
     };
-    for (const view of ["draft", "readonly"]) {
-      await page.evaluate((value) => window.__delegation.setView(value), view);
-      await page.waitForFunction(() => !window.__delegation.available);
-      await page.getByRole("button", { name: "添加上下文", exact: true }).click();
-      await page.getByRole("option", { name: "上传主附件", exact: true }).waitFor();
-      assert.equal(await page.getByRole("option", { name: "委派任务", exact: true }).count(), 0);
-      assert.equal(await panel.count(), 0, `${view} has no delegation panel`);
-      await page.keyboard.press("Escape");
-      await page.locator('[data-trigger="+"]').waitFor({ state: "hidden" });
-    }
+    await assertDelegationUnavailableViews(page, panel);
     await page.evaluate(() => window.__delegation.setView("session"));
     await page.waitForFunction(() => window.__delegation.available);
     for (const kind of ["acp", "api"]) {
@@ -380,6 +387,7 @@ try {
     assert.ok((await panel.textContent()).includes("API 子任务"));
     assert.ok(!(await panel.textContent()).includes("ACP 子任务"));
     await assertApiChildNavigation(page, panel);
+    await assertDelegationStatusPanel(page, shots, width);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       true,
@@ -389,9 +397,6 @@ try {
     assert.deepEqual(errors, [], `browser errors at ${width}px`);
     await page.close();
   }
-  process.stdout.write(
-    `PASS delegation empty API/ACP views, + menu dialogs, scoped drafts, attempts/actions, attachment/file editor, @target, settings at 1280/375px. Screenshots: ${shots}\n`,
-  );
 } finally {
   await browser?.close();
   await Promise.all([rm(html, { force: true }), rm(moduleFile, { force: true })]);

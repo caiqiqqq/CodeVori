@@ -45,6 +45,7 @@ import {
 import type {
   GitChangeSourceId,
   GitRepositorySummary,
+  DelegationTask,
   ZCodeSessionRunningSubagent,
   ZCodeTaskChangeSummary,
 } from "@zcode/shared";
@@ -120,6 +121,7 @@ interface ConversationStatusPanelProps {
   plan?: PlanState | null;
   backgroundWorks?: readonly BackgroundWorkSummary[];
   runningSubagents?: readonly ZCodeSessionRunningSubagent[];
+  delegationTasks?: readonly DelegationTask[];
   /** 本会话 `snapshot.workflowRuns.runs`；与 backgroundWorks 在模型层按 workId ≡ runId 联接。 */
   workflowRuns?: readonly WorkflowRunState[];
   /**
@@ -153,6 +155,8 @@ interface ConversationStatusPanelProps {
   onOpenBackgroundBash?: (work: BackgroundWorkSummary) => void;
   onCancelBackgroundWork?: (workId: string) => void;
   onOpenSubagentSession?: (request: OpenSubagentSideTabRequest) => void;
+  onOpenDelegationTask?: (task: DelegationTask) => void;
+  onCancelDelegationTask?: (taskId: string) => void;
   onOpenSubagentDirectory?: (request: OpenSubagentDirectorySideTabRequest) => void;
   onOpenWorkflowRun?: (target: ConversationStatusPanelWorkflowRunTarget) => void;
   onOpenWorkflowRunDirectory?: (request: OpenWorkflowRunDirectorySideTabRequest) => void;
@@ -162,6 +166,7 @@ interface ConversationStatusPanelProps {
 // memo 组件默认 props 不内联创建数组，避免每次渲染生成新引用触发稳定引用边界测试。
 const EMPTY_BACKGROUND_WORKS: readonly BackgroundWorkSummary[] = [];
 const EMPTY_RUNNING_SUBAGENTS: readonly ZCodeSessionRunningSubagent[] = [];
+const EMPTY_DELEGATION_TASKS: readonly DelegationTask[] = [];
 const EMPTY_WORKFLOW_RUNS: readonly WorkflowRunState[] = [];
 
 function formatDurationUnits(
@@ -1325,9 +1330,12 @@ function WorkflowStatusSection({
 }
 
 function SubagentStatusSection({
+  delegationTasks,
   endedSubagentCount,
   onCancelBackgroundWork,
+  onCancelDelegationTask,
   onOpenChange,
+  onOpenDelegationTask,
   onOpenSubagentDirectory,
   onOpenSubagentSession,
   open,
@@ -1337,9 +1345,12 @@ function SubagentStatusSection({
   title,
   subagents,
 }: {
+  delegationTasks: readonly DelegationTask[];
   endedSubagentCount: number;
   onCancelBackgroundWork?: (workId: string) => void;
+  onCancelDelegationTask?: (taskId: string) => void;
   onOpenChange?: (open: boolean) => void;
+  onOpenDelegationTask?: (task: DelegationTask) => void;
   onOpenSubagentDirectory?: (request: OpenSubagentDirectorySideTabRequest) => void;
   onOpenSubagentSession?: (request: OpenSubagentSideTabRequest) => void;
   open?: boolean;
@@ -1355,14 +1366,18 @@ function SubagentStatusSection({
     () => [...subagents].sort((left, right) => (left.startedAt ?? 0) - (right.startedAt ?? 0)),
     [subagents],
   );
+  const activeCount = subagents.length + delegationTasks.length;
   useEffect(() => {
-    if (subagents.length === 0) return;
+    if (activeCount === 0) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [subagents.length]);
-  if (subagents.length === 0 && endedSubagentCount <= 0) return null;
-  const longestElapsedMs = subagents.reduce(
-    (longest, item) => Math.max(longest, Math.max(0, now - (item.startedAt ?? now))),
+  }, [activeCount]);
+  if (activeCount === 0 && endedSubagentCount <= 0) return null;
+  const longestElapsedMs = Math.max(
+    ...subagents.map((item) => Math.max(0, now - (item.startedAt ?? now))),
+    ...delegationTasks.map((task) =>
+      Math.max(0, now - (task.attempts.at(-1)?.startedAt ?? task.createdAt)),
+    ),
     0,
   );
 
@@ -1375,8 +1390,8 @@ function SubagentStatusSection({
       separated={separated}
       title={title}
       trailing={(isOpen) =>
-        subagents.length === 0 ? null : isOpen ? (
-          <span>{formatRunningSubagentCount(intl.formatMessage, subagents.length)}</span>
+        activeCount === 0 ? null : isOpen ? (
+          <span>{formatRunningSubagentCount(intl.formatMessage, activeCount)}</span>
         ) : (
           <>
             <span className="min-w-0 truncate">
@@ -1387,7 +1402,7 @@ function SubagentStatusSection({
             </span>
             <span className="shrink-0">·</span>
             <span className="shrink-0">
-              {formatRunningSubagentCount(intl.formatMessage, subagents.length)}
+              {formatRunningSubagentCount(intl.formatMessage, activeCount)}
             </span>
           </>
         )
@@ -1455,13 +1470,69 @@ function SubagentStatusSection({
             </li>
           );
         })}
+        {delegationTasks.map((task) => {
+          const startedAt = task.attempts.at(-1)?.startedAt ?? task.createdAt;
+          return (
+            <li
+              key={`delegation:${task.id}`}
+              data-running-delegation-id={task.id}
+              data-background-task-kind="agent"
+              data-work-status={task.status}
+              className={cn(
+                "group relative flex min-w-0 items-start gap-2 rounded-lg px-2 py-2 hover:bg-[var(--color-hover)]",
+                task.session && onOpenDelegationTask && "cursor-pointer",
+              )}
+            >
+              {task.session && onOpenDelegationTask ? (
+                <button
+                  type="button"
+                  data-delegation-session-trigger="true"
+                  aria-label={intl.formatMessage({ id: "delegation.open" })}
+                  onClick={() => onOpenDelegationTask(task)}
+                  className="absolute inset-0 z-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-input-border-focused)]"
+                />
+              ) : null}
+              <BotIcon className="pointer-events-none relative z-[1] mt-0.5 size-4 shrink-0 text-[var(--color-foreground-subtle)]" />
+              <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 flex-col gap-1.5">
+                <span className="line-clamp-2 text-ui-base leading-5 text-[var(--color-foreground)]">
+                  {task.title}
+                </span>
+                <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-ui-base">
+                  <span className="text-ui-base tabular-nums text-[var(--color-foreground-subtle)]">
+                    {formatBackgroundTaskElapsedLabel(
+                      Math.max(0, now - startedAt),
+                      intl.formatMessage,
+                    )}
+                  </span>
+                  <span className="text-ui-sm text-[var(--color-foreground-subtle)]">
+                    {intl.formatMessage({ id: `delegation.${task.status}` })}
+                  </span>
+                  {onCancelDelegationTask ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-delegation-cancel="true"
+                      aria-label={intl.formatMessage({ id: "delegation.cancel" })}
+                      onClick={() => onCancelDelegationTask(task.id)}
+                      className="pointer-events-auto relative z-[2] ml-auto h-6 shrink-0 px-1.5 text-ui-base text-[var(--color-foreground)]"
+                    >
+                      <SquareIcon aria-hidden className="size-3 fill-current" />
+                      {intl.formatMessage({ id: "chat.statusPanel.runningStop" })}
+                    </Button>
+                  ) : null}
+                </span>
+              </div>
+            </li>
+          );
+        })}
       </ul>
       <EndedSubagentDirectoryRow
         count={endedSubagentCount}
         parentSessionId={parentSessionId}
         rootSessionId={rootSessionId}
         onOpen={onOpenSubagentDirectory}
-        separated={subagents.length > 0}
+        separated={activeCount > 0}
       />
     </StatusSection>
   );
@@ -1606,11 +1677,13 @@ function StatusSummaryRow({
   // Running 明细的 Bot 语义。规则现在是三类的：**恰好一类**沿用该类图标，混合才是 Activity
   // （两类矩阵在 workflow 加入后就不够用了，硬写下去会漏掉 workflow+agent 这种组合）。
   const hasRunningBash = model.runningBashWorks.length > 0;
-  const hasRunningSubagent = model.runningSubagentWorks.length > 0;
+  const hasRunningSubagent =
+    model.runningSubagentWorks.length + model.runningDelegationTasks.length > 0;
   const hasRunningWorkflow = model.runningWorkflowRuns.length > 0;
   const runningCount =
     model.runningBashWorks.length +
     model.runningSubagentWorks.length +
+    model.runningDelegationTasks.length +
     model.runningWorkflowRuns.length;
   const runningKindCount = [hasRunningWorkflow, hasRunningBash, hasRunningSubagent].filter(
     Boolean,
@@ -1748,6 +1821,7 @@ function ConversationStatusPanelImpl({
   plan,
   backgroundWorks = EMPTY_BACKGROUND_WORKS,
   runningSubagents = EMPTY_RUNNING_SUBAGENTS,
+  delegationTasks = EMPTY_DELEGATION_TASKS,
   workflowRuns = EMPTY_WORKFLOW_RUNS,
   endedWorkflowRunCount = 0,
   endedSubagentCount = 0,
@@ -1773,6 +1847,8 @@ function ConversationStatusPanelImpl({
   onOpenBackgroundBash,
   onCancelBackgroundWork,
   onOpenSubagentSession,
+  onOpenDelegationTask,
+  onCancelDelegationTask,
   onOpenSubagentDirectory,
   onOpenWorkflowRun,
   onOpenWorkflowRunDirectory,
@@ -1795,6 +1871,7 @@ function ConversationStatusPanelImpl({
         plan,
         backgroundWorks,
         runningSubagents,
+        delegationTasks,
         workflowRuns,
       }),
     [
@@ -1808,6 +1885,7 @@ function ConversationStatusPanelImpl({
       sessionPlans,
       plan,
       runningSubagents,
+      delegationTasks,
       workflowRuns,
       workspacePath,
     ],
@@ -1858,7 +1936,9 @@ function ConversationStatusPanelImpl({
   );
   // 已结束目录入口过去渲染在 Agent StatusSection 之后，视觉和 DOM 都被提升成
   // 并列顶层 section。Agent 的运行态和已结束目录属于同一领域，统一由 Agent 折叠分组承载。
-  const canRenderAgents = model.runningSubagentWorks.length > 0 || canRenderEndedAgents;
+  const canRenderAgents =
+    model.runningSubagentWorks.length + model.runningDelegationTasks.length > 0 ||
+    canRenderEndedAgents;
   const handlePanelModeChange = useCallback(
     (value: string) => {
       if (value === "auto") {
@@ -1931,10 +2011,13 @@ function ConversationStatusPanelImpl({
         data-running-background-count={
           model.runningBashWorks.length +
           model.runningSubagentWorks.length +
+          model.runningDelegationTasks.length +
           model.runningWorkflowRuns.length
         }
         data-running-terminal-count={model.runningBashWorks.length}
-        data-running-agent-count={model.runningSubagentWorks.length}
+        data-running-agent-count={
+          model.runningSubagentWorks.length + model.runningDelegationTasks.length
+        }
         data-running-workflow-count={model.runningWorkflowRuns.length}
         data-ended-workflow-count={endedWorkflowRunCount}
         style={shellStyle}
@@ -2111,8 +2194,11 @@ function ConversationStatusPanelImpl({
               <SubagentStatusSection
                 title={intl.formatMessage({ id: "chat.statusPanel.agents" })}
                 subagents={model.runningSubagentWorks}
+                delegationTasks={model.runningDelegationTasks}
                 endedSubagentCount={canRenderEndedAgents ? endedSubagentCount : 0}
                 onCancelBackgroundWork={onCancelBackgroundWork}
+                onCancelDelegationTask={onCancelDelegationTask}
+                onOpenDelegationTask={onOpenDelegationTask}
                 open={agentSectionOpen}
                 onOpenChange={onAgentSectionOpenChange}
                 separated={

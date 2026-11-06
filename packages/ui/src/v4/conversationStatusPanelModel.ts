@@ -1,4 +1,4 @@
-import type { GitRepositorySummary } from "@zcode/shared";
+import type { DelegationTask, GitRepositorySummary } from "@zcode/shared";
 import type {
   BackgroundWorkSummary,
   GoalState,
@@ -117,6 +117,7 @@ export interface ConversationStatusPanelModel {
   plan: ConversationStatusPanelPlanModel | null;
   runningBashWorks: BackgroundWorkSummary[];
   runningSubagentWorks: ConversationStatusPanelRunningSubagent[];
+  runningDelegationTasks: DelegationTask[];
   runningWorkflowRuns: ConversationStatusPanelWorkflowRun[];
 }
 
@@ -132,6 +133,7 @@ interface BuildConversationStatusPanelModelInput {
   plan?: PlanState | null;
   backgroundWorks?: readonly BackgroundWorkSummary[];
   runningSubagents?: readonly RunningSubagentSummary[];
+  delegationTasks?: readonly DelegationTask[];
   workflowRuns?: readonly WorkflowRunState[];
 }
 
@@ -287,10 +289,15 @@ function buildRunningWorkflowRuns(
 export function resolveSoleRunningWorkflowRunTarget(
   model: Pick<
     ConversationStatusPanelModel,
-    "runningBashWorks" | "runningSubagentWorks" | "runningWorkflowRuns"
+    "runningBashWorks" | "runningSubagentWorks" | "runningDelegationTasks" | "runningWorkflowRuns"
   >,
 ): ConversationStatusPanelWorkflowRunTarget | null {
-  if (model.runningBashWorks.length > 0 || model.runningSubagentWorks.length > 0) return null;
+  if (
+    model.runningBashWorks.length > 0 ||
+    model.runningSubagentWorks.length > 0 ||
+    model.runningDelegationTasks.length > 0
+  )
+    return null;
   if (model.runningWorkflowRuns.length !== 1) return null;
   return workflowRunOpenTarget(model.runningWorkflowRuns[0]!);
 }
@@ -363,6 +370,12 @@ export function buildConversationStatusPanelModel(
     });
   }
 
+  // 修复原因：委派任务由独立服务持有，不出现在原生 subagents.running；小窗必须
+  // 投影同一份服务列表，且保留独立身份，不能伪装成原生 childSessionId 走错打开/停止接口。
+  const runningDelegationTasks = (input.delegationTasks ?? []).filter((task) =>
+    ["queued", "preparing", "running", "awaiting_input"].includes(task.status),
+  );
+
   const runningWorkflowRuns = buildRunningWorkflowRuns(input.workflowRuns, workflowWorkByWorkId);
   const hasExpandedContent = Boolean(
     (git && git.added + git.removed > 0) ||
@@ -372,6 +385,7 @@ export function buildConversationStatusPanelModel(
     plan ||
     runningBashWorks.length > 0 ||
     runningSubagentWorks.length > 0 ||
+    runningDelegationTasks.length > 0 ||
     runningWorkflowRuns.length > 0,
   );
 
@@ -383,6 +397,7 @@ export function buildConversationStatusPanelModel(
     plan,
     runningBashWorks,
     runningSubagentWorks,
+    runningDelegationTasks,
     runningWorkflowRuns,
     hasExpandedContent,
     hasContent: Boolean(
@@ -393,6 +408,7 @@ export function buildConversationStatusPanelModel(
       plan ||
       runningBashWorks.length > 0 ||
       runningSubagentWorks.length > 0 ||
+      runningDelegationTasks.length > 0 ||
       runningWorkflowRuns.length > 0,
     ),
   };
