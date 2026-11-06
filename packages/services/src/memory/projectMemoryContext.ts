@@ -1,7 +1,8 @@
-import { lstat, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import {
   buildProjectMemoryInstructions,
+  openProjectMemoryStore,
+  projectMemoryRootValidator,
   prepareProjectMemoryScope,
   resolveProjectMemoryScope,
   PROJECT_MEMORY_INDEX_LINE_LIMIT,
@@ -9,10 +10,20 @@ import {
 } from "@zcode/shared/node";
 import type { AcpWorkspace } from "@zcode/shared";
 import { readProjectMemoryFileFromStableHandle } from "./projectMemoryStableRead.js";
-import { saveProjectMemories, type ProjectMemoryCandidate } from "./projectMemoryWriter.js";
+import { type ProjectMemoryCandidate } from "./projectMemoryWriter.js";
 
 export interface ProjectMemoryContext {
   buildPromptContext(workspace: AcpWorkspace): Promise<string | undefined>;
+  readVersions?(workspace: AcpWorkspace): Promise<Record<string, string | null>>;
+  tools?: {
+    isEnabled(): Promise<boolean>;
+    call(
+      workspace: AcpWorkspace,
+      name: string,
+      args: unknown,
+      assertActive: () => void,
+    ): Promise<unknown>;
+  };
   saveMemories(
     workspace: AcpWorkspace,
     candidates: readonly ProjectMemoryCandidate[],
@@ -24,39 +35,25 @@ const INDEX_FILE = "MEMORY.md";
 const isMissing = (error: unknown) =>
   typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 
-function validateMemoryRoot(storageRoot: string, root: string): () => Promise<void> {
-  const directories = [
-    storageRoot,
-    join(storageRoot, "memories"),
-    join(storageRoot, "memories", "projects"),
-    dirname(root),
-    root,
-  ];
-  return async () => {
-    for (const directory of directories) {
-      const metadata = await lstat(directory);
-      if (!metadata.isDirectory() || metadata.isSymbolicLink())
-        throw new Error("Project Memory path is not a regular directory");
-    }
-    const within = relative(await realpath(storageRoot), await realpath(root));
-    if (within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within))
-      throw new Error("Project Memory path is outside the selected Host profile");
-  };
-}
-
 /** Selected Host reads the same files as API; the external Agent retains file-write permissions. */
 export function createProjectMemoryContext(input: {
   cliStorageRoot: string;
   isEnabled(): Promise<boolean>;
 }): ProjectMemoryContext {
   const context: ProjectMemoryContext = {
+    async readVersions(workspace) {
+      if (!(await input.isEnabled())) throw new Error("Project Memory is disabled");
+      return (
+        await openProjectMemoryStore({ ...workspace, cliStorageRoot: input.cliStorageRoot })
+      ).readVersions();
+    },
     async buildPromptContext(workspace) {
       // 修复原因：ACP 原先完全绕过工作区记忆；关闭时必须在任何文件 IO 前返回。
       if (!(await input.isEnabled())) return undefined;
       const storageRoot = resolve(input.cliStorageRoot);
       const scope = await resolveProjectMemoryScope({ ...workspace, cliStorageRoot: storageRoot });
       const root = scope.root;
-      const validate = validateMemoryRoot(storageRoot, root);
+      const validate = projectMemoryRootValidator(storageRoot, root);
       await prepareProjectMemoryScope(scope);
       await validate();
       let index = "";
@@ -79,7 +76,7 @@ export function createProjectMemoryContext(input: {
         .slice(0, PROJECT_MEMORY_INDEX_CHARACTER_LIMIT);
       return [
         buildProjectMemoryInstructions(root),
-        "Respect the user's instructions and your current file-tool permission policy. Use your available file tools; Write refers to a capability, not a required tool name. Recall relevant topic files as needed. During this turn, save new durable facts and keep MEMORY.md updated when appropriate; do not save secrets, temporary output, or duplicate facts. If writing is not permitted, do not bypass permissions.",
+        "Respect the user's instructions and current tool permissions. Recall relevant project facts and save durable updates with the project memory tools when appropriate. Do not save secrets, temporary output, or duplicate facts; never bypass permissions.",
         ...(bounded
           ? [
               `Workspace MEMORY.md index (JSON-encoded text): ${JSON.stringify(bounded)}`,
@@ -93,12 +90,26 @@ export function createProjectMemoryContext(input: {
     async saveMemories(workspace, candidates) {
       if (!(await context.buildPromptContext(workspace)))
         throw new Error("Project Memory is disabled");
-      const storageRoot = resolve(input.cliStorageRoot);
-      const { root } = await resolveProjectMemoryScope({
+      const store = await openProjectMemoryStore({
         ...workspace,
-        cliStorageRoot: storageRoot,
+        cliStorageRoot: input.cliStorageRoot,
       });
-      await saveProjectMemories(root, candidates, validateMemoryRoot(storageRoot, root));
+      await store.saveCandidates(candidates);
+    },
+    tools: {
+      isEnabled: input.isEnabled,
+      async call(workspace, name, args, assertActive) {
+        assertActive();
+        if (!(await input.isEnabled())) throw new Error("Project Memory is disabled");
+        const store = await openProjectMemoryStore({
+          ...workspace,
+          cliStorageRoot: input.cliStorageRoot,
+          assertActive,
+        });
+        if (name === "ReadProjectMemory") return store.read(args);
+        if (name === "SaveProjectMemory") return store.save(args);
+        throw new Error("Unknown Project Memory tool");
+      },
     },
   };
   return context;

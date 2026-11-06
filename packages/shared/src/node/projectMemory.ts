@@ -133,7 +133,7 @@ export function buildProjectMemoryInstructions(memoryRoot: string): string {
   return [
     "# Memory",
     "",
-    `You have a persistent file-based memory at \`${memoryRoot}/\`. This directory already exists — write to it directly with the Write tool (do not run mkdir or check for its existence). Each memory is one file holding one fact, with frontmatter:`,
+    `You have persistent CodeVori project memory at \`${memoryRoot}/\`, shared with Settings and future project sessions. Use ReadProjectMemory and SaveProjectMemory (ACP: zcode-memory MCP) to read and save facts. Scope is bound to this session. Each memory is one fact with the following stored format:`,
     "",
     "```markdown",
     "---",
@@ -150,7 +150,7 @@ export function buildProjectMemoryInstructions(memoryRoot: string): string {
     "",
     "`user` — who the user is (role, expertise, preferences). `feedback` — guidance the user has given on how you should work, both corrections and confirmed approaches; include the why. `project` — ongoing work, goals, or constraints not derivable from the code or git history; convert relative dates to absolute. `reference` — pointers to external resources (URLs, dashboards, tickets).",
     "",
-    "After writing the file, add a one-line pointer in `MEMORY.md` (`- [Title](file.md) — hook`). `MEMORY.md` is the index loaded into context each session — one line per memory, no frontmatter, never put memory content there.",
+    "ReadProjectMemory without name reads the index. Before updating an item, read it by name and pass its revision as expectedRevision to SaveProjectMemory; for a new name pass null. Pass the fact body as content, without frontmatter. SaveProjectMemory maintains MEMORY.md automatically. Only its status=saved receipt confirms project persistence; report the saved project and item. If it fails or is unavailable, say project saving could not be confirmed. An agent's own native memory or update notes do not count as a CodeVori project save. Respect higher-priority permissions; never claim a queued background extraction has saved the fact.",
     "",
     "Before saving, check for an existing file that already covers it — update that file rather than creating a duplicate; delete memories that turn out to be wrong. Don't save what the repo already records (code structure, past fixes, git history, AGENTS.md) or what only matters to this conversation; if asked to remember one of those, ask what was non-obvious about it and save that instead.",
   ].join("\n");

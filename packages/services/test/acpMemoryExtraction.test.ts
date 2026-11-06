@@ -4,12 +4,61 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { resolveProjectMemoryRoot } from "@zcode/shared/node";
+import { openProjectMemoryStore } from "@zcode/shared/node";
 import type { AcpSession } from "@zcode/shared";
 import { createProjectMemoryContext } from "../src/memory/projectMemoryContext.js";
 import {
   captureAcpMemorySnapshot,
   createAcpMemoryExtraction,
 } from "../src/acp/acpMemoryExtraction.js";
+
+test("a late background extraction cannot overwrite another session's explicit project save", async () => {
+  const root = await mkdtemp(join(tmpdir(), "acp-extract-race-"));
+  const workspace = { workspacePath: root };
+  const cliStorageRoot = join(root, "cli");
+  const context = createProjectMemoryContext({ cliStorageRoot, isEnabled: async () => true });
+  const store = await openProjectMemoryStore({ ...workspace, cliStorageRoot });
+  const fact = {
+    name: "routing-rule",
+    description: "委派规则",
+    type: "feedback" as const,
+    content: "初始规则",
+    expectedRevision: null,
+  };
+  const saved = await store.save(fact);
+  const session = {
+    ...workspace,
+    id: "race",
+    revision: 1,
+    status: "idle",
+    queue: { items: [] },
+    entries: [{ id: "user-race", kind: "user", text: "记住委派规则", stopReason: "end_turn" }],
+  } as unknown as AcpSession;
+  const extraction = createAcpMemoryExtraction({
+    context,
+    read: async () => session,
+    persist: async (snapshot, candidates) => {
+      await context.saveMemories(snapshot, candidates);
+      return true;
+    },
+    generate: async () => {
+      await store.save({
+        ...fact,
+        content: "其他会话的最新规则",
+        expectedRevision: saved.revision,
+      });
+      return { text: JSON.stringify({ memories: [{ ...fact, content: "迟到的旧规则" }] }) };
+    },
+  });
+  try {
+    extraction.schedule(captureAcpMemorySnapshot(session));
+    await extraction.settle();
+    assert.match((await store.read({ name: fact.name })).content!, /其他会话的最新规则/);
+  } finally {
+    extraction.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("successful ACP turns extract into shared memory without passing a supplied password to the auxiliary model", async () => {
   const root = await mkdtemp(join(tmpdir(), "acp-extract-"));
