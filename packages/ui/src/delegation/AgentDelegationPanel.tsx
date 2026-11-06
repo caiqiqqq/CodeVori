@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { ChevronDown, ChevronRight, Users, Square } from "lucide-react";
+import { Square } from "lucide-react";
 import type { DelegationParent, DelegationTask } from "@zcode/shared";
 import type { useAgentDelegation } from "@/hooks/useAgentDelegation.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -20,7 +19,6 @@ export function AgentDelegationPanel({
 }) {
   const { intl } = useZCodeIntl();
   const t = (key: string) => intl.formatMessage({ id: `delegation.${key}` });
-  const [expanded, setExpanded] = useState(false);
   const editing = panel.editing;
   // 可委派不代表已有委派任务；空列表不应在普通对话末尾留下标题和分隔线。
   if (!tasks.length && !editing && !panel.error) return null;
@@ -45,51 +43,37 @@ export function AgentDelegationPanel({
     <>
       {tasks.length ? (
         <section
-          className="mx-3 mb-2 min-w-0 border-t border-border py-2 text-ui-sm"
+          className="mx-3 mb-2 min-w-0 py-2 text-ui-sm"
           data-testid="delegation-panel"
           data-main-kind={parent.kind}
+          aria-label={t("title")}
         >
-          <div className="flex min-w-0 items-center gap-2">
-            <button
-              className="flex min-w-0 flex-1 items-center gap-2 text-left"
-              aria-expanded={expanded}
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded ? (
-                <ChevronDown className="size-3.5" />
-              ) : (
-                <ChevronRight className="size-3.5" />
-              )}
-              <Users className="size-4" />
-              <span>{t("title")}</span>
-              {tasks.length ? (
-                <span className="text-foreground-subtle">
-                  {running.length}/{tasks.length}
-                </span>
-              ) : null}
-            </button>
-            {running.length
-              ? iconButton(
-                  t("cancelAll"),
-                  () => {
-                    void panel.cancelAll();
-                  },
-                  <Square className="size-3.5" />,
-                )
-              : null}
-          </div>
+          {tasks.length > 1 ? (
+            <div className="mb-2 flex items-center justify-end gap-2 text-foreground-subtle">
+              <span className="text-ui-xs">
+                {running.length}/{tasks.length}
+              </span>
+              {running.length
+                ? iconButton(
+                    t("cancelAll"),
+                    () => {
+                      void panel.cancelAll();
+                    },
+                    <Square className="size-3.5" />,
+                  )
+                : null}
+            </div>
+          ) : null}
           {panel.error ? (
             <p role="alert" className="mt-2 break-words text-destructive">
               {panel.error}
             </p>
           ) : null}
-          {expanded ? (
-            <div className="mt-2 max-h-96 space-y-2 overflow-y-auto">
-              {tasks.map((task) => (
-                <DelegationTaskRow key={task.id} task={task} controller={panel} />
-              ))}
-            </div>
-          ) : null}
+          <div className="space-y-4">
+            {tasks.map((task) => (
+              <DelegationTaskRow key={task.id} task={task} controller={panel} />
+            ))}
+          </div>
         </section>
       ) : null}
       {!tasks.length && panel.error && !editing ? (

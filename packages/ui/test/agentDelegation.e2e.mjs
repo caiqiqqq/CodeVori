@@ -8,6 +8,10 @@ import { chromium } from "playwright-core";
 import { workTaskPromptAssetsFixture } from "./workTaskPromptAssetsFixture.mjs";
 import { assertApiDelegationMentions } from "./delegationApiMentionAssertions.mjs";
 import { assertDelegationSettings } from "./delegationSettingsAssertions.mjs";
+import {
+  assertDelegationRecovery,
+  assertApiChildNavigation,
+} from "./delegationRecoveryAssertions.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__delegation-e2e-${process.pid}`;
@@ -51,8 +55,10 @@ try {
       const callbacks = new Set();
       const changed = () => callbacks.forEach(fn => fn());
       const result = { conclusion: '**委派结果**\\n已核对接口', changedFiles: ['src/main.ts'], tests: ['fixture test'], risks: ['未调用真实模型'], blockers: [], structured: true };
-      const initial = kind => ({ id: crypto.randomUUID(), requestId: crypto.randomUUID(), parent: { workspacePath: '/synthetic/project', kind, sessionId: kind + '-parent' }, title: kind.toUpperCase() + ' 子任务', execution: { kind: 'acp', agent: 'codex', config: [] }, intent: 'analysis', status: 'failed', session: { kind: 'acp', id: kind + '-child' }, attempts: [{ sequence: 1, commandId: crypto.randomUUID(), status: 'failed', endedAt: 1, error: 'work-task.not-repository', result, delivery: 'uncertain' }] });
+      const initial = kind => ({ id: crypto.randomUUID(), requestId: crypto.randomUUID(), parent: { workspacePath: '/synthetic/project', kind, sessionId: kind + '-parent' }, title: kind.toUpperCase() + ' 子任务', execution: kind === 'api' ? apiTarget('api-provider').execution : { kind: 'acp', agent: 'codex', config: [] }, intent: 'analysis', status: 'failed', session: { kind, id: kind + '-child' }, attempts: [{ sequence: 1, commandId: crypto.randomUUID(), status: 'failed', endedAt: 1, error: 'work-task.not-repository', result, delivery: 'uncertain' }] });
       state.seed = () => { state.rows.push(initial('acp'), initial('api')); changed(); };
+      state.setStatus = status => { state.rows.find(task => task.parent.kind === state.kind).status = status; changed(); };
+      state.addRunning = () => { state.rows.push({ ...initial(state.kind), status: 'running' }); changed(); };
       state.clear = () => { state.rows.length = 0; state.calls.length = 0; changed(); };
       const delegation = {
         targets: async () => [{ agent: 'codex', enabled: true, ready: true }, { agent: 'claude', enabled: true, ready: true }, apiTarget('api-provider'), apiTarget('second-provider')],
@@ -61,6 +67,7 @@ try {
         delegate: async input => { state.calls.push({ op: 'delegate', ...clone(input) }); if (state.rejectNext) { state.rejectNext = false; throw new Error('delegation.agent-unavailable'); } state.rows.push({ ...clone(input), id: crypto.randomUUID(), parent: { workspacePath: input.workspacePath, kind: input.kind, sessionId: input.sessionId }, status: 'queued', attempts: [] }); changed(); if (state.holdNext) { state.holdNext = false; await new Promise(resolve => state.resolveHeld = resolve); state.heldFinished = true; } },
         followUp: async input => { state.calls.push({ op: 'follow-up', ...clone(input) }); },
         retry: async input => { state.calls.push({ op: 'retry', ...input }); const task = state.rows.find(t => t.id === input.id); task.status = 'running'; task.attempts.push({ sequence: 2, status: 'running' }); changed(); },
+        resume: async input => { state.calls.push({ op: 'resume', ...clone(input) }); state.rows.find(task => task.id === input.id).status = 'running'; changed(); },
         cancel: async input => { state.calls.push({ op: 'cancel', ...input }); state.rows.find(t => t.id === input.id).status = 'canceled'; changed(); },
         cancelAll: async input => { state.calls.push({ op: 'cancel-all', ...input }); state.rows.filter(t => t.parent.kind === input.kind).forEach(t => t.status = 'canceled'); changed(); },
         redeliver: async input => { state.calls.push({ op: 'redeliver', ...input }); state.rows.find(t => t.id === input.id).attempts.find(a => a.sequence === input.attemptSequence).delivery = 'delivered'; changed(); },
@@ -266,11 +273,10 @@ try {
     });
     assert.equal(await panel.getAttribute("data-main-kind"), "acp");
     assert.equal(await panel.getByRole("button", { name: "委派任务", exact: true }).count(), 0);
-    await panel.getByRole("button", { name: /智能体委派/ }).click();
     const row = panel.getByTestId("delegation-task").first();
     await row.waitFor();
     assert.match(await row.textContent(), /ACP 子任务/);
-    await row.locator('[data-testid^="tool-summary-trigger-"]').click();
+    await row.getByRole("button", { name: "展开工具详情", exact: true }).click();
     assert.match(await row.textContent(), /项目不是 Git 仓库/);
     assert.ok(!(await row.textContent()).includes("work-task.not-repository"));
     await row.locator("summary").click();
@@ -281,7 +287,7 @@ try {
         (call) => call.op === "redeliver" && call.attemptSequence === 1,
       ),
     );
-    await row.getByRole("button", { name: "打开子会话" }).click();
+    await row.locator('[data-testid^="tool-summary-trigger-"]').click();
     await page.waitForFunction(() => window.__delegation.navigation?.session.id === "acp-child");
     await row.getByRole("button", { name: "追问", exact: true }).click();
     const followUp = page.getByRole("dialog", { name: "追问", exact: true });
@@ -297,18 +303,7 @@ try {
         (call) => call.op === "follow-up" && call.attachments.length === 1,
       ),
     );
-    await row.getByRole("button", { name: "重试", exact: true }).click();
-    await page.waitForFunction(
-      () =>
-        document.querySelector('[data-testid="delegation-task"]')?.getAttribute("data-status") ===
-        "running",
-    );
-    await row.getByRole("button", { name: "取消任务" }).click();
-    await page.waitForFunction(
-      () =>
-        document.querySelector('[data-testid="delegation-task"]')?.getAttribute("data-status") ===
-        "canceled",
-    );
+    await assertDelegationRecovery(page, panel, row);
     const dialog = await openDelegation();
     await dialog.getByLabel("选择智能体").selectOption("acp.claude");
     await dialog.getByLabel("任务类型").selectOption("analysis");
@@ -382,9 +377,9 @@ try {
           .querySelector('[data-testid="delegation-panel"]')
           ?.getAttribute("data-main-kind") === "api",
     );
-    await panel.getByRole("button", { name: /智能体委派/ }).click();
     assert.ok((await panel.textContent()).includes("API 子任务"));
     assert.ok(!(await panel.textContent()).includes("ACP 子任务"));
+    await assertApiChildNavigation(page, panel);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       true,
