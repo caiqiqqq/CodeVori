@@ -27,6 +27,7 @@ export type LegacyDataMigrationResult =
 
 export interface LegacyDataMigrationOptions {
   legacyDataRoots: DataRootPair[];
+  resolveAdditionalLegacyDataRoots?: () => Promise<DataRootPair[]>;
   legacyProfile: string;
   productProfile: string;
   migrationLock?: string;
@@ -177,18 +178,27 @@ async function rewriteJsonWorkspacePath(
   if (!(await pathExists(file))) return;
   const data = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
   const lastSessions = data.lastWorkspaceSession;
-  if (!lastSessions || typeof lastSessions !== "object") return;
   let changed = false;
-  for (const session of Object.values(lastSessions)) {
-    if (
-      session &&
-      typeof session === "object" &&
-      "workspacePath" in session &&
-      session.workspacePath === oldPath
-    ) {
-      session.workspacePath = newPath;
-      changed = true;
+  if (lastSessions && typeof lastSessions === "object") {
+    for (const session of Object.values(lastSessions)) {
+      if (
+        session &&
+        typeof session === "object" &&
+        "workspacePath" in session &&
+        session.workspacePath === oldPath
+      ) {
+        session.workspacePath = newPath;
+        changed = true;
+      }
     }
+  }
+  // 默认工作区搬迁后，最近项目入口也必须指向新目录，避免重新打开旧版的数据。
+  if (Array.isArray(data.recentProjects)) {
+    data.recentProjects = data.recentProjects.map((path) => {
+      if (path !== oldPath) return path;
+      changed = true;
+      return newPath;
+    });
   }
   if (changed) await writeFile(file, JSON.stringify(data), "utf8");
 }
@@ -347,11 +357,13 @@ async function migrateLegacyDesktopDataUnlocked(
   if (businessAlreadyCurrent && profileAlreadyCurrent) {
     return "already-current";
   }
+  // 修复依据：完成迁移后旧版设置已不属于 CodeVori，不能因其损坏而阻止新版启动。
+  const legacyDataRoots = businessAlreadyCurrent
+    ? options.legacyDataRoots
+    : [...options.legacyDataRoots, ...((await options.resolveAdditionalLegacyDataRoots?.()) ?? [])];
   const hasLegacy =
     (await pathExists(options.legacyProfile)) ||
-    (await Promise.all(options.legacyDataRoots.map((pair) => pathExists(pair.source)))).some(
-      Boolean,
-    );
+    (await Promise.all(legacyDataRoots.map((pair) => pathExists(pair.source)))).some(Boolean);
   if (
     hasLegacy &&
     (await (
@@ -364,17 +376,25 @@ async function migrateLegacyDesktopDataUnlocked(
   if (!businessAlreadyCurrent) {
     const firstTargetExists = await pathExists(first.target);
     if (firstTargetExists) await writeMigrationState(first.target, "pending");
-    const oldDefault = join(first.source, "workspace", "default");
-    const newDefault = join(first.target, "workspace", "default");
-    for (const [index, pair] of options.legacyDataRoots.entries()) {
+    const rewriteReferences = async (root: string): Promise<void> => {
+      // 自定义 dataBaseDir 也有自己的默认工作区；不能只迁移 home 下的记录。
+      for (const pair of legacyDataRoots) {
+        await rewriteDefaultWorkspaceReferences(
+          root,
+          join(pair.source, "workspace", "default"),
+          join(pair.target, "workspace", "default"),
+        );
+      }
+    };
+    for (const [index, pair] of legacyDataRoots.entries()) {
       await copyDirectoryAtomically(
         pair.source,
         pair.target,
         shouldCopyBusinessEntry,
-        (temporary) => rewriteDefaultWorkspaceReferences(temporary, oldDefault, newDefault),
+        rewriteReferences,
         index === 0 && !firstTargetExists,
       );
-      await rewriteDefaultWorkspaceReferences(pair.target, oldDefault, newDefault);
+      await rewriteReferences(pair.target);
     }
   }
   await copyDirectoryAtomically(

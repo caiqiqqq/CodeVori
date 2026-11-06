@@ -4508,6 +4508,7 @@ export function SessionPane({
         gitDirtyFileCount,
         gitWorktreeChangeSummary,
         ...statusPanelFacts,
+        delegationTasks: delegation.tasks,
       }),
     [
       isOfficeMode,
@@ -4516,14 +4517,17 @@ export function SessionPane({
       gitDirtyFileCount,
       gitWorktreeChangeSummary,
       statusPanelFacts,
+      delegation.tasks,
     ],
   );
   const runningBackgroundWorkCount =
     statusPanelModel.runningBashWorks.length +
     statusPanelModel.runningSubagentWorks.length +
+    statusPanelModel.runningDelegationTasks.length +
     statusPanelModel.runningWorkflowRuns.length;
   const runningTerminalCount = statusPanelModel.runningBashWorks.length;
-  const runningAgentCount = statusPanelModel.runningSubagentWorks.length;
+  const runningAgentCount =
+    statusPanelModel.runningSubagentWorks.length + statusPanelModel.runningDelegationTasks.length;
   const runningWorkflowCount = statusPanelModel.runningWorkflowRuns.length;
   useEffect(() => {
     setTerminalSectionOpen(false);
@@ -5391,6 +5395,21 @@ export function SessionPane({
             gitWorktreeChangeSummary={gitWorktreeChangeSummary}
             activeTaskChangeSummary={acpAgent ? null : activeTaskChangeSummary}
             {...statusPanelFacts}
+            delegationTasks={delegation.tasks}
+            onOpenDelegationTask={
+              delegation.available
+                ? (task) => {
+                    void delegation.open(task);
+                  }
+                : undefined
+            }
+            onCancelDelegationTask={
+              !readOnly && delegation.available
+                ? (id) => {
+                    void delegation.cancel(id);
+                  }
+                : undefined
+            }
             endedSubagentCount={acpAgent ? 0 : subagents.endedTotal}
             rootSessionId={acpAgent ? undefined : (rootSessionId ?? sessionId ?? undefined)}
             parentSessionId={acpAgent ? undefined : (sessionId ?? undefined)}

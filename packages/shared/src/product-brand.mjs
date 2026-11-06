@@ -1,6 +1,8 @@
 /** 用户可见品牌和安装身份。 */
 export const PRODUCT_NAME = "CodeVori";
 export const PRODUCT_DATA_DIRECTORY_NAME = ".codevori";
+/** 应用偏好与业务数据分别解析，但同属当前产品命名空间。 */
+export const PRODUCT_SETTINGS_DIRECTORY_NAME = PRODUCT_DATA_DIRECTORY_NAME;
 export const PRODUCT_LEGACY_DATA_DIRECTORY_NAME = ".zcode";
 export const PRODUCT_DEEP_LINK_SCHEME = "codevori";
 /** 产品仓库首页，同时作为桌面“更新日志”的固定入口。 */

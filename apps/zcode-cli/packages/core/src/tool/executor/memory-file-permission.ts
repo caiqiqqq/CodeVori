@@ -1,4 +1,5 @@
 import type { PermissionDecisionResult } from "../../permission/service.js";
+import { join } from "node:path";
 import {
   resolveContainedMemoryFilePath,
   resolveSafeMemoryFilePath,
@@ -49,9 +50,14 @@ export function targetsMemoryFile(input: MemoryFileTargetInput): boolean {
   return resolveMemoryFileTarget(input) !== undefined;
 }
 
-function resolveMemoryFileTarget(
-  input: MemoryFileTargetInput,
-): string | undefined {
+function resolveMemoryFileTarget(input: MemoryFileTargetInput): string | undefined {
+  // 统一工具与旧 Markdown 写入共享权限边界；只接受固定项目根下的合法事实名。
+  if (input.toolName === "SaveProjectMemory" && input.memoryRoot) {
+    const name = (input.executionInput as { name?: unknown } | null)?.name;
+    return typeof name === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) && name.length <= 80
+      ? join(input.memoryRoot, `${name}.md`)
+      : undefined;
+  }
   if (input.toolName !== "Write" && input.toolName !== "Edit") return undefined;
   if (!input.memoryRoot) return undefined;
 

@@ -19,6 +19,7 @@ import { pipeline } from "node:stream/promises";
 import { ZipFile } from "yazl";
 
 import { PRODUCT_DATA_DIRECTORY_NAME, PRODUCT_NAME } from "@zcode/shared";
+import { resolveAppSettingsPaths } from "@zcode/shared/node";
 import {
   createFeedbackDiagnosticArchive,
   getAppConfigDir,
@@ -957,6 +958,12 @@ async function createLogArchiveArtifacts(
   const visitedDirs = new Set<string>();
 
   await collectLogArchiveFilesFromDirectory(sourceDir, "", visitedDirs, files);
+
+  // 设置已按软件名称隔离；旧数据目录中的 setting.json 不能冒充当前产品设置进入日志包。
+  for (let index = files.length - 1; index >= 0; index -= 1) {
+    if (/^setting\.json(?:\.|$)/.test(files[index]!.archivePath)) files.splice(index, 1);
+  }
+  await collectLogArchiveFile(resolveAppSettingsPaths().settingsFile, "setting.json", files);
 
   const zcodeCliLogDir = getZCodeCliLogDir();
   // Agent CLI 的运行日志写在 ~/.codevori/cli/log，不在应用主数据目录 ~/.codevori/v2 下。

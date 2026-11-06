@@ -1896,6 +1896,14 @@ export function SettingsPage({
                               onMemoryEnabledChange={handleMemoryEnabledChange}
                               projectMemoryViewerAvailable={Boolean(isDesktop)}
                               workspaceDisplayNames={memoryWorkspaceDisplayNames}
+                              workspacePath={
+                                isRemoteModelProviderWorkspace
+                                  ? undefined
+                                  : (activeWorkspacePath ?? undefined)
+                              }
+                              workspaceIdentity={
+                                isRemoteModelProviderWorkspace ? undefined : activeWorkspaceIdentity
+                              }
                             />
                           </ServiceProvider>
                         ) : activeSection === "plugin" ? (

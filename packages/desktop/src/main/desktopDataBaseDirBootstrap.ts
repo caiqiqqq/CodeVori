@@ -1,12 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared";
+import { resolveAppSettingsPaths } from "@zcode/shared/node";
 import { setDataBaseDir } from "@zcode/services/node";
-
-function resolveBootstrapSettingsFile(homePath: string = homedir()): string {
-  return join(homePath, PRODUCT_DATA_DIRECTORY_NAME, "v2", "setting.json");
-}
 
 function extractBootstrapDataBaseDir(rawValue: unknown): string | null {
   if (!rawValue || typeof rawValue !== "object") {
@@ -22,19 +16,18 @@ function extractBootstrapDataBaseDir(rawValue: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function readBootstrapDataBaseDirFromDisk(
-  settingsFile: string = resolveBootstrapSettingsFile(),
-): string | null {
-  if (!existsSync(settingsFile)) {
-    return null;
+function readBootstrapDataBaseDirFromDisk(): string | null {
+  const { settingsFile, legacySettingsFile } = resolveAppSettingsPaths();
+  // app ready 前保留原有同步启动边界；仅新文件缺失时只读旧值，异步迁移由设置入口完成。
+  for (const file of [settingsFile, legacySettingsFile]) {
+    if (!existsSync(file)) continue;
+    try {
+      return extractBootstrapDataBaseDir(JSON.parse(readFileSync(file, "utf-8")));
+    } catch {
+      return null;
+    }
   }
-
-  try {
-    const raw = readFileSync(settingsFile, "utf-8");
-    return extractBootstrapDataBaseDir(JSON.parse(raw));
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 export function applyEarlyDataBaseDirBootstrap(): string | null {

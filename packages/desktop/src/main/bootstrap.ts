@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { app, dialog } from "electron";
 import { ZCODE_PRODUCT_FLAVOR } from "@zcode/shared";
+import { resolveAppSettingsPaths } from "@zcode/shared/node";
 import {
   PRODUCT_DATA_DIRECTORY_NAME,
   PRODUCT_LEGACY_DATA_DIRECTORY_NAME,
@@ -11,7 +12,7 @@ import {
 import { migrateLegacyDesktopData } from "./desktopLegacyDataMigration.js";
 
 async function readLegacyCustomDataBaseDir(userHome: string): Promise<string | null> {
-  const settingsFile = join(userHome, PRODUCT_LEGACY_DATA_DIRECTORY_NAME, "v2", "setting.json");
+  const { legacySettingsFile: settingsFile } = resolveAppSettingsPaths(userHome);
   try {
     const settings = JSON.parse(await readFile(settingsFile, "utf8")) as { dataBaseDir?: unknown };
     const value = typeof settings.dataBaseDir === "string" ? settings.dataBaseDir.trim() : "";
@@ -65,15 +66,19 @@ async function start(): Promise<void> {
       },
     ];
     try {
-      const customBaseDir = await readLegacyCustomDataBaseDir(userHome);
-      if (customBaseDir) {
-        legacyDataRoots.push({
-          source: join(customBaseDir, PRODUCT_LEGACY_DATA_DIRECTORY_NAME),
-          target: join(customBaseDir, PRODUCT_DATA_DIRECTORY_NAME),
-        });
-      }
       const result = await migrateLegacyDesktopData({
         legacyDataRoots,
+        resolveAdditionalLegacyDataRoots: async () => {
+          const customBaseDir = await readLegacyCustomDataBaseDir(userHome);
+          return customBaseDir
+            ? [
+                {
+                  source: join(customBaseDir, PRODUCT_LEGACY_DATA_DIRECTORY_NAME),
+                  target: join(customBaseDir, PRODUCT_DATA_DIRECTORY_NAME),
+                },
+              ]
+            : [];
+        },
         legacyProfile,
         productProfile,
         migrationLock: `${productProfile}.migration-lock`,

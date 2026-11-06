@@ -5,7 +5,12 @@ import {
 } from "./memory.js";
 import { lstat, readdir, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { PROJECT_MEMORY_METADATA_FILE, PROJECT_MEMORY_MIGRATION_MARKER } from "@zcode/shared/node";
+import {
+  PROJECT_MEMORY_METADATA_FILE,
+  PROJECT_MEMORY_MIGRATION_MARKER,
+  resolveProjectMemoryScope,
+} from "@zcode/shared/node";
+import { createProjectMemoryCatalogChanges } from "./projectMemoryCatalogChanges.js";
 import { readProjectMemoryFileFromStableHandle } from "#src/memory/projectMemoryStableRead.js";
 import { getZCodeDataRootDir } from "#src/paths.js";
 
@@ -207,6 +212,7 @@ function compareProjectMemoryFiles(
 }
 
 export function createMemoryService(): IMemoryService {
+  const catalogChanges = createProjectMemoryCatalogChanges(getProjectMemoriesRoot);
   async function listProjectMemories(): Promise<ProjectMemoryWorkspaceSummary[]> {
     let projectsRoot: string;
     let projectEntries;
@@ -340,6 +346,14 @@ export function createMemoryService(): IMemoryService {
   }
 
   return {
+    onDynamicProjectMemoriesChanged: () => catalogChanges,
+    async resolveProjectMemoryWorkspaceId(scope) {
+      const resolved = await resolveProjectMemoryScope({
+        ...scope,
+        cliStorageRoot: join(getZCodeDataRootDir(), "cli"),
+      });
+      return basename(dirname(resolved.root));
+    },
     listProjectMemories,
     readProjectMemoryFile,
   };

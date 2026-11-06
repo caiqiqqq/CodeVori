@@ -70,6 +70,9 @@ test("first launch copies ZCode data and profile once, then both products write 
     assert.equal(
       await migrateLegacyDesktopData({
         legacyDataRoots: [{ source: legacyDataRoot, target: productDataRoot }],
+        resolveAdditionalLegacyDataRoots: async () => {
+          throw new Error("completed migration must not read obsolete legacy settings");
+        },
         legacyProfile,
         productProfile,
         isLegacyRunning: async () => true,
@@ -97,6 +100,86 @@ test("legacy profile lock reports the live owner and ignores a stale pid", async
     await rm(join(root, "SingletonLock"));
     await symlink("host-99999999", join(root, "SingletonLock"));
     assert.equal(await isLegacyDesktopProfileRunning(root), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("custom data roots migrate default workspace references across settings and history", async () => {
+  const root = await mkdtemp(join(tmpdir(), "codevori-migrate-custom-"));
+  const legacyHome = join(root, "home", ".zcode");
+  const productHome = join(root, "home", ".codevori");
+  const legacyCustom = join(root, "custom", ".zcode");
+  const productCustom = join(root, "custom", ".codevori");
+  const oldWorkspace = join(legacyCustom, "workspace", "default");
+  const newWorkspace = join(productCustom, "workspace", "default");
+  const userProject = join(root, "user-project");
+  try {
+    await mkdir(join(legacyHome, "v2"), { recursive: true });
+    await mkdir(join(legacyCustom, "cli", "db"), { recursive: true });
+    await mkdir(oldWorkspace, { recursive: true });
+    const oldSettings = JSON.stringify({
+      dataBaseDir: join(root, "custom"),
+      lastWorkspaceSession: { window: { workspacePath: oldWorkspace } },
+      recentProjects: [oldWorkspace, userProject],
+    });
+    await writeFile(join(legacyHome, "v2", "setting.json"), oldSettings);
+    await writeFile(join(oldWorkspace, "note.txt"), "custom default workspace");
+    const dbFile = join(legacyCustom, "cli", "db", "db.sqlite");
+    const db = new DatabaseSync(dbFile);
+    db.exec("CREATE TABLE session (directory TEXT, path TEXT)");
+    db.prepare("INSERT INTO session VALUES (?, ?)").run(oldWorkspace, oldWorkspace);
+    db.prepare("INSERT INTO session VALUES (?, ?)").run(userProject, userProject);
+    db.close();
+
+    let resolverCalls = 0;
+    assert.equal(
+      await migrateLegacyDesktopData({
+        legacyDataRoots: [{ source: legacyHome, target: productHome }],
+        resolveAdditionalLegacyDataRoots: async () => {
+          resolverCalls += 1;
+          return [{ source: legacyCustom, target: productCustom }];
+        },
+        legacyProfile: join(root, "ZCode"),
+        productProfile: join(root, "CodeVori"),
+        isLegacyRunning: async () => false,
+      }),
+      "migrated",
+    );
+    assert.equal(resolverCalls, 1);
+    const settings = JSON.parse(await readFile(join(productHome, "v2", "setting.json"), "utf8"));
+    assert.equal(settings.lastWorkspaceSession.window.workspacePath, newWorkspace);
+    assert.deepEqual(settings.recentProjects, [newWorkspace, userProject]);
+    assert.equal(settings.dataBaseDir, join(root, "custom"));
+    assert.equal(
+      await readFile(join(newWorkspace, "note.txt"), "utf8"),
+      "custom default workspace",
+    );
+    const migratedDb = new DatabaseSync(join(productCustom, "cli", "db", "db.sqlite"));
+    try {
+      assert.deepEqual(
+        migratedDb
+          .prepare("SELECT directory, path FROM session ORDER BY rowid")
+          .all()
+          .map((row) => ({ ...row })),
+        [
+          { directory: newWorkspace, path: newWorkspace },
+          { directory: userProject, path: userProject },
+        ],
+      );
+    } finally {
+      migratedDb.close();
+    }
+    assert.equal(await readFile(join(legacyHome, "v2", "setting.json"), "utf8"), oldSettings);
+    const legacyDb = new DatabaseSync(dbFile);
+    try {
+      assert.equal(
+        legacyDb.prepare("SELECT directory FROM session ORDER BY rowid LIMIT 1").get()?.directory,
+        oldWorkspace,
+      );
+    } finally {
+      legacyDb.close();
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

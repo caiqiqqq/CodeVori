@@ -74,7 +74,7 @@ test("disabled memory performs no IO; enabled context reads existing API index a
     await assert.rejects(access(cliStorageRoot));
     enabled = true;
     const empty = await context.buildPromptContext(workspace);
-    assert.match(empty!, /persistent file-based memory/);
+    assert.match(empty!, /persistent CodeVori project memory/);
     assert.match(empty!, /Respect.*permission/);
     const memoryRoot = resolveProjectMemoryRoot({ cliStorageRoot, ...workspace });
     await writeFile(join(memoryRoot, "MEMORY.md"), "API shared fact\n" + "entry\n".repeat(230));
@@ -302,7 +302,7 @@ test("ACP shares memory updates across turns and resume without changing history
     );
     assert.doesNotMatch(
       JSON.stringify(persisted),
-      /persistent file-based memory|updated by ACP file tool/,
+      /persistent CodeVori project memory|updated by ACP file tool/,
     );
     await service.disposeAllAndWait();
     service = createAcpService(options);
@@ -310,7 +310,10 @@ test("ACP shares memory updates across turns and resume without changing history
     assert.match(received[2]!, /updated by ACP file tool/);
     enabled = false;
     await service.prompt({ ...input, commandId: randomUUID(), text: "disabled" });
-    assert.doesNotMatch(received[3]!, /persistent file-based memory|updated by ACP file tool/);
+    assert.doesNotMatch(
+      received[3]!,
+      /persistent CodeVori project memory|updated by ACP file tool/,
+    );
   } finally {
     await service.disposeAllAndWait();
     await rm(root, { recursive: true, force: true });

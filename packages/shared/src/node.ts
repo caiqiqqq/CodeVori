@@ -4,6 +4,14 @@
  * This subpath must not be imported by renderer/browser bundles.
  */
 export { acquireFileLock } from "./node/atomicFileLock.js";
+export { resolveAppSettingsPaths, prepareAppSettingsFile } from "./node/appSettingsFile.js";
+export { openProjectMemoryStore, projectMemoryRootValidator } from "./node/projectMemoryStore.js";
+export { saveProjectMemories, type ProjectMemoryCandidate } from "./node/projectMemoryWriter.js";
+export { readProjectMemoryFileFromStableHandle } from "./node/projectMemoryStableRead.js";
+export {
+  containsProjectMemorySecret,
+  redactProjectMemorySecrets,
+} from "./node/projectMemorySecrets.js";
 export {
   resolveProjectMemoryRoot,
   resolveProjectMemoryScope,

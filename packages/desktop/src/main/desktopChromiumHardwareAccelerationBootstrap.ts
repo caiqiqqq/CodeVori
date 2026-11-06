@@ -1,14 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared";
+import { resolveAppSettingsPaths } from "@zcode/shared/node";
 
 interface ChromiumHardwareAccelerationApp {
   disableHardwareAcceleration(): void;
-}
-
-function resolveChromiumHardwareAccelerationSettingsFile(homePath: string = homedir()): string {
-  return join(homePath, PRODUCT_DATA_DIRECTORY_NAME, "v2", "setting.json");
 }
 
 function extractBootstrapChromiumHardwareAccelerationEnabled(rawValue: unknown): boolean {
@@ -24,19 +18,20 @@ function extractBootstrapChromiumHardwareAccelerationEnabled(rawValue: unknown):
   return typeof enabled === "boolean" ? enabled : true;
 }
 
-function readBootstrapChromiumHardwareAccelerationEnabledFromDisk(
-  settingsFile: string = resolveChromiumHardwareAccelerationSettingsFile(),
-): boolean {
-  if (!existsSync(settingsFile)) {
-    return true;
+function readBootstrapChromiumHardwareAccelerationEnabledFromDisk(): boolean {
+  const { settingsFile, legacySettingsFile } = resolveAppSettingsPaths();
+  // 硬件加速必须在 app ready 前应用；升级首启仅在新文件缺失时只读旧配置。
+  for (const file of [settingsFile, legacySettingsFile]) {
+    if (!existsSync(file)) continue;
+    try {
+      return extractBootstrapChromiumHardwareAccelerationEnabled(
+        JSON.parse(readFileSync(file, "utf-8")),
+      );
+    } catch {
+      return true;
+    }
   }
-
-  try {
-    const raw = readFileSync(settingsFile, "utf-8");
-    return extractBootstrapChromiumHardwareAccelerationEnabled(JSON.parse(raw));
-  } catch {
-    return true;
-  }
+  return true;
 }
 
 export function applyEarlyChromiumHardwareAccelerationBootstrap(
