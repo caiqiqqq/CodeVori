@@ -25,7 +25,9 @@ test("proxy domain settings persist/reload, reject malformed updates, and clear 
     const settings = await createSettingService().get();
     assert.equal(settings.httpProxyOnlyDomains, undefined);
     assert.equal(settings.httpProxy, "http://127.0.0.1:17890");
-    const persisted = JSON.parse(await readFile(join(directory, ".zcode/v2/setting.json"), "utf8"));
+    const persisted = JSON.parse(
+      await readFile(join(directory, ".codevori/v2/setting.json"), "utf8"),
+    );
     assert.equal("httpProxyOnlyDomains" in persisted, false);
   } finally {
     if (previous === undefined) delete process.env.ZCODE_DESKTOP_HOME_DIR;

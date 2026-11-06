@@ -62,7 +62,9 @@ test("LAN startup preference defaults off, persists true/false and rejects malfo
     const reloaded = await createSettingService().get();
     assert.equal(reloaded.desktopLanAccessEnabled, false);
     assert.equal(reloaded.locale, "en-US");
-    const persisted = JSON.parse(await readFile(join(directory, ".zcode/v2/setting.json"), "utf8"));
+    const persisted = JSON.parse(
+      await readFile(join(directory, ".codevori/v2/setting.json"), "utf8"),
+    );
     assert.equal(persisted.desktopLanAccessEnabled, false);
     assert.deepEqual(persisted.desktopLanAccessConfiguration, configuration);
     assert.equal("desktopLanAccessToken" in persisted, false);

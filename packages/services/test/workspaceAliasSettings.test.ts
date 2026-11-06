@@ -26,7 +26,7 @@ test("concurrent alias patches merge in the owner queue and survive service recr
     assert.deepEqual(saved.workspaceAliases, { "remote:a:/repo": "远端" });
     assert.deepEqual(saved.recentProjects, ["/repo"]);
     assert.deepEqual(
-      JSON.parse(await readFile(join(directory, ".zcode/v2/setting.json"), "utf8"))
+      JSON.parse(await readFile(join(directory, ".codevori/v2/setting.json"), "utf8"))
         .workspaceAliases,
       saved.workspaceAliases,
     );
