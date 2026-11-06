@@ -1,6 +1,7 @@
 import { access, readFile, mkdir, rename } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { prepareAppSettingsFile, resolveAppSettingsPaths } from "@zcode/shared/node";
 import type {
   AppSettings,
   ProviderFamilyDomain,
@@ -42,22 +43,8 @@ const debugLog = (...args: unknown[]) => {
   console.debug(formatLogPrefix("settingService", process.pid), ...args);
 };
 
-function resolveUserHomeDir() {
-  // 独立桌面 Dev 实例已设置自己的 home，设置服务却仍写真实 HOME，
-  // 导致启动迁移和外观操作污染其他实例。与 Electron 的显式 home 覆盖保持一致。
-  const envHome =
-    process.env.ZCODE_DESKTOP_HOME_DIR?.trim() ||
-    process.env.HOME?.trim() ||
-    process.env.USERPROFILE?.trim();
-  return envHome && envHome.length > 0 ? envHome : homedir();
-}
-
-function getSettingsDir() {
-  return join(resolveUserHomeDir(), ".zcode", "v2");
-}
-
 function getSettingsFile() {
-  return join(getSettingsDir(), "setting.json");
+  return resolveAppSettingsPaths().settingsFile;
 }
 
 function defaultSettings(): AppSettings {
@@ -116,6 +103,7 @@ interface ReadSettingsResult {
 async function readSettingsWithMeta(): Promise<ReadSettingsResult> {
   const settingsFile = getSettingsFile();
   try {
+    await prepareAppSettingsFile();
     // settingService.get() 会被 UI 和远程会话高频调用。
     // 之前每次读取都把完整配置写入生产日志，导致日志暴涨且暴露路径/配置细节；普通读取只保留开发态 debug。
     debugLog("reading settings from:", settingsFile);
@@ -194,8 +182,8 @@ async function writeSettings(
   enterCommitPhase: () => void = () => undefined,
   commitAccountSelection = false,
 ): Promise<void> {
-  const settingsDir = getSettingsDir();
   const settingsFile = getSettingsFile();
+  const settingsDir = dirname(settingsFile);
   // Windows 下测试只改了 HOME，模块顶层常量如果在导入时就把 homedir() 固化，
   // 后续读写仍会串到真实用户目录。这里改成每次按当前环境解析配置路径，保证本地和测试都稳定。
   // 快捷消息包含用户正文，完整配置日志会把内容写入运行日志；只记录字段名用于诊断。

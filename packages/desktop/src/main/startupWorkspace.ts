@@ -1,5 +1,6 @@
 import { constants } from "node:fs";
 import { access, mkdir, readFile, stat } from "node:fs/promises";
+import { prepareAppSettingsFile } from "@zcode/shared/node";
 import {
   appSettingsSchema,
   formatZodError,
@@ -12,9 +13,13 @@ interface StartupWorkspaceLogger {
   warn?: (...args: unknown[]) => void;
 }
 
-async function readStartupSettings(settingsFile: string, logger?: StartupWorkspaceLogger) {
+async function readStartupSettings(
+  settingsFile: string | undefined,
+  logger?: StartupWorkspaceLogger,
+) {
   try {
-    const raw = await readFile(settingsFile, "utf-8");
+    // 迁移与读取共用启动错误边界；旧 JSON 损坏不能阻止创建主窗口。
+    const raw = await readFile(settingsFile ?? (await prepareAppSettingsFile()), "utf-8");
     const parsed = JSON.parse(raw);
     const result = appSettingsSchema.safeParse(parsed);
 
@@ -112,7 +117,7 @@ export async function resolveStartupWindowBootstrap({
   conversationWorkspaceDir,
   logger,
 }: {
-  settingsFile: string;
+  settingsFile?: string;
   conversationWorkspaceDir: string;
   logger?: StartupWorkspaceLogger;
 }): Promise<StartupWindowBootstrap> {

@@ -16,7 +16,7 @@ test("quick messages persist across service recreation and unrelated patches", a
     await service.update({ quickMessages: messages });
     await service.update({ locale: "en-US" });
     assert.deepEqual((await createSettingService().get()).quickMessages, messages);
-    const file = join(directory, ".zcode", "v2", "setting.json");
+    const file = join(directory, ".codevori", "v2", "setting.json");
     assert.deepEqual(JSON.parse(await readFile(file, "utf8")).quickMessages, messages);
     await assert.rejects(service.update({ quickMessages: [messages[0], messages[0]] }));
     assert.deepEqual((await service.get()).quickMessages, messages);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import yauzl from "yauzl";
 import { DiagnosticLogWriter } from "../src/main/diagnosticLogWriter.ts";
@@ -10,6 +10,9 @@ import { DiagnosticLogWriter } from "../src/main/diagnosticLogWriter.ts";
 const root = await mkdtemp(join(tmpdir(), "codevori-export-test-"));
 const sourceDir = join(root, "app-data");
 const cliDir = join(root, ".zcode/cli");
+const settingsFile = join(root, ".codevori/v2/setting.json");
+const previousDesktopHome = process.env.ZCODE_DESKTOP_HOME_DIR;
+process.env.ZCODE_DESKTOP_HOME_DIR = root;
 const now = new Date(2026, 9, 20, 12, 34, 56);
 const moduleUrl = (source) => `data:text/javascript,${encodeURIComponent(source)}`;
 // 只隔离用户目录、桌面日志 sink 与服务路径；收集、脱敏、ZIP 和回退目录均运行真实实现。
@@ -69,6 +72,10 @@ try {
     await mkdir(join(sourceDir, directory), { recursive: true });
   }
   await mkdir(join(cliDir, "log"), { recursive: true });
+  await mkdir(dirname(settingsFile), { recursive: true });
+  await writeFile(settingsFile, JSON.stringify({ locale: "en-US", quickMessages: [] }));
+  await writeFile(join(sourceDir, "setting.json"), JSON.stringify({ locale: "zh-CN" }));
+  await writeFile(join(sourceDir, "setting.json.bak"), "legacy backup\n");
   await writeFile(join(sourceDir, "logs/2026-10-20.log"), "main lifecycle\n");
   const diagnosticsPath = join(sourceDir, "logs/2026-10-20.diagnostics.log");
   const writer = new DiagnosticLogWriter({ schedule: false });
@@ -110,6 +117,8 @@ try {
     });
     assert.equal(result.success, true, result.error);
     const files = await readZip(result.path);
+    assert.deepEqual(JSON.parse(files.get("setting.json")), { locale: "en-US", quickMessages: [] });
+    assert.ok(!files.has("setting.json.bak"));
     assert.equal(files.get("logs/2026-10-20.log"), "main lifecycle\n");
     const diagnostics = files.get("logs/2026-10-20.diagnostics.log");
     assert.ok(diagnostics?.includes("renderer-loop lagMs=321"));
@@ -149,6 +158,10 @@ try {
     assert.equal(result.success, true, result.error);
     assert.equal((await stat(result.path)).isDirectory(), true);
     assert.equal(basename(result.path), "CodeVori-logs-20261020-123456");
+    assert.equal(
+      JSON.parse(await readFile(join(result.path, "setting.json"), "utf8")).locale,
+      "en-US",
+    );
     await assert.rejects(stat(partialZip), { code: "ENOENT" });
     const diagnostics = await readFile(
       join(result.path, "logs/2026-10-20.diagnostics.log"),
@@ -160,5 +173,7 @@ try {
   });
 } finally {
   hooks.deregister();
+  if (previousDesktopHome === undefined) delete process.env.ZCODE_DESKTOP_HOME_DIR;
+  else process.env.ZCODE_DESKTOP_HOME_DIR = previousDesktopHome;
   await rm(root, { recursive: true, force: true });
 }

@@ -35,7 +35,7 @@ export const desktopProductIdentities = Object.freeze({
 });
 
 /**
- * 改名只能改变显示名，不能改变既有配置与浏览器 Cookie 的目录。
+ * Electron profile 与浏览器 Cookie 保持既有目录；应用设置单独按软件名称隔离。
  * 显式应用名覆盖仍同步隔离测试 profile，保持旧测试入口的语义。
  * @param {{ isPackaged: boolean, flavor: string, applicationName?: string }} options
  */
