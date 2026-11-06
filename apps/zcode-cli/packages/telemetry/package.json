@@ -27,7 +27,8 @@
     "@opentelemetry/resources": "2.6.1",
     "@opentelemetry/sdk-metrics": "2.6.1",
     "@opentelemetry/sdk-trace-base": "2.6.1",
-    "@zcode/contracts": "workspace:*"
+    "@zcode/contracts": "workspace:*",
+    "@zcode/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.0.0"

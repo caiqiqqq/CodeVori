@@ -1,7 +1,10 @@
-/** 用户可见品牌；包名和协议 ID 不跟随显示名变更。 */
+/** 用户可见品牌和安装身份。 */
 export const PRODUCT_NAME = "CodeVori";
-/** 应用偏好按软件名称隔离，避免上游客户端保存时过滤本产品新增字段。 */
-export const PRODUCT_SETTINGS_DIRECTORY_NAME = `.${PRODUCT_NAME.toLowerCase()}`;
+export const PRODUCT_DATA_DIRECTORY_NAME = ".codevori";
+/** 应用偏好与业务数据分别解析，但同属当前产品命名空间。 */
+export const PRODUCT_SETTINGS_DIRECTORY_NAME = PRODUCT_DATA_DIRECTORY_NAME;
+export const PRODUCT_LEGACY_DATA_DIRECTORY_NAME = ".zcode";
+export const PRODUCT_DEEP_LINK_SCHEME = "codevori";
 /** 产品仓库首页，同时作为桌面“更新日志”的固定入口。 */
 export const PRODUCT_REPOSITORY_URL = "https://github.com/caiqiqqq/CodeVori";
 /** 通用问题上报入口固定归属本产品，不随上游远端帮助配置切换。 */

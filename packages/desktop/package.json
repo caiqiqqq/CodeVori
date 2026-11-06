@@ -2,9 +2,9 @@
   "name": "@zcode/desktop",
   "private": true,
   "description": "CodeVori Desktop App",
-  "author": "ZCode",
+  "author": "CodeVori",
   "type": "module",
-  "main": "out/main/index.js",
+  "main": "out/main/bootstrap.js",
   "scripts": {
     "pre-dev": "node scripts/ensure-local-runtime-assets.mjs && node -e \"require('node:fs').rmSync('./out',{recursive:true,force:true})\"",
     "dev": "node ../../scripts/dev-desktop-env.mjs production",

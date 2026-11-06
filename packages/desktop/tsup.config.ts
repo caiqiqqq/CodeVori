@@ -147,6 +147,7 @@ export default defineConfig([
   {
     name: "main",
     entry: {
+      "main/bootstrap": "src/main/bootstrap.ts",
       "main/index": "src/main/index.ts",
       "main/browserWebmRecorder": "src/main/browserView/electronBrowserWebmRecorder.ts",
       "main/zcodeDataSizeWorker": "src/main/zcodeDataSizeWorker.ts",

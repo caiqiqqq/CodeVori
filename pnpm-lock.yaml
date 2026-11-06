@@ -475,6 +475,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.14.4
         version: 1.19.14(hono@4.12.12)
+      '@zcode/shared':
+        specifier: workspace:*
+        version: link:../../../../packages/shared
       hono:
         specifier: ^4.10.7
         version: 4.12.12
@@ -617,6 +620,9 @@ importers:
       '@zcode/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@zcode/shared':
+        specifier: workspace:*
+        version: link:../../../../packages/shared
     devDependencies:
       '@types/node':
         specifier: ^24.0.0

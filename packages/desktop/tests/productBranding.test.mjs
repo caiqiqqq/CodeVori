@@ -44,16 +44,15 @@ test("public brand entrypoint is typed for Agent consumers without allowJs", asy
   }
 });
 
-test("renaming preserves Windows/Linux identities and isolates macOS from ZCode", () => {
+test("CodeVori has its own Windows, Linux and macOS identities", () => {
   for (const [flavor, productName, appId, linuxExecutableName] of [
-    ["production", "CodeVori", "dev.zcode.app", "zcode"],
-    ["preview", "CodeVori Preview", "dev.zcode.app.preview", "zcode-preview"],
+    ["production", "CodeVori", "dev.codevori.app", "codevori"],
+    ["preview", "CodeVori Preview", "dev.codevori.app.preview", "codevori-preview"],
   ]) {
     const product = identity.desktopProductIdentities[flavor];
     assert.equal(product.productName, productName);
     assert.equal(product.appId, appId);
-    assert.equal(product.macAppId, appId.replace("zcode", "codevori"));
-    assert.notEqual(product.macAppId, appId);
+    assert.equal(product.macAppId, appId);
     assert.equal(product.linuxExecutableName, linuxExecutableName);
     assert.equal(identity.resolveWindowsAppUserModelIdForFlavor(flavor), appId);
   }
@@ -111,12 +110,12 @@ test("backend and Preview identity remain independent after renaming", () => {
   assert.equal(identity.resolveDesktopArtifactSuffix({ ZCODE_ENV: "test" }), "_TEST");
 });
 
-test("runtime names preserve every existing userData directory", () => {
+test("runtime data directories follow the current product name", () => {
   for (const [isPackaged, flavor, applicationName, userDataDirectoryName] of [
-    [false, "production", "CodeVori Dev", "ZCode Dev"],
-    [false, "preview", "CodeVori Dev", "ZCode Dev"],
-    [true, "production", "CodeVori", "ZCode"],
-    [true, "preview", "CodeVori Preview", "ZCode Preview"],
+    [false, "production", "CodeVori Dev", "CodeVori Dev"],
+    [false, "preview", "CodeVori Dev", "CodeVori Dev"],
+    [true, "production", "CodeVori", "CodeVori"],
+    [true, "preview", "CodeVori Preview", "CodeVori Preview"],
   ]) {
     assert.deepEqual(identity.resolveDesktopRuntimeIdentity({ isPackaged, flavor }), {
       applicationName,
@@ -140,7 +139,7 @@ test("explicit runtime names still isolate test profiles and ignore blank overri
       flavor: "preview",
       applicationName: "  ",
     }),
-    { applicationName: "CodeVori Preview", userDataDirectoryName: "ZCode Preview" },
+    { applicationName: "CodeVori Preview", userDataDirectoryName: "CodeVori Preview" },
   );
 });
 
@@ -163,7 +162,7 @@ test("macOS Dev bundle displays CodeVori with an isolated bundleId and existing 
   );
   assert.match(patched, /CFBundleDisplayName<\/key>\s*<string>CodeVori Dev/);
   assert.match(patched, /CFBundleName<\/key>\s*<string>CodeVori Dev/);
-  assert.match(patched, /<string>zcode<\/string>/);
+  assert.match(patched, /<string>codevori<\/string>/);
   assert.equal(patchDevElectronInfoPlist(patched), patched);
   assert.equal(
     resolveDevElectronAppBundlePath({

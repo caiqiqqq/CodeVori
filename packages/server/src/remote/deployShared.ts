@@ -3,8 +3,9 @@ import { access } from "node:fs/promises";
 import type { StdioStream } from "@zcode/server/remote/backend.js";
 import { quotePosixPathArg } from "@zcode/server/remote/posixShell.js";
 import type { RemoteAssetNetworkPort } from "@zcode/server/remote/remoteAssetNetwork.js";
+import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared";
 
-export const REMOTE_BASE = "~/.zcode/server";
+export const REMOTE_BASE = `~/${PRODUCT_DATA_DIRECTORY_NAME}/server`;
 
 export interface RemoteAssetDeployOptions {
   /** 取消当前连接初始化；共享 cache 仍可独立完成，但不得继续写入远端 staging。 */

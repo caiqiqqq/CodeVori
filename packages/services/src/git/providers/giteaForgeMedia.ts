@@ -18,7 +18,7 @@ export async function readGiteaAttachmentImage(
       signal: AbortSignal.timeout(15_000),
       headers: {
         Accept: "image/png,image/jpeg,image/gif,image/webp,image/avif",
-        "User-Agent": "ZCode",
+        "User-Agent": "CodeVori",
         Authorization: `token ${secret}`,
       },
     });

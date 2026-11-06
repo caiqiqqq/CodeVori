@@ -9,7 +9,8 @@ import { DiagnosticLogWriter } from "../src/main/diagnosticLogWriter.ts";
 
 const root = await mkdtemp(join(tmpdir(), "codevori-export-test-"));
 const sourceDir = join(root, "app-data");
-const cliDir = join(root, ".zcode/cli");
+const cliDir = join(root, ".codevori/cli");
+const legacyCliDir = join(root, ".zcode/cli");
 const settingsFile = join(root, ".codevori/v2/setting.json");
 const previousDesktopHome = process.env.ZCODE_DESKTOP_HOME_DIR;
 process.env.ZCODE_DESKTOP_HOME_DIR = root;
@@ -72,6 +73,7 @@ try {
     await mkdir(join(sourceDir, directory), { recursive: true });
   }
   await mkdir(join(cliDir, "log"), { recursive: true });
+  await mkdir(join(legacyCliDir, "log"), { recursive: true });
   await mkdir(dirname(settingsFile), { recursive: true });
   await writeFile(settingsFile, JSON.stringify({ locale: "en-US", quickMessages: [] }));
   await writeFile(join(sourceDir, "setting.json"), JSON.stringify({ locale: "zh-CN" }));
@@ -90,6 +92,7 @@ try {
   );
   await writer.flush();
   await writeFile(join(cliDir, "log/agent.log"), "agent lifecycle\n");
+  await writeFile(join(legacyCliDir, "log/legacy-agent.log"), "legacy lifecycle\n");
   await writeFile(join(sourceDir, "logs/old.diagnostics.log"), "old diagnostics\n");
   const old = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000);
   await utimes(join(sourceDir, "logs/old.diagnostics.log"), old, old);
@@ -126,7 +129,8 @@ try {
     assert.ok(diagnostics.includes("renderer-acp-stream phase=ui-commit revision=12"));
     assert.ok(!diagnostics.includes("fixture-secret"));
     assert.ok(diagnostics.includes("***REDACTED***"));
-    assert.equal(files.get(".zcode/cli/log/agent.log"), "agent lifecycle\n");
+    assert.equal(files.get(".codevori/cli/log/agent.log"), "agent lifecycle\n");
+    assert.ok(![...files.keys()].some((path) => path.startsWith(".zcode/")));
     assert.ok(files.has("about.txt"));
     assert.ok(!files.has("logs/old.diagnostics.log"));
     for (const path of [
