@@ -1,10 +1,14 @@
 import type { IRemoteBackend, RemoteUploadOptions } from "@zcode/server/remote";
 import { quotePosixPathArg } from "@zcode/server/remote/posixShell.js";
-import type { TraceId, ZCodePromptAttachment } from "@zcode/shared";
+import {
+  PRODUCT_DATA_DIRECTORY_NAME,
+  type TraceId,
+  type ZCodePromptAttachment,
+} from "@zcode/shared";
 import { randomUUID } from "node:crypto";
 
-const REMOTE_PROMPT_ATTACHMENT_ROOT = "~/.zcode/tmp/prompt-attachments";
-const REMOTE_PROMPT_ATTACHMENT_RELATIVE_ROOT = ".zcode/tmp/prompt-attachments";
+const REMOTE_PROMPT_ATTACHMENT_ROOT = `~/${PRODUCT_DATA_DIRECTORY_NAME}/tmp/prompt-attachments`;
+const REMOTE_PROMPT_ATTACHMENT_RELATIVE_ROOT = `${PRODUCT_DATA_DIRECTORY_NAME}/tmp/prompt-attachments`;
 
 interface RemotePromptAttachmentMaterializeInput {
   taskId?: string;

@@ -1,3 +1,4 @@
+import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -30,7 +31,7 @@ type NodeClipboardImageReaderOptions = {
 };
 
 function resolveDefaultClipboardDirectory(processEnv: NodeJS.ProcessEnv = process.env): string {
-  const storageRoot = processEnv.ZCODE_STORAGE_DIR?.trim() || join(homedir(), ".zcode");
+  const storageRoot = processEnv.ZCODE_STORAGE_DIR?.trim() || join(homedir(), PRODUCT_DATA_DIRECTORY_NAME);
   return join(storageRoot, "clipboard");
 }
 

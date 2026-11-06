@@ -1,3 +1,4 @@
+import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
 /* eslint-disable max-lines -- skill 发现 + 校验 + 状态 + 通用目录管理在同一服务里聚合，分层后跳转成本更高 */
 import { access, appendFile, cp, mkdir, realpath, rm, readFile, readdir } from "node:fs/promises";
 import { existsSync, type Dirent } from "node:fs";
@@ -39,8 +40,8 @@ interface ParsedFrontmatter {
 }
 
 const SKILL_META_FILE_NAME = "_meta.json";
-const SKILL_SETTINGS_DIR = join(resolveUserHomeDir(), ".zcode", "v2");
-const SKILL_CLI_SETTINGS_DIR = join(resolveUserHomeDir(), ".zcode", "cli");
+const SKILL_SETTINGS_DIR = join(resolveUserHomeDir(), PRODUCT_DATA_DIRECTORY_NAME, "v2");
+const SKILL_CLI_SETTINGS_DIR = join(resolveUserHomeDir(), PRODUCT_DATA_DIRECTORY_NAME, "cli");
 const SKILL_CLI_CONFIG_FILE = join(SKILL_CLI_SETTINGS_DIR, "config.json");
 const GIT_MARKER = ".git";
 const HOME_PREFIX = "~/";
@@ -73,7 +74,7 @@ function getWorkspaceAgentsSkillRoot(workspacePath: string): string {
 
 /** ZCode Agent 用户级技能目录。 */
 function getUserZcodeSkillRoot(): string {
-  return join(resolveUserHomeDir(), ".zcode", "skills");
+  return join(resolveUserHomeDir(), PRODUCT_DATA_DIRECTORY_NAME, "skills");
 }
 
 /** 兼容目录: 用户级 `~/.agents/skills`。 */
@@ -604,7 +605,7 @@ function readStorageDirFromConfig(config: Record<string, unknown>): string {
   const storage = isObjectRecord(config.storage) ? config.storage : {};
   return typeof storage.dir === "string" && storage.dir.trim().length > 0
     ? storage.dir
-    : "~/.zcode";
+    : "~/.codevori";
 }
 
 function resolveConfigPath(path: string): string {

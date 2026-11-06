@@ -13,7 +13,7 @@ import {
 } from "./devElectronLaunch.mjs";
 
 const root = resolve(import.meta.dirname, "..");
-const mainBundle = resolve(root, "out/main/index.js");
+const mainBundle = resolve(root, "out/main/bootstrap.js");
 const buildReadyMarkers = [
   { name: "main", path: resolve(root, "out/.main-build-ready") },
   { name: "host", path: resolve(root, "out/.host-build-ready") },

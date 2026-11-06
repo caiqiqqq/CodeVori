@@ -18,7 +18,7 @@ import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { ZipFile } from "yazl";
 
-import { PRODUCT_NAME } from "@zcode/shared";
+import { PRODUCT_DATA_DIRECTORY_NAME, PRODUCT_NAME } from "@zcode/shared";
 import {
   createFeedbackDiagnosticArchive,
   getAppConfigDir,
@@ -34,7 +34,7 @@ function getZCodeDataDir() {
 }
 
 function getZCodeCliDir() {
-  return join(homedir(), ".zcode", "cli");
+  return join(homedir(), PRODUCT_DATA_DIRECTORY_NAME, "cli");
 }
 
 function getZCodeCliLogDir() {
@@ -47,7 +47,7 @@ function getZCodeCliLogDir() {
  * helperExitLogPathFor）。同目录下还有 `.tokens` broker 凭据，收集时必须按文件名白名单。
  */
 function getCuaHelperRunDir() {
-  return join(homedir(), ".zcode", "computer-use", "run");
+  return join(homedir(), PRODUCT_DATA_DIRECTORY_NAME, "computer-use", "run");
 }
 
 function isCuaHelperDiagnosticFileName(fileName: string): boolean {
@@ -762,7 +762,7 @@ function shouldApplyLogExportRetention(archivePath: string): boolean {
   const normalizedArchivePath = normalizeArchivePath(archivePath);
   if (
     normalizedArchivePath.startsWith("logs/") ||
-    normalizedArchivePath.startsWith(".zcode/cli/log/")
+    normalizedArchivePath.startsWith(`${PRODUCT_DATA_DIRECTORY_NAME}/cli/log/`)
   ) {
     return true;
   }
@@ -959,11 +959,11 @@ async function createLogArchiveArtifacts(
   await collectLogArchiveFilesFromDirectory(sourceDir, "", visitedDirs, files);
 
   const zcodeCliLogDir = getZCodeCliLogDir();
-  // GLM / zcode-cli 的运行日志写在 ~/.zcode/cli/log，不在应用主数据目录 ~/.zcode/v2 下。
+  // Agent CLI 的运行日志写在 ~/.codevori/cli/log，不在应用主数据目录 ~/.codevori/v2 下。
   // 如果导出日志只扫描 v2，定位 agent CLI 启动、协议或崩溃问题时会缺少最关键的原生侧日志。
   await collectLogArchiveFilesFromDirectory(
     zcodeCliLogDir,
-    posix.join(".zcode", "cli", "log"),
+    posix.join(PRODUCT_DATA_DIRECTORY_NAME, "cli", "log"),
     visitedDirs,
     files,
   );
@@ -971,15 +971,15 @@ async function createLogArchiveArtifacts(
   const zcodeCliDir = getZCodeCliDir();
   // 排查 agent CLI 问题还需要它的运行配置与模型 IO 轨迹。
   // config.json 是当前生效配置；rollout 是 model-io 调用轨迹，
-  // 二者都不在 ~/.zcode/cli/log 下，需要额外收集才能完整还原现场。
+  // 二者都不在 ~/.codevori/cli/log 下，需要额外收集才能完整还原现场。
   await collectLogArchiveFile(
     join(zcodeCliDir, "config.json"),
-    posix.join(".zcode", "cli", "config.json"),
+    posix.join(PRODUCT_DATA_DIRECTORY_NAME, "cli", "config.json"),
     files,
   );
   await collectLogArchiveFilesFromDirectory(
     join(zcodeCliDir, "rollout"),
-    posix.join(".zcode", "cli", "rollout"),
+    posix.join(PRODUCT_DATA_DIRECTORY_NAME, "cli", "rollout"),
     visitedDirs,
     files,
   );
@@ -987,11 +987,11 @@ async function createLogArchiveArtifacts(
   // Computer Use Helper 的结构化诊断必须进日志包：否则反馈包里
   // grep "background keyboard begin rejected" 命中 0，
   // 因为 Helper 由 LaunchServices 启动、stderr 被系统丢弃，它把诊断 tee 到
-  // ~/.zcode/computer-use/run/<socket>.exit.log，既不在 app data 也不在 ~/.zcode/cli 下。
+  // ~/.codevori/computer-use/run/<socket>.exit.log，既不在 app data 也不在 ~/.codevori/cli 下。
   // 同目录下有 .tokens broker 凭据，因此按文件名白名单只收 *.exit.log，不递归该目录。
   await collectLogArchiveFilesByName(
     getCuaHelperRunDir(),
-    posix.join(".zcode", "computer-use", "run"),
+    posix.join(PRODUCT_DATA_DIRECTORY_NAME, "computer-use", "run"),
     isCuaHelperDiagnosticFileName,
     files,
   );
@@ -1142,10 +1142,10 @@ export async function createFeedbackLogArchiveFromExportLogs(
   return createFeedbackDiagnosticArchive({
     sources: [
       { directory: join(sourceDir, "logs"), archivePrefix: "logs" },
-      { directory: getZCodeCliLogDir(), archivePrefix: ".zcode/cli/log" },
+      { directory: getZCodeCliLogDir(), archivePrefix: `${PRODUCT_DATA_DIRECTORY_NAME}/cli/log` },
       {
         directory: getCuaHelperRunDir(),
-        archivePrefix: ".zcode/computer-use/run",
+        archivePrefix: `${PRODUCT_DATA_DIRECTORY_NAME}/computer-use/run`,
         exitLogsOnly: true,
       },
     ],

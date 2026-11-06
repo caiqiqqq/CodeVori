@@ -48,7 +48,7 @@ export async function validateForgeCredential(
         : `${server}/api/v3`
       : `${server}/api/${provider === "gitlab" ? "v4" : "v1"}`;
   const headers = {
-    "User-Agent": "ZCode",
+    "User-Agent": "CodeVori",
     Accept: "application/json",
     ...(provider === "gitlab"
       ? { "PRIVATE-TOKEN": secret }

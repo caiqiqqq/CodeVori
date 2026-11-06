@@ -9,23 +9,23 @@ export const ZCODE_PREVIEW_IDENTITY_ENV = "ZCODE_PREVIEW_IDENTITY";
 
 const PRODUCTION_IDENTITY = Object.freeze({
   flavor: "production",
-  appId: "dev.zcode.app",
+  appId: "dev.codevori.app",
   macAppId: "dev.codevori.app",
   productName: PRODUCT_NAME,
-  userDataDirectoryName: "ZCode",
-  linuxExecutableName: "zcode",
-  linuxPackageName: "zcode",
+  userDataDirectoryName: PRODUCT_NAME,
+  linuxExecutableName: "codevori",
+  linuxPackageName: "codevori",
   cuaHelperInstallVariant: null,
 });
 
 const PREVIEW_IDENTITY = Object.freeze({
   flavor: "preview",
-  appId: "dev.zcode.app.preview",
+  appId: "dev.codevori.app.preview",
   macAppId: "dev.codevori.app.preview",
   productName: `${PRODUCT_NAME} Preview`,
-  userDataDirectoryName: "ZCode Preview",
-  linuxExecutableName: "zcode-preview",
-  linuxPackageName: "zcode-preview",
+  userDataDirectoryName: `${PRODUCT_NAME} Preview`,
+  linuxExecutableName: "codevori-preview",
+  linuxPackageName: "codevori-preview",
   cuaHelperInstallVariant: "preview",
 });
 
@@ -35,7 +35,7 @@ export const desktopProductIdentities = Object.freeze({
 });
 
 /**
- * 改名只能改变显示名，不能改变既有配置与浏览器 Cookie 的目录。
+ * CodeVori 使用独立于旧 ZCode 的 Electron profile；首次迁移在启动入口完成。
  * 显式应用名覆盖仍同步隔离测试 profile，保持旧测试入口的语义。
  * @param {{ isPackaged: boolean, flavor: string, applicationName?: string }} options
  */
@@ -45,7 +45,7 @@ export function resolveDesktopRuntimeIdentity({ isPackaged, flavor, applicationN
     return { applicationName: override, userDataDirectoryName: override };
   }
   if (!isPackaged) {
-    return { applicationName: `${PRODUCT_NAME} Dev`, userDataDirectoryName: "ZCode Dev" };
+    return { applicationName: `${PRODUCT_NAME} Dev`, userDataDirectoryName: `${PRODUCT_NAME} Dev` };
   }
   const identity = desktopProductIdentities[flavor === "preview" ? "preview" : "production"];
   return {
@@ -110,7 +110,7 @@ export function resolveDesktopArtifactSuffix(env = process.env) {
  */
 export function resolveWindowsAppUserModelIdForFlavor(flavor, runtime = { isPackaged: true }) {
   if (runtime.isPackaged === false) {
-    return "cn.aminer.zcode";
+    return "dev.codevori.app.dev";
   }
   return desktopProductIdentities[flavor === "preview" ? "preview" : "production"].appId;
 }

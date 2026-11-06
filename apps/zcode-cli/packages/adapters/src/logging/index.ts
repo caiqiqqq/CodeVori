@@ -1,3 +1,4 @@
+import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
 // ============================================================
 // Node logging adapter - JSONL file and optional stderr sink
 // ============================================================
@@ -220,7 +221,7 @@ export function createNodeLoggerFactory(options: NodeLoggerFactoryOptions = {}):
 }
 
 export function getDefaultLogDir(): string {
-  return join(homedir(), ".zcode", "cli", "log");
+  return join(homedir(), PRODUCT_DATA_DIRECTORY_NAME, "cli", "log");
 }
 
 function getDefaultMinLevel(env: NodeJS.ProcessEnv | undefined): LogLevel {

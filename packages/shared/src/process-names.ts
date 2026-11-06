@@ -1,4 +1,6 @@
-const ZCODE_PROCESS_PREFIX = "zcode";
+import { PRODUCT_NAME } from "./product-brand.mjs";
+
+const ZCODE_PROCESS_PREFIX = "codevori";
 const MAX_PROCESS_NAME_SEGMENT_LENGTH = 24;
 
 function sanitizeProcessNameSegment(value: string | null | undefined): string | null {
@@ -49,7 +51,7 @@ export function formatZCodeHostProcessName(label?: string): string {
 
 export function formatZCodeRendererProcessName(windowTitle?: string): string {
   const normalizedTitle = windowTitle?.trim();
-  if (!normalizedTitle || normalizedTitle === "ZCode") {
+  if (!normalizedTitle || normalizedTitle === PRODUCT_NAME) {
     return joinZCodeProcessName("renderer", "main");
   }
 
@@ -57,7 +59,7 @@ export function formatZCodeRendererProcessName(windowTitle?: string): string {
     return joinZCodeProcessName("renderer", "resource-manager");
   }
 
-  const remoteWindowPrefix = "ZCode - ";
+  const remoteWindowPrefix = `${PRODUCT_NAME} - `;
   if (normalizedTitle.startsWith(remoteWindowPrefix)) {
     return joinZCodeProcessName(
       "renderer",

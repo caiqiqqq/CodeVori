@@ -334,6 +334,9 @@ export { isAbsoluteFilePath, joinFilePath } from "./file-path.js";
 export * from "./agent-delegation.js";
 export {
   PRODUCT_NAME,
+  PRODUCT_DATA_DIRECTORY_NAME,
+  PRODUCT_LEGACY_DATA_DIRECTORY_NAME,
+  PRODUCT_DEEP_LINK_SCHEME,
   PRODUCT_REPOSITORY_URL,
   PRODUCT_ISSUES_URL,
   PRODUCT_MARK_PATH,

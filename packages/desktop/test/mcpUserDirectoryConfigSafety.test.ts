@@ -3,6 +3,7 @@ import test from "node:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared";
 import { saveCliMcpToUserDirectory } from "../src/main/mcpUserDirectory/index.js";
 
 for (const action of ["upsert", "delete", "set-enabled"] as const) {
@@ -10,9 +11,9 @@ for (const action of ["upsert", "delete", "set-enabled"] as const) {
     const home = await mkdtemp(join(tmpdir(), "zcode-mcp-config-"));
     const previous = process.env.HOME;
     process.env.HOME = home;
-    const path = join(home, ".zcode", "cli", "config.json");
+    const path = join(home, PRODUCT_DATA_DIRECTORY_NAME, "cli", "config.json");
     try {
-      await mkdir(join(home, ".zcode", "cli"), { recursive: true });
+      await mkdir(join(home, PRODUCT_DATA_DIRECTORY_NAME, "cli"), { recursive: true });
       const raw = '{"providers":';
       await writeFile(path, raw);
       await assert.rejects(

@@ -1,3 +1,4 @@
+import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
 // ============================================================
 // Node Context Source Adapter
 // ============================================================
@@ -234,7 +235,7 @@ async function findDefaultUserInstructionFile(
     return undefined;
   }
 
-  const filePath = join(resolveUserHomeDir(env), ".zcode", "AGENTS.md");
+  const filePath = join(resolveUserHomeDir(env), PRODUCT_DATA_DIRECTORY_NAME, "AGENTS.md");
   if (await isFile(filePath)) {
     return { filePath, fileName: "AGENTS.md" };
   }

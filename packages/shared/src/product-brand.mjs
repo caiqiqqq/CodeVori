@@ -1,5 +1,8 @@
-/** 用户可见品牌；包名、协议 ID 和历史存储路径不跟随显示名变更。 */
+/** 用户可见品牌和安装身份。 */
 export const PRODUCT_NAME = "CodeVori";
+export const PRODUCT_DATA_DIRECTORY_NAME = ".codevori";
+export const PRODUCT_LEGACY_DATA_DIRECTORY_NAME = ".zcode";
+export const PRODUCT_DEEP_LINK_SCHEME = "codevori";
 /** 产品仓库首页，同时作为桌面“更新日志”的固定入口。 */
 export const PRODUCT_REPOSITORY_URL = "https://github.com/caiqiqqq/CodeVori";
 /** 通用问题上报入口固定归属本产品，不随上游远端帮助配置切换。 */

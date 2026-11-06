@@ -30,6 +30,7 @@ import { resolveDesktopRuntimeIdentity } from "../../scripts/desktop-product-ide
 import {
   getAppConfigDir,
   getDataBaseDir,
+  getZCodeDataRootDir,
   ZCODE_CUA_BUNDLED_HELPER_APP_PATH_ENV,
   ZCODE_WINDOWS_APP_INSTALL_DIR_ENV,
 } from "@zcode/services/node";
@@ -475,7 +476,7 @@ export function buildHostProcessEnv(hostProcessLocalEnv: Record<string, string>)
             )
           ? rawInheritedEnv.ZCODE_CUA_BUNDLED_HELPER_APP_PATH?.trim() ||
             join(
-              rawInheritedEnv.ZCODE_HOME?.trim() || join(homedir(), ".zcode"),
+              rawInheritedEnv.ZCODE_HOME?.trim() || getZCodeDataRootDir(),
               "computer-use",
               "dev",
               DEV_HELPER_APP_NAME,
@@ -549,8 +550,11 @@ export function buildHostProcessEnv(hostProcessLocalEnv: Record<string, string>)
     // 显式注入编译期产品身份，保证主进程与 host 的身份语义一致；地址独立解析。
     // inheritedEnv 从 .env 通用变量补齐 ZCode/ZAI 链接，未覆盖时统一使用线上默认值。
     ZCODE_ENV,
-    // Preview 与生产版共享任务、配置和凭据，但不同版本的 Helper 不能互相覆盖或触发降级保护。
-    // 只隔离 computer-use 下的运行组件，不改写 ZCODE_HOME / ZCODE_DATA_BASE_DIR 业务数据根。
+    // 修复原因：旧 ZCode 与 CodeVori 同时运行时，Agent/Helper 不能继续写旧产品根目录。
+    ...(packagedDesktop
+      ? { ZCODE_HOME: getZCodeDataRootDir(), ZCODE_STORAGE_DIR: getZCodeDataRootDir() }
+      : {}),
+    // Preview 与正式版共享 CodeVori 业务数据，但 Helper 安装目录分开。
     ...(isPreviewPackagedRuntime ? { ZCODE_CUA_HELPER_INSTALL_VARIANT: "preview" } : {}),
     // 工作流的合法本地覆盖在所有构建档位传给 Host。
     ...dynamicWorkflowModeHostEnv,

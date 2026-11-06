@@ -81,7 +81,7 @@ export function createForgeApiClient(options: {
           : format === "image"
             ? "image/png,image/jpeg,image/gif,image/webp,image/avif"
             : "text/plain",
-      "User-Agent": "ZCode",
+      "User-Agent": "CodeVori",
     });
     if (options.provider === "gitlab") headers.set("PRIVATE-TOKEN", options.secret);
     else

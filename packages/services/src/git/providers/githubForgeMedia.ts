@@ -36,7 +36,7 @@ export async function readGithubAttachmentImage(
         signal,
         headers: {
           Accept: "image/png,image/jpeg,image/gif,image/webp,image/avif",
-          "User-Agent": "ZCode",
+          "User-Agent": "CodeVori",
           ...(authenticated ? { Authorization: `Bearer ${secret}` } : {}),
         },
       });

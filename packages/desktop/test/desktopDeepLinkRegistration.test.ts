@@ -6,6 +6,7 @@ import {
   deepLinkProtocolRegistrationArgs,
   extractDeepLinkUrlFromArgs,
   extractDeepLinkUrlFromSingleInstanceData,
+  isOAuthCallbackUrl,
 } from "../src/main/desktopDeepLinkUrl.ts";
 
 test("Windows protocol registration separates external URLs from app arguments", () => {
@@ -23,9 +24,9 @@ test("other platforms keep their existing protocol registration arguments", () =
 
 test("deep links remain extractable after the argument separator", () => {
   for (const url of [
-    "zcode://oauth/callback?code=code%20value&state=state",
-    "zcode://workspace/open?path=C%3A%5CProject%20A%26B",
-    "zcode://share/import?code=abc_DEF-123",
+    "codevori://oauth/callback?code=code%20value&state=state",
+    "codevori://workspace/open?path=C%3A%5CProject%20A%26B",
+    "codevori://share/import?code=abc_DEF-123",
   ]) {
     const argv = [process.execPath, "--", url];
     assert.equal(extractDeepLinkUrlFromArgs(argv), url);
@@ -34,4 +35,7 @@ test("deep links remain extractable after the argument separator", () => {
       url,
     );
   }
+  assert.equal(extractDeepLinkUrlFromArgs([process.execPath, "zcode://oauth/callback"]), null);
+  assert.equal(isOAuthCallbackUrl(new URL("codevori://oauth/callback")), true);
+  assert.equal(isOAuthCallbackUrl(new URL("zcode://oauth/callback")), false);
 });

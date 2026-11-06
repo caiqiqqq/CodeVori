@@ -73,7 +73,7 @@ export async function readOpenComputerUsePermissions(options = {}) {
       throw new Error("电脑控制返回了无效的权限状态。");
     }
     const appPath = (options.env ?? process.env)[OPEN_CUA_PERMISSION_APP_ENV];
-    const displayName = appPath ? basename(appPath, ".app") : "ZCode";
+    const displayName = appPath ? basename(appPath, ".app") : "CodeVori";
     let screenCaptureProbeOk = false;
     if (options.probeScreenCapture === true && report.screenRecording) {
       try {

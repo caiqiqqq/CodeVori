@@ -80,7 +80,7 @@ RunLoop.current.run(until: Date().addingTimeInterval(10))
       await run("/usr/bin/xcrun", ["swiftc", source, "-o", executable], { timeout: 30_000 });
       const apps = [];
       for (const [name, baseId] of [
-        ["ZCode", desktopProductIdentities.production.appId],
+        ["ZCode", "dev.zcode.app"],
         ["CodeVori", desktopProductIdentities.production.macAppId],
       ]) {
         const bundleId = `${baseId}${namespace}`;

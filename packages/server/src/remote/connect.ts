@@ -23,6 +23,7 @@ import { assertSupportedRemoteEnvironment } from "@zcode/server/remote/remotePla
 import { quotePosixShellArg } from "./posixShell.js";
 import { formatWslProxyForLog } from "./wslProxy.js";
 import { forwardRemoteStderr } from "./diagnosticLog.js";
+import { REMOTE_BASE } from "./deployShared.js";
 
 const BACKEND_DISCONNECT_EXIT_CODE = -1;
 
@@ -379,7 +380,7 @@ function buildRemoteServerCommand(
 ): string {
   const envParts = [
     `${SERVICE_AUTHORITY_MODE_ENV}="desktop-attached-remote"`,
-    'ZCODE_SERVER_RUNTIME_ROOT="$HOME/.zcode/server"',
+    `ZCODE_SERVER_RUNTIME_ROOT="$HOME/${REMOTE_BASE.slice(2)}"`,
   ];
   for (const [key, value] of Object.entries(
     pickRemoteRuntimeEnv(options?.remoteRuntimeEnv ?? {}),
@@ -410,5 +411,5 @@ function buildRemoteServerCommand(
       );
     }
   }
-  return `${envParts.join(" ")} ~/.zcode/server/node ~/.zcode/server/zcode-server.cjs`;
+  return `${envParts.join(" ")} ${REMOTE_BASE}/node ${REMOTE_BASE}/zcode-server.cjs`;
 }
