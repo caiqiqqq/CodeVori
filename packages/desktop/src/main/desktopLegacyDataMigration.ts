@@ -13,6 +13,14 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
+import {
+  isLegacyTaskDatabaseEntry,
+  migrateLegacyTaskDatabases,
+} from "./desktopLegacyTaskMigration.js";
+import {
+  isLegacyHistoryDatabaseEntry,
+  migrateLegacyHistory,
+} from "./desktopLegacyHistoryMigration.js";
 
 const MIGRATION_MARKER = ".migration-from-zcode.json";
 type DataRootPair = { source: string; target: string };
@@ -81,12 +89,17 @@ async function acquireMigrationLock(path: string): Promise<(() => Promise<void>)
   return null;
 }
 
-async function readMigrationState(targetRoot: string): Promise<"pending" | "complete" | null> {
+async function readMigrationState(
+  targetRoot: string,
+): Promise<{ status: "pending" | "complete"; version: number } | null> {
   try {
     const raw = JSON.parse(await readFile(join(targetRoot, MIGRATION_MARKER), "utf8")) as {
       status?: unknown;
+      version?: unknown;
     };
-    return raw.status === "pending" || raw.status === "complete" ? raw.status : null;
+    return raw.status === "pending" || raw.status === "complete"
+      ? { status: raw.status, version: typeof raw.version === "number" ? raw.version : 1 }
+      : null;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
@@ -99,7 +112,7 @@ async function writeMigrationState(
 ): Promise<void> {
   const marker = join(targetRoot, MIGRATION_MARKER);
   const temporary = `${marker}.${randomUUID()}.tmp`;
-  await writeFile(temporary, JSON.stringify({ version: 1, status }), "utf8");
+  await writeFile(temporary, JSON.stringify({ version: 3, status }), "utf8");
   try {
     await rename(temporary, marker);
   } catch (error) {
@@ -113,6 +126,9 @@ function shouldCopyBusinessEntry(root: string, source: string): boolean {
   if (entry === "") return true;
   // 修复原因：复制旧设备 ID 会让两款应用以同一设备身份注册；新目录必须生成自己的 ID。
   return (
+    !isLegacyTaskDatabaseEntry(entry) &&
+    !isLegacyHistoryDatabaseEntry(entry) &&
+    entry !== ".legacy-task-backups" &&
     entry !== join("v2", "telemetry-state.json") &&
     entry !== join("v2", "telemetry-state.lock") &&
     // 两款应用的代理 CA 私钥必须独立；CodeVori 首次启动时生成自己的证书。
@@ -209,15 +225,22 @@ async function migrateLegacyDesktopDataUnlocked(
   const first = options.legacyDataRoots[0];
   if (!first) throw new Error("legacyDataRoots must include the user home data root");
   const state = await readMigrationState(first.target);
-  const businessAlreadyCurrent = state === "complete";
+  const businessAlreadyCurrent = state?.status === "complete";
+  // v1 仅复制缺失文件，已经存在的空待办/指派库会被漏迁；v2 补迁一次后恢复产品隔离。
+  const needsTaskRepair = businessAlreadyCurrent && state.version < 2;
+  const needsHistoryRepair = businessAlreadyCurrent && state.version < 3;
   const profileAlreadyCurrent = await pathExists(options.productProfile);
-  if (businessAlreadyCurrent && profileAlreadyCurrent) {
+  if (businessAlreadyCurrent && !needsHistoryRepair && profileAlreadyCurrent) {
     return "already-current";
   }
   // 修复依据：完成迁移后旧版设置已不属于 CodeVori，不能因其损坏而阻止新版启动。
-  const legacyDataRoots = businessAlreadyCurrent
-    ? options.legacyDataRoots
-    : [...options.legacyDataRoots, ...((await options.resolveAdditionalLegacyDataRoots?.()) ?? [])];
+  const legacyDataRoots =
+    businessAlreadyCurrent && !needsHistoryRepair
+      ? options.legacyDataRoots
+      : [
+          ...options.legacyDataRoots,
+          ...((await options.resolveAdditionalLegacyDataRoots?.()) ?? []),
+        ];
   const hasLegacy =
     (await pathExists(options.legacyProfile)) ||
     (await Promise.all(legacyDataRoots.map((pair) => pathExists(pair.source)))).some(Boolean);
@@ -254,11 +277,21 @@ async function migrateLegacyDesktopDataUnlocked(
       await rewriteReferences(pair.target);
     }
   }
+  if (!businessAlreadyCurrent || needsTaskRepair) {
+    for (const pair of legacyDataRoots) {
+      await migrateLegacyTaskDatabases(pair.source, pair.target);
+    }
+  }
+  if (!businessAlreadyCurrent || needsHistoryRepair) {
+    for (const pair of legacyDataRoots) await migrateLegacyHistory(pair.source, pair.target);
+  }
   await copyDirectoryAtomically(
     options.legacyProfile,
     options.productProfile,
     shouldCopyProfileEntry,
   );
-  if (!businessAlreadyCurrent) await writeMigrationState(first.target, "complete");
-  return hasLegacy ? "migrated" : "no-legacy";
+  if (!businessAlreadyCurrent || needsHistoryRepair)
+    await writeMigrationState(first.target, "complete");
+  // 已有新版数据且旧源已移除时，仅升级标记，保持已完成安装的返回语义。
+  return hasLegacy ? "migrated" : businessAlreadyCurrent ? "already-current" : "no-legacy";
 }
