@@ -315,7 +315,7 @@ async function resolveNamedWorkflowPath(
 ): Promise<string> {
   const fileName = workflowFileName(name);
   const candidates = [
-    join(deps.workingDirectory, ".zcode", "workflows", fileName),
+    join(deps.workingDirectory, ".codevori", "workflows", fileName),
     join(homedir(), PRODUCT_DATA_DIRECTORY_NAME, "workflows", fileName),
   ];
   const builtIn = BUILTIN_WORKFLOW_ALLOWLIST.get(name);

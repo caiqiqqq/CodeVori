@@ -22,7 +22,7 @@ export async function createCompatibleHookStdin(input: HookInput): Promise<{
     permission_mode: input.mode,
     session_id: input.sessionId,
   };
-  const tempDir = await mkdtemp(join(tmpdir(), "zcode-hook-"));
+  const tempDir = await mkdtemp(join(tmpdir(), "codevori-hook-"));
   const transcriptPath = join(tempDir, "transcript.jsonl");
   await writeFile(transcriptPath, formatTranscript(input), "utf8");
   compatible.transcript_path = transcriptPath;

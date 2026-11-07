@@ -340,7 +340,7 @@ export function createSettingServiceWithMigrations(): {
       const targetBaseDir = newDir?.trim() || homedir();
       const validation = validateDataBaseDirTarget(targetBaseDir);
       if (!validation.ok) {
-        // Windows 安装目录由安装器/自动更新管理，把 .zcode/v2 放进去可能在升级时被覆盖。
+        // Windows 安装目录由安装器/自动更新管理，把 .codevori/v2 放进去可能在升级时被覆盖。
         // 迁移前在 service 层拦截，避免 UI 入口变化或 RPC 调用绕过前端判断。
         const error = new Error(`${validation.code}: ${validation.forbiddenDir}`);
         (error as Error & { code: string }).code = validation.code;

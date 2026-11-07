@@ -79,7 +79,7 @@ async function readMacClipboardImage(options: {
   tempDirectory: string;
 }): Promise<TuiClipboardImage | null> {
   await mkdir(options.tempDirectory, { recursive: true });
-  const directory = await mkdtemp(join(options.tempDirectory, "zcode-clipboard-"));
+  const directory = await mkdtemp(join(options.tempDirectory, "codevori-clipboard-"));
   const imagePath = join(directory, "clipboard.png");
 
   try {
@@ -155,7 +155,7 @@ async function readWindowsClipboardImage(options: {
   tempDirectory: string;
 }): Promise<TuiClipboardImage | null> {
   await mkdir(options.tempDirectory, { recursive: true });
-  const directory = await mkdtemp(join(options.tempDirectory, "zcode-clipboard-"));
+  const directory = await mkdtemp(join(options.tempDirectory, "codevori-clipboard-"));
   const imagePath = join(directory, "clipboard.png");
   const script = [
     "Add-Type -AssemblyName System.Windows.Forms;",

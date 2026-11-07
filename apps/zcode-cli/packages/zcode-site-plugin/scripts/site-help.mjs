@@ -26,14 +26,14 @@ Site commands
       Pack the stage directory (its root becomes /app) and publish it. Packing runs first and
       checks the package contract: root start.sh with LF line endings, size, file count, path
       depth, reserved /.__zcode/, broken symlinks, .env files, dependencies present, and every
-      native binary linux x86-64. It skips .git, .DS_Store, __pycache__ and .zcode-site.json.
+      native binary linux x86-64. It skips .git, .DS_Store, __pycache__ and .codevori-site.json.
       PACKAGE_CHECK_FAILED (exit 1): data.problems lists everything to fix; nothing was created
       or uploaded. Fix all of them, then deploy again.
       --allow-foreign-binaries: accept non-linux binaries; only after confirming each listed file
                 is never loaded at runtime (e.g. prebuilt binaries for other platforms next to
                 the linux-x64 one).
-      Target site: --site <id>, else the site in .zcode-site.json, else with --new a new site.
-      A new site is linked by writing .zcode-site.json; keep it and don't put it in the stage.
+      Target site: --site <id>, else the site in .codevori-site.json, else with --new a new site.
+      A new site is linked by writing .codevori-site.json; keep it and don't put it in the stage.
       --new is ignored (with a warning) when the project is already linked.
       Without --new or --site on an unlinked project: SITE_NOT_SELECTED if the account has sites,
       data.candidates [{id, name, url, status}]; ask the user, never pick one yourself.
@@ -78,7 +78,7 @@ Site commands
   usage   Account traffic, requests and storage against the plan; canDeploy and exceededReasons.
   help    this text.
 
-Commands without --site use the site in .zcode-site.json. Numeric error codes come from the Sites
+Commands without --site use the site in .codevori-site.json. Numeric error codes come from the Sites
 API (e.g. 3605 quota exceeded, 3610 another deployment in progress); their hint says what to do.`;
 
 // ---------- 入口 ----------

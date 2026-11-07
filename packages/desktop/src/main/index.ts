@@ -1,13 +1,8 @@
 import { createLocalTtftExporter } from "./localTtftExporter.js";
-import {
-  BROWSER_LOCAL_PREVIEW_PRIVILEGES,
-  installBrowserLocalPreview,
-} from "./browser-local-preview/index.js";
+import { installBrowserLocalPreview } from "./browser-local-preview/index.js";
 import { enableDesktopAccessibility } from "./desktopAccessibility.js";
 import { executeForgeWebMedia } from "./electronForgeWebMedia.js";
 /* eslint-disable max-lines */
-import "./desktopEarlyDataBaseDirBootstrap.js";
-import "./desktopEarlyChromiumHardwareAccelerationBootstrap.js";
 import { powerMonitor, powerSaveBlocker } from "electron";
 import { crashCapturePaths } from "./appCrashCaptureBootstrap.js";
 import { armsInitPromise } from "./appARMSBootstrap.js";
@@ -29,7 +24,6 @@ import { installBrowserRestoreBootstrapProtocol } from "./browserView/browserRes
 import {
   createLocalMediaPreviewPathRegistry,
   installLocalMediaPreviewProtocol,
-  registerLocalMediaPreviewScheme,
 } from "./localMediaPreviewProtocol.js";
 import { createDesktopBrowserScreenshotSurfaceCoordinator } from "./browserView/browserScreenshotSurfaceCoordinatorWiring.js";
 import { installEmbeddedBrowserDeviceSelection } from "./embeddedBrowserDeviceSelection.js";
@@ -47,7 +41,6 @@ import {
   ipcMain,
   nativeImage,
   net,
-  protocol,
   session,
   webContents,
 } from "electron";
@@ -180,11 +173,6 @@ import {
   resolveRemoteAssetDirs,
   resolveZCodeEndpointEnvBaseOrigin,
   desktopRuntimeEnv,
-  runtimeApplicationName,
-  runtimeHomePath,
-  runtimeSessionDataPath,
-  runtimeUserDataPath,
-  shouldUseElectronDefaultUserDataPath,
 } from "./desktopRuntimeEnv.js";
 import {
   disposeHostProcess,
@@ -276,31 +264,7 @@ import {
 import { mainMemoryDiagnosticsRegistry } from "./mainMemoryDiagnostics.js";
 import { reportMainException } from "./mainLoopDiagnostics.js";
 
-registerLocalMediaPreviewScheme(protocol);
-protocol.registerSchemesAsPrivileged([BROWSER_LOCAL_PREVIEW_PRIVILEGES]);
 const localMediaPreviewPathRegistry = createLocalMediaPreviewPathRegistry();
-
-// e2e 由 Chromedriver 管理远程调试端口；如果这里继续固定到 9229，
-// 会和开发态已打开的 ZCode Dev 抢端口，导致 WebDriver session 创建前白屏超时。
-// 仅本地开发运行默认开启远程调试端口，并允许 e2e 通过环境变量交给 Chromedriver 接管。
-if (!app.isPackaged && process.env.ZCODE_DISABLE_FIXED_REMOTE_DEBUGGING_PORT !== "1") {
-  app.commandLine.appendSwitch("remote-debugging-port", "9229");
-}
-
-app.setName(runtimeApplicationName);
-if (runtimeHomePath) {
-  app.setPath("home", runtimeHomePath);
-}
-if (!shouldUseElectronDefaultUserDataPath) {
-  if (!runtimeUserDataPath || !runtimeSessionDataPath) {
-    throw new Error(
-      "Desktop runtime data paths are required when Electron default userData is disabled",
-    );
-  }
-  app.setPath("userData", runtimeUserDataPath);
-  app.setPath("sessionData", runtimeSessionDataPath);
-}
-process.title = runtimeApplicationName;
 
 process.on("unhandledRejection", (reason) => {
   reportMainException(logger, "unhandled-rejection", reason);

@@ -3428,7 +3428,7 @@ const enUS: Record<string, string> = {
   "settings.taskAutoArchiveDays.option.30": "Archive after 30 days",
   "settings.dataBaseDir": "Data storage path",
   "settings.dataBaseDirDescription":
-    "Root directory for app data (defaults to user home directory). Existing data will be copied to the new location. The .zcode/v2 suffix cannot be changed.",
+    "Root directory for app data (defaults to user home directory). Existing data will be copied to the new location. The .codevori/v2 suffix cannot be changed.",
   "settings.dataBaseDirPlaceholder": "Default: user home directory",
   "settings.dataBaseDirBrowse": "Choose folder",
   "settings.dataBaseDirSave": "Save",
@@ -5361,9 +5361,9 @@ const enUS: Record<string, string> = {
   "settings.hooks.title": "Hooks",
   "settings.workspaceFileSearch.title": "Workspace Search Scope",
   "settings.workspaceFileSearch.description":
-    "Edit .zcodeignore rules (gitignore syntax) that scope workspace file search. Takes effect on the next search after saving.",
+    "Edit .codevoriignore rules (gitignore syntax) that scope workspace file search. Takes effect on the next search after saving.",
   "settings.workspaceFileSearch.templateHint":
-    ".zcodeignore does not exist yet: the content below is the initial preview (.gitignore copy + default exclusions); it is written to the workspace only after saving.",
+    ".codevoriignore does not exist yet: the content below is the initial preview (.gitignore copy + default exclusions); it is written to the workspace only after saving.",
   "settings.workspaceFileSearch.editorLabel": "Workspace search ignore rules editor",
   "settings.workspaceFileSearch.save": "Save",
   "settings.workspaceFileSearch.saved": "Saved; effective on the next search",
@@ -5374,7 +5374,8 @@ const enUS: Record<string, string> = {
   "settings.workspaceFileSearch.transformFailed":
     "Failed to apply the section operation; check the logs",
   "settings.workspaceFileSearch.reveal": "Reveal file location",
-  "settings.workspaceFileSearch.revealHint": "Save first; .zcodeignore lives at the workspace root",
+  "settings.workspaceFileSearch.revealHint":
+    "Save first; .codevoriignore lives at the workspace root",
   "settings.workspaceFileSearch.unsaved": "Unsaved changes",
   "settings.workspaceFileSearch.noWorkspace":
     "No workspace is open, so search ignore rules cannot be configured.",

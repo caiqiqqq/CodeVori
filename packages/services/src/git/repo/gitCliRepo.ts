@@ -24,6 +24,7 @@ import type {
 } from "@zcode/shared";
 import { createServiceLogger } from "#src/logger/serviceLogger.js";
 import { createWorktreeRemovalTiming } from "#src/logger/worktreeRemovalTiming.js";
+import { syncProductMigrationGitExcludes } from "./productMigrationGitExcludes.js";
 import {
   DEFAULT_GIT_COMMAND_TIMEOUT_MS,
   DEFAULT_GIT_DIFF_BYTES,
@@ -1704,6 +1705,9 @@ export function createGitCliRepo(options?: {
           if (record?.split("\0").some((line) => line === "locked" || line.startsWith("locked "))) {
             return { ok: false, issue: "locked-worktree" };
           }
+          await timing.run("migration-excludes", () =>
+            syncProductMigrationGitExcludes(target, commandProvider),
+          );
           const status = await timing.run("dirty-check", () =>
             commandProvider.run({
               cwd: target,
@@ -2058,7 +2062,7 @@ export function createGitCliRepo(options?: {
           timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
         });
         const parentHash = headResult.exitCode === 0 ? headResult.stdout.trim() : null;
-        const tempIndexDir = await mkdtemp(join(tmpdir(), "zcode-git-index-"));
+        const tempIndexDir = await mkdtemp(join(tmpdir(), "codevori-git-index-"));
         const tempIndexPath = join(tempIndexDir, "index");
         const tempIndexEnv = { GIT_INDEX_FILE: tempIndexPath };
 

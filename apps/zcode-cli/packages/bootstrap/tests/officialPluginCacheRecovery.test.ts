@@ -52,7 +52,7 @@ test("official cache repairs deleted required assets and damaged manifests; comp
     try {
       seed();
       assert.equal(await readFile(required, "utf8"), "updated\n");
-      assert.equal(fs.existsSync(join(target, ".zcode-plugin-seed.json")), true);
+      assert.equal(fs.existsSync(join(target, ".codevori-plugin-seed.json")), true);
     } finally { mock.mock.restore(); syncBuiltinESMExports(); }
   });
 });

@@ -31,7 +31,7 @@ import { HELP } from "./site-help.mjs";
 export { createEndpointFetch } from "./site-client.mjs";
 export { normalizePrefix } from "./site-project.mjs";
 
-const BINDING_FILE = ".zcode-site.json";
+const BINDING_FILE = ".codevori-site.json";
 const POLL_INTERVAL_MS = 2000;
 // 服务端兜底清理会把 publishing / verifying 超 10 分钟的部署置为 failed，这里多等一点再放弃。
 const POLL_TIMEOUT_MS = 15 * 60 * 1000;

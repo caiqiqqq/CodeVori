@@ -1,8 +1,19 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { copyFile, readFile, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
 import { basename, join } from "node:path";
 import { CliError, localError } from "./site-client.mjs";
-const BINDING_FILE = ".zcode-site.json";
+const BINDING_FILE = ".codevori-site.json";
+const LEGACY_BINDING_FILE = ".zcode-site.json";
+async function prepareBinding(cwd) {
+  try {
+    await copyFile(join(cwd, LEGACY_BINDING_FILE), join(cwd, BINDING_FILE), constants.COPYFILE_EXCL);
+  } catch (error) {
+    if (error.code !== "ENOENT" && error.code !== "EEXIST") throw error;
+  }
+}
+
 export async function readBinding(cwd) {
+  await prepareBinding(cwd);
   let text;
   try {
     text = await readFile(join(cwd, BINDING_FILE), "utf8");
@@ -24,6 +35,7 @@ export async function readBinding(cwd) {
 }
 
 export async function writeBinding(cwd, site) {
+  await prepareBinding(cwd);
   await writeFile(
     join(cwd, BINDING_FILE),
     `${JSON.stringify({ siteId: site.id, domainLabel: site.domainLabel }, null, 2)}\n`,

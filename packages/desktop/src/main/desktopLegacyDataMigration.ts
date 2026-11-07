@@ -1,4 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
+import { rewriteDefaultWorkspaceReferences } from "./desktopLegacyWorkspaceReferences.js";
+import { upgradeLegacyProductPaths } from "./desktopProductPathUpgrade.js";
+import { randomUUID } from "node:crypto";
 import {
   cp,
   lstat,
@@ -179,56 +181,6 @@ async function copyDirectoryAtomically(
   }
 }
 
-function workspaceHash(path: string): string {
-  return createHash("sha256").update(path).digest("hex").slice(0, 12);
-}
-
-async function rewriteJsonWorkspacePath(
-  file: string,
-  oldPath: string,
-  newPath: string,
-): Promise<void> {
-  if (!(await pathExists(file))) return;
-  const data = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
-  const lastSessions = data.lastWorkspaceSession;
-  let changed = false;
-  if (lastSessions && typeof lastSessions === "object") {
-    for (const session of Object.values(lastSessions)) {
-      if (
-        session &&
-        typeof session === "object" &&
-        "workspacePath" in session &&
-        session.workspacePath === oldPath
-      ) {
-        session.workspacePath = newPath;
-        changed = true;
-      }
-    }
-  }
-  // 默认工作区搬迁后，最近项目入口也必须指向新目录，避免重新打开旧版的数据。
-  if (Array.isArray(data.recentProjects)) {
-    data.recentProjects = data.recentProjects.map((path) => {
-      if (path !== oldPath) return path;
-      changed = true;
-      return newPath;
-    });
-  }
-  if (changed) await writeFile(file, JSON.stringify(data), "utf8");
-}
-
-async function rewriteDefaultWorkspaceReferences(
-  temporary: string,
-  oldPath: string,
-  newPath: string,
-): Promise<void> {
-  await rewriteJsonWorkspacePath(join(temporary, "v2", "setting.json"), oldPath, newPath);
-  const oldSessionDir = join(temporary, "v2", "sessions", workspaceHash(oldPath));
-  const newSessionDir = join(temporary, "v2", "sessions", workspaceHash(newPath));
-  if ((await pathExists(oldSessionDir)) && !(await pathExists(newSessionDir))) {
-    await rename(oldSessionDir, newSessionDir);
-  }
-}
-
 /** Check the old Electron profile before copying its SQLite, LevelDB and Cookie files. */
 export async function isLegacyDesktopProfileRunning(profile: string): Promise<boolean> {
   const lock = join(profile, "SingletonLock");
@@ -257,7 +209,11 @@ export async function migrateLegacyDesktopData(
   const release = options.migrationLock ? await acquireMigrationLock(options.migrationLock) : null;
   if (options.migrationLock && !release) return "migration-running";
   try {
-    return await migrateLegacyDesktopDataUnlocked(options);
+    const result = await migrateLegacyDesktopDataUnlocked(options);
+    if (result !== "legacy-running" && result !== "migration-running") {
+      await upgradeLegacyProductPaths(options.legacyDataRoots[0]!.target);
+    }
+    return result;
   } finally {
     await release?.();
   }
@@ -336,5 +292,6 @@ async function migrateLegacyDesktopDataUnlocked(
   );
   if (!businessAlreadyCurrent || needsHistoryRepair)
     await writeMigrationState(first.target, "complete");
-  return hasLegacy ? "migrated" : "no-legacy";
+  // 已有新版数据且旧源已移除时，仅升级标记，保持已完成安装的返回语义。
+  return hasLegacy ? "migrated" : businessAlreadyCurrent ? "already-current" : "no-legacy";
 }

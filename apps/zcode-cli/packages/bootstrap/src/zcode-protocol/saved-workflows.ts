@@ -1,3 +1,4 @@
+import { prepareProductPaths } from "@zcode/shared/node";
 // 已保存工作流的 GUI 中枢：workspace 级、无会话的方法。
 //
 // 与 skills/referenceCatalog 同一条先例：不带 sessionId，每次调用现扫目录——挂载时快照会漏掉
@@ -5,7 +6,7 @@
 // 解析器与序列化器只从 @zcode/core 取：这里不解析 frontmatter，也不拼 YAML。
 //
 // 全局作用域：五个方法的 params 收可选 `scope`（缺省
-// `project`）。`global` 时改按本机全局根（`~/.zcode/workflows/`）操作，`workspace` 只是**载体**——
+// `project`）。`global` 时改按本机全局根（`~/.codevori/workflows/`）操作，`workspace` 只是**载体**——
 // 处理器对全局档不读它的路径。`workflows/move` 把全局档搬回 `workspace` 项目（只此一向）。
 import { unlink, writeFile } from "node:fs/promises";
 import { SavedWorkflowMetaSchema, isValidSavedWorkflowName } from "@zcode/contracts";
@@ -53,6 +54,7 @@ export async function listSavedWorkflowsOp(
   rawParams: unknown,
 ): Promise<ZCodeWorkflowsListResult> {
   const params = parseParams(zcodeWorkflowsListParamsSchema, rawParams);
+  await prepareProductPaths({ workspacePath: params.workspace.workspacePath });
   const cwd = params.workspace.workspacePath;
   const scope = scopeOf(params);
   // 管理页默认定向 scope，保证两组独立。ACP 明确 includeGlobal 时才复用原生两根 first-wins。
@@ -70,6 +72,7 @@ export async function getSavedWorkflowOp(
   rawParams: unknown,
 ): Promise<ZCodeWorkflowsGetResult> {
   const params = parseParams(zcodeWorkflowsGetParamsSchema, rawParams);
+  await prepareProductPaths({ workspacePath: params.workspace.workspacePath });
   // 定向 scope：`global` 只查全局根、不做遮蔽——中枢的全局组要看到被项目档遮蔽的那份。
   const resolved = resolveSavedWorkflow({
     cwd: params.workspace.workspacePath,
@@ -96,6 +99,7 @@ export async function updateSavedWorkflowMetaOp(
   rawParams: unknown,
 ): Promise<ZCodeWorkflowsUpdateMetaResult> {
   const params = parseParams(zcodeWorkflowsUpdateMetaParamsSchema, rawParams);
+  await prepareProductPaths({ workspacePath: params.workspace.workspacePath });
   // shared 与 contracts 的 meta schema 逐字对齐，但序列化器认的是 contracts 那份类型；再过一遍
   // 让「两边漂移」在这里炸成 -32602 而不是写出一个自己读不回来的文件。
   const meta = SavedWorkflowMetaSchema.parse(params.meta);
@@ -119,6 +123,7 @@ export async function deleteSavedWorkflowOp(
   rawParams: unknown,
 ): Promise<ZCodeWorkflowsDeleteResult> {
   const params = parseParams(zcodeWorkflowsDeleteParamsSchema, rawParams);
+  await prepareProductPaths({ workspacePath: params.workspace.workspacePath });
   if (!isValidSavedWorkflowName(params.name)) {
     return { ok: false, reason: "invalid_name" };
   }
@@ -147,6 +152,7 @@ export async function listSavedWorkflowRunsOp(
   rawParams: unknown,
 ): Promise<ZCodeWorkflowsRunsResult> {
   const params = parseParams(zcodeWorkflowsRunsParamsSchema, rawParams);
+  await prepareProductPaths({ workspacePath: params.workspace.workspacePath });
   const journal = resolveDynamicWorkflowJournalStore(context.deps.sessionStore);
   if (journal === undefined || !supportsRunIntrospection(journal)) return { runs: [] };
   const limit = Math.min(ZCODE_WORKFLOWS_RUNS_MAX_LIMIT, params.limit);
@@ -231,6 +237,7 @@ export async function moveSavedWorkflowOp(
   rawParams: unknown,
 ): Promise<ZCodeWorkflowsMoveResult> {
   const params = parseParams(zcodeWorkflowsMoveParamsSchema, rawParams);
+  await prepareProductPaths({ workspacePath: params.workspace.workspacePath });
   const result = moveSavedWorkflow({ cwd: params.workspace.workspacePath, name: params.name });
   if (result.ok) {
     return { ok: true, from: result.from, to: result.to };

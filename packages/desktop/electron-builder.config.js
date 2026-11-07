@@ -168,7 +168,7 @@ const PACMAN_RUNTIME_DEPENDENCIES = [
   "xdg-utils",
 ];
 
-const WINDOWS_INSTALL_MANIFEST_NAME = ".zcode-install-manifest";
+const WINDOWS_INSTALL_MANIFEST_NAME = ".codevori-install-manifest";
 
 async function writeWindowsInstallManifest(context) {
   if (context.electronPlatformName !== "win32") return;
