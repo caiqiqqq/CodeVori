@@ -1,3 +1,4 @@
+import { prepareProductPaths } from "@zcode/shared/node";
 import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
 /* eslint-disable max-lines */
 import { access, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -397,7 +398,12 @@ async function discoverPluginAgents(params: {
 
 async function readPluginConfig(options?: SubagentStorageOptions): Promise<PluginConfigSummary> {
   try {
-    const configPath = join(resolveUserHomeDir(options), PRODUCT_DATA_DIRECTORY_NAME, "cli", "config.json");
+    const configPath = join(
+      resolveUserHomeDir(options),
+      PRODUCT_DATA_DIRECTORY_NAME,
+      "cli",
+      "config.json",
+    );
     const raw = await readFile(configPath, "utf-8");
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecord(parsed)) return { enabledPlugins: {}, suppressedBuiltins: [] };
@@ -570,6 +576,11 @@ export function createSubagentsService(options?: SubagentsServiceOptions): ISuba
       provider?: ZCodeProvider;
       mode?: SubagentsListMode;
     }): Promise<AgentsListResult> {
+      await prepareProductPaths({
+        homeDirectory: options?.homeDir,
+        workspacePath: params.workspacePath,
+      });
+
       const capability = resolveCapabilities(options);
       const mode = params.mode ?? "allRuntimeScopes";
       const diagnostics: AgentDiagnostic[] = [];
@@ -702,6 +713,11 @@ export function createSubagentsService(options?: SubagentsServiceOptions): ISuba
     },
 
     async createAgent(params: AgentCreateParams): Promise<{ agent: AgentSummary }> {
+      await prepareProductPaths({
+        homeDirectory: options?.homeDir,
+        workspacePath: params.workspacePath,
+      });
+
       validateUserAgentConfig(params.config);
       assertNotBuiltInName(params.config.name);
 
@@ -724,6 +740,11 @@ export function createSubagentsService(options?: SubagentsServiceOptions): ISuba
     },
 
     async updateAgent(params: AgentUpdateParams): Promise<{ agent: AgentSummary }> {
+      await prepareProductPaths({
+        homeDirectory: options?.homeDir,
+        workspacePath: params.workspacePath,
+      });
+
       validateUserAgentConfig(params.config);
       assertNotBuiltInName(params.config.name);
 

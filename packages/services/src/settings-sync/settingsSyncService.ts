@@ -1,3 +1,4 @@
+import { prepareProductPaths } from "@zcode/shared/node";
 import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
 /* eslint-disable max-lines -- settings-sync 需要集中维护外部 skills/commands/plugins/MCP 扫描、去重和导入状态机，后续按资源类别拆分 */
 import type {
@@ -414,7 +415,7 @@ function resolveUserHomeDir(): string {
 }
 
 function getWorkspaceZcodeSkillRoot(workspacePath: string): string {
-  return join(workspacePath, ".zcode", "skills");
+  return join(workspacePath, ".codevori", "skills");
 }
 
 function getUserZcodeSkillRoot(): string {
@@ -422,7 +423,7 @@ function getUserZcodeSkillRoot(): string {
 }
 
 function getWorkspaceZcodeCommandRoot(workspacePath: string): string {
-  return join(workspacePath, ".zcode", "commands");
+  return join(workspacePath, ".codevori", "commands");
 }
 
 function getUserZcodeCommandRoot(): string {
@@ -430,7 +431,7 @@ function getUserZcodeCommandRoot(): string {
 }
 
 function getWorkspaceZcodePluginRoot(workspacePath: string): string {
-  return join(workspacePath, ".zcode", "plugins");
+  return join(workspacePath, ".codevori", "plugins");
 }
 
 function getUserZcodePluginRoot(): string {
@@ -442,7 +443,7 @@ function getUserZcodeCliConfigPath(): string {
 }
 
 function getWorkspaceZcodeConfigPath(workspacePath: string): string {
-  return join(workspacePath, ".zcode", "config.json");
+  return join(workspacePath, ".codevori", "config.json");
 }
 
 function getClaudeUserAgentsFileSourcePath(): string {
@@ -2277,6 +2278,8 @@ export function createSettingsSyncService(
     },
 
     async detect(request): Promise<SettingsSyncDiscoveryResult> {
+      await prepareProductPaths({ workspacePath: request.workspacePath });
+
       if (shouldScanSkills(request)) {
         return buildSkillsDiscovery(request.workspacePath);
       }
@@ -2297,6 +2300,8 @@ export function createSettingsSyncService(
       workspaceIdentity?: string;
       selections: SettingsSyncSelection[];
     }): Promise<SettingsSyncImportResult> {
+      await prepareProductPaths({ workspacePath: request.workspacePath });
+
       const taskResults: SettingsSyncTaskImportResult[] = [];
       for (const selection of request.selections) {
         if (selection.category === "skills") {

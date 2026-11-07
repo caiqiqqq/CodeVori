@@ -12,9 +12,9 @@ async function fixture(category: "mcpServers" | "plugins") {
   const home = await mkdtemp(join(tmpdir(), "zcode-settings-sync-safety-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
-  const configPath = join(home, ".zcode", "cli", "config.json");
-  await mkdir(join(home, ".zcode", "cli"), { recursive: true });
-  const pluginTarget = join(home, ".zcode", "plugins", "example");
+  const configPath = join(home, ".codevori", "cli", "config.json");
+  await mkdir(join(home, ".codevori", "cli"), { recursive: true });
+  const pluginTarget = join(home, ".codevori", "plugins", "example");
   if (category === "mcpServers") {
     await mkdir(join(home, ".claude"), { recursive: true });
     await writeFile(

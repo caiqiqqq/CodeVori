@@ -1,15 +1,45 @@
+import "./desktopEarlyDataBaseDirBootstrap.js";
+import "./desktopEarlyChromiumHardwareAccelerationBootstrap.js";
+// SDK 在导入时注册特权协议，必须静态加载，不能等迁移窗口使 app ready 后再导入。
+import "@arms/rum-electron";
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
-import { app, BrowserWindow, dialog } from "electron";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import { app, BrowserWindow, dialog, protocol } from "electron";
 import { ZCODE_PRODUCT_FLAVOR } from "@zcode/shared";
 import { resolveAppSettingsPaths } from "@zcode/shared/node";
 import {
   PRODUCT_DATA_DIRECTORY_NAME,
   PRODUCT_LEGACY_DATA_DIRECTORY_NAME,
-  PRODUCT_NAME,
 } from "@zcode/shared/product-brand";
 import { migrateLegacyDesktopData } from "./desktopLegacyDataMigration.js";
+import { BROWSER_LOCAL_PREVIEW_PRIVILEGES } from "./browser-local-preview/index.js";
+import { registerLocalMediaPreviewScheme } from "./localMediaPreviewProtocol.js";
+import {
+  runtimeApplicationName,
+  runtimeHomePath,
+  runtimeSessionDataPath,
+  runtimeUserDataPath,
+  shouldUseElectronDefaultUserDataPath,
+} from "./desktopRuntimeEnv.js";
+
+// 修复依据：迁移窗口也会初始化 Chromium；协议、profile 和启动开关只有入口负责，必须先于任何窗口。
+registerLocalMediaPreviewScheme(protocol);
+protocol.registerSchemesAsPrivileged([BROWSER_LOCAL_PREVIEW_PRIVILEGES]);
+if (!app.isPackaged && process.env.ZCODE_DISABLE_FIXED_REMOTE_DEBUGGING_PORT !== "1") {
+  app.commandLine.appendSwitch("remote-debugging-port", "9229");
+}
+app.setName(runtimeApplicationName);
+if (runtimeHomePath) app.setPath("home", runtimeHomePath);
+if (!shouldUseElectronDefaultUserDataPath) {
+  if (!runtimeUserDataPath || !runtimeSessionDataPath) {
+    throw new Error(
+      "Desktop runtime data paths are required when Electron default userData is disabled",
+    );
+  }
+  app.setPath("userData", runtimeUserDataPath);
+  app.setPath("sessionData", runtimeSessionDataPath);
+}
+process.title = runtimeApplicationName;
 
 async function readLegacyCustomDataBaseDir(userHome: string): Promise<string | null> {
   const { legacySettingsFile: settingsFile } = resolveAppSettingsPaths(userHome);
@@ -66,7 +96,13 @@ async function showMigrationWindow(): Promise<BrowserWindow> {
     title,
     show: false,
     backgroundColor: "#ffffff",
-    webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true },
+    // 迁移提示只加载静态页面，使用内存 session，避免在复制旧 profile 时打开其 Cookies/LevelDB。
+    webPreferences: {
+      partition: "codevori-migration",
+      sandbox: true,
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
   });
   window.on("close", (event) => event.preventDefault());
   const html = `<!doctype html><html lang="${chinese ? "zh" : "en"}"><meta charset="utf-8"><style>body{font:14px system-ui,sans-serif;color:#20232a;margin:28px}h1{font-size:18px;margin:0 0 16px}p{line-height:1.6;margin:0}@media(prefers-color-scheme:dark){body{background:#20232a;color:#f5f5f5}}</style><h1>${heading}</h1><p>${detail}</p></html>`;
@@ -81,11 +117,11 @@ async function start(): Promise<void> {
   app.on("window-all-closed", keepAlive);
   // 开发态与显式隔离测试实例已经有专属目录；只迁移正常安装的产品 profile。
   if (app.isPackaged && !process.env.ZCODE_DESKTOP_APPLICATION_NAME?.trim()) {
-    const userHome = homedir();
-    const appData = app.getPath("appData");
+    const userHome = app.getPath("home");
+    const productProfile = app.getPath("userData");
+    const appData = dirname(productProfile);
     const preview = ZCODE_PRODUCT_FLAVOR === "preview";
     const legacyProfile = join(appData, preview ? "ZCode Preview" : "ZCode");
-    const productProfile = join(appData, preview ? `${PRODUCT_NAME} Preview` : PRODUCT_NAME);
     const legacyDataRoots = [
       {
         source: join(userHome, PRODUCT_LEGACY_DATA_DIRECTORY_NAME),
@@ -131,4 +167,11 @@ async function start(): Promise<void> {
   app.off("window-all-closed", keepAlive);
 }
 
-void start();
+void start().catch((error: unknown) => {
+  // 启动入口的失败早于 main 的异常监听，必须给出错误并退出，不能遗留没有窗口的进程。
+  dialog.showErrorBox(
+    "CodeVori startup failed",
+    error instanceof Error ? (error.stack ?? error.message) : String(error),
+  );
+  app.quit();
+});

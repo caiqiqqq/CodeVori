@@ -2058,7 +2058,7 @@ export function createGitCliRepo(options?: {
           timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
         });
         const parentHash = headResult.exitCode === 0 ? headResult.stdout.trim() : null;
-        const tempIndexDir = await mkdtemp(join(tmpdir(), "zcode-git-index-"));
+        const tempIndexDir = await mkdtemp(join(tmpdir(), "codevori-git-index-"));
         const tempIndexPath = join(tempIndexDir, "index");
         const tempIndexEnv = { GIT_INDEX_FILE: tempIndexPath };
 

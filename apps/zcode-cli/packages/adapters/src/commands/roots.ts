@@ -1,3 +1,4 @@
+import { prepareProductPaths } from "@zcode/shared/node";
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -8,7 +9,7 @@ const COMMANDS_DIR = "commands";
 const GIT_MARKER = ".git";
 const HOME_PREFIX = "~/";
 const PRIORITY_STEP = 10;
-const ZCODE_DIR = ".zcode";
+const ZCODE_DIR = ".codevori";
 const AGENTS_DIR = ".agents";
 
 export interface CustomCommandRootResolutionOptions {
@@ -22,6 +23,8 @@ export async function resolveDefaultCustomCommandRoots(
   workingDirectory: string,
   options: CustomCommandRootResolutionOptions = {},
 ): Promise<CustomCommandRoot[]> {
+await prepareProductPaths({ homeDirectory: options.homeDirectory, workspacePath: workingDirectory });
+
   const resolvedWorkingDirectory = resolve(workingDirectory);
   const roots: CustomCommandRoot[] = [];
   const includeZcode = options.includeZcodeCommands ?? true;

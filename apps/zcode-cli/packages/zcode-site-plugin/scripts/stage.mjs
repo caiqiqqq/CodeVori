@@ -23,7 +23,7 @@ export const LIMITS = {
 };
 
 // 打包时总是跳过的文件；其余 stage 里的内容原样进包。
-const SKIPPED_NAMES = new Set([".git", ".DS_Store", "__pycache__", ".zcode-site.json"]);
+const SKIPPED_NAMES = new Set([".git", ".DS_Store", "__pycache__", ".codevori-site.json", ".zcode-site.json"]);
 const MAX_LISTED = 10;
 // 与云端健康检查一致：启动后 90 秒内 GET / 回 500 以下。
 const CHECK_TIMEOUT_MS = 90_000;
@@ -379,7 +379,7 @@ export async function checkStage(
       },
     };
 
-  const dataDir = await mkdtemp(join(tmpdir(), "zcode-site-check-"));
+  const dataDir = await mkdtemp(join(tmpdir(), "codevori-site-check-"));
   const lines = [];
   const collect = (chunk) => {
     lines.push(...chunk.toString("utf8").split(/\r?\n/).filter(Boolean));

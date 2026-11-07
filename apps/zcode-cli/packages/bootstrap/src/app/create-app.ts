@@ -1,3 +1,4 @@
+import { prepareProductPaths } from "@zcode/shared/node";
 import { withOfficialCommandEnv } from "../official-command-endpoint/index.js";
 import { resolveMcpNodeFallbackProvider } from "./mcp-node-fallback.js";
 import { startWorkflowQuotaAutoResume } from "./dynamic-workflow-quota-resume.js";
@@ -145,6 +146,8 @@ function decodePromptAttachmentDataUrl(
 }
 
 export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp> {
+await prepareProductPaths({ workspacePath: options.runtimeConfig?.workingDirectory ?? process.cwd() });
+
   if (!options?.providerRegistry) {
     throw new Error("createZCodeApp requires a Provider Registry");
   }

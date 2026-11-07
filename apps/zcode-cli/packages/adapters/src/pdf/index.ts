@@ -62,7 +62,7 @@ class PopplerPdfDocumentAdapter implements PdfDocumentPort {
     await this.ensureAvailable(request, options?.signal);
     let directory: string;
     try {
-      directory = await mkdtemp(join(this.options.tempRoot ?? tmpdir(), "zcode-read-pdf-"));
+      directory = await mkdtemp(join(this.options.tempRoot ?? tmpdir(), "codevori-read-pdf-"));
     } catch (error) {
       throwPdfIoError(
         error,

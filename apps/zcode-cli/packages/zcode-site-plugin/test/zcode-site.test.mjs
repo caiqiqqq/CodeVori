@@ -9,9 +9,22 @@ import { createServer } from "node:http";
 
 import { createEndpointFetch, main, normalizePrefix } from "../scripts/zcode-site.mjs";
 import { packStage } from "../scripts/stage.mjs";
+import { readBinding } from "../scripts/site-project.mjs";
 
 // CLI 只认 agent 注入的官方命令端点（技术方案 5.8）；身份头和版本头由端点补，CLI 不带。
 import { FakeSites, project, run } from "./sites-fixture.mjs";
+
+test("old site binding copies once and subsequent CodeVori edits stay independent", async () => {
+  const cwd = await project();
+  const old = join(cwd, ".zcode-site.json");
+  const current = join(cwd, ".codevori-site.json");
+  await writeFile(old, '{"siteId":"old"}\n');
+  assert.deepEqual(await readBinding(cwd), { siteId: "old" });
+  await writeFile(current, '{"siteId":"current"}\n');
+  await writeFile(old, '{"siteId":"old-again"}\n');
+  assert.deepEqual(await readBinding(cwd), { siteId: "current" });
+  assert.equal(await readFile(old, "utf8"), '{"siteId":"old-again"}\n');
+});
 
 test("first deploy creates and binds a site, then later deploys reuse it", async () => {
   const fake = new FakeSites();
@@ -37,7 +50,7 @@ test("first deploy creates and binds a site, then later deploys reuse it", async
     linuxBinaries: 0,
   });
   assert.ok(r.lines.some((l) => l.event === "log" && l.message === "publishing"));
-  const binding = JSON.parse(await readFile(join(cwd, ".zcode-site.json"), "utf8"));
+  const binding = JSON.parse(await readFile(join(cwd, ".codevori-site.json"), "utf8"));
   assert.deepEqual(binding, { siteId: fake.sites[0].id, domainLabel: fake.sites[0].domainLabel });
 
   const again = await run(fake, cwd, "deploy", "stage", "--quiet");
@@ -228,7 +241,7 @@ test("status, rename, offline and online use the bound site", async () => {
   const site = fake.site();
   const cwd = await project();
   await writeFile(
-    join(cwd, ".zcode-site.json"),
+    join(cwd, ".codevori-site.json"),
     JSON.stringify({ siteId: site.id, domainLabel: site.domainLabel }),
   );
 
@@ -247,7 +260,7 @@ test("badge hide needs a plan that can remove the badge", async () => {
   const site = fake.site();
   const cwd = await project();
   await writeFile(
-    join(cwd, ".zcode-site.json"),
+    join(cwd, ".codevori-site.json"),
     JSON.stringify({ siteId: site.id, domainLabel: site.domainLabel }),
   );
 
@@ -325,7 +338,7 @@ test("a name that fails content review gets 3611 and nothing is linked", async (
   assert.equal(r.error.code, 3611);
   assert.match(r.error.hint, /--name/);
   assert.equal(fake.deployments.length, 0);
-  await assert.rejects(readFile(join(cwd, ".zcode-site.json")));
+  await assert.rejects(readFile(join(cwd, ".codevori-site.json")));
 
   // 改名不通过时名称不变。
   assert.equal((await run(fake, cwd, "deploy", "stage", "--name", "good")).code, 0);

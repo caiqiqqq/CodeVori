@@ -1888,7 +1888,7 @@ export async function readCachedRemoteAssetMarker(cacheDir: string): Promise<str
 }
 
 export function resolveFallbackRemoteAssetCacheDir(): string {
-  return join(tmpdir(), "zcode-remote-assets-cache");
+  return join(tmpdir(), "codevori-remote-assets-cache");
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
