@@ -10,10 +10,15 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { basename, dirname, join, relative, sep } from "node:path";
-
-const nodeRequire = createRequire(import.meta.url);
+import {
+  isLegacyTaskDatabaseEntry,
+  migrateLegacyTaskDatabases,
+} from "./desktopLegacyTaskMigration.js";
+import {
+  isLegacyHistoryDatabaseEntry,
+  migrateLegacyHistory,
+} from "./desktopLegacyHistoryMigration.js";
 
 const MIGRATION_MARKER = ".migration-from-zcode.json";
 type DataRootPair = { source: string; target: string };
@@ -82,12 +87,17 @@ async function acquireMigrationLock(path: string): Promise<(() => Promise<void>)
   return null;
 }
 
-async function readMigrationState(targetRoot: string): Promise<"pending" | "complete" | null> {
+async function readMigrationState(
+  targetRoot: string,
+): Promise<{ status: "pending" | "complete"; version: number } | null> {
   try {
     const raw = JSON.parse(await readFile(join(targetRoot, MIGRATION_MARKER), "utf8")) as {
       status?: unknown;
+      version?: unknown;
     };
-    return raw.status === "pending" || raw.status === "complete" ? raw.status : null;
+    return raw.status === "pending" || raw.status === "complete"
+      ? { status: raw.status, version: typeof raw.version === "number" ? raw.version : 1 }
+      : null;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
@@ -100,7 +110,7 @@ async function writeMigrationState(
 ): Promise<void> {
   const marker = join(targetRoot, MIGRATION_MARKER);
   const temporary = `${marker}.${randomUUID()}.tmp`;
-  await writeFile(temporary, JSON.stringify({ version: 1, status }), "utf8");
+  await writeFile(temporary, JSON.stringify({ version: 3, status }), "utf8");
   try {
     await rename(temporary, marker);
   } catch (error) {
@@ -114,6 +124,9 @@ function shouldCopyBusinessEntry(root: string, source: string): boolean {
   if (entry === "") return true;
   // 修复原因：复制旧设备 ID 会让两款应用以同一设备身份注册；新目录必须生成自己的 ID。
   return (
+    !isLegacyTaskDatabaseEntry(entry) &&
+    !isLegacyHistoryDatabaseEntry(entry) &&
+    entry !== ".legacy-task-backups" &&
     entry !== join("v2", "telemetry-state.json") &&
     entry !== join("v2", "telemetry-state.lock") &&
     // 两款应用的代理 CA 私钥必须独立；CodeVori 首次启动时生成自己的证书。
@@ -203,108 +216,12 @@ async function rewriteJsonWorkspacePath(
   if (changed) await writeFile(file, JSON.stringify(data), "utf8");
 }
 
-async function rewriteSqliteWorkspacePaths(
-  file: string,
-  oldPath: string,
-  newPath: string,
-  kind: "task" | "cli",
-): Promise<void> {
-  if (!(await pathExists(file))) return;
-  const { DatabaseSync } = nodeRequire("node:sqlite") as typeof import("node:sqlite");
-  const db = new DatabaseSync(file);
-  try {
-    const hasTable = (table: string): boolean =>
-      Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table));
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      if (kind === "cli") {
-        if (hasTable("session")) {
-          for (const column of ["directory", "path"]) {
-            db.prepare(`UPDATE session SET ${column}=? WHERE ${column}=?`).run(newPath, oldPath);
-          }
-        }
-      } else {
-        if (hasTable("tasks")) {
-          const records = db
-            .prepare("SELECT workspace_key, task_id, meta_json FROM tasks WHERE workspace_path=?")
-            .all(oldPath);
-          for (const record of records) {
-            const meta = JSON.parse(String(record.meta_json)) as Record<string, unknown>;
-            if (meta.workspacePath === oldPath) meta.workspacePath = newPath;
-            db.prepare("UPDATE tasks SET meta_json=? WHERE workspace_key=? AND task_id=?").run(
-              JSON.stringify(meta),
-              record.workspace_key as string,
-              record.task_id as string,
-            );
-          }
-        }
-        const columns: Record<string, string[]> = {
-          tasks: ["workspace_key", "workspace_path", "root_path"],
-          task_group_members: ["workspace_key", "workspace_path"],
-          task_group_workspace_bootstraps: ["workspace_key"],
-          task_group_admissions: ["workspace_key"],
-          automations: ["workspace_key", "workspace_path"],
-          off_peak_tasks: ["workspace_key", "workspace_path"],
-        };
-        for (const [table, names] of Object.entries(columns)) {
-          if (!hasTable(table)) continue;
-          const available = new Set(
-            (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(
-              (row) => row.name,
-            ),
-          );
-          for (const column of names) {
-            if (available.has(column))
-              db.prepare(`UPDATE ${table} SET ${column}=? WHERE ${column}=?`).run(newPath, oldPath);
-          }
-        }
-        if (hasTable("task_group_view_node_orders")) {
-          const rows = db.prepare("SELECT node_key FROM task_group_view_node_orders").all();
-          for (const row of rows) {
-            const key = String(row.node_key);
-            let parts: unknown;
-            try {
-              parts = JSON.parse(key);
-            } catch {
-              continue;
-            }
-            if (Array.isArray(parts) && parts[0] === oldPath) {
-              db.prepare("UPDATE task_group_view_node_orders SET node_key=? WHERE node_key=?").run(
-                JSON.stringify([newPath, ...parts.slice(1)]),
-                key,
-              );
-            }
-          }
-        }
-      }
-      db.exec("COMMIT");
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
-  } finally {
-    db.close();
-  }
-}
-
 async function rewriteDefaultWorkspaceReferences(
   temporary: string,
   oldPath: string,
   newPath: string,
 ): Promise<void> {
   await rewriteJsonWorkspacePath(join(temporary, "v2", "setting.json"), oldPath, newPath);
-  await rewriteSqliteWorkspacePaths(
-    join(temporary, "v2", "tasks-index.sqlite"),
-    oldPath,
-    newPath,
-    "task",
-  );
-  await rewriteSqliteWorkspacePaths(
-    join(temporary, "cli", "db", "db.sqlite"),
-    oldPath,
-    newPath,
-    "cli",
-  );
   const oldSessionDir = join(temporary, "v2", "sessions", workspaceHash(oldPath));
   const newSessionDir = join(temporary, "v2", "sessions", workspaceHash(newPath));
   if ((await pathExists(oldSessionDir)) && !(await pathExists(newSessionDir))) {
@@ -352,15 +269,22 @@ async function migrateLegacyDesktopDataUnlocked(
   const first = options.legacyDataRoots[0];
   if (!first) throw new Error("legacyDataRoots must include the user home data root");
   const state = await readMigrationState(first.target);
-  const businessAlreadyCurrent = state === "complete";
+  const businessAlreadyCurrent = state?.status === "complete";
+  // v1 仅复制缺失文件，已经存在的空待办/指派库会被漏迁；v2 补迁一次后恢复产品隔离。
+  const needsTaskRepair = businessAlreadyCurrent && state.version < 2;
+  const needsHistoryRepair = businessAlreadyCurrent && state.version < 3;
   const profileAlreadyCurrent = await pathExists(options.productProfile);
-  if (businessAlreadyCurrent && profileAlreadyCurrent) {
+  if (businessAlreadyCurrent && !needsHistoryRepair && profileAlreadyCurrent) {
     return "already-current";
   }
   // 修复依据：完成迁移后旧版设置已不属于 CodeVori，不能因其损坏而阻止新版启动。
-  const legacyDataRoots = businessAlreadyCurrent
-    ? options.legacyDataRoots
-    : [...options.legacyDataRoots, ...((await options.resolveAdditionalLegacyDataRoots?.()) ?? [])];
+  const legacyDataRoots =
+    businessAlreadyCurrent && !needsHistoryRepair
+      ? options.legacyDataRoots
+      : [
+          ...options.legacyDataRoots,
+          ...((await options.resolveAdditionalLegacyDataRoots?.()) ?? []),
+        ];
   const hasLegacy =
     (await pathExists(options.legacyProfile)) ||
     (await Promise.all(legacyDataRoots.map((pair) => pathExists(pair.source)))).some(Boolean);
@@ -397,11 +321,20 @@ async function migrateLegacyDesktopDataUnlocked(
       await rewriteReferences(pair.target);
     }
   }
+  if (!businessAlreadyCurrent || needsTaskRepair) {
+    for (const pair of legacyDataRoots) {
+      await migrateLegacyTaskDatabases(pair.source, pair.target);
+    }
+  }
+  if (!businessAlreadyCurrent || needsHistoryRepair) {
+    for (const pair of legacyDataRoots) await migrateLegacyHistory(pair.source, pair.target);
+  }
   await copyDirectoryAtomically(
     options.legacyProfile,
     options.productProfile,
     shouldCopyProfileEntry,
   );
-  if (!businessAlreadyCurrent) await writeMigrationState(first.target, "complete");
+  if (!businessAlreadyCurrent || needsHistoryRepair)
+    await writeMigrationState(first.target, "complete");
   return hasLegacy ? "migrated" : "no-legacy";
 }

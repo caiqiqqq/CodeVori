@@ -192,6 +192,11 @@ export const resolveBuildAliases = ({
     rootDirectory,
     "../../packages/shared/src/workspace-hook-trust-store-file.ts",
   ),
+  // product-brand 子路径必须先于通用别名匹配，否则会被拼到 index.ts 后面。
+  "@zcode/shared/product-brand": resolve(
+    rootDirectory,
+    "../../packages/shared/src/product-brand.mjs",
+  ),
   "@zcode/shared/zcodeEndpoint": resolve(
     rootDirectory,
     "../../packages/shared/src/zcodeEndpoint.ts",
