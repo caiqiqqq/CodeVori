@@ -4286,11 +4286,16 @@ export function SessionPane({
   // 对话是否为空，不能把原生 draftMode 误当作首页样式的事实。
   // 修复原因：精确历史 ID 已选但 Host 正文尚未到达时，不能把它画成新建任务首页。
   // 目标身份来自打开意图或 hook 中的选择，缓存行与列表元数据都不决定这个状态。
+  // 修复原因：预连接也会选中临时 ID；Host 标记的空 provisional 会话仍是草稿，
+  // 不能仅因握手完成就收起首页。历史目标仍按精确 ID 等待，已接受内容仍退出首页。
   const visibleEmptyDraft =
     isDraft &&
     !pendingAcpTabOpenRequest &&
-    (!acpAgent || (!acpConversation.targetSessionId && !acpHasConversationContent));
+    (!acpAgent ||
+      ((!acpConversation.targetSessionId || acpConversation.selected?.provisional === true) &&
+        !acpHasConversationContent));
   const acpHistoryLoading = Boolean(
+    !visibleEmptyDraft &&
     (pendingAcpTabOpenRequest || (acpAgent && acpConversation.targetSessionId)) &&
     (acpOpenTargetMismatched || !acpConversation.snapshot) &&
     (acpOpenTargetMismatched || !acpConversation.error),

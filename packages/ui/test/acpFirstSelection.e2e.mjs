@@ -38,13 +38,20 @@ try {
     const snapshots=new Map(Object.entries(scopes).map(([label,scope])=>[key(scope),{...scope,id:label.startsWith('host')?sharedId:crypto.randomUUID(),agent:'codex',acpSessionId:'native-'+label,title:'history-'+label,revision:1,status:'idle',entries:[{id:'user:'+label,kind:'user',text:'history-content-'+label}],configOptions:[],modeState:null,contextUsage:null,usageTurns:[],goal:null,pendingPermission:null,error:null,queue:{items:[],autoDrain:true}}]));
     const calls=[],archived=[],held=new Map(),delays=new Set(),listeners=new Set(),preferenceListeners=new Set();
     const preference={revision:1,acpModels:{}};
-    const copy=scope=>structuredClone(snapshots.get(key(scope)));
+    const preconnect=new URLSearchParams(location.search).has('preconnect'),drafts=new Map();
+    const copy=scope=>structuredClone(drafts.get(scope.id)??snapshots.get(key(scope)));
     const wait=async(op,scope)=>{calls.push([op,key(scope),scope.remoteSessionId]);if(delays.delete(op+':'+key(scope)))await new Promise(resolve=>held.set(op+':'+key(scope),resolve))};
     const forbidden=()=>{throw Error('Unexpected native/model operation')};
     const acpService={list:async scope=>{await wait('list',scope);return [copy(scope)]},read:async scope=>copy(scope),refresh:async scope=>{await wait('refresh',scope);return copy(scope)},
       onDynamicSessionChanged:scope=>listener=>{listeners.add(listener);return {dispose:()=>listeners.delete(listener)}},
       listAvailableAgents:async()=>[{agent:'codex',available:true}],listAgentConfigs:async()=>[],listPlugins:async()=>[],onDynamicAgentConfigsChanged:()=>()=>({dispose(){}}),
-      create:async scope=>{calls.push(['create',key(scope)]);throw Error('Authentication required')},remove:async()=>{},submitPrompt:forbidden};
+      create:async scope=>{await wait('create',scope);if(!preconnect)throw Error('Authentication required');
+        const draft={...copy(scope),remoteSessionId:scope.remoteSessionId,id:crypto.randomUUID(),revision:0,provisional:true,entries:[],
+          configOptions:[{id:'mode',name:'Mode',category:'mode',type:'select',currentValue:'agent',options:[{value:'agent',name:'Agent'}]}]};
+        drafts.set(draft.id,draft);return structuredClone(draft)},remove:async({id})=>{drafts.delete(id)},
+      submitPrompt:async input=>{if(!preconnect) return forbidden();calls.push(['prompt',key(input),input.id]);
+        const session={...copy(input),provisional:false,revision:1,entries:[{id:'user:'+input.commandId,kind:'user',text:input.text}]};
+        drafts.set(session.id,session);for(const listener of listeners)listener({kind:'updated',session});return structuredClone(session)}};
     withAcpProjectionFixture(acpService as never);
     const readConversation=acpService.readConversation;
     acpService.readConversation=async input=>{await wait('conversation',input);return readConversation(input)};
@@ -56,7 +63,7 @@ try {
       const [label,setLabel]=useState(initial),[request,setRequest]=useState(null),[attachment,setAttachment]=useState(1),[paneEpoch,setPaneEpoch]=useState(0),[suppressPreference,setSuppressPreference]=useState(false);
       const scope=scopes[label];
       window.__first={calls,held,archived,preference,open:next=>{setLabel(next);setRequest(previous=>({requestId:(previous?.requestId??0)+1,session:copy(scopes[next])}))},reconnect:()=>setAttachment(n=>n+1),hold:(op,next)=>delays.add(op+':'+key(scopes[next])),release:(op,next)=>{const id=op+':'+key(scopes[next]);held.get(id)?.();held.delete(id)},newDraft:()=>{setSuppressPreference(false);setRequest(null);useZCodeSessionStore.getState().startDraft(scope.workspacePath,undefined,scope.workspaceIdentity)},preferAcp:()=>{preference.target={kind:'acp',agent:'codex'};preference.revision++;for(const listener of preferenceListeners)listener({...preference})},archive:next=>{const session=snapshots.get(key(scopes[next]));const nextSession={...session,archived:true,revision:session.revision+1};snapshots.set(key(scopes[next]),nextSession);for(const listener of listeners)listener({kind:'updated',session:nextSession})}};
-      return <main className='h-dvh bg-background text-foreground'><SessionPane key={paneEpoch} paneId='workspace-main' {...scope} remoteSessionId={new URLSearchParams(location.search).has('replayable')?'attachment-'+attachment:undefined} sessionId={null} focused acpOpenRequest={request} suppressAcpPreferenceForDraft={suppressPreference} onAcpSessionArchived={id=>{archived.push(id);setSuppressPreference(true);setRequest(null);setPaneEpoch(value=>value+1)}}/></main>;
+      return <main className='h-dvh bg-background text-foreground'><SessionPane key={paneEpoch} paneId='workspace-main' {...scope} remoteSessionId={new URLSearchParams(location.search).has('replayable')?'attachment-'+attachment:undefined} sessionId={null} focused draftComposerHeader={<span>synthetic project</span>} acpOpenRequest={request} suppressAcpPreferenceForDraft={suppressPreference} onAcpSessionArchived={id=>{archived.push(id);setSuppressPreference(true);setRequest(null);setPaneEpoch(value=>value+1)}}/></main>;
     }
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={{isWeb:true} as never}><TabStoreProvider><ServiceProvider services={services as never}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><V4ConversationContext.Provider value={native as never}><Fixture/></V4ConversationContext.Provider></TooltipProvider></ZCodeIntlProvider></ServiceProvider></TabStoreProvider></PlatformProvider>);
   `,
@@ -166,10 +173,59 @@ try {
     await page.waitForFunction(() => window.__first.calls.some((call) => call[0] === "create"));
     await page.getByText("Authentication required", { exact: true }).waitFor();
     assert.deepEqual(errors, []);
+    // 修复依据：临时预连接也会取得精确 ID，但没有接受用户输入，不能因此退出首页。
+    await page.goto(url + "preconnect");
+    const input = page.getByTestId("v4-composer-input");
+    const greeting = page.locator('[data-v4-draft-greeting="true"]');
+    const contextHeader = page.locator('[data-v4-composer-context-header="true"]');
+    const centeredComposer = page.getByTestId("v4-composer").and(page.locator(".max-w-2xl"));
+    await input.waitFor();
+    await page.evaluate(() => {
+      window.__preconnectInput = document.querySelector('[data-testid="v4-composer-input"]');
+      window.__first.hold("create", "source");
+      window.__first.preferAcp();
+    });
+    await page.waitForFunction(() => window.__first.held.has("create:/synthetic/source"));
+    await greeting.waitFor();
+    assert.equal(await contextHeader.count(), 1);
+    assert.equal(await centeredComposer.count(), 1);
+    await page.screenshot({ path: join(artifacts, `preconnect-pending-${width}.png`) });
+    await page.evaluate(() => window.__first.release("create", "source"));
+    await page.locator('[data-testid="acp-config-trigger-mode"]:enabled').waitFor();
+    await page.waitForFunction(() =>
+      window.__first.calls.some((call) => call[0] === "conversation"),
+    );
+    assert.equal(await greeting.isVisible(), true, "Preconnect must keep the home greeting");
+    assert.equal(await contextHeader.count(), 1, "Preconnect must keep the project header");
+    assert.equal(await centeredComposer.count(), 1, "Preconnect must keep the centered composer");
+    assert.equal(await count("prompt"), 0, "Preconnect must not submit a prompt");
+    assert.equal(
+      await page.evaluate(
+        () =>
+          window.__preconnectInput === document.querySelector('[data-testid="v4-composer-input"]'),
+      ),
+      true,
+    );
+    await page.screenshot({ path: join(artifacts, `preconnect-ready-${width}.png`) });
+    await input.fill("first accepted draft input");
+    await page.getByTestId("v4-composer-send").click();
+    await page
+      .locator("[data-v4-user-input-bubble]")
+      .filter({ hasText: "first accepted draft input" })
+      .waitFor();
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="v4-composer-input"]')?.textContent === "",
+    );
+    assert.equal(await greeting.count(), 0);
+    assert.equal(await contextHeader.count(), 0);
+    assert.equal(await centeredComposer.count(), 0);
+    assert.equal(await count("create"), 1, "First input reuses the preconnected session");
+    assert.equal(await count("prompt"), 1);
+    assert.deepEqual(errors, []);
     await page.close();
   }
   console.log(
-    `PASS: real SessionPane selection, archive remount without ACP preconnect, next-draft auth, and replayable reconnect. Artifacts: ${artifacts}`,
+    `PASS: real SessionPane selection, archive/auth, empty preconnect home, first input, and replayable reconnect. Artifacts: ${artifacts}`,
   );
 } finally {
   await browser?.close();
