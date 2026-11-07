@@ -1,3 +1,4 @@
+import { prepareProductPaths } from "@zcode/shared/node";
 import {
   createOfficialCommandEndpoint,
   type OfficialCommandEndpoint,
@@ -90,6 +91,8 @@ function applyProtocolProviderRegistry(
 export async function runZCodeProtocolAgent(
   options: RunZCodeProtocolAgentOptions = {},
 ): Promise<void> {
+await prepareProductPaths({ workspacePath: options.cwd ?? process.cwd() });
+
   if (options.prepareStorageOnly) {
     const config = createConfig({ env: options.env });
     await prepareProtocolStartupStorage({

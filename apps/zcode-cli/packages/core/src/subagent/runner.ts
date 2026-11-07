@@ -806,7 +806,7 @@ function createSubagentLifecycle(
   const childSessionId = createSessionId(`subagent_${agentId}`);
   const startedAt = Date.now();
   const agentOutputDir = join(
-    options.outputRootDir ?? join(tmpdir(), "zcode-agents"),
+    options.outputRootDir ?? join(tmpdir(), "codevori-agents"),
     request.sessionId,
     agentId,
   );
@@ -860,7 +860,7 @@ function createSubagentLifecycleFromTask(
   const startedAt = Date.now();
   const agentOutputDir = task.outputFile
     ? dirname(task.outputFile)
-    : join(options.outputRootDir ?? join(tmpdir(), "zcode-agents"), request.sessionId, agentId);
+    : join(options.outputRootDir ?? join(tmpdir(), "codevori-agents"), request.sessionId, agentId);
   const metadataFile = join(agentOutputDir, "metadata.json");
   const outputFile = join(agentOutputDir, "output.txt");
   const taskOutputFile = join(agentOutputDir, "task.output");

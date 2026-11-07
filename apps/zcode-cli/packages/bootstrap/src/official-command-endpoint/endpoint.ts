@@ -59,10 +59,10 @@ export function createOfficialCommandEndpoint(
     listening ??= (async () => {
       // UDS 放在只有当前用户可进的临时目录里；Windows 用随机名的命名管道。
       const dir =
-        platform === "win32" ? undefined : await mkdtemp(join(tmpdir(), "zcode-official-"));
+        platform === "win32" ? undefined : await mkdtemp(join(tmpdir(), "codevori-official-"));
       const address = dir
         ? join(dir, "endpoint.sock")
-        : `\\\\.\\pipe\\zcode-official-${process.pid}-${randomBytes(8).toString("hex")}`;
+        : `\\\\.\\pipe\\codevori-official-${process.pid}-${randomBytes(8).toString("hex")}`;
       const server = createServer((req, res) => {
         // 配置/地址解析也可能同步抛错；HTTP 边界必须收口，不能变成进程级未处理拒绝。
         void handle(req, res).catch(() => {

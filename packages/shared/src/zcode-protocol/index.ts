@@ -2769,7 +2769,7 @@ export type ZCodeSkillsReferenceCatalogResult = z.infer<
 
 // ── 已保存工作流的 GUI 中枢──
 // workspace 级、无会话的五个方法，照 skills/referenceCatalog 的先例：每次调用现扫
-// `<cwd>/.zcode/workflows/`（挂载时快照会漏掉手改的文件）。形状与 @zcode/contracts 的
+// `<cwd>/.codevori/workflows/`（挂载时快照会漏掉手改的文件）。形状与 @zcode/contracts 的
 // saved-workflow.ts 逐字对齐——依赖方向是 contracts → shared，所以这里结构化地再声明一遍，
 // 而不是 import；两边的 strict 形状由 bootstrap 侧的协议测试互相钉住。
 export const zcodeSavedWorkflowArgTypeSchema = z.enum(["string", "number", "boolean", "json"]);
@@ -2800,7 +2800,7 @@ export const zcodeSavedWorkflowMetaSchema = z
   })
   .strict();
 export type ZCodeSavedWorkflowMeta = z.infer<typeof zcodeSavedWorkflowMetaSchema>;
-// 作用域两档：项目档落 `<cwd>/.zcode/workflows/`、全局档落 agent 机器的 `~/.zcode/workflows/`。作用域由文件所在目录推得，frontmatter 不存 scope。
+// 作用域两档：项目档落 `<cwd>/.codevori/workflows/`、全局档落 agent 机器的 `~/.codevori/workflows/`。作用域由文件所在目录推得，frontmatter 不存 scope。
 export const zcodeSavedWorkflowScopeSchema = z.enum(["project", "global"]);
 export type ZCodeSavedWorkflowScope = z.infer<typeof zcodeSavedWorkflowScopeSchema>;
 /** ACP 与原生 SaveWorkflow 使用相同的模型字段；目标路径只能由 Agent 推导。 */
@@ -2890,7 +2890,7 @@ export const zcodeWorkflowsListParamsSchema = z
     workspace: zcodeWorkspaceRefSchema,
     /** ACP 工具按原生 ListSavedWorkflows 枚举两档并应用项目优先；管理页继续定向 scope。 */
     includeGlobal: z.boolean().optional(),
-    // 缺省即 `project`（本项目档）。给 `global` 时改扫本机 `~/.zcode/workflows/`；此时 `workspace`
+    // 缺省即 `project`（本项目档）。给 `global` 时改扫本机 `~/.codevori/workflows/`；此时 `workspace`
     // 仍必填，但只是**载体运行时**——协议处理器对全局档不读它的路径。
     scope: zcodeSavedWorkflowScopeSchema.optional(),
   })

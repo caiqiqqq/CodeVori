@@ -2919,7 +2919,7 @@ export function createZCodeTaskServiceAdapter(
 
     async getTaskSessionFilePath(params) {
       return {
-        path: `${params.workspacePath}/${params.taskId}.zcode-session`,
+        path: `${params.workspacePath}/${params.taskId}.codevori-session`,
         exists: false,
       };
     },

@@ -2,10 +2,10 @@
 !include FileFunc.nsh
 
 !ifndef ZCODE_INSTALLER_DEFAULT_LOG_PATH
-  !define ZCODE_INSTALLER_DEFAULT_LOG_PATH "$TEMP\ZCode-installer.log"
+  !define ZCODE_INSTALLER_DEFAULT_LOG_PATH "$TEMP\CodeVori-installer.log"
 !endif
 !ifndef ZCODE_INSTALLER_ELEVATED_LOG_PATH
-  !define ZCODE_INSTALLER_ELEVATED_LOG_PATH "$WINDIR\Logs\ZCode-installer.log"
+  !define ZCODE_INSTALLER_ELEVATED_LOG_PATH "$WINDIR\Logs\CodeVori-installer.log"
 !endif
 !ifndef ZCODE_INSTALLER_IS_ELEVATED_INNER
   ; 来源只在测试夹具模拟内层，正式默认恒假会让提权进程继续使用调用方 /LOG。
@@ -15,11 +15,11 @@
 !endif
 
 !ifndef ZCODE_INSTALL_MANIFEST_NAME
-  !define ZCODE_INSTALL_MANIFEST_NAME ".zcode-install-manifest"
+  !define ZCODE_INSTALL_MANIFEST_NAME ".codevori-install-manifest"
 !endif
 
 !ifndef ZCODE_UNINSTALLER_LOG_PATH
-  !define ZCODE_UNINSTALLER_LOG_PATH "$TEMP\ZCode-uninstaller.log"
+  !define ZCODE_UNINSTALLER_LOG_PATH "$TEMP\CodeVori-uninstaller.log"
 !endif
 !ifndef ZCODE_UNINSTALLER_FUNCTION_PREFIX
   !define ZCODE_UNINSTALLER_FUNCTION_PREFIX "un."
@@ -80,6 +80,10 @@
     !endif
     ClearErrors
     FileOpen $R0 "$INSTDIR\${ZCODE_INSTALL_MANIFEST_NAME}" r
+    IfErrors 0 zcodeManifestRead
+    ; 旧版 CodeVori 随包清单仍使用 ZCode 文件名，只用于升级时读取。
+    ClearErrors
+    FileOpen $R0 "$INSTDIR\.zcode-install-manifest" r
     IfErrors zcodeManifestMissing
 
     zcodeManifestRead:
@@ -277,13 +281,23 @@
   Function ZCodeDetectPreviousUninstallerCapabilities
     StrCpy $ZCodePreviousUninstallerSupportsManifest "0"
     ; manifest 是卸载器能力标记：存在即表示旧卸载器会按清单选择性删除。
-    IfFileExists "$INSTDIR\${ZCODE_INSTALL_MANIFEST_NAME}" 0 zcodePreviousUninstallerCapabilityCheckNested
+    IfFileExists "$INSTDIR\${ZCODE_INSTALL_MANIFEST_NAME}" 0 zcodePreviousUninstallerCapabilityCheckLegacy
+      StrCpy $ZCodePreviousUninstallerSupportsManifest "1"
+      Return
+
+    ; 修复依据：新版清单不存在时仍须检查旧名，不能直接跳到子目录检查。
+    zcodePreviousUninstallerCapabilityCheckLegacy:
+    IfFileExists "$INSTDIR\.zcode-install-manifest" 0 zcodePreviousUninstallerCapabilityCheckNested
       StrCpy $ZCodePreviousUninstallerSupportsManifest "1"
       Return
 
     zcodePreviousUninstallerCapabilityCheckNested:
       ; assisted installer 的目录页会在后续 instfilesPre 才补上 APP_FILENAME 子目录，提前兼容两种形态。
-      IfFileExists "$INSTDIR\${APP_FILENAME}\${ZCODE_INSTALL_MANIFEST_NAME}" 0 zcodePreviousUninstallerCapabilityDone
+      IfFileExists "$INSTDIR\${APP_FILENAME}\${ZCODE_INSTALL_MANIFEST_NAME}" 0 zcodePreviousUninstallerCapabilityCheckNestedLegacy
+        StrCpy $ZCodePreviousUninstallerSupportsManifest "1"
+        Return
+      zcodePreviousUninstallerCapabilityCheckNestedLegacy:
+      IfFileExists "$INSTDIR\${APP_FILENAME}\.zcode-install-manifest" 0 zcodePreviousUninstallerCapabilityDone
         StrCpy $ZCodePreviousUninstallerSupportsManifest "1"
 
     zcodePreviousUninstallerCapabilityDone:
@@ -468,6 +482,13 @@
 
     StrCpy $R2 ""
 
+    IfFileExists "$R9\.codevori\*.*" 0 +2
+      StrCpy $R2 "$R9\.codevori"
+    StrCmp $R2 "" 0 zcodeFindNestedDataDirDone
+    IfFileExists "$R9\.codevori" 0 +2
+      StrCpy $R2 "$R9\.codevori"
+    StrCmp $R2 "" 0 zcodeFindNestedDataDirDone
+    ; 旧应用数据同样不能被更新安装器覆盖。
     IfFileExists "$R9\.zcode\*.*" 0 +2
       StrCpy $R2 "$R9\.zcode"
     StrCmp $R2 "" 0 zcodeFindNestedDataDirDone
@@ -506,7 +527,7 @@
     Call ZCodeDetectPreviousUninstallerCapabilities
     StrCmp $ZCodePreviousUninstallerSupportsManifest "1" zcodeInstallDirDataBlockSkip
 
-    ;  用户可能把数据存储目录放进安装目录，Windows 更新覆盖安装目录时会清掉 .zcode。
+    ;  用户可能把数据存储目录放进安装目录，Windows 更新覆盖安装目录时会清掉它。
     ; assisted installer 会把不含应用名的选择目录补成 "$INSTDIR\${APP_FILENAME}"，所以这里按相同规则计算最终安装目录。
     ${StrContains} $R1 "${APP_FILENAME}" "$INSTDIR"
     StrCmp $R1 "" 0 zcodeInstallDirDataBlockUseSelectedDir
@@ -517,8 +538,7 @@
       StrCpy $R0 "$INSTDIR"
 
     zcodeInstallDirDataBlockCheckDir:
-      ; 旧阻断只检查最终安装目录直属的 .zcode，漏掉 data\.zcode 等子目录数据。
-      ; 安装器覆盖安装时会管理整个安装目录树，递归命中任意 .zcode 都必须阻断。
+      ; 安装器覆盖安装时会管理整个目录树，递归保护 CodeVori 和旧版 ZCode 数据。
       Push "$R0"
       Call ZCodeFindNestedDataDir
       StrCmp $R2 "" zcodeInstallDirDataBlockSkip zcodeInstallDirDataBlockFound
@@ -526,12 +546,12 @@
     zcodeInstallDirDataBlockFound:
       IfSilent zcodeInstallDirDataBlockSilent
 
-      !insertmacro MUI_HEADER_TEXT "需要修改安装目录" "当前安装目录或其子目录包含 ZCode 数据目录"
+      !insertmacro MUI_HEADER_TEXT "需要修改安装目录" "当前安装目录或其子目录包含应用数据目录"
       nsDialogs::Create 1018
       Pop $0
       StrCmp $0 error zcodeInstallDirDataBlockDialogFailed 0
 
-      ${NSD_CreateLabel} 0u 0u 300u 44u "检测到该安装目录或其子目录中存在 .zcode 数据目录：$\r$\n$R2"
+      ${NSD_CreateLabel} 0u 0u 300u 44u "检测到该安装目录或其子目录中存在应用数据目录：$\r$\n$R2"
       Pop $1
       ${NSD_CreateLabel} 0u 54u 300u 70u "为避免历史会话和配置被安装器清理，请返回上一步选择其他安装目录。$\r$\n$\r$\n当前目录不能继续安装。"
       Pop $1
@@ -547,7 +567,7 @@
       Return
 
     zcodeInstallDirDataBlockDialogFailed:
-      MessageBox MB_OK|MB_ICONSTOP "检测到安装目录或其子目录中存在 .zcode 数据目录，安装已停止。请重新运行安装器并选择其他安装目录。"
+      MessageBox MB_OK|MB_ICONSTOP "检测到安装目录或其子目录中存在应用数据目录，安装已停止。请重新运行安装器并选择其他安装目录。"
       SetErrorLevel 1
       Quit
 

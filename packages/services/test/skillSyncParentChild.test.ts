@@ -46,11 +46,11 @@ for (const selected of ["parent", "child", "both"] as const) {
       }
       if (selected !== "child")
         assert.match(
-          await readFile(join(target, ".zcode", "skills", "parent", "SKILL.md"), "utf8"),
+          await readFile(join(target, ".codevori", "skills", "parent", "SKILL.md"), "utf8"),
           /parent/,
         );
       assert.match(
-        await readFile(join(target, ".zcode", "skills", "parent", "child", "SKILL.md"), "utf8"),
+        await readFile(join(target, ".codevori", "skills", "parent", "child", "SKILL.md"), "utf8"),
         /child/,
       );
     } finally {

@@ -1,3 +1,4 @@
+import { prepareProductPaths } from "@zcode/shared/node";
 /**
  * MCP 用户目录模块 - 主入口
  */
@@ -41,7 +42,7 @@ const ZCODE_MCP_DESCRIPTOR: DirectoryMcpDescriptor = {
   source: "zcodeagentmcp",
   directorySource: "zcode",
   userConfigDirSegments: [PRODUCT_DATA_DIRECTORY_NAME, "cli"],
-  workspaceConfigDirSegments: [".zcode"],
+  workspaceConfigDirSegments: [".codevori"],
   fileName: "config.json",
   format: "json",
   configKeyName: "mcp.servers",
@@ -352,14 +353,14 @@ async function readDirectoryServersFromPreferredSources(
     scope,
     workspacePath,
   );
-  // `.zcode` 是强优先级来源；只要读到 MCP server，同 scope 的 `.agents` 就不再参与。
+  // `.codevori` 是强优先级来源；只要读到 MCP server，同 scope 的 `.agents` 就不再参与。
   if (zcodeServers.length > 0) {
     return zcodeServers;
   }
   return readDirectoryServersFromFile(AGENTS_MCP_DESCRIPTOR, scope, workspacePath);
 }
 
-/** 写前重读 `.zcode` 的 server map，只改 update 涉及的 server，其他字段原样保留。 */
+/** 写前重读 `.codevori` 的 server map，只改 update 涉及的 server，其他字段原样保留。 */
 async function updateZCodeServersInFile(
   scope: Exclude<McpScope, "common">,
   workspacePath: string | undefined,
@@ -377,6 +378,8 @@ async function updateZCodeServersInFile(
 export async function loadCliMcpFromUserDirectory(
   request?: LoadCliMcpFromUserDirectoryRequest,
 ): Promise<LoadCliMcpFromUserDirectoryResult> {
+  await prepareProductPaths({ workspacePath: request?.workspacePath });
+
   const servers: NativeMcpServerRecord[] = [];
 
   // 去掉其他 provider 后，ZCode Agent 只按目录约定读取；先 workspace，再 user。
@@ -394,6 +397,8 @@ export async function loadCliMcpFromUserDirectory(
 export async function saveCliMcpToUserDirectory(
   payload: SaveCliMcpToUserDirectoryRequest,
 ): Promise<void> {
+  await prepareProductPaths({ workspacePath: payload.projectPath });
+
   if (payload.action === "set-enabled") {
     if (typeof payload.enabled !== "boolean") {
       throw new Error("Missing enabled value for MCP set-enabled action");

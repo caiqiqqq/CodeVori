@@ -729,14 +729,14 @@ function isExcludedRelativePath(relativePath: string): boolean {
     return true;
   }
   // debug 目录通常是模型/运行时高频轨迹，不是用户要交付的日志包材料。
-  // 过去显式收集 ~/.zcode/cli/debug 会把这类上下文带进手动导出和反馈完整日志，这里按目录段统一跳过。
+  // 过去显式收集 ~/.codevori/cli/debug 会把这类上下文带进手动导出和反馈完整日志，这里按目录段统一跳过。
   if (isExcludedDirectoryArchivePath(normalizedRelativePath)) {
     return true;
   }
   if (isNonLogStateArchivePath(normalizedRelativePath)) {
     return true;
   }
-  // ~/.zcode/v2/dev 保存 stdio-traffic 等高频协议流，真实机器上会累计到 GB 级。
+  // ~/.codevori/v2/dev 保存 stdio-traffic 等高频协议流，真实机器上会累计到 GB 级。
   // 远超反馈附件的大小上限，不应随诊断包带出。
   if (isHighVolumeRuntimeArchivePath(normalizedRelativePath)) {
     return true;

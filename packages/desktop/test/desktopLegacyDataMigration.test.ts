@@ -9,6 +9,58 @@ import {
   migrateLegacyDesktopData,
 } from "../src/main/desktopLegacyDataMigration.ts";
 
+test("an already migrated installation upgrades scratch projects, recent entries and session history once", async () => {
+  const root = await mkdtemp(join(tmpdir(), "codevori-scratch-upgrade-"));
+  const oldWorkspace = join(root, "ZCodeProject", "example", "src");
+  const newWorkspace = join(root, "CodeVoriProject", "example", "src");
+  const product = join(root, ".codevori");
+  const options = {
+    legacyDataRoots: [{ source: join(root, ".zcode"), target: product }],
+    legacyProfile: join(root, "ZCode"),
+    productProfile: join(root, "CodeVori"),
+  };
+  try {
+    await mkdir(oldWorkspace, { recursive: true });
+    await writeFile(join(oldWorkspace, "note.md"), "legacy project");
+    await mkdir(join(product, "v2"), { recursive: true });
+    await mkdir(join(product, "cli/db"), { recursive: true });
+    await mkdir(options.productProfile);
+    await writeFile(
+      join(product, ".migration-from-zcode.json"),
+      '{"version":1,"status":"complete"}',
+    );
+    await writeFile(
+      join(product, "v2/setting.json"),
+      JSON.stringify({
+        recentProjects: [oldWorkspace, "/other-project"],
+        lastWorkspaceSession: { window: { workspacePath: oldWorkspace } },
+      }),
+    );
+    const database = new DatabaseSync(join(product, "cli/db/db.sqlite"));
+    database.exec("CREATE TABLE session(directory TEXT, path TEXT)");
+    database.prepare("INSERT INTO session VALUES (?,?)").run(oldWorkspace, oldWorkspace);
+    database.close();
+    assert.equal(await migrateLegacyDesktopData(options), "already-current");
+    assert.equal(await readFile(join(newWorkspace, "note.md"), "utf8"), "legacy project");
+    assert.equal(await readFile(join(oldWorkspace, "note.md"), "utf8"), "legacy project");
+    const settings = JSON.parse(await readFile(join(product, "v2/setting.json"), "utf8"));
+    assert.deepEqual(settings.recentProjects, [newWorkspace, "/other-project"]);
+    assert.equal(settings.lastWorkspaceSession.window.workspacePath, newWorkspace);
+    const migrated = new DatabaseSync(join(product, "cli/db/db.sqlite"));
+    assert.deepEqual(
+      { ...migrated.prepare("SELECT * FROM session").get() },
+      { directory: newWorkspace, path: newWorkspace },
+    );
+    migrated.close();
+    await writeFile(join(newWorkspace, "note.md"), "current edit");
+    await writeFile(join(oldWorkspace, "note.md"), "old app edit");
+    await migrateLegacyDesktopData(options);
+    assert.equal(await readFile(join(newWorkspace, "note.md"), "utf8"), "current edit");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("first launch copies ZCode data and profile once, then both products write independently", async () => {
   const root = await mkdtemp(join(tmpdir(), "codevori-migrate-"));
   const legacyDataRoot = join(root, ".zcode");

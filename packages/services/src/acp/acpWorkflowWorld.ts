@@ -37,7 +37,7 @@ export function acpWorkflowArtifactPath(
   const extension = record.kind === "markdown" ? ".md" : extname(record.sourcePath ?? "");
   return within(
     cwd,
-    join(".zcode", "workflow-runs", runId, "artifacts", `${stem}-${record.version}${extension}`),
+    join(".codevori", "workflow-runs", runId, "artifacts", `${stem}-${record.version}${extension}`),
   );
 }
 
@@ -288,7 +288,7 @@ export function createAcpWorkflowWorld(input: {
         throw new WorkflowError("DriverError", "Workflow artifact exceeds 10MB");
       // 修复原因：.zcode 可能是软链接；逐级确认真实路径后再创建下一层，不能先递归写到外部。
       let dir = cwd;
-      for (const segment of [".zcode", "workflow-runs", runId, "artifacts"]) {
+      for (const segment of [".codevori", "workflow-runs", runId, "artifacts"]) {
         dir = join(dir, segment);
         await mkdir(dir).catch((error: NodeJS.ErrnoException) => {
           if (error.code !== "EEXIST") throw error;

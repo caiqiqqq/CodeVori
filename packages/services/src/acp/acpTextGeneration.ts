@@ -115,7 +115,7 @@ export class AcpTextGeneration {
       ? undefined
       : await this.deps.manager.resolveLaunch(session.agent);
     if (signal.aborted) throw new Error("work-task.result-canceled");
-    const directory = await mkdtemp(join(tmpdir(), "zcode-text-"));
+    const directory = await mkdtemp(join(tmpdir(), "codevori-text-"));
     let port: AcpConnectionPort | undefined;
     const stop = () => {
       // 只取消辅助连接；不得触碰原会话的 active run、权限或待办状态。

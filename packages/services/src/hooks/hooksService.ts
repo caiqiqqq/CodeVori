@@ -1,3 +1,4 @@
+import { prepareProductPaths } from "@zcode/shared/node";
 import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -58,7 +59,7 @@ function getRootDir(source: SettingsDirectorySource, workspacePath?: string): st
   const baseDir = workspacePath ?? resolveUserHomeDir();
   if (source === "zcode") {
     return workspacePath
-      ? join(baseDir, ".zcode")
+      ? join(baseDir, ".codevori")
       : join(baseDir, PRODUCT_DATA_DIRECTORY_NAME, "cli");
   }
   return join(baseDir, source === "agents" ? ".agents" : ".claude");
@@ -225,6 +226,8 @@ async function loadHooksImpl(
   hooksEnabled: boolean;
   workspaceHookSnapshot?: WorkspaceHookBundleSnapshotData;
 }> {
+  await prepareProductPaths({ workspacePath: params.workspacePath });
+
   const workspacePath = resolve(params.workspacePath);
   const workspaceIdentity = params.workspaceIdentity?.trim() || workspacePath;
   const [{ sources: projectSources }, userSource] = await Promise.all([
@@ -294,7 +297,9 @@ async function saveHooksImpl(params: {
   workspacePath: string;
   hooks: Hook[];
 }): Promise<void> {
-  const currentProjectConfigPath = resolve(params.workspacePath, ".zcode", "config.json");
+  await prepareProductPaths({ workspacePath: params.workspacePath });
+
+  const currentProjectConfigPath = resolve(params.workspacePath, ".codevori", "config.json");
   const userHooks = params.hooks.filter(
     (hook) =>
       hook.editable !== false &&

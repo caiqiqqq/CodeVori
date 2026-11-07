@@ -93,7 +93,7 @@ it("the real Sites CLI deploys a local stage through session endpoint auth and s
     expect(packageBytes).toBe(deployment.artifactSize);
     expect(seen.every((entry) => entry.auth === "Bearer host-only-fixture")).toBe(true);
     expect(stdout).not.toContain("host-only-fixture");
-    expect(JSON.parse(await readFile(join(root, ".zcode-site.json"), "utf8"))).toMatchObject({
+    expect(JSON.parse(await readFile(join(root, ".codevori-site.json"), "utf8"))).toMatchObject({
       siteId: "site-1",
     });
   } finally {

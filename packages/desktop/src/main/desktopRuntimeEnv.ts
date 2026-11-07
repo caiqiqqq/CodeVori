@@ -68,7 +68,7 @@ const runtimeIdentity = resolveDesktopRuntimeIdentity({
 });
 export const runtimeApplicationName = runtimeIdentity.applicationName;
 // Electron 的 app.getPath("home") 不一定跟随测试进程里的 HOME 覆盖。
-// e2e 默认工作区依赖 home 路径，因此提供显式覆盖，避免测试写到开发者真实 ~/ZCodeProject。
+// e2e 默认工作区依赖 home 路径，因此提供显式覆盖，避免测试写到开发者真实 ~/CodeVoriProject。
 export const runtimeHomePath = readRuntimeEnvOverride("ZCODE_DESKTOP_HOME_DIR");
 // Chromedriver 管理 Electron 时会注入临时 userData；e2e 默认路径模式下导入期不能提前读取 appData。
 export const shouldUseElectronDefaultUserDataPath = isTruthyRuntimeEnvOverride(
