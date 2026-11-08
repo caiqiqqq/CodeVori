@@ -208,7 +208,7 @@ function lastStage(entries: readonly LogEntry[]): DeploymentStage {
 
 /**
  * 错误怎么呈现（docs/site/sites-panel.md「错误与状态」）：
- * - `page`：整页状态页，用户先要在面板外处理（登录、续费、升级 ZCode）；
+ * - `page`：整页状态页，用户先要在面板外处理（登录、续费、升级 CodeVori）；
  * - `missing`：站点或部署不存在，回列表；
  * - `bar`：顶部错误条，保留已有数据、下一轮重试。
  * 改名和角标的错误由调用处按 code 就地处理，不经这里。

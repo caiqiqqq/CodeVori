@@ -537,7 +537,7 @@ export async function readChromeCookiesWithHelper(options: {
   ) {
     throw new Error("chrome_cookie_database_outside_profile");
   }
-  const tempRoot = await mkdtemp(join(tmpdir(), "zcode-chrome-cookie-helper-"));
+  const tempRoot = await mkdtemp(join(tmpdir(), "codevori-chrome-cookie-helper-"));
   const userDataPath = join(tempRoot, "User Data");
   const targetProfilePath = join(userDataPath, "Default");
   const targetDatabasePath = join(targetProfilePath, relativeDatabasePath);
@@ -643,7 +643,7 @@ export async function importChromeLocalStorage(options: {
     return emptyChromeLocalStorageImportStats();
   }
 
-  const tempRoot = await mkdtemp(join(tmpdir(), "zcode-chrome-local-storage-"));
+  const tempRoot = await mkdtemp(join(tmpdir(), "codevori-chrome-local-storage-"));
   const userDataPath = join(tempRoot, "User Data");
   const targetProfilePath = join(userDataPath, "Default");
   let originCount = 0;

@@ -25,7 +25,7 @@ export async function main(): Promise<void> {
     // 和宿主校验官方 MCP 目标时同一口径；目标不一致时宿主不会给身份头。
     api: createSitesApi({
       origin: resolveRuntimeZCodeEndpointOrigin(process.env),
-      // 面板只在桌面端可用，桌面端总会设置它；插件自己的版本号不是 ZCode 版本，不拿来顶替。
+      // 面板只在桌面端可用，桌面端总会设置它；插件自己的版本号不是 CodeVori 版本，不拿来顶替。
       appVersion: process.env.ZCODE_APP_VERSION?.trim() ?? "",
       fetch: globalThis.fetch,
       timeoutMs: REQUEST_TIMEOUT_MS,

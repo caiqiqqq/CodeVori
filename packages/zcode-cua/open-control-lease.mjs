@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 export function openComputerUseStateDirectory() {
-  return join(tmpdir(), `zcode-open-cua-${process.getuid?.() ?? "user"}`);
+  return join(tmpdir(), `codevori-open-cua-${process.getuid?.() ?? "user"}`);
 }
 
 export async function withDesktopControlLease(run, { lockPath, onCompromised } = {}) {

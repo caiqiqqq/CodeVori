@@ -191,13 +191,15 @@ function waitForCuaApplicationReturn({
       inspectFrontmost();
       maybeFinishReturn();
     };
-    const onQuit = () => finish(new Error("ZCode quit during CUA permission onboarding"));
+    const onQuit = () => finish(new Error("CodeVori quit during CUA permission onboarding"));
     const onAbort = () =>
       finish(signal.reason ?? new Error("CUA permission onboarding origin window closed"));
     observationTimer = setTimeout(
       () =>
         finish(
-          new Error(`System Settings did not return to ZCode within ${Math.max(1, timeoutMs)}ms`),
+          new Error(
+            `System Settings did not return to CodeVori within ${Math.max(1, timeoutMs)}ms`,
+          ),
         ),
       Math.max(1, timeoutMs),
     );
@@ -287,7 +289,7 @@ function createDragPanelForSession(
 
 /** 生产走签名包内的 extraResources；dev 走 checkout 里的构建产物。 */
 function resolveWindowBoundsBinaryPath(): string {
-  const relative = join("macos-window-bounds", "zcode-window-bounds");
+  const relative = join("macos-window-bounds", "codevori-window-bounds");
   return app.isPackaged
     ? join(process.resourcesPath, relative)
     : join(import.meta.dirname, "..", "..", "resources", relative);

@@ -286,7 +286,7 @@ export function createAcpWorkflowWorld(input: {
           : Buffer.from(request.content ?? "", "utf8");
       if (bytes.length > 10 * 1024 * 1024)
         throw new WorkflowError("DriverError", "Workflow artifact exceeds 10MB");
-      // 修复原因：.zcode 可能是软链接；逐级确认真实路径后再创建下一层，不能先递归写到外部。
+      // 修复原因：.codevori 可能是软链接；逐级确认真实路径后再创建下一层，不能先递归写到外部。
       let dir = cwd;
       for (const segment of [".codevori", "workflow-runs", runId, "artifacts"]) {
         dir = join(dir, segment);

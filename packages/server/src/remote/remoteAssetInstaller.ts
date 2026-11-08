@@ -429,7 +429,7 @@ export class LocalUploadAssetInstaller implements RemoteAssetInstaller {
     );
     const localTarPath = join(
       tmpdir(),
-      `zcode-remote-${params.componentId}-${Date.now()}-${randomUUID()}.tar.gz`,
+      `codevori-remote-${params.componentId}-${Date.now()}-${randomUUID()}.tar.gz`,
     );
     await createTarGzArchive(localTarPath, [
       { sourcePath: localPath, archivePath: basename(localPath) },

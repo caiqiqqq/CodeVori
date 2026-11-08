@@ -21,6 +21,7 @@ const GENERIC_ZCODE_UI_ERROR_MESSAGES = new Set([
   "Compact failed",
   "Rewind failed",
   "ZCode session failed",
+  "CodeVori session failed",
 ]);
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {

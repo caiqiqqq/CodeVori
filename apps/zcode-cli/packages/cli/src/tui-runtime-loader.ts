@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { homedir, platform, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { runTui } from "@zcode/tui";
+import { resolveSeaRuntimeCacheBase } from "./sea-runtime-cache.js";
 
 declare const __CLI_VERSION__: string;
 
@@ -27,7 +27,7 @@ type SeaTuiRuntimeManifest = {
   version: 1;
 };
 
-const assetPrefix = "zcode-tui-runtime/";
+const assetPrefix = "codevori-tui-runtime/";
 const manifestAssetKey = `${assetPrefix}manifest.json`;
 const packageEntryPath = "node_modules/@zcode/tui/dist/index.js";
 const manifestFileName = "manifest.json";
@@ -46,7 +46,7 @@ export const loadTuiRuntime = async (): Promise<TuiRuntimeModule> => {
 const ensureSeaTuiRuntime = async (sea: SeaModule): Promise<string> => {
   const manifest = readManifest(sea);
   const cacheDirectory = join(
-    cacheBaseDirectory(),
+    resolveSeaRuntimeCacheBase(),
     __CLI_VERSION__,
     manifest.target,
     manifest.hash,
@@ -115,26 +115,6 @@ const isCacheCurrent = async (
   } catch {
     return false;
   }
-};
-
-const cacheBaseDirectory = (): string => {
-  const home = homedir();
-  if (platform() === "darwin" && home) {
-    return join(home, "Library", "Caches", "zcode", "sea-assets");
-  }
-  if (platform() === "win32") {
-    return join(
-      process.env.LOCALAPPDATA ?? join(home || tmpdir(), "AppData", "Local"),
-      "zcode",
-      "Cache",
-      "sea-assets",
-    );
-  }
-  return join(
-    process.env.XDG_CACHE_HOME ?? join(home || tmpdir(), ".cache"),
-    "zcode",
-    "sea-assets",
-  );
 };
 
 const markerPathForDirectory = (directory: string): string => join(directory, manifestFileName);

@@ -3,7 +3,7 @@ import type { Logger } from "@zcode/contracts";
 import { createMcpNodeFallbackProvider, type McpNodeFallbackProvider } from "@zcode/adapters/mcp";
 import { candidateBaseDirs } from "./bundled-plugins.js";
 
-/** 随包 npm 相对 zcode.cjs 的位置；与 desktop prepare:agent-bundle 的 staging 目录同一约定。 */
+/** 随包 npm 相对 codevori.cjs 的位置；与 desktop prepare:agent-bundle 的 staging 目录同一约定。 */
 const BUNDLED_NPM_RELATIVE_SEGMENTS = ["node-runtime", "npm"] as const;
 
 export interface McpNodeFallbackRuntime {

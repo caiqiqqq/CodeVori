@@ -217,8 +217,11 @@ export const buildCli = async ({
   }),
 } = {}) => {
   const cliVersion = await version;
-  const outfile = resolve(cliDirectory, "dist/zcode.cjs");
+  const outfile = resolve(cliDirectory, "dist/codevori.cjs");
   const sourcemapFile = `${outfile}.map`;
+  // 修复原因：增量构建保留旧入口会让打包扫描和本地调试误用过期产物。
+  await rm(resolve(cliDirectory, "dist/zcode.cjs"), { force: true });
+  await rm(resolve(cliDirectory, "dist/zcode.cjs.map"), { force: true });
   const notices = await readThirdPartyNotices(resolve(rootDirectory, "../.."));
 
   await stageBuiltinProviderConfig({
@@ -230,7 +233,7 @@ export const buildCli = async ({
   await build({
     banner: {
       // SEA 与普通 CLI 共用入口；声明必须在 Agent 初始化和原生资源解压前可独立读取。
-      js: `#!/usr/bin/env node\n"use strict";\nif (process.argv.length === 3 && process.argv[2] === "--licenses") { const sea = require("node:sea"); const nodeNotice = sea.isSea() ? "\\n\\n## Bundled Node.js runtime\\n\\n" + sea.getAsset("zcode-node-license", "utf8") : ""; process.stdout.write(${JSON.stringify(notices.toString("utf8"))} + nodeNotice, () => process.exit(0)); } else {`,
+      js: `#!/usr/bin/env node\n"use strict";\nif (process.argv.length === 3 && process.argv[2] === "--licenses") { const sea = require("node:sea"); const nodeNotice = sea.isSea() ? "\\n\\n## Bundled Node.js runtime\\n\\n" + sea.getAsset("codevori-node-license", "utf8") : ""; process.stdout.write(${JSON.stringify(notices.toString("utf8"))} + nodeNotice, () => process.exit(0)); } else {`,
     },
     footer: { js: "}" },
     bundle: true,
@@ -247,7 +250,7 @@ export const buildCli = async ({
     // SEA 资源由 build-sea 的 native asset 收集阶段单独处理。
     external: resolveBuildExternal(),
     format: "cjs",
-    // 桌面 app 集成只内置 zcode.cjs，旧 desktop-agent 构建复用 CLI 调试产物，
+    // 桌面 app 集成只内置 codevori.cjs，旧 desktop-agent 构建复用 CLI 调试产物，
     // 未压缩且会留下指向未随包复制的 sourcemap。桌面 agent 模式压缩 JS，同时保留
     // 函数/类名，避免依赖 name 的诊断与注册逻辑被 esbuild 标识符压缩影响。
     keepNames: minify,
@@ -260,7 +263,7 @@ export const buildCli = async ({
     platform: "node",
     sourcemap,
     // target 取所有承载运行时里最低的 Node 版本：桌面用 Electron 内置 Node 24，
-    // 远端 SSH 复用已部署的独立 Node v22.16 跑同一份 zcode.cjs。降到 node22 保证这份产物
+    // 远端 SSH 复用已部署的独立 Node v22.16 跑同一份 codevori.cjs。降到 node22 保证这份产物
     // 在两端都不会用到目标运行时不支持的语法/特性。
     target: "node22",
     alias: resolveBuildAliases({ cliDirectory, rootDirectory }),

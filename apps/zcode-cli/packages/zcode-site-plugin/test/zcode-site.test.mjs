@@ -176,7 +176,7 @@ test("local and auth errors", async () => {
   const expired = await run(fake, cwd, "usage");
   assert.equal(expired.code, 2);
   assert.equal(expired.error.code, 3101);
-  assert.match(expired.error.hint, /sign in to ZCode again/);
+  assert.match(expired.error.hint, /sign in to CodeVori again/);
 
   const noEnv = await main(["usage"], {
     env: {},

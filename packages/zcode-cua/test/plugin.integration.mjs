@@ -22,7 +22,7 @@ for (const asset of [
 const child = spawn(
   process.execPath,
   [
-    resolve(root, "apps/zcode-cli/packages/cli/dist/zcode.cjs"),
+    resolve(root, "apps/zcode-cli/packages/cli/dist/codevori.cjs"),
     "__zcode-plugin-host",
     resolve(plugin, "dist/mcp/server.js"),
   ],

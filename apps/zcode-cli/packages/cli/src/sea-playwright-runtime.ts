@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { homedir, platform, tmpdir } from "node:os";
 import { dirname, join, normalize, sep } from "node:path";
 import type { PlaywrightChromiumModule } from "@zcode/adapters/browser";
+import { resolveSeaRuntimeCacheBase } from "./sea-runtime-cache.js";
 
 declare const __CLI_VERSION__: string;
 
@@ -24,7 +24,7 @@ interface SeaPlaywrightManifest {
   version: 1;
 }
 
-const ASSET_PREFIX = "zcode-playwright-runtime/";
+const ASSET_PREFIX = "codevori-playwright-runtime/";
 const MANIFEST_ASSET_KEY = `${ASSET_PREFIX}manifest.json`;
 const MARKER_FILE = "playwright-manifest.json";
 const PACKAGE_JSON_PATH = "node_modules/playwright-core/package.json";
@@ -36,14 +36,14 @@ export async function loadCliPlaywrightChromium(): Promise<PlaywrightChromiumMod
   }
 
   const runtimeDirectory = await ensureSeaPlaywrightRuntime(sea);
-  const require = createRequire(join(runtimeDirectory, "zcode-playwright-loader.cjs"));
+  const require = createRequire(join(runtimeDirectory, "codevori-playwright-loader.cjs"));
   return require("playwright-core") as PlaywrightChromiumModule;
 }
 
 async function ensureSeaPlaywrightRuntime(sea: SeaModule): Promise<string> {
   const manifest = readManifest(sea);
   const cacheDirectory = join(
-    cacheBaseDirectory(),
+    resolveSeaRuntimeCacheBase(),
     __CLI_VERSION__,
     manifest.target,
     `playwright-${manifest.packageVersion}-${manifest.hash}`,
@@ -114,24 +114,4 @@ function assertSafeRuntimePath(filePath: string): void {
   ) {
     throw new Error(`Invalid SEA Playwright asset path: ${filePath}`);
   }
-}
-
-function cacheBaseDirectory(): string {
-  const home = homedir();
-  if (platform() === "darwin" && home) {
-    return join(home, "Library", "Caches", "zcode", "sea-assets");
-  }
-  if (platform() === "win32") {
-    return join(
-      process.env.LOCALAPPDATA ?? join(home || tmpdir(), "AppData", "Local"),
-      "zcode",
-      "Cache",
-      "sea-assets",
-    );
-  }
-  return join(
-    process.env.XDG_CACHE_HOME ?? join(home || tmpdir(), ".cache"),
-    "zcode",
-    "sea-assets",
-  );
 }

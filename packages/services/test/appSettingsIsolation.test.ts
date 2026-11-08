@@ -27,14 +27,14 @@ async function seed(file: string, settings: unknown) {
 
 const messages = [{ id: "saved", title: "检查", content: "第一行\n第二行  " }];
 
-test("first read migrates legacy settings and subsequent writes preserve the legacy file", async () => {
+test("missing CodeVori settings do not import the ZCode settings file", async () => {
   await withHome(async (home) => {
     const legacy = join(home, ".zcode/v2/setting.json");
     const current = join(home, ".codevori/v2/setting.json");
     const raw = await seed(legacy, { quickMessages: messages, locale: "en-US" });
     const service = createSettingService();
-    assert.deepEqual((await service.get()).quickMessages, messages);
-    assert.deepEqual(JSON.parse(await readFile(current, "utf8")).quickMessages, messages);
+    assert.deepEqual((await service.get()).quickMessages, []);
+    await assert.rejects(readFile(current), { code: "ENOENT" });
     await service.update({ locale: "zh-CN" });
     assert.equal(await readFile(legacy, "utf8"), raw);
     assert.equal(JSON.parse(await readFile(current, "utf8")).locale, "zh-CN");

@@ -632,7 +632,7 @@ function unwrapClientConfigForceUpdate(
   payload: ZCodeClientConfigEnvelope,
 ): ForceUpdateConfig | null {
   if (payload.code !== undefined && payload.code !== 0) {
-    throw new Error(payload.msg?.trim() || "ZCode client config request failed");
+    throw new Error(payload.msg?.trim() || "CodeVori client config request failed");
   }
 
   const forceUpdate = payload.data?.configs?.forceUpdate;

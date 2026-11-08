@@ -143,7 +143,7 @@ export async function deliverDelegationResults(
       });
       if (!accepted) continue;
       seen.add(key);
-      const text = `ZCode 智能体委派结果（taskId=${task.id}）：${JSON.stringify({ title: task.title, attempt: attempt.sequence, agent: task.execution, status: attempt.status, result: attempt.result, error: attempt.error, session: task.session, workspacePath: task.worktree?.path ?? task.parent.workspacePath })}\n仅向用户汇总结论、证据和风险；没有新的用户授权，不继续修改、合并、提交或推送。`;
+      const text = `CodeVori 智能体委派结果（taskId=${task.id}）：${JSON.stringify({ title: task.title, attempt: attempt.sequence, agent: task.execution, status: attempt.status, result: attempt.result, error: attempt.error, session: task.session, workspacePath: task.worktree?.path ?? task.parent.workspacePath })}\n仅向用户汇总结论、证据和风险；没有新的用户授权，不继续修改、合并、提交或推送。`;
       let delivery: "pending" | "delivered" | "uncertain";
       try {
         delivery = (await deliver(task, attempt.deliveryCommandId, text)) ? "delivered" : "pending";

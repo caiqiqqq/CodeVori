@@ -1,4 +1,4 @@
-const packageDirName = "zcode";
+const packageDirName = "codevori";
 
 export function installScriptSource(baseUrl) {
   return `#!/usr/bin/env sh
@@ -10,7 +10,7 @@ BIN_DIR="\${ZCODE_DIST_BIN_DIR:-$HOME/.local/bin}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
-    echo "zcode install requires $1" >&2
+    echo "codevori install requires $1" >&2
     exit 1
   fi
 }
@@ -42,14 +42,14 @@ mv "$TARGET.new/${packageDirName}" "$TARGET"
 rm -rf "$TARGET.new"
 ln -sfn "$TARGET" "$INSTALL_DIR/current"
 
-cat > "$BIN_DIR/zcode" <<SH
+cat > "$BIN_DIR/codevori" <<SH
 #!/usr/bin/env sh
-exec node "$INSTALL_DIR/current/bin/zcode.mjs" "\\$@"
+exec node "$INSTALL_DIR/current/bin/codevori.mjs" "\\$@"
 SH
-chmod +x "$BIN_DIR/zcode"
+chmod +x "$BIN_DIR/codevori"
 
-echo "ZCode $VERSION installed."
-echo "Run: zcode (TUI) or zcode --web (Web)"
+echo "CodeVori $VERSION installed."
+echo "Run: codevori (TUI) or codevori --web (Web)"
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *) echo "Note: $BIN_DIR is not in PATH." ;;

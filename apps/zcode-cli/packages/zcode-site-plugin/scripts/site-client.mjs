@@ -28,8 +28,8 @@ const MESSAGES = {
   ],
   // MaaS JWT 过期时 zcode-server 不按 free 放行，以免付费用户被降级（契约 0.13.0）。
   3101: [
-    "The ZCode coding plan sign-in has expired",
-    "Ask the user to sign in to ZCode again, then retry.",
+    "The CodeVori coding plan sign-in has expired",
+    "Ask the user to sign in to CodeVori again, then retry.",
   ],
   3601: ["Site not found", "Run `zcode-site list` to see your sites, then pass --site <id>."],
   3602: [
@@ -46,17 +46,17 @@ const MESSAGES = {
   ],
   3605: [
     "Account quota exceeded",
-    "New deployments are paused until the next period. Tell the user that upgrading their ZCode plan raises the limits; the Sites panel in ZCode desktop shows the usage.",
+    "New deployments are paused until the next period. Tell the user that upgrading their CodeVori plan raises the limits; the Sites panel in CodeVori desktop shows the usage.",
   ],
   3607: [
     "The package is larger than 200MB",
     "Exclude build caches, source maps and dev dependencies from the stage, then deploy again.",
   ],
   3608: [
-    "The current plan cannot hide the ZCode badge",
-    "Free plans always show the badge; tell the user to upgrade to a paid ZCode plan, then run `zcode-site badge hide` again.",
+    "The current plan cannot hide the CodeVori badge",
+    "Free plans always show the badge; tell the user to upgrade to a paid CodeVori plan, then run `zcode-site badge hide` again.",
   ],
-  3609: ["This ZCode version is too old for Sites", "Ask the user to update ZCode."],
+  3609: ["This CodeVori version is too old for Sites", "Ask the user to update CodeVori."],
   3610: [
     "Another deployment is in progress",
     "Wait for it to finish (`zcode-site status --site <siteId>`), then retry.",
@@ -90,8 +90,8 @@ function apiError(status, body) {
   if (status === 401) {
     return new CliError(
       "UNAUTHENTICATED",
-      "Not signed in to ZCode",
-      "Ask the user to sign in to ZCode, then retry.",
+      "Not signed in to CodeVori",
+      "Ask the user to sign in to CodeVori, then retry.",
       2,
     );
   }
@@ -116,8 +116,8 @@ export function loadEndpoint(env) {
   if (!address || !token) {
     throw new CliError(
       "UNAUTHENTICATED",
-      "ZCode credentials are not available",
-      "Run zcode-site from a ZCode session (the Sites plugin must be enabled), then retry.",
+      "CodeVori credentials are not available",
+      "Run zcode-site from a CodeVori session (the Sites plugin must be enabled), then retry.",
       2,
     );
   }
@@ -181,14 +181,14 @@ export function createClient(endpoint, fetchImpl) {
       throw new CliError(
         "NETWORK_ERROR",
         `Cannot reach the Sites API: ${err.message}`,
-        "Check the network connection to ZCode and retry.",
+        "Check the network connection to CodeVori and retry.",
         4,
       );
     }
     if (res.headers.get(ENDPOINT_ERROR_HEADER) === "network") {
       throw new CliError(
         "NETWORK_ERROR",
-        "ZCode cannot reach the Sites API",
+        "CodeVori cannot reach the Sites API",
         "Check the network connection and retry.",
         4,
       );

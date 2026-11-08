@@ -152,7 +152,7 @@ interface StageOptions {
   appVersion: string;
   /** tsup 产物目录（server-cli.js / server-core.js） */
   distDir: string;
-  /** 既有 CLI/Agent bundle（zcode.cjs，自包含 CJS） */
+  /** 既有 CLI/Agent bundle（codevori.cjs，自包含 CJS） */
   agentBundlePath: string;
   /** 已准备好的目标平台 Node 二进制 */
   nodeBinaryPath: string;
@@ -180,7 +180,7 @@ interface StagedRelease {
 }
 
 const POSIX_LAUNCHER = `#!/bin/sh
-# 由 zcode-server staging 生成：定位发行根后用随包 Node 启动 Server CLI。
+# 由 CodeVori Server staging 生成：定位发行根后用随包 Node 启动 Server CLI。
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 exec "$DIR/runtime/node" "$DIR/runtime/server-cli.js" "$@"
 `;
@@ -375,12 +375,12 @@ async function createComponentArchive(
   return { archivePath, ...info };
 }
 
-/** 组装 `zcode-server-<os>-<arch>/` 发行目录；只做本地组装，不上传、不发布。 */
+/** 组装 `codevori-server-<os>-<arch>/` 发行目录；只做本地组装，不上传、不发布。 */
 export async function stageRelease(options: StageOptions): Promise<StagedRelease> {
   for (const [name, value] of Object.entries(options.notices)) {
     if (!value.trim()) throw new Error(`Missing distribution notice: ${name}`);
   }
-  const releaseName = `zcode-server-${options.target}`;
+  const releaseName = `codevori-server-${options.target}`;
   const outputRoot = resolve(options.outputDir);
   const releaseDir = join(outputRoot, releaseName);
   const runtimeDir = join(releaseDir, "runtime");
@@ -415,7 +415,7 @@ export async function stageRelease(options: StageOptions): Promise<StagedRelease
     `${JSON.stringify({ name: releaseName, private: true, type: "module" }, null, 2)}\n`,
     "utf8",
   );
-  await cp(options.agentBundlePath, join(runtimeDir, "zcode.cjs"), { dereference: true });
+  await cp(options.agentBundlePath, join(runtimeDir, "codevori.cjs"), { dereference: true });
   // Agent bundle 是第三个实际运行入口；只扫描 Server bundle 会漏掉外置的 TUI/Playwright。
   bundleSources.push(await readFile(options.agentBundlePath, "utf8"));
 
@@ -478,7 +478,7 @@ export async function stageRelease(options: StageOptions): Promise<StagedRelease
   const launcherPath = join(
     releaseDir,
     "bin",
-    options.target.startsWith("win32-") ? "zcode.cmd" : "zcode",
+    options.target.startsWith("win32-") ? "codevori.cmd" : "codevori",
   );
   await writeFile(launcherPath, POSIX_LAUNCHER, "utf8");
   if (options.target.startsWith("win32-")) {
@@ -506,7 +506,7 @@ export async function stageRelease(options: StageOptions): Promise<StagedRelease
         "runtime/THIRD-PARTY-NOTICES.md",
       ],
     },
-    { id: "agent-runtime", paths: ["runtime/zcode.cjs", "runtime/licenses/agent"] },
+    { id: "agent-runtime", paths: ["runtime/codevori.cjs", "runtime/licenses/agent"] },
     ...(plugins.length > 0
       ? [
           {

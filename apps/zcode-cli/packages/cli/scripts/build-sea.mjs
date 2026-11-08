@@ -57,8 +57,8 @@ const root = resolve(import.meta.dirname, "../../..");
 const repositoryRoot = resolve(root, "../..");
 const cliRoot = resolve(import.meta.dirname, "..");
 const dist = resolve(cliRoot, "dist");
-const cliBundle = resolve(dist, "zcode.cjs");
-const seaBlobForTarget = (target) => resolve(dist, `zcode-${target}.sea.blob`);
+const cliBundle = resolve(dist, "codevori.cjs");
+const seaBlobForTarget = (target) => resolve(dist, `codevori-${target}.sea.blob`);
 const seaConfigForTarget = (target) => resolve(dist, `sea-config-${target}.json`);
 const seaAssetStagingForTarget = (target) => resolve(dist, "sea-assets", target);
 const nodeCache = resolve(dist, "sea-node-cache");
@@ -190,11 +190,11 @@ const prepareSeaBlob = async (target, nodeVersion) => {
           ...runtimeToolAssets,
           ...playwrightAssets,
           ...providerConfigAssets,
-          "zcode-node-license": nodeLicensePath,
+          "codevori-node-license": nodeLicensePath,
         },
         disableExperimentalSEAWarning: true,
-        main: "dist/zcode.cjs",
-        output: `dist/zcode-${target}.sea.blob`,
+        main: "dist/codevori.cjs",
+        output: `dist/codevori-${target}.sea.blob`,
         useCodeCache: false,
         useSnapshot: false,
       },
@@ -302,7 +302,7 @@ export const main = async (argv = process.argv.slice(2)) => {
   }
 
   if (!existsSync(cliBundle)) {
-    throw new Error("Missing dist/zcode.cjs. Run `pnpm build` first.");
+    throw new Error("Missing dist/codevori.cjs. Run `pnpm build` first.");
   }
   const postjectBin = resolvePostjectBin();
   if (!postjectBin) {

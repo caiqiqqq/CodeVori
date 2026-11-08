@@ -24,7 +24,7 @@ try {
   const { applyEarlyChromiumHardwareAccelerationBootstrap } =
     await import("../src/main/desktopChromiumHardwareAccelerationBootstrap.ts");
   const { resolveStartupWindowBootstrap } = await import("../src/main/startupWorkspace.ts");
-  await test("pre-ready settings prefer the product file and only fall back when it is missing", async () => {
+  await test("pre-ready settings read only the product file", async () => {
     const home = await mkdtemp(join(tmpdir(), "codevori-settings-bootstrap-"));
     const previous = process.env.ZCODE_DESKTOP_HOME_DIR;
     process.env.ZCODE_DESKTOP_HOME_DIR = home;
@@ -43,9 +43,9 @@ try {
           disabled += 1;
         },
       };
-      assert.equal(applyEarlyDataBaseDirBootstrap(), "/legacy");
-      assert.equal(applyEarlyChromiumHardwareAccelerationBootstrap(app), false);
-      assert.equal(disabled, 1);
+      assert.equal(applyEarlyDataBaseDirBootstrap(), null);
+      assert.equal(applyEarlyChromiumHardwareAccelerationBootstrap(app), true);
+      assert.equal(disabled, 0);
       await assert.rejects(readFile(current), { code: "ENOENT" });
       await mkdir(dirname(current), { recursive: true });
       await writeFile(
@@ -57,7 +57,7 @@ try {
       );
       assert.equal(applyEarlyDataBaseDirBootstrap(), "/current");
       assert.equal(applyEarlyChromiumHardwareAccelerationBootstrap(app), true);
-      assert.equal(disabled, 1);
+      assert.equal(disabled, 0);
       await writeFile(current, "broken current JSON");
       assert.equal(applyEarlyDataBaseDirBootstrap(), null);
       assert.equal(applyEarlyChromiumHardwareAccelerationBootstrap(app), true);
@@ -68,18 +68,18 @@ try {
       await rm(home, { recursive: true, force: true });
     }
   });
-  await test("workspace restoration migrates settings and malformed legacy JSON still permits startup", async () => {
+  await test("workspace restoration reads CodeVori settings and ignores malformed ZCode settings", async () => {
     const home = await mkdtemp(join(tmpdir(), "codevori-workspace-settings-"));
     const previous = process.env.ZCODE_DESKTOP_HOME_DIR;
     process.env.ZCODE_DESKTOP_HOME_DIR = home;
     try {
       const workspace = join(home, "project");
       const conversationWorkspaceDir = join(home, "conversation");
-      const legacy = join(home, ".zcode/v2/setting.json");
+      const current = join(home, ".codevori/v2/setting.json");
       await mkdir(workspace);
-      await mkdir(dirname(legacy), { recursive: true });
+      await mkdir(dirname(current), { recursive: true });
       await writeFile(
-        legacy,
+        current,
         JSON.stringify({
           lastWorkspaceSession: [{ kind: "local", workspacePath: workspace }],
           recentProjects: [workspace],
@@ -90,13 +90,13 @@ try {
       assert.ok(await readFile(join(home, ".codevori/v2/setting.json"), "utf8"));
 
       process.env.ZCODE_DESKTOP_HOME_DIR = join(home, "invalid-home");
-      const invalidLegacy = join(home, "invalid-home/.zcode/v2/setting.json");
-      await mkdir(dirname(invalidLegacy), { recursive: true });
-      await writeFile(invalidLegacy, "broken legacy JSON");
+      const invalidCurrent = join(home, "invalid-home/.codevori/v2/setting.json");
+      await mkdir(dirname(invalidCurrent), { recursive: true });
+      await writeFile(invalidCurrent, "broken current JSON");
       const fresh = await resolveStartupWindowBootstrap({ conversationWorkspaceDir });
       assert.equal(fresh.initialWorkspacePath, conversationWorkspaceDir);
       assert.equal(fresh.initialWorkspacePurpose, "conversation");
-      assert.equal(await readFile(invalidLegacy, "utf8"), "broken legacy JSON");
+      assert.equal(await readFile(invalidCurrent, "utf8"), "broken current JSON");
     } finally {
       if (previous === undefined) delete process.env.ZCODE_DESKTOP_HOME_DIR;
       else process.env.ZCODE_DESKTOP_HOME_DIR = previous;

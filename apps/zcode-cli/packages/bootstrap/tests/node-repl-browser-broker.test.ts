@@ -307,7 +307,7 @@ test(
     const root = await fixture(t);
     const endpoint = broker(t, [join(root, "missing")]);
     await endpoint.ready;
-    assert.match(endpoint.socketPath, /^\\\\\.\\pipe\\zcode-node-repl-/);
+    assert.match(endpoint.socketPath, /^\\\\\.\\pipe\\codevori-node-repl-/);
     assert.equal((await request(endpoint)).ok, true);
     await endpoint.close();
     assert.deepEqual(await readdir(root), []);

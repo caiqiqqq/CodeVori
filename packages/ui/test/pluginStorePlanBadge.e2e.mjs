@@ -47,7 +47,7 @@ async function waitFor(expression) {
     if (await evaluate(expression)) return;
     await delay(100);
   }
-  throw new Error(`ZCode UI did not reach: ${expression}`);
+  throw new Error(`CodeVori UI did not reach: ${expression}`);
 }
 
 const card = `[data-testid="plugin-store-card"][data-plugin-id=${JSON.stringify(pluginId)}]`;

@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 
-export const seaOfficialPluginAssetPrefix = "zcode-official-plugins/";
+export const seaOfficialPluginAssetPrefix = "codevori-official-plugins/";
 export const seaOfficialPluginManifestAssetKey = `${seaOfficialPluginAssetPrefix}manifest.json`;
 const browserUseRequiredRuntimePaths = [
   "scripts/browser-client.mjs",

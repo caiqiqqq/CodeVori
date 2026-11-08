@@ -1,4 +1,3 @@
-import { prepareProductPaths } from "@zcode/shared/node";
 /* eslint-disable max-lines -- MCP 同步服务集中维护用户目录读写、远端导入和 filesystem 路径改写，拆分会增加远端配置同步回归面。 */
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -84,8 +83,6 @@ export function createMcpSyncService(
 ): IMcpSyncService {
   return {
     async loadMcpFromUserDirectory(request) {
-      await prepareProductPaths({ workspacePath: request?.workspacePath });
-
       return loadMcpFromUserDirectory(request);
     },
     async listWorkspaceMcpServerStatuses(params) {
@@ -95,8 +92,6 @@ export function createMcpSyncService(
       return dependencies.listMcpServerStatuses(params);
     },
     async saveMcpToUserDirectory(payload) {
-      await prepareProductPaths({ workspacePath: payload.projectPath });
-
       await saveMcpToUserDirectory(payload);
     },
     async listLocalUserMcpCandidates() {
@@ -224,8 +219,6 @@ async function collectEffectiveUserMcpRecordByName(): Promise<Map<string, UserMc
 async function loadMcpFromUserDirectory(
   request?: LoadCliMcpFromUserDirectoryRequest,
 ): Promise<LoadCliMcpFromUserDirectoryResult> {
-  await prepareProductPaths({ workspacePath: request?.workspacePath });
-
   const servers: NativeMcpServerRecord[] = [];
   if (request?.workspacePath) {
     servers.push(
@@ -237,8 +230,6 @@ async function loadMcpFromUserDirectory(
 }
 
 async function saveMcpToUserDirectory(payload: SaveCliMcpToUserDirectoryRequest): Promise<void> {
-  await prepareProductPaths({ workspacePath: payload.projectPath });
-
   if (payload.action === "set-enabled") {
     if (typeof payload.enabled !== "boolean") {
       throw new Error("Missing enabled value for MCP set-enabled action");
@@ -341,8 +332,6 @@ async function writeZCodeServersToFile(
 }
 
 async function readUserCliConfig(): Promise<Record<string, unknown>> {
-  await prepareProductPaths();
-
   return (await readJsonObject(getUserZcodeMcpConfigPath())) ?? {};
 }
 

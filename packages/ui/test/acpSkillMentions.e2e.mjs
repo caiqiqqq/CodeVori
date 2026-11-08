@@ -34,7 +34,7 @@ try {
       window.__acpPluginEnabled = true;
       window.__acpPluginCalls = [];
       window.__apiPluginCalls = [];
-      const skill = (name, enabled = true) => ({ id: "glm:workspace:" + name, name, enabled, description: "Test skill", body: "private body", path: "/test/.zcode/skills/" + name + "/SKILL.md", scope: "workspace" });
+      const skill = (name, enabled = true) => ({ id: "glm:workspace:" + name, name, enabled, description: "Test skill", body: "private body", path: "/test/.codevori/skills/" + name + "/SKILL.md", scope: "workspace" });
       const services = {
         clientConfigService: { getSnapshot: async () => ({ pluginStoreOrder: null }) },
         fileService: { searchWorkspaceFiles: async () => [] },

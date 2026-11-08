@@ -1,4 +1,3 @@
-import { prepareProductPaths } from "@zcode/shared/node";
 import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
 /* eslint-disable max-lines -- settings-sync 需要集中维护外部 skills/commands/plugins/MCP 扫描、去重和导入状态机，后续按资源类别拆分 */
 import type {
@@ -2278,8 +2277,6 @@ export function createSettingsSyncService(
     },
 
     async detect(request): Promise<SettingsSyncDiscoveryResult> {
-      await prepareProductPaths({ workspacePath: request.workspacePath });
-
       if (shouldScanSkills(request)) {
         return buildSkillsDiscovery(request.workspacePath);
       }
@@ -2300,8 +2297,6 @@ export function createSettingsSyncService(
       workspaceIdentity?: string;
       selections: SettingsSyncSelection[];
     }): Promise<SettingsSyncImportResult> {
-      await prepareProductPaths({ workspacePath: request.workspacePath });
-
       const taskResults: SettingsSyncTaskImportResult[] = [];
       for (const selection of request.selections) {
         if (selection.category === "skills") {

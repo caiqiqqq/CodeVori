@@ -23,14 +23,13 @@ const zhCN: Record<string, string> = {
   "settings.remoteSync.plugins": "插件",
   "settings.remoteSync.connectFirst": "请先在桌面连接一个 SSH 或 WSL 项目。",
   "settings.projects.title": "项目管理",
-  "settings.projects.description":
-    "批量管理已打开和最近使用的项目。移除项目保留源码，勾选后可清理 ZCode 会话记录及其附件。",
+  "settings.projects.description": `批量管理已打开和最近使用的项目。移除项目保留源码，勾选后可清理 ${PRODUCT_NAME} 会话记录及其附件。`,
   "settings.projects.search": "搜索项目",
   "settings.projects.selectAll": "选择搜索结果",
   "settings.projects.removeTitle": "移除 {count} 个项目？",
   "settings.projects.removeDescription":
     "项目入口将被移除，源文件会保留。运行中的会话无法清理；部分失败时会保留项目入口。",
-  "settings.projects.cleanData": "同时清理 ZCode 会话及附件数据",
+  "settings.projects.cleanData": `同时清理 ${PRODUCT_NAME} 会话及附件数据`,
   "settings.projects.removed": "已移除 {count} 个项目",
   "settings.projects.remove": "移除所选（{count}）",
   "settings.projects.empty": "没有匹配的项目",
@@ -323,7 +322,7 @@ const zhCN: Record<string, string> = {
   "workTasks.agents": "智能体",
   "workTasks.executionConfig": "执行配置",
   "workTasks.executor": "执行智能体",
-  "workTasks.apiExecutor": "ZCode / API",
+  "workTasks.apiExecutor": `${PRODUCT_NAME} / API`,
   "workTasks.apiModel": "模型 / 提供商",
   "workTasks.executionConfigHint": "仅用于此任务，当前对话配置不变。",
   "workTasks.configUnavailable": "尚无可选配置，将使用智能体默认配置。",
@@ -592,7 +591,7 @@ const zhCN: Record<string, string> = {
   "workTasks.error.work-task.binding-invalid": "关联会话与任务智能体类型不一致。",
   "workTasks.error.work-task.executor-invalid": "任务智能体配置无效。",
   "repositoryPanel.title": "仓库面板",
-  "repositoryPanel.sidebar.pending": "{count} 个打开的议题尚未关联 ZCode 处理任务",
+  "repositoryPanel.sidebar.pending": `{count} 个打开的议题尚未关联 ${PRODUCT_NAME} 处理任务`,
   "repositoryPanel.sidebar.partial": "已获取 {count} 个未处理议题，部分项目暂不可用",
   "repositoryPanel.sidebar.stale": "上次获取有 {count} 个未处理议题，当前未能更新",
   "repositoryPanel.sidebar.loading": "正在获取未处理议题数量…",
@@ -1292,8 +1291,7 @@ const zhCN: Record<string, string> = {
   "confirmDialog.taskDeleteTitle": "删除这个任务？",
   "confirmDialog.taskDeleteDescription": "任务“{taskTitle}”会从当前工作区移除，现有记录无法恢复。",
   "confirmDialog.archivedTaskDeleteTitle": "彻底删除这条对话？",
-  "confirmDialog.archivedTaskDeleteDescription":
-    "将永久删除这条对话及 ZCode 保存的内容和附件，无法恢复。项目文件和工作树会保留。",
+  "confirmDialog.archivedTaskDeleteDescription": `将永久删除这条对话及 ${PRODUCT_NAME} 保存的内容和附件，无法恢复。项目文件和工作树会保留。`,
   "taskList.deleteAllArchived": "删除所有归档任务",
   "taskList.archivedActions": "归档操作",
   "taskList.archivedTaskCount": "{count} 个归档任务",
@@ -2687,8 +2685,7 @@ const zhCN: Record<string, string> = {
   "taskList.archiveDeleteFailed": "清理未完成，请重试彻底删除。",
   "taskList.archiveReadOnly": "已归档对话。恢复后可继续对话。",
   "taskList.archiveDeletionPending": "清理尚未完成，请在已归档对话中重试彻底删除。",
-  "taskList.acpDeleteDescription":
-    "将永久删除 ZCode 保存的会话和附件，无法在此恢复。外部智能体自有历史与项目文件会保留。",
+  "taskList.acpDeleteDescription": `将永久删除 ${PRODUCT_NAME} 保存的会话和附件，无法在此恢复。外部智能体自有历史与项目文件会保留。`,
   "taskList.archivedNativeTaskCount": `{count} 个已归档 ${PRODUCT_NAME} 任务（智能体会话可逐条操作）`,
   "taskList.deleteAllArchivedNative": `删除所有已归档 ${PRODUCT_NAME} 任务`,
   "taskList.deleteAllArchivedNativeMenu": `删除所有已归档 ${PRODUCT_NAME} 任务…`,
@@ -3542,8 +3539,7 @@ const zhCN: Record<string, string> = {
   "settings.mcp.failure.connection_failed": "MCP 服务器连接失败，请稍后重试。",
   "settings.mcp.failureAdvice.config_invalid":
     "请检查 MCP 配置中的命令、参数、地址和环境变量，修正后刷新状态。",
-  "settings.mcp.failureAdvice.runtime_unavailable":
-    "请在运行该 MCP 的设备上安装或配置所需运行时，并确认 ZCode 可以找到其启动命令。",
+  "settings.mcp.failureAdvice.runtime_unavailable": `请在运行该 MCP 的设备上安装或配置所需运行时，并确认 ${PRODUCT_NAME} 可以找到其启动命令。`,
   "settings.mcp.failureAdvice.process_start_failed":
     "请在运行该 MCP 的设备上检查启动命令、工作目录、脚本路径和执行权限。Python 依赖须按插件的依赖清单（如 requirements.txt）安装到该命令使用的解释器或虚拟环境中；Node MCP 需检查 Node.js 和项目依赖。修复后刷新状态。",
   "settings.mcp.failureAdvice.network_unreachable":
@@ -3556,12 +3552,10 @@ const zhCN: Record<string, string> = {
     "请查看服务器日志，确认 tools/list 能正常返回 MCP 工具列表，然后刷新状态。",
   "settings.mcp.failureAdvice.unexpected_disconnect":
     "请查看下方错误和服务器日志，检查进程是否退出、依赖是否缺失或连接是否中断，然后刷新状态。",
-  "settings.mcp.failureAdvice.oauth_authorization_failed":
-    "请重新打开该 MCP 的授权入口，完成浏览器授权后返回 ZCode 刷新状态。",
+  "settings.mcp.failureAdvice.oauth_authorization_failed": `请重新打开该 MCP 的授权入口，完成浏览器授权后返回 ${PRODUCT_NAME} 刷新状态。`,
   "settings.mcp.failureAdvice.official_origin_untrusted":
     "请核对插件和服务器地址是否来自可信配置。不要关闭安全校验或将登录凭证填入未知地址。",
-  "settings.mcp.failureAdvice.not_authenticated":
-    "请先登录 ZCode，再刷新 MCP 状态。若账号仍显示已登录，请重新登录后重试。",
+  "settings.mcp.failureAdvice.not_authenticated": `请先登录 ${PRODUCT_NAME}，再刷新 MCP 状态。若账号仍显示已登录，请重新登录后重试。`,
   "settings.mcp.failureAdvice.coding_plan_required":
     "请在模型设置中核对当前账号的 Coding Plan 及所选团队或项目，确认权益有效后刷新状态。",
   "settings.mcp.failureAdvice.server_not_found":

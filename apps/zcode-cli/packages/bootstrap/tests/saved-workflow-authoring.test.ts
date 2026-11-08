@@ -94,7 +94,7 @@ test("global authoring uses the Agent home and remains visible from another proj
         whenToUse: "Before release",
       },
     });
-    assert.equal(prepared.input.path, join(directory, ".zcode/workflows/release.dwf.ts"));
+    assert.equal(prepared.input.path, join(directory, ".codevori/workflows/release.dwf.ts"));
     assert.equal((await saveWorkflowOp(context, { workspace, input: prepared.input })).ok, true);
     const elsewhere = { workspacePath: join(directory, "project-b"), workspaceKey: "project-b" };
     const listed = await listSavedWorkflowsOp(context, { workspace: elsewhere, scope: "global" });

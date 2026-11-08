@@ -31,7 +31,7 @@ import {
 } from "./official-plugin-seed-lock.js";
 
 const OFFICIAL_PLUGIN_MARKETPLACE = ZCODE_OFFICIAL_PLUGIN_MARKETPLACE;
-const SEA_PLUGIN_ASSET_PREFIX = "zcode-official-plugins/";
+const SEA_PLUGIN_ASSET_PREFIX = "codevori-official-plugins/";
 const SEA_PLUGIN_MANIFEST_ASSET_KEY = `${SEA_PLUGIN_ASSET_PREFIX}manifest.json`;
 const SEED_MARKER_FILE = ".codevori-plugin-seed.json";
 const SEED_LOCK_TOTAL_BUDGET_MS = 15_000;
@@ -642,7 +642,7 @@ function officialPluginCacheRoot(
 
 /** 内置技能包（bundled-skills.ts）沿同一组候选目录定位，保证两类内置资产在每种运行布局下同进同出。 */
 export function candidateBaseDirs(): string[] {
-  // 修复原因：Electron app-server 运行在 resources/glm/zcode.cjs，官方插件资源也随桌面包
+  // 修复原因：Electron app-server 运行在 resources/glm/codevori.cjs，官方插件资源也随桌面包
   // stage 到同级 packages/*-plugin。候选目录必须优先看入口文件目录，避免生产态退回到
   // monorepo-only 的 __dirname 查找假设。
   return [entrypointDir(), runtimeDir(), process.cwd()].filter(

@@ -13,7 +13,7 @@ export function createDelegationExecution(deps: Dependencies) {
     const files = task.workspaceFiles?.length
       ? `\n项目文件：${JSON.stringify(task.workspaceFiles)}`
       : "";
-    const prompt = `你正在执行 ZCode 委派任务，不代表收到提交、合并或推送授权。\n任务：${task.task}\n背景：${task.background}${files}\n约束：${task.constraints}\n预期结果：${task.expectedResult}\n${task.intent === "analysis" ? "本任务为分析，请勿修改项目文件。" : "在分配给你的独立工作树内修改。"}\n仅处理当前任务；完成后调用 zcode-delegation 的 SubmitDelegationResult，携带 commandId=${attempt.commandId}，返回 conclusion、changedFiles、tests、risks、blockers。没有该工具时在最终回答中逐项报告。`;
+    const prompt = `你正在执行 CodeVori 委派任务，不代表收到提交、合并或推送授权。\n任务：${task.task}\n背景：${task.background}${files}\n约束：${task.constraints}\n预期结果：${task.expectedResult}\n${task.intent === "analysis" ? "本任务为分析，请勿修改项目文件。" : "在分配给你的独立工作树内修改。"}\n仅处理当前任务；完成后调用 zcode-delegation 的 SubmitDelegationResult，携带 commandId=${attempt.commandId}，返回 conclusion、changedFiles、tests、risks、blockers。没有该工具时在最终回答中逐项报告。`;
     const work: WorkTask = {
       ...task.parent,
       id: task.id,

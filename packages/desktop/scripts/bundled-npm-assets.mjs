@@ -17,7 +17,7 @@ import { extractPrebuiltArchive } from "../../../scripts/prebuilt-binary-extract
 export const BUNDLED_NPM_VERSION = "11.6.0";
 export const BUNDLED_NPM_INTEGRITY =
   "sha512-d/P7DbvYgYNde9Ehfeq99+13/E7E82PfZPw8uYZASr9sQ3ZhBBCA9cXSJRA1COfJ6jDLJ0K36UJnXQWhCvLXuQ==";
-/** 相对 glm 目录（zcode.cjs 所在目录）的位置；与 bootstrap mcp-node-fallback.ts 同一约定。 */
+/** 相对 glm 目录（codevori.cjs 所在目录）的位置；与 bootstrap mcp-node-fallback.ts 同一约定。 */
 export const BUNDLED_NPM_STAGED_SEGMENTS = ["node-runtime", "npm"];
 const NPM_REGISTRY_TARBALL_BASE = "https://registry.npmjs.org/npm/-/";
 const NPM_TARBALL_PACKAGE_DIR = "package";
@@ -52,7 +52,7 @@ export async function stageBundledNpm({
   version = BUNDLED_NPM_VERSION,
 }) {
   const tarballPath = await ensureVerifiedTarball({ cacheDir, download, integrity, version });
-  const workDir = await mkdtemp(join(tmpdir(), "zcode-bundled-npm-"));
+  const workDir = await mkdtemp(join(tmpdir(), "codevori-bundled-npm-"));
   try {
     extract({ archiveExt: "tgz", archivePath: tarballPath, cwd: workDir, extractDir: workDir });
     const packageRoot = join(workDir, NPM_TARBALL_PACKAGE_DIR);

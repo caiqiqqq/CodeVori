@@ -194,7 +194,7 @@ test("ACP deny and malformed scripts never write or launch, and validation prece
     ]) {
       assert.equal((await f.call("SaveWorkflow", invalid)).error, true);
     }
-    await assert.rejects(readFile(join(f.directory, ".zcode/workflows/release.dwf.ts")), {
+    await assert.rejects(readFile(join(f.directory, ".codevori/workflows/release.dwf.ts")), {
       code: "ENOENT",
     });
     await f.assertNoRun();

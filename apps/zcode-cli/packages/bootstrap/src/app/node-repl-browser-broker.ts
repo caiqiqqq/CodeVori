@@ -119,7 +119,7 @@ async function initializeEndpoint(
   },
 ): Promise<BrokerEndpoint> {
   if ((input.platform ?? process.platform) === "win32") {
-    const socketPath = `\\\\.\\pipe\\zcode-node-repl-${randomUUID()}`;
+    const socketPath = `\\\\.\\pipe\\codevori-node-repl-${randomUUID()}`;
     await listen(server, socketPath);
     return { socketPath };
   }

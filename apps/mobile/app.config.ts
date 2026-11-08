@@ -7,7 +7,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: PRODUCT_NAME,
   // 手机与桌面共用根版本，避免 Release 文件名和安装后显示的版本不一致。
   version: rootPackage.version,
-  slug: config.slug ?? "zcode-lan-mobile",
+  slug: config.slug ?? "codevori-lan-mobile",
   ios: {
     ...config.ios,
     // HTTP 域名由 app.json 的 WebView 专用 ATS 键放行；本地网络键会让通用开关失效。

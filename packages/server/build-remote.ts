@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { build, type Plugin } from "esbuild";
 import { validateRemoteServerBundle } from "./buildRemoteValidation.js";
 import { loadBuiltinProviderConfig } from "../../scripts/builtin-provider-config.mjs";
@@ -27,10 +28,12 @@ const nativeAddonPlugin: Plugin = {
   },
 };
 
+// 修复原因：增量构建留下旧名入口时，后续打包可能混入过期远端 Server。
+await rm("dist/remote/zcode-server.cjs", { force: true });
 const buildResult = await build({
   entryPoints: ["src/entry-stdio.ts"],
   bundle: true,
-  outfile: "dist/remote/zcode-server.cjs",
+  outfile: "dist/remote/codevori-server.cjs",
   platform: "node",
   format: "cjs",
   target: "node22",
@@ -49,10 +52,10 @@ const buildResult = await build({
   metafile: true,
 });
 
-const remoteBundleSource = readFileSync("dist/remote/zcode-server.cjs", "utf-8");
+const remoteBundleSource = readFileSync("dist/remote/codevori-server.cjs", "utf-8");
 const bundledInputs = Object.keys(buildResult.metafile.inputs);
 validateRemoteServerBundle({ bundledInputs, source: remoteBundleSource });
 // 修复：remote 单文件 bundle 内联第三方代码，dist/remote 也必须附完整声明。
 await stageThirdPartyNotices("dist/remote");
 
-console.log("Built dist/remote/zcode-server.cjs");
+console.log("Built dist/remote/codevori-server.cjs");

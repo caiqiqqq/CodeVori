@@ -102,7 +102,7 @@ try {
   await projects.getByRole("button", { name: /移除.*1|删除.*1/ }).click();
   await page
     .getByRole("dialog")
-    .getByRole("checkbox", { name: "同时清理 ZCode 会话及附件数据" })
+    .getByRole("checkbox", { name: "同时清理 CodeVori 会话及附件数据" })
     .check();
   await page
     .getByRole("dialog")

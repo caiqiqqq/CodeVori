@@ -2,11 +2,15 @@ import type { Dirent } from "node:fs";
 import { readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { Logger } from "@zcode/contracts";
+import { PRODUCT_NAME } from "@zcode/shared/product-brand";
 
 export const LOG_RETENTION_DAYS = 7;
 export const LOG_CLEANUP_STARTUP_DELAY_MS = 60_000;
 
-const LOG_FILE_NAME_PATTERN = /^zcode-(\d{4})-(\d{2})-(\d{2})\.jsonl$/;
+// 修复原因：更名后新日志也要受保留期约束；迁入的旧日志继续按相同规则清理。
+const LOG_FILE_NAME_PATTERN = new RegExp(
+  `^(?:${PRODUCT_NAME.toLowerCase()}|zcode)-(\\d{4})-(\\d{2})-(\\d{2})\\.jsonl$`,
+);
 const MIN_RETENTION_DAYS = 1;
 
 export interface LogRetentionCleanupOptions {

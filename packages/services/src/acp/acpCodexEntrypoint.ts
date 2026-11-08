@@ -25,7 +25,7 @@ export async function prepareManagedCodexAcpEntrypoint(
   }
   const digest = createHash("sha256").update(source).digest("hex");
   // 与原入口同目录，保留 import.meta.url 的依赖及资源解析语义和上游许可声明。
-  const prepared = join(dirname(script), `zcode-no-background-v1-${digest}${extname(script)}`);
+  const prepared = join(dirname(script), `codevori-no-background-v1-${digest}${extname(script)}`);
   try {
     if ((await readFile(prepared, "utf8")) === source) return prepared;
   } catch (error) {

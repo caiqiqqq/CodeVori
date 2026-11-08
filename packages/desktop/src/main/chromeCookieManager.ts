@@ -157,7 +157,7 @@ async function withDatabaseSnapshot<T>(
   databaseBackup: ChromeCookieDatabaseBackup,
   run: (snapshotPath: string) => T | Promise<T>,
 ): Promise<T> {
-  const tempDir = await mkdtemp(join(tmpdir(), "zcode-browser-import-"));
+  const tempDir = await mkdtemp(join(tmpdir(), "codevori-browser-import-"));
   const snapshotPath = join(tempDir, "database.sqlite");
   let sourceDatabase: import("node:sqlite").DatabaseSync | null = null;
   try {

@@ -27,7 +27,7 @@ interface CommandsCommandDependencies {
   logger?: Logger;
 }
 
-const COMMANDS_COMMAND_USAGE = "Usage: zcode commands [list|inspect <name>]";
+const COMMANDS_COMMAND_USAGE = "Usage: codevori commands [list|inspect <name>]";
 
 export async function runCommandsCommand(
   ctx: RunContext,

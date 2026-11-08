@@ -953,7 +953,7 @@ export function createAcpService(
         session.status = "running";
         session.error = null;
       });
-      const text = `ZCode 工作流运行结果：${JSON.stringify(notifications)}。请根据结果继续回答用户原来的问题。`;
+      const text = `CodeVori 工作流运行结果：${JSON.stringify(notifications)}。请根据结果继续回答用户原来的问题。`;
       const usage = await port.prompt(text, [{ type: "text", text }]);
       // 无用户行的工作流结果通知仍可失败；保留通知待下次明确输入，不自动重发。
       if (session.error) throw new Error(session.error);
@@ -2073,8 +2073,8 @@ export function createAcpService(
           : undefined;
       const workflowInstruction = /^\/workflow(?:\s|$)/i.test(prompt.text.trimStart())
         ? workflowRegistrations.has(session.id)
-          ? `Use the ZCode zcode-workflows MCP ReadWorkflowInstructions tool, then call CreateWorkflow for this request: ${prompt.text.trimStart().replace(/^\/workflow\s*/i, "")}`
-          : "ZCode workflows are disabled on this Host. Explain that the requested workflow cannot start; do not claim it ran or substitute another execution method."
+          ? `Use the CodeVori zcode-workflows MCP ReadWorkflowInstructions tool, then call CreateWorkflow for this request: ${prompt.text.trimStart().replace(/^\/workflow\s*/i, "")}`
+          : "CodeVori workflows are disabled on this Host. Explain that the requested workflow cannot start; do not claim it ran or substitute another execution method."
         : undefined;
       const references = referencedAcpPlugins(prompt.text);
       const [pluginSnapshot, pluginSkills] = references.length
@@ -2159,7 +2159,7 @@ export function createAcpService(
         workflowNotifications.delete(session.id);
         blocks.unshift({
           type: "text",
-          text: `ZCode 工作流运行结果：${JSON.stringify(notifications)}`,
+          text: `CodeVori 工作流运行结果：${JSON.stringify(notifications)}`,
         });
       }
       if (goal) {

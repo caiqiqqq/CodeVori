@@ -38,7 +38,7 @@ export async function projectAcpMcpServers(
     // 甚至使外部 Agent 绕过官方 MCP 的信任检查。连接前明确拒绝，不传出凭据。
     if (config.oauth) throw new Error(`MCP ${name} 使用 OAuth，ACP 暂不支持此认证方式`);
     if (config.auth || config.official)
-      throw new Error(`MCP ${name} 使用 ZCode 专属认证，ACP 暂不支持`);
+      throw new Error(`MCP ${name} 使用 CodeVori 专属认证，ACP 暂不支持`);
     if (
       config.timeoutMs != null ||
       (config.isolation != null && config.isolation !== "session") ||
@@ -52,7 +52,7 @@ export async function projectAcpMcpServers(
     if (!converted) throw new Error(`MCP ${name} 配置无法转换为 ACP 服务`);
     if ("command" in converted) {
       if (isZCodeCuaMcpCommand(converted.command) || converted.args.some(isZCodeCuaMcpPackageArg)) {
-        throw new Error(`MCP ${name} 依赖 ZCode CUA broker，不能直接交给 ACP Agent`);
+        throw new Error(`MCP ${name} 依赖 CodeVori CUA broker，不能直接交给 ACP Agent`);
       }
       const command = converted.command;
       const target =

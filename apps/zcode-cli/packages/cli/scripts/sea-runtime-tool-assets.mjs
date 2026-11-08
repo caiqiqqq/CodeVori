@@ -8,7 +8,7 @@ import {
 import { targetParts } from "./sea-targets.mjs";
 import { readNativeSearchNotices } from "../../../../../scripts/third-party-notices.mjs";
 
-export const seaRuntimeToolAssetPrefix = "zcode-runtime-tools/";
+export const seaRuntimeToolAssetPrefix = "codevori-runtime-tools/";
 export const seaRuntimeToolManifestAssetKey = `${seaRuntimeToolAssetPrefix}manifest.json`;
 
 const binaryNames = Object.freeze({

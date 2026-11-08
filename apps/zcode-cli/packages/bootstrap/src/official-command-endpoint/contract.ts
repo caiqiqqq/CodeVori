@@ -1,5 +1,5 @@
 /**
- * cli-official-command-endpoint 对外契约（ZCode Sites 技术方案 5.8）。
+ * cli-official-command-endpoint 对外契约（CodeVori Sites 技术方案 5.8）。
  * 官方插件命令（如 zcode-site）不持有凭证，经 agent 的本地端点调用 zcode-server；
  * 端点按 session token 认出会话，只放行 OFFICIAL_COMMAND_ROUTES，每个请求向 host 现取身份头。
  */

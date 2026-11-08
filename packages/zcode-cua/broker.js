@@ -46,7 +46,7 @@ export async function probeHelperHealth(_socketPath, _options) {
 
 export function mintBrokerSocketPath(options = {}) {
   const dir = typeof options.dir === "string" ? options.dir : tmpdir();
-  return join(dir, `zcode-cua-broker-${randomUUID()}.sock`);
+  return join(dir, `codevori-cua-broker-${randomUUID()}.sock`);
 }
 
 export function resolveBrokerSocketPath(options = {}) {

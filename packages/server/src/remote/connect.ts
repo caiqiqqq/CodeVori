@@ -411,5 +411,5 @@ function buildRemoteServerCommand(
       );
     }
   }
-  return `${envParts.join(" ")} ${REMOTE_BASE}/node ${REMOTE_BASE}/zcode-server.cjs`;
+  return `${envParts.join(" ")} ${REMOTE_BASE}/node ${REMOTE_BASE}/codevori-server.cjs`;
 }

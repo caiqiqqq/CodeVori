@@ -8,7 +8,7 @@ import { createInterface } from "node:readline";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const cli = fileURLToPath(new URL("../../cli/dist/zcode.cjs", import.meta.url));
+const cli = fileURLToPath(new URL("../../cli/dist/codevori.cjs", import.meta.url));
 const REQUEST_TIMEOUT_MS = 15_000;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 

@@ -11,7 +11,7 @@ for (const selected of ["parent", "child", "both"] as const) {
     const previous = process.env.HOME;
     process.env.HOME = home;
     try {
-      const parent = join(home, ".zcode", "skills", "parent");
+      const parent = join(home, ".codevori", "skills", "parent");
       const child = join(parent, "child");
       await mkdir(child, { recursive: true });
       await writeFile(

@@ -3,7 +3,7 @@
   "name": "@zcode/zcode-site-plugin",
   "version": "0.4.2",
   "private": true,
-  "description": "Built-in ZCode Sites plugin: publishes new or throwaway web projects to ZCode Sites for preview and sharing, with a Sites panel to manage them.",
+  "description": "Built-in CodeVori Sites plugin: publishes new or throwaway web projects to CodeVori Sites for preview and sharing, with a Sites panel to manage them.",
   "license": "MIT",
   "type": "module",
   "scripts": {

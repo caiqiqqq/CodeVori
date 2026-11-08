@@ -24,9 +24,9 @@ const argv = process.argv.slice(2);
 const keep = argv.includes("--keep");
 const target = resolveVerificationTarget(readArg("--target"));
 const dockerPlatform = dockerPlatformForTarget(target);
-const releaseArchive = join(packageRoot, "dist-release", `zcode-server-${target}.tar.gz`);
-const containerName = `zcode-server-verify-${process.pid}`;
-const imageTag = "zcode-server-verify-sshd:ubuntu22";
+const releaseArchive = join(packageRoot, "dist-release", `codevori-server-${target}.tar.gz`);
+const containerName = `codevori-server-verify-${process.pid}`;
+const imageTag = "codevori-server-verify-sshd:ubuntu22";
 
 const log = (...args) => console.log("[verify-remote-ssh]", ...args);
 const cleanups = [];
@@ -102,7 +102,7 @@ async function main() {
   });
 
   // 一次性 ssh 密钥，容器仅信任本次运行生成的公钥。
-  const workDir = await mkdtemp(join(tmpdir(), "zcode-server-verify-"));
+  const workDir = await mkdtemp(join(tmpdir(), "codevori-server-verify-"));
   cleanups.push(() => rm(workDir, { force: true, recursive: true }));
   const keyPath = join(workDir, "id_ed25519");
   await run("ssh-keygen", ["-t", "ed25519", "-N", "", "-q", "-f", keyPath]);
@@ -178,11 +178,13 @@ async function main() {
     `${sshTargetHost}:/root/`,
   ]);
   await ssh(
-    `mkdir -p /root/zcode-server && tar -xzf /root/zcode-server-${target}.tar.gz -C /root/zcode-server --strip-components=1`,
+    `mkdir -p /root/codevori-server && tar -xzf /root/codevori-server-${target}.tar.gz -C /root/codevori-server --strip-components=1`,
   );
 
   log("start daemon on remote");
-  const { stdout: daemonOutput } = await ssh("/root/zcode-server/bin/zcode serve --daemon --json");
+  const { stdout: daemonOutput } = await ssh(
+    "/root/codevori-server/bin/codevori serve --daemon --json",
+  );
   const daemonStatus = JSON.parse(daemonOutput.trim().split("\n").pop());
   assert(daemonStatus.state === "ready", `daemon ready, got: ${daemonOutput}`);
   assert(
@@ -269,18 +271,18 @@ async function main() {
   // linux 的 pty.node 走 @lydell 补齐路径（打包时特殊处理），必须在真实目标平台验证可加载。
   log("verify node-pty spawns a real pty on remote");
   await ssh(
-    "cd /root/zcode-server/runtime && ./node -e \"const pty=require('node-pty');const p=pty.spawn('/bin/echo',['pty-ok'],{cols:80,rows:24});let o='';p.onData(d=>o+=d);p.onExit(()=>{process.exit(o.includes('pty-ok')?0:1)})\"",
+    "cd /root/codevori-server/runtime && ./node -e \"const pty=require('node-pty');const p=pty.spawn('/bin/echo',['pty-ok'],{cols:80,rows:24});let o='';p.onData(d=>o+=d);p.onExit(()=>{process.exit(o.includes('pty-ok')?0:1)})\"",
   );
   log("node-pty ok");
 
   log("verify remote lifecycle status/stop");
-  const { stdout: statusOutput } = await ssh("/root/zcode-server/bin/zcode status --json");
+  const { stdout: statusOutput } = await ssh("/root/codevori-server/bin/codevori status --json");
   assert(
     JSON.parse(statusOutput.trim().split("\n").pop()).state === "ready",
     "remote status ready",
   );
-  await ssh("/root/zcode-server/bin/zcode stop --json");
-  const { stdout: stoppedOutput } = await ssh("/root/zcode-server/bin/zcode status --json");
+  await ssh("/root/codevori-server/bin/codevori stop --json");
+  const { stdout: stoppedOutput } = await ssh("/root/codevori-server/bin/codevori status --json");
   const stopped = JSON.parse(stoppedOutput.trim().split("\n").pop());
   assert(stopped.state === "stopped", `remote stopped, got ${stopped.state}`);
   log("lifecycle ok (ready -> stop -> stopped)");

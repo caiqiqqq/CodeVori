@@ -9,7 +9,7 @@ export function resolveIntranetMachineHost(env = { ...endpointEnv, ...process.en
 export const INTRANET_MACHINE_HOST = resolveIntranetMachineHost();
 export const INTRANET_ASSET_SERVICE_PORT = 12345;
 export const INTRANET_ASSET_BASE_URL = INTRANET_MACHINE_HOST
-  ? `http://${INTRANET_MACHINE_HOST}:${INTRANET_ASSET_SERVICE_PORT}/zcode`
+  ? `http://${INTRANET_MACHINE_HOST}:${INTRANET_ASSET_SERVICE_PORT}/codevori`
   : "";
 export const INTRANET_DEPS_BASE_URL = INTRANET_ASSET_BASE_URL
   ? `${INTRANET_ASSET_BASE_URL}/deps`
@@ -27,5 +27,5 @@ export function resolveIntranetDepsBaseUrl(env = process.env) {
     throw new Error(
       "Configure ZCODE_DEPS_BASE_URL or INTRANET_MACHINE_HOST in .env before downloading internal dependencies",
     );
-  return `http://${host}:${INTRANET_ASSET_SERVICE_PORT}/zcode/deps`;
+  return `http://${host}:${INTRANET_ASSET_SERVICE_PORT}/codevori/deps`;
 }

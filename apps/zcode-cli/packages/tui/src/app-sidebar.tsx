@@ -1,5 +1,6 @@
 import { TextAttributes } from "@mbears/opentui-core";
 import type { TuiCopy } from "@zcode/i18n";
+import { PRODUCT_NAME } from "@zcode/shared/product-brand";
 import React from "react";
 import type { CacheStats, ContextUsage, SidebarState } from "./app-model.js";
 import { DEFAULT_TUI_COPY } from "./app-locale.js";
@@ -33,7 +34,6 @@ const SIDEBAR_LABEL_WIDTH = 9;
 const SIDEBAR_ROW_VALUE_WIDTH = SIDEBAR_CONTENT_WIDTH - SIDEBAR_LABEL_WIDTH - 1;
 const SIDEBAR_TODO_CONTENT_WIDTH = SIDEBAR_CONTENT_WIDTH - 4;
 const SIDEBAR_TEXT_ROW_STYLE = { flexShrink: 0, height: 1, truncate: true, wrapMode: "none" };
-const PRODUCT_NAME = "ZCode";
 const PRODUCT_NAME_WIDTH = displayWidth(PRODUCT_NAME);
 const DEFAULT_PRODUCT_VERSION = "0.0.0";
 const DEFAULT_MCP_STATUS = { loading: false, servers: {} };

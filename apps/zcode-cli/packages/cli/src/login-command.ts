@@ -14,7 +14,7 @@ export async function runLoginCommand(
   try {
     const providerId = args[0] ?? "zai";
     if (args.length > 1 || (providerId !== "zai" && providerId !== "bigmodel")) {
-      throw new Error("Usage: zcode login [zai|bigmodel] [--no-browser]");
+      throw new Error("Usage: codevori login [zai|bigmodel] [--no-browser]");
     }
     const env = deps.env ?? process.env;
     const workingDirectory = (deps.cwd ?? process.cwd)();

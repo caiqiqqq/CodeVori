@@ -117,7 +117,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
         }),
       ),
     );
-    assert.deepEqual(starts, [join(dir, ".zcode", "plugin-workspace")]);
+    assert.deepEqual(starts, [join(dir, ".codevori", "plugin-workspace")]);
     for (const snapshot of snapshots) {
       assert.equal(
         snapshot.summary.totalTokens,

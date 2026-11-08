@@ -2,7 +2,7 @@
   "name": "@zcode/server-cli",
   "private": true,
   "bin": {
-    "zcode": "./dist/server-cli.js"
+    "codevori": "./dist/server-cli.js"
   },
   "type": "module",
   "exports": {

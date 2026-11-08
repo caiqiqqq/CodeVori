@@ -1,7 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 import { parseConnectionInput, type MobileConnection } from "./connection";
 
-const STORAGE_KEY = "zcode.mobile.lan.connection.v1";
+const STORAGE_KEY = "codevori.mobile.lan.connection.v1";
 
 export async function loadConnection(): Promise<MobileConnection | null> {
   const serialized = await SecureStore.getItemAsync(STORAGE_KEY);

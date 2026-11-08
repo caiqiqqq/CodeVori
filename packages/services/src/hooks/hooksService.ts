@@ -1,4 +1,3 @@
-import { prepareProductPaths } from "@zcode/shared/node";
 import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -226,8 +225,6 @@ async function loadHooksImpl(
   hooksEnabled: boolean;
   workspaceHookSnapshot?: WorkspaceHookBundleSnapshotData;
 }> {
-  await prepareProductPaths({ workspacePath: params.workspacePath });
-
   const workspacePath = resolve(params.workspacePath);
   const workspaceIdentity = params.workspaceIdentity?.trim() || workspacePath;
   const [{ sources: projectSources }, userSource] = await Promise.all([
@@ -297,8 +294,6 @@ async function saveHooksImpl(params: {
   workspacePath: string;
   hooks: Hook[];
 }): Promise<void> {
-  await prepareProductPaths({ workspacePath: params.workspacePath });
-
   const currentProjectConfigPath = resolve(params.workspacePath, ".codevori", "config.json");
   const userHooks = params.hooks.filter(
     (hook) =>

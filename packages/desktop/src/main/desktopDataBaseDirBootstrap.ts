@@ -17,17 +17,13 @@ function extractBootstrapDataBaseDir(rawValue: unknown): string | null {
 }
 
 function readBootstrapDataBaseDirFromDisk(): string | null {
-  const { settingsFile, legacySettingsFile } = resolveAppSettingsPaths();
-  // app ready 前保留原有同步启动边界；仅新文件缺失时只读旧值，异步迁移由设置入口完成。
-  for (const file of [settingsFile, legacySettingsFile]) {
-    if (!existsSync(file)) continue;
-    try {
-      return extractBootstrapDataBaseDir(JSON.parse(readFileSync(file, "utf-8")));
-    } catch {
-      return null;
-    }
+  const { settingsFile } = resolveAppSettingsPaths();
+  if (!existsSync(settingsFile)) return null;
+  try {
+    return extractBootstrapDataBaseDir(JSON.parse(readFileSync(settingsFile, "utf-8")));
+  } catch {
+    return null;
   }
-  return null;
 }
 
 export function applyEarlyDataBaseDirBootstrap(): string | null {

@@ -132,7 +132,7 @@ export async function testBotTaskNotification(
       provider: bot.provider,
       ...target,
       singleAttempt: true,
-      text: "ZCode · 测试通知 / Test notification",
+      text: "CodeVori · 测试通知 / Test notification",
     });
     deps.onDeliveryResult(bot, undefined);
     return { ok: true, message: "Test notification delivered." };

@@ -147,8 +147,8 @@ test("native app configuration must match root version, product and application 
   const config = {
     name: "CodeVori",
     version: "0.0.1",
-    ios: { bundleIdentifier: "ai.zcode.lanmobile" },
-    android: { package: "ai.zcode.lanmobile" },
+    ios: { bundleIdentifier: "ai.codevori.lanmobile" },
+    android: { package: "ai.codevori.lanmobile" },
   };
   assert.equal(assertMobileConfig(config, "0.0.1"), config);
   assert.throws(
