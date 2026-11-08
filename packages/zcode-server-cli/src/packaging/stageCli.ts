@@ -86,7 +86,7 @@ async function ensureNodeBinary(repoRoot: string, target: ServerTarget): Promise
   const nodeTarget = isWindows ? target.replace(/^win32-/u, "win-") : target;
   const cacheDir = join(
     repoRoot,
-    "node_modules/.cache/zcode-server-cli",
+    "node_modules/.cache/codevori-server-cli",
     `node-${nodeVersion}-${target}`,
   );
   const cachedBinaryPath = join(cacheDir, isWindows ? "node.exe" : "node");
@@ -98,7 +98,7 @@ async function ensureNodeBinary(repoRoot: string, target: ServerTarget): Promise
   const archiveName = `node-${nodeVersion}-${nodeTarget}.${isWindows ? "zip" : "tar.xz"}`;
   const url = `${resolveNodeDistBase()}/${nodeVersion}/${archiveName}`;
   log(`download node runtime: ${url}`);
-  const tempDir = await mkdtemp(join(tmpdir(), "zcode-server-node-"));
+  const tempDir = await mkdtemp(join(tmpdir(), "codevori-server-node-"));
   try {
     const archivePath = join(tempDir, archiveName);
     await downloadFile(url, archivePath);
@@ -138,7 +138,7 @@ async function ensureNodeBinary(repoRoot: string, target: ServerTarget): Promise
 }
 
 async function ensureAgentBundle(repoRoot: string, skipBuild: boolean): Promise<string> {
-  const bundlePath = join(repoRoot, "apps/zcode-cli/packages/cli/dist/zcode.cjs");
+  const bundlePath = join(repoRoot, "apps/zcode-cli/packages/cli/dist/codevori.cjs");
   if (await pathExists(bundlePath)) return bundlePath;
   if (skipBuild) {
     throw new Error(`Agent bundle missing: ${bundlePath} (remove --skip-agent-build to build it)`);
@@ -162,7 +162,7 @@ export async function resolveNativeToolsDir(
   // 远端 macOS 资源使用 rg13，不能仅凭文件存在就复用为本地发行包。
   // 统一走目标平台的仓库归档校验；自有缓存也必须通过版本、哈希和架构检查。
   const [platform, arch] = target.split("-");
-  const cacheDir = join(repoRoot, "node_modules/.cache/zcode-server-cli", "tools", target);
+  const cacheDir = join(repoRoot, "node_modules/.cache/codevori-server-cli", "tools", target);
   log(`prepare local native search target assets: ${target}`);
   await runCommand(
     process.execPath,

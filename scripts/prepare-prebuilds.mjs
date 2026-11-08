@@ -134,7 +134,7 @@ const remoteOfficialPluginPackages = [
     stagedPath: "packages/node-repl-host",
   },
 ];
-// 随 CLI 内置的技能包（不是插件）：远端 agent 的 bootstrap 沿官方插件同款候选目录在 zcode.cjs 旁
+// 随 CLI 内置的技能包（不是插件）：远端 agent 的 bootstrap 沿官方插件同款候选目录在 codevori.cjs 旁
 // 找 packages/bundled-skills 并原地读取；与 packages/desktop/scripts/prepare-agent-node-bundle.mjs 同一份清单。
 const remoteBundledSkillPack = {
   relativePath: "apps/zcode-cli/packages/bundled-skills",
@@ -221,7 +221,7 @@ async function downloadWithRetry(url, destinationPath, maxAttempts = 3) {
 }
 
 async function extractArchiveMember(url, destinationDir, archiveMember) {
-  const tempDir = mkdtempSync(join(tmpdir(), "zcode-node-dist-"));
+  const tempDir = mkdtempSync(join(tmpdir(), "codevori-node-dist-"));
   const archivePath = join(tempDir, "node.tar.xz");
 
   try {
@@ -351,7 +351,7 @@ function buildServerBundle() {
 
 function runBootstrapServerRemoteBuild() {
   // bootstrap:with-remote 会在本地串联 install、remote assets、workspace build。
-  // 这里不能复用已有 zcode-server.cjs：开发时 package version 常不变，旧 bundle 会把缺少新 RPC 的
+  // 这里不能复用已有 codevori-server.cjs：开发时 package version 常不变，旧 bundle 会把缺少新 RPC 的
   // server 部署到 SSH 远端。只保留“直接用当前 Node 启动 tsx”的低内存优化，不改变 CI 的 build:remote。
   runCommand(
     process.execPath,
@@ -366,11 +366,13 @@ function runBootstrapServerRemoteBuild() {
 function copyServerBundle() {
   const serverDir = join(releaseDir, "server");
   mkdirSync(serverDir, { recursive: true });
+  // 修复原因：复用目录可能残留旧名入口，不能让新 release 同时携带两套 Server 文件。
+  rmSync(join(serverDir, "zcode-server.cjs"), { force: true });
   copyFileSync(
-    join(rootDir, "packages/server/dist/remote/zcode-server.cjs"),
-    join(serverDir, "zcode-server.cjs"),
+    join(rootDir, "packages/server/dist/remote/codevori-server.cjs"),
+    join(serverDir, "codevori-server.cjs"),
   );
-  console.log("  [ok] mock-cdn server/zcode-server.cjs");
+  console.log("  [ok] mock-cdn server/codevori-server.cjs");
 }
 
 function copyNodePtyPrebuilds() {
@@ -532,9 +534,9 @@ async function stageRemoteBundledSkillPack(glmDir) {
   console.log(`  [ok] mock-cdn glm bundled skill pack ${remoteBundledSkillPack.stagedPath}`);
 }
 
-// 远端 agent 现在跑编译出来的 zcode.cjs（而不是各平台独立的原生二进制）：
-// 远端部署时已经有一份独立 node（跑 zcode-server.cjs），agent 复用它执行 zcode.cjs 即可，
-// 不必再为每个平台准备一份内嵌 node 的 SEA 二进制。zcode.cjs 跨平台同一份，逐平台只是放进各自的
+// 远端 agent 现在跑编译出来的 codevori.cjs（而不是各平台独立的原生二进制）：
+// 远端部署时已经有一份独立 node（跑 codevori-server.cjs），agent 复用它执行 codevori.cjs 即可，
+// 不必再为每个平台准备一份内嵌 node 的 SEA 二进制。codevori.cjs 跨平台同一份，逐平台只是放进各自的
 // glm/<platform> 组件目录，保持现有 manifest 组件结构不变。
 async function stageRemoteAgentBundles() {
   console.log("==> Building zcode-cli bundle for remote agents");
@@ -546,21 +548,21 @@ async function stageRemoteAgentBundles() {
   // browser-use runtime 的 tsc 依赖 @zcode/core/dist。远端资产也必须先构建
   // agent CLI 依赖，避免 CI 干净检出时被开发机缓存掩盖的 TS2307。
   buildRemoteOfficialPluginRuntimes();
-  const cliBundlePath = join(rootDir, "apps/zcode-cli/packages/cli/dist/zcode.cjs");
+  const cliBundlePath = join(rootDir, "apps/zcode-cli/packages/cli/dist/codevori.cjs");
   if (!existsSync(cliBundlePath)) {
     throw new Error(`[prepare-prebuilds] expected cli bundle missing: ${cliBundlePath}`);
   }
 
   for (const platformKey of remotePlatforms) {
     const glmDir = join(releaseDir, "glm", platformKey);
-    // 干净重建：glm 组件现在只含 zcode.cjs，清掉历史遗留的原生二进制 / 旧 meta，
+    // 干净重建：glm 组件现在只含 codevori.cjs，清掉历史遗留的原生二进制 / 旧 meta，
     // 避免被打进组件 tar 把远端资源撑大。
     rmSync(glmDir, { recursive: true, force: true });
     mkdirSync(glmDir, { recursive: true });
-    copyFileSync(cliBundlePath, join(glmDir, "zcode.cjs"));
+    copyFileSync(cliBundlePath, join(glmDir, "codevori.cjs"));
     stageRemoteOfficialPlugins(glmDir);
     await stageRemoteBundledSkillPack(glmDir);
-    console.log(`  [ok] mock-cdn glm/${platformKey}/zcode.cjs`);
+    console.log(`  [ok] mock-cdn glm/${platformKey}/codevori.cjs`);
   }
 }
 
@@ -653,7 +655,7 @@ function resolveComponentSemanticVersion(componentVersion) {
 }
 
 // glm 承载 zcode-cli app-server 协议 schema。即使 runtime 版本未变化，
-// zcode.cjs 也可能随 app 代码变更；跨 release 复用旧 glm 会让远端 agent 拒绝新协议字段。
+// codevori.cjs 也可能随 app 代码变更；跨 release 复用旧 glm 会让远端 agent 拒绝新协议字段。
 const nonReusableReleaseAssetIds = new Set(["server-bundle", "glm"]);
 
 function readJsonFile(filePath) {
@@ -814,9 +816,9 @@ function buildReusableComponentRequiredPaths(componentId, platformKey) {
     case "node-pty":
       return platformKey.startsWith("darwin-") ? ["pty.node", "spawn-helper"] : ["pty.node"];
     case "glm":
-      // GLM 现在是编译产物 zcode.cjs（跨平台同一份），远端用已部署的 node 执行它。
+      // GLM 现在是编译产物 codevori.cjs（跨平台同一份），远端用已部署的 node 执行它。
       // 复用时还要确认官方插件 seed 资源完整，否则旧 release 会继续产出 0 builtin plugin 的远端资源包。
-      return ["zcode.cjs", ...remoteOfficialPluginRequiredPaths];
+      return ["codevori.cjs", ...remoteOfficialPluginRequiredPaths];
     case "bfs":
       return ["bfs"];
     case "ripgrep":

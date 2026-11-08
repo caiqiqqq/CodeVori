@@ -1,4 +1,4 @@
-// Agent bundle 的暂存动作：把 apps/zcode-cli/packages/cli/dist/zcode.cjs 放进
+// Agent bundle 的暂存动作：把 apps/zcode-cli/packages/cli/dist/codevori.cjs 放进
 // bundled-agents/<平台>/glm，并写 meta。
 //
 // dev 与打包**必须**用同一份暂存实现。
@@ -11,14 +11,14 @@
 import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-export const AGENT_BUNDLE_SOURCE_RELATIVE = "apps/zcode-cli/packages/cli/dist/zcode.cjs";
+export const AGENT_BUNDLE_SOURCE_RELATIVE = "apps/zcode-cli/packages/cli/dist/codevori.cjs";
 
 export function resolveAgentBundlePaths({ repoRoot, platformKey }) {
   const glmDir = resolve(repoRoot, "packages", "desktop", "bundled-agents", platformKey, "glm");
   return {
     cliBundlePath: resolve(repoRoot, AGENT_BUNDLE_SOURCE_RELATIVE),
     glmDir,
-    stagedBundlePath: resolve(glmDir, "zcode.cjs"),
+    stagedBundlePath: resolve(glmDir, "codevori.cjs"),
     stagedMetaPath: resolve(glmDir, ".node-bundle-meta.json"),
   };
 }
@@ -41,7 +41,7 @@ export function stageAgentBundle({ repoRoot, platformKey, log = console.log }) {
   copyFileSync(cliBundlePath, stagedBundlePath);
   const meta = {
     runtime: "electron-node",
-    entry: "zcode.cjs",
+    entry: "codevori.cjs",
     platform: platformKey,
     source: AGENT_BUNDLE_SOURCE_RELATIVE,
   };

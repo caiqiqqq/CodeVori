@@ -117,9 +117,9 @@ test("command, skill and hook save entrypoints preserve malformed user configura
     const { createSkillsService } = await import("../src/skills/skillsService.js");
     const { createHooksService } = await import("../src/hooks/hooksService.js");
     const workspace = join(f.configPath, "..", "..", "..", "workspace");
-    await mkdir(join(workspace, ".zcode", "skills", "fixture"), { recursive: true });
+    await mkdir(join(workspace, ".codevori", "skills", "fixture"), { recursive: true });
     await writeFile(
-      join(workspace, ".zcode", "skills", "fixture", "SKILL.md"),
+      join(workspace, ".codevori", "skills", "fixture", "SKILL.md"),
       "---\nname: fixture\ndescription: fixture\n---\nfixture",
     );
     const skills = createSkillsService({ isDesktopRuntime: true });

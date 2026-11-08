@@ -52,8 +52,8 @@ test("real slash command parsing never calls an execution port", async () => {
   const root = await mkdtemp(join(tmpdir(), "zcode-command-safety-"));
   let executions = 0;
   try {
-    await mkdir(join(root, ".zcode", "commands"), { recursive: true });
-    await writeFile(join(root, ".zcode", "commands", "fixture.md"), command.content);
+    await mkdir(join(root, ".codevori", "commands"), { recursive: true });
+    await writeFile(join(root, ".codevori", "commands", "fixture.md"), command.content);
     const options = {
       workingDirectory: root,
       skipUserConfig: true,

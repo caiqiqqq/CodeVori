@@ -12,7 +12,7 @@ const root = resolve(import.meta.dirname, "..");
 const name = `__pairing-${process.pid}`;
 const html = join(root, `${name}.html`),
   entry = join(root, `${name}.jsx`);
-const artifacts = await mkdtemp(join(tmpdir(), "zcode-pairing-"));
+const artifacts = await mkdtemp(join(tmpdir(), "codevori-pairing-"));
 const link = "http://codevori.example.test:52235/?token=synthetic%2B%2F%3Dtoken";
 let server, browser;
 const errors = [];

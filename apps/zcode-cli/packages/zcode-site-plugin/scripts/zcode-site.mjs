@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// zcode-site：ZCode Sites 的命令行客户端（技术方案 4.2、4.3、5.3）。
+// zcode-site：CodeVori Sites 的命令行客户端（技术方案 4.2、4.3、5.3）。
 // deploy 的输入是 Agent 准备好的 stage 目录，打包与契约检查、以及本地命令 check 在 stage.mjs；其余只和云端交互，不探测项目。
 // 命令、参数、输出和错误码的完整说明只写在 HELP 里（`zcode-site help`），site-deploy skill 引用它，不再重复。
 //

@@ -1,4 +1,4 @@
-// Read-only ACP history search in a running ZCode Dev desktop app; no prompt is sent.
+// Read-only ACP history search in a running CodeVori Dev desktop app; no prompt is sent.
 // ZCODE_E2E_ACP_SESSION_ID=<saved-id> node packages/ui/test/acpSearch.e2e.mjs
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -10,7 +10,7 @@ const id = process.env.ZCODE_E2E_ACP_SESSION_ID;
 assert.ok(id && /^[0-9a-f-]{36}$/i.test(id), "Provide a saved ACP session id");
 const snapshot = JSON.parse(
   await readFile(
-    join(process.env.ZCODE_DATA_BASE_DIR || homedir(), ".zcode", "acp-sessions", `${id}.json`),
+    join(process.env.ZCODE_DATA_BASE_DIR || homedir(), ".codevori", "acp-sessions", `${id}.json`),
     "utf8",
   ),
 );
@@ -37,7 +37,7 @@ const page = browser
   .contexts()
   .flatMap((context) => context.pages())
   .find((item) => item.url().includes(":5174/"));
-assert.ok(page, "ZCode Dev renderer is required");
+assert.ok(page, "CodeVori Dev renderer is required");
 const sessionRow = page.locator(`[data-acp-session-id="${id}"]`);
 const result = page.locator(`[data-acp-search-session-id="${id}"]`);
 const input = page.getByPlaceholder("搜索操作、任务或文件");

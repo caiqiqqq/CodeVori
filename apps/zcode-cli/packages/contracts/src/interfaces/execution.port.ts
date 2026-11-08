@@ -73,7 +73,7 @@ interface EmbeddedSearchCommandBackend {
   args?: string[];
   /**
    * backend 调用需要的环境变量。桌面端 Electron Helper 执行
-   * zcode.cjs 时必须带 ELECTRON_RUN_AS_NODE=1，否则会按 Electron 子进程启动。
+   * codevori.cjs 时必须带 ELECTRON_RUN_AS_NODE=1，否则会按 Electron 子进程启动。
    */
   env?: Record<string, string>;
 }

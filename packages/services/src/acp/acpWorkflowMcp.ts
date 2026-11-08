@@ -134,7 +134,7 @@ export function createAcpWorkflowMcp(directory: string) {
                     name,
                     description:
                       savedWorkflowTools.find((tool) => tool.name === name)?.description ??
-                      `ZCode workflow: ${name}`,
+                      `CodeVori workflow: ${name}`,
                     inputSchema: toolInputSchema(name),
                   })),
               };

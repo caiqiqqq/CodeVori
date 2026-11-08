@@ -11,12 +11,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { version } = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const serverEntry = join(root, "server", "entry-http.js");
 const webRoot = join(root, "web");
-const agentEntry = join(root, "agent", "zcode.cjs");
+const agentEntry = join(root, "agent", "codevori.cjs");
 
 function usage() {
   return `Usage:
-  zcode --web [--host <host>] [--port <port>] [--workspace <path>] [--open|--no-open] [--token <token>|--no-token]
-  zcode --version
+  codevori --web [--host <host>] [--port <port>] [--workspace <path>] [--open|--no-open] [--token <token>|--no-token]
+  codevori --version
 `;
 }
 
@@ -260,7 +260,7 @@ try {
     else await serve(options);
   } else {
     if (argv.length === 1 && ["--help", "-h"].includes(argv[0])) {
-      console.log("Web mode: zcode --web [options] (zcode --web --help for details)\n");
+      console.log("Web mode: codevori --web [options] (codevori --web --help for details)\n");
     }
     // CLI 自启动子进程依赖 argv[1]；统一指向真正的 Agent 入口，保留 TTY 与所有原始参数。
     process.argv[1] = agentEntry;

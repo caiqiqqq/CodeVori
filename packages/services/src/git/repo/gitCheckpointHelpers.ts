@@ -27,7 +27,7 @@ export function getWorkspacePathspec(workspaceInRepoPath: string): string {
 
 export function getCheckpointRefName(workspacePath: string, checkpointId: string): string {
   const workspaceHash = getWorkspaceHash(workspacePath);
-  return `refs/zcode/checkpoints/${workspaceHash}/${checkpointId}`;
+  return `refs/codevori/checkpoints/${workspaceHash}/${checkpointId}`;
 }
 
 function mapNameStatusKind(status: string): GitCheckpointFileDiff["kind"] {
@@ -184,10 +184,10 @@ export function buildAffectedRepoPaths(files: GitCheckpointFileDiff[]): string[]
 export function buildCheckpointEnv(tempIndexPath: string): NodeJS.ProcessEnv {
   return {
     GIT_INDEX_FILE: tempIndexPath,
-    GIT_AUTHOR_NAME: "ZCode Checkpoint",
-    GIT_AUTHOR_EMAIL: "checkpoint@zcode.local",
-    GIT_COMMITTER_NAME: "ZCode Checkpoint",
-    GIT_COMMITTER_EMAIL: "checkpoint@zcode.local",
+    GIT_AUTHOR_NAME: "CodeVori Checkpoint",
+    GIT_AUTHOR_EMAIL: "checkpoint@codevori.local",
+    GIT_COMMITTER_NAME: "CodeVori Checkpoint",
+    GIT_COMMITTER_EMAIL: "checkpoint@codevori.local",
   };
 }
 

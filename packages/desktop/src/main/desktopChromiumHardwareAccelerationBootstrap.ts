@@ -19,19 +19,15 @@ function extractBootstrapChromiumHardwareAccelerationEnabled(rawValue: unknown):
 }
 
 function readBootstrapChromiumHardwareAccelerationEnabledFromDisk(): boolean {
-  const { settingsFile, legacySettingsFile } = resolveAppSettingsPaths();
-  // 硬件加速必须在 app ready 前应用；升级首启仅在新文件缺失时只读旧配置。
-  for (const file of [settingsFile, legacySettingsFile]) {
-    if (!existsSync(file)) continue;
-    try {
-      return extractBootstrapChromiumHardwareAccelerationEnabled(
-        JSON.parse(readFileSync(file, "utf-8")),
-      );
-    } catch {
-      return true;
-    }
+  const { settingsFile } = resolveAppSettingsPaths();
+  if (!existsSync(settingsFile)) return true;
+  try {
+    return extractBootstrapChromiumHardwareAccelerationEnabled(
+      JSON.parse(readFileSync(settingsFile, "utf-8")),
+    );
+  } catch {
+    return true;
   }
-  return true;
 }
 
 export function applyEarlyChromiumHardwareAccelerationBootstrap(

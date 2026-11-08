@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { build } from "esbuild";
+import { PRODUCT_EMBEDDED_BROWSER_PARTITION } from "@zcode/shared/product-brand";
 import { _electron } from "playwright-core";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
@@ -100,7 +101,7 @@ import {createBrowserWindow} from './packages/desktop/src/main/desktopWindowChro
 import {installBrowserLocalPreview} from './packages/desktop/src/main/browser-local-preview/index.ts';
 app.setPath('userData',${JSON.stringify(join(artifacts, "profile"))});
 app.whenReady().then(()=>{
- const browserSession=session.fromPartition('persist:zcode-embedded-browser');
+ const browserSession=session.fromPartition(${JSON.stringify(PRODUCT_EMBEDDED_BROWSER_PARTITION)});
  installBrowserLocalPreview(browserSession);
  browserSession.on('will-download',(_event,item)=>item.setSavePath(join(${JSON.stringify(artifacts)},'download-'+Date.now()+'.txt')));
  createBrowserWindow({iconPath:'',preloadPath:${JSON.stringify(preload)},logger:{warn:console.warn}});
@@ -145,15 +146,13 @@ app.whenReady().then(()=>{
   await ready();
   for (const link of ["direct", "redirect", "address"]) {
     const before = downloads;
-    await app.evaluate(({ session }) => {
+    await app.evaluate(({ session }, partition) => {
       globalThis.attachmentCompletion = new Promise((resolve) => {
-        session
-          .fromPartition("persist:zcode-embedded-browser")
-          .once("will-download", (_event, item) => {
-            item.once("done", (_doneEvent, state) => resolve(state));
-          });
+        session.fromPartition(partition).once("will-download", (_event, item) => {
+          item.once("done", (_doneEvent, state) => resolve(state));
+        });
       });
-    });
+    }, PRODUCT_EMBEDDED_BROWSER_PARTITION);
     if (link === "address") {
       const input = page.locator('[data-testid="browser-address-input"]');
       await input.fill(pageUrl.replace("/page", "/redirect"));

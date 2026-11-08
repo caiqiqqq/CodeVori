@@ -13,7 +13,7 @@ import {
   type SitesResult,
 } from "../contract.ts";
 
-/** 页面导航状态，经 ZCode 扩展 `ui/set-widget-state` 交给宿主内存保存，切换会话后恢复。 */
+/** 页面导航状态，经 CodeVori 扩展 `ui/set-widget-state` 交给宿主内存保存，切换会话后恢复。 */
 export type Route =
   | { page: "list" }
   | { page: "usage" }

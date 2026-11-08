@@ -1,4 +1,3 @@
-import { prepareProductPaths } from "@zcode/shared/node";
 import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
 /* eslint-disable max-lines -- commandsService 需要集中处理目录来源优先级、读写和命令解析，拆分会削弱读取顺序的一致性 */
 import { access, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -527,8 +526,6 @@ export function createCommandsService(_options?: CommandsServiceOptions): IComma
     workspacePath?: string;
     workspaceIdentity?: string;
   }): Promise<CommandsListResult> {
-    await prepareProductPaths({ workspacePath: params.workspacePath });
-
     const userCommands: UserCommand[] = [];
     const agentSources = getCommandAgentSources(params.agentSource);
     const enabledOverrides = await readCommandEnabledOverridesFromUserConfig();
@@ -578,8 +575,6 @@ export function createCommandsService(_options?: CommandsServiceOptions): IComma
   }
 
   async function writeCommandFile(params: CommandCreateParams): Promise<{ command: UserCommand }> {
-    await prepareProductPaths({ workspacePath: params.workspacePath });
-
     const agentSource = params.agentSource ?? DEFAULT_COMMAND_AGENT_SOURCE;
     const descriptor = getCommandSourceDescriptor(agentSource);
     const target = getCommandsRootForStorage({
@@ -639,8 +634,6 @@ export function createCommandsService(_options?: CommandsServiceOptions): IComma
   }
 
   async function updateCommandFile(params: CommandUpdateParams): Promise<{ command: UserCommand }> {
-    await prepareProductPaths({ workspacePath: params.workspacePath });
-
     const agentSource = params.agentSource ?? DEFAULT_COMMAND_AGENT_SOURCE;
     const descriptor = getCommandSourceDescriptor(agentSource);
     const target = getCommandsRootForStorage({
@@ -753,8 +746,6 @@ export function createCommandsService(_options?: CommandsServiceOptions): IComma
   async function getPrimaryUserCommandsDirectory(params?: {
     agentSource?: CommandAgentSource;
   }): Promise<{ path: string }> {
-    await prepareProductPaths();
-
     const path = getUserCommandsRoot(params?.agentSource);
     // open-in-file-manager 在 Windows 上不能可靠打开不存在的路径，
     // 这里先确保命令目录落盘，再把路径交给系统文件管理器。
@@ -1009,7 +1000,7 @@ async function discoverCommandsFromDirectorySources(params: {
       scope: params.scope,
       ...(params.projectPath ? { projectPath: params.projectPath } : {}),
     });
-    // `.zcode` 是强优先级来源；只要读到有效命令，同 scope 的 `.agents` 就不再参与。
+    // `.codevori` 是强优先级来源；只要读到有效命令，同 scope 的 `.agents` 就不再参与。
     if (descriptor.directorySource === "zcode" && discoveredCount > 0) {
       break;
     }

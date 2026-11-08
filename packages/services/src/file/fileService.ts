@@ -1,4 +1,3 @@
-import { migrateLegacyScratchRoot } from "@zcode/shared/node";
 /* eslint-disable max-lines */
 import type { Dirent } from "node:fs";
 import { mkdir, open, readFile, readdir, realpath, stat } from "node:fs/promises";
@@ -429,8 +428,6 @@ export function createFileService(options: CreateFileServiceOptions = {}): IFile
       return realpath(params.path);
     },
     async createDefaultWorkspace(): Promise<{ path: string }> {
-      await migrateLegacyScratchRoot(homedir());
-
       const workspacePath = join(homedir(), SCRATCH_WORKSPACE_ROOT_NAME);
       await mkdir(workspacePath, { recursive: true });
       const workspaceStat = await stat(workspacePath);
@@ -466,8 +463,6 @@ export function createFileService(options: CreateFileServiceOptions = {}): IFile
       };
     },
     async createScratchWorkspace(params: { name: string }): Promise<{ path: string }> {
-      await migrateLegacyScratchRoot(homedir());
-
       const workspaceName = validateScratchWorkspaceName(params.name);
       const workspacePath = join(homedir(), SCRATCH_WORKSPACE_ROOT_NAME, workspaceName);
       await mkdir(workspacePath, { recursive: true });

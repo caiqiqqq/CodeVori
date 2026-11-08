@@ -110,7 +110,7 @@ export function createWeixinChannelRuntime(deps: WeixinChannelRuntimeDeps) {
           provider: "weixin",
           status: "idle",
           messageId: "bots.runtime.weixinHandledElsewhere",
-          message: "Weixin long polling is handled by another ZCode window.",
+          message: "Weixin long polling is handled by another CodeVori window.",
         });
         await waitFor(BOT_RUNTIME_LOCK_RETRY_MS, signal);
         continue;

@@ -1,13 +1,13 @@
 {
   "expo": {
-    "slug": "zcode-lan-mobile",
+    "slug": "codevori-lan-mobile",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "scheme": "zcode-lan-mobile",
+    "scheme": "codevori-lan-mobile",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ai.zcode.lanmobile",
+      "bundleIdentifier": "ai.codevori.lanmobile",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true,
@@ -16,7 +16,7 @@
       }
     },
     "android": {
-      "package": "ai.zcode.lanmobile"
+      "package": "ai.codevori.lanmobile"
     },
     "plugins": [
       [

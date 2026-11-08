@@ -1,4 +1,3 @@
-import { prepareProductPaths } from "@zcode/shared/node";
 /* oxlint-disable eslint(max-lines) -- 发布、远端 staging、安全轮询和原子导入共享同一 attempt 生命周期，拆分会让清理与进度状态失去单一 owner。 */
 import { createHash, randomUUID } from "node:crypto";
 import type { Dirent } from "node:fs";
@@ -1323,12 +1322,6 @@ export class ConversationShareService implements IConversationShareService {
     operationId: string,
   ): Promise<ImportConversationShareResult> {
     await this.completedImportsLoaded;
-    await prepareProductPaths({
-      workspacePath:
-        input.targetWorkspaceKind === "remote" || input.targetWorkspaceIdentity
-          ? this.conversationWorkspaceRoot
-          : input.targetWorkspacePath,
-    });
     const workspaceKey = workspaceKeyOf(input.targetWorkspacePath, input.targetWorkspaceIdentity);
     const workspaceKeyedShare = importDedupeKey(input.shareCode, workspaceKey);
     const key = `${workspaceKeyedShare}\u0000${input.clientRequestId}`;
@@ -1721,7 +1714,6 @@ export class ConversationShareService implements IConversationShareService {
     workspacePath: string;
     contextId: string;
   }): Promise<ImportedConversationShare | null> {
-    await prepareProductPaths({ workspacePath: input.workspacePath });
     const shareRoot = join(input.workspacePath, ".codevori-share");
     let entries: Dirent[];
     try {
@@ -1772,7 +1764,6 @@ export class ConversationShareService implements IConversationShareService {
   }
 
   private async loadCompletedImportIndex(): Promise<void> {
-    await prepareProductPaths({ workspacePath: this.conversationWorkspaceRoot });
     let raw: unknown;
     try {
       raw = JSON.parse(await readFile(this.importIndexPath, "utf8"));

@@ -1,1 +1,1 @@
-export const EMBEDDED_BROWSER_PARTITION = "persist:zcode-embedded-browser";
+export { PRODUCT_EMBEDDED_BROWSER_PARTITION as EMBEDDED_BROWSER_PARTITION } from "@zcode/shared/product-brand";

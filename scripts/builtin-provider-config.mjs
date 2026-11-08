@@ -45,7 +45,7 @@ export async function loadBuiltinProviderConfig({ root = repositoryRoot, env = p
   const environment = await resolveBuiltinProviderBuildEnvironment({ root, env });
   const sourcePath = resolve(
     root,
-    env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE?.trim() || "config/provider/zcode-builtin.json",
+    env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE?.trim() || "config/provider/codevori-builtin.json",
   );
   try {
     const content = await readFile(sourcePath, "utf8");
@@ -71,6 +71,6 @@ export async function stageBuiltinProviderConfig({ directory, ...options }) {
   const config = await loadBuiltinProviderConfig(options);
   await mkdir(directory, { recursive: true });
   // bootstrap 可以复用 JS，但不能连带复用上一环境／上一版本的独立配置资源。
-  await writeFile(resolve(directory, "zcode-builtin.json"), config.content, "utf8");
+  await writeFile(resolve(directory, "codevori-builtin.json"), config.content, "utf8");
   return config;
 }

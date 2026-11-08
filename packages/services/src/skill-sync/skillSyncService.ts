@@ -1,5 +1,4 @@
 import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
-import { prepareProductPaths } from "@zcode/shared/node";
 /* eslint-disable max-lines -- skill 同步服务集中维护候选扫描、远端判重和导入流程，避免拆分时扩大远端同步回归面。 */
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -32,14 +31,12 @@ export function createSkillSyncService(options?: { maxArchiveBytes?: number }): 
   const maxArchiveBytes = options?.maxArchiveBytes ?? DEFAULT_MAX_ARCHIVE_BYTES;
   return {
     async listLocalUserSkillCandidates(): Promise<SkillSyncCandidateListResult> {
-      await prepareProductPaths({ homeDirectory: resolveUserHomeDir() });
       return {
         candidates: await collectUserSkillCandidates(),
         maxArchiveBytes,
       };
     },
     async listRemoteUserSkillStatuses(params): Promise<SkillSyncRemoteStatusResult> {
-      await prepareProductPaths({ homeDirectory: resolveUserHomeDir() });
       const root = getUserZcodeSkillRoot();
       const existingSkillPathByName = await collectUserSkillDirectoryPathByName();
       // skill sync service 会通过 RPC 暴露给 renderer / remote 客户端；
@@ -70,7 +67,6 @@ export function createSkillSyncService(options?: { maxArchiveBytes?: number }): 
       };
     },
     async exportSkillsArchive(params): Promise<SkillSyncArchiveExportResult> {
-      await prepareProductPaths({ homeDirectory: resolveUserHomeDir() });
       const candidates = await collectUserSkillCandidates();
       const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
       const selected = params.skillIds.map((id) => {
@@ -125,11 +121,9 @@ export function createSkillSyncService(options?: { maxArchiveBytes?: number }): 
       };
     },
     async checkRemoteUserSkillWriteAccess() {
-      await prepareProductPaths({ homeDirectory: resolveUserHomeDir() });
       return checkRemoteSyncDirectoryWriteAccess(getUserZcodeSkillRoot());
     },
     async importSkillsArchive(params): Promise<SkillSyncImportResult> {
-      await prepareProductPaths({ homeDirectory: resolveUserHomeDir() });
       if (params.overwrite) {
         throw new Error("skill sync overwrite is not supported");
       }

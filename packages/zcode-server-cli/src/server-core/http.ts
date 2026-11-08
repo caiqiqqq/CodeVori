@@ -131,7 +131,7 @@ export async function createCoreHttpServer(
     );
   }
   const info: ServerRemoteInfo = {
-    serverId: options.serverId ?? hostname() ?? "zcode-server",
+    serverId: options.serverId ?? hostname() ?? "codevori-server",
     version: ZCODE_VERSION,
     protocolVersion: SERVER_REMOTE_PROTOCOL_VERSION,
     authRequired: false,

@@ -9,7 +9,7 @@
  *   - 位置 `.codevori/workflow-runs/`，与项目级 saved workflow 的 `.codevori/workflows/` 同级不混放；
  *   - 文件**保留**不删（同一 runId 原位覆写），目录兼作每次 run 实际执行体的存档；
  *   - 目录里由本模块写一份 `.gitignore`（`*`），只在缺席时写一次，绝不碰项目自己的 `.gitignore`；
- *   - 项目目录写不进（只读 checkout、cwd 不存在、`.zcode` 是个普通文件…）→ 回落到
+ *   - 项目目录写不进（只读 checkout、cwd 不存在、`.codevori` 是个普通文件…）→ 回落到
  *     `os.tmpdir()/codevori-workflow-runs/` 并经 `onWarning` 报一声，run 照常启动。回落也失败就抛，
  *     由 harness 归一成 failed 结算。
  */

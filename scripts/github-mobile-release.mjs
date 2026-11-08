@@ -26,8 +26,8 @@ export function assertMobileConfig(config, version) {
   if (
     config.name !== "CodeVori" ||
     config.version !== version ||
-    config.ios?.bundleIdentifier !== "ai.zcode.lanmobile" ||
-    config.android?.package !== "ai.zcode.lanmobile"
+    config.ios?.bundleIdentifier !== "ai.codevori.lanmobile" ||
+    config.android?.package !== "ai.codevori.lanmobile"
   ) {
     throw new Error("Mobile native configuration does not match the product/version");
   }

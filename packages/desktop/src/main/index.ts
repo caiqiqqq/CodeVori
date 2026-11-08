@@ -2384,7 +2384,7 @@ app.whenReady().then(async () => {
     isZCodeBusy: () => getRunningAgentSessionCount() > 0,
     logger,
     rootPath: getZCodeDataRootDir(),
-    stateFile: join(app.getPath("userData"), "zcode-data-size-telemetry.json"),
+    stateFile: join(app.getPath("userData"), "codevori-data-size-telemetry.json"),
   });
   registerDesktopNetworkTelemetry(logger);
 

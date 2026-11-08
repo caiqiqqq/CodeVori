@@ -11,7 +11,7 @@
 // dynamic-workflow-runtime/src/child-entry-file.ts 逐字同构（那里的注释记着裁决）：只在缺席时
 // 写一次，用户改过就不再动它，项目自己的 `.gitignore` 一个字都不碰。
 //
-// **尽力而为**：写不进去（只读 checkout、`.zcode` 是个普通文件、盘满）不让调用失败，返回
+// **尽力而为**：写不进去（只读 checkout、`.codevori` 是个普通文件、盘满）不让调用失败，返回
 // `undefined`，模型读到的退回「改好脚本再内联提交」的老话。刻意**不**回落到临时目录——一个
 // 用户在项目里找不到的草稿不值得一条路径。
 
@@ -93,7 +93,7 @@ export async function writeWorkflowDraft(
     }
     return undefined;
   } catch {
-    // 尽力而为：目录写不进、`.zcode` 是个文件、盘满……一律当作「这次没有草稿」。调用方据此
+    // 尽力而为：目录写不进、`.codevori` 是个文件、盘满……一律当作「这次没有草稿」。调用方据此
     // 退回旧文案，工具调用本身照常完成。
     return undefined;
   }

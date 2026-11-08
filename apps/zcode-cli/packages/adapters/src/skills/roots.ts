@@ -1,4 +1,3 @@
-import { prepareProductPaths } from "@zcode/shared/node";
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -23,8 +22,6 @@ export async function resolveDefaultSkillRoots(
   workingDirectory: string,
   options: SkillRootResolutionOptions = {},
 ): Promise<SkillRoot[]> {
-await prepareProductPaths({ homeDirectory: options.homeDirectory, workspacePath: workingDirectory });
-
   const resolvedWorkingDirectory = resolve(workingDirectory);
   const roots: SkillRoot[] = [];
   const includeZcode = options.includeZcodeSkills ?? true;
@@ -100,8 +97,8 @@ function skillRootsForBase(
   scope: SkillRoot["scope"],
   nextPriority: () => number,
 ): SkillRoot[] {
-  // 合并而不是 fallback：用户可能同时安装原生 `.zcode` skill 和兼容 `.agents` skill。
-  // 同一级别仍保持 `.zcode` 优先，后续同名按 root 顺序解析。
+  // 合并而不是 fallback：用户可能同时安装原生 `.codevori` skill 和兼容 `.agents` skill。
+  // 同一级别仍保持 `.codevori` 优先，后续同名按 root 顺序解析。
   return [
     root(join(baseDirectory, scope === "user" ? PRODUCT_DATA_DIRECTORY_NAME : ZCODE_DIR, SKILLS_DIR), scope, "zcode", nextPriority()),
     root(join(baseDirectory, AGENTS_DIR, SKILLS_DIR), scope, "agents", nextPriority()),

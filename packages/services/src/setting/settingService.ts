@@ -1,7 +1,7 @@
 import { access, readFile, mkdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { prepareAppSettingsFile, resolveAppSettingsPaths } from "@zcode/shared/node";
+import { resolveAppSettingsPaths } from "@zcode/shared/node";
 import type {
   AppSettings,
   ProviderFamilyDomain,
@@ -104,7 +104,6 @@ interface ReadSettingsResult {
 async function readSettingsWithMeta(): Promise<ReadSettingsResult> {
   const settingsFile = getSettingsFile();
   try {
-    await prepareAppSettingsFile();
     // settingService.get() 会被 UI 和远程会话高频调用。
     // 之前每次读取都把完整配置写入生产日志，导致日志暴涨且暴露路径/配置细节；普通读取只保留开发态 debug。
     debugLog("reading settings from:", settingsFile);

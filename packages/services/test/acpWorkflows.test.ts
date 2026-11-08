@@ -212,7 +212,7 @@ async function fixture(
             });
             await options.parentAfterCreate?.();
           } else {
-            assert.match(text, /ZCode 工作流运行结果/);
+            assert.match(text, /CodeVori 工作流运行结果/);
             if (options.parentResult) await options.parentResult(input);
             else await input.onUpdate({ kind: "text", text: "工作流已完成" });
           }
@@ -655,7 +655,7 @@ test("workflow artifact publishing does not follow a workspace output symlink", 
   const root = await mkdtemp(join(tmpdir(), "zcode-acp-artifact-root-"));
   const outside = await mkdtemp(join(tmpdir(), "zcode-acp-artifact-outside-"));
   try {
-    await symlink(outside, join(root, ".zcode"), "dir");
+    await symlink(outside, join(root, ".codevori"), "dir");
     const world = createAcpWorkflowWorld({
       cwd: root,
       runId: "run-1",

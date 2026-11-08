@@ -68,7 +68,7 @@ export async function startProcessProviderRegistryRuntime(
           zcodeBuiltinRemote: {
             controlFilePath: join(
               dirname(paths.zcodeBuiltinFilePath),
-              "zcode-builtin-refresh.json",
+              "codevori-builtin-refresh.json",
             ),
             resolveEndpointKey: () => resolveRuntimeZCodeEndpointOrigin(env),
             fetchRelease: (endpointOrigin, signal) =>

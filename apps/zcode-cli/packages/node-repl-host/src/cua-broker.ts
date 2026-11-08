@@ -25,7 +25,7 @@ export function createNodeReplCuaBroker(input: {
 }): NodeReplCuaBroker {
   const socketPath =
     input.platform === "win32"
-      ? `\\\\.\\pipe\\zcode-node-repl-cua-${randomUUID()}`
+      ? `\\\\.\\pipe\\codevori-node-repl-cua-${randomUUID()}`
       : join(tmpdir(), `znrc-${randomUUID()}.sock`);
   const token = randomBytes(32).toString("hex");
   const server = createServer((socket) => {

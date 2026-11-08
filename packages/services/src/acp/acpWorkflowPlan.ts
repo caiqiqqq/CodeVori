@@ -22,8 +22,8 @@ import type {
 } from "@zcode/shared";
 
 const MAX_SCRIPT = 128 * 1024;
-export const instructions = `ZCode ACP dynamic workflows. Call CreateWorkflow with {script: string, name?: string}.
-The script is TypeScript checked against ZCode's workflow facade and executed by its isolated workflow engine.
+export const instructions = `CodeVori ACP dynamic workflows. Call CreateWorkflow with {script: string, name?: string}.
+The script is TypeScript checked against CodeVori's workflow facade and executed by its isolated workflow engine.
 Use phase("用户语言阶段名") at the start of each working stage, agent("name") to create an actor, and
 await actor.ask<T>("instructions") for a typed JSON answer (actor must call submit_result), or
 await actor.ask("instructions") for a plain text answer. Promise.all supports parallel asks.
@@ -32,7 +32,7 @@ files.read/glob/grep and git.status/log/diff/changedFiles are journalled world r
 Use artifact.markdown("id", "# report") or artifact.file("id", "relative/path") to publish deliverables.
 Finish the script with return <serializable result>. Commands and script are shown for human confirmation.
 Read GetWorkflowRun with {runId} to inspect progress; CancelWorkflowRun and ResumeWorkflowRun use {runId}.
-Only the ZCode Host executes these tools; ordinary ACP tool titles do not launch a workflow.`;
+Only the CodeVori Host executes these tools; ordinary ACP tool titles do not launch a workflow.`;
 
 export type Compiled = ReturnType<typeof compileAcpWorkflow>;
 export function compileAcpWorkflow(script: string) {

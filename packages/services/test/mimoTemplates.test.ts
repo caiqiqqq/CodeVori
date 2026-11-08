@@ -17,7 +17,7 @@ test("MiMo API and Token Plan resolve independently without rewriting Personal o
   const release = decodeZCodeBuiltinRelease(
     JSON.parse(
       await readFile(
-        new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
+        new URL("../../../config/provider/codevori-builtin.json", import.meta.url),
         "utf8",
       ),
     ),

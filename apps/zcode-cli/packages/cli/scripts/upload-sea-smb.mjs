@@ -11,8 +11,8 @@ export const resolveDefaultSmbUrl = (env = process.env) =>
   `smb://${resolveIntranetMachineHost(env)}/shared`;
 export const DEFAULT_SMB_URL = resolveDefaultSmbUrl();
 export const DEFAULT_MOUNT_ROOT = "/Volumes/shared";
-export const DEFAULT_DESTINATION_ROOT = resolve(DEFAULT_MOUNT_ROOT, "zcode", "deps");
-export const RELEASE_DIRECTORY_PREFIX = "zcode-cli-";
+export const DEFAULT_DESTINATION_ROOT = resolve(DEFAULT_MOUNT_ROOT, "codevori", "deps");
+export const RELEASE_DIRECTORY_PREFIX = "codevori-cli-";
 
 const root = resolve(import.meta.dirname, "../../..");
 const cliRoot = resolve(import.meta.dirname, "..");
@@ -20,13 +20,13 @@ const defaultDist = resolve(cliRoot, "dist");
 const usage = `Usage:
   node packages/cli/scripts/upload-sea-smb.mjs
   node packages/cli/scripts/upload-sea-smb.mjs --force
-  node packages/cli/scripts/upload-sea-smb.mjs --dest-root /Volumes/shared/zcode/deps
+  node packages/cli/scripts/upload-sea-smb.mjs --dest-root /Volumes/shared/codevori/deps
   node packages/cli/scripts/upload-sea-smb.mjs --dist packages/cli/dist
   node packages/cli/scripts/upload-sea-smb.mjs --version 0.12.3
 
 Options:
   --dist <path>       SEA binary dist directory. Defaults to packages/cli/dist.
-  --dest-root <path>  Mounted SMB release root. Defaults to /Volumes/shared/zcode/deps.
+  --dest-root <path>  Mounted SMB release root. Defaults to /Volumes/shared/codevori/deps.
   --version <text>    Release version. Defaults to the root package.json version.
   --smb-url <url>     SMB label for messages. Defaults to ${DEFAULT_SMB_URL}.
   --force, -f         Replace an existing version directory.

@@ -1,4 +1,3 @@
-import { prepareProductPaths } from "@zcode/shared/node";
 import { withOfficialCommandEnv } from "../official-command-endpoint/index.js";
 import { resolveMcpNodeFallbackProvider } from "./mcp-node-fallback.js";
 import { startWorkflowQuotaAutoResume } from "./dynamic-workflow-quota-resume.js";
@@ -146,8 +145,6 @@ function decodePromptAttachmentDataUrl(
 }
 
 export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp> {
-await prepareProductPaths({ workspacePath: options.runtimeConfig?.workingDirectory ?? process.cwd() });
-
   if (!options?.providerRegistry) {
     throw new Error("createZCodeApp requires a Provider Registry");
   }
@@ -327,7 +324,7 @@ await prepareProductPaths({ workspacePath: options.runtimeConfig?.workingDirecto
       ...(options.workspaceHookReviewHost
         ? {
             emitReviewEvent: async (event) => {
-              if (!runtime) throw new Error("ZCode runtime is not initialized yet.");
+              if (!runtime) throw new Error("CodeVori runtime is not initialized yet.");
               await runtime.appendEvent(
                 createSessionEvent(event.type, sessionId, event.payload, {
                   traceId: traceContext.traceId,
@@ -336,7 +333,7 @@ await prepareProductPaths({ workspacePath: options.runtimeConfig?.workingDirecto
               );
             },
             emitAdmissionEvent: async (event) => {
-              if (!runtime) throw new Error("ZCode runtime is not initialized yet.");
+              if (!runtime) throw new Error("CodeVori runtime is not initialized yet.");
               await runtime.appendEvent(
                 createSessionEvent(event.type, sessionId, event.payload, {
                   traceId: traceContext.traceId,
@@ -451,7 +448,7 @@ await prepareProductPaths({ workspacePath: options.runtimeConfig?.workingDirecto
       runtimeConfig,
     });
     const getRuntime = (): AgentRuntime => {
-      if (!runtime) throw new Error("ZCode runtime is not initialized yet.");
+      if (!runtime) throw new Error("CodeVori runtime is not initialized yet.");
       return runtime;
     };
     let resumePrepared = false;

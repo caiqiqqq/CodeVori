@@ -706,7 +706,7 @@ function mapChildProcessGoneToProcessRoleWithName(
   if (processName?.startsWith("zcode-host")) {
     return "host";
   }
-  if (processName?.startsWith("zcode-agent")) {
+  if (processName?.startsWith("codevori-agent") || processName?.startsWith("zcode-agent")) {
     return "agent";
   }
   switch (type) {

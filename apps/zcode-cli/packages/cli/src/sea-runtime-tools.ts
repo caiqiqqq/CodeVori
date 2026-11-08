@@ -45,7 +45,7 @@ interface EnsureSeaRuntimeToolsOptions {
   storageRoot?: string;
 }
 
-const assetPrefix = "zcode-runtime-tools/";
+const assetPrefix = "codevori-runtime-tools/";
 const manifestAssetKey = `${assetPrefix}manifest.json`;
 const markerFileName = ".codevori-runtime-tool.json";
 const runtimeToolIds = new Set<RuntimeToolId>(["bfs", "ripgrep", "ugrep"]);

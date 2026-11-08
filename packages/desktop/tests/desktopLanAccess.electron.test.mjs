@@ -133,7 +133,7 @@ try {
       const origin='http://127.0.0.1:'+configuration.port;
       assert.equal(await credentials.load('desktop-lan-access-token-v1'),state.token);
       await writeFile(join(${JSON.stringify(root)},'expected-pairing.json'),JSON.stringify({token:state.token,urls:state.urls}),{mode:0o600});
-      const encrypted=await readFile(join(${JSON.stringify(root)},'data/.zcode/v2/credentials.json'),'utf8');
+      const encrypted=await readFile(join(${JSON.stringify(root)},'data/.codevori/v2/credentials.json'),'utf8');
       assert.equal(encrypted.includes(state.token),false,'Token must not be written in plaintext');
       assert.match(encrypted,/enc:v1:/);
       const paired=await fetch(origin+'/?token='+encodeURIComponent(state.token),{redirect:'manual'});

@@ -1,4 +1,3 @@
-import { prepareProductPaths } from "@zcode/shared/node";
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -23,8 +22,6 @@ export async function resolveDefaultCustomCommandRoots(
   workingDirectory: string,
   options: CustomCommandRootResolutionOptions = {},
 ): Promise<CustomCommandRoot[]> {
-await prepareProductPaths({ homeDirectory: options.homeDirectory, workspacePath: workingDirectory });
-
   const resolvedWorkingDirectory = resolve(workingDirectory);
   const roots: CustomCommandRoot[] = [];
   const includeZcode = options.includeZcodeCommands ?? true;
@@ -100,8 +97,8 @@ function commandRootsForBase(
   scope: CustomCommandRoot["scope"],
   nextPriority: () => number,
 ): CustomCommandRoot[] {
-  // 合并而不是 fallback：兼容 `.agents` 命令和原生 `.zcode` 命令需要同时可见。
-  // 同一级别 `.zcode` 先扫描，命令同名时仍按“先到先赢”处理。
+  // 合并而不是 fallback：兼容 `.agents` 命令和原生 `.codevori` 命令需要同时可见。
+  // 同一级别 `.codevori` 先扫描，命令同名时仍按“先到先赢”处理。
   return [
     root(join(baseDirectory, scope === "user" ? PRODUCT_DATA_DIRECTORY_NAME : ZCODE_DIR, COMMANDS_DIR), scope, "zcode", nextPriority()),
     root(join(baseDirectory, AGENTS_DIR, COMMANDS_DIR), scope, "agents", nextPriority()),

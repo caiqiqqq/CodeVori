@@ -1,4 +1,4 @@
-import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
+import { PRODUCT_DATA_DIRECTORY_NAME, PRODUCT_NAME } from "@zcode/shared/product-brand";
 // ============================================================
 // Node logging adapter - JSONL file and optional stderr sink
 // ============================================================
@@ -246,5 +246,5 @@ function ensureLogDir(logDir: string): void {
 }
 
 function getLogFileName(): string {
-  return `zcode-${formatLocalLogDate(new Date())}.jsonl`;
+  return `${PRODUCT_NAME.toLowerCase()}-${formatLocalLogDate(new Date())}.jsonl`;
 }

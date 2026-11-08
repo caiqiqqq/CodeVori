@@ -107,7 +107,7 @@ export async function captureWindowScreenshot(senderWindow: BrowserWindow | null
   const buffer = image.toPNG();
   return {
     dataBase64: buffer.toString("base64"),
-    filename: `zcode-error-${new Date().toISOString().replace(/[:.]/g, "-")}.png`,
+    filename: `codevori-error-${new Date().toISOString().replace(/[:.]/g, "-")}.png`,
     contentType: "image/png",
     size: buffer.byteLength,
   };

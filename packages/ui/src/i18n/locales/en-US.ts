@@ -23,14 +23,13 @@ const enUS: Record<string, string> = {
   "settings.remoteSync.plugins": "Plugins",
   "settings.remoteSync.connectFirst": "Connect an SSH or WSL project from desktop first.",
   "settings.projects.title": "Projects",
-  "settings.projects.description":
-    "Manage open and recent projects. Removing a project preserves its source. Optionally clean ZCode sessions and attachments.",
+  "settings.projects.description": `Manage open and recent projects. Removing a project preserves its source. Optionally clean ${PRODUCT_NAME} sessions and attachments.`,
   "settings.projects.search": "Search projects",
   "settings.projects.selectAll": "Select results",
   "settings.projects.removeTitle": "Remove {count} projects?",
   "settings.projects.removeDescription":
     "Remove project entries and keep source files. Running sessions cannot be cleaned. Entries with cleanup failures are retained.",
-  "settings.projects.cleanData": "Also clean ZCode sessions and attachments",
+  "settings.projects.cleanData": `Also clean ${PRODUCT_NAME} sessions and attachments`,
   "settings.projects.removed": "Removed {count} projects",
   "settings.projects.remove": "Remove selected ({count})",
   "settings.projects.empty": "No matching projects",
@@ -342,7 +341,7 @@ const enUS: Record<string, string> = {
   "workTasks.agents": "Agents",
   "workTasks.executionConfig": "Execution configuration",
   "workTasks.executor": "Execution agent",
-  "workTasks.apiExecutor": "ZCode / API",
+  "workTasks.apiExecutor": `${PRODUCT_NAME} / API`,
   "workTasks.apiModel": "Model / provider",
   "workTasks.executionConfigHint": "Applies to this task. The current conversation is unchanged.",
   "workTasks.configUnavailable": "No configuration options available. Using agent defaults.",
@@ -652,7 +651,7 @@ const enUS: Record<string, string> = {
     "The conversation does not match the task's agent type.",
   "workTasks.error.work-task.executor-invalid": "Invalid task agent configuration.",
   "repositoryPanel.title": "Repository Panel",
-  "repositoryPanel.sidebar.pending": "{count} open issues have no linked ZCode task",
+  "repositoryPanel.sidebar.pending": `{count} open issues have no linked ${PRODUCT_NAME} task`,
   "repositoryPanel.sidebar.partial":
     "Found {count} unhandled issues. Some projects are unavailable.",
   "repositoryPanel.sidebar.stale": "Last known: {count} unhandled issues. Unable to refresh.",
@@ -1446,8 +1445,7 @@ const enUS: Record<string, string> = {
   "confirmDialog.taskDeleteDescription":
     "Task “{taskTitle}” will be removed from this workspace, and the current record cannot be restored.",
   "confirmDialog.archivedTaskDeleteTitle": "Permanently delete this conversation?",
-  "confirmDialog.archivedTaskDeleteDescription":
-    "Permanently deletes this conversation and ZCode-owned contents and attachments. Project files and worktrees are preserved.",
+  "confirmDialog.archivedTaskDeleteDescription": `Permanently deletes this conversation and ${PRODUCT_NAME}-owned contents and attachments. Project files and worktrees are preserved.`,
   "taskList.deleteAllArchived": "Delete all archived tasks",
   "taskList.archivedActions": "Archive actions",
   "taskList.archivedTaskCount": "{count} archived tasks",
@@ -2915,8 +2913,7 @@ const enUS: Record<string, string> = {
   "taskList.archiveReadOnly": "Archived conversation. Restore it to continue.",
   "taskList.archiveDeletionPending":
     "Cleanup is incomplete. Retry permanent deletion from Archived.",
-  "taskList.acpDeleteDescription":
-    "Permanently deletes the ZCode-owned conversation and attachments. Agent-owned history and project files are preserved.",
+  "taskList.acpDeleteDescription": `Permanently deletes the ${PRODUCT_NAME}-owned conversation and attachments. Agent-owned history and project files are preserved.`,
   "taskList.archivedNativeTaskCount": `{count} archived ${PRODUCT_NAME} tasks (manage Agent sessions individually)`,
   "taskList.deleteAllArchivedNative": `Delete all archived ${PRODUCT_NAME} tasks`,
   "taskList.deleteAllArchivedNativeMenu": `Delete all archived ${PRODUCT_NAME} tasks…`,
@@ -3831,8 +3828,7 @@ const enUS: Record<string, string> = {
   "settings.mcp.failure.connection_failed": "Failed to connect to the MCP server. Try again later.",
   "settings.mcp.failureAdvice.config_invalid":
     "Check the MCP command, arguments, server address, and environment variables. Correct the configuration, then refresh the status.",
-  "settings.mcp.failureAdvice.runtime_unavailable":
-    "On the device running this MCP, install or configure its required runtime and make sure ZCode can find the startup command.",
+  "settings.mcp.failureAdvice.runtime_unavailable": `On the device running this MCP, install or configure its required runtime and make sure ${PRODUCT_NAME} can find the startup command.`,
   "settings.mcp.failureAdvice.process_start_failed":
     "On the device running this MCP, check the startup command, working directory, script paths, and execute permissions. Install Python dependencies from the plugin’s requirements file (such as requirements.txt), using the interpreter or virtual environment of that command. For Node MCPs, check Node.js and package dependencies. Refresh after fixing the environment.",
   "settings.mcp.failureAdvice.network_unreachable":
@@ -3845,12 +3841,10 @@ const enUS: Record<string, string> = {
     "Review server logs and confirm tools/list returns a valid MCP tool list, then refresh the status.",
   "settings.mcp.failureAdvice.unexpected_disconnect":
     "Review the error below and server logs. Check whether the process exited, a dependency is missing, or the connection was interrupted, then refresh the status.",
-  "settings.mcp.failureAdvice.oauth_authorization_failed":
-    "Open this MCP server’s authorization link again. Complete browser authorization, then return to ZCode and refresh the status.",
+  "settings.mcp.failureAdvice.oauth_authorization_failed": `Open this MCP server’s authorization link again. Complete browser authorization, then return to ${PRODUCT_NAME} and refresh the status.`,
   "settings.mcp.failureAdvice.official_origin_untrusted":
     "Check that the plugin and server address come from trusted configuration. Do not disable security checks or enter login credentials for an unknown address.",
-  "settings.mcp.failureAdvice.not_authenticated":
-    "Sign in to ZCode, then refresh the MCP status. If the account still appears signed in, sign in again and retry.",
+  "settings.mcp.failureAdvice.not_authenticated": `Sign in to ${PRODUCT_NAME}, then refresh the MCP status. If the account still appears signed in, sign in again and retry.`,
   "settings.mcp.failureAdvice.coding_plan_required":
     "In model settings, check the account’s Coding Plan and selected team or project. Refresh after confirming access is active.",
   "settings.mcp.failureAdvice.server_not_found":

@@ -24,7 +24,6 @@ import type {
 } from "@zcode/shared";
 import { createServiceLogger } from "#src/logger/serviceLogger.js";
 import { createWorktreeRemovalTiming } from "#src/logger/worktreeRemovalTiming.js";
-import { syncProductMigrationGitExcludes } from "./productMigrationGitExcludes.js";
 import {
   DEFAULT_GIT_COMMAND_TIMEOUT_MS,
   DEFAULT_GIT_DIFF_BYTES,
@@ -1071,7 +1070,7 @@ export function createGitCliRepo(options?: {
         cwd: resolution.repoRoot,
         args: [
           "log",
-          // --all 会把 refs/zcode/checkpoints 等内部 hidden refs 拉进 Git Graph。
+          // --all 会把 refs/codevori/checkpoints 等内部 hidden refs 拉进 Git Graph。
           // Graph 只展示用户可见历史，因此限定到 HEAD、分支、标签和远端分支。
           "HEAD",
           ...(headOnly ? [] : ["--branches", "--tags", "--remotes"]),
@@ -1705,9 +1704,6 @@ export function createGitCliRepo(options?: {
           if (record?.split("\0").some((line) => line === "locked" || line.startsWith("locked "))) {
             return { ok: false, issue: "locked-worktree" };
           }
-          await timing.run("migration-excludes", () =>
-            syncProductMigrationGitExcludes(target, commandProvider),
-          );
           const status = await timing.run("dirty-check", () =>
             commandProvider.run({
               cwd: target,

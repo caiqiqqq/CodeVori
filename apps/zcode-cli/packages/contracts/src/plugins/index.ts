@@ -256,7 +256,7 @@ export interface PluginDiscoverRequest {
   config: PluginConfig;
   env?: Record<string, string | undefined>;
   // bootstrap 可以把"安全到默认就开"的 official plugin id 列表传进来,
-  // 让用户不必先 `zcode plugins enable` 就能用 (例如纯内容型的 skill-creator)。
+  // 让用户不必先 `codevori plugins enable` 就能用 (例如纯内容型的 skill-creator)。
   // 默认空集合, 现有 plugin (含 ios-simulator/android-emulator 这种重负载) 行为不变。
   officialPluginsEnabledByDefault?: ReadonlySet<string>;
   officialPluginRoots?: string[];

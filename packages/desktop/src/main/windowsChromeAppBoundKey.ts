@@ -16,7 +16,7 @@ const HELPER_VERSION_PROTOCOL = "ZCODE_BROWSER_IMPORT_HELPER";
 const HELPER_VERSION = "2";
 const HELPER_TIMEOUT_MS = 90_000;
 const HELPER_MAX_OUTPUT_BYTES = 128 * 1024;
-const HELPER_FILENAME = "zcode-browser-import-helper.exe";
+const HELPER_FILENAME = "codevori-browser-import-helper.exe";
 const APP_BOUND_HELPER_FAILURE_REASONS = new Set([
   "helper_failed",
   "broker_initialization_failed",

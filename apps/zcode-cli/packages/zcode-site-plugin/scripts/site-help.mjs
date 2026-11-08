@@ -1,4 +1,4 @@
-export const HELP = `zcode-site: deploy and manage ZCode Sites. Run it from the project root.
+export const HELP = `zcode-site: deploy and manage CodeVori Sites. Run it from the project root.
 
 Output
   stdout: JSON, one object per line. deploy prints progress events first; the last line is the result.
@@ -7,7 +7,7 @@ Output
 Exit codes
   0  success
   1  bad arguments, a local file or stage problem, or SITE_NOT_SELECTED
-  2  not signed in to ZCode, sign-in expired, or not run inside a ZCode session
+  2  not signed in to CodeVori, sign-in expired, or not run inside a CodeVori session
   3  quota, rate or size limit, or another deployment in progress
   4  the deployment failed, or a server error
 
@@ -71,7 +71,7 @@ Site commands
           live version was rejected by content review gets 3612. Result: as status.
   rename [--site <id>] <name>   change the display name only; 3611 if it fails content review.
           Result: as status.
-  badge hide|show [--site <id>]   hide or show the "ZCode" badge on the site. Only paid plans can
+  badge hide|show [--site <id>]   hide or show the "CodeVori" badge on the site. Only paid plans can
           hide it (usage.badgeRemovable); free plans get 3608. badgeHidden is the user's choice,
           badgeVisible whether the badge actually shows. Result: as status.
   list    Result: {sites: [{id, name, url, status}]}

@@ -1,4 +1,3 @@
-import { prepareProductPaths } from "@zcode/shared/node";
 /**
  * MCP 用户目录模块 - 主入口
  */
@@ -378,8 +377,6 @@ async function updateZCodeServersInFile(
 export async function loadCliMcpFromUserDirectory(
   request?: LoadCliMcpFromUserDirectoryRequest,
 ): Promise<LoadCliMcpFromUserDirectoryResult> {
-  await prepareProductPaths({ workspacePath: request?.workspacePath });
-
   const servers: NativeMcpServerRecord[] = [];
 
   // 去掉其他 provider 后，ZCode Agent 只按目录约定读取；先 workspace，再 user。
@@ -397,8 +394,6 @@ export async function loadCliMcpFromUserDirectory(
 export async function saveCliMcpToUserDirectory(
   payload: SaveCliMcpToUserDirectoryRequest,
 ): Promise<void> {
-  await prepareProductPaths({ workspacePath: payload.projectPath });
-
   if (payload.action === "set-enabled") {
     if (typeof payload.enabled !== "boolean") {
       throw new Error("Missing enabled value for MCP set-enabled action");

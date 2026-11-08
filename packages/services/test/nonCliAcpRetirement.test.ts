@@ -330,7 +330,7 @@ test("current Provider configuration starts without an old config migration call
   const dir = await mkdtemp(join(tmpdir(), "zcode-provider-current-"));
   const runtime = createProviderConfigRuntime({
     zcodeBuiltinFilePath: fileURLToPath(
-      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
+      new URL("../../../config/provider/codevori-builtin.json", import.meta.url),
     ),
     personalFilePath: join(dir, "personal.json"),
     personalPollingIntervalMs: false,

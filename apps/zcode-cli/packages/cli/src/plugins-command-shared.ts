@@ -12,7 +12,7 @@ export type PluginScope = "user" | "workspace";
 
 /**
  * CLI 依赖名 → bootstrap 导出名。测试按依赖名注入假实现；生产路径按导出名懒加载 bootstrap，
- * 避免 `zcode plugins list` 这类轻命令把整个 bootstrap 图提前拉起来。
+ * 避免 `codevori plugins list` 这类轻命令把整个 bootstrap 图提前拉起来。
  */
 export const BOOTSTRAP_EXPORTS = {
   addMarketplace: "addZCodePluginMarketplace",
@@ -43,7 +43,7 @@ export interface PluginsCommandDependencies extends PluginsCommandOverrides {
   userConfigPath?: string;
 }
 
-/** `zcode plugins` 子命令专属旗标；由 run.ts 的全局解析器收集后原样透传。 */
+/** `codevori plugins` 子命令专属旗标；由 run.ts 的全局解析器收集后原样透传。 */
 export interface PluginsCommandFlags {
   all?: boolean;
   available?: boolean;
@@ -87,7 +87,7 @@ export function resolveScope(value: string | undefined): PluginScope | undefined
   if (value === "user") return "user";
   if (value === "project") return "workspace";
   if (value === "local") {
-    throw new PluginsUsageError("Scope 'local' is not supported by zcode. Use: user, project");
+    throw new PluginsUsageError("Scope 'local' is not supported by CodeVori. Use: user, project");
   }
   throw new PluginsUsageError(`Invalid scope '${value}'. Use: user, project`);
 }

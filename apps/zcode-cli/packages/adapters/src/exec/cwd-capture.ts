@@ -27,7 +27,7 @@ export function createCwdCapturePlan(
 
   const cwdCaptureDir = tmpdir();
   mkdirSync(cwdCaptureDir, { recursive: true });
-  const cwdFilePath = join(cwdCaptureDir, `zcode-${crypto.randomUUID()}-cwd`);
+  const cwdFilePath = join(cwdCaptureDir, `codevori-${crypto.randomUUID()}-cwd`);
 
   // 每次 Bash 仍启动新 shell；成功后只把最终 pwd -P 写回主进程，不能持久化 env/alias/function。
   // 默认 shell、hooks、background command 不走这个分支，避免改变其它执行面。

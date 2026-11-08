@@ -361,7 +361,7 @@ async function importMarketplaceSourceArchiveInternal(
   archive: Uint8Array,
   maxArchiveBytes: number,
 ) {
-  const tempRoot = join(tmpdir(), `zcode-plugin-marketplace-source-${randomUUID()}`);
+  const tempRoot = join(tmpdir(), `codevori-plugin-marketplace-source-${randomUUID()}`);
   try {
     await extractPluginSyncArchive(archive, tempRoot, {
       maxExtractedBytes: maxArchiveBytes,
@@ -438,7 +438,7 @@ async function importPluginsArchive(
   archive: Uint8Array,
   maxArchiveBytes: number,
 ): Promise<PluginSyncImportResult> {
-  const tempRoot = join(tmpdir(), `zcode-plugin-sync-${randomUUID()}`);
+  const tempRoot = join(tmpdir(), `codevori-plugin-sync-${randomUUID()}`);
   try {
     await extractPluginSyncArchive(archive, tempRoot, {
       maxExtractedBytes: maxArchiveBytes,
@@ -537,7 +537,7 @@ async function importPluginsArchive(
 }
 
 async function readArchiveMetadata(tempRoot: string): Promise<PluginSyncArchiveMetadata> {
-  const raw = await readFile(join(tempRoot, PLUGIN_SYNC_METADATA_ARCHIVE_PATH), "utf-8");
+  const raw = await readPluginSyncMetadataFile(tempRoot);
   const parsed = JSON.parse(raw) as unknown;
   if (!isRecord(parsed) || !Array.isArray(parsed.plugins)) {
     throw new Error("invalid plugin sync archive metadata");
@@ -566,7 +566,7 @@ async function readMarketplaceSourceArchiveMetadata(tempRoot: string): Promise<{
   directoryName: string;
   marketplaceId: string;
 }> {
-  const raw = await readFile(join(tempRoot, PLUGIN_SYNC_METADATA_ARCHIVE_PATH), "utf-8");
+  const raw = await readPluginSyncMetadataFile(tempRoot);
   const parsed = JSON.parse(raw) as unknown;
   if (!isRecord(parsed) || !Array.isArray(parsed.marketplaceSources)) {
     throw new Error("invalid plugin marketplace source archive metadata");
@@ -586,6 +586,16 @@ async function readMarketplaceSourceArchiveMetadata(tempRoot: string): Promise<{
       readRequiredString(item.directoryName, "marketplace source directory"),
     ),
   };
+}
+
+async function readPluginSyncMetadataFile(tempRoot: string): Promise<string> {
+  try {
+    return await readFile(join(tempRoot, PLUGIN_SYNC_METADATA_ARCHIVE_PATH), "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    // 修复原因：远端可能仍持有旧版归档；只在新版元数据不存在时读取旧名称。
+    return await readFile(join(tempRoot, ".zcode-plugin-sync.json"), "utf-8");
+  }
 }
 
 async function loadMarketplaceSource(

@@ -1,4 +1,4 @@
-// 原生 ZCode 与 ACP Host 共用严格的 plugin:// 引用解析规则。
+// 原生 CodeVori 与 ACP Host 共用严格的 plugin:// 引用解析规则。
 export {
   extractPluginReferences,
   isValidPluginStableId,

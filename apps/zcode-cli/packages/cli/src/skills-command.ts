@@ -23,7 +23,7 @@ interface SkillsCommandDependencies {
   loadBootstrapModule?: () => Promise<BootstrapModule>;
 }
 
-const SKILLS_COMMAND_USAGE = "Usage: zcode skills [list|inspect <name>]";
+const SKILLS_COMMAND_USAGE = "Usage: codevori skills [list|inspect <name>]";
 
 export const runSkillsCommand = async (
   ctx: RunContext,

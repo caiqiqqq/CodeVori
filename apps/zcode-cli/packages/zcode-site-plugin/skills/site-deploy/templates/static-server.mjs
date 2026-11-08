@@ -1,4 +1,4 @@
-// Zero-dependency static file server for ZCode Sites packages.
+// Zero-dependency static file server for CodeVori Sites packages.
 // Usage: node static-server.mjs <site-dir>
 // Env: PORT (default 3000), SPA_FALLBACK=1 to answer unknown extensionless paths with index.html.
 // Listens on 0.0.0.0 so the runtime health check can reach it.

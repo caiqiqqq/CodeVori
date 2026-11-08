@@ -97,7 +97,7 @@ function extractionPrompt(
   }
   const entries = settledEntries.slice(-12);
   return [
-    "Extract durable, non-secret facts from the conversation data for ZCode Project Memory.",
+    "Extract durable, non-secret facts from the conversation data for CodeVori Project Memory.",
     'Return only compact JSON: {"memories":[{"name":"kebab-case","description":"short title","type":"user|feedback|project|reference","content":"one durable fact"}]}.',
     "Return an empty array if nothing is durable. A direct request to remember a fact should be included.",
     "Never include passwords, tokens, private keys, credentials, or their values. Preserve only non-secret connection metadata and where credentials can be obtained.",

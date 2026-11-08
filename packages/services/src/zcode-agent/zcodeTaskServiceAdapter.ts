@@ -1,4 +1,4 @@
-import { PRODUCT_DATA_DIRECTORY_NAME } from "@zcode/shared/product-brand";
+import { PRODUCT_DATA_DIRECTORY_NAME, PRODUCT_NAME } from "@zcode/shared/product-brand";
 import { zcodeTaskBoardCompletionSchema } from "@zcode/shared";
 /* oxlint-disable eslint(max-lines) -- 迁移期需要在一个门面里集中维护旧 task projection 到 ZCode session 的协议适配。 */
 import { createHash } from "node:crypto";
@@ -253,7 +253,7 @@ function formatZCodeAgentLogDate(now: Date): string {
 function resolveZCodeAgentCurrentLogFilePath(now = new Date()): string {
   const configuredLogDir = process.env.ZCODE_LOG_DIR?.trim();
   const logDir = configuredLogDir || join(homedir(), PRODUCT_DATA_DIRECTORY_NAME, "cli", "log");
-  return join(logDir, `zcode-${formatZCodeAgentLogDate(now)}.jsonl`);
+  return join(logDir, `${PRODUCT_NAME.toLowerCase()}-${formatZCodeAgentLogDate(now)}.jsonl`);
 }
 
 export function createZCodeTaskServiceAdapter(
@@ -4231,7 +4231,7 @@ function mapSessionEvent(
           params.taskId,
           traceId,
           eventInputId,
-          stringValue(errorPayload.message) ?? "ZCode compact failed",
+          stringValue(errorPayload.message) ?? "CodeVori compact failed",
         ),
       ];
     }
@@ -4243,7 +4243,7 @@ function mapSessionEvent(
         taskId: params.taskId,
         traceId,
         ...(eventInputId ? { inputId: eventInputId } : {}),
-        error: stringValue(errorPayload.message) ?? "ZCode session failed",
+        error: stringValue(errorPayload.message) ?? "CodeVori session failed",
         // type 是外层错误分类，code 才是 provider/subagent 要展示的真实错误码。
         code: stringValue(errorPayload.code) ?? stringValue(errorPayload.type),
         detail: stringValue(errorPayload.detail),

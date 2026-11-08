@@ -12,10 +12,10 @@ export function resolveZCodeBuiltinProviderConfigFilePath(options?: {
   if (options?.isPackaged ?? app.isPackaged) {
     return join(
       options?.resourcesPath ?? process.resourcesPath,
-      "config/provider/zcode-builtin.json",
+      "config/provider/codevori-builtin.json",
     );
   }
   // 开发态与打包共用唯一线上配置源。
-  const filename = "zcode-builtin.json";
+  const filename = "codevori-builtin.json";
   return join(options?.appPath ?? app.getAppPath(), "../../config/provider", filename);
 }
