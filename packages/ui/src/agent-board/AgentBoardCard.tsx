@@ -68,7 +68,7 @@ export function AgentBoardCard({
       <button
         className={
           isList
-            ? "flex h-12 min-w-0 flex-1 items-center gap-3 overflow-hidden rounded-lg px-3 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            ? "flex h-12 min-w-0 flex-1 items-center gap-1 overflow-hidden rounded-lg px-2 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
             : isCompact
               ? "w-full rounded-xl p-3 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
               : "w-full rounded-xl p-4 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
@@ -87,7 +87,7 @@ export function AgentBoardCard({
           <div
             className={
               isList
-                ? "order-1 flex max-w-36 min-w-0 shrink-0 items-center gap-2 max-sm:max-w-24"
+                ? "order-1 flex max-w-24 min-w-0 shrink-0 items-center gap-2 max-sm:max-w-20"
                 : "flex min-w-0 items-center gap-2"
             }
           >
@@ -116,7 +116,7 @@ export function AgentBoardCard({
             {item.unread ? (
               <span data-board-unread className="inline-flex items-center gap-1 text-icon-blue">
                 <span aria-hidden="true" className="size-1.5 rounded-full bg-icon-blue" />
-                {isList ? <span className="max-sm:hidden">{t("unread")}</span> : t("unread")}
+                {isList ? <span className="sr-only">{t("unread")}</span> : t("unread")}
               </span>
             ) : null}
             <span className={`inline-flex items-center gap-1 ${colors[status]}`}>
@@ -129,7 +129,10 @@ export function AgentBoardCard({
                   className="size-3 shrink-0 animate-spin text-task-running-indicator motion-reduce:animate-none"
                 />
               ) : null}
-              {t(`status.${status}`)}
+              {/* 列表列头已表达分组状态；只在“进行中”列保留等待文字来区分暂停状态。 */}
+              <span className={isList && status !== "waiting" ? "sr-only" : ""}>
+                {t(`status.${status}`)}
+              </span>
             </span>
           </span>
         </div>
@@ -157,15 +160,17 @@ export function AgentBoardCard({
         <div
           className={
             isList
-              ? "hidden"
+              ? "order-4 flex min-w-0 shrink-0 items-center text-ui-caption text-foreground-subtle"
               : isCompact
                 ? "mt-2 flex items-center justify-between gap-2 text-ui-caption text-foreground-subtlest"
                 : "mt-4 flex items-center justify-between gap-2 text-ui-caption text-foreground-subtlest"
           }
         >
+          {/* 列表模式原先隐藏整行元信息，导致既有模型/Agent 标识消失；保留标识，将次要时间戳收起。 */}
           <span
             data-board-agent-label
-            className="inline-flex min-w-0 items-center gap-1.5 rounded bg-surface px-1.5 py-0.5"
+            title={boardAgentLabel(item)}
+            className={`inline-flex min-w-0 items-center gap-1.5 rounded bg-surface px-1.5 py-0.5 ${isList ? "max-w-20" : ""}`}
           >
             {item.kind === "work-task" ? (
               <WorkTaskAgent task={item.workTask} label={boardAgentLabel(item)} />
@@ -178,7 +183,7 @@ export function AgentBoardCard({
               <span className="truncate">{boardAgentLabel(item)}</span>
             ) : null}
           </span>
-          <span className="shrink-0">
+          <span className={isList ? "hidden" : "shrink-0"}>
             {new Intl.DateTimeFormat(locale, {
               month: "short",
               day: "numeric",
