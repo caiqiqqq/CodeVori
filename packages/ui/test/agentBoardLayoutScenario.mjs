@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { exerciseAgentBoardLayoutModes } from "./agentBoardLayoutModesScenario.mjs";
 
 export async function exerciseAgentBoardLayout(page, artifacts) {
+  await exerciseAgentBoardLayoutModes(page, artifacts);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.evaluate(() => {
     const { store, workRows, notifyWork } = window.__board;

@@ -17,7 +17,16 @@ import { WorkTaskCreationEditor } from "@/work-tasks/WorkTaskCreationEditor.js";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useStore } from "zustand";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { ChevronDown, Folder, LayoutGrid, Plus, Search, ListFilter } from "lucide-react";
+import {
+  ChevronDown,
+  Folder,
+  Grid2X2,
+  LayoutGrid,
+  List,
+  Plus,
+  Search,
+  ListFilter,
+} from "lucide-react";
 import { toast } from "@/components/ui/toast.js";
 import { Button } from "@/components/ui/button.js";
 import { agentBoardStore } from "@/store/agentBoardStore.js";
@@ -269,6 +278,31 @@ export function AgentBoardView({
             <p className="mt-1 text-ui-caption text-foreground-subtle">{t("description")}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <div
+              role="group"
+              aria-label={t("layoutMode")}
+              className="inline-flex items-center rounded-lg border border-border bg-input p-0.5"
+            >
+              {(["cards", "compact", "list"] as const).map((mode) => (
+                <Button
+                  key={mode}
+                  variant={preferences.layoutMode === mode ? "secondary" : "ghost"}
+                  size="sm"
+                  aria-pressed={preferences.layoutMode === mode}
+                  title={t("layoutMode." + mode)}
+                  onClick={() => preferences.setLayoutMode(mode)}
+                >
+                  {mode === "list" ? (
+                    <List className="size-4" />
+                  ) : mode === "compact" ? (
+                    <Grid2X2 className="size-4" />
+                  ) : (
+                    <LayoutGrid className="size-4" />
+                  )}
+                  <span>{t("layoutMode." + mode)}</span>
+                </Button>
+              ))}
+            </div>
             <AgentBoardStatusOrder />
             <Button variant="outline" onClick={() => setManaging(true)}>
               <ListFilter className="size-4" />
@@ -389,6 +423,7 @@ export function AgentBoardView({
         ) : null}
         <AgentBoardGroups
           columns={columns}
+          layoutMode={preferences.layoutMode}
           byStatus={byStatus}
           projects={projects}
           onOpen={(item) => {

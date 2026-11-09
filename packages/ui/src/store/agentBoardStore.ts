@@ -16,6 +16,7 @@ import {
   type BoardTracking,
   type BoardView,
 } from "@/agent-board/agentBoardModel.js";
+export type BoardLayoutMode = "cards" | "compact" | "list";
 interface Preferences {
   statusOrder: readonly BoardDisplayStatus[];
   readWorkTaskResults: Record<string, string>;
@@ -23,6 +24,7 @@ interface Preferences {
   project: string | null;
   pinnedProjects: string[] | null;
   view: BoardView;
+  layoutMode: BoardLayoutMode;
   group: "project" | "status";
   agent: string;
   search: string;
@@ -39,6 +41,7 @@ interface BoardStore extends Preferences {
   selectProject(key: string | null): void;
   toggleProject(key: string, defaults?: string[], knownKeys?: string[]): void;
   setView(view: BoardView): void;
+  setLayoutMode(mode: BoardLayoutMode): void;
   setGroup(group: Preferences["group"]): void;
   setAgent(agent: string): void;
   setSearch(search: string): void;
@@ -59,6 +62,7 @@ const defaults: Preferences = {
   project: null,
   pinnedProjects: null,
   view: "all",
+  layoutMode: "cards",
   group: "status",
   agent: "all",
   search: "",
@@ -150,6 +154,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         project: v.project,
         // 收藏入口已移除，旧偏好仅回到全部，不清除用户的范围和阅读记录。
         view: v.view === "attention" || v.view === "starred" ? "all" : v.view,
+        layoutMode: ["cards", "compact", "list"].includes(v.layoutMode) ? v.layoutMode : "cards",
         // 旧默认项目分组曾遮住三状态列；只迁移布局，不清除用户的跟踪范围。
         group: v.layoutVersion === layoutVersion ? v.group : "status",
         agent: v.agent,
@@ -170,6 +175,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         project,
         pinnedProjects,
         view,
+        layoutMode,
         group,
         agent,
         search,
@@ -190,6 +196,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
             project,
             pinnedProjects,
             view,
+            layoutMode,
             group,
             agent,
             search,
@@ -284,6 +291,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         else if (current.length < 6) save({ pinnedProjects: [...current, project] });
       },
       setView: (view) => save({ view }),
+      setLayoutMode: (layoutMode) => save({ layoutMode }),
       setGroup: (group) => save({ group }),
       setAgent: (agent) => save({ agent }),
       setSearch: (search) => save({ search }),
