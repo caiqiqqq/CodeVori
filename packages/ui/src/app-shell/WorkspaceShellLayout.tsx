@@ -2437,12 +2437,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                         }
                                       : undefined
                                   }
-                                  onCreateSession={(tab) =>
-                                    handleCreateProjectDraft(
-                                      tab.workspacePath,
-                                      tab.workspaceIdentity,
-                                    )
-                                  }
                                   onOpenSession={(item) => {
                                     if (item.kind === "work-task")
                                       handleOpenWorkTaskConversation(item.workTask);

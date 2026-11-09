@@ -13,7 +13,8 @@ import { AgentBoardGroups } from "./AgentBoardGroups.js";
 import { AgentBoardTrackingDialog } from "./AgentBoardTrackingDialog.js";
 import { AgentBoardSourcePicker } from "./AgentBoardSourcePicker.js";
 import { AgentBoardDetails } from "./AgentBoardDetails.js";
-import { useEffect, useMemo, useState } from "react";
+import { WorkTaskCreationEditor } from "@/work-tasks/WorkTaskCreationEditor.js";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useStore } from "zustand";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { ChevronDown, Folder, LayoutGrid, Plus, Search, ListFilter } from "lucide-react";
@@ -26,24 +27,31 @@ import type { WorkspaceTabState } from "@/store/tabStore.js";
 import { logger } from "@/logger.js";
 import {
   boardAgentLabel,
+  boardEntityKey,
   boardDisplayStatus,
   boardHasUnreadResult,
   canStageBoardItem,
   isBoardItemStaged,
   matchesBoardView,
   matchesBoardTracking,
+  boardWorkspaceKey,
   type BoardItem,
 } from "./agentBoardModel.js";
 import type { BoardConversationOptions } from "./AgentBoardConversation.js";
 
 import type { AgentBoardWorkspaceTools } from "./AgentBoardTools.js";
 
+const AgentBoardSessionEditor = lazy(() =>
+  import("./AgentBoardSessionEditor.js").then((module) => ({
+    default: module.AgentBoardSessionEditor,
+  })),
+);
+
 type Props = {
   workspaceTabs: readonly Omit<WorkspaceTabState, "id" | "kind">[];
   conversationOptions?: BoardConversationOptions;
   workspaceTools?: AgentBoardWorkspaceTools;
   onOpenSession(item: BoardItem): void;
-  onCreateSession(tab: WorkspaceTabState): void;
   notificationItemKey?: string;
   onNotificationItemOpened?: () => void;
   onNotificationItemMissing?: () => void;
@@ -70,7 +78,6 @@ export function AgentBoardView({
   loading,
   error,
   onOpenSession,
-  onCreateSession,
   conversationOptions,
   workspaceTools,
   canCreateSession,
@@ -114,9 +121,22 @@ export function AgentBoardView({
     onNotificationItemMissing,
   });
   const [busy, setBusy] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
+  const [creatingWorkTask, setCreatingWorkTask] = useState(false);
   const [managing, setManaging] = useState(false);
   const realProjects = projects.filter((p) => p.tabs[0]?.workspacePurpose !== "conversation");
+  const hasSessionProject = projects.some((p) => p.tabs.some(canCreateSession));
+  const workTaskProjects = workTasks.projectTabs.filter(
+    (tab) => workTasks.forScope(tab).executable,
+  );
+  const selectedWorkTaskProject =
+    workTaskProjects.find((tab) =>
+      projects.some(
+        (p) =>
+          p.key === preferences.project &&
+          p.tabs.some((t) => boardWorkspaceKey(t) === boardWorkspaceKey(tab)),
+      ),
+    ) ?? workTaskProjects[0];
   const trackedItems = useMemo(
     () => items.filter((item) => matchesBoardTracking(item, preferences.tracking)),
     [items, preferences.tracking],
@@ -255,10 +275,18 @@ export function AgentBoardView({
               {t("manageTracking")}
             </Button>
             <Button
-              onClick={() => {
-                setCreating(true);
-                preferences.setPickerOpen(true);
-              }}
+              variant="outline"
+              disabled={!selectedWorkTaskProject || workTasks.loading || workTasks.busy}
+              onClick={() => setCreatingWorkTask(true)}
+              data-testid="agent-board-new-work-task"
+            >
+              <Plus className="size-4" />
+              {t("newWorkTask")}
+            </Button>
+            <Button
+              disabled={!hasSessionProject}
+              onClick={() => setCreatingSession(true)}
+              data-testid="agent-board-new-session"
             >
               <Plus className="size-4" />
               {t("newSession")}
@@ -377,14 +405,33 @@ export function AgentBoardView({
         {preferences.pickerOpen ? (
           <AgentBoardSourcePicker
             projects={projects}
-            creating={creating}
-            canCreateSession={canCreateSession}
-            onCreateSession={onCreateSession}
             onClose={() => {
               preferences.setPickerOpen(false);
-              setCreating(false);
             }}
           />
+        ) : null}
+        {creatingSession ? (
+          <Suspense fallback={null}>
+            <AgentBoardSessionEditor
+              projects={projects}
+              initialProjectKey={preferences.project}
+              canCreateSession={canCreateSession}
+              options={conversationOptions}
+              onClose={() => setCreatingSession(false)}
+              onAccepted={(kind, id, target) => {
+                preferences.revealCreatedSession({
+                  kind,
+                  key: boardEntityKey(target.tab, kind, id),
+                  projectKey: target.project.key,
+                  workspacePurpose: target.tab.workspacePurpose,
+                });
+                setCreatingSession(false);
+                void refresh().catch((error: unknown) =>
+                  logger.warn("[agent-board] 新会话列表刷新失败", { error }),
+                );
+              }}
+            />
+          </Suspense>
         ) : null}
         {managing ? (
           <AgentBoardTrackingDialog
@@ -393,6 +440,22 @@ export function AgentBoardView({
             tracking={preferences.tracking}
             onSave={preferences.setTracking}
             onClose={() => setManaging(false)}
+          />
+        ) : null}
+        {creatingWorkTask && selectedWorkTaskProject ? (
+          <WorkTaskCreationEditor
+            scope={selectedWorkTaskProject}
+            projects={workTaskProjects}
+            panel={workTasks}
+            onClose={() => setCreatingWorkTask(false)}
+            onCreated={(task) =>
+              preferences.revealCreatedWorkTask({
+                kind: "work-task",
+                key: boardEntityKey(task, "work-task", task.id),
+                projectKey: boardWorkspaceKey(task),
+                workspacePurpose: undefined,
+              })
+            }
           />
         ) : null}
         <AgentBoardDetails
