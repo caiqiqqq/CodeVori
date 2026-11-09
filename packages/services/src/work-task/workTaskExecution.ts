@@ -10,6 +10,7 @@ import {
   type ConversationSnapshot,
 } from "@zcode/shared/zcode-protocol-v4";
 import type { IAcpService } from "../acp/acpService.js";
+import { acpConfigValues } from "../acp/acpConfigOptions.js";
 import type { IGitService } from "../git/git.js";
 import type { ISettingService } from "../setting/setting.js";
 import type { WorkTaskExecutionContext, WorkTaskExecutionPort } from "../session/contract.js";
@@ -53,15 +54,14 @@ async function executeAcp(
       throw new Error("work-task.session-busy");
     context.signal.throwIfAborted();
   }
-  const id =
-    task.session?.id ??
-    (
-      await deps.acp.create({
+  const created = task.session
+    ? undefined
+    : await deps.acp.create({
         ...target,
         agent: task.execution.agent,
         requestId: task.sessionRequestId,
-      })
-    ).id;
+      });
+  const id = task.session?.id ?? created!.id;
   let stop: Promise<void> | undefined;
   let rejectAbort!: (reason: Error) => void;
   const aborted = new Promise<never>((_, reject) => {
@@ -91,6 +91,19 @@ async function executeAcp(
       throw abortError();
     }
     if (!task.session) await commit(context, { session: { kind: "acp", id } });
+    if (created && task.execution.modelPreference) {
+      const preference = task.execution.modelPreference;
+      const option = created.configOptions.find(
+        (item) =>
+          item.type === "select" &&
+          (item.category === "model" || item.id === "model") &&
+          item.id === preference.configId,
+      );
+      if (option?.type === "select" && acpConfigValues(option).includes(preference.value)) {
+        context.signal.throwIfAborted();
+        await deps.acp.setConfigOption({ ...target, id, ...preference });
+      }
+    }
     for (const option of task.execution.config) {
       context.signal.throwIfAborted();
       await deps.acp.setConfigOption({ ...target, id, ...option });

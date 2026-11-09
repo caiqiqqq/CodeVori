@@ -17,6 +17,7 @@ async function setup() {
   const path = join(dir, "abcd", "project");
   await mkdir(path, { recursive: true });
   const calls: string[] = [];
+  const createInputs: Parameters<IAcpService["create"]>[0][] = [];
   const changed = new Emitter<AcpSessionChanged>();
   const telemetry = new Emitter<ConversationTelemetryFact>();
   const worktree = {
@@ -51,9 +52,26 @@ async function setup() {
     updatedAt: 1,
   };
   const acp = {
-    create: async () => {
+    create: async (input) => {
+      createInputs.push(input);
       calls.push("create");
-      return { id: "session", status: "idle" };
+      return {
+        id: "session",
+        status: "idle",
+        configOptions: [
+          {
+            id: "model",
+            name: "Model",
+            category: "model",
+            type: "select",
+            currentValue: "default",
+            options: [
+              { value: "default", name: "Default" },
+              { value: "preferred", name: "Preferred" },
+            ],
+          },
+        ],
+      };
     },
     setConfigOption: async (input: { configId: string; value: string }) => {
       calls.push(`config:${input.configId}:${input.value}`);
@@ -93,6 +111,7 @@ async function setup() {
     dir,
     task,
     calls,
+    createInputs,
     acp,
     git,
     agent,
@@ -213,6 +232,24 @@ test("ACP defaults do not write configuration and unsupported choices fail befor
     await port.execute(f.task, context);
     assert.deepEqual(f.calls, ["create", `prompt:${f.task.commandId}:Build`]);
     f.calls.length = 0;
+    f.task.execution = {
+      kind: "acp",
+      agent: "codex",
+      config: [],
+      modelPreference: { configId: "model", value: "preferred" },
+    };
+    await port.execute(f.task, context);
+    assert.deepEqual(f.calls, [
+      "create",
+      "config:model:preferred",
+      `prompt:${f.task.commandId}:Build`,
+    ]);
+    f.calls.length = 0;
+    f.task.execution.modelPreference = { configId: "model", value: "removed" };
+    await port.execute(f.task, context);
+    assert.deepEqual(f.calls, ["create", `prompt:${f.task.commandId}:Build`]);
+    f.calls.length = 0;
+    f.task.execution = { kind: "acp", agent: "codex", config: [] };
     f.task.execution.config = [{ configId: "removed-model", value: "old-model" }];
     f.acp.setConfigOption = async () => {
       throw new Error("ACP config option is not available");

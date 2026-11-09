@@ -20,7 +20,12 @@ import {
   createDelegationExecution,
   createDelegationDelivery,
 } from "../src/delegation/delegationExecution.js";
+import {
+  readDelegationAcpModelSelection,
+  resolveDelegationAcpExecution,
+} from "../src/delegation/delegationModelInheritance.js";
 import { createAcpService } from "../src/acp/acpServiceImpl.js";
+import type { IComposerPreferenceService } from "../src/composer-preference/contract.js";
 import { createGitService } from "../src/git/gitService.js";
 import { createGitCliRepo } from "../src/git/repo/gitCliRepo.js";
 import { WorkTaskAttachmentStore } from "../src/session/workTaskAttachmentStore.js";
@@ -237,11 +242,18 @@ test("ACP parent delegates through MCP, edit uses configured Git worktree, resul
   let launches = 0;
   const acp = createAcpService({
     directory: join(directory, "sessions"),
+    composerPreferenceService: {
+      get: async () => ({
+        revision: 1,
+        acpModels: { claude: { configId: "model", value: "chosen" } },
+      }),
+    } as unknown as IComposerPreferenceService,
     delegation: {
       register: (session) =>
         bridge.register(
           { workspacePath: session.workspacePath, kind: "acp", sessionId: session.id },
           session.createRequestId,
+          readDelegationAcpModelSelection(session),
         ),
       onInput: (session) =>
         service.armParent({
@@ -318,7 +330,6 @@ test("ACP parent delegates through MCP, edit uses configured Git worktree, resul
                 execution: {
                   kind: "acp",
                   agent: "claude",
-                  config: [{ configId: "model", value: "chosen" }],
                 },
               });
             } else assert.match(text, /ZCode 智能体委派结果/);
@@ -359,7 +370,17 @@ test("ACP parent delegates through MCP, edit uses configured Git worktree, resul
     deliver: createDelegationDelivery(deps),
     validateAssets: (input) => attachments.validate(input, input.attachments ?? []),
   });
-  bridge = createDelegationMcp(directory, service);
+  bridge = createDelegationMcp(directory, service, {
+    resolveAcpExecution: async (parent, execution, parentModel) => {
+      const configs = await acp.listAgentConfigs({ workspacePath: parent.workspacePath });
+      return resolveDelegationAcpExecution(
+        execution,
+        parentModel,
+        { configId: "model", value: "chosen" },
+        configs.find((config) => config.agent === execution.agent),
+      );
+    },
+  });
   try {
     parentId = (await acp.create({ workspacePath: project, agent: "codex" })).id;
     assert.equal(launches, 1);

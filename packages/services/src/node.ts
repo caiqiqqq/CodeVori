@@ -322,6 +322,10 @@ import {
   createDelegationExecution,
   createDelegationDelivery,
 } from "./delegation/delegationExecution.js";
+import {
+  readDelegationAcpModelSelection,
+  resolveDelegationAcpExecution,
+} from "./delegation/delegationModelInheritance.js";
 import { WorkTaskAttachmentStore } from "./session/workTaskAttachmentStore.js";
 import { createWorkTaskExecution } from "./work-task/workTaskExecution.js";
 import { createWorkTaskMerge } from "./work-task/workTaskMerge.js";
@@ -2480,8 +2484,11 @@ export function createLocalServices(options: {
     }),
     delegation: {
       register: (session) =>
-        delegationMcp?.register(acpDelegationParent(session), session.createRequestId) ??
-        Promise.resolve(undefined),
+        delegationMcp?.register(
+          acpDelegationParent(session),
+          session.createRequestId,
+          readDelegationAcpModelSelection(session),
+        ) ?? Promise.resolve(undefined),
       onInput: async (session) => {
         await agentDelegationService?.armParent(acpDelegationParent(session));
       },
@@ -2727,6 +2734,24 @@ export function createLocalServices(options: {
   delegationMcp = createDelegationMcp(
     join(getZCodeDataRootDir(), "delegation-mcp"),
     agentDelegationService,
+    {
+      resolveAcpExecution: async (parent, execution, parentModel) => {
+        const scope = {
+          workspacePath: parent.workspacePath,
+          ...(parent.workspaceIdentity ? { workspaceIdentity: parent.workspaceIdentity } : {}),
+        };
+        const [configs, preference] = await Promise.all([
+          acpService.listAgentConfigs(scope),
+          composerPreferenceService.get(scope),
+        ]);
+        return resolveDelegationAcpExecution(
+          execution,
+          parentModel,
+          preference.acpModels[execution.agent],
+          configs.find((config) => config.agent === execution.agent),
+        );
+      },
+    },
   );
   const delegationLifecycle = zcodeAgentService.onAgentRuntimeLifecycle?.((event) => {
     if (event.state === "unavailable") {
