@@ -1,3 +1,4 @@
+/* oxlint-disable eslint(max-lines) -- Native Codex config patching keeps version checks and non-destructive TOML edits together. */
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -107,6 +108,12 @@ function project(files: NativeFiles): AcpCodexConfig {
     apiUrl: typeof table.base_url === "string" ? table.base_url : "",
     apiKey: credential(config, auth).value,
     model: typeof config.model === "string" ? config.model : "",
+    defaultModeRequestUserInput: Boolean(
+      config.features &&
+      typeof config.features === "object" &&
+      !Array.isArray(config.features) &&
+      (config.features as Record<string, unknown>).default_mode_request_user_input === true,
+    ),
   };
 }
 
@@ -141,6 +148,96 @@ function patchRoot(text: string, key: string, value: string | null): string {
   return checkedPatch(text, lines.join(eol).replace(/(?:\r?\n)*$/, eol), (config) => {
     if (value === null) delete config[key];
     else config[key] = value;
+  });
+}
+
+/** Update the Codex feature flag without reserializing unrelated TOML or comments. */
+function patchFeaturesBoolean(text: string, key: string, value: boolean | null): string {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text ? text.split(/\r?\n/) : [];
+  const rootEnd = lines.findIndex((line) => /^\s*\[/.test(line));
+  const rootLength = rootEnd < 0 ? lines.length : rootEnd;
+  const sectionStart = lines.findIndex((line) => /^\s*\[\s*features\s*\]\s*(?:#.*)?$/.test(line));
+  const sectionEnd =
+    sectionStart < 0
+      ? -1
+      : (() => {
+          const next = lines.findIndex(
+            (line, index) => index > sectionStart && /^\s*\[/.test(line),
+          );
+          return next < 0 ? lines.length : next;
+        })();
+  const dottedKey = new RegExp(`^\\s*features\\.(?:${key}|"${key}"|'${key}')\\s*=`);
+  const rootKey = lines.slice(0, rootLength).findIndex((line) => dottedKey.test(line));
+  const rootFeatureLines = lines.slice(0, rootLength);
+  const otherRootFeature = rootFeatureLines.some(
+    (line, index) => index !== rootKey && /^\s*features\./.test(line),
+  );
+  let preserveEmptyTable = sectionStart >= 0 || otherRootFeature;
+
+  if (sectionStart >= 0) {
+    const keyOffset = lines
+      .slice(sectionStart + 1, sectionEnd)
+      .findIndex((line) => new RegExp(`^\\s*(?:${key}|"${key}"|'${key}')\\s*=`).test(line));
+    if (value === null) {
+      if (keyOffset < 0) return text;
+      lines.splice(sectionStart + 1 + keyOffset, 1);
+    } else if (keyOffset < 0) {
+      let insertAt = sectionEnd;
+      for (let index = sectionEnd - 1; index > sectionStart; index--) {
+        if (lines[index]?.trim()) {
+          insertAt = index + 1;
+          break;
+        }
+      }
+      lines.splice(insertAt, 0, `${key} = ${JSON.stringify(value)}`);
+    } else {
+      lines[sectionStart + 1 + keyOffset] = `${key} = ${JSON.stringify(value)}`;
+    }
+  } else if (rootKey >= 0) {
+    if (value === null) lines.splice(rootKey, 1);
+    else lines[rootKey] = `features.${key} = ${JSON.stringify(value)}`;
+    preserveEmptyTable = otherRootFeature;
+  } else {
+    const inlineTable = rootFeatureLines.some((line) => /^\s*features\s*=/.test(line));
+    if (inlineTable) throw new Error("无法安全更新 Codex features 内联表；原文件未被覆盖。");
+    if (value === null) return text;
+    const sibling = rootFeatureLines.reduce(
+      (last, line, index) => (/^\s*features\./.test(line) ? index : last),
+      -1,
+    );
+    if (sibling >= 0) {
+      lines.splice(sibling + 1, 0, `features.${key} = ${JSON.stringify(value)}`);
+      preserveEmptyTable = true;
+    } else {
+      const insertAt = rootEnd < 0 ? lines.length : rootEnd;
+      const prefix = insertAt > 0 && lines[insertAt - 1]?.trim() ? [""] : [];
+      const suffix = insertAt < lines.length && lines[insertAt]?.trim() ? [""] : [];
+      lines.splice(
+        insertAt,
+        0,
+        ...prefix,
+        "[features]",
+        `${key} = ${JSON.stringify(value)}`,
+        ...suffix,
+      );
+      preserveEmptyTable = true;
+    }
+  }
+
+  return checkedPatch(text, lines.join(eol).replace(/(?:\r?\n)*$/, eol), (config) => {
+    const features = config.features;
+    if (value === null) {
+      if (!features || typeof features !== "object" || Array.isArray(features)) return;
+      const table = features as Record<string, unknown>;
+      delete table[key];
+      if (!preserveEmptyTable && Object.keys(table).length === 0) delete config.features;
+      return;
+    }
+    if (features === undefined) config.features = { [key]: value };
+    else if (features && typeof features === "object" && !Array.isArray(features))
+      (features as Record<string, unknown>)[key] = value;
+    else throw new Error("Codex features 配置不是表，原文件未被覆盖。");
   });
 }
 
@@ -254,6 +351,21 @@ export async function updateCodexNativeConfig(
     update.model.trim() === before.model
       ? original.config
       : patchRoot(original.config, "model", update.model.trim() || null);
+  if (
+    update.defaultModeRequestUserInput !== undefined &&
+    (update.defaultModeRequestUserInput !== before.defaultModeRequestUserInput ||
+      (!update.defaultModeRequestUserInput &&
+        config.features &&
+        typeof config.features === "object" &&
+        !Array.isArray(config.features) &&
+        Object.hasOwn(config.features, "default_mode_request_user_input")))
+  ) {
+    nextConfig = patchFeaturesBoolean(
+      nextConfig,
+      "default_mode_request_user_input",
+      update.defaultModeRequestUserInput ? true : null,
+    );
+  }
   if (update.authMode === "subscription") {
     if (before.authMode !== "subscription") {
       nextConfig = patchRoot(nextConfig, "model_provider", null);

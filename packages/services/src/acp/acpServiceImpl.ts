@@ -215,6 +215,7 @@ export type AcpConnectionFactory = (input: {
     request: AcpElicitation,
     signal?: AbortSignal,
   ) => Promise<AcpElicitationResponse>;
+  onElicitationApproval?: (request: AcpPermission, signal?: AbortSignal) => Promise<string | null>;
   onExit: (reason: string) => void;
 }) => Promise<AcpConnectionPort>;
 
@@ -1421,6 +1422,32 @@ export function createAcpService(
         onPermission: async (request) => {
           if (!active.has(session.id) || generations.get(session.id) !== generation) return null;
           return requestPermission(session, request);
+        },
+        onElicitationApproval: async (request, signal) => {
+          if (
+            disposed ||
+            signal?.aborted ||
+            !active.has(session.id) ||
+            stopping.has(session.id) ||
+            generations.get(session.id) !== generation
+          )
+            return null;
+          const result = requestPermission(session, request);
+          const cancel = () => {
+            void cancelInteractions(
+              session,
+              (item) => item.request.requestId === request.requestId,
+            ).catch(() => {
+              settleInteractions(session.id);
+            });
+          };
+          signal?.addEventListener("abort", cancel, { once: true });
+          try {
+            const response = await result;
+            return typeof response === "string" ? response : null;
+          } finally {
+            signal?.removeEventListener("abort", cancel);
+          }
         },
         onElicitation: async (request, signal) => {
           if (

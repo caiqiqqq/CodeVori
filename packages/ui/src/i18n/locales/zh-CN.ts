@@ -4506,6 +4506,10 @@ const zhCN: Record<string, string> = {
     "未能读取目标适配器的官方模型目录，请检查 Codex ACP 安装。",
   "settings.acpAgents.codex.nativeModel": "使用 Codex 默认模型",
   "settings.acpAgents.codex.modelsHint": "只设置默认模型，不覆盖 Codex 或 Codeg 的模型目录。",
+  "settings.acpAgents.codex.defaultModeRequestUserInput": "默认模式下允许提问",
+  "settings.acpAgents.codex.defaultModeRequestUserInputAria": "允许 Codex 在默认模式下提问",
+  "settings.acpAgents.codex.defaultModeRequestUserInputHint":
+    "Codex 默认只在 Plan 模式使用 request_user_input。开启后，普通回合也可以向你提问；关闭不会关闭 Plan 模式提问或 MCP 工具审批。写入目标 Host 的 Codex config.toml，新建会话后生效。",
   "settings.acpAgents.codex.save": "保存 Codex 配置",
   "settings.acpAgents.codex.restartHint":
     "保存后，新建或重连的 ACP 会话将使用目标 Host 的 Codex 配置。",

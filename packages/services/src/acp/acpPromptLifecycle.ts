@@ -3,13 +3,27 @@ import type { AcpStopReason } from "@zcode/shared";
 import type { AcpUpdate } from "./acpServiceImpl.js";
 import { projectAcpSessionFailure } from "./acpSessionFailures.js";
 
+type ElicitationApprovalRequest = {
+  requestId: string;
+  toolCallId?: string;
+  title: string;
+  options: Array<{ optionId: string; name: string; kind: string }>;
+};
+type ElicitationApprovalHandler = (
+  request: ElicitationApprovalRequest & { toolCallId: string },
+  signal?: AbortSignal,
+) => Promise<string | null>;
+
 /** 仅隔离同一 stdio 连接的协议回调；Host 仍唯一拥有轮次、队列和持久终态。 */
 export class AcpPromptLifecycle {
   private token: object | undefined;
   lastStopReason: AcpStopReason | undefined;
   private readonly pendingUpdates = new Set<Promise<void>>();
 
-  constructor(private readonly onUpdate: (update: AcpUpdate) => Promise<void>) {}
+  constructor(
+    private readonly onUpdate: (update: AcpUpdate) => Promise<void>,
+    private readonly isInactive: () => boolean = () => false,
+  ) {}
 
   get accepting(): boolean {
     return this.token !== undefined;
@@ -36,6 +50,26 @@ export class AcpPromptLifecycle {
     await this.update(update);
     // 工具信息写盘可能跨越取消/终态；旧权限不能在下一轮重新成为可回答的请求。
     return this.token === token ? ask() : null;
+  }
+
+  authorizeElicitationApproval(
+    request: ElicitationApprovalRequest,
+    signal: AbortSignal | undefined,
+    ask: ElicitationApprovalHandler,
+  ): Promise<string | null> {
+    if (this.isInactive() || signal?.aborted) return Promise.resolve(null);
+    const toolCallId = request.toolCallId ?? `elicitation-${request.requestId}`;
+    return this.authorize(
+      {
+        kind: "tool",
+        id: toolCallId,
+        title: request.title,
+        status: "pending",
+        toolKind: "execute",
+        content: request.title,
+      },
+      () => ask({ ...request, toolCallId }, signal),
+    );
   }
 
   async run(request: () => Promise<PromptResponse>): Promise<PromptResponse> {

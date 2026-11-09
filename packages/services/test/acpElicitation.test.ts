@@ -151,6 +151,28 @@ test("Host serializes permission/forms, validates target, rejects duplicate and 
       /synthetic-secret/,
     );
 
+    const approvalOptions = [
+      { optionId: "once", name: "Allow once", kind: "allow_once" },
+      { optionId: "session", name: "Allow for this session", kind: "allow_always" },
+      { optionId: "__decline", name: "Decline", kind: "reject_once" },
+    ];
+    const approval = callbacks.onElicitationApproval!({
+      requestId: "approval-1",
+      toolCallId: "mcp-call-1",
+      title: "Allow tool call?",
+      options: approvalOptions,
+    });
+    const pendingApproval = await waitFor((s) => s.pendingPermission?.requestId === "approval-1");
+    assert.equal(pendingApproval.pendingElicitation, null);
+    assert.deepEqual(pendingApproval.pendingPermission?.options, approvalOptions);
+    await service.decide({
+      ...workspace,
+      id: session.id,
+      requestId: "approval-1",
+      optionId: "session",
+    });
+    assert.equal(await approval, "session");
+
     const queuedController = new AbortController();
     const blocking = callbacks.onPermission({
       requestId: "blocking",
@@ -161,9 +183,20 @@ test("Host serializes permission/forms, validates target, rejects duplicate and 
       { ...form(), requestId: "queued" },
       queuedController.signal,
     );
+    const queuedApprovalController = new AbortController();
+    const queuedApproval = callbacks.onElicitationApproval!(
+      {
+        requestId: "queued-approval",
+        title: "Another tool call?",
+        options: approvalOptions,
+      },
+      queuedApprovalController.signal,
+    );
     await waitFor((s) => s.pendingPermission?.requestId === "blocking");
     queuedController.abort();
     assert.deepEqual(await queued, { action: "cancel" });
+    queuedApprovalController.abort();
+    assert.equal(await queuedApproval, null);
     assert.equal(
       (await service.read({ ...workspace, id: session.id })).pendingPermission?.requestId,
       "blocking",
@@ -185,6 +218,29 @@ test("Host serializes permission/forms, validates target, rejects duplicate and 
     controller.abort();
     assert.deepEqual(await cancelled, { action: "cancel" });
     await waitFor((s) => !s.pendingElicitation);
+
+    const approvalController = new AbortController();
+    const cancelledApproval = callbacks.onElicitationApproval!(
+      {
+        requestId: "aborted-approval",
+        title: "Allow another tool?",
+        options: approvalOptions,
+      },
+      approvalController.signal,
+    );
+    await waitFor((s) => s.pendingPermission?.requestId === "aborted-approval");
+    approvalController.abort();
+    assert.equal(await cancelledApproval, null);
+    await waitFor((s) => !s.pendingPermission);
+    await assert.rejects(
+      service.decide({
+        ...workspace,
+        id: session.id,
+        requestId: "aborted-approval",
+        optionId: "once",
+      }),
+      /expired/,
+    );
 
     const stopped = callbacks.onElicitation!(form());
     await waitFor((s) => Boolean(s.pendingElicitation));
