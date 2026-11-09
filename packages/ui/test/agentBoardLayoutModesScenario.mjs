@@ -33,13 +33,42 @@ export async function exerciseAgentBoardLayoutModes(page, artifacts) {
     await cards.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardCard)),
     initialKeys,
   );
+  const listColumns = await page.locator("[data-board-column]").evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const { x, y } = node.getBoundingClientRect();
+      return { key: node.dataset.boardColumn, x, y };
+    }),
+  );
+  assert.deepEqual(
+    listColumns.map(({ key }) => key),
+    ["running", "completed", "staged", "error"],
+  );
+  assert.ok(
+    listColumns[1].x > listColumns[0].x && Math.abs(listColumns[1].y - listColumns[0].y) < 2,
+    "list status groups stay side by side",
+  );
   const first = await cards.first().boundingBox();
   const second = await cards.nth(1).boundingBox();
   assert.ok(
-    first.width > 600 && first.height < firstCardHeight,
-    "list rows use the available width",
+    first.width >= 250 && first.width <= 400 && first.height < firstCardHeight,
+    "list rows fit within a horizontal status column",
+  );
+  assert.ok(
+    (await cards
+      .first()
+      .locator("h3")
+      .evaluate((node) => node.clientWidth)) >= 90,
+    "list rows keep enough width for the item title",
   );
   assert.ok(second.y > first.y, "list rows stack vertically");
+  await page.evaluate(() => {
+    const container = document.querySelector('[data-testid="agent-board-columns"]');
+    if (container) container.scrollTop = 0;
+  });
+  await page.screenshot({
+    path: join(artifacts, "layout-list-desktop.png"),
+    animations: "disabled",
+  });
   await cards
     .filter({ has: page.getByRole("heading", { name: "Remote API session", exact: true }) })
     .getByRole("button", { name: /Remote API session/ })
@@ -47,10 +76,6 @@ export async function exerciseAgentBoardLayoutModes(page, artifacts) {
   await page.getByTestId("agent-board-details").waitFor();
   await page.keyboard.press("Escape");
   await page.getByTestId("agent-board-details").waitFor({ state: "hidden" });
-  await page.screenshot({
-    path: join(artifacts, "layout-list-desktop.png"),
-    animations: "disabled",
-  });
 
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

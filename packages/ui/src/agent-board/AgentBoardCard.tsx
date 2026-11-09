@@ -157,7 +157,7 @@ export function AgentBoardCard({
         <div
           className={
             isList
-              ? "order-4 flex shrink-0 items-center gap-3 text-ui-caption text-foreground-subtlest max-md:hidden"
+              ? "hidden"
               : isCompact
                 ? "mt-2 flex items-center justify-between gap-2 text-ui-caption text-foreground-subtlest"
                 : "mt-4 flex items-center justify-between gap-2 text-ui-caption text-foreground-subtlest"
