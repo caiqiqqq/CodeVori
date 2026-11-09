@@ -13,9 +13,10 @@ export function partitionDelegationTasksByTurn<
     .sort((left, right) => left.startedAt - right.startedAt);
 
   for (const task of tasks) {
-    // 修复原因：历史轮次异步加载后，已结束任务会从对话底部迁入较早的虚拟轮次，
-    // 看起来像完成行消失；终态结果固定在底部，且不随分页重新定位。
-    if (["completed", "failed", "interrupted", "canceled"].includes(task.status)) {
+    // 修复依据：成功完成的委派只作为运行状态提示，历史记录留在 Agent 看板，
+    // 不应在父对话每次打开时重新出现。
+    if (task.status === "completed") continue;
+    if (["failed", "interrupted", "canceled"].includes(task.status)) {
       footerTasks.push(task);
       continue;
     }
