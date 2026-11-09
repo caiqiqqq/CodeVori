@@ -66,6 +66,109 @@ test("CC Switch bearer token 可读取，模型保存保留外部 provider 和 a
   }
 });
 
+test("Codex Default 模式提问开关保留 feature 表并支持普通和 dotted TOML 写法", async () => {
+  const configs = [
+    externalConfig.replace(
+      "[model_providers.custom]",
+      "[features]\nskills = true\n\n[model_providers.custom]",
+    ),
+    externalConfig.replace(
+      "[model_providers.custom]",
+      "features.skills = true\nfeatures.default_mode_request_user_input = false\n\n[model_providers.custom]",
+    ),
+  ];
+  for (const config of configs) {
+    await withNativeHome(config, undefined, async (home) => {
+      const initial = await readCodexNativeConfig(home);
+      assert.equal(initial.defaultModeRequestUserInput, false);
+      const enabled = await updateCodexNativeConfig(home, {
+        expectedVersion: initial.version,
+        authMode: initial.authMode,
+        apiUrl: initial.apiUrl,
+        apiKey: initial.apiKey,
+        model: initial.model,
+        defaultModeRequestUserInput: true,
+      });
+      assert.equal(enabled.defaultModeRequestUserInput, true);
+      let native = parse(await readFile(join(home, "config.toml"), "utf8"));
+      assert.equal(
+        (native.features as Record<string, unknown>).default_mode_request_user_input,
+        true,
+      );
+      assert.equal((native.features as Record<string, unknown>).skills, true);
+
+      const disabled = await updateCodexNativeConfig(home, {
+        expectedVersion: enabled.version,
+        authMode: enabled.authMode,
+        apiUrl: enabled.apiUrl,
+        apiKey: enabled.apiKey,
+        model: enabled.model,
+        defaultModeRequestUserInput: false,
+      });
+      assert.equal(disabled.defaultModeRequestUserInput, false);
+      native = parse(await readFile(join(home, "config.toml"), "utf8"));
+      assert.equal(
+        Object.hasOwn(
+          native.features as Record<string, unknown>,
+          "default_mode_request_user_input",
+        ),
+        false,
+      );
+      assert.equal((native.features as Record<string, unknown>).skills, true);
+    });
+  }
+});
+
+test("Codex Default 模式提问开关缺省关闭，只创建自己的 feature 表项", async () => {
+  await withNativeHome(
+    externalConfig.replace('model = "old-model"', 'model = "fixture"'),
+    undefined,
+    async (home) => {
+      const initial = await readCodexNativeConfig(home);
+      assert.equal(initial.defaultModeRequestUserInput, false);
+      const enabled = await updateCodexNativeConfig(home, {
+        expectedVersion: initial.version,
+        authMode: initial.authMode,
+        apiUrl: initial.apiUrl,
+        apiKey: initial.apiKey,
+        model: initial.model,
+        defaultModeRequestUserInput: true,
+      });
+      assert.equal(enabled.defaultModeRequestUserInput, true);
+      assert.match(await readFile(join(home, "config.toml"), "utf8"), /\[features\]/);
+      assert.equal(
+        (
+          parse(await readFile(join(home, "config.toml"), "utf8")).features as Record<
+            string,
+            unknown
+          >
+        ).default_mode_request_user_input,
+        true,
+      );
+    },
+  );
+});
+
+test("Codex 原生开关为显式 false 时保存关闭会移除该键", async () => {
+  const config = externalConfig.replace(
+    "[model_providers.custom]",
+    "[features]\ndefault_mode_request_user_input = false\nskills = true\n\n[model_providers.custom]",
+  );
+  await withNativeHome(config, undefined, async (home) => {
+    const before = await readCodexNativeConfig(home);
+    assert.equal(before.defaultModeRequestUserInput, false);
+    await updateCodexNativeConfig(home, {
+      expectedVersion: before.version,
+      authMode: before.authMode,
+      apiUrl: before.apiUrl,
+      model: before.model,
+      defaultModeRequestUserInput: false,
+    });
+    const native = parse(await readFile(join(home, "config.toml"), "utf8"));
+    assert.deepEqual(native.features, { skills: true });
+  });
+});
+
 test("旧客户端回传相同 Key 不迁移，显式修改和清除只更新当前 provider 的 bearer token", async () => {
   const auth =
     '{"auth_mode":"chatgpt","OPENAI_API_KEY":"unrelated-key","tokens":{"access_token":"subscription-fixture"}}\n';

@@ -26,6 +26,8 @@ model = "fixture-old-model"
 base_url = "https://fixture.example/v1"
 requires_openai_auth = false
 experimental_bearer_token = "fixture-bearer-key"
+[features]
+skills = true
 `;
 const updates = [];
 let holdNextResponse = false;
@@ -111,6 +113,9 @@ try {
     const section = page.getByTestId("acp-codex-native-config");
     const key = section.locator("#acp-codex-api-key");
     const model = section.locator("#acp-codex-default-model");
+    const defaultModeQuestions = section.getByRole("switch", {
+      name: "允许 Codex 在默认模式下提问",
+    });
     const save = section.getByRole("button", { name: "保存 Codex 配置", exact: true });
     const reload = section.getByRole("button", { name: "重新读取", exact: true });
     await key.waitFor();
@@ -137,6 +142,31 @@ try {
       initialConfig.replace("fixture-old-model", "fixture-new-model"),
     );
     await assert.rejects(readFile(join(home, "auth.json")), { code: "ENOENT" });
+
+    assert.equal(await defaultModeQuestions.getAttribute("aria-checked"), "false");
+    await defaultModeQuestions.click();
+    const questionsEnabled = page.waitForResponse(
+      (response) =>
+        response.url() === `${apiOrigin}/config` && response.request().method() === "POST",
+    );
+    await save.click();
+    assert.equal((await questionsEnabled).status(), 200);
+    assert.equal(updates.at(-1).defaultModeRequestUserInput, true);
+    let features = parse(await readFile(configPath, "utf8")).features;
+    assert.equal(features.default_mode_request_user_input, true);
+    assert.equal(features.skills, true);
+
+    await defaultModeQuestions.click();
+    const questionsDisabled = page.waitForResponse(
+      (response) =>
+        response.url() === `${apiOrigin}/config` && response.request().method() === "POST",
+    );
+    await save.click();
+    assert.equal((await questionsDisabled).status(), 200);
+    assert.equal(updates.at(-1).defaultModeRequestUserInput, false);
+    features = parse(await readFile(configPath, "utf8")).features;
+    assert.equal(Object.hasOwn(features, "default_mode_request_user_input"), false);
+    assert.equal(features.skills, true);
 
     // External switching is read afresh, and an old draft cannot overwrite it.
     const switched = initialConfig.replace("fixture-bearer-key", "fixture-switched-key");

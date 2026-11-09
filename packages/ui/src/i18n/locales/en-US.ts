@@ -4848,6 +4848,11 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.codex.nativeModel": "Use Codex default model",
   "settings.acpAgents.codex.modelsHint":
     "Sets only the default model; does not overwrite Codex or Codeg model catalogs.",
+  "settings.acpAgents.codex.defaultModeRequestUserInput": "Allow questions in Default mode",
+  "settings.acpAgents.codex.defaultModeRequestUserInputAria":
+    "Allow Codex to ask questions in Default mode",
+  "settings.acpAgents.codex.defaultModeRequestUserInputHint":
+    "Codex uses request_user_input only in Plan mode by default. Enabling this also allows questions during ordinary turns; disabling it does not disable Plan mode questions or MCP tool approvals. Saved to the target Host's Codex config.toml and applied to new sessions.",
   "settings.acpAgents.codex.save": "Save Codex configuration",
   "settings.acpAgents.codex.restartHint":
     "New or reconnected ACP sessions will use the target Host's Codex configuration.",

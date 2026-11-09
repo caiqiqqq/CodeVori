@@ -4,6 +4,7 @@ import type { IAcpService } from "@zcode/services";
 import type { AcpCodexConfig, AcpCodexModel } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
+import { Switch } from "@/components/ui/switch.js";
 import { AcpModelPicker } from "@/settings/AcpModelPicker.js";
 import {
   Select,
@@ -110,6 +111,7 @@ export function AcpCodexConfigEditor({ service }: { service: IAcpService }) {
         expectedVersion: draft.version,
         authMode: draft.authMode,
         apiUrl: draft.apiUrl,
+        defaultModeRequestUserInput: draft.defaultModeRequestUserInput,
         // 外部 provider 可能在 TOML 中认证；未编辑 Key 时不能把空投影写回认证文件。
         ...(draft.apiKey !== baseline?.apiKey ? { apiKey: draft.apiKey } : {}),
         model: draft.model,
@@ -224,6 +226,22 @@ export function AcpCodexConfigEditor({ service }: { service: IAcpService }) {
               hint: label("modelsHint"),
             }}
           />
+          <div className="flex items-start justify-between gap-4 py-2">
+            <div className="space-y-1">
+              <p className="text-ui-sm font-medium">{label("defaultModeRequestUserInput")}</p>
+              <p className="max-w-2xl text-ui-sm text-foreground-subtle">
+                {label("defaultModeRequestUserInputHint")}
+              </p>
+            </div>
+            <Switch
+              aria-label={label("defaultModeRequestUserInputAria")}
+              checked={draft.defaultModeRequestUserInput}
+              disabled={saving}
+              onCheckedChange={(defaultModeRequestUserInput) =>
+                change({ defaultModeRequestUserInput })
+              }
+            />
+          </div>
           <Button
             type="button"
             size="sm"
