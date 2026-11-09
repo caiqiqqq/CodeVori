@@ -30,11 +30,9 @@ export function AgentBoardGroups({
   return (
     <div
       className={
-        layoutMode === "list"
-          ? "flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-5 md:px-6"
-          : byStatus
-            ? "flex min-h-0 flex-1 gap-4 overflow-x-auto px-4 py-5 md:px-6"
-            : "flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-5 md:px-6"
+        byStatus
+          ? "flex min-h-0 flex-1 gap-4 overflow-x-auto px-4 py-5 md:px-6"
+          : "flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-5 md:px-6"
       }
       data-testid="agent-board-columns"
     >
@@ -68,7 +66,9 @@ export function AgentBoardGroups({
           <div
             className={
               layoutMode === "list"
-                ? "flex min-w-0 flex-col gap-1.5"
+                ? byStatus
+                  ? "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pb-4"
+                  : "flex min-w-0 flex-col gap-1.5"
                 : byStatus
                   ? "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-4"
                   : layoutMode === "compact"
@@ -113,13 +113,11 @@ function BoardColumn({
     <section
       ref={setNodeRef}
       className={`${
-        layoutMode === "list"
-          ? "min-w-0 shrink-0"
-          : byStatus
-            ? layoutMode === "compact"
-              ? "flex min-h-0 w-64 shrink-0 flex-col md:max-w-80"
-              : "flex min-h-0 w-72 shrink-0 flex-col md:flex-1 md:basis-60 md:min-w-60"
-            : "min-w-0 shrink-0"
+        byStatus
+          ? layoutMode === "compact"
+            ? "flex min-h-0 w-64 shrink-0 flex-col md:max-w-80"
+            : "flex min-h-0 w-72 shrink-0 flex-col md:flex-1 md:basis-60 md:min-w-60"
+          : "min-w-0 shrink-0"
       } rounded-lg ${isOver ? "bg-accent ring-2 ring-brand" : ""}`}
       data-board-column={column.key}
     >
