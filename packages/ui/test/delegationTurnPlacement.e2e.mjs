@@ -50,6 +50,7 @@ try {
         window.__turnDelegation = {
           showSecond: () => setSecondTurn(true),
           showFirst: visible => setFirstTurn(visible),
+          firstStatus: () => tasks.find(item => item.id === 'first')?.status,
           opened,
           setFirstStatus: (status, session = true) => setTasks(items => items.map(item => item.id === 'first' ? { ...item, status, session: session ? {kind:'acp',id:'first-child'} : undefined } : item)),
           finishFirst: () => setTasks(items => items.map(item => item.id === 'first' ? { ...item, status: 'completed', attempts: [{ sequence: 1, status: 'completed', endedAt: Date.now(), result: { conclusion: '完成了第一轮', changedFiles: [], tests: [], risks: [], blockers: [], structured: true } }] } : item)),
@@ -182,28 +183,14 @@ try {
       await first.getByText("等待执行", { exact: true }).waitFor();
       assert.equal(await summary.getAttribute("role"), null, "unbound session has no open action");
       await page.evaluate(() => window.__turnDelegation.finishFirst());
-      const finished = page
-        .getByTestId("delegation-panel")
-        .getByTestId("delegation-task")
-        .filter({ hasText: "委派 first" });
-      await finished.getByText("已完成").waitFor();
-      assert.equal(await turns.first().getByText("委派 first").count(), 0);
-      await page.evaluate(() => window.__turnDelegation.showFirst(false));
-      await finished.waitFor();
-      await page.evaluate(() => window.__turnDelegation.showFirst(true));
-      await finished.waitFor();
+      const firstDelegation = page.getByTestId("delegation-task").filter({ hasText: "委派 first" });
+      await firstDelegation.waitFor({ state: "detached" });
+      assert.equal(await page.evaluate(() => window.__turnDelegation.firstStatus()), "completed");
       assert.equal(
         await page.getByTestId("delegation-task").filter({ hasText: "委派 first" }).count(),
-        1,
+        0,
+        "successful task history remains owned by the service but disappears from the conversation",
       );
-      await finished.getByRole("button", { name: "展开工具详情", exact: true }).press("Enter");
-      assert.deepEqual(
-        await page.evaluate(() => window.__turnDelegation.opened),
-        ["first-child", "first-child", "first-child"],
-        "details never navigate",
-      );
-      await finished.locator("summary").click();
-      assert.match(await finished.innerText(), /完成了第一轮/);
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         true,
@@ -212,13 +199,11 @@ try {
       // 仅等待折叠动画结束再取视觉证据，行为断言已在上面完成。
       await page.waitForTimeout(400);
       await page.screenshot({ path: join(shots, `turn-${theme}-${width}.png`), fullPage: true });
-      await finished.getByRole("button", { name: "收起工具详情", exact: true }).click();
-      await finished.locator("summary").waitFor({ state: "hidden" });
       await page.close();
     }
   }
   process.stdout.write(
-    `PASS native/delegated agent summary parity, keyboard/session actions, all statuses, details/results and turn placement at 1280/375 in both themes. Screenshots: ${shots}\n`,
+    `PASS native/delegated agent summary parity, status actions, completed-row dismissal, and turn placement at 1280/375 in both themes. Screenshots: ${shots}\n`,
   );
 } catch (error) {
   for (const context of browser?.contexts() ?? []) {

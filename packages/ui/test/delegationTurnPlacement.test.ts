@@ -61,22 +61,28 @@ test("a completed turn does not claim a later delegation before the next turn lo
   );
 });
 
-test("ended delegations remain at the conversation footer as history turns load", () => {
-  const tasks = ["completed", "failed", "interrupted", "canceled"].map((status, index) => ({
+test("successful delegations disappear while recoverable terminal tasks stay in the footer", () => {
+  const tasks = ["failed", "interrupted", "canceled"].map((status, index) => ({
     id: status,
-    createdAt: 150 + index,
+    createdAt: 151 + index,
     status,
   }));
-  const beforeHistory = partitionDelegationTasksByTurn(turns.slice(1), tasks);
-  const afterHistory = partitionDelegationTasksByTurn(turns, tasks);
+  const completed = { id: "completed", createdAt: 150, status: "completed" };
+  const allTasks = [completed, ...tasks];
+  const beforeHistory = partitionDelegationTasksByTurn(turns.slice(1), allTasks);
+  const afterHistory = partitionDelegationTasksByTurn(turns, allTasks);
   assert.deepEqual(beforeHistory.footerTasks, tasks);
   assert.deepEqual(afterHistory.footerTasks, tasks);
+  assert.equal(afterHistory.byTurn.has("first"), false);
   assert.equal(afterHistory.byTurn.size, 0);
 });
 
-test("a running delegation moves to the footer once its result is terminal", () => {
+test("a completed delegation disappears from its originating turn", () => {
   const running = [{ id: "child", createdAt: 150, status: "running" }];
   const completed = [{ ...running[0]!, status: "completed" }];
   assert.deepEqual(partitionDelegationTasksByTurn(turns, running).byTurn.get("first"), running);
-  assert.deepEqual(partitionDelegationTasksByTurn(turns, completed).footerTasks, completed);
+  const afterCompletion = partitionDelegationTasksByTurn(turns, completed);
+  assert.equal(afterCompletion.byTurn.size, 0);
+  assert.deepEqual(afterCompletion.footerTasks, []);
+  assert.equal(completed[0]?.status, "completed", "hiding a row does not mutate task history");
 });
