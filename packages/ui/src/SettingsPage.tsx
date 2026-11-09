@@ -80,6 +80,7 @@ import { MemorySettingsSection } from "@/settings/MemorySettingsSection.js";
 import { DeviceBridgeSettingsSection } from "@/settings/DeviceBridgeSettingsSection.js";
 import { BrowserSettingsSection } from "@/settings/BrowserSettingsSection.js";
 import { ComputerUseSection } from "@/settings/ComputerUseSection.js";
+import { CredentialVaultSection } from "@/settings/CredentialVaultSection.js";
 import { ShortcutSettingsSection } from "@/settings/ShortcutSettingsSection.js";
 import { QuickMessagesSection } from "@/settings/QuickMessagesSection.js";
 import { WorktreesSection } from "@/settings/WorktreesSection.js";
@@ -1937,6 +1938,8 @@ export function SettingsPage({
                               onBack?.();
                             }}
                           />
+                        ) : activeSection === "credentials" ? (
+                          <CredentialVaultSection />
                         ) : activeSection === "skill" ? (
                           <PluginsSection
                             key={`skill:${settingsSectionNavigationVersion}`}

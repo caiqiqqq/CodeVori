@@ -25,6 +25,7 @@ import {
   MessageSquareText,
   Smartphone,
   Network,
+  KeyRound,
 } from "lucide-react";
 import { isSettingsSectionEnabled, type SettingsSectionId } from "@/lib/settingsNavigation.js";
 import type { Theme } from "@/useTheme.js";
@@ -140,6 +141,12 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     id: "mcp",
     icon: Cable,
     titleId: "settings.mcpTitle",
+    groupId: "agentCapabilities",
+  },
+  {
+    id: "credentials",
+    icon: KeyRound,
+    titleId: "settings.credentials.title",
     groupId: "agentCapabilities",
   },
   {
