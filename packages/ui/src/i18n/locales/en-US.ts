@@ -71,6 +71,7 @@ const enUS: Record<string, string> = {
   "agentBoard.sessionProject": "Project",
   "agentBoard.sessionBranch": "Branch",
   "agentBoard.sessionBranchHint": "Selecting a branch switches the current project immediately",
+  "agentBoard.sessionCreateWorktree": "Create worktree when sending",
   "agentBoard.newWorkTask": "New work task",
   "agentBoard.projectLimit": "Pin up to 6 projects. Search to find the rest.",
   "agentBoard.searchProjects": "Search project name or path…",

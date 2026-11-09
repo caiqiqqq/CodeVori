@@ -341,6 +341,45 @@ test("tracking and standalone category persist without losing temporarily absent
   assert.equal(recovered.tracking.mode, "all");
   assert.equal(recovered.project, "project-a");
 });
+test("new board items keep the current project or category selection", () => {
+  for (const selection of ["all", "project", "work-tasks", "standalone"] as const) {
+    for (const kind of ["work-task", "native"] as const) {
+      const values = new Map<string, string>();
+      const storage = {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          values.set(key, value);
+        },
+        removeItem: (key: string) => {
+          values.delete(key);
+        },
+      };
+      const store = createAgentBoardStore(storage);
+      store.getState().setTracking({
+        mode: "custom",
+        projects: [],
+        standalone: false,
+        workTasks: false,
+        includedItems: [],
+        excludedItems: [],
+      });
+      if (selection === "project") store.getState().selectProject("project-a");
+      if (selection === "work-tasks") store.getState().selectWorkTasks();
+      if (selection === "standalone") store.getState().selectStandalone();
+      const before = store.getState();
+      const target = { kind, key: `${kind}-${selection}`, projectKey: "project-b" };
+      if (kind === "work-task") store.getState().revealCreatedWorkTask(target);
+      else store.getState().revealCreatedSession(target);
+      const after = store.getState();
+      assert.equal(after.project, before.project, `${kind} ${selection} project`);
+      assert.equal(after.category, before.category, `${kind} ${selection} category`);
+      assert.deepEqual(after.tracking.includedItems, [target.key]);
+      const restored = createAgentBoardStore(storage).getState();
+      assert.equal(restored.project, before.project);
+      assert.equal(restored.category, before.category);
+    }
+  }
+});
 test("entity keys isolate same id by kind and workspace identity", () => {
   const scope = { workspacePath: "/same", workspaceIdentity: "remote:a" };
   assert.notEqual(boardEntityKey(scope, "native", "1"), boardEntityKey(scope, "acp", "1"));

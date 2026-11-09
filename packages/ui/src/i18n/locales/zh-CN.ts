@@ -70,6 +70,7 @@ const zhCN: Record<string, string> = {
   "agentBoard.sessionProject": "项目",
   "agentBoard.sessionBranch": "分支",
   "agentBoard.sessionBranchHint": "选择后立即切换当前项目分支",
+  "agentBoard.sessionCreateWorktree": "创建工作树（发送时创建）",
   "agentBoard.newWorkTask": "新建待办任务",
   "agentBoard.projectLimit": "最多固定 6 个常用项目，其余项目可随时搜索。",
   "agentBoard.searchProjects": "搜索项目名称或路径…",
