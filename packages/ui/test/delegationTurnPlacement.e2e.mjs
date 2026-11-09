@@ -46,14 +46,16 @@ try {
       function Fixture() {
         const [tasks, setTasks] = useState(initial);
         const [secondTurn, setSecondTurn] = useState(false);
+        const [firstTurn, setFirstTurn] = useState(true);
         window.__turnDelegation = {
           showSecond: () => setSecondTurn(true),
+          showFirst: visible => setFirstTurn(visible),
           opened,
           setFirstStatus: (status, session = true) => setTasks(items => items.map(item => item.id === 'first' ? { ...item, status, session: session ? {kind:'acp',id:'first-child'} : undefined } : item)),
           finishFirst: () => setTasks(items => items.map(item => item.id === 'first' ? { ...item, status: 'completed', attempts: [{ sequence: 1, status: 'completed', endedAt: Date.now(), result: { conclusion: '完成了第一轮', changedFiles: [], tests: [], risks: [], blockers: [], structured: true } }] } : item)),
         };
-        const entries = [{ id: 'user:first', kind: 'user', text: '第一轮', createdAt: start, endedAt: start + 2000 },
-          { id: 'assistant:first', kind: 'assistant', text: '第一轮回复', createdAt: start + 500 }];
+        const entries = firstTurn ? [{ id: 'user:first', kind: 'user', text: '第一轮', createdAt: start, endedAt: start + 2000 },
+          { id: 'assistant:first', kind: 'assistant', text: '第一轮回复', createdAt: start + 500 }] : [];
         if (secondTurn) entries.push({ id: 'user:second', kind: 'user', text: '第二轮', createdAt: start + 4000 }, { id: 'assistant:second', kind: 'assistant', text: '第二轮回复', createdAt: start + 4500 });
         const rows = buildAcpConversationRows({ entries, status: 'idle' } as never);
         const controller = { tasks, editing: null, error: null, busy: false, cancel: async () => {}, cancelAll: async () => {}, retry: async () => {}, resume: async () => {}, open: async task => window.__turnDelegation.opened.push(task.session.id), redeliver: async () => {}, openEditor: () => {}, closeEditor: () => {} };
@@ -163,9 +165,15 @@ try {
         ["canceled", "已取消"],
       ]) {
         await page.evaluate((status) => window.__turnDelegation.setFirstStatus(status), status);
-        await first.getByText(label, { exact: true }).waitFor();
+        const statusRow = ["failed", "interrupted", "canceled"].includes(status)
+          ? page
+              .getByTestId("delegation-panel")
+              .getByTestId("delegation-task")
+              .filter({ hasText: "委派 first" })
+          : first;
+        await statusRow.getByText(label, { exact: true }).waitFor();
         assert.equal(
-          await first.locator("summary").count(),
+          await statusRow.locator("summary").count(),
           0,
           `${status} does not auto-open details`,
         );
@@ -174,15 +182,28 @@ try {
       await first.getByText("等待执行", { exact: true }).waitFor();
       assert.equal(await summary.getAttribute("role"), null, "unbound session has no open action");
       await page.evaluate(() => window.__turnDelegation.finishFirst());
-      await first.getByText("已完成").waitFor();
-      await first.getByRole("button", { name: "展开工具详情", exact: true }).press("Enter");
+      const finished = page
+        .getByTestId("delegation-panel")
+        .getByTestId("delegation-task")
+        .filter({ hasText: "委派 first" });
+      await finished.getByText("已完成").waitFor();
+      assert.equal(await turns.first().getByText("委派 first").count(), 0);
+      await page.evaluate(() => window.__turnDelegation.showFirst(false));
+      await finished.waitFor();
+      await page.evaluate(() => window.__turnDelegation.showFirst(true));
+      await finished.waitFor();
+      assert.equal(
+        await page.getByTestId("delegation-task").filter({ hasText: "委派 first" }).count(),
+        1,
+      );
+      await finished.getByRole("button", { name: "展开工具详情", exact: true }).press("Enter");
       assert.deepEqual(
         await page.evaluate(() => window.__turnDelegation.opened),
         ["first-child", "first-child", "first-child"],
         "details never navigate",
       );
-      await first.locator("summary").click();
-      assert.match(await first.innerText(), /完成了第一轮/);
+      await finished.locator("summary").click();
+      assert.match(await finished.innerText(), /完成了第一轮/);
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         true,
@@ -191,8 +212,8 @@ try {
       // 仅等待折叠动画结束再取视觉证据，行为断言已在上面完成。
       await page.waitForTimeout(400);
       await page.screenshot({ path: join(shots, `turn-${theme}-${width}.png`), fullPage: true });
-      await first.getByRole("button", { name: "收起工具详情", exact: true }).click();
-      await first.locator("summary").waitFor({ state: "hidden" });
+      await finished.getByRole("button", { name: "收起工具详情", exact: true }).click();
+      await finished.locator("summary").waitFor({ state: "hidden" });
       await page.close();
     }
   }
