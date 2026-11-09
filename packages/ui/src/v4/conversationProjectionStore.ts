@@ -21,10 +21,44 @@ import {
   type TopicFrameDeliveryKind,
 } from "@zcode/shared/zcode-protocol-v4";
 import { logger } from "@/logger.js";
-import type { ConversationTurnNavigatorHydrationResult } from "@/v4/conversationTurnNavigatorHelpers.js";
+import type {
+  ConversationTurnNavigatorDirectoryEntry,
+  ConversationTurnNavigatorHydrationResult,
+} from "@/v4/conversationTurnNavigatorHelpers.js";
 import type { ConversationProjectionTransport } from "@/v4/transport.js";
 import { uiMemoryDiagnosticsRegistry } from "@/lib/memoryDiagnostics.js";
 import { ConversationRowPool } from "@/v4/conversationRowPool.js";
+
+export type ConversationProjectionTransportKind = "agent" | "acp" | "unknown";
+export type ConversationHistoryLoadSource =
+  | "turn-navigator"
+  | "search-result"
+  | "share"
+  | "unspecified";
+
+type ConversationHistoryReadOperation = "turn-navigator-directory" | "full-history" | "target-row";
+type ConversationHistoryReadOutcome =
+  | "hydrated"
+  | "not-enough-queries"
+  | "found"
+  | "already-loaded"
+  | "stale"
+  | "cancelled"
+  | "retryable-failure"
+  | "not-found"
+  | "failed";
+
+interface ConversationHistoryReadContext {
+  operationId: string;
+  operation: ConversationHistoryReadOperation;
+  source: ConversationHistoryLoadSource;
+  sessionId: string;
+  startedAt: number;
+}
+
+function historyDiagnosticNow(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
 
 /**
  * runtime 换代打断 subscribe 后的退避节奏。
@@ -133,6 +167,9 @@ export interface ConversationStoreState {
    * 或 row.removed 截断分支）与 snapshot 整体替换时递增此 revision，使终态缓存失效。
    */
   turnNavigatorDirectoryRevision: number;
+  /** 旧历史的有限预览，独立于正文 rows.window。 */
+  turnNavigatorDirectory: readonly ConversationTurnNavigatorDirectoryEntry[];
+  turnNavigatorLoading: boolean;
 }
 
 export interface SessionOpenRendererTiming {
@@ -155,6 +192,8 @@ const INITIAL_STATE: ConversationStoreState = {
   planDirectoryRevision: 0,
   plansLoading: false,
   turnNavigatorDirectoryRevision: 0,
+  turnNavigatorDirectory: [],
+  turnNavigatorLoading: false,
 };
 
 const TERMINAL_PLAN_STATUSES: ReadonlySet<ToolCallRow["status"]> = new Set([
@@ -186,13 +225,17 @@ function shouldInvalidatePlanDirectory(frame: ConversationTopicFrame): boolean {
  * - row.appended/row.upserted 命中 realUser userInput → true（新增/变更用户问题）；
  * - 其余 delta（assistant text、tool、reasoning 流式）→ false，不触发重探测。
  */
-function shouldInvalidateTurnNavigatorDirectory(frame: ConversationTopicFrame): boolean {
+function shouldInvalidateTurnNavigatorDirectory(
+  frame: ConversationTopicFrame,
+  firstLoadedRowId: number,
+): boolean {
   if (frame.payload.kind === "snapshot") return true;
   return frame.payload.deltas.some((delta) => {
     if (delta.op === "row.removed") return true;
     if (delta.op !== "row.appended" && delta.op !== "row.upserted") return false;
     const row = delta.row;
-    return row.kind === "userInput" && row.origin === "realUser";
+    // 尾窗内的新 query 已由正文导航项呈现，不为每次发送重新扫描全部旧历史。
+    return row.kind === "userInput" && row.origin === "realUser" && row.rowId < firstLoadedRowId;
   });
 }
 
@@ -276,10 +319,15 @@ function mergeOlderRows(
 const liveProjectionStores = new Set<ConversationProjectionStore>();
 uiMemoryDiagnosticsRegistry.register("projection", () => {
   let rows = 0;
+  let navigatorEntries = 0;
+  let navigatorPreviewChars = 0;
   for (const store of liveProjectionStores) {
-    rows += store.countProjectionRows();
+    const counts = store.memoryDiagnosticCounts();
+    rows += counts.rows;
+    navigatorEntries += counts.navigatorEntries;
+    navigatorPreviewChars += counts.navigatorPreviewChars;
   }
-  return { stores: liveProjectionStores.size, rows };
+  return { stores: liveProjectionStores.size, rows, navigatorEntries, navigatorPreviewChars };
 });
 
 export class ConversationProjectionStore {
@@ -327,10 +375,17 @@ export class ConversationProjectionStore {
   private planQueryPending = false;
   /** accepted input 的 projection confirmation watchdog；不承载命令，也不生成本地事实。 */
   private readonly acceptedInputProjectionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private historyOperationSequence = 0;
   // hydrated/not-enough-queries 终态缓存。过去仅以
   // logEpoch 判定有效，同一 epoch 内追加 real-user query 后仍永久命中。现追加
   // directoryRevision——real-user query 增删会递增该 revision，使终态失效重探测。
   private turnNavigatorHydrationTerminal:
+    | (Extract<
+        ConversationTurnNavigatorHydrationResult,
+        { status: "hydrated" | "not-enough-queries" }
+      > & { directoryRevision: number })
+    | null = null;
+  private turnNavigatorDirectoryTerminal:
     | (Extract<
         ConversationTurnNavigatorHydrationResult,
         { status: "hydrated" | "not-enough-queries" }
@@ -342,6 +397,7 @@ export class ConversationProjectionStore {
     readonly topic: string,
     private readonly transport: ConversationProjectionTransport,
     private readonly rowPool = new ConversationRowPool(),
+    readonly transportKind: ConversationProjectionTransportKind = "unknown",
   ) {
     liveProjectionStores.add(this);
     this.offAssemblyFault = transport.onAssemblyFault((fault) => {
@@ -372,6 +428,95 @@ export class ConversationProjectionStore {
         this.handleRuntimeRestart(reason),
       );
     }
+  }
+
+  private beginHistoryRead(
+    operation: ConversationHistoryReadOperation,
+    source: ConversationHistoryLoadSource,
+    sessionId: string,
+    beforeRowId: number,
+    windowRowsBefore: number,
+    totalRows: number,
+  ): ConversationHistoryReadContext {
+    const context = {
+      operationId: `${sessionId}:${++this.historyOperationSequence}`,
+      operation,
+      source,
+      sessionId,
+      startedAt: historyDiagnosticNow(),
+    };
+    logger.lifecycle.info("[v4-history] read started", {
+      event: "v4.conversation_history.read.started",
+      module: "ui.v4.conversation_projection_store",
+      operationId: context.operationId,
+      operation,
+      source,
+      sessionId,
+      transportKind: this.transportKind,
+      beforeRowId,
+      windowRowsBefore,
+      totalRows,
+    });
+    return context;
+  }
+
+  private reportHistoryReadProgress(
+    context: ConversationHistoryReadContext,
+    pages: number,
+    rowsRead?: number,
+    rowsAdded?: number,
+  ): void {
+    if (pages === 0 || pages % 25 !== 0) return;
+    logger.lifecycle.info("[v4-history] read progress", {
+      event: "v4.conversation_history.read.progress",
+      module: "ui.v4.conversation_projection_store",
+      operationId: context.operationId,
+      operation: context.operation,
+      source: context.source,
+      sessionId: context.sessionId,
+      transportKind: this.transportKind,
+      pages,
+      ...(rowsRead === undefined ? {} : { rowsRead }),
+      ...(rowsAdded === undefined ? {} : { rowsAdded }),
+      durationMs: Math.round(historyDiagnosticNow() - context.startedAt),
+    });
+  }
+
+  private finishHistoryRead(
+    context: ConversationHistoryReadContext,
+    result: {
+      outcome: ConversationHistoryReadOutcome;
+      pages: number;
+      retainedRowsAfter: number;
+      rowsRead?: number;
+      rowsAdded?: number;
+      directoryEntries?: number;
+    },
+  ): void {
+    const fields = {
+      event:
+        result.outcome === "failed" || result.outcome === "retryable-failure"
+          ? "v4.conversation_history.read.failed"
+          : "v4.conversation_history.read.completed",
+      module: "ui.v4.conversation_projection_store",
+      operationId: context.operationId,
+      operation: context.operation,
+      source: context.source,
+      sessionId: context.sessionId,
+      transportKind: this.transportKind,
+      outcome: result.outcome,
+      pages: result.pages,
+      retainedRowsAfter: result.retainedRowsAfter,
+      durationMs: Math.round(historyDiagnosticNow() - context.startedAt),
+      ...(result.rowsRead === undefined ? {} : { rowsRead: result.rowsRead }),
+      ...(result.rowsAdded === undefined ? {} : { rowsAdded: result.rowsAdded }),
+      ...(result.directoryEntries === undefined
+        ? {}
+        : { directoryEntries: result.directoryEntries }),
+    };
+    if (result.outcome === "failed" || result.outcome === "retryable-failure")
+      logger.lifecycle.warn("[v4-history] read failed", fields);
+    else logger.lifecycle.info("[v4-history] read completed", fields);
   }
 
   getState(): ConversationStoreState {
@@ -680,6 +825,7 @@ export class ConversationProjectionStore {
         planDirectoryRevision: this.state.planDirectoryRevision + 1,
         // snapshot 整体替换后 real-user query 集合可能已变，终态缓存必须失效。
         turnNavigatorDirectoryRevision: this.state.turnNavigatorDirectoryRevision + 1,
+        turnNavigatorDirectory: [],
       });
       this.subscriptionHasAppliedBase = true;
       this.reconcileOptimistic(snapshot);
@@ -762,9 +908,10 @@ export class ConversationProjectionStore {
         : {}),
       // real-user query 增删（row.appended/row.upserted 命中 realUser userInput，
       // 或 row.removed 截断分支）递增导航目录 revision，使终态缓存失效允许重新探测。
-      ...(shouldInvalidateTurnNavigatorDirectory(frame)
+      ...(shouldInvalidateTurnNavigatorDirectory(frame, current.rows.window[0]?.rowId ?? Infinity)
         ? {
             turnNavigatorDirectoryRevision: this.state.turnNavigatorDirectoryRevision + 1,
+            turnNavigatorDirectory: [],
           }
         : {}),
     });
@@ -777,6 +924,13 @@ export class ConversationProjectionStore {
 
   private shareRows(rows: readonly ConversationRow[]): ConversationRow[] {
     return rows.map((row) => this.rowPool.shareRow(this.topic, row));
+  }
+
+  private navigatorDirectoryBefore(
+    window: readonly ConversationRow[],
+  ): readonly ConversationTurnNavigatorDirectoryEntry[] {
+    const firstRowId = window[0]?.rowId ?? Number.POSITIVE_INFINITY;
+    return this.state.turnNavigatorDirectory.filter((entry) => entry.rowId < firstRowId);
   }
 
   private shareSnapshotRows(snapshot: ConversationSnapshot): ConversationSnapshot {
@@ -1072,8 +1226,12 @@ export class ConversationProjectionStore {
       if (current.rows.window[0]?.rowId !== beforeRowId) return;
       const window = mergeOlderRows(current.rows.window, this.shareRows(result.rows));
       if (window === null) return;
+      const directory = this.navigatorDirectoryBefore(window);
       this.setState({
         snapshot: { ...current, rows: { ...current.rows, window } },
+        ...(directory.length === this.state.turnNavigatorDirectory.length
+          ? {}
+          : { turnNavigatorDirectory: directory }),
       });
     } catch (error) {
       // query 只读且可重发：失败不进 error 态，留给下次触发重试。
@@ -1085,6 +1243,227 @@ export class ConversationProjectionStore {
     }
   }
 
+  /** 点击旧问题时才把正文补到目标行；沿用 loadOlder 的单飞和权威游标校验。 */
+  async loadOlderThrough(
+    rowId: number,
+    source: ConversationHistoryLoadSource = "turn-navigator",
+  ): Promise<boolean> {
+    if (!Number.isSafeInteger(rowId)) return false;
+    const initialSnapshot = this.state.snapshot;
+    const sessionId = parseConversationTopic(this.topic);
+    if (!initialSnapshot || !sessionId) return false;
+    const context = this.beginHistoryRead(
+      "target-row",
+      source,
+      sessionId,
+      rowId,
+      initialSnapshot.rows.window.length,
+      initialSnapshot.rows.totalCount,
+    );
+    const logEpoch = initialSnapshot.logEpoch;
+    const generation = this.optionalHistoryHydrationGeneration;
+    let pages = 0;
+    let rowsAdded = 0;
+    let outcome: ConversationHistoryReadOutcome = "failed";
+    try {
+      for (;;) {
+        const current = this.state.snapshot;
+        if (
+          this.closed ||
+          generation !== this.optionalHistoryHydrationGeneration ||
+          !current ||
+          current.logEpoch !== logEpoch
+        ) {
+          outcome = this.closed || generation !== this.optionalHistoryHydrationGeneration
+            ? "cancelled"
+            : "stale";
+          return false;
+        }
+        if (current.rows.window.some((row) => row.rowId === rowId)) {
+          outcome = pages > 0 ? "found" : "already-loaded";
+          return true;
+        }
+        const firstRowId = current.rows.window[0]?.rowId;
+        if (firstRowId === undefined || rowId >= firstRowId || !hasOlderRows(current)) {
+          outcome = "not-found";
+          return false;
+        }
+        const rowsBefore = current.rows.window.length;
+        if (this.state.loadingOlder) {
+          await new Promise<void>((resolve) => {
+            const off = this.subscribe(() => {
+              if (this.state.loadingOlder && !this.closed) return;
+              off();
+              resolve();
+            });
+            if (!this.state.loadingOlder || this.closed) {
+              off();
+              resolve();
+            }
+          });
+        } else {
+          await this.loadOlder(PROTOCOL_V4_LIMITS.rowsRangeMaxLimit);
+        }
+        const nextSnapshot = this.state.snapshot;
+        const nextFirstRowId = nextSnapshot?.rows.window[0]?.rowId;
+        if (nextFirstRowId !== undefined && nextFirstRowId < firstRowId) {
+          pages += 1;
+          rowsAdded += Math.max(0, nextSnapshot!.rows.window.length - rowsBefore);
+          this.reportHistoryReadProgress(context, pages, undefined, rowsAdded);
+        } else if (nextFirstRowId === firstRowId && !this.state.loadingOlder) {
+          outcome = "not-found";
+          return false;
+        }
+      }
+    } finally {
+      this.finishHistoryRead(context, {
+        outcome,
+        pages,
+        rowsAdded,
+        retainedRowsAfter: this.state.snapshot?.rows.window.length ?? 0,
+      });
+    }
+  }
+
+  /** 只保留有限问题/答复预览；rows/range 原始页不会进入正文 projection。 */
+  async loadTurnNavigatorDirectory(): Promise<ConversationTurnNavigatorHydrationResult> {
+    const stale = (logEpoch = this.state.snapshot?.logEpoch ?? "unknown") => ({
+      status: "stale" as const,
+      logEpoch,
+    });
+    const snapshot = this.state.snapshot;
+    if (this.closed || this.state.turnNavigatorLoading || !snapshot) return stale();
+    const directoryRevision = this.state.turnNavigatorDirectoryRevision;
+    if (
+      this.turnNavigatorDirectoryTerminal?.logEpoch === snapshot.logEpoch &&
+      this.turnNavigatorDirectoryTerminal.directoryRevision === directoryRevision
+    )
+      return this.turnNavigatorDirectoryTerminal;
+    if (!hasOlderRows(snapshot)) return stale(snapshot.logEpoch);
+    const sessionId = parseConversationTopic(this.topic);
+    const firstRowId = snapshot.rows.window[0]?.rowId;
+    if (!sessionId || firstRowId === undefined) return stale(snapshot.logEpoch);
+
+    const logEpoch = snapshot.logEpoch;
+    const generation = this.optionalHistoryHydrationGeneration;
+    const questions: Array<ConversationTurnNavigatorDirectoryEntry & { productTurnId: string }> = [];
+    const firstAssistant = new Map<string, { rowId: number; text: string }>();
+    const capturePreview = (rows: readonly ConversationRow[], collectQuestions: boolean) => {
+      for (const row of rows) {
+        const productTurnId = row.productTurnId ?? row.turnId;
+        if (row.kind === "assistantText" && row.text.trim()) {
+          const old = firstAssistant.get(productTurnId);
+          if (!old || row.rowId < old.rowId)
+            firstAssistant.set(productTurnId, { rowId: row.rowId, text: row.text.slice(0, 220) });
+        } else if (collectQuestions && row.kind === "userInput" && row.origin === "realUser") {
+          questions.push({
+            rowId: row.rowId,
+            turnId: productTurnId,
+            productTurnId,
+            userText: row.text.slice(0, 220),
+          });
+        }
+      }
+    };
+    capturePreview(snapshot.rows.window, false);
+    let beforeRowId = firstRowId;
+    const context = this.beginHistoryRead(
+      "turn-navigator-directory",
+      "turn-navigator",
+      sessionId,
+      firstRowId,
+      snapshot.rows.window.length,
+      snapshot.rows.totalCount,
+    );
+    let pages = 0;
+    let rowsRead = 0;
+    let outcome: ConversationHistoryReadOutcome = "failed";
+    this.setState({ turnNavigatorLoading: true });
+    try {
+      for (;;) {
+        const result = await this.transport.rowsRange({
+          sessionId,
+          beforeRowId,
+          limit: PROTOCOL_V4_LIMITS.rowsRangeMaxLimit,
+        });
+        pages += 1;
+        const current = this.state.snapshot;
+        if (
+          this.closed ||
+          generation !== this.optionalHistoryHydrationGeneration ||
+          !current ||
+          current.logEpoch !== logEpoch ||
+          result.atLogEpoch !== logEpoch ||
+          current.rows.window[0]?.rowId !== firstRowId ||
+          this.state.turnNavigatorDirectoryRevision !== directoryRevision
+        ) {
+          outcome = this.closed || generation !== this.optionalHistoryHydrationGeneration
+            ? "cancelled"
+            : "stale";
+          return stale(logEpoch);
+        }
+        const older = result.rows.filter((row) => row.rowId < beforeRowId);
+        rowsRead += older.length;
+        const nextBeforeRowId = older[0]?.rowId;
+        if (nextBeforeRowId === undefined || nextBeforeRowId >= beforeRowId) {
+          if (!result.hasMore) break;
+          outcome = "retryable-failure";
+          return { status: "retryable-failure", logEpoch };
+        }
+        capturePreview(older, true);
+        beforeRowId = nextBeforeRowId;
+        this.reportHistoryReadProgress(context, pages, rowsRead);
+        if (!result.hasMore) break;
+      }
+      const current = this.state.snapshot;
+      if (
+        !current ||
+        current.logEpoch !== logEpoch ||
+        current.rows.window[0]?.rowId !== firstRowId ||
+        this.state.turnNavigatorDirectoryRevision !== directoryRevision
+      ) {
+        outcome = "stale";
+        return stale(logEpoch);
+      }
+      // 修复依据：旧历史只发布有限预览，不能把工具输出、图片或完整答复常驻 Renderer。
+      const directory = questions
+        .map(({ productTurnId, ...question }) => ({
+          ...question,
+          assistantText: firstAssistant.get(productTurnId)?.text,
+        }))
+        .sort((left, right) => left.rowId - right.rowId);
+      const queryCount =
+        directory.length +
+        current.rows.window.filter((row) => row.kind === "userInput" && row.origin === "realUser")
+          .length;
+      this.setState({ turnNavigatorDirectory: directory, turnNavigatorLoading: false });
+      const terminal = {
+        status: queryCount >= 2 ? ("hydrated" as const) : ("not-enough-queries" as const),
+        logEpoch,
+        directoryRevision,
+      };
+      this.turnNavigatorDirectoryTerminal = terminal;
+      outcome = terminal.status;
+      return terminal;
+    } catch (error) {
+      outcome = "retryable-failure";
+      logger.warn(
+        `[v4-store] 问题目录 rowsRange ${this.topic} 失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { status: "retryable-failure", logEpoch };
+    } finally {
+      if (!this.closed && this.state.turnNavigatorLoading)
+        this.setState({ turnNavigatorLoading: false });
+      this.finishHistoryRead(context, {
+        outcome,
+        pages,
+        rowsRead,
+        retainedRowsAfter: this.state.snapshot?.rows.window.length ?? 0,
+        directoryEntries: this.state.turnNavigatorDirectory.length,
+      });
+    }
+  }
+
   /**
    * 完整问题目录：沿既有 rows/range 游标把当前有效分支一次补齐。
    *
@@ -1092,7 +1471,9 @@ export class ConversationProjectionStore {
    * 已加载的几十轮。这里按协议上限分页读取，但等全部页成功后只换一次 snapshot，
    * 避免每 200 行重建一次 timeline render units 与两个 virtualizer。
    */
-  async loadAllOlder(): Promise<ConversationTurnNavigatorHydrationResult> {
+  async loadAllOlder(
+    source: ConversationHistoryLoadSource = "unspecified",
+  ): Promise<ConversationTurnNavigatorHydrationResult> {
     const stale = (logEpoch = this.state.snapshot?.logEpoch ?? "unknown") => ({
       status: "stale" as const,
       logEpoch,
@@ -1117,7 +1498,18 @@ export class ConversationProjectionStore {
     const initialLogEpoch = snapshot.logEpoch;
     const hydrationGeneration = this.optionalHistoryHydrationGeneration;
     const preserveIncompleteLeadingTurn = shouldAutoLoadIncompleteLeadingTurn(snapshot, false);
+    const context = this.beginHistoryRead(
+      "full-history",
+      source,
+      sessionId,
+      initialBeforeRowId,
+      snapshot.rows.window.length,
+      snapshot.rows.totalCount,
+    );
     const pages: ConversationRow[][] = [];
+    let rowsRead = 0;
+    let rowsAdded = 0;
+    let outcome: ConversationHistoryReadOutcome = "failed";
     let beforeRowId = initialBeforeRowId;
     let committed = false;
     this.setState({ loadingOlder: true });
@@ -1136,8 +1528,10 @@ export class ConversationProjectionStore {
           limit: PROTOCOL_V4_LIMITS.rowsRangeMaxLimit,
         });
         // 修复原因：最后一个窗格退租后 store 仍保温，旧补页不能继续抢占 RPC/Renderer。
-        if (this.closed || hydrationGeneration !== this.optionalHistoryHydrationGeneration)
+        if (this.closed || hydrationGeneration !== this.optionalHistoryHydrationGeneration) {
+          outcome = "cancelled";
           return stale(initialLogEpoch);
+        }
         const current = this.state.snapshot;
         if (
           !current ||
@@ -1151,6 +1545,7 @@ export class ConversationProjectionStore {
             resultLogEpoch: result.atLogEpoch,
             sessionId,
           });
+          outcome = "stale";
           return stale(initialLogEpoch);
         }
 
@@ -1162,10 +1557,13 @@ export class ConversationProjectionStore {
             hasMore: result.hasMore,
             sessionId,
           });
+          outcome = "retryable-failure";
           return { status: "retryable-failure", logEpoch: initialLogEpoch };
         }
         pages.push(older);
+        rowsRead += older.length;
         beforeRowId = nextBeforeRowId;
+        this.reportHistoryReadProgress(context, pages.length, rowsRead);
         if (!result.hasMore) break;
       }
 
@@ -1176,6 +1574,9 @@ export class ConversationProjectionStore {
         current.logEpoch !== initialLogEpoch ||
         current.rows.window[0]?.rowId !== initialBeforeRowId
       ) {
+        outcome = hydrationGeneration !== this.optionalHistoryHydrationGeneration
+          ? "cancelled"
+          : "stale";
         return stale(initialLogEpoch);
       }
       const olderRows = [...pages].reverse().flat();
@@ -1186,7 +1587,11 @@ export class ConversationProjectionStore {
       if (realUserQueryCount < 2) {
         if (preserveIncompleteLeadingTurn) {
           const window = mergeOlderRows(current.rows.window, this.shareRows(olderRows));
-          if (window === null) return stale(initialLogEpoch);
+          if (window === null) {
+            outcome = "stale";
+            return stale(initialLogEpoch);
+          }
+          rowsAdded = Math.max(0, window.length - snapshot.rows.window.length);
           committed = true;
           this.setState({
             loadingOlder: false,
@@ -1214,14 +1619,20 @@ export class ConversationProjectionStore {
           directoryRevision,
         };
         this.turnNavigatorHydrationTerminal = result;
+        outcome = result.status;
         return result;
       }
       const window = mergeOlderRows(current.rows.window, this.shareRows(olderRows));
-      if (window === null) return stale(initialLogEpoch);
+      if (window === null) {
+        outcome = "stale";
+        return stale(initialLogEpoch);
+      }
+      rowsAdded = Math.max(0, window.length - snapshot.rows.window.length);
       committed = true;
       this.setState({
         loadingOlder: false,
         snapshot: { ...current, rows: { ...current.rows, window } },
+        turnNavigatorDirectory: [],
       });
       logger.debug("[v4-store] 完整问题目录历史 rows 补拉完成", {
         loadedRows: window.length,
@@ -1234,14 +1645,23 @@ export class ConversationProjectionStore {
         directoryRevision,
       };
       this.turnNavigatorHydrationTerminal = result;
+      outcome = result.status;
       return result;
     } catch (error) {
+      outcome = "retryable-failure";
       logger.warn(
         `[v4-store] 完整问题目录 rowsRange ${this.topic} 失败: ${error instanceof Error ? error.message : String(error)}`,
       );
       return { status: "retryable-failure", logEpoch: initialLogEpoch };
     } finally {
       if (!this.closed && !committed) this.setState({ loadingOlder: false });
+      this.finishHistoryRead(context, {
+        outcome,
+        pages: pages.length,
+        rowsRead,
+        rowsAdded,
+        retainedRowsAfter: this.state.snapshot?.rows.window.length ?? 0,
+      });
     }
   }
 
@@ -1404,6 +1824,22 @@ export class ConversationProjectionStore {
   /** 内存诊断：当前 rows.window 行数；只读。 */
   countProjectionRows(): number {
     return this.state.snapshot?.rows.window.length ?? 0;
+  }
+
+  memoryDiagnosticCounts(): {
+    rows: number;
+    navigatorEntries: number;
+    navigatorPreviewChars: number;
+  } {
+    const directory = this.state.turnNavigatorDirectory;
+    return {
+      rows: this.countProjectionRows(),
+      navigatorEntries: directory.length,
+      navigatorPreviewChars: directory.reduce(
+        (total, entry) => total + entry.userText.length + (entry.assistantText?.length ?? 0),
+        0,
+      ),
+    };
   }
 
   /** 退订并终结本 store（仅 SessionDataLayer 调用）。 */

@@ -51,6 +51,7 @@ import {
   resolveConversationTurnNavigatorActiveQueryRowId,
   resolveConversationTurnNavigatorHydrationRetryDelayMs,
   shouldHydrateConversationTurnNavigatorDirectory,
+  type ConversationTurnNavigatorDirectoryEntry,
   type ConversationTurnNavigatorHydrationResult,
   type ConversationTurnNavigatorQueryPosition,
   type ConversationTurnNavigatorVirtualItem,
@@ -283,8 +284,12 @@ interface ConversationTimelineProps {
   loadingOlder?: boolean;
   /** 拉取更早一窗历史（接近顶部时自动预取）。 */
   onLoadOlder?: () => Promise<void> | void;
-  /** 宽屏问题目录挂载后一次补齐当前有效分支的全部历史。 */
-  onLoadAllOlder?: () => Promise<ConversationTurnNavigatorHydrationResult>;
+  /** 宽屏问题目录只加载旧历史的有限预览。 */
+  onLoadTurnNavigatorDirectory?: () => Promise<ConversationTurnNavigatorHydrationResult>;
+  turnNavigatorDirectory?: readonly ConversationTurnNavigatorDirectoryEntry[];
+  turnNavigatorLoading?: boolean;
+  /** 点击未加载问题时，按既有分页路径把正文补至该行。 */
+  onLoadThroughQuery?: (rowId: number) => Promise<boolean>;
   /**
    * 问题导航目录失效代际（store turnNavigatorDirectoryRevision）。
    * real-user query 增删后终态必须失效重探测；组件 hydration key
@@ -372,7 +377,10 @@ function ConversationTimelineImpl({
   canLoadOlder = false,
   loadingOlder = false,
   onLoadOlder,
-  onLoadAllOlder,
+  onLoadTurnNavigatorDirectory,
+  turnNavigatorDirectory = [],
+  turnNavigatorLoading = false,
+  onLoadThroughQuery,
   turnNavigatorDirectoryRevision = 0,
   bottomDock,
   selectionPanelLayoutContainerRef,
@@ -656,8 +664,8 @@ function ConversationTimelineImpl({
       !shouldHydrateConversationTurnNavigatorDirectory({
         canLoadOlder,
         containerWidthPx: turnNavigatorContainerWidthPx,
-        hasLoadHandler: Boolean(onLoadAllOlder),
-        loadingOlder,
+        hasLoadHandler: Boolean(onLoadTurnNavigatorDirectory),
+        loadingOlder: loadingOlder || turnNavigatorLoading,
       })
     ) {
       return;
@@ -676,7 +684,7 @@ function ConversationTimelineImpl({
         status: "idle" as const,
       });
     }
-    if (attempt.status !== "idle" || !onLoadAllOlder) return;
+    if (attempt.status !== "idle" || !onLoadTurnNavigatorDirectory) return;
     attempt.status = "in-flight";
     logger.debug("[v4-turn-navigator] 目录请求补齐完整历史", {
       attempt: attempt.attemptCount + 1,
@@ -684,7 +692,7 @@ function ConversationTimelineImpl({
       sessionKey,
       totalRows: totalCount,
     });
-    void onLoadAllOlder().then((result) => {
+    void onLoadTurnNavigatorDirectory().then((result) => {
       if (attempt.key !== hydrationKey) return;
       if (result.status === "hydrated" || result.status === "not-enough-queries") {
         attempt.status = "terminal";
@@ -713,7 +721,8 @@ function ConversationTimelineImpl({
   }, [
     canLoadOlder,
     loadingOlder,
-    onLoadAllOlder,
+    turnNavigatorLoading,
+    onLoadTurnNavigatorDirectory,
     rowContext.logEpoch,
     rows,
     sessionKey,
@@ -1463,6 +1472,57 @@ function ConversationTimelineImpl({
     [clearUserScrollIntent, commitFollowing, liveUnitIndex, syncTurnNavigatorViewport, virtualizer],
   );
 
+  const pendingDirectoryJumpRef = useRef<{
+    rowId: number;
+    sessionKey: string;
+    behavior: ScrollBehavior;
+  } | null>(null);
+  const renderUnitsRef = useRef(renderUnits);
+  renderUnitsRef.current = renderUnits;
+  const scrollToQueryRef = useRef(scrollToQuery);
+  scrollToQueryRef.current = scrollToQuery;
+  const jumpToQuery = useCallback(
+    (target: { unitIndex: number; rowId: number }, behavior: ScrollBehavior) => {
+      if (target.unitIndex >= 0) {
+        pendingDirectoryJumpRef.current = null;
+        scrollToQuery(target, behavior);
+        return;
+      }
+      if (!onLoadThroughQuery) return;
+      pendingDirectoryJumpRef.current = { rowId: target.rowId, sessionKey, behavior };
+      void onLoadThroughQuery(target.rowId).then((loaded) => {
+        if (pendingDirectoryJumpRef.current?.rowId !== target.rowId) return;
+        if (!loaded) {
+          pendingDirectoryJumpRef.current = null;
+          return;
+        }
+        let attempts = 20;
+        const alignLoadedQuery = () => {
+          const pending = pendingDirectoryJumpRef.current;
+          if (!pending || pending.rowId !== target.rowId || pending.sessionKey !== sessionKey)
+            return;
+          const unitIndex = renderUnitsRef.current.findIndex((unit) =>
+            unit.visibleUserInputs.some((row) => row.rowId === target.rowId),
+          );
+          if (unitIndex >= 0) {
+            pendingDirectoryJumpRef.current = null;
+            scrollToQueryRef.current({ unitIndex, rowId: target.rowId }, behavior);
+            return;
+          }
+          attempts -= 1;
+          if (attempts > 0) window.requestAnimationFrame(alignLoadedQuery);
+          else pendingDirectoryJumpRef.current = null;
+        };
+        window.requestAnimationFrame(alignLoadedQuery);
+      });
+    },
+    [onLoadThroughQuery, scrollToQuery, sessionKey],
+  );
+  useEffect(() => {
+    if (pendingDirectoryJumpRef.current?.sessionKey !== sessionKey)
+      pendingDirectoryJumpRef.current = null;
+  }, [sessionKey]);
+
   useLayoutEffect(() => {
     if (!scrollToQueryActionRef) return;
     const action = (target: { unitIndex: number; rowId: number }) => {
@@ -1821,14 +1881,15 @@ function ConversationTimelineImpl({
       {hideTurnNavigator ? null : (
         <ConversationTurnNavigator
           renderUnits={renderUnits}
-          isHydratingDirectory={loadingOlder}
+          directory={turnNavigatorDirectory}
+          isHydratingDirectory={turnNavigatorLoading}
           scrollOffsetPx={virtualizer.scrollOffset ?? turnNavigatorViewport.scrollOffsetPx}
           viewportHeightPx={
             virtualizer.scrollRect?.height ?? turnNavigatorViewport.viewportHeightPx
           }
           virtualItems={turnNavigatorVirtualItems}
           activeQueryRowId={turnNavigatorViewport.activeQueryRowId}
-          onJumpToQuery={scrollToQuery}
+          onJumpToQuery={jumpToQuery}
         />
       )}
       <div

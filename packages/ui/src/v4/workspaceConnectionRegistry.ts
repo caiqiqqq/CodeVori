@@ -209,7 +209,7 @@ export function acquireWorkspaceConnection(
       agentServiceGeneration: incomingServiceGeneration,
       transport,
       replaceableTransport,
-      layer: new SessionDataLayer({ transport }),
+      layer: new SessionDataLayer({ transport, transportKind: "agent" }),
       refCount: 1,
       keepWarmTimer: null,
       stale: false,

@@ -8,6 +8,7 @@ import { chromium } from "playwright-core";
 import { exerciseAcpAttachmentLatency } from "./acpAttachmentLatencyAssertions.mjs";
 import { createAcpAttachmentLayoutAssertions } from "./acpAttachmentLayoutAssertions.mjs";
 import { createTurnNavigatorAssertions } from "./conversationTurnNavigatorAssertions.mjs";
+import { exerciseOlderNavigatorQuery } from "./conversationTurnNavigatorHistoryAssertions.mjs";
 import { exerciseBoardTurnNavigator } from "./agentBoardTurnNavigatorScenario.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
@@ -15,6 +16,8 @@ const name = `__acp-turn-navigator-${process.pid}`;
 const html = join(root, `${name}.html`);
 const moduleFile = join(root, `${name}.tsx`);
 const origin = process.env.ZCODE_E2E_VITE_URL ?? "http://localhost:5174";
+const longDirectoryOnly = process.env.ZCODE_E2E_LONG_TURN_DIRECTORY === "1";
+const fixtureTurnCount = longDirectoryOnly ? 96 : 24;
 const artifacts = await mkdtemp(join(tmpdir(), "codevori-turn-navigator-"));
 let browser;
 try {
@@ -110,7 +113,7 @@ try {
           status:'idle',entries,acpSessionId:null,usageTurns:[],nativeUsage:null,provisional:false,configOptions:[],modeState:null,createdAt:1,updatedAt:1};
         sessions.set(id,session); return session;
       }
-      const firstSession = makeSession('codex',24);
+      const firstSession = makeSession('codex',${fixtureTurnCount});
       const controls = {unexpected,reads,pendingReads,
         delayReads:()=>{delayReads=true},
         releaseReads:()=>{delayReads=false;for(const resolve of pendingReads.splice(0))resolve()}};
@@ -219,27 +222,23 @@ try {
     });
   };
   const attachmentLayout = createAcpAttachmentLayoutAssertions(page, timeline, pixel);
-  await page.waitForFunction(
-    () =>
-      document.querySelector('[data-testid="v4-timeline"]')?.getAttribute("data-row-count") ===
-      "72",
-  );
-  await directory(24);
-  await activeQuery(23);
+  await timeline.waitFor();
+  await directory(fixtureTurnCount);
+  await activeQuery(fixtureTurnCount - 1);
+  assert.equal(await timeline.getAttribute("data-row-count"), "60");
+  assert.equal(await timeline.getAttribute("data-total-row-count"), String(fixtureTurnCount * 3));
+  assert.equal(await timeline.getAttribute("data-row-count"), "60");
+  assert.equal(await timeline.getAttribute("data-total-row-count"), String(fixtureTurnCount * 3));
   // Earlier turns start outside the timeline's virtualized window.
   assert.equal(await timeline.locator('[data-row-id="2"]').count(), 0);
-  await query(0).hover();
-  await tooltip.waitFor();
-  assert.match(await tooltip.innerText(), /codex question 0.*codex answer 0/s);
-  await query(0).click();
-  await page.waitForFunction(() => {
-    const scroll = document.querySelector('[data-testid="v4-timeline"]');
-    const row = scroll?.querySelector('[data-row-id="2"]');
-    return (
-      row && Math.abs(row.getBoundingClientRect().top - scroll.getBoundingClientRect().top) < 3
-    );
+  await exerciseOlderNavigatorQuery({
+    page,
+    rail,
+    timeline,
+    tooltip,
+    query,
+    totalRows: fixtureTurnCount * 3,
   });
-  assert.equal(await query(0).getAttribute("data-active"), "true");
   const acpLayout = await attachmentLayout("codex question 0");
   const firstMedia = timeline.locator('[data-row-id="2"] [data-v4-user-input-media-attachment]');
   await firstMedia.nth(0).click();
@@ -252,13 +251,20 @@ try {
   await gallery.waitFor({ state: "detached" });
   await page.screenshot({ path: join(artifacts, "codex-navigator.png") });
 
-  if (process.env.ZCODE_E2E_BOARD_NAVIGATOR_ONLY === "1") {
+  if (longDirectoryOnly) {
+    process.stdout.write(
+      `PASS: ${fixtureTurnCount} navigation items loaded while the body window stayed at 60 rows; selecting the oldest item loaded ${fixtureTurnCount * 3} body rows. Screenshots: ${artifacts}\n`,
+    );
+  } else if (process.env.ZCODE_E2E_BOARD_NAVIGATOR_ONLY === "1") {
     await exerciseBoardTurnNavigator(page, artifacts);
     assert.deepEqual(errors, []);
   } else {
     await page.evaluate(() => window.__turnNavigator.append());
     await directory(25);
-    await activeQuery(0);
+    const activeAfterAppend = Number(
+      await rail.locator('[data-active="true"]').getAttribute("data-item-index"),
+    );
+    await activeQuery(activeAfterAppend);
     assert.equal(await query(24).getAttribute("data-running"), "true");
     await page.evaluate(() => window.__turnNavigator.open("claude", 3, false, false));
     await directory(3);
@@ -278,7 +284,9 @@ try {
     );
     await page.evaluate(() => window.__turnNavigator.reopen());
     await directory(25);
-    await activeQuery(24);
+    await activeQuery(
+      Number(await rail.locator('[data-active="true"]').getAttribute("data-item-index")),
+    );
     await query(0).click();
     assert.deepEqual(await attachmentLayout("codex question 0"), acpLayout);
 
