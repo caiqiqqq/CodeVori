@@ -1,10 +1,10 @@
 /** 只定位展示位置；任务状态与轮次生命周期分别由服务和 CLI 持有。 */
 export function partitionDelegationTasksByTurn<
   TTurn extends { turnId: string; startedAt?: number; header?: { endedAt?: number } },
-  TTask extends { createdAt: number },
+  TTask extends { createdAt: number; status: string },
 >(turns: readonly TTurn[], tasks: readonly TTask[]) {
   const byTurn = new Map<string, TTask[]>();
-  const unmatched: TTask[] = [];
+  const footerTasks: TTask[] = [];
   const starts = turns
     .filter(
       (turn): turn is TTurn & { startedAt: number } =>
@@ -13,8 +13,14 @@ export function partitionDelegationTasksByTurn<
     .sort((left, right) => left.startedAt - right.startedAt);
 
   for (const task of tasks) {
+    // 修复原因：历史轮次异步加载后，已结束任务会从对话底部迁入较早的虚拟轮次，
+    // 看起来像完成行消失；终态结果固定在底部，且不随分页重新定位。
+    if (["completed", "failed", "interrupted", "canceled"].includes(task.status)) {
+      footerTasks.push(task);
+      continue;
+    }
     if (!Number.isFinite(task.createdAt)) {
-      unmatched.push(task);
+      footerTasks.push(task);
       continue;
     }
     // 修复原因：会话级 footer 会把旧委派拖到最新轮之后；按创建时已开始的轮次
@@ -29,12 +35,12 @@ export function partitionDelegationTasksByTurn<
       (candidate.header?.endedAt !== undefined && task.createdAt >= candidate.header.endedAt) ||
       starts.filter((turn) => turn.startedAt === candidate.startedAt).length > 1
     ) {
-      unmatched.push(task);
+      footerTasks.push(task);
       continue;
     }
     const group = byTurn.get(candidate.turnId) ?? [];
     group.push(task);
     byTurn.set(candidate.turnId, group);
   }
-  return { byTurn, unmatched };
+  return { byTurn, footerTasks };
 }

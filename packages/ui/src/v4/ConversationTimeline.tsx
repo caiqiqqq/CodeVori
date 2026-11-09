@@ -422,7 +422,7 @@ function ConversationTimelineImpl({
   );
   const hasDelegationFooter = Boolean(
     delegation &&
-    (delegationPlacement.unmatched.length ||
+    (delegationPlacement.footerTasks.length ||
       delegation.controller.editing ||
       delegation.controller.error),
   );
@@ -2019,7 +2019,7 @@ function ConversationTimelineImpl({
                       key={`${delegation.parent.workspaceIdentity?.trim() || delegation.parent.workspacePath}:${delegation.parent.kind}:${delegation.parent.sessionId}`}
                       parent={delegation.parent}
                       controller={delegation.controller}
-                      tasks={delegationPlacement.unmatched}
+                      tasks={delegationPlacement.footerTasks}
                     />
                   ) : null}
                 </div>
