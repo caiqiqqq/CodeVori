@@ -119,6 +119,14 @@ export const workTaskExecutionSchema = z.discriminatedUnion("kind", [
             .strict(),
         )
         .max(32),
+      /** Resolved ACP Host preference; MCP callers cannot select this field. */
+      modelPreference: z
+        .object({
+          configId: z.string().trim().min(1).max(256),
+          value: z.string().min(1).max(512),
+        })
+        .strict()
+        .optional(),
     })
     .strict(),
 ]);
