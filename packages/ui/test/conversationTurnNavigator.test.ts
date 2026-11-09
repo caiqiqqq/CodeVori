@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveConversationTurnNavigatorActiveQueryRowId as resolve } from "../src/v4/conversationTurnNavigatorHelpers.ts";
+import {
+  buildConversationTurnNavigatorItems,
+  resolveConversationTurnNavigatorActiveQueryRowId as resolve,
+} from "../src/v4/conversationTurnNavigatorHelpers.ts";
 
 const positions = [
   { rowId: 10, start: 1030, end: 1080 },
@@ -52,4 +55,28 @@ test("content shorter than viewport selects latest; an unmeasured viewport does 
 test("empty directory and callers without bottom metrics retain legacy behavior", () => {
   assert.equal(resolve({ ...bottom, positions: [], latestQueryRowId: undefined }), undefined);
   assert.equal(resolve({ positions, scrollOffsetPx: 1000, viewportHeightPx: 900 }), 10);
+});
+
+test("unloaded directory items stay lightweight and do not claim a virtual body unit", () => {
+  const items = buildConversationTurnNavigatorItems(
+    [],
+    {
+      assistantEmptyPreview: "empty",
+      assistantRunningPreview: "running",
+      userFallbackPreview: "question",
+    },
+    [
+      {
+        rowId: 5,
+        turnId: "turn-5",
+        userText: "q".repeat(1_000),
+        assistantText: "a".repeat(1_000),
+      },
+      { rowId: 2, turnId: "turn-2", userText: "older" },
+    ],
+  );
+  assert.deepEqual(items.map((item) => item.rowId), [2, 5]);
+  assert.ok(items.every((item) => item.unitIndex === -1));
+  assert.ok(items.every((item) => item.userPreview.length <= 220));
+  assert.ok(items.every((item) => item.assistantPreview.length <= 220));
 });

@@ -315,6 +315,63 @@ test("released view stops optional full-history hydration before committing olde
   }
 });
 
+test("navigator outline keeps full query directory without retaining older body rows", async () => {
+  const f = fixture();
+  const rows: ConversationRow[] = [];
+  for (let index = 0; index < 300; index++) {
+    const turnId = `turn-${index}`;
+    rows.push({
+      ...userRow(index * 2 + 1),
+      turnId,
+      text: `question-${index} ` + "q".repeat(1_000),
+    });
+    rows.push({
+      ...textRow(index * 2 + 2, `answer-${index} ` + "a".repeat(10_000)),
+      turnId,
+    });
+  }
+  f.setRows(rows, 60);
+  const { store, close } = await f.open();
+  try {
+    const originalWindow = store.getState().snapshot!.rows.window;
+    assert.equal((await store.loadTurnNavigatorDirectory()).status, "hydrated");
+    const state = store.getState();
+    assert.equal(state.snapshot!.rows.window, originalWindow);
+    assert.equal(state.turnNavigatorDirectory.length, 270);
+    assert.equal(state.turnNavigatorDirectory[0]?.rowId, 1);
+    assert.equal(state.turnNavigatorDirectory[0]?.userText.length, 220);
+    assert.equal(state.turnNavigatorDirectory[0]?.assistantText?.length, 220);
+    assert.equal(await store.loadOlderThrough(1), true);
+    assert.equal(store.getState().snapshot!.rows.window[0]?.rowId, 1);
+    assert.equal(store.getState().turnNavigatorDirectory.length, 0);
+  } finally {
+    await close();
+  }
+});
+
+test("stale navigator outline is discarded after a branch snapshot", async () => {
+  const f = fixture();
+  const { store, close } = await f.open();
+  const rowsRange = f.transport.rowsRange;
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  f.transport.rowsRange = async (params) => {
+    await gate;
+    return rowsRange(params);
+  };
+  try {
+    const pending = store.loadTurnNavigatorDirectory();
+    f.setRows([userRow(3), textRow(4)]);
+    f.snapshot();
+    release();
+    assert.equal((await pending).status, "stale");
+    assert.deepEqual(store.getState().turnNavigatorDirectory, []);
+  } finally {
+    release();
+    await close();
+  }
+});
+
 test("stale history cannot enter projection or replace pool entries", async () => {
   const f = fixture();
   const { store, close } = await f.open();

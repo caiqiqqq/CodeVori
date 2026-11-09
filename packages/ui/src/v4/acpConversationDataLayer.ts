@@ -42,6 +42,7 @@ export function acquireAcpConversationProjection(
     // 切换对话沿用 API 的保温期；只保留只读投影，连接就绪仍由 Host refreshSummary 核验。
     const layer = new SessionDataLayer({
       transport,
+      transportKind: "acp",
       onEmpty: () => {
         registry.delete(key);
         layer.dispose();

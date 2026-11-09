@@ -212,6 +212,7 @@ import {
 import {
   hasOlderRows,
   shouldAutoLoadIncompleteLeadingTurn,
+  type ConversationHistoryLoadSource,
 } from "@/v4/conversationProjectionStore.js";
 import type {
   ConversationFileChangesRequestOptions,
@@ -885,7 +886,7 @@ export function SessionPane({
       !acpRows.some((row) => row.rowId === request.rowId) &&
       acpConversation.canLoadOlder
     )
-      void acpConversation.loadAllOlder();
+      void acpConversation.loadAllOlder("search-result");
   }, [
     activeSearchResultHighlightRequest,
     acpRows,
@@ -4238,21 +4239,32 @@ export function SessionPane({
     return lease?.store.loadOlder();
   }, [lease]);
 
-  const handleLoadAllOlder = useCallback(() => {
+  const handleLoadAllOlder = useCallback((source: ConversationHistoryLoadSource = "share") => {
     return lease
-      ? lease.store.loadAllOlder()
+      ? lease.store.loadAllOlder(source)
       : Promise.resolve({
           status: "stale" as const,
           logEpoch: snapshot?.logEpoch ?? "unknown",
         });
   }, [lease, snapshot?.logEpoch]);
+  const handleLoadTurnNavigatorDirectory = useCallback(
+    () =>
+      lease
+        ? lease.store.loadTurnNavigatorDirectory()
+        : Promise.resolve({ status: "stale" as const, logEpoch: snapshot?.logEpoch ?? "unknown" }),
+    [lease, snapshot?.logEpoch],
+  );
+  const handleLoadOlderThrough = useCallback(
+    (rowId: number) => lease?.store.loadOlderThrough(rowId) ?? Promise.resolve(false),
+    [lease],
+  );
 
   useEffect(() => {
     if (!shareActive || !sessionId || !hasOlderRows(snapshot)) return;
     const key = `${sessionId}:${snapshot?.logEpoch ?? "unknown"}`;
     if (shareHydratedSessionRef.current === key) return;
     shareHydratedSessionRef.current = key;
-    void handleLoadAllOlder().catch((error) => {
+    void handleLoadAllOlder("share").catch((error) => {
       shareHydratedSessionRef.current = null;
       logger.warn("[conversation-share] 补齐分享目录失败", { error });
     });
@@ -5589,7 +5601,22 @@ export function SessionPane({
                     : false
               }
               onLoadOlder={acpAgent ? acpConversation.loadOlder : handleLoadOlder}
-              onLoadAllOlder={acpAgent ? acpConversation.loadAllOlder : handleLoadAllOlder}
+              onLoadTurnNavigatorDirectory={
+                acpAgent
+                  ? acpConversation.loadTurnNavigatorDirectory
+                  : handleLoadTurnNavigatorDirectory
+              }
+              onLoadThroughQuery={
+                acpAgent ? acpConversation.loadOlderThrough : handleLoadOlderThrough
+              }
+              turnNavigatorDirectory={
+                acpAgent
+                  ? acpConversation.turnNavigatorDirectory
+                  : state.turnNavigatorDirectory
+              }
+              turnNavigatorLoading={
+                acpAgent ? acpConversation.turnNavigatorLoading : state.turnNavigatorLoading
+              }
               turnNavigatorDirectoryRevision={
                 acpAgent
                   ? acpConversation.turnNavigatorDirectoryRevision
