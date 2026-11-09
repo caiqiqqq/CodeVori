@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { WorkTaskScope } from "@zcode/shared";
+import type { WorkTask, WorkTaskScope } from "@zcode/shared";
 import type { useWorkTasks } from "@/hooks/useWorkTasks.js";
 import type { WorkspaceTabState } from "@/store/tabStore.js";
 import { workTaskNavigationKey } from "@/store/workTaskNavigationStore.js";
@@ -10,11 +10,13 @@ export function WorkTaskCreationEditor({
   projects,
   panel,
   onClose,
+  onCreated,
 }: {
   scope: WorkTaskScope;
   projects?: readonly WorkspaceTabState[];
   panel: ReturnType<typeof useWorkTasks>;
   onClose(): void;
+  onCreated?(task: WorkTask): void;
 }) {
   const [projectKey, setProjectKey] = useState(() => workTaskNavigationKey(scope));
   const project = projects?.find((tab) => workTaskNavigationKey(tab) === projectKey) ?? scope;
@@ -30,7 +32,7 @@ export function WorkTaskCreationEditor({
       busy={target.busy}
       error={target.error}
       onClose={onClose}
-      onSave={target.create}
+      onSave={(draft) => target.create(draft, onCreated)}
     />
   );
 }

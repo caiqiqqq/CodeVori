@@ -45,6 +45,8 @@ interface BoardStore extends Preferences {
   revealItem(item: BoardItem): void;
   setTracking(tracking: BoardTracking): void;
   includeItem(item: BoardTrackingTarget): void;
+  revealCreatedWorkTask(item: BoardTrackingTarget): void;
+  revealCreatedSession(item: BoardTrackingTarget): void;
   selectStandalone(): void;
   selectWorkTasks(): void;
 }
@@ -199,6 +201,26 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         /* 受限存储只影响显示偏好，不回写 Host。 */
       }
     };
+    const revealCreated = (item: BoardTrackingTarget, category: "all" | "work-tasks") => {
+      const tracking = get().tracking;
+      // 修复原因：自定义范围及旧筛选会遮住 Host 新建实体；只纳入回执中的精确 ID。
+      save({
+        tracking:
+          tracking.mode === "custom"
+            ? {
+                ...tracking,
+                includedItems: [...new Set([...tracking.includedItems, item.key])],
+                excludedItems: tracking.excludedItems.filter((key) => key !== item.key),
+              }
+            : tracking,
+        project: null,
+        category,
+        group: "status",
+        view: "all",
+        agent: "all",
+        search: "",
+      });
+    };
     return {
       ...initial,
       setStatusOrder: (order) => save({ statusOrder: readStatusOrder(order) }),
@@ -253,6 +275,8 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
           },
         });
       },
+      revealCreatedWorkTask: (item) => revealCreated(item, "work-tasks"),
+      revealCreatedSession: (item) => revealCreated(item, "all"),
       toggleProject: (project, defaultKeys = [], knownKeys) => {
         const saved = get().pinnedProjects ?? defaultKeys;
         const current = knownKeys ? saved.filter((key) => knownKeys.includes(key)) : saved;

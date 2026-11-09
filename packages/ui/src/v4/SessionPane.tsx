@@ -336,6 +336,12 @@ export interface SessionPaneProps {
   isDesktop?: boolean;
   provider?: ZCodeProvider;
   onSessionCreated?: (sessionId: string) => void;
+  /** 看板创建弹窗只在 ACP 首条输入获 Host 接受后关闭。 */
+  onAcpFirstInputAccepted?: (sessionId: string, agent: AcpAgent) => void;
+  /** 复用原草稿提交链路，仅呈现输入区。 */
+  draftComposerOnly?: boolean;
+  /** 宿主分支切换等前置操作在途时禁用草稿提交。 */
+  draftComposerDisabled?: boolean;
   /** deleteSession：删除当前会话后回到 draft（shell 起新草稿）。 */
   onSessionDeleted?: () => void;
   /** 壳侧只读展示投影；ACP id 不能进入原生任务命令。 */
@@ -547,6 +553,9 @@ export function SessionPane({
   isDesktop = false,
   provider,
   onSessionCreated,
+  onAcpFirstInputAccepted,
+  draftComposerOnly = false,
+  draftComposerDisabled = false,
   onAcpSessionChange,
   onAcpSessionArchived,
   suppressAcpPreferenceForDraft = false,
@@ -645,6 +654,22 @@ export function SessionPane({
     },
     acpAgent,
     handleAcpSessionArchived,
+  );
+  const handleSendAcpText = useCallback(
+    async (input: Parameters<typeof acpConversation.send>[0]) => {
+      const firstInputAgent =
+        sessionId === null && acpConversation.selected?.provisional ? acpAgent : null;
+      const acceptedId = await acpConversation.send(input);
+      if (firstInputAgent) onAcpFirstInputAccepted?.(acceptedId, firstInputAgent);
+      return acceptedId;
+    },
+    [
+      sessionId,
+      acpConversation.selected?.provisional,
+      acpConversation.send,
+      acpAgent,
+      onAcpFirstInputAccepted,
+    ],
   );
   useAcpTaskReadAcknowledgement(
     acpConversation.selected
@@ -5031,7 +5056,7 @@ export function SessionPane({
       updateComposerContent={updateComposerContent}
       createSubmissionFromComposer={createSubmissionFromComposer}
       contextHeader={visibleEmptyDraft ? draftComposerHeader : undefined}
-      centered={visibleEmptyDraft}
+      centered={visibleEmptyDraft && !draftComposerOnly}
       blockingRequestId={acpAgent ? null : blockingInteractionId}
       listenAddToChatEvents={focused && !acpAgent}
       listenWebElementContextEvents={focused}
@@ -5042,6 +5067,7 @@ export function SessionPane({
       onExternalTextInsertApplied={handleExternalTextInsertApplied}
       autoFocusEnabled={focused && !acpAgent}
       disabled={
+        draftComposerDisabled ||
         Boolean(acpAgent && acpQueueEditing.pendingId) ||
         (!acpAgent &&
           (connecting ||
@@ -5068,7 +5094,7 @@ export function SessionPane({
         acpConversation.selected?.status === "running" ||
         Boolean(acpConversation.selected?.queue?.items.some((item) => item.state === "reserved"))
       }
-      onSendAcpText={acpConversation.send}
+      onSendAcpText={handleSendAcpText}
       acpGoal={acpConversation.selected?.goal}
       onSetAcpGoal={acpConversation.setGoal}
       onDelegateTask={delegation.available ? handleOpenDelegation : undefined}
@@ -5304,7 +5330,11 @@ export function SessionPane({
     [composerScopeId, focused, readOnly, sessionId, workspaceKey],
   );
 
-  const sessionPaneContent = (
+  const sessionPaneContent = draftComposerOnly ? (
+    <div className="min-w-0" data-testid={testId(TID_V4_SESSION_PANE, paneId)}>
+      {composerNode}
+    </div>
+  ) : (
     <div
       data-testid={testId(TID_V4_SESSION_PANE, paneId)}
       data-session-id={sessionId ?? "draft"}
