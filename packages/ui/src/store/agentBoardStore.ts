@@ -201,9 +201,10 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         /* 受限存储只影响显示偏好，不回写 Host。 */
       }
     };
-    const revealCreated = (item: BoardTrackingTarget, category: "all" | "work-tasks") => {
+    const revealCreated = (item: BoardTrackingTarget) => {
       const tracking = get().tracking;
-      // 修复原因：自定义范围及旧筛选会遮住 Host 新建实体；只纳入回执中的精确 ID。
+      // 修复原因：创建回执曾重置顶部项目/分类选择，让用户从当前看板范围跳走。
+      // 只纳入回执中的精确 ID；新实体不属于当前范围时由用户主动切换顶部选择。
       save({
         tracking:
           tracking.mode === "custom"
@@ -213,8 +214,6 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
                 excludedItems: tracking.excludedItems.filter((key) => key !== item.key),
               }
             : tracking,
-        project: null,
-        category,
         group: "status",
         view: "all",
         agent: "all",
@@ -275,8 +274,8 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
           },
         });
       },
-      revealCreatedWorkTask: (item) => revealCreated(item, "work-tasks"),
-      revealCreatedSession: (item) => revealCreated(item, "all"),
+      revealCreatedWorkTask: (item) => revealCreated(item),
+      revealCreatedSession: (item) => revealCreated(item),
       toggleProject: (project, defaultKeys = [], knownKeys) => {
         const saved = get().pinnedProjects ?? defaultKeys;
         const current = knownKeys ? saved.filter((key) => knownKeys.includes(key)) : saved;
