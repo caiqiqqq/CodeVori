@@ -13,13 +13,8 @@ export function partitionDelegationTasksByTurn<
     .sort((left, right) => left.startedAt - right.startedAt);
 
   for (const task of tasks) {
-    // 修复依据：成功完成的委派只作为运行状态提示，历史记录留在 Agent 看板，
-    // 不应在父对话每次打开时重新出现。
-    if (task.status === "completed") continue;
-    if (["failed", "interrupted", "canceled"].includes(task.status)) {
-      footerTasks.push(task);
-      continue;
-    }
+    // 终态任务只保留在服务和 Agent 看板历史中，不在父对话时间线重复显示。
+    if (["completed", "failed", "interrupted", "canceled"].includes(task.status)) continue;
     if (!Number.isFinite(task.createdAt)) {
       footerTasks.push(task);
       continue;
