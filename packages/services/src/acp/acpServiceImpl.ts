@@ -35,6 +35,7 @@ import {
   summarizeAcpSession,
   acpSessionActivity,
   resolveDynamicWorkflowClientConfig,
+  DELEGATION_MAIN_AGENT_INSTRUCTION,
   type DynamicWorkflowClientConfig,
   type AcpSessionSummary,
 } from "@zcode/shared";
@@ -2096,7 +2097,7 @@ export function createAcpService(
       const delegationInstruction =
         port.provisionedMcpNames?.has("zcode-delegation") &&
         delegationRegistrations.get(session.id)?.canDelegate !== false
-          ? "用户提到委派或 @智能体时，使用 zcode-delegation 的 ListDelegationAgents / DelegateTask；保持当前主智能体，显式传递必要上下文，不复制全部历史。子任务完成只汇总，不自动继续修改、合并或推送。"
+          ? DELEGATION_MAIN_AGENT_INSTRUCTION
           : undefined;
       const workflowInstruction = /^\/workflow(?:\s|$)/i.test(prompt.text.trimStart())
         ? workflowRegistrations.has(session.id)

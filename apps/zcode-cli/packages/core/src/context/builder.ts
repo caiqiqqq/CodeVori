@@ -147,6 +147,17 @@ export class ContextBuilder {
       if (sessionGuidanceSection) {
         sections.push(sessionGuidanceSection);
       }
+      if (!isWorkflowActor && this.config.hostCapabilityGuidance?.trim()) {
+        sections.push(
+          createSection({
+            name: "Host Capability Guidance",
+            source: "session_guidance",
+            injectionTarget: "system",
+            cacheHint: "dynamic",
+            content: this.config.hostCapabilityGuidance.trim(),
+          }),
+        );
+      }
 
       // Memory
       if (this.config.memoryRoot) {

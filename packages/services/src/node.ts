@@ -2187,17 +2187,20 @@ export function createLocalServices(options: {
         workspace.remoteSessionId ||
         isDesktopAttachedRemote
       )
-        return [];
+        return { servers: [], canDelegate: false };
       const registration = await delegationMcp.register(
         { ...workspace, kind: "api", sessionId },
         createRequestId,
       );
-      if (!registration) return [];
+      if (!registration) return { servers: [], canDelegate: false };
       liveDelegationParents.set(
         liveParentKey(workspace, sessionId),
         resolveWorkspaceKey(workspace),
       );
-      return [delegationProtocolServer(registration.record)];
+      return {
+        servers: [delegationProtocolServer(registration.record)],
+        canDelegate: registration.canDelegate,
+      };
     },
     onDelegationConversationCommand: async (workspace, envelope) => {
       if (envelope.sessionId)
