@@ -76,6 +76,8 @@ try {
   await page.getByRole("button", { name: "添加凭证", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.waitFor();
+  const desktopDialogBox = await dialog.boundingBox();
+  assert.ok(desktopDialogBox && desktopDialogBox.width >= 680);
   await dialog.getByLabel("名称").fill("QA 数据库");
   await dialog.getByLabel("类型").click();
   await page.getByRole("option", { name: "数据库", exact: true }).click();
@@ -125,6 +127,12 @@ try {
 
   await page.setViewportSize({ width: 320, height: 780 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.getByRole("button", { name: "编辑", exact: true }).click();
+  const mobileDialog = page.getByRole("dialog");
+  const mobileDialogBox = await mobileDialog.boundingBox();
+  assert.ok(mobileDialogBox && mobileDialogBox.width <= 312);
+  await mobileDialog.getByRole("button", { name: "取消", exact: true }).click();
+  await mobileDialog.waitFor({ state: "detached" });
   await page.screenshot({ path: join(artifacts, "credential-vault-mobile.png"), fullPage: true });
 
   await page.getByRole("button", { name: "删除", exact: true }).click();

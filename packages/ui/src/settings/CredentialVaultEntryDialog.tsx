@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Trash2 } from "lucide-react";
+import { KeyRound, Trash2 } from "lucide-react";
 import type {
   CredentialVaultEntry,
   CredentialVaultEnvironment,
@@ -146,16 +146,16 @@ export function CredentialVaultEntryDialog({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+      <DialogContent className="max-h-[min(88dvh,720px)] w-[calc(100%-1rem)] max-w-3xl overflow-hidden p-0">
         {isDelete && mode?.kind === "delete" ? (
-          <>
-            <DialogHeader>
+          <div className="space-y-5 p-6">
+            <DialogHeader className="pr-8">
               <DialogTitle>{label("settings.credentials.confirmDeleteTitle")}</DialogTitle>
               <DialogDescription>
                 {label("settings.credentials.confirmDeleteDescription")}
               </DialogDescription>
             </DialogHeader>
-            <p className="break-words text-ui-base font-medium text-foreground">
+            <p className="break-words rounded-lg border border-border bg-surface px-3 py-2.5 text-ui-base font-medium text-foreground">
               {mode.entry.name}
             </p>
             {errorId ? <ErrorMessage label={label} errorId={errorId} /> : null}
@@ -173,122 +173,145 @@ export function CredentialVaultEntryDialog({
                 {label(removing ? "settings.credentials.deleting" : "settings.credentials.delete")}
               </Button>
             </DialogFooter>
-          </>
+          </div>
         ) : (
-          <form onSubmit={(event) => void handleSave(event)} className="space-y-4">
-            <DialogHeader>
-              <DialogTitle>
-                {label(
-                  editing ? "settings.credentials.editTitle" : "settings.credentials.addTitle",
-                )}
-              </DialogTitle>
-              <DialogDescription>{label("settings.credentials.formDescription")}</DialogDescription>
+          <form
+            onSubmit={(event) => void handleSave(event)}
+            className="flex max-h-[min(88dvh,720px)] min-h-0 flex-col"
+          >
+            <DialogHeader className="border-b border-border/70 px-6 pb-5 pt-6 pr-14">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-foreground">
+                  <KeyRound className="size-4" aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <DialogTitle>
+                    {label(
+                      editing ? "settings.credentials.editTitle" : "settings.credentials.addTitle",
+                    )}
+                  </DialogTitle>
+                  <DialogDescription className="mt-1">
+                    {label("settings.credentials.formDescription")}
+                  </DialogDescription>
+                </div>
+              </div>
             </DialogHeader>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label={label("settings.credentials.name")}>
-                <Input
-                  autoFocus
-                  required
-                  maxLength={120}
-                  value={draft.name}
-                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                />
-              </Field>
-              <Field label={label("settings.credentials.kindLabel")}>
-                <Select
-                  value={draft.kind}
-                  onValueChange={(kind) =>
-                    setDraft({ ...draft, kind: kind as CredentialVaultKind })
-                  }
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+                <Field label={label("settings.credentials.name")}>
+                  <Input
+                    autoFocus
+                    required
+                    maxLength={120}
+                    size="lg"
+                    value={draft.name}
+                    onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                  />
+                </Field>
+                <Field label={label("settings.credentials.kindLabel")}>
+                  <Select
+                    value={draft.kind}
+                    onValueChange={(kind) =>
+                      setDraft({ ...draft, kind: kind as CredentialVaultKind })
+                    }
+                  >
+                    <SelectTrigger className="h-8 w-full rounded-lg">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="server">{kindLabel("server")}</SelectItem>
+                      <SelectItem value="database">{kindLabel("database")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label={label("settings.credentials.environmentLabel")}>
+                  <Select
+                    value={draft.environment}
+                    onValueChange={(environment) =>
+                      setDraft({
+                        ...draft,
+                        environment: environment as CredentialVaultEnvironment,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="h-8 w-full rounded-lg">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ENVIRONMENTS.map((environment) => (
+                        <SelectItem key={environment} value={environment}>
+                          {environmentLabel(environment)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label={label("settings.credentials.host")}>
+                  <Input
+                    required
+                    maxLength={255}
+                    size="lg"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    value={draft.host}
+                    onChange={(event) => setDraft({ ...draft, host: event.target.value })}
+                  />
+                </Field>
+                <Field label={label("settings.credentials.port")}>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    step={1}
+                    size="lg"
+                    inputMode="numeric"
+                    value={draft.port}
+                    onChange={(event) => setDraft({ ...draft, port: event.target.value })}
+                  />
+                </Field>
+                <Field label={label("settings.credentials.username")}>
+                  <Input
+                    maxLength={255}
+                    size="lg"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    value={draft.username}
+                    onChange={(event) => setDraft({ ...draft, username: event.target.value })}
+                  />
+                </Field>
+                <Field
+                  className="sm:col-span-2"
+                  label={label("settings.credentials.workspaceIdentity")}
                 >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="server">{kindLabel("server")}</SelectItem>
-                    <SelectItem value="database">{kindLabel("database")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label={label("settings.credentials.environmentLabel")}>
-                <Select
-                  value={draft.environment}
-                  onValueChange={(environment) =>
-                    setDraft({
-                      ...draft,
-                      environment: environment as CredentialVaultEnvironment,
-                    })
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ENVIRONMENTS.map((environment) => (
-                      <SelectItem key={environment} value={environment}>
-                        {environmentLabel(environment)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label={label("settings.credentials.host")}>
-                <Input
-                  required
-                  maxLength={255}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  value={draft.host}
-                  onChange={(event) => setDraft({ ...draft, host: event.target.value })}
-                />
-              </Field>
-              <Field label={label("settings.credentials.port")}>
-                <Input
-                  type="number"
-                  min={1}
-                  max={65535}
-                  step={1}
-                  inputMode="numeric"
-                  value={draft.port}
-                  onChange={(event) => setDraft({ ...draft, port: event.target.value })}
-                />
-              </Field>
-              <Field label={label("settings.credentials.username")}>
-                <Input
-                  maxLength={255}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  value={draft.username}
-                  onChange={(event) => setDraft({ ...draft, username: event.target.value })}
-                />
-              </Field>
-              <Field label={label("settings.credentials.workspaceIdentity")}>
-                <Input
-                  maxLength={2048}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  value={draft.workspaceIdentity}
-                  onChange={(event) =>
-                    setDraft({ ...draft, workspaceIdentity: event.target.value })
-                  }
-                />
-              </Field>
-              <Field label={label("settings.credentials.secret")}>
-                <Input
-                  type="password"
-                  autoComplete="new-password"
-                  required={!editing}
-                  maxLength={16_384}
-                  value={draft.secret}
-                  placeholder={
-                    editing ? label("settings.credentials.secretPlaceholder") : undefined
-                  }
-                  onChange={(event) => setDraft({ ...draft, secret: event.target.value })}
-                />
-              </Field>
+                  <Input
+                    maxLength={2048}
+                    size="lg"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    value={draft.workspaceIdentity}
+                    onChange={(event) =>
+                      setDraft({ ...draft, workspaceIdentity: event.target.value })
+                    }
+                  />
+                </Field>
+                <Field className="sm:col-span-2" label={label("settings.credentials.secret")}>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    required={!editing}
+                    maxLength={16_384}
+                    size="lg"
+                    value={draft.secret}
+                    placeholder={
+                      editing ? label("settings.credentials.secretPlaceholder") : undefined
+                    }
+                    onChange={(event) => setDraft({ ...draft, secret: event.target.value })}
+                  />
+                </Field>
+              </div>
+              {errorId ? <ErrorMessage label={label} errorId={errorId} /> : null}
             </div>
-            {errorId ? <ErrorMessage label={label} errorId={errorId} /> : null}
-            <DialogFooter>
+            <DialogFooter className="border-t border-border/70 bg-surface/40 px-6 py-4">
               <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
                 {label("settings.credentials.cancel")}
               </Button>
@@ -303,9 +326,19 @@ export function CredentialVaultEntryDialog({
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  className,
+  label,
+  children,
+}: {
+  className?: string;
+  label: string;
+  children: ReactNode;
+}) {
   return (
-    <label className="grid min-w-0 gap-1.5 text-ui-sm font-medium text-foreground">
+    <label
+      className={`grid min-w-0 gap-1.5 text-ui-sm font-medium text-foreground ${className ?? ""}`}
+    >
       <span>{label}</span>
       {children}
     </label>
