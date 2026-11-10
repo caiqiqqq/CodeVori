@@ -9,6 +9,14 @@ export async function exerciseAgentBoardLayoutModes(page, artifacts) {
     nodes.map((node) => node.dataset.boardCard),
   );
   const firstCardHeight = (await cards.first().boundingBox()).height;
+  const columns = () =>
+    page.locator("[data-board-column]").evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const { x, y, width } = node.getBoundingClientRect();
+        return { key: node.dataset.boardColumn, x, y, width };
+      }),
+    );
+  const cardColumns = await columns();
   assert.equal(
     await switcher.getByRole("button", { name: "卡片", exact: true }).getAttribute("aria-pressed"),
     "true",
@@ -19,6 +27,7 @@ export async function exerciseAgentBoardLayoutModes(page, artifacts) {
     await cards.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardCard)),
     initialKeys,
   );
+  assert.deepEqual(await columns(), cardColumns, "compact keeps the horizontal card-column layout");
   assert.ok(
     (await cards.first().boundingBox()).height < firstCardHeight,
     "compact cards use less height",

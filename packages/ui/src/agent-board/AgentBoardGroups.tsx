@@ -37,7 +37,7 @@ export function AgentBoardGroups({
       data-testid="agent-board-columns"
     >
       {groups.map((column) => (
-        <BoardColumn key={column.key} column={column} byStatus={byStatus} layoutMode={layoutMode}>
+        <BoardColumn key={column.key} column={column} byStatus={byStatus}>
           <h2 className="mb-3 flex items-center gap-2 px-1 font-medium">
             {byStatus &&
             column.key === "running" &&
@@ -96,12 +96,10 @@ export function AgentBoardGroups({
 function BoardColumn({
   column,
   byStatus,
-  layoutMode,
   children,
 }: {
   column: BoardGroup;
   byStatus: boolean;
-  layoutMode: BoardLayoutMode;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -114,9 +112,7 @@ function BoardColumn({
       ref={setNodeRef}
       className={`${
         byStatus
-          ? layoutMode === "compact"
-            ? "flex min-h-0 w-64 shrink-0 flex-col md:max-w-80"
-            : "flex min-h-0 w-72 shrink-0 flex-col md:flex-1 md:basis-60 md:min-w-60"
+          ? "flex min-h-0 w-72 shrink-0 flex-col md:flex-1 md:basis-60 md:min-w-60"
           : "min-w-0 shrink-0"
       } rounded-lg ${isOver ? "bg-accent ring-2 ring-brand" : ""}`}
       data-board-column={column.key}
