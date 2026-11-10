@@ -660,7 +660,12 @@ export type ZCodeProtocolMcpServer = z.infer<typeof zcodeProtocolMcpServerSchema
 export const zcodeDelegationMcpRequestParamsSchema = z
   .object({ sessionId: nonEmptyString, createRequestId: nonEmptyString.optional() })
   .strict();
-export const zcodeDelegationMcpResponseSchema = z.array(zcodeProtocolMcpServerSchema).max(1);
+export const zcodeDelegationMcpResponseSchema = z
+  .object({
+    servers: z.array(zcodeProtocolMcpServerSchema).max(1),
+    canDelegate: z.boolean(),
+  })
+  .strict();
 export const zcodeIssuesMcpRequestParamsSchema = z.object({ sessionId: nonEmptyString }).strict();
 export const zcodeIssuesMcpResponseSchema = z
   .array(

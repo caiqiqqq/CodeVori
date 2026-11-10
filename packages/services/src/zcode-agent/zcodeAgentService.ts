@@ -911,7 +911,10 @@ interface CreateZCodeAgentServiceOptions extends Omit<
     workspace: ZCodeAgentWorkspaceTarget,
     sessionId: string,
     createRequestId?: string,
-  ) => Promise<import("@zcode/shared").ZCodeProtocolMcpServer[]>;
+  ) => Promise<{
+    servers: import("@zcode/shared").ZCodeProtocolMcpServer[];
+    canDelegate: boolean;
+  }>;
   resolveIssuesMcp?: (
     workspace: ZCodeAgentWorkspaceTarget,
     sessionId: string,
@@ -2399,13 +2402,12 @@ export function createZCodeAgentService(
               await client.respond(request.id, {});
               return;
             }
-            const servers =
-              (await options?.resolveDelegationMcp?.(
-                workspace,
-                parsed.data.sessionId,
-                parsed.data.createRequestId,
-              )) ?? [];
-            await client.respond(request.id, zcodeDelegationMcpResponseSchema.parse(servers));
+            const capability = (await options?.resolveDelegationMcp?.(
+              workspace,
+              parsed.data.sessionId,
+              parsed.data.createRequestId,
+            )) ?? { servers: [], canDelegate: false };
+            await client.respond(request.id, zcodeDelegationMcpResponseSchema.parse(capability));
           })().catch(() => {
             void client.respondError(request.id, {
               code: -32000,
