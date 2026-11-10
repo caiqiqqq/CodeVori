@@ -61,7 +61,9 @@ export function AgentBoardCard({
       className={
         isList
           ? "flex min-w-0 items-center rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-brand/40"
-          : "rounded-xl border border-border bg-card shadow-sm transition-colors hover:border-brand/40"
+          : isCompact
+            ? "max-w-56 rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-brand/40"
+            : "rounded-xl border border-border bg-card shadow-sm transition-colors hover:border-brand/40"
       }
       data-board-card={item.key}
     >
@@ -70,7 +72,7 @@ export function AgentBoardCard({
           isList
             ? "flex h-12 min-w-0 flex-1 items-center gap-1 overflow-hidden rounded-lg px-2 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
             : isCompact
-              ? "w-full rounded-xl p-3 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              ? "w-full rounded-lg p-2.5 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
               : "w-full rounded-xl p-4 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
         }
         onClick={onOpen}
@@ -80,7 +82,7 @@ export function AgentBoardCard({
             isList
               ? "contents"
               : isCompact
-                ? "mb-2 flex items-center justify-between gap-2 text-ui-caption text-foreground-subtle"
+                ? "mb-1.5 flex items-center justify-between gap-1.5 text-ui-caption text-foreground-subtle"
                 : "mb-3 flex items-center justify-between gap-2 text-ui-caption text-foreground-subtle"
           }
         >
@@ -150,7 +152,7 @@ export function AgentBoardCard({
           <p
             className={
               isCompact
-                ? "mt-1 line-clamp-1 text-ui-caption leading-relaxed text-foreground-subtle"
+                ? "mt-1 line-clamp-1 text-ui-caption leading-snug text-foreground-subtle"
                 : "mt-2 line-clamp-2 text-ui-caption leading-relaxed text-foreground-subtle"
             }
           >
@@ -162,7 +164,7 @@ export function AgentBoardCard({
             isList
               ? "order-4 flex min-w-0 shrink-0 items-center text-ui-caption text-foreground-subtle"
               : isCompact
-                ? "mt-2 flex items-center justify-between gap-2 text-ui-caption text-foreground-subtlest"
+                ? "mt-1.5 flex items-center justify-between gap-1.5 text-ui-caption text-foreground-subtlest"
                 : "mt-4 flex items-center justify-between gap-2 text-ui-caption text-foreground-subtlest"
           }
         >
