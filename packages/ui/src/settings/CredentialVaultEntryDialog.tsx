@@ -43,7 +43,7 @@ interface CredentialDraft {
 
 const EMPTY_DRAFT: CredentialDraft = {
   name: "",
-  kind: "server",
+  kind: "",
   environment: "test",
   host: "",
   port: "",
@@ -92,7 +92,6 @@ export function CredentialVaultEntryDialog({
 
   const environmentLabel = (environment: CredentialVaultEnvironment) =>
     label(`settings.credentials.environment.${environment}`);
-  const kindLabel = (kind: CredentialVaultKind) => label(`settings.credentials.kind.${kind}`);
   const isDelete = mode?.kind === "delete";
   const editing = mode?.kind === "edit" ? mode.entry : null;
 
@@ -209,20 +208,13 @@ export function CredentialVaultEntryDialog({
                   />
                 </Field>
                 <Field label={label("settings.credentials.kindLabel")}>
-                  <Select
+                  <Input
+                    required
+                    maxLength={80}
+                    size="lg"
                     value={draft.kind}
-                    onValueChange={(kind) =>
-                      setDraft({ ...draft, kind: kind as CredentialVaultKind })
-                    }
-                  >
-                    <SelectTrigger className="h-8 w-full rounded-lg">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="server">{kindLabel("server")}</SelectItem>
-                      <SelectItem value="database">{kindLabel("database")}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    onChange={(event) => setDraft({ ...draft, kind: event.target.value })}
+                  />
                 </Field>
                 <Field label={label("settings.credentials.environmentLabel")}>
                   <Select

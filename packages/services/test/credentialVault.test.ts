@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -157,4 +157,93 @@ test("credential vault resumes an interrupted deletion when the Host restarts", 
   assert.deepEqual(await fixture.list(), []);
   const existing = await fixture.repository.find(created.id);
   assert.equal(existing, null);
+});
+
+test("credential vault migrates legacy kinds and persists custom types", async (t) => {
+  const fixture = await createFixture(t);
+  const databasePath = join(fixture.root, ".codevori", "v2", "credential-vault.sqlite");
+  await mkdir(join(fixture.root, ".codevori", "v2"), { recursive: true });
+  const legacyDatabase = new DatabaseSync(databasePath);
+  legacyDatabase.exec(`
+    CREATE TABLE credential_vault_entries (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('server', 'database')),
+      environment TEXT NOT NULL CHECK (environment IN ('development', 'test', 'staging', 'production')),
+      host TEXT NOT NULL,
+      port INTEGER,
+      username TEXT,
+      workspace_identity TEXT,
+      secret_key TEXT NOT NULL,
+      previous_secret_key TEXT,
+      status TEXT NOT NULL CHECK (status IN ('creating', 'active', 'rotating', 'deleting')),
+      operation_owner_pid INTEGER,
+      operation_owner_started_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX credential_vault_entries_status_updated
+      ON credential_vault_entries(status, updated_at DESC);
+  `);
+  const legacyId = "11111111-1111-4111-8111-111111111111";
+  const legacySecretKey = "credential-vault:legacy";
+  legacyDatabase
+    .prepare(
+      `INSERT INTO credential_vault_entries
+       (id, name, kind, environment, host, port, username, workspace_identity,
+        secret_key, previous_secret_key, status, operation_owner_pid,
+        operation_owner_started_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      legacyId,
+      "Existing server",
+      "server",
+      "test",
+      "legacy.example.invalid",
+      22,
+      "operator",
+      null,
+      legacySecretKey,
+      null,
+      "active",
+      null,
+      null,
+      123,
+      456,
+    );
+  legacyDatabase.close();
+  await fixture.service.save(legacySecretKey, "legacy-secret");
+
+  const [legacyEntry] = await fixture.list();
+  assert.equal(legacyEntry?.id, legacyId);
+  assert.equal(legacyEntry.kind, "server");
+  assert.equal(legacyEntry.createdAt, 123);
+  assert.equal(legacyEntry.updatedAt, 456);
+  assert.equal(await fixture.service.load(legacySecretKey), "legacy-secret");
+
+  const input = {
+    name: "QA service",
+    kind: "  PostgreSQL 主库  ",
+    environment: "test" as const,
+    host: "db.qa.example.invalid",
+    port: 5432,
+    username: "qa_reader",
+    workspaceIdentity: null,
+    secret: "custom-secret",
+  };
+  const custom = await fixture.save(input);
+  assert.equal(custom.kind, "PostgreSQL 主库");
+  assert.equal((await fixture.list()).find((entry) => entry.id === custom.id)?.kind, custom.kind);
+
+  fixture.repository.close();
+  const reopened = new CredentialVaultRepository(databasePath);
+  t.after(() => reopened.close());
+  assert.equal(
+    (await reopened.listActive()).find((entry) => entry.id === custom.id)?.kind,
+    custom.kind,
+  );
+  assert.equal(await fixture.service.load(legacySecretKey), "legacy-secret");
+  await assert.rejects(fixture.save({ ...input, kind: "   " }));
+  await assert.rejects(fixture.save({ ...input, kind: "x".repeat(81) }));
 });
