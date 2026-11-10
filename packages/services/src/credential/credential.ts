@@ -17,7 +17,7 @@ export interface ICredentialService {
   deleteVaultEntry?(id: string): Promise<void>;
 }
 
-export type CredentialVaultKind = "server" | "database";
+export type CredentialVaultKind = string;
 export type CredentialVaultEnvironment = "development" | "test" | "staging" | "production";
 
 export interface CredentialVaultEntry {

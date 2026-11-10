@@ -32,7 +32,7 @@ const credentialVaultInputSchema = z
   .object({
     id: z.string().uuid().optional(),
     name: z.string().trim().min(1).max(120),
-    kind: z.enum(["server", "database"]),
+    kind: z.string().trim().min(1).max(80),
     environment: z.enum(["development", "test", "staging", "production"]),
     host: z
       .string()

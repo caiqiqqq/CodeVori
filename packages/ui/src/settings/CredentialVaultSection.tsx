@@ -45,7 +45,8 @@ export function CredentialVaultSection() {
   const openCreate = () => setDialogMode({ kind: "create" });
   const openEdit = (entry: CredentialVaultEntry) => setDialogMode({ kind: "edit", entry });
   const openDelete = (entry: CredentialVaultEntry) => setDialogMode({ kind: "delete", entry });
-  const kindLabel = (kind: CredentialVaultKind) => label(`settings.credentials.kind.${kind}`);
+  const kindLabel = (kind: CredentialVaultKind) =>
+    kind === "server" || kind === "database" ? label(`settings.credentials.kind.${kind}`) : kind;
 
   return (
     <section className="space-y-5" aria-labelledby="credential-vault-heading">
@@ -103,8 +104,10 @@ export function CredentialVaultSection() {
                 <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 text-ui-sm text-foreground-subtle">
                   {entry.kind === "database" ? (
                     <Database className="size-3.5" aria-hidden="true" />
-                  ) : (
+                  ) : entry.kind === "server" ? (
                     <Server className="size-3.5" aria-hidden="true" />
+                  ) : (
+                    <KeyRound className="size-3.5" aria-hidden="true" />
                   )}
                   <span>{kindLabel(entry.kind)}</span>
                   <span aria-hidden="true">·</span>

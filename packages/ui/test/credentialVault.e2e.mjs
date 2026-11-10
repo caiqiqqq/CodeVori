@@ -79,8 +79,7 @@ try {
   const desktopDialogBox = await dialog.boundingBox();
   assert.ok(desktopDialogBox && desktopDialogBox.width >= 680);
   await dialog.getByLabel("名称").fill("QA 数据库");
-  await dialog.getByLabel("类型").click();
-  await page.getByRole("option", { name: "数据库", exact: true }).click();
+  await dialog.getByLabel("类型").fill("PostgreSQL");
   await dialog.getByLabel("环境").click();
   await page.getByRole("option", { name: "预发布", exact: true }).click();
   await dialog.getByLabel("主机").fill("db.qa.example.invalid");
@@ -95,11 +94,12 @@ try {
   await dialog.getByRole("button", { name: "保存", exact: true }).click();
   await dialog.waitFor({ state: "detached" });
   await page.getByText("QA 数据库", { exact: true }).waitFor();
+  await page.getByText("PostgreSQL", { exact: true }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.__credentialVault.values()), {
     count: 1,
     hasActiveSecret: true,
     entryName: "QA 数据库",
-    kind: "database",
+    kind: "PostgreSQL",
     environment: "staging",
   });
   assert.doesNotMatch(await page.locator("body").innerText(), /synthetic-initial-secret/);
@@ -112,9 +112,11 @@ try {
   const editDialog = page.getByRole("dialog");
   assert.equal(await editDialog.getByLabel("密码或令牌").inputValue(), "");
   await editDialog.getByLabel("主机").fill("db.qa-updated.example.invalid");
+  await editDialog.getByLabel("类型").fill("PostgreSQL 主库");
   await editDialog.getByRole("button", { name: "保存", exact: true }).click();
   await editDialog.waitFor({ state: "detached" });
   await page.getByText("db.qa-updated.example.invalid:5432", { exact: true }).waitFor();
+  await page.getByText("PostgreSQL 主库", { exact: true }).waitFor();
   assert.equal((await page.evaluate(() => window.__credentialVault.calls)).at(-1).hasSecret, false);
 
   await page.getByRole("button", { name: "编辑", exact: true }).click();

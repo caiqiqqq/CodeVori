@@ -13,6 +13,23 @@ const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
 type CredentialVaultDatabase = InstanceType<typeof DatabaseSync>;
 
 const DATABASE_BUSY_TIMEOUT_MS = 5_000;
+const CREDENTIAL_VAULT_COLUMNS = `(
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  environment TEXT NOT NULL CHECK (environment IN ('development', 'test', 'staging', 'production')),
+  host TEXT NOT NULL,
+  port INTEGER,
+  username TEXT,
+  workspace_identity TEXT,
+  secret_key TEXT NOT NULL,
+  previous_secret_key TEXT,
+  status TEXT NOT NULL CHECK (status IN ('creating', 'active', 'rotating', 'deleting')),
+  operation_owner_pid INTEGER,
+  operation_owner_started_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+)`;
 
 interface CredentialVaultRow {
   id: string;
@@ -324,27 +341,33 @@ export class CredentialVaultRepository {
       database.exec("PRAGMA foreign_keys = ON");
       database.exec("PRAGMA journal_mode = WAL");
       database.exec("PRAGMA synchronous = NORMAL");
-      database.exec(`
-        CREATE TABLE IF NOT EXISTS credential_vault_entries (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          kind TEXT NOT NULL CHECK (kind IN ('server', 'database')),
-          environment TEXT NOT NULL CHECK (environment IN ('development', 'test', 'staging', 'production')),
-          host TEXT NOT NULL,
-          port INTEGER,
-          username TEXT,
-          workspace_identity TEXT,
-          secret_key TEXT NOT NULL,
-          previous_secret_key TEXT,
-          status TEXT NOT NULL CHECK (status IN ('creating', 'active', 'rotating', 'deleting')),
-          operation_owner_pid INTEGER,
-          operation_owner_started_at INTEGER,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
+      this.transaction(database, () => {
+        const { user_version: version } = database.prepare("PRAGMA user_version").get() as {
+          user_version: number;
+        };
+        const tableExists = database
+          .prepare(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'credential_vault_entries'",
+          )
+          .get();
+        database.exec(
+          `CREATE TABLE IF NOT EXISTS credential_vault_entries ${CREDENTIAL_VAULT_COLUMNS}`,
         );
-        CREATE INDEX IF NOT EXISTS credential_vault_entries_status_updated
-          ON credential_vault_entries(status, updated_at DESC);
-      `);
+        if (tableExists && version === 0) {
+          // 旧表的 kind CHECK 不能直接删除；事务中重建以保留所有状态和秘密引用。
+          database.exec(`
+            CREATE TABLE credential_vault_entries_new ${CREDENTIAL_VAULT_COLUMNS};
+            INSERT INTO credential_vault_entries_new SELECT * FROM credential_vault_entries;
+            DROP TABLE credential_vault_entries;
+            ALTER TABLE credential_vault_entries_new RENAME TO credential_vault_entries;
+          `);
+        }
+        database.exec(`
+          CREATE INDEX IF NOT EXISTS credential_vault_entries_status_updated
+            ON credential_vault_entries(status, updated_at DESC);
+        `);
+        if (version === 0) database.exec("PRAGMA user_version = 1");
+      });
     } catch (error) {
       database.close();
       this.database = null;
