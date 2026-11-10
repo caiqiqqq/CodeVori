@@ -431,6 +431,7 @@ export function AgentBoardView({
           layoutMode={preferences.layoutMode}
           byStatus={byStatus}
           projects={projects}
+          busy={busy}
           onOpen={(item) => {
             setSelectedKey(item.key);
             if (item.kind === "work-task") preferences.markWorkTaskResultRead(item);
@@ -440,6 +441,8 @@ export function AgentBoardView({
                 toast(t("actionFailed"));
               });
           }}
+          onOpenSession={onOpenSession}
+          onArchive={(item) => void run(item, "archive")}
           onStage={toggleStaged}
         />
         {preferences.pickerOpen ? (
@@ -509,6 +512,7 @@ export function AgentBoardView({
           container={detailContainer}
           onClose={() => setSelectedKey(null)}
           onOpenSession={onOpenSession}
+          onStage={toggleStaged}
         />
       </section>
       <DragOverlay>

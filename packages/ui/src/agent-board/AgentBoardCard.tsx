@@ -7,6 +7,7 @@ import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { BoardLayoutMode } from "@/store/agentBoardStore.js";
+import { AgentBoardSessionContextMenu } from "./AgentBoardSessionContextMenu.js";
 import {
   boardResultTimestamp,
   boardAgentLabel,
@@ -25,13 +26,19 @@ export function AgentBoardCard({
   item,
   layoutMode,
   projectLabel,
+  busy,
   onOpen,
+  onOpenSession,
+  onArchive,
   onStage,
 }: {
   item: BoardItem;
   layoutMode: BoardLayoutMode;
   projectLabel?: string;
+  busy: boolean;
   onOpen(): void;
+  onOpenSession(item: BoardItem): void;
+  onArchive(item: BoardItem): void;
   onStage(item: BoardItem): void;
 }) {
   const { intl, locale } = useZCodeIntl();
@@ -54,7 +61,7 @@ export function AgentBoardCard({
     : item.summary;
   const isList = layoutMode === "list";
   const isCompact = layoutMode === "compact";
-  return (
+  const card = (
     <article
       ref={setNodeRef}
       style={{ opacity: isDragging ? 0.4 : undefined }}
@@ -256,5 +263,17 @@ export function AgentBoardCard({
         </div>
       ) : null}
     </article>
+  );
+  if (item.kind === "work-task") return card;
+  return (
+    <AgentBoardSessionContextMenu
+      item={item}
+      busy={busy}
+      onOpenSession={onOpenSession}
+      onArchive={onArchive}
+      onStage={onStage}
+    >
+      {card}
+    </AgentBoardSessionContextMenu>
   );
 }

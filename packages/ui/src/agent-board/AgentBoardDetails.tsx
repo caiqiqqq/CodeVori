@@ -14,6 +14,7 @@ import type { BoardAction } from "@/hooks/useAgentBoardData.js";
 import type { BoardConversationOptions } from "./AgentBoardConversation.js";
 import { WorkspaceHeaderActionSection } from "@/WorkspaceHeaderSections/WorkspaceHeaderActionSection.js";
 import { AgentBoardTools, type AgentBoardWorkspaceTools } from "./AgentBoardTools.js";
+import { AgentBoardSessionContextMenu } from "./AgentBoardSessionContextMenu.js";
 const WorkTaskDetails = lazy(() =>
   import("./AgentBoardWorkTaskDetails.js").then((m) => ({ default: m.AgentBoardWorkTaskDetails })),
 );
@@ -31,6 +32,7 @@ export function AgentBoardDetails({
   container,
   onClose,
   onOpenSession,
+  onStage,
 }: {
   selected: BoardItem | undefined;
   workTasks: ReturnType<typeof useWorkTasks>;
@@ -42,6 +44,7 @@ export function AgentBoardDetails({
   container: HTMLElement | null;
   onClose(): void;
   onOpenSession(item: BoardItem): void;
+  onStage(item: BoardItem): void;
 }) {
   const { intl } = useZCodeIntl();
   const scope = useMemo(
@@ -92,22 +95,30 @@ export function AgentBoardDetails({
           {(git) => (
             <>
               <div className="flex items-start gap-2 border-b border-border p-4">
-                <div className="min-w-0 flex-1">
-                  <DialogTitle className="truncate">{selected.title}</DialogTitle>
-                  <DialogDescription className="truncate">
-                    {projects.find((p) => p.key === selected.projectKey)?.label} ·{" "}
-                    {boardAgentLabel(selected)} · {t(`status.${boardStatusIndicator(selected)}`)}
-                    {!selected.online ? ` · ${t("offline")}` : ""}
-                  </DialogDescription>
-                  {selected.workspacePurpose !== "conversation" ? (
-                    <p
-                      className="truncate text-ui-caption text-foreground-subtlest"
-                      title={selected.workspaceIdentity ?? selected.workspacePath}
-                    >
-                      {selected.workspaceIdentity ?? selected.workspacePath}
-                    </p>
-                  ) : null}
-                </div>
+                <AgentBoardSessionContextMenu
+                  item={selected}
+                  busy={busy}
+                  onOpenSession={onOpenSession}
+                  onArchive={(item) => void run(item, "archive")}
+                  onStage={onStage}
+                >
+                  <div className="min-w-0 flex-1">
+                    <DialogTitle className="truncate">{selected.title}</DialogTitle>
+                    <DialogDescription className="truncate">
+                      {projects.find((p) => p.key === selected.projectKey)?.label} ·{" "}
+                      {boardAgentLabel(selected)} · {t(`status.${boardStatusIndicator(selected)}`)}
+                      {!selected.online ? ` · ${t("offline")}` : ""}
+                    </DialogDescription>
+                    {selected.workspacePurpose !== "conversation" ? (
+                      <p
+                        className="truncate text-ui-caption text-foreground-subtlest"
+                        title={selected.workspaceIdentity ?? selected.workspacePath}
+                      >
+                        {selected.workspaceIdentity ?? selected.workspacePath}
+                      </p>
+                    ) : null}
+                  </div>
+                </AgentBoardSessionContextMenu>
                 <div
                   className="ml-auto flex shrink-0 items-center gap-1"
                   data-testid="agent-board-header-actions"
