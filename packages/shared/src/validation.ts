@@ -130,6 +130,7 @@ export const taskNotificationPayloadSchema = z.object({
     "elicitation_request",
     "feedback_update",
     "repository_issue",
+    "repository_merge_request",
   ]),
   requestId: nonEmptyStringSchema.optional(),
   title: z.string(),

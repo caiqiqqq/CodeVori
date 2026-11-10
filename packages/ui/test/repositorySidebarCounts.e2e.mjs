@@ -31,12 +31,12 @@ try {
     import {applyTheme} from '../../../ui/src/useTheme.ts';
     import '../../../ui/src/styles.css';
     applyTheme('zai-light');
-    const state:any={calls:[],listeners:{A:new Set(),B:new Set()},counts:{A:0,B:6,other:2},incomplete:false,fail:true,delay:true,pending:[],open:false};
+    const state:any={calls:[],listeners:{A:new Set(),B:new Set()},counts:{A:0,B:6,other:2},mergeRequestCounts:{A:0,B:0},incomplete:false,fail:true,delay:true,pending:[],open:false};
     const hosts:any={};
     for(const host of ['A','B'])hosts[host]={workTaskService:{
       async getRepositoryIssueSummary(input:any){
         state.calls.push({host,...input});
-        const value={pending:state.counts[host]+(host==='A'&&input.projects.some(project=>project.workspacePath==='/synthetic/other')?state.counts.other:0),checkedAt:Date.now(),incomplete:host==='A'&&state.incomplete};
+        const value={pending:state.counts[host]+(host==='A'&&input.projects.some(project=>project.workspacePath==='/synthetic/other')?state.counts.other:0),pendingMergeRequests:state.mergeRequestCounts[host],checkedAt:Date.now(),incomplete:host==='A'&&state.incomplete};
         if(state.delay){state.delay=false;await new Promise(resolve=>state.pending.push(resolve));}
         if(state.fail)throw new Error('FORGE_FORBIDDEN');
         return value;
@@ -65,6 +65,7 @@ try {
           <h1>{open?'仓库视图':'聊天视图'}</h1>
           <div className='flex flex-wrap gap-2'>
             <button onClick={()=>state.counts.A++}>新增议题</button>
+            <button onClick={()=>state.mergeRequestCounts.A++}>新增合并请求</button>
             <button onClick={state.task}>接入处理</button>
             <button onClick={()=>{state.fail=true}}>模拟失败</button>
             <button onClick={()=>{state.fail=false;repositoryIssueRefreshStore.getState().invalidate()}}>恢复</button>
@@ -143,6 +144,21 @@ try {
   await expectNoBadge();
   assert.match(await entry.getAttribute("aria-description"), /未能更新/);
   await page.getByRole("button", { name: "恢复", exact: true }).click();
+  await page.getByRole("button", { name: "新增合并请求", exact: true }).click();
+  await page.clock.runFor(60_000);
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-testid="repository-sidebar-merge-request-count"]')
+        ?.textContent === "1",
+  );
+  assert.equal(await page.getByTestId("repository-sidebar-merge-request").isVisible(), true);
+  assert.match(await entry.getAttribute("aria-description"), /1 个打开的合并请求/);
+  await page.evaluate(() => {
+    window.__counts.mergeRequestCounts.A = 0;
+    for (const listener of window.__counts.listeners.A) listener();
+  });
+  await page.clock.runFor(60_000);
+  await page.getByTestId("repository-sidebar-merge-request-count").waitFor({ state: "detached" });
   await page.getByRole("button", { name: "新增议题", exact: true }).click();
   await page.getByRole("button", { name: "新增议题", exact: true }).click();
   await page.clock.runFor(60_000);

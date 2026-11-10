@@ -47,7 +47,7 @@ import type { Event, IDisposable } from "@zcode/rpc";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IWorkTaskService {
-  /** Host 派生只读数量；议题状态归 Forge，任务关联归 WorkTaskRepo。 */
+  /** Host 派生议题及合并请求只读数量；条目状态归 Forge，任务关联归 WorkTaskRepo。 */
   getRepositoryIssueSummary(input: RepositoryIssueSummaryRequest): Promise<RepositoryIssueSummary>;
   getResultSource(input: WorkTaskResultSourceRequest): Promise<WorkTaskResultSource>;
   generateResult(input: WorkTaskResultRequest): Promise<WorkTaskResultDraft>;

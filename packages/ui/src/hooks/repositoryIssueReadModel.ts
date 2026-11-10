@@ -106,6 +106,7 @@ export interface RepositoryProjectIssueCount {
 }
 export interface RepositoryIssueCounts {
   count: number | null;
+  mergeRequestCount: number | null;
   loading: boolean;
   stale: boolean;
   partial: boolean;
@@ -152,9 +153,16 @@ export function combineRepositoryIssueReads(sources: readonly RepositoryIssueRea
           available.length || !sources.length
             ? available.reduce((sum, data) => sum + data.pending, 0)
             : null,
+        mergeRequestCount: available.some((data) => data.pendingMergeRequests !== undefined)
+          ? available.reduce((sum, data) => sum + (data.pendingMergeRequests ?? 0), 0)
+          : null,
         loading: current.some((read) => read.loading),
         stale: sources.some((source) => source.error) || current.some((read) => read.error),
-        partial: available.length < sources.length || available.some((data) => data.incomplete),
+        partial:
+          available.length < sources.length ||
+          available.some((data) => data.incomplete) ||
+          (available.some((data) => data.pendingMergeRequests !== undefined) &&
+            available.some((data) => data.pendingMergeRequests === undefined)),
         projects,
       };
       return snapshot;
