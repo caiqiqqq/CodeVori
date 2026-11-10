@@ -117,6 +117,14 @@ test("repository issue receipts dedupe windows polling a minute apart without ex
   assert.equal(emit({ status: "repository_issue" }, taskId), true);
 });
 
+test("repository merge request receipts use the same long dedupe window", () => {
+  state.windows = [windowWithFocus(false)];
+  const taskId = "repository-merge-request-repo-42";
+  assert.equal(emit({ status: "repository_merge_request" }, taskId), true);
+  notificationNow += 60_000;
+  assert.equal(emit({ status: "repository_merge_request" }, taskId), false);
+});
+
 test("native issue notification click restores the originating window and forwards stable identity", () => {
   const forwarded = [];
   state.senderWindow = {

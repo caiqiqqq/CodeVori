@@ -264,3 +264,25 @@ test("project projections preserve identities, unknown counts and stale values w
     close();
   }
 });
+
+test("merge request totals combine independently and stay unknown for legacy Hosts", async () => {
+  const known = host();
+  const unknown = host();
+  const knownRead = getRepositoryIssueReadModel(known.service, [project]);
+  const unknownRead = getRepositoryIssueReadModel(unknown.service, [{ workspacePath: "/legacy" }]);
+  const combined = combineRepositoryIssueReads([
+    { resource: knownRead, error: null },
+    { resource: unknownRead, error: null },
+  ]);
+  const close = combined.subscribe(() => {});
+  try {
+    known.requests[0]!.resolve({ ...result(2), pendingMergeRequests: 3 });
+    unknown.requests[0]!.resolve(result(5));
+    await settle();
+    assert.equal(combined.getSnapshot().count, 7);
+    assert.equal(combined.getSnapshot().mergeRequestCount, 3);
+    assert.equal(combined.getSnapshot().partial, true, "legacy Hosts leave the MR total partial");
+  } finally {
+    close();
+  }
+});

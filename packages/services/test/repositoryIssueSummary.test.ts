@@ -30,6 +30,8 @@ function fixture() {
   const statuses = new Map<string, ForgeRepositoryInfo["status"]>();
   const calls: unknown[] = [];
   const replies: Array<ForgeItemList | Error | Promise<ForgeItemList>> = [];
+  const mergeRequestCalls: unknown[] = [];
+  const mergeRequestReplies: Array<ForgeItemList | Error | Promise<ForgeItemList>> = [];
   const read = createRepositoryIssueSummary({
     now: () => now,
     tasks: (scope) => tasks.get(scope.workspacePath) ?? [],
@@ -47,8 +49,12 @@ function fixture() {
         };
       },
       async listForgeItems(input) {
-        calls.push(input);
-        const reply = replies.shift();
+        if (input.kind === "pull-request") mergeRequestCalls.push(input);
+        else calls.push(input);
+        const reply =
+          input.kind === "pull-request"
+            ? (mergeRequestReplies.shift() ?? page([]))
+            : replies.shift();
         if (reply instanceof Error) throw reply;
         assert.ok(reply, "unexpected Forge request");
         return reply;
@@ -62,6 +68,8 @@ function fixture() {
     statuses,
     calls,
     replies,
+    mergeRequestCalls,
+    mergeRequestReplies,
     advance: () => {
       now += 60_000;
     },
@@ -144,7 +152,11 @@ test("project details reuse the deduplicated repository count and keep unknown p
   assert.equal(summary.incomplete, true);
   assert.deepEqual(
     summary.projects,
-    projects.map((scope, index) => ({ ...scope, pending: index < 3 ? 1 : index === 3 ? 0 : null })),
+    projects.map((scope, index) => ({
+      ...scope,
+      pending: index < 3 ? 1 : index === 3 ? 0 : null,
+      pendingMergeRequests: index < 3 ? 0 : index === 3 ? 0 : null,
+    })),
   );
   assert.equal(f.calls.length, 3, "details reuse the same Forge IO and alias task associations");
 });
@@ -382,4 +394,69 @@ test("empty baseline rejects reopened historical issues and failed pages never a
   f.repositories.set("/other", "another-repo");
   f.replies.push(notificationPage([50]));
   assert.deepEqual((await f.read({ projects: [{ workspacePath: "/other" }] })).newIssues, []);
+});
+
+const mergeRequestPage = (numbers: number[], createdAt = new Date(2000).toISOString()) => ({
+  ...page(numbers),
+  items: numbers.map((number) => ({
+    number,
+    kind: "pull-request" as const,
+    state: "open" as const,
+    title: "Merge request " + number,
+    url: "https://forge.example.invalid/team/repo/pulls/" + number,
+    createdAt,
+  })) as ForgeItem[],
+});
+
+test("merge requests have an independent count, links and discovery baseline", async () => {
+  const f = fixture();
+  const clone = { workspacePath: "/clone" };
+  f.tasks.set("/clone", [
+    {
+      ...linked(8),
+      source: { repositoryKey: "repo", kind: "pull-request", number: 8 },
+    } as WorkTask,
+  ]);
+  f.replies.push(notificationPage([1]));
+  f.mergeRequestReplies.push(mergeRequestPage([7, 8]));
+  const first = await f.read({ projects: [project, clone] });
+  assert.equal(first.pending, 1);
+  assert.equal(first.pendingMergeRequests, 1);
+  assert.deepEqual(first.newMergeRequests, []);
+  assert.deepEqual(
+    first.projects?.map((entry) => entry.pendingMergeRequests),
+    [1, 1],
+  );
+  assert.equal(f.mergeRequestCalls.length, 1);
+  f.advance();
+  f.replies.push(notificationPage([1, 2]));
+  f.mergeRequestReplies.push(mergeRequestPage([7, 8, 9]));
+  const fresh = await f.read({ projects: [project, clone] });
+  assert.equal(fresh.pending, 2);
+  assert.equal(fresh.pendingMergeRequests, 2);
+  assert.deepEqual(
+    fresh.newIssues?.map((item) => item.number),
+    [2],
+  );
+  assert.deepEqual(
+    fresh.newMergeRequests?.map((item) => item.number),
+    [9],
+  );
+  assert.equal(fresh.newMergeRequests?.[0]?.url, "https://forge.example.invalid/team/repo/pulls/9");
+  assert.deepEqual(
+    (await f.read({ projects: [project] })).newMergeRequests,
+    fresh.newMergeRequests,
+  );
+});
+
+test("a merge request read failure preserves issue counts and marks merge requests unknown", async () => {
+  const f = fixture();
+  f.replies.push(notificationPage([1, 2]));
+  f.mergeRequestReplies.push(new Error("FORGE_NETWORK"));
+  const summary = await f.read({ projects: [project] });
+  assert.equal(summary.pending, 2);
+  assert.equal(summary.pendingMergeRequests, undefined);
+  assert.equal(summary.incomplete, true);
+  assert.equal(summary.projects?.[0]?.pending, 2);
+  assert.equal(summary.projects?.[0]?.pendingMergeRequests, null);
 });

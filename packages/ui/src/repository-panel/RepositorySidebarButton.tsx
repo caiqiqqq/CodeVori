@@ -1,4 +1,4 @@
-import { CircleDot, GitFork, TriangleAlert } from "lucide-react";
+import { CircleDot, GitFork, GitPullRequest, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/components/lib/utils.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
@@ -17,10 +17,11 @@ export function RepositorySidebarButton({
   onClick?: () => void;
 }) {
   const { intl } = useZCodeIntl();
-  const { count, loading, stale, partial } = useRepositoryIssueCounts(projects);
+  const { count, mergeRequestCount, loading, stale, partial } = useRepositoryIssueCounts(projects);
   const available = !projectsLoading && count !== null;
   // 只有已知的正数才表示有待处理议题；加载、失败或过期的 0 不应产生侧栏提醒。
   const showPending = available && count > 0;
+  const showMergeRequests = !projectsLoading && mergeRequestCount !== null && mergeRequestCount > 0;
   const title = intl.formatMessage({ id: "repositoryPanel.title" });
   const summary = intl.formatMessage(
     {
@@ -36,8 +37,15 @@ export function RepositorySidebarButton({
     },
     { count: count ?? 0 },
   );
+  const mergeRequestSummary = showMergeRequests
+    ? intl.formatMessage(
+        { id: "repositoryPanel.sidebar.mergeRequests" },
+        { count: mergeRequestCount },
+      )
+    : "";
+  const description = mergeRequestSummary ? `${summary} · ${mergeRequestSummary}` : summary;
   return (
-    <ControlHintTooltip title={summary}>
+    <ControlHintTooltip title={description}>
       <Button
         variant="ghost"
         onClick={onClick}
@@ -45,7 +53,7 @@ export function RepositorySidebarButton({
         data-testid="repository-sidebar-open"
         size="lg"
         aria-label={title}
-        aria-description={summary}
+        aria-description={description}
         aria-pressed={active}
         className={cn(
           "w-full min-w-0 justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
@@ -65,6 +73,24 @@ export function RepositorySidebarButton({
               <CircleDot data-testid="repository-sidebar-issue" className="size-3!" />
             )}
             <span data-testid="repository-sidebar-count">{count > 99 ? "99+" : count}</span>
+          </span>
+        ) : null}
+        {showMergeRequests ? (
+          <span
+            aria-hidden="true"
+            className="flex shrink-0 items-center gap-1 text-ui-xs tabular-nums text-warning"
+          >
+            {stale || partial ? (
+              <TriangleAlert
+                data-testid="repository-sidebar-merge-request-stale"
+                className="size-3!"
+              />
+            ) : (
+              <GitPullRequest data-testid="repository-sidebar-merge-request" className="size-3!" />
+            )}
+            <span data-testid="repository-sidebar-merge-request-count">
+              {mergeRequestCount > 99 ? "99+" : mergeRequestCount}
+            </span>
           </span>
         ) : null}
       </Button>

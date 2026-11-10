@@ -24,7 +24,7 @@ function shouldSuppressDuplicateTaskNotification(
   const now = Date.now();
   // 多窗口的 Host 轮询并不同步，议题不能沿用任务的三秒去重窗口。
   // Main 仅保留有界投递回执；议题新增判断仍由原 Host owner 完成。
-  if (status === "repository_issue") {
+  if (status === "repository_issue" || status === "repository_merge_request") {
     for (const [key, timestamp] of recentIssueNotificationTimestamps)
       if (now - timestamp >= ISSUE_NOTIFICATION_RETENTION_MS)
         recentIssueNotificationTimestamps.delete(key);
