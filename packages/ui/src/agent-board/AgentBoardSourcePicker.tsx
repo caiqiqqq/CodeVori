@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "zustand";
-import { MessageSquare, Star, ListTodo } from "lucide-react";
+import { Check, LayoutGrid, MessageSquare, Star, ListTodo } from "lucide-react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Button } from "@/components/ui/button.js";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
@@ -22,6 +22,29 @@ export function AgentBoardSourcePicker({
   const pinned = (preferences.pinnedProjects ?? realProjects.slice(0, 4).map((p) => p.key)).filter(
     (key) => realProjects.some((project) => project.key === key),
   );
+  // 快捷入口与侧栏从同一偏好派生选中态，失效项目也按现有规则回到“所有项目”。
+  const shortcuts = [
+    {
+      id: "allProjects",
+      icon: LayoutGrid,
+      selected:
+        preferences.category === "all" &&
+        !realProjects.some((project) => project.key === preferences.project),
+      select: () => preferences.selectProject(null),
+    },
+    {
+      id: "standalone",
+      icon: MessageSquare,
+      selected: preferences.category === "standalone",
+      select: preferences.selectStandalone,
+    },
+    {
+      id: "workTasks",
+      icon: ListTodo,
+      selected: preferences.category === "work-tasks",
+      select: preferences.selectWorkTasks,
+    },
+  ];
   const visibleProjects = realProjects.filter((p) =>
     `${p.label} ${p.key} ${p.tabs.map((tab) => tab.workspacePath).join(" ")}`
       .toLocaleLowerCase()
@@ -38,7 +61,7 @@ export function AgentBoardSourcePicker({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[85dvh] sm:max-w-xl">
+      <DialogContent className="flex max-h-[85dvh] flex-col sm:max-w-xl">
         <DialogTitle>{t("projects")}</DialogTitle>
         <DialogDescription>{t("projectLimit")}</DialogDescription>
         <input
@@ -47,42 +70,36 @@ export function AgentBoardSourcePicker({
           placeholder={t("searchProjects")}
           value={projectSearch}
           onChange={(e) => setProjectSearch(e.target.value)}
-          className="h-10 w-full rounded-lg border border-border bg-input px-3 text-mobile-input-safe md:text-ui-base"
+          className="h-10 w-full shrink-0 rounded-lg border border-border bg-input px-3 text-mobile-input-safe md:text-ui-base"
         />
+        <div
+          role="group"
+          aria-label={t("projects")}
+          className="grid shrink-0 grid-cols-1 gap-2 border-b border-border/60 pb-4 sm:grid-cols-3"
+        >
+          {shortcuts.map(({ id, icon: Icon, selected, select }) => (
+            <Button
+              key={id}
+              variant="ghost"
+              aria-pressed={selected}
+              className="relative h-auto min-h-11 min-w-0 justify-start gap-3 rounded-lg border-border/60 bg-surface py-2.5 ps-3 pe-8 text-start text-ui-caption font-medium whitespace-normal text-foreground-subtle hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-brand aria-pressed:border-border-hover aria-pressed:bg-selected aria-pressed:text-foreground sm:min-h-18 sm:flex-col sm:justify-center sm:gap-2 sm:px-2 sm:py-3 sm:text-center"
+              onClick={() => {
+                select();
+                onClose();
+              }}
+            >
+              <Icon aria-hidden="true" className="size-4" />
+              <span className="min-w-0 max-w-full">{t(id)}</span>
+              {selected ? (
+                <Check
+                  aria-hidden="true"
+                  className="absolute end-3 top-1/2 size-3 -translate-y-1/2 text-brand sm:end-2 sm:top-2 sm:translate-y-0"
+                />
+              ) : null}
+            </Button>
+          ))}
+        </div>
         <div className="min-h-0 max-h-[55dvh] overflow-y-auto">
-          <Button
-            variant="ghost"
-            className="w-full justify-start"
-            onClick={() => {
-              preferences.selectProject(null);
-              onClose();
-            }}
-          >
-            {t("allProjects")}
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full justify-start"
-            onClick={() => {
-              preferences.selectStandalone();
-              onClose();
-            }}
-          >
-            <MessageSquare className="size-4" />
-            {t("standalone")}
-          </Button>
-          <Button
-            variant="ghost"
-            className="justify-start gap-2"
-            aria-pressed={preferences.category === "work-tasks"}
-            onClick={() => {
-              preferences.selectWorkTasks();
-              onClose();
-            }}
-          >
-            <ListTodo aria-hidden="true" className="size-4 shrink-0" />
-            <span>{t("workTasks")}</span>
-          </Button>
           {visibleProjects.map((p) => (
             <div key={p.key} className="flex items-center gap-2 border-b border-border/60 py-1">
               <button
