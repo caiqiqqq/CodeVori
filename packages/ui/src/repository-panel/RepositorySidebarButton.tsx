@@ -67,31 +67,27 @@ export function RepositorySidebarButton({
             aria-hidden="true"
             className="flex shrink-0 items-center gap-1 text-ui-xs tabular-nums text-warning"
           >
-            {stale || partial ? (
-              <TriangleAlert data-testid="repository-sidebar-stale" className="size-3!" />
-            ) : (
-              <CircleDot data-testid="repository-sidebar-issue" className="size-3!" />
-            )}
+            <CircleDot data-testid="repository-sidebar-issue" className="size-3.5!" />
             <span data-testid="repository-sidebar-count">{count > 99 ? "99+" : count}</span>
           </span>
         ) : null}
         {showMergeRequests ? (
           <span
             aria-hidden="true"
-            className="flex shrink-0 items-center gap-1 text-ui-xs tabular-nums text-warning"
+            className="flex shrink-0 items-center gap-1 text-ui-xs tabular-nums text-icon-blue"
           >
-            {stale || partial ? (
-              <TriangleAlert
-                data-testid="repository-sidebar-merge-request-stale"
-                className="size-3!"
-              />
-            ) : (
-              <GitPullRequest data-testid="repository-sidebar-merge-request" className="size-3!" />
-            )}
+            <GitPullRequest data-testid="repository-sidebar-merge-request" className="size-3.5!" />
             <span data-testid="repository-sidebar-merge-request-count">
               {mergeRequestCount > 99 ? "99+" : mergeRequestCount}
             </span>
           </span>
+        ) : null}
+        {(showPending || showMergeRequests) && (stale || partial) ? (
+          <TriangleAlert
+            aria-hidden="true"
+            data-testid="repository-sidebar-stale"
+            className="size-3! shrink-0 text-warning"
+          />
         ) : null}
       </Button>
     </ControlHintTooltip>
