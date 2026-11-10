@@ -166,18 +166,22 @@ try {
         ["canceled", "已取消"],
       ]) {
         await page.evaluate((status) => window.__turnDelegation.setFirstStatus(status), status);
-        const statusRow = ["failed", "interrupted", "canceled"].includes(status)
-          ? page
-              .getByTestId("delegation-panel")
-              .getByTestId("delegation-task")
-              .filter({ hasText: "委派 first" })
-          : first;
-        await statusRow.getByText(label, { exact: true }).waitFor();
-        assert.equal(
-          await statusRow.locator("summary").count(),
-          0,
-          `${status} does not auto-open details`,
-        );
+        if (["failed", "interrupted", "canceled"].includes(status)) {
+          const terminalRow = page.getByTestId("delegation-task").filter({ hasText: "委派 first" });
+          await terminalRow.waitFor({ state: "detached" });
+          assert.equal(
+            await page.evaluate(() => window.__turnDelegation.firstStatus()),
+            status,
+            `${status} is hidden without mutating the service-owned task`,
+          );
+        } else {
+          await first.getByText(label, { exact: true }).waitFor();
+          assert.equal(
+            await first.locator("summary").count(),
+            0,
+            `${status} does not auto-open details`,
+          );
+        }
       }
       await page.evaluate(() => window.__turnDelegation.setFirstStatus("queued", false));
       await first.getByText("等待执行", { exact: true }).waitFor();
@@ -203,7 +207,7 @@ try {
     }
   }
   process.stdout.write(
-    `PASS native/delegated agent summary parity, status actions, completed-row dismissal, and turn placement at 1280/375 in both themes. Screenshots: ${shots}\n`,
+    `PASS native/delegated agent summary parity, status actions, terminal-row dismissal, and turn placement at 1280/375 in both themes. Screenshots: ${shots}\n`,
   );
 } catch (error) {
   for (const context of browser?.contexts() ?? []) {

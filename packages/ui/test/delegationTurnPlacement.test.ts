@@ -61,28 +61,30 @@ test("a completed turn does not claim a later delegation before the next turn lo
   );
 });
 
-test("successful delegations disappear while recoverable terminal tasks stay in the footer", () => {
-  const tasks = ["failed", "interrupted", "canceled"].map((status, index) => ({
+test("all terminal delegations disappear from the conversation projection", () => {
+  const terminalTasks = ["completed", "failed", "interrupted", "canceled"].map((status, index) => ({
     id: status,
-    createdAt: 151 + index,
+    createdAt: 150 + index,
     status,
   }));
-  const completed = { id: "completed", createdAt: 150, status: "completed" };
-  const allTasks = [completed, ...tasks];
-  const beforeHistory = partitionDelegationTasksByTurn(turns.slice(1), allTasks);
-  const afterHistory = partitionDelegationTasksByTurn(turns, allTasks);
-  assert.deepEqual(beforeHistory.footerTasks, tasks);
-  assert.deepEqual(afterHistory.footerTasks, tasks);
-  assert.equal(afterHistory.byTurn.has("first"), false);
+  const beforeHistory = partitionDelegationTasksByTurn(turns.slice(1), terminalTasks);
+  const afterHistory = partitionDelegationTasksByTurn(turns, terminalTasks);
+  assert.deepEqual(beforeHistory.footerTasks, []);
+  assert.deepEqual(afterHistory.footerTasks, []);
   assert.equal(afterHistory.byTurn.size, 0);
+  assert.deepEqual(
+    terminalTasks.map((task) => task.status),
+    ["completed", "failed", "interrupted", "canceled"],
+    "hiding terminal tasks does not mutate service-owned history",
+  );
 });
 
-test("a completed delegation disappears from its originating turn", () => {
+test("a terminal delegation disappears from its originating turn", () => {
   const running = [{ id: "child", createdAt: 150, status: "running" }];
-  const completed = [{ ...running[0]!, status: "completed" }];
+  const canceled = [{ ...running[0]!, status: "canceled" }];
   assert.deepEqual(partitionDelegationTasksByTurn(turns, running).byTurn.get("first"), running);
-  const afterCompletion = partitionDelegationTasksByTurn(turns, completed);
-  assert.equal(afterCompletion.byTurn.size, 0);
-  assert.deepEqual(afterCompletion.footerTasks, []);
-  assert.equal(completed[0]?.status, "completed", "hiding a row does not mutate task history");
+  const afterCancellation = partitionDelegationTasksByTurn(turns, canceled);
+  assert.equal(afterCancellation.byTurn.size, 0);
+  assert.deepEqual(afterCancellation.footerTasks, []);
+  assert.equal(canceled[0]?.status, "canceled", "hiding a row does not mutate task history");
 });
