@@ -597,6 +597,26 @@ nodes:
       - Project options wait for Git worktree relationships; same-name independent identities stay distinct.
       - Board and sidebar share one read projection and event subscription per Service and scope; Host owns task facts.
       - Source badges, conversation headers and details read only the selected task's persisted source; opening its validated external URL does not select or mutate a task.
+  - id: surface.agent-board-create
+    kind: ui-surface
+    label: Agent board entrypoints for work tasks and project conversations
+    aliases: [Agent 看板, 看板添加待办, 看板新建会话, 添加对话]
+    codeSeeds:
+      - file: packages/ui/src/agent-board/AgentBoardPanel.tsx
+        symbol: AgentBoardPanel
+      - file: packages/ui/src/agent-board/AgentBoardSourcePicker.tsx
+        symbol: AgentBoardSourcePicker
+      - file: packages/ui/src/agent-board/AgentBoardSessionEditor.tsx
+        symbol: AgentBoardSessionEditor
+      - file: packages/ui/src/hooks/useAgentBoardWorkTasks.ts
+        symbol: useAgentBoardWorkTasks
+      - file: packages/ui/src/store/agentBoardStore.ts
+        symbol: createAgentBoardStore
+    invariants:
+      - A successful Host task create returns the exact task ID for display inclusion; the board stores only visibility preferences.
+      - A new conversation is a draft until its first Host-backed send; no empty board card is fabricated.
+      - The board creates conversations in a modal through the original SessionPane composer; only an accepted exact session ID updates visibility and closes the modal.
+      - Work task creation uses only resolved executable local project scopes and the existing task editor.
   - id: surface.work-task-editor
     kind: ui-surface
     label: Work task shared composer draft, attachments and saved API or ACP configuration
@@ -871,6 +891,14 @@ edges:
   - from: capability.work-tasks
     to: surface.work-tasks-board
     type: renders-in
+    rank: must-inspect
+  - from: capability.work-tasks
+    to: surface.agent-board-create
+    type: creates-in
+    rank: must-inspect
+  - from: surface.agent-board-create
+    to: surface.work-task-editor
+    type: edits-through
     rank: must-inspect
   - from: surface.work-tasks-board
     to: surface.work-task-editor
