@@ -153,6 +153,13 @@ try {
   );
   assert.equal(await page.getByTestId("repository-sidebar-merge-request").isVisible(), true);
   assert.match(await entry.getAttribute("aria-description"), /1 个打开的合并请求/);
+  await page.getByRole("button", { name: "模拟失败", exact: true }).click();
+  await page.clock.runFor(60_000);
+  assert.equal(await page.getByTestId("repository-sidebar-merge-request").isVisible(), true);
+  assert.equal(await page.getByTestId("repository-sidebar-issue").count(), 0);
+  assert.equal(await page.getByTestId("repository-sidebar-stale").count(), 1);
+  await page.screenshot({ path: join(artifacts, "merge-request-stale-light.png") });
+  await page.getByRole("button", { name: "恢复", exact: true }).click();
   await page.evaluate(() => {
     window.__counts.mergeRequestCounts.A = 0;
     for (const listener of window.__counts.listeners.A) listener();
@@ -164,6 +171,22 @@ try {
   await page.clock.runFor(60_000);
   await expectCount(2);
   assert.equal(await page.getByTestId("repository-sidebar-issue").isVisible(), true);
+  await page.getByRole("button", { name: "新增合并请求", exact: true }).click();
+  await page.clock.runFor(60_000);
+  await page.getByTestId("repository-sidebar-merge-request-count").waitFor();
+  const issueColor = await page
+    .getByTestId("repository-sidebar-issue")
+    .evaluate((icon) => getComputedStyle(icon).color);
+  const mergeRequestColor = await page
+    .getByTestId("repository-sidebar-merge-request")
+    .evaluate((icon) => getComputedStyle(icon).color);
+  assert.notEqual(issueColor, mergeRequestColor, "item types have distinct accent colors");
+  await page.evaluate(() => {
+    window.__counts.mergeRequestCounts.A = 0;
+    for (const listener of window.__counts.listeners.A) listener();
+  });
+  await page.clock.runFor(60_000);
+  await page.getByTestId("repository-sidebar-merge-request-count").waitFor({ state: "detached" });
   await page.getByRole("button", { name: "切换项目加载", exact: true }).click();
   await expectNoBadge();
   await page.getByRole("button", { name: "切换项目加载", exact: true }).click();
@@ -184,6 +207,8 @@ try {
   await page.getByRole("button", { name: "模拟失败", exact: true }).click();
   await page.clock.runFor(60_000);
   await page.getByTestId("repository-sidebar-stale").waitFor();
+  assert.equal(await page.getByTestId("repository-sidebar-issue").isVisible(), true);
+  assert.equal(await page.getByTestId("repository-sidebar-stale").count(), 1);
   assert.equal(await badge.textContent(), "2");
   assert.match(await entry.getAttribute("aria-description"), /未能更新/);
   await page.getByRole("button", { name: "恢复", exact: true }).click();
@@ -224,6 +249,18 @@ try {
     getComputedStyle(document.querySelector("main")).color,
   ]);
   assert.equal(colors[0], colors[1], "entry uses the same readable foreground as the dark surface");
+  await page.evaluate(() => {
+    window.__counts.mergeRequestCounts.A = 1;
+    for (const listener of window.__counts.listeners.A) listener();
+  });
+  await page.clock.runFor(60_000);
+  await page.getByTestId("repository-sidebar-merge-request-count").waitFor();
+  await page.screenshot({ path: join(artifacts, "issue-and-merge-request-mobile-dark.png") });
+  await page.evaluate(() => {
+    window.__counts.mergeRequestCounts.A = 0;
+    for (const listener of window.__counts.listeners.A) listener();
+  });
+  await page.clock.runFor(60_000);
   await page.screenshot({ path: join(artifacts, "mobile-dark.png") });
   await page.setViewportSize({ width: 1120, height: 700 });
   // 当前项目没有议题时，其他项目的议题仍须显示；项目/Host 的失败不能清空成功部分。
@@ -234,6 +271,7 @@ try {
   await page.getByRole("button", { name: "部分项目不可用", exact: true }).click();
   await expectCount(2);
   assert.equal(await page.getByTestId("repository-sidebar-stale").isVisible(), true);
+  assert.equal(await page.getByTestId("repository-sidebar-issue").isVisible(), true);
   assert.match(await entry.getAttribute("aria-description"), /Some projects are unavailable/);
   await page.getByRole("button", { name: "全部项目恢复", exact: true }).click();
   await page.waitForFunction(
