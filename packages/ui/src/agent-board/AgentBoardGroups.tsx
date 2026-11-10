@@ -27,6 +27,9 @@ export function AgentBoardGroups({
 }) {
   // 项目分区只由当前可见会话构成；待办所属项目不能再占一个空列。
   const groups = byStatus ? columns : columns.filter((column) => column.items.length > 0);
+  // 紧凑模式用小卡片网格提高横向密度，状态列本身仍沿用卡片布局宽度。
+  const compactGrid =
+    "grid grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] content-start gap-2";
   return (
     <div
       className={
@@ -69,10 +72,12 @@ export function AgentBoardGroups({
                 ? byStatus
                   ? "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pb-4"
                   : "flex min-w-0 flex-col gap-1.5"
-                : byStatus
-                  ? "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-4"
-                  : layoutMode === "compact"
-                    ? "grid grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),20rem))] gap-2"
+                : layoutMode === "compact"
+                  ? byStatus
+                    ? `${compactGrid} min-h-0 flex-1 overflow-y-auto pb-4`
+                    : compactGrid
+                  : byStatus
+                    ? "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-4"
                     : "grid grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),24rem))] gap-3"
             }
           >

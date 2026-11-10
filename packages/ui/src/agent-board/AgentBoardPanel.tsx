@@ -286,10 +286,15 @@ export function AgentBoardView({
               {(["cards", "compact", "list"] as const).map((mode) => (
                 <Button
                   key={mode}
-                  variant={preferences.layoutMode === mode ? "secondary" : "ghost"}
+                  variant="ghost"
                   size="sm"
                   aria-pressed={preferences.layoutMode === mode}
                   title={t("layoutMode." + mode)}
+                  className={
+                    preferences.layoutMode === mode
+                      ? "border border-brand bg-brand font-semibold text-foreground-inverse shadow-sm hover:bg-brand hover:text-foreground-inverse"
+                      : "text-foreground-subtle"
+                  }
                   onClick={() => preferences.setLayoutMode(mode)}
                 >
                   {mode === "list" ? (
