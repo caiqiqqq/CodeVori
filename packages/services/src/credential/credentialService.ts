@@ -14,6 +14,10 @@ import {
 } from "./providers/credentialCipherProvider.js";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { getAppConfigDir } from "../paths.js";
+import {
+  projectCredentialReferences,
+  type CredentialReferenceReader,
+} from "./credentialReferences.js";
 
 /**
  * 凭据存储路径
@@ -125,6 +129,16 @@ export function createCredentialService(
         await writeAll(credentialsFile, creds);
       });
       dependencies.onDidMutate?.({ operation: "delete", key: validatedKey });
+    },
+  };
+}
+
+/** Host-only metadata reader; ACP receives the projection and never sees storage keys or values. */
+export function createCredentialReferenceReader(): CredentialReferenceReader {
+  return {
+    async list() {
+      // 中文依据：仅投影 key 名，不解密或复制凭据值，避免把秘密带入 ACP 上下文。
+      return projectCredentialReferences(Object.keys(await readAll()));
     },
   };
 }
