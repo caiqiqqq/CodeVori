@@ -31,6 +31,8 @@ export function AgentBoardCard({
   onOpenSession,
   onArchive,
   onStage,
+  onRename,
+  onMarkUnread,
 }: {
   item: BoardItem;
   layoutMode: BoardLayoutMode;
@@ -40,6 +42,8 @@ export function AgentBoardCard({
   onOpenSession(item: BoardItem): void;
   onArchive(item: BoardItem): void;
   onStage(item: BoardItem): void;
+  onRename(item: BoardItem, title: string): Promise<void>;
+  onMarkUnread(item: BoardItem): void;
 }) {
   const { intl, locale } = useZCodeIntl();
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
@@ -272,6 +276,8 @@ export function AgentBoardCard({
       onOpenSession={onOpenSession}
       onArchive={onArchive}
       onStage={onStage}
+      onRename={onRename}
+      onMarkUnread={onMarkUnread}
     >
       {card}
     </AgentBoardSessionContextMenu>

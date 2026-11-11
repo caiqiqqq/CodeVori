@@ -25,7 +25,6 @@ export function GroupedTaskContextMenuContent({
   onMarkTaskAsUnread,
   onOpenTaskPathInFileManager,
   onCopyText,
-  onOpenTaskFeedback,
   disabledReason,
 }: {
   task: ZCodeTaskMeta;
@@ -44,7 +43,6 @@ export function GroupedTaskContextMenuContent({
   onMarkTaskAsUnread: (task: ZCodeTaskMeta) => void;
   onOpenTaskPathInFileManager: () => void;
   onCopyText: (label: string, text: string | null) => void;
-  onOpenTaskFeedback: () => void;
   disabledReason?: string;
 }) {
   return (
@@ -172,10 +170,6 @@ export function GroupedTaskContextMenuContent({
         }
       >
         {intl.formatMessage({ id: "appHeader.copySessionId" })}
-      </ContextMenuItem>
-      <ContextMenuSeparator />
-      <ContextMenuItem onSelect={onOpenTaskFeedback}>
-        {intl.formatMessage({ id: "taskList.feedback" })}
       </ContextMenuItem>
     </ContextMenuContent>
   );

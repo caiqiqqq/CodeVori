@@ -3,7 +3,10 @@ import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { agentBoardFixture } from "./agentBoardFixture.mjs";
-import { exerciseAgentBoardSessionContextMenu } from "./agentBoardSessionContextMenuScenario.mjs";
+import {
+  exerciseAgentBoardSessionContextMenu,
+  exerciseAgentBoardSessionMenuActions,
+} from "./agentBoardSessionContextMenuScenario.mjs";
 
 const renderer = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__agent-board-context-menu-${process.pid}`;
@@ -27,6 +30,7 @@ try {
       "/Users/caiqi/Library/Caches/ms-playwright/chromium-1217/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
   });
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, locale: "zh-CN" });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin });
   await page.route("**/v4/SessionPane.tsx*", (route) =>
     route.fulfill({
       contentType: "application/javascript",
@@ -50,9 +54,10 @@ try {
   await page.getByRole("heading", { name: "Agent 看板", exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll("[data-board-card]").length === 25);
   await exerciseAgentBoardSessionContextMenu(page, screenshotPath);
+  await exerciseAgentBoardSessionMenuActions(page);
   assert.equal(await page.getByRole("dialog").count(), 0, "right-click must not open details");
   console.log(
-    `PASS: session card/detail context menus stage/unstage, navigation, archive and restore; screenshot: ${screenshotPath}`,
+    `PASS: session card/detail menus, rename, unread, copy, stage, navigation and archive; screenshot: ${screenshotPath}`,
   );
 } finally {
   await browser?.close();

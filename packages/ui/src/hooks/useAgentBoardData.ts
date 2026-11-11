@@ -36,6 +36,14 @@ export function useAgentBoardProjects(workspaceTabs: WorkspaceTabState[]) {
   );
 }
 export type BoardAction = "archive";
+function nativeAddress(item: Extract<BoardItem, { kind: "native" }>) {
+  return {
+    taskId: item.task.taskId,
+    workspacePath: item.workspacePath,
+    ...(item.workspaceIdentity ? { workspaceIdentity: item.workspaceIdentity } : {}),
+    ...(item.remoteSessionId ? { remoteSessionId: item.remoteSessionId } : {}),
+  };
+}
 export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
   const services = useBaseWorkspaceServices();
   const sessionsById = useRemoteWorkspaceSessionStore((s) => s.sessionsById);
@@ -193,12 +201,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
       if (item.kind === "native") {
         if (!services.windowControllerService) throw new Error("Window Controller unavailable");
         await services.windowControllerService.mutateTask({
-          address: {
-            taskId: item.task.taskId,
-            workspacePath: item.workspacePath,
-            ...(item.workspaceIdentity ? { workspaceIdentity: item.workspaceIdentity } : {}),
-            ...(item.remoteSessionId ? { remoteSessionId: item.remoteSessionId } : {}),
-          },
+          address: nativeAddress(item),
           mutation: { kind: action, archived: !item.archived },
         });
         await refresh();
@@ -216,6 +219,65 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
     },
     [services, lookup, refresh],
   );
+  const rename = useCallback(
+    async (item: BoardItem, title: string) => {
+      if (item.kind === "work-task" || !item.online) throw new Error("Session unavailable");
+      const nextTitle = title.trim();
+      if (!nextTitle || nextTitle.length > 200) throw new Error("Invalid session title");
+      const target = lookup.get(boardWorkspaceKey(item));
+      if (!target) throw new Error("Workspace unavailable");
+      if (item.kind === "native") {
+        await target.services.zcodeTaskService.renameTask({
+          taskId: item.task.taskId,
+          workspacePath: item.workspacePath,
+          ...(item.workspaceIdentity ? { workspaceIdentity: item.workspaceIdentity } : {}),
+          title: nextTitle,
+        });
+        await refresh();
+      } else {
+        await target.services.acpService.updateRow({
+          id: item.session.id,
+          workspacePath: item.workspacePath,
+          workspaceIdentity: item.workspaceIdentity,
+          remoteSessionId: target.remoteSessionId,
+          action: { kind: "rename", title: nextTitle },
+        });
+      }
+    },
+    [lookup, refresh],
+  );
+  const markUnread = useCallback(
+    async (item: BoardItem) => {
+      if (
+        item.kind === "work-task" ||
+        !item.online ||
+        item.archived ||
+        (item.status !== "completed" && item.status !== "error")
+      )
+        throw new Error("Session cannot be marked unread");
+      const unreadAt = item.kind === "native" ? item.task.unreadAt : item.session.unreadAt;
+      if (typeof unreadAt === "number" && unreadAt > 0) return;
+      if (item.kind === "native") {
+        if (!services.windowControllerService) throw new Error("Window Controller unavailable");
+        await services.windowControllerService.mutateTask({
+          address: nativeAddress(item),
+          mutation: { kind: "mark-unread" },
+        });
+        await refresh();
+      } else {
+        const target = lookup.get(boardWorkspaceKey(item));
+        if (!target) throw new Error("Workspace unavailable");
+        await target.services.acpService.updateRow({
+          id: item.session.id,
+          workspacePath: item.workspacePath,
+          workspaceIdentity: item.workspaceIdentity,
+          remoteSessionId: target.remoteSessionId,
+          action: { kind: "unread", unread: true },
+        });
+      }
+    },
+    [services.windowControllerService, lookup, refresh],
+  );
   const acknowledgeRead = useCallback(
     async (item: BoardItem) => {
       if (item.kind === "work-task" || !item.online || item.archived) return;
@@ -224,12 +286,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
       if (item.kind === "native") {
         if (!services.windowControllerService) throw new Error("Window Controller unavailable");
         await services.windowControllerService.mutateTask({
-          address: {
-            taskId: item.task.taskId,
-            workspacePath: item.workspacePath,
-            ...(item.workspaceIdentity ? { workspaceIdentity: item.workspaceIdentity } : {}),
-            ...(item.remoteSessionId ? { remoteSessionId: item.remoteSessionId } : {}),
-          },
+          address: nativeAddress(item),
           mutation: { kind: "mark-read", expectedUnreadAt: unreadAt },
         });
         await refresh();
@@ -254,6 +311,8 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
       lookup.has(boardWorkspaceKey(tab)) && tab.availability !== "unavailable-local-directory",
     items,
     mutate,
+    rename,
+    markUnread,
     acknowledgeRead,
     refresh,
     loading:

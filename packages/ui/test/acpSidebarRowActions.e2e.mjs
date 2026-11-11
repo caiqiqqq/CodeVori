@@ -134,7 +134,6 @@ try {
     "复制日志路径",
     "复制会话 ID",
     "查看调用轨迹",
-    "反馈问题",
   ]);
   await command("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
   await command("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
