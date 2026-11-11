@@ -349,12 +349,54 @@ test("navigator outline keeps full query directory without retaining older body 
   }
 });
 
+test("body pagination does not restart a concurrent navigator directory scan", async () => {
+  const f = fixture();
+  const rows = Array.from({ length: 150 }, (_, index) => [
+    { ...userRow(index * 2 + 1), turnId: `turn-${index}` },
+    { ...textRow(index * 2 + 2), turnId: `turn-${index}` },
+  ]).flat();
+  f.setRows(rows, 60);
+  const { store, close } = await f.open();
+  const rowsRange = f.transport.rowsRange;
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let calls = 0;
+  f.transport.rowsRange = async (params) => {
+    calls++;
+    if (calls === 1) await gate;
+    return rowsRange(params);
+  };
+  try {
+    const directory = store.loadTurnNavigatorDirectory();
+    assert.equal(calls, 1);
+    await store.loadOlder();
+    assert.equal(store.getState().snapshot!.rows.window.length, 120);
+    release();
+    assert.equal((await directory).status, "hydrated");
+    const state = store.getState();
+    assert.equal(calls, 3, "the directory keeps its original scan cursor");
+    assert.equal(state.turnNavigatorDirectory.length, 90);
+    assert.ok(
+      state.turnNavigatorDirectory.every(
+        (entry) => entry.rowId < state.snapshot!.rows.window[0]!.rowId,
+      ),
+    );
+  } finally {
+    release();
+    await close();
+  }
+});
+
 test("stale navigator outline is discarded after a branch snapshot", async () => {
   const f = fixture();
   const { store, close } = await f.open();
   const rowsRange = f.transport.rowsRange;
   let release = () => {};
-  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   f.transport.rowsRange = async (params) => {
     await gate;
     return rowsRange(params);
