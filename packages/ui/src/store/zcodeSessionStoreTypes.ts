@@ -213,6 +213,8 @@ export interface WorkspaceZCodeUIState {
   taskListCache: ZCodeTaskMeta[] | null;
   /** 新建草稿时递增，驱动输入框在切到草稿态后主动聚焦 */
   draftFocusVersion: number;
+  /** 仅显式新建会话时递增，驱动 composer 丢弃可复用草稿 scope 的旧内存正文。 */
+  composerDraftResetVersion: number;
 }
 
 export interface ZCodeSessionStoreState {
@@ -267,6 +269,7 @@ export interface ZCodeSessionStoreState {
     options?: {
       groupedDraftPlacement?: GroupedDraftTaskPlacement;
       createSource?: SessionCreateSource;
+      resetComposerDraft?: boolean;
     },
   ) => void;
   clearGroupedDraftTask: (workspacePath: string, workspaceIdentity?: string) => void;
@@ -549,6 +552,7 @@ export function createDefaultWorkspaceState(
     taskListVersion: 0,
     taskListCache: null,
     draftFocusVersion: 0,
+    composerDraftResetVersion: 0,
   };
 }
 

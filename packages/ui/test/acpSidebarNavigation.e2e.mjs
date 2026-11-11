@@ -86,11 +86,17 @@ async function waitFor(predicate) {
   }
   throw new Error("ACP sidebar state did not settle");
 }
+async function enterComposerText(text) {
+  await evaluate(`document.querySelector('[data-testid="v4-composer-input"]')?.focus()`);
+  await command("Input.insertText", { text });
+  return waitFor((value) => value.draft === text);
+}
 try {
   const initial = await evaluate(state);
   assert.equal(initial.draft, "", "Only inspect an empty user draft");
   assert.ok(initial.model && !initial.model.startsWith("acp:"), "Start on an API draft");
   assert.ok(await evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`));
+  await enterComposerText("unsent root draft");
   const title = await evaluate(
     `document.querySelector(${JSON.stringify(row)})?.querySelector('[title]')?.getAttribute('title')`,
   );
@@ -105,9 +111,17 @@ try {
   assert.equal(opened.composerCount, 1);
   await evaluate(`document.querySelector('[data-testid="conversation-new-task"]').click()`);
   const draft = await waitFor((value) => value.model === initial.model && !value.selected);
-  assert.equal(draft.draft, "");
+  assert.equal(draft.draft, "", "New Task clears the saved root draft body");
   await selectAgent();
   await waitFor((value) => value.model === `acp:${agent}`);
+  await enterComposerText("unsent ACP preconnection draft");
+  await evaluate(`document.querySelector('[data-testid="conversation-new-task"]').click()`);
+  await waitFor((value) => value.model === initial.model && !value.selected);
+  await selectAgent();
+  const resetAcpDraft = await waitFor(
+    (value) => value.model === `acp:${agent}` && value.draft === "",
+  );
+  assert.equal(resetAcpDraft.turns, 0);
   await delay(1000);
   const fresh = await evaluate(state);
   assert.equal(fresh.selected, null, "Model switching cannot select a saved sidebar row");
@@ -143,7 +157,7 @@ try {
     await waitFor((value) => value.nativeSession === nativeId && !value.selected);
   }
   process.stdout.write(
-    "PASS: saved ACP row → New Task → Agent selection stays empty → repeated New Task stays empty → saved row restores, one composer.\n",
+    "PASS: root and ACP unsent drafts clear on New Task; saved history restores and ACP remains empty after repeated starts.\n",
   );
 } finally {
   await evaluate(`document.querySelector('[data-testid="conversation-new-task"]')?.click()`);

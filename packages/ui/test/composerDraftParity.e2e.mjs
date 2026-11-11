@@ -17,16 +17,17 @@ try {
     `
 import React,{useState} from 'react';import {createRoot} from 'react-dom/client';
 import {useDraftConfigControl} from '../../../ui/src/v4/composer/useDraftConfigControl.ts';
-import {persistV4ComposerDraft} from '../../../ui/src/v4/composer/composerDraftStore.ts';
+import {clearV4NewConversationDraftContent,persistV4ComposerDraft} from '../../../ui/src/v4/composer/composerDraftStore.ts';
 import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
 import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
 import {TabStoreProvider} from '../../../ui/src/store/TabStoreProvider.tsx';
 const services:any={settingService:{get:async()=>({})},broadcastService:{onMessage:()=>({dispose(){}})}};
 const selection={providerId:'fixture',modelId:'one'};
 for(const w of ['/fixture-a','/fixture-b'])for(const scope of ['__draft__','session-1'])persistV4ComposerDraft(w,undefined,scope,{text:'',mode:'build',modelSelection:selection});
-function Fixture(){const [workspace,setWorkspace]=useState('/fixture-a');const [session,setSession]=useState<string|null>(null);
- const c=useDraftConfigControl({workspacePath:workspace,sessionId:session,modelSelectionService:null,agentStartupAllowed:false});
- const api:any=window.__draftTest??={};api.control=c;api.switch=(w,s)=>{setWorkspace(w);setSession(s)};api.capture=()=>{api.ack=c.captureAcceptedModelSelection({providerId:'fixture',modelId:'auto'})};api.editLater=()=>{api.staleEdit=c.updateComposerContent};
+for(const scope of ['acp-draft:workspace-main:codex','acp-draft:pane-2:codex'])persistV4ComposerDraft('/fixture-a',undefined,scope,{text:scope.includes('pane-2')?'other pane draft':'ACP preconnection draft',mode:'build',modelSelection:selection});
+function Fixture(){const [workspace,setWorkspace]=useState('/fixture-a');const [session,setSession]=useState<string|null>(null);const [composerScope,setComposerScope]=useState<string|undefined>();const [resetVersion,setResetVersion]=useState(0);
+ const c=useDraftConfigControl({workspacePath:workspace,sessionId:session,composerScopeId:composerScope,composerDraftResetVersion:resetVersion,modelSelectionService:null,agentStartupAllowed:false});
+ const api:any=window.__draftTest??={};api.control=c;api.switch=(w,s,scope)=>{setWorkspace(w);setSession(s);setComposerScope(scope)};api.reset=()=>{clearV4NewConversationDraftContent(workspace);setResetVersion(v=>v+1)};api.capture=()=>{api.ack=c.captureAcceptedModelSelection({providerId:'fixture',modelId:'auto'})};api.editLater=()=>{api.staleEdit=c.updateComposerContent};
  return <><input aria-label="draft" value={c.composerDraft.text} onChange={e=>c.updateComposerContent({text:e.target.value})}/><output>{c.composerDraft.modelSelection?.modelId}</output><button onClick={()=>c.handleDraftSelectModel('fixture','two')}>Model two</button></>;
 }
 createRoot(document.getElementById('root')!).render(<PlatformProvider platform={{onSettingsChanged:()=>()=>{}} as any}><ServiceProvider services={services}><TabStoreProvider><Fixture/></TabStoreProvider></ServiceProvider></PlatformProvider>);
@@ -65,11 +66,25 @@ createRoot(document.getElementById('root')!).render(<PlatformProvider platform={
     );
     await page.evaluate(() => window.__draftTest.switch("/fixture-b", null));
     await page.waitForFunction(() => document.querySelector("input").value === "workspace B root");
+    await page.evaluate(() => window.__draftTest.reset());
+    await page.waitForFunction(() => document.querySelector("input").value === "");
+    assert.equal(await page.locator("output").innerText(), "one");
+    await page.evaluate(() => window.__draftTest.switch("/fixture-a", null, "acp-draft:workspace-main:codex"));
+    await page.waitForFunction(() => document.querySelector("input").value === "ACP preconnection draft");
+    await page.evaluate(() => window.__draftTest.reset());
+    await page.waitForFunction(() => document.querySelector("input").value === "");
+    assert.equal(await page.locator("output").innerText(), "one");
+    await page.evaluate(() => window.__draftTest.switch("/fixture-a", null, "acp-draft:pane-2:codex"));
+    await page.waitForFunction(() => document.querySelector("input").value === "other pane draft");
+    await page.evaluate(() => window.__draftTest.switch("/fixture-b", "session-1"));
+    await input.fill("session draft survives reset");
+    await page.evaluate(() => window.__draftTest.reset());
+    assert.equal(await input.inputValue(), "session draft survives reset");
     assert.deepEqual(errors, []);
     await page.close();
   }
   console.log(
-    "PASS: model change and stale accepted ACK preserve input, project/new-task scopes restore independent text/model, stale editor callbacks cannot cross scopes, 1280/375px.",
+    "PASS: explicit new conversation clears root and primary ACP draft bodies, preserves model/sessions/other panes, and keeps workspace draft scopes independent, 1280/375px.",
   );
 } finally {
   await browser?.close();
