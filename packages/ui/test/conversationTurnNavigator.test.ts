@@ -4,6 +4,7 @@ import {
   buildConversationTurnNavigatorItems,
   resolveConversationTurnNavigatorActiveQueryRowId as resolve,
 } from "../src/v4/conversationTurnNavigatorHelpers.ts";
+import { shouldTriggerLoadOlder } from "../src/v4/timelineScrollAnchor.ts";
 
 const positions = [
   { rowId: 10, start: 1030, end: 1080 },
@@ -75,8 +76,29 @@ test("unloaded directory items stay lightweight and do not claim a virtual body 
       { rowId: 2, turnId: "turn-2", userText: "older" },
     ],
   );
-  assert.deepEqual(items.map((item) => item.rowId), [2, 5]);
+  assert.deepEqual(
+    items.map((item) => item.rowId),
+    [2, 5],
+  );
   assert.ok(items.every((item) => item.unitIndex === -1));
   assert.ok(items.every((item) => item.userPreview.length <= 220));
   assert.ok(items.every((item) => item.assistantPreview.length <= 220));
+});
+
+test("history prefetch consumes user scroll intent but ignores layout scroll", () => {
+  const nearTop = {
+    scrollTop: 100,
+    triggerPx: 800,
+    canLoadOlder: true,
+    loadingOlder: false,
+    userInitiated: false,
+    restoringScroll: false,
+  };
+  assert.equal(shouldTriggerLoadOlder(nearTop), false);
+  assert.equal(shouldTriggerLoadOlder({ ...nearTop, userInitiated: true }), true);
+  assert.equal(shouldTriggerLoadOlder({ ...nearTop, restoringScroll: true }), true);
+  assert.equal(
+    shouldTriggerLoadOlder({ ...nearTop, userInitiated: true, loadingOlder: true }),
+    false,
+  );
 });

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- 同一 E2E fixture 复用会话状态验证目录、补页及附件交互。 */
 // Desktop Vite renderer + real SessionPane/Timeline; fake Host, no user history or model calls.
 // ZCODE_E2E_VITE_URL=http://localhost:5174 node packages/ui/test/acpTurnNavigator.e2e.mjs
 import assert from "node:assert/strict";
@@ -8,7 +9,11 @@ import { chromium } from "playwright-core";
 import { exerciseAcpAttachmentLatency } from "./acpAttachmentLatencyAssertions.mjs";
 import { createAcpAttachmentLayoutAssertions } from "./acpAttachmentLayoutAssertions.mjs";
 import { createTurnNavigatorAssertions } from "./conversationTurnNavigatorAssertions.mjs";
-import { exerciseOlderNavigatorQuery } from "./conversationTurnNavigatorHistoryAssertions.mjs";
+import {
+  assertProgrammaticScrollKeepsTailWindow,
+  assertUserScrollLoadsOnePage,
+  exerciseOlderNavigatorQuery,
+} from "./conversationTurnNavigatorHistoryAssertions.mjs";
 import { exerciseBoardTurnNavigator } from "./agentBoardTurnNavigatorScenario.mjs";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
@@ -231,6 +236,7 @@ try {
   assert.equal(await timeline.getAttribute("data-total-row-count"), String(fixtureTurnCount * 3));
   // Earlier turns start outside the timeline's virtualized window.
   assert.equal(await timeline.locator('[data-row-id="2"]').count(), 0);
+  if (longDirectoryOnly) await assertUserScrollLoadsOnePage({ page, timeline });
   await exerciseOlderNavigatorQuery({
     page,
     rail,
@@ -316,6 +322,7 @@ try {
     await page.evaluate(() => window.__turnNavigator.open("codex", 96, true, false, true));
     await directory(96);
     await activeQuery(95);
+    await assertProgrammaticScrollKeepsTailWindow({ page, timeline });
     assert.equal(await rail.evaluate((element) => element.firstElementChild.scrollTop > 0), true);
     await page.screenshot({ path: join(artifacts, "navigator-bottom-long-directory.png") });
     await page.evaluate(() => window.__turnNavigator.reopen());
