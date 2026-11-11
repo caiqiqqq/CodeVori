@@ -1,3 +1,5 @@
+import type { CredentialVaultServerReference } from "./credentialVaultHostAccess.js";
+
 export interface CredentialReference {
   alias: string;
   label: string;
@@ -107,7 +109,10 @@ export function projectCredentialReferences(keys: readonly string[]): Credential
   return { references, otherStoredCredentialCount };
 }
 
-export function credentialReferencePromptContext(snapshot: CredentialReferenceSnapshot): string {
+export function credentialReferencePromptContext(
+  snapshot: CredentialReferenceSnapshot,
+  serverEntries: readonly CredentialVaultServerReference[] = [],
+): string {
   const referenceLines = snapshot.references.map(
     ({ alias, label, purpose, storedCredentialCount }) =>
       `- ${alias}: ${label}; ${purpose} (${storedCredentialCount} stored reference${storedCredentialCount === 1 ? "" : "s"})`,
@@ -119,9 +124,20 @@ export function credentialReferencePromptContext(snapshot: CredentialReferenceSn
   if (!referenceLines.length)
     referenceLines.push("- No known Host credential references are currently stored.");
 
-  return [
+  const context = [
     "Host credential references (metadata only; presence does not guarantee validity):",
     ...referenceLines,
     "The selected Host resolves values internally only for compatible integrations. Ask the Host to perform the corresponding authenticated operation; do not request or expose credential values.",
-  ].join("\n");
+  ];
+  if (serverEntries.length) {
+    context.push(
+      "Saved SSH server credentials are available through RunCredentialedServerCommand. Each remote command requires user approval; the Host supplies the password internally.",
+      ...serverEntries.map(
+        ({ id, name, environment, host, port, username }) =>
+          `- serverId=${id}; ${name} (${environment}); ${username ?? "username missing"}@${host}:${port ?? 22}`,
+      ),
+      "Do not ask the user to paste the saved password or include it in command text.",
+    );
+  }
+  return context.join("\n");
 }

@@ -2927,6 +2927,10 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
                   trigger,
                 });
               },
+              credentialVaultSshCommandExecutor: (input) =>
+                import("@zcode/server/remote/credentialSshCommand.js").then(
+                  ({ runCredentialedSshCommand }) => runCredentialedSshCommand(input),
+                ),
               // browser-use：agent 的 interaction/browserExecute 经 zcodeAgentService 转到这个 executor，
               // 再经 parentPort 到 main 的 WebContentsView+CDP 执行。
               browserControlExecutor: browserControlMainBridge,
