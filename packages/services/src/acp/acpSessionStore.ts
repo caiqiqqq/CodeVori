@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm, stat, truncate } from "node:fs/promises";
 import { dirname } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
   acpEntrySchema,
@@ -21,7 +22,7 @@ const recordSchema = z
     changes: z.array(z.tuple([z.number().int().nonnegative(), acpEntrySchema])),
   })
   .strict();
-type Captured = { snapshot: AcpSession; entries: string[] };
+type Captured = { snapshot: AcpSession };
 const fileStampSchema = z.object({
   dev: z.string(),
   ino: z.string(),
@@ -71,7 +72,6 @@ export class AcpSessionStore {
   private readonly committed = new Map<string, Captured>();
   private readonly captured = new Map<string, Captured>();
   private readonly sizes = new Map<string, number>();
-  private readonly encodings = new WeakMap<AcpSession, string[]>();
 
   constructor(
     private readonly file: (id: string) => string,
@@ -86,19 +86,18 @@ export class AcpSessionStore {
   capture(session: AcpSession): AcpSession {
     const previous = this.captured.get(session.id) ?? this.committed.get(session.id);
     const { entries: source, ...metadata } = session;
-    const entries = source.map((entry) => JSON.stringify(entry));
     const snapshot = {
       ...metadataSchema.parse(metadata),
-      // 修复原因：只克隆、校验变化的行，历史行复用不可变副本；不能共享可变 owner 对象。
+      // 修复原因：完整 JSON 编码会常驻另一份工具输出；深比较兼容旧行原地修改，
+      // 只克隆、校验变化行并复用不可变历史，不能共享可变 owner 对象。
       entries: source.map((entry, index) =>
-        previous && previous.entries[index] === entries[index]
+        previous && isDeepStrictEqual(previous.snapshot.entries[index], entry)
           ? previous.snapshot.entries[index]!
           : acpEntrySchema.parse(entry),
       ),
     };
     freezeSnapshot(snapshot);
-    this.captured.set(session.id, { snapshot, entries });
-    this.encodings.set(snapshot, entries);
+    this.captured.set(session.id, { snapshot });
     return snapshot;
   }
 
@@ -197,8 +196,7 @@ export class AcpSessionStore {
     const cached = this.committed.get(id);
     if (cached) return structuredClone(cached.snapshot);
     const { snapshot, size } = await this.readSnapshot(id, repairTail);
-    const value = { snapshot, entries: snapshot.entries.map((entry) => JSON.stringify(entry)) };
-    this.committed.set(id, value);
+    this.committed.set(id, { snapshot });
     this.sizes.set(id, size);
     return structuredClone(snapshot);
   }
@@ -260,8 +258,6 @@ export class AcpSessionStore {
     const path = this.file(id);
     // Existing sessions are read by the owner before mutation. New sessions have no checkpoint.
     const previous = this.committed.get(id);
-    const entries =
-      this.encodings.get(snapshot) ?? snapshot.entries.map((entry) => JSON.stringify(entry));
     await mkdir(dirname(path), { recursive: true });
     const exists = await stat(path).then(
       (value) => {
@@ -277,7 +273,7 @@ export class AcpSessionStore {
       const serialized = JSON.stringify(snapshot);
       if (previous && !exists) await this.atomicWrite(`${path}.journal`, "");
       await this.atomicWrite(path, serialized);
-      this.committed.set(id, { snapshot, entries });
+      this.committed.set(id, { snapshot });
       this.sizes.set(id, 0);
       if (options.refreshSummary !== false)
         await this.writeSummary(id, snapshot).catch((error: unknown) =>
@@ -295,7 +291,7 @@ export class AcpSessionStore {
         metadata,
         length: rows.length,
         changes: rows.flatMap((entry, index) =>
-          previous.entries[index] === entries[index] ? [] : [[index, entry]],
+          isDeepStrictEqual(previous.snapshot.entries[index], entry) ? [] : [[index, entry]],
         ),
       }) + "\n";
     const handle = await open(`${path}.journal`, "a", 0o600);
@@ -311,7 +307,7 @@ export class AcpSessionStore {
     } finally {
       await handle.close();
     }
-    this.committed.set(id, { snapshot, entries });
+    this.committed.set(id, { snapshot });
     const bytes = Buffer.byteLength(record);
     this.sizes.set(id, size + bytes);
     // Bounded replay cost, amortized over changed rows rather than a full write per token.
@@ -345,6 +341,11 @@ export class AcpSessionStore {
     await rm(`${this.file(id)}.summary`, { force: true }).catch((error: unknown) =>
       this.onCheckpointError?.(error),
     );
+    this.release(id);
+  }
+
+  /** Owner calls only after its operation/write/connection gates are idle; never removes files. */
+  release(id: string): void {
     this.committed.delete(id);
     this.captured.delete(id);
     this.sizes.delete(id);

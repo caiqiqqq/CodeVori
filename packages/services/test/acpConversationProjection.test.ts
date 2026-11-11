@@ -5,8 +5,45 @@ import {
   applyConversationDeltas,
   reassembleTopicWireFrames,
   conversationTopicFrameSchema,
+  v4ConversationRowsRangeResultSchema,
 } from "@zcode/shared/zcode-protocol-v4";
 import { AcpConversationProjection } from "../src/acp/acpConversationProjection.js";
+
+test("navigator pages contain only bounded previews with stable cursor and recovery epoch", () => {
+  const source = session();
+  source.entries.splice(1, 0, {
+    id: "large-tool",
+    kind: "tool",
+    title: "tool",
+    status: "completed",
+    content: "SECRET".repeat(100000),
+  });
+  const projection = new AcpConversationProjection(source, "host");
+  let before = projection.tail().rows.window[0]!.rowId;
+  const found = [];
+  for (;;) {
+    const page = projection.rowsRange(before, 200, true);
+    v4ConversationRowsRangeResultSchema.parse(page);
+    assert.equal(page.atLogEpoch, projection.tail().logEpoch);
+    assert.ok(page.rows.length <= 200);
+    for (const row of page.rows) {
+      assert.ok(row.kind === "userInput" || row.kind === "assistantText");
+      assert.ok(row.text.length <= 220);
+      assert.ok(row.rowId < before);
+    }
+    found.push(...page.rows);
+    if (!page.hasMore) break;
+    assert.ok(page.rows.length);
+    before = page.rows[0]!.rowId;
+  }
+  assert.ok(found.length > 3000);
+  assert.ok(!JSON.stringify(found).includes("SECRET"));
+  assert.ok(
+    projection
+      .rowsRange(undefined, 20000)
+      .rows.every((row) => row.kind !== "toolCall" || row.input),
+  );
+});
 
 function session() {
   return acpSessionSchema.parse({

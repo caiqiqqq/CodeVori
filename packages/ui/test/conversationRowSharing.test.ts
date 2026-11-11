@@ -389,6 +389,52 @@ test("body pagination does not restart a concurrent navigator directory scan", a
   }
 });
 
+for (const recovery of [false, true]) {
+  test(`${recovery ? "recovery" : "initial"} navigator uses the metadata port while body loading keeps full rows`, async () => {
+    const f = fixture();
+    const rows = Array.from({ length: 150 }, (_, index) => [
+      { ...userRow(index * 2 + 1), turnId: `turn-${index}` },
+      { ...textRow(index * 2 + 2, "complete answer".repeat(100)), turnId: `turn-${index}` },
+    ]).flat();
+    f.setRows(rows, 60);
+    const range = f.transport.rowsRange;
+    let bodyCalls = 0,
+      directoryCalls = 0;
+    f.transport.rowsRange = async (params) => {
+      bodyCalls++;
+      return range(params);
+    };
+    f.transport.turnNavigatorRange = async (params) => {
+      directoryCalls++;
+      const page = await range(params);
+      return {
+        ...page,
+        rows: page.rows.map((row) =>
+          row.kind === "userInput" || row.kind === "assistantText"
+            ? { ...row, text: row.text.slice(0, 220) }
+            : row,
+        ),
+      };
+    };
+    const { store, close } = await f.open();
+    if (recovery) f.snapshot("recovery");
+    try {
+      const original = store.getState().snapshot!.rows.window;
+      assert.equal((await store.loadTurnNavigatorDirectory()).status, "hydrated");
+      assert.equal(bodyCalls, 0);
+      assert.equal(directoryCalls, 2);
+      assert.equal(store.getState().snapshot!.rows.window, original);
+      assert.equal(store.getState().turnNavigatorDirectory.length, 120);
+      assert.equal(await store.loadOlderThrough(1), true);
+      assert.ok(bodyCalls > 0);
+      const restored = store.getState().snapshot!.rows.window.find((row) => row.rowId === 2);
+      assert.ok(restored?.kind === "assistantText" && restored.text.length > 220);
+    } finally {
+      await close();
+    }
+  });
+}
+
 test("stale navigator outline is discarded after a branch snapshot", async () => {
   const f = fixture();
   const { store, close } = await f.open();
