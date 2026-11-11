@@ -102,6 +102,10 @@ import type { IAcpService } from "./acpService.js";
 import { AcpSessionLoadError, connectAcpAgent } from "./acpStdioConnection.js";
 import { buildAcpPromptBlocks } from "./acpPromptBlocks.js";
 import type { ProjectMemoryContext } from "../memory/projectMemoryContext.js";
+import {
+  credentialReferencePromptContext,
+  type CredentialReferenceReader,
+} from "../credential/credentialReferences.js";
 import { AcpQueueGate } from "./acpQueueGate.js";
 import { AcpAttachmentStore } from "./acpAttachmentStore.js";
 import {
@@ -256,6 +260,7 @@ export function createAcpService(
     savedWorkflows?: import("./acpSavedWorkflows.js").AcpSavedWorkflowService;
     agentManager?: AcpAgentManager;
     memoryContext?: ProjectMemoryContext;
+    credentialReferenceReader?: CredentialReferenceReader;
     /** Auxiliary text seam for isolated ACP memory extraction tests. */
     memoryGenerateText?: (
       input: import("@zcode/shared").AcpGenerateText,
@@ -365,6 +370,7 @@ export function createAcpService(
   const workflowRegistrations = new Map<string, { revoke(): void }>();
   const issuesRegistrations = new Map<string, { revoke(): void }>();
   const memoryRegistrations = new Map<string, { revoke(): void }>();
+  const credentialReferenceRegistrations = new Map<string, { revoke(): void }>();
   const directMemorySaves = new Map<string, string>();
   const attachmentRegistrations = new Map<string, { revoke(): void }>();
   const interactionQueues = new Map<
@@ -1077,6 +1083,8 @@ export function createAcpService(
     issuesRegistrations.delete(id);
     memoryRegistrations.get(id)?.revoke();
     memoryRegistrations.delete(id);
+    credentialReferenceRegistrations.get(id)?.revoke();
+    credentialReferenceRegistrations.delete(id);
     directMemorySaves.delete(id);
     attachmentRegistrations.get(id)?.revoke();
     attachmentRegistrations.delete(id);
@@ -1107,6 +1115,9 @@ export function createAcpService(
     let issuesRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
     let attachmentRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
     let memoryRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
+    let credentialReferenceRegistration:
+      | { record: NativeMcpServerRecord; revoke(): void }
+      | undefined;
     // 修复原因：若仅在设置页检查启用/安装状态，create 与 session/load 仍会从旧静态命令
     // 启动禁用的 Agent。每次新连接都向同一个 Host 设置所有者重新解析，复用连接不重启。
     const connectionTask = (async () => {
@@ -1239,6 +1250,37 @@ export function createAcpService(
         }
         memoryRegistrations.set(session.id, memoryRegistration);
       }
+      const credentialReferenceReader = options.credentialReferenceReader;
+      if (credentialReferenceReader) {
+        credentialReferenceRegistration = await workflowMcp.register("zcode-credentials", {
+          names: ["ListCredentialReferences"],
+          tools: [
+            {
+              name: "ListCredentialReferences",
+              description:
+                "List non-secret aliases, purposes, and counts for credentials stored by this Host. Never returns credential values or storage keys.",
+              inputSchema: { type: "object", properties: {}, additionalProperties: false },
+            },
+          ],
+          async call(name) {
+            if (name !== "ListCredentialReferences")
+              throw new Error("Unknown credential reference tool");
+            if (disposed || generations.get(session.id) !== generation || removed.has(session.id))
+              throw new Error("ACP credential reference connection is no longer active");
+            try {
+              return await credentialReferenceReader.list();
+            } catch {
+              throw new Error("Host credential metadata is unavailable");
+            }
+          },
+        });
+        if (disposed || generations.get(session.id) !== generation || removed.has(session.id)) {
+          credentialReferenceRegistration.revoke();
+          credentialReferenceRegistration = undefined;
+          throw new Error("ACP session closed while registering credential references MCP");
+        }
+        credentialReferenceRegistrations.set(session.id, credentialReferenceRegistration);
+      }
       return connect({
         agent: session.agent,
         workspacePath: session.workspacePath,
@@ -1250,6 +1292,7 @@ export function createAcpService(
           ...(issuesRegistration ? [issuesRegistration.record] : []),
           attachmentRegistration.record,
           ...(memoryRegistration ? [memoryRegistration.record] : []),
+          ...(credentialReferenceRegistration ? [credentialReferenceRegistration.record] : []),
         ],
         ...(plugins ? { pluginServers: plugins.servers } : {}),
         ...(launch ? { launch } : {}),
@@ -1492,6 +1535,8 @@ export function createAcpService(
           issuesRegistrations.delete(session.id);
           memoryRegistrations.get(session.id)?.revoke();
           memoryRegistrations.delete(session.id);
+          credentialReferenceRegistrations.get(session.id)?.revoke();
+          credentialReferenceRegistrations.delete(session.id);
           attachmentRegistrations.get(session.id)?.revoke();
           attachmentRegistrations.delete(session.id);
           // Adapter root 已退出仍需回收其进程组内可能存活的 App Server 后代。
@@ -1676,6 +1721,13 @@ export function createAcpService(
       if (memoryRegistration && memoryRegistrations.get(session.id) === memoryRegistration) {
         memoryRegistration.revoke();
         memoryRegistrations.delete(session.id);
+      }
+      if (
+        credentialReferenceRegistration &&
+        credentialReferenceRegistrations.get(session.id) === credentialReferenceRegistration
+      ) {
+        credentialReferenceRegistration.revoke();
+        credentialReferenceRegistrations.delete(session.id);
       }
       // 握手失败时 connectionTask 可能在拿到 port 前拒绝，仍需回收已签发的议题 capability。
       if (issuesRegistration && issuesRegistrations.get(session.id) === issuesRegistration) {
@@ -2143,6 +2195,16 @@ export function createAcpService(
         ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
         ...(session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}),
       });
+      timing?.phase("credential_context");
+      let credentialContext: string | undefined;
+      try {
+        const credentialReferences = await options.credentialReferenceReader?.list();
+        if (credentialReferences)
+          credentialContext = credentialReferencePromptContext(credentialReferences);
+      } catch {
+        // 凭据元数据不可读时仍允许普通 ACP 请求继续；不记录凭据文件错误细节。
+        logger.warn(undefined, "ACP credential reference summary unavailable");
+      }
       timing?.phase("prompt_blocks");
       const blocks = await buildAcpPromptBlocks({
         text: buildAcpPluginPrompt(
@@ -2157,6 +2219,7 @@ export function createAcpService(
         capabilities: port.promptCapabilities,
       });
       if (memoryContext) blocks.push({ type: "text", text: memoryContext });
+      if (credentialContext) blocks.push({ type: "text", text: credentialContext });
       if (!ownsRun() || removed.has(session.id) || disposed || connections.get(session.id) !== port)
         return structuredClone(session);
       // 图片必须保存发送时的内容；快照只记录引用，不能把临时路径或 base64 当成历史。
