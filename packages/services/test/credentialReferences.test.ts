@@ -33,8 +33,19 @@ test("credential references expose allowlisted aliases and hide storage keys", (
   assert.equal(snapshot.otherStoredCredentialCount, 1);
   for (const key of keys) assert.equal(serialized.includes(key), false);
 
-  const context = credentialReferencePromptContext(snapshot);
+  const context = credentialReferencePromptContext(snapshot, [
+    {
+      name: "Staging host",
+      environment: "staging",
+      host: "server.example.invalid",
+      port: 2222,
+      username: "deploy",
+    },
+  ]);
   assert.match(context, /zai-oauth/);
+  assert.match(context, /deploy@server\.example\.invalid:2222/);
+  assert.match(context, /connection details.*credentials are not included/i);
+  assert.doesNotMatch(context, /RunCredentialedServerCommand|private-test-password/i);
   assert.match(context, /do not request or expose credential values/i);
   for (const key of keys) assert.equal(context.includes(key), false);
 });

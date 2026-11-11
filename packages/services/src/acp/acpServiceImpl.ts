@@ -108,10 +108,7 @@ import {
   credentialReferencePromptContext,
   type CredentialReferenceReader,
 } from "../credential/credentialReferences.js";
-import type {
-  CredentialVaultHostAccess,
-  CredentialVaultServerReference,
-} from "../credential/credentialVaultHostAccess.js";
+import type { CredentialVaultServerReader } from "../credential/credentialVaultServerReader.js";
 import { AcpQueueGate } from "./acpQueueGate.js";
 import { AcpAttachmentStore } from "./acpAttachmentStore.js";
 import {
@@ -267,7 +264,7 @@ export function createAcpService(
     agentManager?: AcpAgentManager;
     memoryContext?: ProjectMemoryContext;
     credentialReferenceReader?: CredentialReferenceReader;
-    credentialVaultHostAccess?: CredentialVaultHostAccess;
+    credentialVaultServerReader?: CredentialVaultServerReader;
     /** Auxiliary text seam for isolated ACP memory extraction tests. */
     memoryGenerateText?: (
       input: import("@zcode/shared").AcpGenerateText,
@@ -1314,7 +1311,7 @@ export function createAcpService(
         memoryRegistrations.set(session.id, memoryRegistration);
       }
       const credentialReferenceReader = options.credentialReferenceReader;
-      const credentialVaultHostAccess = options.credentialVaultHostAccess;
+      const credentialVaultServerReader = options.credentialVaultServerReader;
       const credentialTools: Array<{
         name: string;
         description: string;
@@ -1328,29 +1325,13 @@ export function createAcpService(
           inputSchema: { type: "object", properties: {}, additionalProperties: false },
         });
       }
-      if (credentialVaultHostAccess) {
-        credentialTools.push(
-          {
-            name: "ListCredentialedServers",
-            description:
-              "List SSH servers saved in this Host credential vault that are available to the current workspace. Returns metadata only.",
-            inputSchema: { type: "object", properties: {}, additionalProperties: false },
-          },
-          {
-            name: "RunCredentialedServerCommand",
-            description:
-              "Run one shell command on a saved SSH server. The Host asks the user to approve each command, then supplies the saved password internally. The password is never an argument or result.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                serverId: { type: "string", format: "uuid" },
-                command: { type: "string", minLength: 1, maxLength: 16_384 },
-              },
-              required: ["serverId", "command"],
-              additionalProperties: false,
-            },
-          },
-        );
+      if (credentialVaultServerReader) {
+        credentialTools.push({
+          name: "ListCredentialedServers",
+          description:
+            "List SSH server connection details saved for the current workspace. Returns metadata only and never returns passwords or key passphrases.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        });
       }
       if (credentialTools.length) {
         credentialReferenceRegistration = await workflowMcp.register("zcode-credentials", {
@@ -1368,68 +1349,16 @@ export function createAcpService(
               }
             }
             if (name === "ListCredentialedServers") {
-              if (!credentialVaultHostAccess) throw new Error("Saved SSH credentials unavailable");
+              if (!credentialVaultServerReader)
+                throw new Error("Saved SSH server metadata unavailable");
               z.object({}).strict().parse(args);
               try {
-                return await credentialVaultHostAccess.listServers(
+                return await credentialVaultServerReader.listServers(
                   session.workspaceIdentity?.trim() || session.workspacePath,
                 );
               } catch {
                 throw new Error("Saved SSH server metadata is unavailable");
               }
-            }
-            if (name === "RunCredentialedServerCommand") {
-              if (!credentialVaultHostAccess) throw new Error("Saved SSH credentials unavailable");
-              const input = z
-                .object({
-                  serverId: z.string().uuid(),
-                  command: z.string().trim().min(1).max(16_384),
-                })
-                .strict()
-                .parse(args);
-              const workspaceIdentity = session.workspaceIdentity?.trim() || session.workspacePath;
-              const commandId = active.get(session.id);
-              const commandToken = activeTokens.get(session.id);
-              const assertCurrentCommand = () => {
-                if (
-                  disposed ||
-                  removed.has(session.id) ||
-                  generations.get(session.id) !== generation ||
-                  !commandId ||
-                  active.get(session.id) !== commandId ||
-                  activeTokens.get(session.id) !== commandToken
-                ) {
-                  throw new Error("ACP SSH command authorization expired");
-                }
-              };
-              assertCurrentCommand();
-              let server: CredentialVaultServerReference | undefined;
-              try {
-                server = (await credentialVaultHostAccess.listServers(workspaceIdentity)).find(
-                  (candidate) => candidate.id === input.serverId,
-                );
-              } catch {
-                throw new Error("Saved SSH server metadata is unavailable");
-              }
-              if (!server) throw new Error("Saved SSH server credential was not found");
-              assertCurrentCommand();
-              const decision = await requestPermission(session, {
-                requestId: randomUUID(),
-                title: `通过 SSH 在「${server.name}」(${server.username ?? "username missing"}@${server.host}:${server.port ?? 22}) 执行命令？\n${input.command}`,
-                options: [
-                  { optionId: "allow", name: "允许本次", kind: "allow_once" },
-                  { optionId: "reject", name: "拒绝", kind: "reject_once" },
-                ],
-              });
-              if (decision !== "allow")
-                return { status: "rejected", message: "用户未批准 SSH 命令，未连接服务器" };
-              assertCurrentCommand();
-              return credentialVaultHostAccess.executeCommand(
-                server,
-                workspaceIdentity,
-                input.command,
-                assertCurrentCommand,
-              );
             }
             throw new Error("Unknown credential tool");
           },
@@ -2361,7 +2290,7 @@ export function createAcpService(
         session.workspaceIdentity?.trim() || session.workspacePath;
       const [credentialReferencesResult, credentialServersResult] = await Promise.allSettled([
         options.credentialReferenceReader?.list(),
-        options.credentialVaultHostAccess?.listServers(credentialWorkspaceIdentity),
+        options.credentialVaultServerReader?.listServers(credentialWorkspaceIdentity),
       ]);
       const credentialReferences =
         credentialReferencesResult.status === "fulfilled"
