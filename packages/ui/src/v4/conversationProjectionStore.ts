@@ -1383,7 +1383,10 @@ export class ConversationProjectionStore {
     this.setState({ turnNavigatorLoading: true });
     try {
       for (;;) {
-        const result = await this.transport.rowsRange({
+        const result = await (
+          this.transport.turnNavigatorRange?.bind(this.transport) ??
+          this.transport.rowsRange.bind(this.transport)
+        )({
           sessionId,
           beforeRowId,
           limit: PROTOCOL_V4_LIMITS.rowsRangeMaxLimit,

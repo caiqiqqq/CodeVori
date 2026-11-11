@@ -130,17 +130,48 @@ export class AcpConversationProjection {
     };
   }
 
-  rowsRange(beforeRowId: number | undefined, limit: number) {
-    const candidates = this.snapshot.rows.window.filter(
-      (row) => beforeRowId === undefined || row.rowId < beforeRowId,
-    );
-    const rows = candidates.slice(-Math.min(limit, PROTOCOL_V4_LIMITS.rowsRangeMaxLimit));
+  rowsRange(beforeRowId: number | undefined, limit: number, navigationOnly = false) {
+    // 修复原因：导航只需身份与短预览，不能经 IPC/relay 重传全部历史工具输出。
+    // 倒序扫描到一页+1 即停止，避免每页 filter 整份历史产生临时数组。
+    const rows: ConversationRow[] = [];
+    const count = Math.min(limit, PROTOCOL_V4_LIMITS.rowsRangeMaxLimit);
+    let hasMore = false;
+    for (let index = this.snapshot.rows.window.length - 1; index >= 0; index--) {
+      const row = this.snapshot.rows.window[index]!;
+      if (beforeRowId !== undefined && row.rowId >= beforeRowId) continue;
+      if (
+        navigationOnly &&
+        row.kind !== "assistantText" &&
+        !(row.kind === "userInput" && row.origin === "realUser")
+      )
+        continue;
+      if (rows.length === count) {
+        hasMore = true;
+        break;
+      }
+      if (navigationOnly && (row.kind === "assistantText" || row.kind === "userInput")) {
+        const base = {
+          rowId: row.rowId,
+          turnId: row.turnId,
+          createdAt: row.createdAt,
+          createdAtSeq: row.createdAtSeq,
+          productTurnId: row.productTurnId,
+          text: row.text.slice(0, 220),
+        };
+        rows.push(
+          row.kind === "userInput"
+            ? { ...base, kind: "userInput", origin: row.origin }
+            : { ...base, kind: "assistantText", state: row.state },
+        );
+      } else rows.push(row);
+    }
+    rows.reverse();
     return {
       rows,
       atSeq: this.snapshot.seq,
       atRevision: this.snapshot.revision,
       atLogEpoch: this.snapshot.logEpoch,
-      hasMore: candidates.length > rows.length,
+      hasMore,
     };
   }
 

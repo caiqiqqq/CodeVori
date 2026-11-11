@@ -6,6 +6,47 @@ import test from "node:test";
 import { acpSessionSchema } from "@zcode/shared";
 import { AcpSessionStore } from "../src/acp/acpSessionStore.js";
 
+test("released caches preserve journal history and captures isolate mutations of old entries", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "acp-release-"));
+  const path = join(directory, "session.json");
+  try {
+    const store = new AcpSessionStore(() => path);
+    const owner = acpSessionSchema.parse({
+      id: "session",
+      workspacePath: "/tmp/p",
+      agent: "codex",
+      acpSessionId: "native",
+      pendingPermission: null,
+      error: null,
+      title: "test",
+      revision: 0,
+      status: "idle",
+      entries: [{ id: "old", kind: "assistant", text: "original" }],
+    });
+    const first = store.capture(owner);
+    await store.commit(first);
+    owner.revision++;
+    const unchanged = store.capture(owner);
+    assert.equal(unchanged.entries[0], first.entries[0]);
+    owner.revision++;
+    owner.entries[0]!.text = "corrected history";
+    const changed = store.capture(owner);
+    assert.equal(first.entries[0]!.text, "original");
+    assert.notEqual(changed.entries[0], first.entries[0]);
+    await store.commit(unchanged);
+    await store.commit(changed);
+    store.release(owner.id);
+    assert.equal(store.current(owner.id), undefined);
+    assert.deepEqual(await store.read(owner.id), owner);
+    owner.revision++;
+    owner.entries.push({ id: "new", kind: "user", text: "after reopen" });
+    await store.commit(store.capture(owner));
+    assert.deepEqual(await new AcpSessionStore(() => path).read(owner.id), owner);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("legacy snapshots migrate lazily; commits append changed entries and recover after restart", async () => {
   const directory = await mkdtemp(join(tmpdir(), "acp-store-"));
   const path = join(directory, "session.json");

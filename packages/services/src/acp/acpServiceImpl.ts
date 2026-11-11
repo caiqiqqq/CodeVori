@@ -21,6 +21,7 @@ import { Emitter } from "@zcode/rpc";
 import { AcpStreamDiagnostics } from "./acpStreamDiagnostics.js";
 import { AcpConversationProjection } from "./acpConversationProjection.js";
 import { AcpSessionStore } from "./acpSessionStore.js";
+import { createAcpCacheLease } from "./acpCacheLease.js";
 import { AcpCompactionTiming } from "./acpCompactionTiming.js";
 import {
   projectMemoryTools,
@@ -470,6 +471,53 @@ export function createAcpService(
   const sessionStore = new AcpSessionStore(file, (error) =>
     logger.warn(undefined, "ACP checkpoint maintenance failed", { error: failureMessage(error) }),
   );
+  const cacheLease = createAcpCacheLease(() => releaseIdleSessions());
+  const releaseIdleSessions = () => {
+    if (creating.size || notificationTasks.size) return;
+    for (const [id, session] of sessions) {
+      if (
+        !cacheLease.idle(id) ||
+        (projections.get(id)?.users ?? 0) > 0 ||
+        session.provisional ||
+        session.deletionState ||
+        session.status === "running" ||
+        session.pendingPermission ||
+        session.pendingElicitation ||
+        session.queue.items.length ||
+        session.terminals.some((terminal) => terminal.status === "running") ||
+        connections.has(id) ||
+        connecting.has(id) ||
+        generations.has(id) ||
+        loading.has(id) ||
+        recovering.has(id) ||
+        active.has(id) ||
+        activeTokens.has(id) ||
+        writes.has(id) ||
+        streamingWrites.has(id) ||
+        attachmentWrites.has(id) ||
+        queueGate.has(id) ||
+        queueTasks.has(id) ||
+        wirePrompts.has(id) ||
+        [...promptTasks.keys()].some((key) => key.startsWith(`${id}:`)) ||
+        [...promptAdmissions.values()].some((admission) => admission.sessionId === id) ||
+        pending.has(id) ||
+        interactionQueues.has(id) ||
+        configuring.has(id) ||
+        stopping.has(id) ||
+        workflowHost.ownsLive(id) ||
+        workflowNotifying.has(id) ||
+        workflowNotifications.get(id)?.length ||
+        sessionStore.current(id)?.revision !== session.revision
+      )
+        continue;
+      // 修复原因：无订阅、连接、在途操作且全部事实已提交时才释放正文；
+      // 不断开 Agent、不删除磁盘历史，重开仍由同一 load gate 恢复唯一 owner。
+      projections.delete(id);
+      sessions.delete(id);
+      scheduledSnapshotRevisions.delete(id);
+      sessionStore.release(id);
+    }
+  };
   const commandReceipt = (id: string, commandId: string): AcpCommandReceipt | null => {
     // 修复原因：owner 可能已变更但尚未落盘；ACK/断线对账只读取成功提交的事实。
     const snapshot = sessionStore.current(id);
@@ -662,7 +710,12 @@ export function createAcpService(
       });
     writes.set(session.id, next);
     scheduledSnapshotRevisions.set(session.id, snapshot.revision);
-    await next;
+    try {
+      await next;
+    } finally {
+      if (writes.get(session.id) === next) writes.delete(session.id);
+      releaseIdleSessions();
+    }
   };
   const saveStreaming = (session: AcpSession): Promise<void> => {
     const scheduled = streamingWrites.get(session.id);
@@ -799,7 +852,11 @@ export function createAcpService(
     if (cached?.projection && cached.session)
       return { projection: cached.projection, session: cached.session };
     // 修复依据：owner 在等待 IO 时仍可接收分片，首次读取只能以原子保存事实建立水位。
-    const snapshot = owner.provisional ? structuredClone(owner) : await sessionStore.read(owner.id);
+    // 修复原因：投影只读已提交事实，可共享冻结快照，避免再克隆整份历史工具输出。
+    const snapshot = owner.provisional
+      ? sessionStore.capture(owner)
+      : sessionStore.current(owner.id);
+    if (!snapshot) throw new Error("ACP committed snapshot unavailable");
     if (removed.has(owner.id) || disposed) throw new Error("ACP session closed");
     return project(snapshot);
   };
@@ -2727,7 +2784,10 @@ export function createAcpService(
     return session;
   };
 
-  const service: IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } = {
+  const serviceImplementation: IAcpService & {
+    disposeAll(): void;
+    disposeAllAndWait(): Promise<void>;
+  } = {
     generateText: (input) => textGeneration.generate(input),
     cancelGenerateText: (input) => textGeneration.cancel(input),
     async listPlugins(input): Promise<AcpPlugin[]> {
@@ -2865,7 +2925,11 @@ export function createAcpService(
     },
     async conversationRowsRange(input) {
       const params = acpConversationRowsRangeSchema.parse(input);
-      return (await readProjection(params)).projection.rowsRange(params.beforeRowId, params.limit);
+      return (await readProjection(params)).projection.rowsRange(
+        params.beforeRowId,
+        params.limit,
+        params.navigationOnly,
+      );
     },
     onDynamicConversationChanged(input) {
       const params = acpConversationTargetSchema.parse(input);
@@ -2891,6 +2955,7 @@ export function createAcpService(
             subscription.dispose();
             if (--cached.users === 0 && projections.get(params.id) === cached)
               projections.delete(params.id);
+            releaseIdleSessions();
           },
         };
       };
@@ -2957,7 +3022,9 @@ export function createAcpService(
               })),
           });
         } catch (error) {
-          logger.warn(undefined, "ACP usage session unreadable", { error: failureMessage(error) });
+          logger.warn(undefined, "ACP usage session unreadable", {
+            error: failureMessage(error),
+          });
         }
       }
       // 修复原因：统计页从未接入 Codex 原生请求，因而全是未知轮次；只读回溯
@@ -3814,6 +3881,7 @@ export function createAcpService(
       await Promise.allSettled([...attachmentWrites.values()].flatMap((tasks) => [...tasks]));
     },
   };
+  const service = cacheLease.wrap(serviceImplementation);
   return service;
 }
 
