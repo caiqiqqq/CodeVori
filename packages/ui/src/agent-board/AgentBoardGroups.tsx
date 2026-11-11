@@ -20,6 +20,8 @@ export function AgentBoardGroups({
   onOpenSession,
   onArchive,
   onStage,
+  onRename,
+  onMarkUnread,
 }: {
   columns: BoardGroup[];
   byStatus: boolean;
@@ -30,6 +32,8 @@ export function AgentBoardGroups({
   onOpenSession(item: BoardItem): void;
   onArchive(item: BoardItem): void;
   onStage(item: BoardItem): void;
+  onRename(item: BoardItem, title: string): Promise<void>;
+  onMarkUnread(item: BoardItem): void;
 }) {
   // 项目分区只由当前可见会话构成；待办所属项目不能再占一个空列。
   const groups = byStatus ? columns : columns.filter((column) => column.items.length > 0);
@@ -98,6 +102,8 @@ export function AgentBoardGroups({
                 onOpenSession={onOpenSession}
                 onArchive={onArchive}
                 onStage={onStage}
+                onRename={onRename}
+                onMarkUnread={onMarkUnread}
               />
             ))}
           </div>

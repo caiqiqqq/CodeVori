@@ -33,6 +33,8 @@ export function AgentBoardDetails({
   onClose,
   onOpenSession,
   onStage,
+  onRename,
+  onMarkUnread,
 }: {
   selected: BoardItem | undefined;
   workTasks: ReturnType<typeof useWorkTasks>;
@@ -45,6 +47,8 @@ export function AgentBoardDetails({
   onClose(): void;
   onOpenSession(item: BoardItem): void;
   onStage(item: BoardItem): void;
+  onRename(item: BoardItem, title: string): Promise<void>;
+  onMarkUnread(item: BoardItem): void;
 }) {
   const { intl } = useZCodeIntl();
   const scope = useMemo(
@@ -101,6 +105,9 @@ export function AgentBoardDetails({
                   onOpenSession={onOpenSession}
                   onArchive={(item) => void run(item, "archive")}
                   onStage={onStage}
+                  onRename={onRename}
+                  onMarkUnread={onMarkUnread}
+                  allowMarkUnread={false}
                 >
                   <div className="min-w-0 flex-1">
                     <DialogTitle className="truncate">{selected.title}</DialogTitle>
