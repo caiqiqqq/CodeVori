@@ -1,5 +1,6 @@
 /* oxlint-disable eslint(max-lines) -- ACP Host owner keeps admission, persistence, permission and process-generation checks in one state machine. */
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import {
   appendAcpConversationEntry,
   finishAcpThoughts,
@@ -107,6 +108,10 @@ import {
   credentialReferencePromptContext,
   type CredentialReferenceReader,
 } from "../credential/credentialReferences.js";
+import type {
+  CredentialVaultHostAccess,
+  CredentialVaultServerReference,
+} from "../credential/credentialVaultHostAccess.js";
 import { AcpQueueGate } from "./acpQueueGate.js";
 import { AcpAttachmentStore } from "./acpAttachmentStore.js";
 import {
@@ -262,6 +267,7 @@ export function createAcpService(
     agentManager?: AcpAgentManager;
     memoryContext?: ProjectMemoryContext;
     credentialReferenceReader?: CredentialReferenceReader;
+    credentialVaultHostAccess?: CredentialVaultHostAccess;
     /** Auxiliary text seam for isolated ACP memory extraction tests. */
     memoryGenerateText?: (
       input: import("@zcode/shared").AcpGenerateText,
@@ -1308,33 +1314,130 @@ export function createAcpService(
         memoryRegistrations.set(session.id, memoryRegistration);
       }
       const credentialReferenceReader = options.credentialReferenceReader;
+      const credentialVaultHostAccess = options.credentialVaultHostAccess;
+      const credentialTools: Array<{
+        name: string;
+        description: string;
+        inputSchema: Record<string, unknown>;
+      }> = [];
       if (credentialReferenceReader) {
-        credentialReferenceRegistration = await workflowMcp.register("zcode-credentials", {
-          names: ["ListCredentialReferences"],
-          tools: [
-            {
-              name: "ListCredentialReferences",
-              description:
-                "List non-secret aliases, purposes, and counts for credentials stored by this Host. Never returns credential values or storage keys.",
-              inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        credentialTools.push({
+          name: "ListCredentialReferences",
+          description:
+            "List non-secret aliases, purposes, and counts for credentials stored by this Host. Never returns credential values or storage keys.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        });
+      }
+      if (credentialVaultHostAccess) {
+        credentialTools.push(
+          {
+            name: "ListCredentialedServers",
+            description:
+              "List SSH servers saved in this Host credential vault that are available to the current workspace. Returns metadata only.",
+            inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          },
+          {
+            name: "RunCredentialedServerCommand",
+            description:
+              "Run one shell command on a saved SSH server. The Host asks the user to approve each command, then supplies the saved password internally. The password is never an argument or result.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                serverId: { type: "string", format: "uuid" },
+                command: { type: "string", minLength: 1, maxLength: 16_384 },
+              },
+              required: ["serverId", "command"],
+              additionalProperties: false,
             },
-          ],
-          async call(name) {
-            if (name !== "ListCredentialReferences")
-              throw new Error("Unknown credential reference tool");
+          },
+        );
+      }
+      if (credentialTools.length) {
+        credentialReferenceRegistration = await workflowMcp.register("zcode-credentials", {
+          names: credentialTools.map(({ name }) => name),
+          tools: credentialTools,
+          async call(name, args) {
             if (disposed || generations.get(session.id) !== generation || removed.has(session.id))
-              throw new Error("ACP credential reference connection is no longer active");
-            try {
-              return await credentialReferenceReader.list();
-            } catch {
-              throw new Error("Host credential metadata is unavailable");
+              throw new Error("ACP credential connection is no longer active");
+            if (name === "ListCredentialReferences") {
+              if (!credentialReferenceReader) throw new Error("Credential references unavailable");
+              try {
+                return await credentialReferenceReader.list();
+              } catch {
+                throw new Error("Host credential metadata is unavailable");
+              }
             }
+            if (name === "ListCredentialedServers") {
+              if (!credentialVaultHostAccess) throw new Error("Saved SSH credentials unavailable");
+              z.object({}).strict().parse(args);
+              try {
+                return await credentialVaultHostAccess.listServers(
+                  session.workspaceIdentity?.trim() || session.workspacePath,
+                );
+              } catch {
+                throw new Error("Saved SSH server metadata is unavailable");
+              }
+            }
+            if (name === "RunCredentialedServerCommand") {
+              if (!credentialVaultHostAccess) throw new Error("Saved SSH credentials unavailable");
+              const input = z
+                .object({
+                  serverId: z.string().uuid(),
+                  command: z.string().trim().min(1).max(16_384),
+                })
+                .strict()
+                .parse(args);
+              const workspaceIdentity = session.workspaceIdentity?.trim() || session.workspacePath;
+              const commandId = active.get(session.id);
+              const commandToken = activeTokens.get(session.id);
+              const assertCurrentCommand = () => {
+                if (
+                  disposed ||
+                  removed.has(session.id) ||
+                  generations.get(session.id) !== generation ||
+                  !commandId ||
+                  active.get(session.id) !== commandId ||
+                  activeTokens.get(session.id) !== commandToken
+                ) {
+                  throw new Error("ACP SSH command authorization expired");
+                }
+              };
+              assertCurrentCommand();
+              let server: CredentialVaultServerReference | undefined;
+              try {
+                server = (await credentialVaultHostAccess.listServers(workspaceIdentity)).find(
+                  (candidate) => candidate.id === input.serverId,
+                );
+              } catch {
+                throw new Error("Saved SSH server metadata is unavailable");
+              }
+              if (!server) throw new Error("Saved SSH server credential was not found");
+              assertCurrentCommand();
+              const decision = await requestPermission(session, {
+                requestId: randomUUID(),
+                title: `通过 SSH 在「${server.name}」(${server.username ?? "username missing"}@${server.host}:${server.port ?? 22}) 执行命令？\n${input.command}`,
+                options: [
+                  { optionId: "allow", name: "允许本次", kind: "allow_once" },
+                  { optionId: "reject", name: "拒绝", kind: "reject_once" },
+                ],
+              });
+              if (decision !== "allow")
+                return { status: "rejected", message: "用户未批准 SSH 命令，未连接服务器" };
+              assertCurrentCommand();
+              return credentialVaultHostAccess.executeCommand(
+                server,
+                workspaceIdentity,
+                input.command,
+                assertCurrentCommand,
+              );
+            }
+            throw new Error("Unknown credential tool");
           },
         });
         if (disposed || generations.get(session.id) !== generation || removed.has(session.id)) {
           credentialReferenceRegistration.revoke();
           credentialReferenceRegistration = undefined;
-          throw new Error("ACP session closed while registering credential references MCP");
+          throw new Error("ACP session closed while registering credential MCP");
         }
         credentialReferenceRegistrations.set(session.id, credentialReferenceRegistration);
       }
@@ -2254,13 +2357,27 @@ export function createAcpService(
       });
       timing?.phase("credential_context");
       let credentialContext: string | undefined;
-      try {
-        const credentialReferences = await options.credentialReferenceReader?.list();
-        if (credentialReferences)
-          credentialContext = credentialReferencePromptContext(credentialReferences);
-      } catch {
-        // 凭据元数据不可读时仍允许普通 ACP 请求继续；不记录凭据文件错误细节。
+      const credentialWorkspaceIdentity =
+        session.workspaceIdentity?.trim() || session.workspacePath;
+      const [credentialReferencesResult, credentialServersResult] = await Promise.allSettled([
+        options.credentialReferenceReader?.list(),
+        options.credentialVaultHostAccess?.listServers(credentialWorkspaceIdentity),
+      ]);
+      const credentialReferences =
+        credentialReferencesResult.status === "fulfilled"
+          ? credentialReferencesResult.value
+          : undefined;
+      const credentialServers =
+        credentialServersResult.status === "fulfilled" ? credentialServersResult.value : undefined;
+      if (credentialReferencesResult.status === "rejected")
         logger.warn(undefined, "ACP credential reference summary unavailable");
+      if (credentialServersResult.status === "rejected")
+        logger.warn(undefined, "ACP saved SSH server summary unavailable");
+      if (credentialReferences || credentialServers) {
+        credentialContext = credentialReferencePromptContext(
+          credentialReferences ?? { references: [], otherStoredCredentialCount: 0 },
+          credentialServers ?? [],
+        );
       }
       timing?.phase("prompt_blocks");
       const blocks = await buildAcpPromptBlocks({

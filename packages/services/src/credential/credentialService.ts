@@ -17,6 +17,10 @@ import {
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { getAppConfigDir } from "../paths.js";
 import { CredentialVaultRepository } from "./credentialVaultRepository.js";
+import type {
+  CredentialVaultHostAccess,
+  CredentialVaultSshCommandExecutor,
+} from "./credentialVaultHostAccess.js";
 import {
   projectCredentialReferences,
   type CredentialReferenceReader,
@@ -108,8 +112,14 @@ async function writeAll(credentialsFile: string, data: Record<string, string>): 
 interface CredentialServiceDependencies {
   cipherProvider?: CredentialCipherProvider;
   vaultRepository?: CredentialVaultRepository;
+  sshCommandExecutor?: CredentialVaultSshCommandExecutor;
   /** Host 私有的持久化成功通知；不进入 Renderer/RPC 凭据接口。 */
   onDidMutate?: (event: { operation: "save" | "delete"; key: string }) => void;
+}
+
+export interface CredentialServiceHostAccess {
+  service: ICredentialService;
+  credentialVaultHostAccess?: CredentialVaultHostAccess;
 }
 
 function hasLiveMutationOwner(pid: number | null, startedAt: number | null): boolean {
@@ -126,6 +136,12 @@ function hasLiveMutationOwner(pid: number | null, startedAt: number | null): boo
 export function createCredentialService(
   dependencies: CredentialServiceDependencies = {},
 ): ICredentialService {
+  return createCredentialServiceWithHostAccess(dependencies).service;
+}
+
+export function createCredentialServiceWithHostAccess(
+  dependencies: CredentialServiceDependencies = {},
+): CredentialServiceHostAccess {
   const cipherProvider = dependencies.cipherProvider ?? createCredentialCipherProvider();
   const vaultRepository =
     dependencies.vaultRepository ??
@@ -199,7 +215,7 @@ export function createCredentialService(
     dependencies.onDidMutate?.({ operation: "delete", key: validatedKey });
   };
 
-  return {
+  const service: ICredentialService = {
     load,
     save,
     delete: del,
@@ -291,6 +307,85 @@ export function createCredentialService(
       }
     },
   };
+
+  const credentialVaultHostAccess: CredentialVaultHostAccess | undefined =
+    dependencies.sshCommandExecutor
+      ? {
+          async listServers(rawWorkspaceIdentity) {
+            const identity = z.string().trim().min(1).max(2_048).parse(rawWorkspaceIdentity);
+            await recoverVaultMutations();
+            return (await vaultRepository.listActive())
+              .filter(
+                (entry) =>
+                  entry.kind === "server" &&
+                  (entry.workspaceIdentity === null || entry.workspaceIdentity === identity),
+              )
+              .map(({ id, name, environment, host, port, username }) => ({
+                id,
+                name,
+                environment,
+                host,
+                port,
+                username,
+              }));
+          },
+          async executeCommand(server, rawWorkspaceIdentity, rawCommand, assertAuthorized) {
+            const identity = z.string().trim().min(1).max(2_048).parse(rawWorkspaceIdentity);
+            const command = z.string().trim().min(1).max(16_384).parse(rawCommand);
+            const expectedServerId = z.string().uuid().parse(server.id);
+            if (typeof assertAuthorized !== "function")
+              throw new Error("SSH command authorization is required");
+            assertAuthorized();
+            await recoverVaultMutations();
+            const resolved = await vaultRepository.findActiveWithSecretKey(
+              expectedServerId,
+              identity,
+            );
+            if (!resolved || resolved.entry.kind !== "server") {
+              throw new Error("Saved server credential was not found");
+            }
+            if (
+              resolved.entry.name !== server.name ||
+              resolved.entry.environment !== server.environment ||
+              resolved.entry.host !== server.host ||
+              resolved.entry.port !== server.port ||
+              resolved.entry.username !== server.username
+            ) {
+              throw new Error("Saved server credential changed after approval");
+            }
+            if (!resolved.entry.username) {
+              throw new Error("Saved server credential has no username");
+            }
+            const password = await load(resolved.secretKey);
+            if (!password) throw new Error("Saved server credential is unavailable");
+
+            try {
+              assertAuthorized();
+              const result = await dependencies.sshCommandExecutor!({
+                host: resolved.entry.host,
+                port: resolved.entry.port ?? 22,
+                username: resolved.entry.username,
+                password,
+                command,
+              });
+              return {
+                ...result,
+                stdout: redactCredential(result.stdout, password),
+                stderr: redactCredential(result.stderr, password),
+              };
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "SSH command failed";
+              throw new Error(redactCredential(message, password));
+            }
+          },
+        }
+      : undefined;
+
+  return { service, credentialVaultHostAccess };
+}
+
+function redactCredential(value: string, credential: string): string {
+  return credential ? value.split(credential).join("[redacted]") : value;
 }
 
 /** Host-only metadata reader; ACP receives the projection and never sees storage keys or values. */
