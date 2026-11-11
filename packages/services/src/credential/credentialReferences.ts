@@ -1,4 +1,4 @@
-import type { CredentialVaultServerReference } from "./credentialVaultHostAccess.js";
+import type { CredentialVaultServerReference } from "./credentialVaultServerReader.js";
 
 export interface CredentialReference {
   alias: string;
@@ -46,7 +46,7 @@ const ACCOUNT_PROVIDER_REFERENCE: Omit<CredentialReference, "storedCredentialCou
 const SSH_REFERENCE: Omit<CredentialReference, "storedCredentialCount"> = {
   alias: "ssh-workspace-credentials",
   label: "SSH workspace credentials",
-  purpose: "Connecting to SSH workspaces using a password or private-key passphrase.",
+  purpose: "Authentication references for SSH workspaces; secret values are not included.",
 };
 
 const BOT_REFERENCE: Omit<CredentialReference, "storedCredentialCount"> = {
@@ -127,16 +127,15 @@ export function credentialReferencePromptContext(
   const context = [
     "Host credential references (metadata only; presence does not guarantee validity):",
     ...referenceLines,
-    "The selected Host resolves values internally only for compatible integrations. Ask the Host to perform the corresponding authenticated operation; do not request or expose credential values.",
+    "Credential values and storage keys are never included in this context; do not request or expose credential values.",
   ];
   if (serverEntries.length) {
     context.push(
-      "Saved SSH server credentials are available through RunCredentialedServerCommand. Each remote command requires user approval; the Host supplies the password internally.",
+      "SSH server connection details available to this workspace (credentials are not included):",
       ...serverEntries.map(
-        ({ id, name, environment, host, port, username }) =>
-          `- serverId=${id}; ${name} (${environment}); ${username ?? "username missing"}@${host}:${port ?? 22}`,
+        ({ name, environment, host, port, username }) =>
+          `- ${name} (${environment}); ${username ?? "username missing"}@${host}:${port ?? 22}`,
       ),
-      "Do not ask the user to paste the saved password or include it in command text.",
     );
   }
   return context.join("\n");

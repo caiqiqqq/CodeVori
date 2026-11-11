@@ -382,10 +382,8 @@ import { createLegacyTeamOrganizationResolver } from "./model-provider/legacyTea
 import { createObservableSettingService } from "./setting/observableSettingService.js";
 import {
   createCredentialReferenceReader,
-  createCredentialServiceWithHostAccess,
+  createCredentialServiceWithServerReader,
 } from "./credential/credentialService.js";
-import type { CredentialVaultSshCommandExecutor } from "./credential/credentialVaultHostAccess.js";
-export type { CredentialVaultSshCommandExecutor } from "./credential/credentialVaultHostAccess.js";
 import { createBroadcastService } from "./broadcast/broadcastService.js";
 import {
   createZCodeAgentService,
@@ -1381,8 +1379,6 @@ export function createLocalServices(options: {
   zcodeBuiltinProviderConfigFilePath: string;
   /** HTTP Server 只有在调用方明确配置认证时才暴露跨 Environment Provisioning target。 */
   providerProvisioningTargetEnabled?: boolean;
-  /** Host-local SSH adapter for commands authorized through saved server credentials. */
-  credentialVaultSshCommandExecutor?: CredentialVaultSshCommandExecutor;
   /** Desktop Host 私有通知；只在 Source 成功持久化后请求 Main 调度远端镜像。 */
   onProviderProvisioningSourceChanged?: (
     trigger: Exclude<ProviderProvisioningTrigger, "environment-online">,
@@ -1458,8 +1454,7 @@ export function createLocalServices(options: {
       overrideOrigin: (await settingService.get()).zcodeEndpointOrigin,
     });
   const provisioningOAuthKeys = new Set<string>(PROVIDER_PROVISIONING_OAUTH_CREDENTIAL_KEYS);
-  const credentialHost = createCredentialServiceWithHostAccess({
-    sshCommandExecutor: options?.credentialVaultSshCommandExecutor,
+  const credentialHost = createCredentialServiceWithServerReader({
     onDidMutate: ({ key }) => {
       if (provisioningOAuthKeys.has(key) || isProviderProvisioningAccountCredentialKey(key)) {
         options.onProviderProvisioningSourceChanged?.("credential");
@@ -2496,7 +2491,7 @@ export function createLocalServices(options: {
       isEnabled: async () => (await settingService.get()).memoryEnabled === true,
     }),
     credentialReferenceReader,
-    credentialVaultHostAccess: credentialHost.credentialVaultHostAccess,
+    credentialVaultServerReader: credentialHost.credentialVaultServerReader,
     delegation: {
       register: (session) =>
         delegationMcp?.register(

@@ -119,25 +119,6 @@ export class CredentialVaultRepository {
     return mapMutation(row) ?? projectEntry(row);
   }
 
-  async findActiveWithSecretKey(
-    id: string,
-    workspaceIdentity: string,
-  ): Promise<{ entry: CredentialVaultEntry; secretKey: string } | null> {
-    const database = await this.getDatabase();
-    const row = database
-      .prepare(
-        `SELECT id, name, kind, environment, host, port, username, workspace_identity,
-                secret_key, previous_secret_key, status, operation_owner_pid,
-                operation_owner_started_at, created_at, updated_at
-         FROM credential_vault_entries
-         WHERE id = ? AND status = 'active'
-           AND (workspace_identity IS NULL OR workspace_identity = ?)`,
-      )
-      .get(id, workspaceIdentity) as CredentialVaultRow | undefined;
-    if (!row) return null;
-    return { entry: projectEntry(row), secretKey: row.secret_key };
-  }
-
   async reserveCreate(
     input: SaveCredentialVaultEntryInput,
     id: string,
