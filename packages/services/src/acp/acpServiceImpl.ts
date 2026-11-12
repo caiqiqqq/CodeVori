@@ -104,10 +104,7 @@ import type { IAcpService } from "./acpService.js";
 import { AcpSessionLoadError, connectAcpAgent } from "./acpStdioConnection.js";
 import { buildAcpPromptBlocks } from "./acpPromptBlocks.js";
 import type { ProjectMemoryContext } from "../memory/projectMemoryContext.js";
-import {
-  credentialReferencePromptContext,
-  type CredentialReferenceReader,
-} from "../credential/credentialReferences.js";
+import { credentialServerPromptContext } from "../credential/credentialServerContext.js";
 import type { CredentialVaultServerReader } from "../credential/credentialVaultServerReader.js";
 import { AcpQueueGate } from "./acpQueueGate.js";
 import { AcpAttachmentStore } from "./acpAttachmentStore.js";
@@ -263,7 +260,6 @@ export function createAcpService(
     savedWorkflows?: import("./acpSavedWorkflows.js").AcpSavedWorkflowService;
     agentManager?: AcpAgentManager;
     memoryContext?: ProjectMemoryContext;
-    credentialReferenceReader?: CredentialReferenceReader;
     credentialVaultServerReader?: CredentialVaultServerReader;
     /** Auxiliary text seam for isolated ACP memory extraction tests. */
     memoryGenerateText?: (
@@ -1310,21 +1306,12 @@ export function createAcpService(
         }
         memoryRegistrations.set(session.id, memoryRegistration);
       }
-      const credentialReferenceReader = options.credentialReferenceReader;
       const credentialVaultServerReader = options.credentialVaultServerReader;
       const credentialTools: Array<{
         name: string;
         description: string;
         inputSchema: Record<string, unknown>;
       }> = [];
-      if (credentialReferenceReader) {
-        credentialTools.push({
-          name: "ListCredentialReferences",
-          description:
-            "List non-secret aliases, purposes, and counts for credentials stored by this Host. Never returns credential values or storage keys.",
-          inputSchema: { type: "object", properties: {}, additionalProperties: false },
-        });
-      }
       if (credentialVaultServerReader) {
         credentialTools.push({
           name: "ListCredentialedServers",
@@ -1340,14 +1327,6 @@ export function createAcpService(
           async call(name, args) {
             if (disposed || generations.get(session.id) !== generation || removed.has(session.id))
               throw new Error("ACP credential connection is no longer active");
-            if (name === "ListCredentialReferences") {
-              if (!credentialReferenceReader) throw new Error("Credential references unavailable");
-              try {
-                return await credentialReferenceReader.list();
-              } catch {
-                throw new Error("Host credential metadata is unavailable");
-              }
-            }
             if (name === "ListCredentialedServers") {
               if (!credentialVaultServerReader)
                 throw new Error("Saved SSH server metadata unavailable");
@@ -2288,26 +2267,15 @@ export function createAcpService(
       let credentialContext: string | undefined;
       const credentialWorkspaceIdentity =
         session.workspaceIdentity?.trim() || session.workspacePath;
-      const [credentialReferencesResult, credentialServersResult] = await Promise.allSettled([
-        options.credentialReferenceReader?.list(),
+      const [credentialServersResult] = await Promise.allSettled([
         options.credentialVaultServerReader?.listServers(credentialWorkspaceIdentity),
       ]);
-      const credentialReferences =
-        credentialReferencesResult.status === "fulfilled"
-          ? credentialReferencesResult.value
-          : undefined;
       const credentialServers =
         credentialServersResult.status === "fulfilled" ? credentialServersResult.value : undefined;
-      if (credentialReferencesResult.status === "rejected")
-        logger.warn(undefined, "ACP credential reference summary unavailable");
       if (credentialServersResult.status === "rejected")
         logger.warn(undefined, "ACP saved SSH server summary unavailable");
-      if (credentialReferences || credentialServers) {
-        credentialContext = credentialReferencePromptContext(
-          credentialReferences ?? { references: [], otherStoredCredentialCount: 0 },
-          credentialServers ?? [],
-        );
-      }
+      if (credentialServers?.length)
+        credentialContext = credentialServerPromptContext(credentialServers);
       timing?.phase("prompt_blocks");
       const blocks = await buildAcpPromptBlocks({
         text: buildAcpPluginPrompt(
