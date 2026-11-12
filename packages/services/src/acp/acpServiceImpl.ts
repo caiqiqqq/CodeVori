@@ -1307,6 +1307,22 @@ export function createAcpService(
         memoryRegistrations.set(session.id, memoryRegistration);
       }
       const credentialVaultReferenceReader = options.credentialVaultReferenceReader;
+      const credentialWorkspace = {
+        workspacePath: session.workspacePath,
+        workspaceIdentity: session.workspaceIdentity,
+        remoteSessionId: session.remoteSessionId,
+      };
+      const assertCredentialConnection = () => {
+        if (
+          disposed ||
+          generations.get(session.id) !== generation ||
+          removed.has(session.id) ||
+          workspaceKey(session) !== workspaceKey(credentialWorkspace) ||
+          session.workspacePath !== credentialWorkspace.workspacePath ||
+          session.remoteSessionId !== credentialWorkspace.remoteSessionId
+        )
+          throw new Error("ACP credential connection is no longer active");
+      };
       const credentialTools: Array<{
         name: string;
         description: string;
@@ -1319,14 +1335,27 @@ export function createAcpService(
             "List active credential metadata saved for the current workspace, including shared credentials and every credential type. Returns metadata only and never returns secret values.",
           inputSchema: { type: "object", properties: {}, additionalProperties: false },
         });
+        credentialTools.push({
+          name: "ReadCredentialSecret",
+          description:
+            "Read the saved password, token or key for one credential id from ListCredentialReferences. Requires Host approval for each read. Use only for the user's requested authentication; do not repeat secret values in replies, logs or configuration.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              credentialId: { type: "string", format: "uuid" },
+              purpose: { type: "string", minLength: 1, maxLength: 500 },
+            },
+            required: ["credentialId", "purpose"],
+            additionalProperties: false,
+          },
+        });
       }
       if (credentialTools.length) {
         credentialReferenceRegistration = await workflowMcp.register("zcode-credentials", {
           names: credentialTools.map(({ name }) => name),
           tools: credentialTools,
           async call(name, args) {
-            if (disposed || generations.get(session.id) !== generation || removed.has(session.id))
-              throw new Error("ACP credential connection is no longer active");
+            assertCredentialConnection();
             if (name === "ListCredentialReferences") {
               if (!credentialVaultReferenceReader)
                 throw new Error("Saved credential metadata unavailable");
@@ -1337,6 +1366,59 @@ export function createAcpService(
                 );
               } catch {
                 throw new Error("Saved credential metadata is unavailable");
+              }
+            }
+            if (name === "ReadCredentialSecret") {
+              const { credentialId, purpose } = z
+                .object({
+                  credentialId: z.string().uuid(),
+                  purpose: z.string().trim().min(1).max(500),
+                })
+                .strict()
+                .parse(args);
+              const commandId = active.get(session.id);
+              const commandToken = activeTokens.get(session.id);
+              const assertCurrent = () => {
+                assertCredentialConnection();
+                // 中文依据：密码读取属于本轮授权，停止、重连或新回合都不能继承旧请求。
+                if (
+                  !commandId ||
+                  !commandToken ||
+                  active.get(session.id) !== commandId ||
+                  activeTokens.get(session.id) !== commandToken ||
+                  stopping.has(session.id)
+                )
+                  throw new Error("ACP credential request is no longer active");
+              };
+              assertCurrent();
+              const identity =
+                credentialWorkspace.workspaceIdentity?.trim() || credentialWorkspace.workspacePath;
+              const reference = (
+                await credentialVaultReferenceReader!.listReferences(identity)
+              ).find((entry) => entry.id === credentialId);
+              assertCurrent();
+              if (!reference) throw new Error("Saved credential is unavailable");
+              const decision = await requestPermission(session, {
+                requestId: randomUUID(),
+                title: `向当前智能体提供凭证 ${JSON.stringify(reference.name)} 的密码/密钥（${reference.host}，${reference.environment}）。用途：${purpose}`,
+                options: [
+                  { optionId: "allow", name: "允许本次读取", kind: "allow_once" },
+                  { optionId: "reject", name: "拒绝", kind: "reject_once" },
+                ],
+              });
+              assertCurrent();
+              if (decision !== "allow") throw new Error("Credential secret access denied");
+              try {
+                const credential = await credentialVaultReferenceReader!.readSecret(
+                  identity,
+                  reference,
+                  assertCurrent,
+                );
+                assertCurrent();
+                return credential;
+              } catch {
+                // 解密器的异常可能带私有实现信息，不能透传到 MCP 工具结果或日志。
+                throw new Error("Saved credential secret is unavailable or the request expired");
               }
             }
             throw new Error("Unknown credential tool");

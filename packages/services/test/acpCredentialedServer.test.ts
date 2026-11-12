@@ -14,6 +14,7 @@ test("ACP provides workspace credential metadata without remote command executio
     workspaceIdentity: "workspace:one",
   };
   const credential = {
+    id: "11111111-1111-4111-8111-111111111111",
     name: "Test server",
     kind: "custom-server-type",
     environment: "staging" as const,
@@ -25,6 +26,9 @@ test("ACP provides workspace credential metadata without remote command executio
     async listReferences(identity) {
       assert.equal(identity, workspace.workspaceIdentity);
       return [credential];
+    },
+    async readSecret() {
+      throw new Error("Metadata lookup must not read secrets");
     },
   };
   let credentialServer:
@@ -96,7 +100,7 @@ test("ACP provides workspace credential metadata without remote command executio
     };
     assert.deepEqual(
       listed.result?.tools?.map(({ name }) => name),
-      ["ListCredentialReferences"],
+      ["ListCredentialReferences", "ReadCredentialSecret"],
     );
 
     await service.prompt({
