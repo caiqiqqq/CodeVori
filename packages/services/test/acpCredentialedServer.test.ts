@@ -110,7 +110,7 @@ test("ACP provides workspace server connection details without remote command ex
     assert.match(promptText, /Test server \(staging\); deploy@server\.example\.invalid:2222/);
     assert.doesNotMatch(
       promptText,
-      /RunCredentialedServerCommand|password|private-key-passphrase/i,
+      /RunCredentialedServerCommand|ListCredentialReferences|zai-oauth|bigmodel-oauth|codevori-account|account-provider-api-keys|bot-integration-credentials|password|private-key-passphrase/i,
     );
     const listedMetadata = JSON.stringify(toolResult);
     assert.match(listedMetadata, /server\.example\.invalid/);

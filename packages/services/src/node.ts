@@ -380,10 +380,7 @@ import { createSettingServiceWithMigrations } from "./setting/settingService.js"
 import { createOnboardingRecordService } from "./onboarding/onboardingRecordService.js";
 import { createLegacyTeamOrganizationResolver } from "./model-provider/legacyTeamOrganizationResolver.js";
 import { createObservableSettingService } from "./setting/observableSettingService.js";
-import {
-  createCredentialReferenceReader,
-  createCredentialServiceWithServerReader,
-} from "./credential/credentialService.js";
+import { createCredentialServiceWithServerReader } from "./credential/credentialService.js";
 import { createBroadcastService } from "./broadcast/broadcastService.js";
 import {
   createZCodeAgentService,
@@ -1462,7 +1459,6 @@ export function createLocalServices(options: {
     },
   });
   const credentialService = credentialHost.service;
-  const credentialReferenceReader = createCredentialReferenceReader();
   const accountProviderCredentialStore = createAccountProviderCredentialStore({
     credentialService,
   });
@@ -2490,7 +2486,6 @@ export function createLocalServices(options: {
       cliStorageRoot: join(getZCodeDataRootDir(), "cli"),
       isEnabled: async () => (await settingService.get()).memoryEnabled === true,
     }),
-    credentialReferenceReader,
     credentialVaultServerReader: credentialHost.credentialVaultServerReader,
     delegation: {
       register: (session) =>
