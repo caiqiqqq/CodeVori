@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import test, { type TestContext } from "node:test";
-import type { NativeMcpServerRecord } from "@zcode/shared";
+import type { AcpAgent, AcpConfigOption, NativeMcpServerRecord } from "@zcode/shared";
 import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
 import { createCredentialServiceWithReferenceReader } from "../src/credential/credentialService.js";
 import { CredentialVaultRepository } from "../src/credential/credentialVaultRepository.js";
@@ -20,7 +20,10 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function fixture(t: TestContext) {
+async function fixture(
+  t: TestContext,
+  options: { agent?: AcpAgent; legacy?: boolean; mode?: string } = {},
+) {
   const directory = await mkdtemp(join(tmpdir(), "codevori-acp-credential-secret-"));
   const previousDataBaseDir = getDataBaseDir();
   setDataBaseDir(directory);
@@ -47,11 +50,51 @@ async function fixture(t: TestContext) {
   };
   let server: NativeMcpServerRecord | undefined;
   let action: () => Promise<void> = async () => {};
+  let publishMode!: (value: string) => Promise<void>;
   let promptText = "";
-  const connect: AcpConnectionFactory = async ({ workflowServers }) => {
+  const agent = options.agent ?? "codex";
+  const modes =
+    agent === "claude"
+      ? ["default", "acceptEdits", "plan", "auto", "bypassPermissions"]
+      : ["read-only", "workspace-write", "agent", "agent-full-access"];
+  let mode = options.mode ?? modes[0];
+  const configOptions = (): AcpConfigOption[] =>
+    options.legacy
+      ? []
+      : [
+          {
+            id: "mode",
+            name: "Mode",
+            category: "mode",
+            type: "select",
+            currentValue: mode,
+            options: modes.map((value) => ({ value, name: value })),
+          },
+        ];
+  const connect: AcpConnectionFactory = async ({ workflowServers, onUpdate }) => {
     server = workflowServers?.find((item) => item.name === "zcode-credentials");
+    publishMode = async (value) => {
+      mode = value;
+      await onUpdate(
+        options.legacy
+          ? { kind: "mode", modeId: value }
+          : { kind: "config", configOptions: configOptions() },
+      );
+    };
     return {
       sessionId: "fixture-native-session",
+      configOptions: configOptions(),
+      modeState: {
+        currentModeId: mode,
+        availableModes: modes.map((id) => ({ id, name: id })),
+      },
+      async setConfigOption(_id, value) {
+        mode = String(value);
+        return configOptions();
+      },
+      async setMode(value) {
+        mode = value;
+      },
       async prompt(_text, blocks) {
         promptText = (blocks ?? [])
           .filter((block) => block.type === "text")
@@ -83,7 +126,7 @@ async function fixture(t: TestContext) {
     secret,
   };
   const entry = await save(input);
-  const session = await service.create({ ...workspace, agent: "codex" });
+  const session = await service.create({ ...workspace, agent });
   const target = { ...workspace, id: session.id };
   const call = async (args: Record<string, unknown>, name = "ReadCredentialSecret") => {
     const env = server?.config.env;
@@ -140,6 +183,8 @@ async function fixture(t: TestContext) {
     permission,
     send,
     allow,
+    chooseMode: (value: string) => service.setConfigOption({ ...target, configId: "mode", value }),
+    publishMode: (value: string) => publishMode(value),
     get decryptCalls() {
       return decryptCalls;
     },
@@ -147,6 +192,106 @@ async function fixture(t: TestContext) {
       return promptText;
     },
   };
+}
+
+// 产品依据：凭证读取复用 Host 已确认的会话权限；完全访问免确认，其他模式保持逐次授权。
+for (const agent of ["codex", "claude"] as const) {
+  for (const legacy of [false, true]) {
+    test(
+      `${agent} ${legacy ? "legacy mode" : "config option"} full access reads credentials without a permission card`,
+      { timeout: 5_000 },
+      async (t) => {
+        const f = await fixture(t, { agent, legacy });
+        await f.chooseMode(agent === "codex" ? "agent-full-access" : "bypassPermissions");
+        let result: Awaited<ReturnType<typeof f.call>> | undefined;
+        await f.send(async () => {
+          result = await f.call({ credentialId: f.entry.id, purpose: "SSH login" });
+        });
+        assert.equal(result?.isError, false);
+        assert.equal(result?.value.secret, secret);
+        assert.equal(f.decryptCalls, 1);
+        assert.equal((await f.read()).pendingPermission, null);
+        assert.doesNotMatch(f.promptText, /fixture-password/);
+        assert.doesNotMatch(JSON.stringify(await f.read()), /fixture-password/);
+        const idle = await f.call({ credentialId: f.entry.id, purpose: "SSH login" });
+        assert.equal(idle.isError, true);
+        assert.equal(f.decryptCalls, 1);
+      },
+    );
+  }
+}
+
+for (const [agent, modes] of [
+  ["codex", ["read-only", "workspace-write", "agent"]],
+  ["claude", ["default", "acceptEdits", "plan", "auto"]],
+] as const) {
+  for (const mode of modes) {
+    test(`${agent} ${mode} requires credential approval before decryption`, async (t) => {
+      const f = await fixture(t, { agent, mode });
+      let result: Awaited<ReturnType<typeof f.call>> | undefined;
+      const turn = f.send(async () => {
+        result = await f.call({ credentialId: f.entry.id, purpose: "SSH login" });
+      });
+      const pending = await f.permission();
+      assert.equal(f.decryptCalls, 0);
+      await f.service.decide({ ...f.target, requestId: pending.requestId, optionId: "reject" });
+      await turn;
+      assert.equal(result?.isError, true);
+      assert.equal(f.decryptCalls, 0);
+    });
+  }
+}
+
+test("switching out of full access immediately restores credential approval despite a stale legacy mode", async (t) => {
+  const f = await fixture(t, { mode: "agent-full-access" });
+  await f.send(async () => {
+    const result = await f.call({ credentialId: f.entry.id, purpose: "SSH login" });
+    assert.equal(result.isError, false);
+  });
+  await f.chooseMode("agent");
+  assert.equal((await f.read()).modeState?.currentModeId, "agent-full-access");
+  let result: Awaited<ReturnType<typeof f.call>> | undefined;
+  const turn = f.send(async () => {
+    result = await f.call({ credentialId: f.entry.id, purpose: "SSH login" });
+  });
+  const pending = await f.permission();
+  assert.equal(f.decryptCalls, 1);
+  await f.service.decide({ ...f.target, requestId: pending.requestId, optionId: "reject" });
+  await turn;
+  assert.equal(result?.isError, true);
+  assert.equal(f.decryptCalls, 1);
+});
+
+for (const phase of ["before", "after"] as const) {
+  test(`revoking full access ${phase} decryption suppresses the credential result`, async (t) => {
+    const f = await fixture(t, { mode: "agent-full-access" });
+    const reached = deferred();
+    const release = deferred();
+    const original = f.reader.readSecret.bind(f.reader);
+    f.reader.readSecret = async (...args) => {
+      if (phase === "before") {
+        reached.resolve();
+        await release.promise;
+      }
+      const value = await original(...args);
+      if (phase === "after") {
+        reached.resolve();
+        await release.promise;
+      }
+      return value;
+    };
+    let result: Awaited<ReturnType<typeof f.call>> | undefined;
+    const turn = f.send(async () => {
+      result = await f.call({ credentialId: f.entry.id, purpose: "SSH login" });
+    });
+    await reached.promise;
+    await f.publishMode("agent");
+    release.resolve();
+    await turn;
+    assert.equal(result?.isError, true);
+    assert.equal(f.decryptCalls, phase === "before" ? 0 : 1);
+    assert.doesNotMatch(JSON.stringify(result), /fixture-password/);
+  });
 }
 
 test("credential MCP decrypts one custom-type credential only after Host permission", async (t) => {
@@ -197,37 +342,40 @@ for (const decision of ["reject", "stop"] as const) {
   });
 }
 
-for (const phase of ["before", "after"] as const) {
-  test(`stopping ${phase} Host decryption suppresses the delayed credential result`, async (t) => {
-    const f = await fixture(t);
-    const reached = deferred();
-    const release = deferred();
-    const original = f.reader.readSecret.bind(f.reader);
-    f.reader.readSecret = async (...args) => {
-      if (phase === "before") {
-        reached.resolve();
-        await release.promise;
-      }
-      const value = await original(...args);
-      if (phase === "after") {
-        reached.resolve();
-        await release.promise;
-      }
-      return value;
-    };
-    let result: unknown;
-    const turn = f.send(async () => {
-      result = await f.call({ credentialId: f.entry.id, purpose: "SSH login" });
+for (const fullAccess of [false, true]) {
+  for (const phase of ["before", "after"] as const) {
+    test(`stopping ${phase} Host decryption suppresses the delayed credential result (${fullAccess ? "full access" : "manual approval"})`, async (t) => {
+      const f = await fixture(t);
+      if (fullAccess) await f.chooseMode("agent-full-access");
+      const reached = deferred();
+      const release = deferred();
+      const original = f.reader.readSecret.bind(f.reader);
+      f.reader.readSecret = async (...args) => {
+        if (phase === "before") {
+          reached.resolve();
+          await release.promise;
+        }
+        const value = await original(...args);
+        if (phase === "after") {
+          reached.resolve();
+          await release.promise;
+        }
+        return value;
+      };
+      let result: unknown;
+      const turn = f.send(async () => {
+        result = await f.call({ credentialId: f.entry.id, purpose: "SSH login" });
+      });
+      if (!fullAccess) await f.allow();
+      await reached.promise;
+      await f.service.stop(f.target);
+      release.resolve();
+      await turn;
+      assert.equal((result as { isError: boolean }).isError, true);
+      assert.equal(f.decryptCalls, phase === "before" ? 0 : 1);
+      assert.doesNotMatch(JSON.stringify(result), /fixture-password/);
     });
-    await f.allow();
-    await reached.promise;
-    await f.service.stop(f.target);
-    release.resolve();
-    await turn;
-    assert.equal((result as { isError: boolean }).isError, true);
-    assert.equal(f.decryptCalls, phase === "before" ? 0 : 1);
-    assert.doesNotMatch(JSON.stringify(result), /fixture-password/);
-  });
+  }
 }
 
 test("a changed credential target during approval is not decrypted", async (t) => {
@@ -250,22 +398,25 @@ test("a changed credential target during approval is not decrypted", async (t) =
   assert.doesNotMatch(JSON.stringify(result), /fixture-password/);
 });
 
-test("another workspace's credential cannot be read, even with a known id", async (t) => {
-  const f = await fixture(t);
-  const other = await f.save({
-    ...f.input,
-    name: "Other workspace",
-    workspaceIdentity: "workspace:two",
+for (const fullAccess of [false, true]) {
+  test(`another workspace's credential cannot be read, even with a known id (${fullAccess ? "full access" : "manual approval"})`, async (t) => {
+    const f = await fixture(t);
+    if (fullAccess) await f.chooseMode("agent-full-access");
+    const other = await f.save({
+      ...f.input,
+      name: "Other workspace",
+      workspaceIdentity: "workspace:two",
+    });
+    let result: unknown;
+    await f.send(async () => {
+      result = await f.call({ credentialId: other.id, purpose: "SSH login" });
+    });
+    assert.equal((result as { isError: boolean }).isError, true);
+    assert.equal((await f.read()).pendingPermission, null);
+    assert.equal(f.decryptCalls, 0);
+    assert.doesNotMatch(JSON.stringify(result), /fixture-password|Other workspace/);
   });
-  let result: unknown;
-  await f.send(async () => {
-    result = await f.call({ credentialId: other.id, purpose: "SSH login" });
-  });
-  assert.equal((result as { isError: boolean }).isError, true);
-  assert.equal((await f.read()).pendingPermission, null);
-  assert.equal(f.decryptCalls, 0);
-  assert.doesNotMatch(JSON.stringify(result), /fixture-password|Other workspace/);
-});
+}
 
 test("credential MCP hides private decryption errors", async (t) => {
   const f = await fixture(t);
