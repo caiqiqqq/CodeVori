@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { credentialServerPromptContext } from "../src/credential/credentialServerContext.js";
+import { credentialPromptContext } from "../src/credential/credentialContext.js";
 
-test("ACP server context contains only saved SSH connection details", () => {
-  const context = credentialServerPromptContext([
+test("ACP credential context includes custom credential types but no secret values", () => {
+  const context = credentialPromptContext([
     {
-      name: "Staging host",
+      name: "测试服务器",
+      kind: "测试服务器",
       environment: "staging",
       host: "server.example.invalid",
       port: 2222,
@@ -13,8 +14,10 @@ test("ACP server context contains only saved SSH connection details", () => {
     },
   ]);
 
-  assert.match(context, /Staging host \(staging\); deploy@server\.example\.invalid:2222/);
-  assert.match(context, /credentials are not included/i);
+  assert.match(context, /"name":"测试服务器"/);
+  assert.match(context, /"kind":"测试服务器"/);
+  assert.match(context, /"host":"server\.example\.invalid"/);
+  assert.match(context, /secret values are not included/i);
   assert.doesNotMatch(
     context,
     /zai-oauth|bigmodel-oauth|codevori-account|account-provider-api-keys|bot-integration-credentials|password|private-key-passphrase/i,

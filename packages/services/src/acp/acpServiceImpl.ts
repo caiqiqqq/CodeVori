@@ -104,8 +104,8 @@ import type { IAcpService } from "./acpService.js";
 import { AcpSessionLoadError, connectAcpAgent } from "./acpStdioConnection.js";
 import { buildAcpPromptBlocks } from "./acpPromptBlocks.js";
 import type { ProjectMemoryContext } from "../memory/projectMemoryContext.js";
-import { credentialServerPromptContext } from "../credential/credentialServerContext.js";
-import type { CredentialVaultServerReader } from "../credential/credentialVaultServerReader.js";
+import { credentialPromptContext } from "../credential/credentialContext.js";
+import type { CredentialVaultReferenceReader } from "../credential/credentialVaultReferenceReader.js";
 import { AcpQueueGate } from "./acpQueueGate.js";
 import { AcpAttachmentStore } from "./acpAttachmentStore.js";
 import {
@@ -260,7 +260,7 @@ export function createAcpService(
     savedWorkflows?: import("./acpSavedWorkflows.js").AcpSavedWorkflowService;
     agentManager?: AcpAgentManager;
     memoryContext?: ProjectMemoryContext;
-    credentialVaultServerReader?: CredentialVaultServerReader;
+    credentialVaultReferenceReader?: CredentialVaultReferenceReader;
     /** Auxiliary text seam for isolated ACP memory extraction tests. */
     memoryGenerateText?: (
       input: import("@zcode/shared").AcpGenerateText,
@@ -1306,17 +1306,17 @@ export function createAcpService(
         }
         memoryRegistrations.set(session.id, memoryRegistration);
       }
-      const credentialVaultServerReader = options.credentialVaultServerReader;
+      const credentialVaultReferenceReader = options.credentialVaultReferenceReader;
       const credentialTools: Array<{
         name: string;
         description: string;
         inputSchema: Record<string, unknown>;
       }> = [];
-      if (credentialVaultServerReader) {
+      if (credentialVaultReferenceReader) {
         credentialTools.push({
-          name: "ListCredentialedServers",
+          name: "ListCredentialReferences",
           description:
-            "List SSH server connection details saved for the current workspace. Returns metadata only and never returns passwords or key passphrases.",
+            "List active credential metadata saved for the current workspace, including shared credentials and every credential type. Returns metadata only and never returns secret values.",
           inputSchema: { type: "object", properties: {}, additionalProperties: false },
         });
       }
@@ -1327,16 +1327,16 @@ export function createAcpService(
           async call(name, args) {
             if (disposed || generations.get(session.id) !== generation || removed.has(session.id))
               throw new Error("ACP credential connection is no longer active");
-            if (name === "ListCredentialedServers") {
-              if (!credentialVaultServerReader)
-                throw new Error("Saved SSH server metadata unavailable");
+            if (name === "ListCredentialReferences") {
+              if (!credentialVaultReferenceReader)
+                throw new Error("Saved credential metadata unavailable");
               z.object({}).strict().parse(args);
               try {
-                return await credentialVaultServerReader.listServers(
+                return await credentialVaultReferenceReader.listReferences(
                   session.workspaceIdentity?.trim() || session.workspacePath,
                 );
               } catch {
-                throw new Error("Saved SSH server metadata is unavailable");
+                throw new Error("Saved credential metadata is unavailable");
               }
             }
             throw new Error("Unknown credential tool");
@@ -2267,15 +2267,17 @@ export function createAcpService(
       let credentialContext: string | undefined;
       const credentialWorkspaceIdentity =
         session.workspaceIdentity?.trim() || session.workspacePath;
-      const [credentialServersResult] = await Promise.allSettled([
-        options.credentialVaultServerReader?.listServers(credentialWorkspaceIdentity),
+      const [credentialReferencesResult] = await Promise.allSettled([
+        options.credentialVaultReferenceReader?.listReferences(credentialWorkspaceIdentity),
       ]);
-      const credentialServers =
-        credentialServersResult.status === "fulfilled" ? credentialServersResult.value : undefined;
-      if (credentialServersResult.status === "rejected")
-        logger.warn(undefined, "ACP saved SSH server summary unavailable");
-      if (credentialServers?.length)
-        credentialContext = credentialServerPromptContext(credentialServers);
+      const credentialReferences =
+        credentialReferencesResult.status === "fulfilled"
+          ? credentialReferencesResult.value
+          : undefined;
+      if (credentialReferencesResult.status === "rejected")
+        logger.warn(undefined, "ACP saved credential summary unavailable");
+      if (credentialReferences?.length)
+        credentialContext = credentialPromptContext(credentialReferences);
       timing?.phase("prompt_blocks");
       const blocks = await buildAcpPromptBlocks({
         text: buildAcpPluginPrompt(

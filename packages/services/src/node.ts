@@ -380,7 +380,7 @@ import { createSettingServiceWithMigrations } from "./setting/settingService.js"
 import { createOnboardingRecordService } from "./onboarding/onboardingRecordService.js";
 import { createLegacyTeamOrganizationResolver } from "./model-provider/legacyTeamOrganizationResolver.js";
 import { createObservableSettingService } from "./setting/observableSettingService.js";
-import { createCredentialServiceWithServerReader } from "./credential/credentialService.js";
+import { createCredentialServiceWithReferenceReader } from "./credential/credentialService.js";
 import { createBroadcastService } from "./broadcast/broadcastService.js";
 import {
   createZCodeAgentService,
@@ -1451,7 +1451,7 @@ export function createLocalServices(options: {
       overrideOrigin: (await settingService.get()).zcodeEndpointOrigin,
     });
   const provisioningOAuthKeys = new Set<string>(PROVIDER_PROVISIONING_OAUTH_CREDENTIAL_KEYS);
-  const credentialHost = createCredentialServiceWithServerReader({
+  const credentialHost = createCredentialServiceWithReferenceReader({
     onDidMutate: ({ key }) => {
       if (provisioningOAuthKeys.has(key) || isProviderProvisioningAccountCredentialKey(key)) {
         options.onProviderProvisioningSourceChanged?.("credential");
@@ -2486,7 +2486,7 @@ export function createLocalServices(options: {
       cliStorageRoot: join(getZCodeDataRootDir(), "cli"),
       isEnabled: async () => (await settingService.get()).memoryEnabled === true,
     }),
-    credentialVaultServerReader: credentialHost.credentialVaultServerReader,
+    credentialVaultReferenceReader: credentialHost.credentialVaultReferenceReader,
     delegation: {
       register: (session) =>
         delegationMcp?.register(
