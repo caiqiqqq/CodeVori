@@ -5,25 +5,26 @@ import { join } from "node:path";
 import test from "node:test";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
 import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
-import type { CredentialVaultServerReader } from "../src/credential/credentialVaultServerReader.js";
+import type { CredentialVaultReferenceReader } from "../src/credential/credentialVaultReferenceReader.js";
 
-test("ACP provides workspace server connection details without remote command execution", async () => {
+test("ACP provides workspace credential metadata without remote command execution", async () => {
   const directory = await mkdtemp(join(tmpdir(), "zcode-acp-server-context-"));
   const workspace = {
     workspacePath: join(directory, "workspace"),
     workspaceIdentity: "workspace:one",
   };
-  const server = {
+  const credential = {
     name: "Test server",
+    kind: "custom-server-type",
     environment: "staging" as const,
     host: "server.example.invalid",
     port: 2222,
     username: "deploy",
   };
-  const serverReader: CredentialVaultServerReader = {
-    async listServers(identity) {
+  const referenceReader: CredentialVaultReferenceReader = {
+    async listReferences(identity) {
       assert.equal(identity, workspace.workspaceIdentity);
-      return [server];
+      return [credential];
     },
   };
   let credentialServer:
@@ -61,7 +62,7 @@ test("ACP provides workspace server connection details without remote command ex
             jsonrpc: "2.0",
             id: 1,
             method: "tools/call",
-            params: { name: "ListCredentialedServers", arguments: {} },
+            params: { name: "ListCredentialReferences", arguments: {} },
           }),
         });
         toolResult = await response.json();
@@ -72,7 +73,7 @@ test("ACP provides workspace server connection details without remote command ex
   };
   const service = createAcpService({
     directory,
-    credentialVaultServerReader: serverReader,
+    credentialVaultReferenceReader: referenceReader,
     connect,
   });
 
@@ -95,7 +96,7 @@ test("ACP provides workspace server connection details without remote command ex
     };
     assert.deepEqual(
       listed.result?.tools?.map(({ name }) => name),
-      ["ListCredentialedServers"],
+      ["ListCredentialReferences"],
     );
 
     await service.prompt({
@@ -107,13 +108,15 @@ test("ACP provides workspace server connection details without remote command ex
       workspaceFiles: [],
     });
 
-    assert.match(promptText, /Test server \(staging\); deploy@server\.example\.invalid:2222/);
+    assert.match(promptText, /"kind":"custom-server-type"/);
+    assert.match(promptText, /"host":"server\.example\.invalid"/);
     assert.doesNotMatch(
       promptText,
-      /RunCredentialedServerCommand|ListCredentialReferences|zai-oauth|bigmodel-oauth|codevori-account|account-provider-api-keys|bot-integration-credentials|password|private-key-passphrase/i,
+      /RunCredentialedServerCommand|zai-oauth|bigmodel-oauth|codevori-account|account-provider-api-keys|bot-integration-credentials|password|private-key-passphrase/i,
     );
     const listedMetadata = JSON.stringify(toolResult);
     assert.match(listedMetadata, /server\.example\.invalid/);
+    assert.match(listedMetadata, /custom-server-type/);
     assert.doesNotMatch(listedMetadata, /password|secretKey|private-key-passphrase/i);
   } finally {
     service.disposeAll();

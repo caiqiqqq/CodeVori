@@ -17,7 +17,7 @@ import {
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { getAppConfigDir } from "../paths.js";
 import { CredentialVaultRepository } from "./credentialVaultRepository.js";
-import type { CredentialVaultServerReader } from "./credentialVaultServerReader.js";
+import type { CredentialVaultReferenceReader } from "./credentialVaultReferenceReader.js";
 
 /**
  * 凭据存储路径
@@ -109,9 +109,9 @@ interface CredentialServiceDependencies {
   onDidMutate?: (event: { operation: "save" | "delete"; key: string }) => void;
 }
 
-export interface CredentialServiceWithServerReader {
+export interface CredentialServiceWithReferenceReader {
   service: ICredentialService;
-  credentialVaultServerReader: CredentialVaultServerReader;
+  credentialVaultReferenceReader: CredentialVaultReferenceReader;
 }
 
 function hasLiveMutationOwner(pid: number | null, startedAt: number | null): boolean {
@@ -128,12 +128,12 @@ function hasLiveMutationOwner(pid: number | null, startedAt: number | null): boo
 export function createCredentialService(
   dependencies: CredentialServiceDependencies = {},
 ): ICredentialService {
-  return createCredentialServiceWithServerReader(dependencies).service;
+  return createCredentialServiceWithReferenceReader(dependencies).service;
 }
 
-export function createCredentialServiceWithServerReader(
+export function createCredentialServiceWithReferenceReader(
   dependencies: CredentialServiceDependencies = {},
-): CredentialServiceWithServerReader {
+): CredentialServiceWithReferenceReader {
   const cipherProvider = dependencies.cipherProvider ?? createCredentialCipherProvider();
   const vaultRepository =
     dependencies.vaultRepository ??
@@ -300,18 +300,15 @@ export function createCredentialServiceWithServerReader(
     },
   };
 
-  const credentialVaultServerReader: CredentialVaultServerReader = {
-    async listServers(rawWorkspaceIdentity) {
+  const credentialVaultReferenceReader: CredentialVaultReferenceReader = {
+    async listReferences(rawWorkspaceIdentity) {
       const identity = z.string().trim().min(1).max(2_048).parse(rawWorkspaceIdentity);
       await recoverVaultMutations();
       return (await vaultRepository.listActive())
-        .filter(
-          (entry) =>
-            entry.kind === "server" &&
-            (entry.workspaceIdentity === null || entry.workspaceIdentity === identity),
-        )
-        .map(({ name, environment, host, port, username }) => ({
+        .filter((entry) => entry.workspaceIdentity === null || entry.workspaceIdentity === identity)
+        .map(({ name, kind, environment, host, port, username }) => ({
           name,
+          kind,
           environment,
           host,
           port,
@@ -320,5 +317,5 @@ export function createCredentialServiceWithServerReader(
     },
   };
 
-  return { service, credentialVaultServerReader };
+  return { service, credentialVaultReferenceReader };
 }
