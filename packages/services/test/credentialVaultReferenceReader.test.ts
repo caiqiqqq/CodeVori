@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -104,12 +105,14 @@ test("credential reference reader returns all workspace metadata without decrypt
   assert.deepEqual(Object.keys(workspaceServer ?? {}).sort(), [
     "environment",
     "host",
+    "id",
     "kind",
     "name",
     "port",
     "username",
   ]);
   assert.deepEqual(workspaceServer, {
+    id: workspaceServer?.id,
     name: "Workspace server",
     kind: "server",
     environment: "staging",
@@ -134,4 +137,52 @@ test("credential reference reader returns all workspace metadata without decrypt
   } finally {
     database.close();
   }
+
+  const custom = workspaceOne.find(({ name }) => name === "测试服务器")!;
+  const shared = workspaceOne.find(({ name }) => name === "Shared server")!;
+  const noCancellation = () => {};
+  assert.equal(
+    (await host.credentialVaultReferenceReader.readSecret("workspace:one", custom, noCancellation))
+      .secret,
+    "private-custom-type-secret",
+  );
+  assert.equal(
+    (await host.credentialVaultReferenceReader.readSecret("workspace:two", shared, noCancellation))
+      .secret,
+    "private-password-shared",
+  );
+  assert.equal(decryptCalls, 2);
+  await assert.rejects(
+    host.credentialVaultReferenceReader.readSecret(
+      "workspace:two",
+      workspaceServer!,
+      noCancellation,
+    ),
+    /unavailable/,
+  );
+  await assert.rejects(
+    host.credentialVaultReferenceReader.readSecret(
+      "workspace:one",
+      { ...custom, id: randomUUID() },
+      noCancellation,
+    ),
+    /unavailable/,
+  );
+  await assert.rejects(
+    host.credentialVaultReferenceReader.readSecret("workspace:one", custom, () => {
+      throw new Error("Stopped");
+    }),
+    /Stopped/,
+  );
+  assert.equal(decryptCalls, 2, "cross-workspace, missing and stopped reads never decrypt");
+
+  await save({
+    ...custom,
+    workspaceIdentity: "workspace:two",
+  });
+  await assert.rejects(
+    host.credentialVaultReferenceReader.readSecret("workspace:one", custom, noCancellation),
+    /unavailable/,
+  );
+  assert.equal(decryptCalls, 2);
 });
