@@ -30,6 +30,17 @@ export function sessionPermissionSelection(
   return undefined;
 }
 
+export function sessionHasFullAccess(
+  session: PermissionCatalog & Pick<AcpSession, "agent">,
+): boolean {
+  // 修复依据：Host 读取凭证应复用当前会话权限，不能用历史偏好或陈旧 modeState 覆盖已确认的配置。
+  const value = sessionPermissionSelection(session)?.value;
+  return (
+    (session.agent === "codex" && value === "agent-full-access") ||
+    (session.agent === "claude" && value === "bypassPermissions")
+  );
+}
+
 export async function restoreAcpPermission(
   catalog: PermissionCatalog,
   selection: AcpPermissionSelection | undefined,

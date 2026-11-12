@@ -127,6 +127,7 @@ import {
   AcpPermissionPreferences,
   isAcpPermissionOption,
   restoreAcpPermission,
+  sessionHasFullAccess,
   sessionPermissionSelection,
 } from "./acpPermissionPreferences.js";
 import {
@@ -1338,7 +1339,7 @@ export function createAcpService(
         credentialTools.push({
           name: "ReadCredentialSecret",
           description:
-            "Read the saved password, token or key for one credential id from ListCredentialReferences. Requires Host approval for each read. Use only for the user's requested authentication; do not repeat secret values in replies, logs or configuration.",
+            "Read the saved password, token or key for one credential id from ListCredentialReferences. The Host follows the current session permission mode: full access skips confirmation; other modes require approval for each read. Use only for the user's requested authentication; do not repeat secret values in replies, logs or configuration.",
           inputSchema: {
             type: "object",
             properties: {
@@ -1378,6 +1379,7 @@ export function createAcpService(
                 .parse(args);
               const commandId = active.get(session.id);
               const commandToken = activeTokens.get(session.id);
+              let requiresFullAccess = false;
               const assertCurrent = () => {
                 assertCredentialConnection();
                 // 中文依据：密码读取属于本轮授权，停止、重连或新回合都不能继承旧请求。
@@ -1386,7 +1388,8 @@ export function createAcpService(
                   !commandToken ||
                   active.get(session.id) !== commandId ||
                   activeTokens.get(session.id) !== commandToken ||
-                  stopping.has(session.id)
+                  stopping.has(session.id) ||
+                  (requiresFullAccess && !sessionHasFullAccess(session))
                 )
                   throw new Error("ACP credential request is no longer active");
               };
@@ -1398,16 +1401,20 @@ export function createAcpService(
               ).find((entry) => entry.id === credentialId);
               assertCurrent();
               if (!reference) throw new Error("Saved credential is unavailable");
-              const decision = await requestPermission(session, {
-                requestId: randomUUID(),
-                title: `向当前智能体提供凭证 ${JSON.stringify(reference.name)} 的密码/密钥（${reference.host}，${reference.environment}）。用途：${purpose}`,
-                options: [
-                  { optionId: "allow", name: "允许本次读取", kind: "allow_once" },
-                  { optionId: "reject", name: "拒绝", kind: "reject_once" },
-                ],
-              });
+              // 修复原因：完全访问已由用户在会话中确认，凭证读取不能再强制询问；其余模式仍逐次授权。
+              requiresFullAccess = sessionHasFullAccess(session);
+              if (!requiresFullAccess) {
+                const decision = await requestPermission(session, {
+                  requestId: randomUUID(),
+                  title: `向当前智能体提供凭证 ${JSON.stringify(reference.name)} 的密码/密钥（${reference.host}，${reference.environment}）。用途：${purpose}`,
+                  options: [
+                    { optionId: "allow", name: "允许本次读取", kind: "allow_once" },
+                    { optionId: "reject", name: "拒绝", kind: "reject_once" },
+                  ],
+                });
+                if (decision !== "allow") throw new Error("Credential secret access denied");
+              }
               assertCurrent();
-              if (decision !== "allow") throw new Error("Credential secret access denied");
               try {
                 const credential = await credentialVaultReferenceReader!.readSecret(
                   identity,
