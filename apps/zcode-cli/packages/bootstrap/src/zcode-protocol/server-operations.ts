@@ -48,6 +48,7 @@ import {
   zcodeProtocolMethods,
   zcodeDelegationMcpResponseSchema,
   zcodeIssuesMcpResponseSchema,
+  zcodeEnvironmentMcpResponseSchema,
   zcodeSessionCancelBackgroundTaskParamsSchema,
   zcodeSessionCompactParamsSchema,
   zcodeSessionCloseParamsSchema,
@@ -3409,7 +3410,7 @@ async function createRecord(
       : undefined;
   const taskType = params.taskType ?? "interactive";
   // create/resume 都向当前 Host 取会话 capability，避免把临时 bearer 持久化或复用旧 Host 的地址。
-  const [delegationCapability, issuesServers] =
+  const [delegationCapability, issuesServers, environmentServers] =
     taskType === "interactive"
       ? await Promise.all([
           context
@@ -3431,16 +3432,21 @@ async function createRecord(
               { timeoutMs: 5000 },
             )
             .catch(() => []),
+          context.requestClient(
+            zcodeProtocolMethods.interactionRequestEnvironmentMcp, { sessionId },
+            zcodeEnvironmentMcpResponseSchema, { timeoutMs: 5000 },
+          ).catch(() => []),
         ])
-      : [{ servers: [], canDelegate: false }, []];
+      : [{ servers: [], canDelegate: false }, [], []];
   const runtimeMcp = protocolMcpServersToRuntimeMcpConfig(
     params.mcpServers?.filter(
-      (server) => server.name !== "zcode-delegation" && server.name !== "zcode-issues",
+      (server) => !["zcode-delegation", "zcode-issues", "zcode-environments"].includes(server.name),
     ),
   );
   const hostMcpServers = protocolMcpServersToRuntimeMcpConfig([
     ...delegationCapability.servers,
     ...issuesServers,
+    ...environmentServers,
   ])?.servers;
   context.logger?.info("ZCode Protocol createRecord MCP config", {
     event: "zcode_protocol.create_record.mcp_config",

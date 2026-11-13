@@ -20,6 +20,11 @@ import {
   type DelegationParent,
   type WorkTaskScope,
 } from "@zcode/shared";
+import { createProjectEnvironmentService } from "./credential/projectEnvironmentService.js";
+import {
+  createProjectEnvironmentMcp,
+  projectEnvironmentProtocolServer,
+} from "./credential/projectEnvironmentMcp.js";
 
 export {
   materializeZCodeBuiltinProviderConfig,
@@ -698,6 +703,7 @@ const providerProvisioningTriggerDisposers = new WeakMap<
 // （stdioDesktopPresentationSurface 单测稳定复现），Linux 的 unlink-while-open 语义掩盖了泄漏。
 // 与其它侧表一样按 ServiceCollection 登记并在 dispose 时统一 close。
 const sharedSqliteRepos = new WeakMap<ServiceCollection, ReadonlyArray<{ close(): void }>>();
+const projectEnvironmentDisposers = new WeakMap<ServiceCollection, () => void>();
 const accountRequestAuthServices = new WeakMap<ServiceCollection, IAccountRequestAuthService>();
 export type OffPeakRequestAuthBuilder = (
   ticketId: string,
@@ -1459,6 +1465,50 @@ export function createLocalServices(options: {
     },
   });
   const credentialService = credentialHost.service;
+  let agentServiceForEnvironment:
+    | import("./zcode-agent/zcodeAgent.js").IZCodeAgentService
+    | undefined;
+  let acpServiceForEnvironment: import("./acp/acpService.js").IAcpService | undefined;
+  const projectEnvironmentService = createProjectEnvironmentService({
+    databasePath: join(resolveAppConfigDir(), "credential-vault.sqlite"),
+    listCredentials: () => credentialHost.listVaultMetadata(),
+    assertSessionIdle: async (scope) => {
+      if (scope.kind === "api") {
+        if (!agentServiceForEnvironment) throw new Error("environment.session-unavailable");
+        try {
+          const snapshot = await agentServiceForEnvironment.readSession({
+            workspacePath: scope.workspacePath,
+            ...(scope.workspaceIdentity ? { workspaceIdentity: scope.workspaceIdentity } : {}),
+            sessionId: scope.sessionId,
+            runtimePolicy: "existing-only",
+          });
+          if (
+            snapshot.runtime.activeTurnId ||
+            snapshot.runtime.pendingRequestIds.length ||
+            ["running", "waiting"].includes(snapshot.projection.status)
+          )
+            throw new Error("environment.session-busy");
+        } catch (error) {
+          if (error instanceof Error && error.message === "environment.session-busy") throw error;
+          throw new Error("environment.session-unavailable", { cause: error });
+        }
+        return;
+      }
+      if (!acpServiceForEnvironment) throw new Error("environment.session-unavailable");
+      const session = await acpServiceForEnvironment.read({
+        workspacePath: scope.workspacePath,
+        id: scope.sessionId,
+        ...(scope.workspaceIdentity ? { workspaceIdentity: scope.workspaceIdentity } : {}),
+      });
+      if (session.status === "running" || session.queue.items.length)
+        throw new Error("environment.session-busy");
+    },
+  });
+  Object.assign(credentialService, projectEnvironmentService);
+  const projectEnvironmentMcp = createProjectEnvironmentMcp(
+    join(getZCodeDataRootDir(), "project-environments-mcp"),
+    projectEnvironmentService,
+  );
   const accountProviderCredentialStore = createAccountProviderCredentialStore({
     credentialService,
   });
@@ -2173,6 +2223,17 @@ export function createLocalServices(options: {
   const liveParentKey = (workspace: WorkTaskScope, sessionId: string) =>
     JSON.stringify([resolveWorkspaceKey(workspace), sessionId]);
   const zcodeAgentService = createZCodeAgentService({
+    resolveEnvironmentMcp: async (workspace, sessionId) => {
+      const scope = { ...workspace, kind: "api" as const, sessionId };
+      const registration = await projectEnvironmentMcp.register(scope);
+      return registration ? [projectEnvironmentProtocolServer(registration.record)] : [];
+    },
+    beginEnvironmentInput: (workspace, sessionId) =>
+      projectEnvironmentService.beginInput({
+        ...workspace,
+        kind: "api",
+        sessionId,
+      }),
     resolveIssuesMcp: async (workspace, sessionId) => {
       if (isDesktopAttachedRemote) return [];
       const registration = await issuesMcp?.register({ ...workspace, kind: "api", sessionId });
@@ -2405,6 +2466,7 @@ export function createLocalServices(options: {
           },
         }),
   });
+  agentServiceForEnvironment = zcodeAgentService;
   providerConnectivityAgentService = zcodeAgentService;
   // Helper health probe 短暂超时不应在 Computer Use turn 中途回收 Agent。resolver 会把 restart
   // 推迟到下一个 request/turn 边界；若 broker 确实已失效，当前 turn 会自然失败并由下一次请求恢复。
@@ -2479,6 +2541,21 @@ export function createLocalServices(options: {
           : (issuesMcp?.register({ ...session, kind: "acp", sessionId: session.id }) ??
             Promise.resolve(undefined)),
     },
+    projectEnvironments: {
+      register: (session) =>
+        projectEnvironmentMcp.register({
+          workspacePath: session.workspacePath,
+          ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
+          kind: "acp",
+          sessionId: session.id,
+        }),
+    },
+    beginEnvironmentInput: (workspace, sessionId) =>
+      projectEnvironmentService.beginInput({
+        ...workspace,
+        kind: "acp",
+        sessionId,
+      }),
     resolveDynamicWorkflowClientConfig: () =>
       codingPlanSubscriptionService.getDynamicWorkflowClientConfig(),
     hiddenSessionIds: (scope) => hiddenConversationSessionIds(scope, "acp"),
@@ -2517,6 +2594,7 @@ export function createLocalServices(options: {
       getAcpPluginCapabilities: (params) => getHostAcpPluginCapabilities(zcodeAgentService, params),
     },
   });
+  acpServiceForEnvironment = acpService;
   const gitCommitMessageGenerator = new GitCommitMessageGenerator({
     currentModelProvider: {
       async readCurrentModel() {
@@ -2762,6 +2840,7 @@ export function createLocalServices(options: {
     if (event.state === "unavailable") {
       delegationMcp?.revokeWorkspace(event.workspaceKey);
       issuesMcp?.revokeWorkspace(event.workspaceKey);
+      projectEnvironmentMcp.revokeWorkspace(event.workspaceKey, "api");
       for (const [key, workspaceKey] of liveDelegationParents)
         if (workspaceKey === event.workspaceKey) liveDelegationParents.delete(key);
     }
@@ -3028,6 +3107,10 @@ export function createLocalServices(options: {
   // 见 sharedSqliteRepos 声明处注释：登记全部 tasks-index sqlite 句柄，dispose 链统一关闭
   sqliteReposToClose.push(taskIndexRepo);
   sharedSqliteRepos.set(services, sqliteReposToClose);
+  projectEnvironmentDisposers.set(services, () => {
+    projectEnvironmentMcp.dispose();
+    projectEnvironmentService.dispose();
+  });
   return services;
 }
 
@@ -3137,6 +3220,8 @@ export function disposeServiceResources(services: ServiceCollection): void {
   if (managedCuaHelperHost) {
     void managedCuaHelperHost.stop().catch(() => {});
   }
+  projectEnvironmentDisposers.get(services)?.();
+  projectEnvironmentDisposers.delete(services);
   // 关闭共享 tasks-index sqlite 句柄（Windows 上悬着句柄会让后续目录清理撞 EBUSY）
   for (const repo of sharedSqliteRepos.get(services) ?? []) repo.close();
   sharedSqliteRepos.delete(services);
@@ -3177,6 +3262,8 @@ export async function disposeServiceResourcesAndWait(services: ServiceCollection
   if (managedCuaHelperHost) {
     await managedCuaHelperHost.stop().catch(() => {});
   }
+  projectEnvironmentDisposers.get(services)?.();
+  projectEnvironmentDisposers.delete(services);
   // 关闭共享 tasks-index sqlite 句柄（同 disposeServiceResources，异步收口路径也要释放）
   for (const repo of sharedSqliteRepos.get(services) ?? []) repo.close();
   sharedSqliteRepos.delete(services);

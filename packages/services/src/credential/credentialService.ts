@@ -9,7 +9,7 @@ import {
   credentialValueSchema,
   formatZodError,
 } from "@zcode/shared";
-import type { ICredentialService } from "./credential.js";
+import type { CredentialVaultEntry, ICredentialService } from "./credential.js";
 import {
   createCredentialCipherProvider,
   type CredentialCipherProvider,
@@ -115,6 +115,7 @@ interface CredentialServiceDependencies {
 export interface CredentialServiceWithReferenceReader {
   service: ICredentialService;
   credentialVaultReferenceReader: CredentialVaultReferenceReader;
+  listVaultMetadata(): Promise<CredentialVaultEntry[]>;
 }
 
 function hasLiveMutationOwner(pid: number | null, startedAt: number | null): boolean {
@@ -341,7 +342,12 @@ export function createCredentialServiceWithReferenceReader(
     },
   };
 
-  return { service, credentialVaultReferenceReader };
+  return {
+    service,
+    credentialVaultReferenceReader,
+    // 环境档案只读取活动条目的元数据，绕过可能读取加密秘密的中断变更恢复路径。
+    listVaultMetadata: () => vaultRepository.listActive(),
+  };
 }
 
 function projectReference({
