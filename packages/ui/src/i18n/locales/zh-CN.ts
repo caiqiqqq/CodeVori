@@ -7508,6 +7508,7 @@ const zhCN: Record<string, string> = {
   "acp.transcript": "ACP 对话记录",
   "acp.toolResultUnknown": "结果未确认",
   "acp.terminalOutputDescription": "命令与输出",
+  "acp.terminalOutputUnavailable": "此终端输出未写入会话记录，无法恢复。",
   "acp.terminalOutputTruncated": "输出已截断",
   "acp.terminalStop": "停止命令",
   "acp.terminalStopFailed": "停止命令失败，请重试。",

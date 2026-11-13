@@ -1,6 +1,7 @@
 import type { AcpEntry, AcpSession } from "./zcode-protocol/acp.js";
 import type { ConversationRow, ToolCallRow } from "./zcode-protocol-v4/index.js";
 export const ACP_DISPLAY_TOOL_NAME = "ACP external tool";
+const MAX_PROJECTED_TERMINAL_OUTPUT_BYTES = 64 * 1024;
 
 /** 展示用工具身份与 ZCode CLI 工具名隔离，避免 Read/Task 等误入原生能力卡。 */
 
@@ -42,12 +43,15 @@ function displayText(entry: Extract<AcpEntry, { kind: "user" }>): string {
 export function buildAcpConversationRows(
   session:
     | (Pick<AcpSession, "entries" | "status"> &
-        Partial<Pick<AcpSession, "error" | "errorCommandId">>)
+        Partial<Pick<AcpSession, "error" | "errorCommandId" | "terminals">>)
     | null,
   startIndex = 0,
 ): ConversationRow[] {
   if (!session) return [];
   const { entries, status } = session;
+  const terminals = new Map(
+    (session.terminals ?? []).map((terminal) => [terminal.terminalId, terminal]),
+  );
   const lastUserIndex = entries.findLastIndex((entry) => entry.kind === "user");
   const lastAssistantIndex = entries.findLastIndex((entry) => entry.kind === "assistant");
   const rows: ConversationRow[] = [];
@@ -202,6 +206,46 @@ export function buildAcpConversationRows(
       const mappedStatus = toolStatus(entry.status, isLastTurn ? status : "idle");
       const unconfirmed =
         mappedStatus === "cancelled" && entry.status !== "cancelled" && entry.status !== "canceled";
+      const terminalIds = [...new Set(entry.terminalIds ?? [])];
+      const referencedTerminals = terminalIds.flatMap((id) => {
+        const terminal = terminals.get(id);
+        return terminal ? [terminal] : [];
+      });
+      // 修复依据：ACP 工具正文只携带 terminal ID；从 Host 已持久化的唯一事实源派生可见输出。
+      let terminalOutput = "";
+      let terminalOutputTruncated = false;
+      for (const terminal of referencedTerminals) {
+        const nextOutput = terminalOutput
+          ? `${terminalOutput}\n\n${terminal.output}`
+          : terminal.output;
+        const outputBytes = new TextEncoder().encode(nextOutput);
+        if (outputBytes.byteLength > MAX_PROJECTED_TERMINAL_OUTPUT_BYTES) {
+          let start = outputBytes.byteLength - MAX_PROJECTED_TERMINAL_OUTPUT_BYTES;
+          // 修复依据：快照上限按 UTF-8 字节计算，投影也须按字符边界保持相同上限。
+          while (start < outputBytes.byteLength && (outputBytes[start]! & 0xc0) === 0x80) {
+            start++;
+          }
+          terminalOutput = new TextDecoder().decode(outputBytes.subarray(start));
+          terminalOutputTruncated = true;
+        } else {
+          terminalOutput = nextOutput;
+        }
+        terminalOutputTruncated ||= terminal.truncated;
+      }
+      const terminalOutputUnavailable =
+        terminalIds.length > referencedTerminals.length &&
+        entry.status !== "pending" &&
+        entry.status !== "in_progress" &&
+        entry.status !== "running";
+      const projectedEntry =
+        terminalIds.length > 0
+          ? {
+              ...entry,
+              terminalOutput,
+              terminalOutputUnavailable,
+              terminalOutputTruncated,
+            }
+          : entry;
       rows.push({
         ...base,
         kind: "toolCall",
@@ -210,7 +254,7 @@ export function buildAcpConversationRows(
         status: mappedStatus,
         inputText: entry.title,
         // Host 已有工具类型与明细；作为只读展示载荷进入共用分组，不新增协议事实。
-        input: entry,
+        input: projectedEntry,
         ...(entry.workflow
           ? {
               display: {

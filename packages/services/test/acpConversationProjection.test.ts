@@ -127,3 +127,92 @@ test("state, thought, tools and terminal changes match the existing ACP mapper",
   assert.deepEqual(applied.rows.window, buildAcpConversationRows(first));
   assert.equal(projection.update(first).length, 0, "duplicate revision is inert");
 });
+
+test("ACP tool rows resolve terminal output from the Host snapshot and flag missing history", () => {
+  const session = acpSessionSchema.parse({
+    workspacePath: "/synthetic/terminal-history",
+    id: "terminal-history",
+    agent: "codex",
+    acpSessionId: "native",
+    title: "terminal history",
+    revision: 1,
+    status: "idle",
+    pendingPermission: null,
+    error: null,
+    entries: [
+      { id: "user:1", kind: "user", text: "run", createdAt: 1 },
+      {
+        id: "tool:1",
+        kind: "tool",
+        title: "run command",
+        status: "completed",
+        terminalIds: ["saved", "missing"],
+        content: "terminal:saved\nterminal:missing",
+      },
+    ],
+    terminals: [
+      {
+        terminalId: "saved",
+        title: "run command",
+        status: "finished",
+        startedAt: 2,
+        output: "first line\nsecond line",
+        truncated: true,
+      },
+    ],
+  });
+  const row = buildAcpConversationRows(session).find((item) => item.kind === "toolCall");
+  assert.ok(row?.kind === "toolCall");
+  const displayEntry = row.input as {
+    terminalOutput?: string;
+    terminalOutputUnavailable?: boolean;
+    terminalOutputTruncated?: boolean;
+  };
+  assert.equal(displayEntry.terminalOutput, "first line\nsecond line");
+  assert.equal(displayEntry.terminalOutputUnavailable, true);
+  assert.equal(displayEntry.terminalOutputTruncated, true);
+
+  const oversizedSession = structuredClone(session);
+  const oversizedTool = oversizedSession.entries[1];
+  assert.equal(oversizedTool?.kind, "tool");
+  if (oversizedTool?.kind !== "tool") throw new Error("missing tool entry");
+  oversizedTool.terminalIds = ["large"];
+  oversizedTool.content = "terminal:large";
+  oversizedSession.terminals = [
+    {
+      terminalId: "large",
+      title: "large output",
+      status: "finished",
+      startedAt: 2,
+      output: "界".repeat(30_000),
+      truncated: false,
+    },
+  ];
+  const oversizedRow = buildAcpConversationRows(oversizedSession).find(
+    (item) => item.kind === "toolCall",
+  );
+  assert.ok(oversizedRow?.kind === "toolCall");
+  const oversizedDisplayEntry = oversizedRow.input as {
+    terminalOutput?: string;
+    terminalOutputTruncated?: boolean;
+  };
+  assert.ok(new TextEncoder().encode(oversizedDisplayEntry.terminalOutput).byteLength <= 64 * 1024);
+  assert.equal(oversizedDisplayEntry.terminalOutput?.endsWith("界"), true);
+  assert.equal(oversizedDisplayEntry.terminalOutputTruncated, true);
+
+  const runningSession = structuredClone(session);
+  runningSession.status = "running";
+  const runningTool = runningSession.entries[1];
+  assert.equal(runningTool?.kind, "tool");
+  if (runningTool?.kind !== "tool") throw new Error("missing tool entry");
+  runningTool.status = "in_progress";
+  runningSession.terminals = [];
+  const runningRow = buildAcpConversationRows(runningSession).find(
+    (item) => item.kind === "toolCall",
+  );
+  assert.ok(runningRow?.kind === "toolCall");
+  assert.equal(
+    (runningRow.input as { terminalOutputUnavailable?: boolean }).terminalOutputUnavailable,
+    false,
+  );
+});
