@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { IAcpService } from "@zcode/services";
 import { createUuid } from "@zcode/shared";
 import { useAcpOperationSnapshot } from "@/settings/useAcpOperationSnapshot.js";
+import {
+  getAcpAgentUpgradePlan,
+  type AcpAgentUpgradeBatch,
+  type AcpAgentUpgradeResult,
+  type AcpAgentUpgradeTarget,
+} from "@/settings/acpAgentUpgrades.js";
 import type {
   AcpAgent,
   AcpAgentInfo,
@@ -47,6 +53,11 @@ export function useAcpAgentManagement(service: IAcpService | null) {
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [operationAgent, setOperationAgent] = useState<AcpAgent | null>(null);
+  const [batch, setBatch] = useState<AcpAgentUpgradeBatch | null>(null);
+  const commandPending = useRef(false);
+  const stopRequested = useRef(false);
+  const currentAgents = useRef(agents);
+  currentAgents.current = agents;
   const generation = useRef(0);
   const requestSequence = useRef(0);
   const active = useRef(false);
@@ -62,11 +73,13 @@ export function useAcpAgentManagement(service: IAcpService | null) {
       const isCurrent = () =>
         generation.current === currentGeneration && requestSequence.current === sequence;
       if (options?.checkUpdates) setChecking(true);
-      else setLoading(true);
+      // 修复原因：操作结束后的重读不能卸载配置编辑器，否则批量升级会清空未保存草稿。
+      else if (!currentAgents.current.length) setLoading(true);
       setError(null);
       try {
         const result = await service.listAgents(options);
         if (!isCurrent()) return false;
+        currentAgents.current = result;
         setAgents(result);
         return true;
       } catch (cause) {
@@ -88,16 +101,22 @@ export function useAcpAgentManagement(service: IAcpService | null) {
     void read();
   });
   const refreshOperation = operationState.refreshOperation;
+  const blocked = useRef(false);
+  blocked.current = operationState.busy || loading || checking;
 
   useEffect(() => {
     ++generation.current;
     active.current = true;
     // 修复原因：切到另一台 Host 或远端断线时，旧 Host 的安装状态不能留在新目标列表。
     setAgents([]);
+    currentAgents.current = [];
     setError(null);
     setBusy(false);
     setLog([]);
     setOperationAgent(null);
+    setBatch(null);
+    commandPending.current = false;
+    stopRequested.current = false;
     setChecking(false);
     if (!service) {
       setLoading(false);
@@ -121,7 +140,15 @@ export function useAcpAgentManagement(service: IAcpService | null) {
 
   const update = useCallback(
     async (input: AcpAgentUpdate) => {
-      if (!service || !active.current || currentService.current !== service) return;
+      if (
+        !service ||
+        !active.current ||
+        currentService.current !== service ||
+        commandPending.current ||
+        blocked.current
+      )
+        return;
+      commandPending.current = true;
       const currentGeneration = generation.current;
       // 旧检查不能在保存完成后把旧安装/环境状态写回来。
       requestSequence.current++;
@@ -131,28 +158,33 @@ export function useAcpAgentManagement(service: IAcpService | null) {
       try {
         const next = await service.updateAgent(input);
         if (generation.current === currentGeneration) {
-          setAgents((previous) =>
-            previous.map((item) => (item.agent === next.agent ? next : item)),
+          const updated = currentAgents.current.map((item) =>
+            item.agent === next.agent ? next : item,
           );
+          currentAgents.current = updated;
+          setAgents(updated);
         }
       } catch (cause) {
         if (generation.current === currentGeneration) setError(errorMessage(cause));
         throw cause;
       } finally {
-        if (generation.current === currentGeneration) setBusy(false);
+        if (generation.current === currentGeneration) {
+          commandPending.current = false;
+          setBusy(false);
+        }
       }
     },
     [service],
   );
 
-  const manage = useCallback(
+  const runManagement = useCallback(
     async (agent: AcpAgent, action: AcpAgentManagement["action"], expectedVersion?: string) => {
       if (!service || !active.current || currentService.current !== service) return;
       const currentGeneration = generation.current;
       requestSequence.current++;
       setChecking(false);
-      setBusy(true);
       setError(null);
+      let result: AcpAgentUpgradeResult = { agent, success: false };
       const operationId = createUuid();
       let disposeSubscription: (() => void) | undefined;
       try {
@@ -173,29 +205,121 @@ export function useAcpAgentManagement(service: IAcpService | null) {
           operationId,
           ...(expectedVersion && action !== "uninstall" ? { expectedVersion } : {}),
         });
+        result = { agent, success: true };
         const next = await service.listAgents();
-        if (generation.current === currentGeneration) setAgents(next);
+        if (generation.current === currentGeneration) {
+          currentAgents.current = next;
+          setAgents(next);
+        }
       } catch (cause) {
+        result = { agent, success: false, error: errorMessage(cause) };
         if (generation.current === currentGeneration) setError(errorMessage(cause));
         // 修复原因：包命令失败时可能已改动安装目录，必须重读目标 Host 的实际状态。
         if (generation.current === currentGeneration) {
           await service
             .listAgents()
             .then((next) => {
-              if (generation.current === currentGeneration) setAgents(next);
+              if (generation.current === currentGeneration) {
+                currentAgents.current = next;
+                setAgents(next);
+              }
             })
             .catch(() => {
-              if (generation.current === currentGeneration) setAgents([]);
+              if (generation.current === currentGeneration) {
+                currentAgents.current = [];
+                setAgents([]);
+              }
             });
         }
       } finally {
         disposeSubscription?.();
         if (disposeSubscription) subscriptions.current.delete(disposeSubscription);
-        if (generation.current === currentGeneration) setBusy(false);
         if (generation.current === currentGeneration) await refreshOperation();
       }
+      return result;
     },
     [service, operationsSupported, refreshOperation],
+  );
+
+  const manage = useCallback(
+    async (agent: AcpAgent, action: AcpAgentManagement["action"], expectedVersion?: string) => {
+      if (
+        !service ||
+        !active.current ||
+        currentService.current !== service ||
+        commandPending.current
+      )
+        return;
+      const currentGeneration = generation.current;
+      commandPending.current = true;
+      setBusy(true);
+      try {
+        return await runManagement(agent, action, expectedVersion);
+      } finally {
+        if (generation.current === currentGeneration) {
+          commandPending.current = false;
+          setBusy(false);
+        }
+      }
+    },
+    [service, runManagement],
+  );
+
+  const upgradeAgents = useCallback(
+    async (targets: AcpAgentUpgradeTarget[]) => {
+      if (
+        !service ||
+        !active.current ||
+        currentService.current !== service ||
+        commandPending.current ||
+        blocked.current
+      )
+        return;
+      const plan = targets.filter(
+        (item, index) => targets.findIndex((other) => other.agent === item.agent) === index,
+      );
+      if (!plan.length) return;
+      const currentGeneration = generation.current;
+      const isCurrent = () =>
+        active.current &&
+        generation.current === currentGeneration &&
+        currentService.current === service;
+      commandPending.current = true;
+      stopRequested.current = false;
+      setBusy(true);
+      setBatch({ total: plan.length, current: plan[0]!.agent, results: [], stopped: false });
+      try {
+        for (const target of plan) {
+          // 修复原因：切换 Host、停止或旧确认回执不能继续提交尚未执行的升级。
+          if (!isCurrent() || stopRequested.current) break;
+          setBatch((previous) => previous && { ...previous, current: target.agent });
+          const eligible = getAcpAgentUpgradePlan(currentAgents.current).find(
+            (item) => item.agent === target.agent,
+          );
+          const result =
+            eligible?.expectedVersion === target.expectedVersion &&
+            eligible.action === target.action
+              ? await runManagement(target.agent, target.action, target.expectedVersion)
+              : {
+                  agent: target.agent,
+                  success: false,
+                  error: "ACP 发行目标或安装环境已变化，请重新检查更新。",
+                };
+          if (!isCurrent()) break;
+          if (result)
+            setBatch(
+              (previous) => previous && { ...previous, results: [...previous.results, result] },
+            );
+        }
+      } finally {
+        if (isCurrent()) {
+          commandPending.current = false;
+          setBusy(false);
+          setBatch((previous) => previous && { ...previous, current: null });
+        }
+      }
+    },
+    [service, runManagement],
   );
 
   const hostOperation = operationsSupported ? operationState.snapshot?.operation : null;
@@ -212,5 +336,11 @@ export function useAcpAgentManagement(service: IAcpService | null) {
     refresh,
     update,
     manage,
+    batch,
+    upgradeAgents,
+    stopBatch: () => {
+      stopRequested.current = true;
+      setBatch((previous) => previous && { ...previous, stopped: true });
+    },
   };
 }
