@@ -75,6 +75,7 @@ import type {
 } from "@/v4/legacyChatViewTypes.js";
 import { getActiveSidePaneTab } from "@/lib/workspaceSidePane.js";
 import { logger } from "@/logger.js";
+import { clearV4NewConversationDraftContent } from "@/v4/composer/composerDraftStore.js";
 import { taskListE2EActions } from "@/lib/taskListE2EActions.js";
 import {
   CLOSE_ACTIVE_CONTEXT_REQUEST_EVENT,
@@ -724,6 +725,7 @@ export function App({
       targetWorkspaceIdentity?: string,
       targetWorkspacePurpose?: WorkspacePurpose,
       createSource?: import("@zcode/shared").SessionCreateSource,
+      resetComposerDraft?: boolean,
     ) => {
       const store = useZCodeSessionStore.getState();
       const resolvedTargetWorkspaceIdentity =
@@ -779,6 +781,9 @@ export function App({
       // 所有显式新建入口统一先回到单 primary pane。
       useWorkbenchGroupStore.getState().deactivateActiveGroup();
       usePaneLayoutStore.getState().resetToPrimaryPane();
+      if (resetComposerDraft) {
+        clearV4NewConversationDraftContent(targetWorkspacePath, resolvedTargetWorkspaceIdentity);
+      }
       store.startDraft(
         targetWorkspacePath,
         targetSelectedProvider,
@@ -786,6 +791,7 @@ export function App({
         {
           groupedDraftPlacement,
           createSource: createSource ?? (groupedDraftPlacement ? "group" : "project"),
+          resetComposerDraft,
         },
       );
       if (

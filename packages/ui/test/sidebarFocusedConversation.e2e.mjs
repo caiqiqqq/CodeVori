@@ -9,6 +9,7 @@ const name = `__sidebar-focused-${process.pid}`;
 const html = join(root, `${name}.html`);
 const moduleFile = join(root, `${name}.tsx`);
 const output = process.env.ZCODE_E2E_SCREENSHOT_DIR ?? "/tmp/zcode-sidebar-focus";
+const menuOnly = process.env.ZCODE_E2E_MENU_ONLY === "1";
 let browser;
 try {
   await mkdir(output, { recursive: true });
@@ -51,7 +52,7 @@ try {
       settingService:{get:async()=>({}),onDynamicChanged:subscribe},
       gitService:{getWorkspaceRepositoryInfo:async({workspacePath})=>({workspacePath,kind:workspacePath===tree?'linked-worktree':'main-tree',repoRoot:workspacePath===tree?b:workspacePath,...(workspacePath===tree?{mainWorktreePath:b}:{})})},
       zcodeTaskService:{onDynamicWorkspaceEvent:subscribe,listTasks:async scope=>[ordinaryApi,api].filter(t=>t.workspacePath===scope.workspacePath),listPinnedTaskIds:async()=>[],listPinnedTasks:async()=>[],listArchivedTasks:async()=>[],listDeletedTaskIds:async()=>[]},
-      acpService:{list:async(scope)=>{state.readCalls.push(scope);return acp.filter(s=>s.workspacePath===scope.workspacePath)},onDynamicSessionChanged:scope=>callback=>{const subscription={scope,callback};acpListeners.add(subscription);return {dispose(){acpListeners.delete(subscription)}}},updateRow:async(input)=>{state.calls.push(input)}},
+      acpService:{listSummaries:async(scope)=>{state.readCalls.push(scope);return acp.filter(s=>s.workspacePath===scope.workspacePath)},onDynamicSessionSummaryChanged:scope=>callback=>{const subscription={scope,callback};acpListeners.add(subscription);return {dispose(){acpListeners.delete(subscription)}}},updateRow:async(input)=>{state.calls.push(input)}},
       windowControllerService:{onDynamicControllerFrame:subscribe,subscribeControllerV4:async()=>({ack:{subscriptionId:crypto.randomUUID()}}),unsubscribeControllerV4:async()=>{},listTaskList:async(query)=>({items:query.kind==='pinned'?[]:[ordinaryApi,api].filter(t=>query.workspaceScopes.some(s=>s.workspacePath===t.workspacePath)),total:2,hasMore:false})},
     };
     connectProviderSettingsSnapshot({getView:async()=>({revision:1,providers:[],providerTemplates:[],providerOrder:[]}),onDidChange:()=>({dispose(){}})});
@@ -86,7 +87,7 @@ try {
       state.primaryDraft=()=>usePaneLayoutStore.getState().focusPane(V4_PRIMARY_PANE_ID);
       state.native=()=>usePaneLayoutStore.getState().replacePaneBinding('pane-1',{workspaceScope:{workspacePath:b},sessionId:'b'});
       state.nativeA=()=>usePaneLayoutStore.getState().replacePaneBinding('pane-1',{workspaceScope:{workspacePath:a},sessionId:'a'});
-      state.pin=value=>{acp[1].pinned=value;acp[1].revision++;for(const {scope,callback} of acpListeners)if(scope.workspacePath===b)callback({kind:'updated',session:acp[1]})};
+      state.pin=value=>{acp[1].pinned=value;acp[1].revision++;for(const {scope,callback} of acpListeners)if(scope.workspacePath===b)callback({kind:'upserted',session:acp[1]})};
       state.readonly=()=>usePaneLayoutStore.getState().replacePaneBinding('pane-1',{workspaceScope:{workspacePath:b},sessionId:'b',kind:'acp',agent:'codex',readOnly:true});
       state.unvalidated=()=>usePaneLayoutStore.getState().replacePaneBinding('pane-1',{workspaceScope:{workspacePath:b},sessionId:'b',kind:'acp',agent:'codex',restoredUnvalidated:true});
       state.mode=next=>{setMode(next);persistSidebarTaskPreferences({organizeBy:next==='timeline'?'chronological':'project',sortBy:'updated'})};
@@ -104,8 +105,8 @@ try {
   `,
   );
   browser = await chromium.launch({ headless: true });
-  for (const width of [1280, 375]) {
-    for (const theme of ["zai-light", "zai-dark"]) {
+  for (const width of menuOnly ? [1280] : [1280, 375]) {
+    for (const theme of menuOnly ? ["zai-light"] : ["zai-light", "zai-dark"]) {
       const page = await browser.newPage({
         viewport: { width, height: 900 },
         deviceScaleFactor: 2,
@@ -187,6 +188,19 @@ try {
         .catch((error) => {
           throw new Error(errors.join("\n") || error.message);
         });
+      if (width === 1280 && theme === "zai-light") {
+        await row("a").click({ button: "right" });
+        const menu = page.getByRole("menu");
+        await menu.waitFor();
+        assert.equal(await menu.getByRole("menuitem", { name: "重命名任务" }).count(), 1);
+        assert.equal(await menu.getByRole("menuitem", { name: "反馈问题" }).count(), 0);
+        await page.keyboard.press("Escape");
+      }
+      if (menuOnly) {
+        await page.close();
+        console.log("PASS: ACP sidebar context menu excludes feedback and retains rename.");
+        continue;
+      }
       await selected("a");
       const workTasks = fixture.getByTestId("work-tasks-sidebar-open");
       const enterWorkTasks = async () => {

@@ -1017,35 +1017,43 @@ export function createGitCliRepo(options?: {
     },
 
     async listLocalBranches(workspacePath: string): Promise<GitLocalBranchListResult> {
-      const status = await this.getStatus(workspacePath);
-      if (!status.resolution.isGitAvailable || !status.resolution.isRepository) {
+      const resolution = await this.resolveRepository(workspacePath);
+      if (!resolution.isGitAvailable || !resolution.isRepository) {
         return {
-          headRefType: status.summary.headRefType,
-          currentBranchName: status.summary.branchName,
+          headRefType: "branch",
+          currentBranchName: null,
           branches: [],
         };
       }
 
-      const result = await commandProvider.run({
-        cwd: status.resolution.repoRoot,
-        args: [
-          "for-each-ref",
-          "refs/heads",
-          // Git 直接提供检出目录，避免菜单把其他工作树已占用的分支当作可切换目标。
-          "--format=%(refname:short)%00%(upstream:short)%00%(objectname)%00%(committerdate:unix)%00%(worktreepath)%00",
-        ],
-        timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
-        maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
-      });
+      // 修复原因：分支菜单只需要 HEAD 和 refs；完整 status 还会扫描未跟踪文件、计算两次 diff，
+      // 大工作区因此在打开菜单时重复等待工作树统计。两条只读命令可并行执行。
+      const [head, result] = await Promise.all([
+        commandProvider.run({
+          cwd: resolution.repoRoot,
+          args: ["symbolic-ref", "--quiet", "--short", "HEAD"],
+          timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+        }),
+        commandProvider.run({
+          cwd: resolution.repoRoot,
+          args: [
+            "for-each-ref",
+            "refs/heads",
+            // Git 直接提供检出目录，避免菜单把其他工作树已占用的分支当作可切换目标。
+            "--format=%(refname:short)%00%(upstream:short)%00%(objectname)%00%(committerdate:unix)%00%(worktreepath)%00",
+          ],
+          timeoutMs: DEFAULT_GIT_COMMAND_TIMEOUT_MS,
+          maxOutputBytes: DEFAULT_GIT_OUTPUT_BYTES,
+        }),
+      ]);
+      ensureGitCommandSucceeded("git symbolic-ref HEAD", head, [0, 1]);
       ensureGitCommandSucceeded("git for-each-ref refs/heads", result);
+      const currentBranchName = head.exitCode === 0 ? head.stdout.trim() : null;
 
       return {
-        headRefType: status.summary.headRefType,
-        currentBranchName: status.summary.branchName,
-        branches: parseBranchRefRecords(
-          result.stdout,
-          status.summary.headRefType === "branch" ? status.summary.branchName : null,
-        ),
+        headRefType: currentBranchName === null ? "detached" : "branch",
+        currentBranchName,
+        branches: parseBranchRefRecords(result.stdout, currentBranchName),
       };
     },
 

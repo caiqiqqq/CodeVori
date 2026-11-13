@@ -259,16 +259,19 @@ export function historyPrefetchTriggerPx(viewportHeight: number): number {
   return Math.max(LOAD_OLDER_TRIGGER_PX, viewportHeight * LOAD_OLDER_PREFETCH_VIEWPORTS);
 }
 
-/** scroll 事件是否应触发 loadOlder（到顶 + 可拉 + 非在途）。 */
+/** 仅真实用户滚动或未完成的阅读位置恢复可在接近顶部时补页。 */
 export function shouldTriggerLoadOlder(input: {
   scrollTop: number;
   canLoadOlder: boolean;
   loadingOlder: boolean;
+  userInitiated: boolean;
+  restoringScroll: boolean;
   triggerPx?: number;
 }): boolean {
   return (
     input.canLoadOlder &&
     !input.loadingOlder &&
+    (input.userInitiated || input.restoringScroll) &&
     input.scrollTop <= (input.triggerPx ?? LOAD_OLDER_TRIGGER_PX)
   );
 }

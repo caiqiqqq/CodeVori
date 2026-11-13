@@ -33,7 +33,8 @@ createInterface({input:process.stdin}).on('line', async line => {
     if(message.error?.code!==-32602) throw new Error('reverse schema accepted untrusted path');
     send({id:'mcp',method:'interaction/requestDelegationMcp',params:{sessionId:'parent'}});
   } else if(message.id==='mcp') {
-    const server=message.result[0];
+    if(message.result.canDelegate!==true) throw new Error('API parent delegation unavailable');
+    const server=message.result.servers[0];
     const env=Object.fromEntries(server.env.map(item=>[item.name,item.value]));
     const response=await fetch(env.ZCODE_WORKFLOW_URL,{method:'POST',headers:{authorization:'Bearer '+env.ZCODE_WORKFLOW_TOKEN,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'DelegateTask',arguments:{title:'Native委派',task:'检查',execution:{kind:'acp',agent:'codex',config:[]},intent:'analysis'}}})});
     const rpc=await response.json(); if(rpc.result.isError) throw new Error(rpc.result.content[0].text);
@@ -51,7 +52,10 @@ createInterface({input:process.stdin}).on('line', async line => {
     resolveDelegationMcp: async (workspace, sessionId) => {
       resolved.push({ workspacePath: workspace.workspacePath, sessionId });
       const registration = (await bridge.register({ ...workspace, kind: "api", sessionId }))!;
-      return [delegationProtocolServer(registration.record)];
+      return {
+        servers: [delegationProtocolServer(registration.record)],
+        canDelegate: registration.canDelegate,
+      };
     },
     pauseDelegations: (workspace, sessionId) =>
       service.pauseParent({ ...workspace, kind: "api", sessionId }),
@@ -123,7 +127,8 @@ createInterface({input:process.stdin}).on('line', async line => {
   if(message.method==='session/events') { readId=message.id; send({id:'mcp',method:'interaction/requestDelegationMcp',params:{sessionId:'api-child',createRequestId:${JSON.stringify(task.sessionRequestId)}}}); }
   else if(message.id==='mcp') {
     if(message.error) throw new Error(JSON.stringify(message.error));
-    const env=Object.fromEntries(message.result[0].env.map(item=>[item.name,item.value]));
+    if(message.result.canDelegate!==false) throw new Error('API child advertised delegation');
+    const env=Object.fromEntries(message.result.servers[0].env.map(item=>[item.name,item.value]));
     const response=await fetch(env.ZCODE_WORKFLOW_URL,{method:'POST',headers:{authorization:'Bearer '+env.ZCODE_WORKFLOW_TOKEN,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})});
     const rpc=await response.json();
     if(JSON.stringify(rpc.result.tools.map(tool=>tool.name))!==JSON.stringify(['SubmitDelegationResult'])) throw new Error('API child received parent tools');
@@ -141,7 +146,10 @@ createInterface({input:process.stdin}).on('line', async line => {
         { ...workspace, kind: "api", sessionId },
         createRequestId,
       ))!;
-      return [delegationProtocolServer(registration.record)];
+      return {
+        servers: [delegationProtocolServer(registration.record)],
+        canDelegate: registration.canDelegate,
+      };
     },
   });
   try {

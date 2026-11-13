@@ -380,7 +380,7 @@ import { createSettingServiceWithMigrations } from "./setting/settingService.js"
 import { createOnboardingRecordService } from "./onboarding/onboardingRecordService.js";
 import { createLegacyTeamOrganizationResolver } from "./model-provider/legacyTeamOrganizationResolver.js";
 import { createObservableSettingService } from "./setting/observableSettingService.js";
-import { createCredentialService } from "./credential/credentialService.js";
+import { createCredentialServiceWithReferenceReader } from "./credential/credentialService.js";
 import { createBroadcastService } from "./broadcast/broadcastService.js";
 import {
   createZCodeAgentService,
@@ -1451,13 +1451,14 @@ export function createLocalServices(options: {
       overrideOrigin: (await settingService.get()).zcodeEndpointOrigin,
     });
   const provisioningOAuthKeys = new Set<string>(PROVIDER_PROVISIONING_OAUTH_CREDENTIAL_KEYS);
-  const credentialService = createCredentialService({
+  const credentialHost = createCredentialServiceWithReferenceReader({
     onDidMutate: ({ key }) => {
       if (provisioningOAuthKeys.has(key) || isProviderProvisioningAccountCredentialKey(key)) {
         options.onProviderProvisioningSourceChanged?.("credential");
       }
     },
   });
+  const credentialService = credentialHost.service;
   const accountProviderCredentialStore = createAccountProviderCredentialStore({
     credentialService,
   });
@@ -2187,17 +2188,20 @@ export function createLocalServices(options: {
         workspace.remoteSessionId ||
         isDesktopAttachedRemote
       )
-        return [];
+        return { servers: [], canDelegate: false };
       const registration = await delegationMcp.register(
         { ...workspace, kind: "api", sessionId },
         createRequestId,
       );
-      if (!registration) return [];
+      if (!registration) return { servers: [], canDelegate: false };
       liveDelegationParents.set(
         liveParentKey(workspace, sessionId),
         resolveWorkspaceKey(workspace),
       );
-      return [delegationProtocolServer(registration.record)];
+      return {
+        servers: [delegationProtocolServer(registration.record)],
+        canDelegate: registration.canDelegate,
+      };
     },
     onDelegationConversationCommand: async (workspace, envelope) => {
       if (envelope.sessionId)
@@ -2482,6 +2486,7 @@ export function createLocalServices(options: {
       cliStorageRoot: join(getZCodeDataRootDir(), "cli"),
       isEnabled: async () => (await settingService.get()).memoryEnabled === true,
     }),
+    credentialVaultReferenceReader: credentialHost.credentialVaultReferenceReader,
     delegation: {
       register: (session) =>
         delegationMcp?.register(

@@ -642,6 +642,9 @@ export function SessionPane({
   const draftFocusVersion = useZCodeSessionStore(
     (state) => state.getWorkspaceState(workspacePath, workspaceIdentity).draftFocusVersion,
   );
+  const composerDraftResetVersion = useZCodeSessionStore(
+    (state) => state.getWorkspaceState(workspacePath, workspaceIdentity).composerDraftResetVersion,
+  );
   const draftFocusOwnerRef = useRef({
     workspaceKey: workspaceIdentity?.trim() || workspacePath,
     version: draftFocusVersion,
@@ -1634,6 +1637,7 @@ export function SessionPane({
     workspaceIdentity,
     provider,
     sessionId,
+    composerDraftResetVersion,
     composerScopeId,
     composerDraftSourceScopeId,
     sessionConfig: snapshot?.sessionId === sessionId ? snapshot.config : null,

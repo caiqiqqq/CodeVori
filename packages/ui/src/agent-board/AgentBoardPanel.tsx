@@ -82,6 +82,8 @@ export function AgentBoardView({
   projects,
   items: rawItems,
   mutate,
+  rename,
+  markUnread,
   acknowledgeRead,
   refresh,
   loading,
@@ -242,6 +244,29 @@ export function AgentBoardView({
     } catch (error) {
       logger.warn("[agent-board] 会话操作失败", { action, error });
       toast(t("actionFailed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const runRename = async (item: BoardItem, title: string) => {
+    const current = rawItems.find((row) => row.key === item.key);
+    if (!current) throw new Error("Session is no longer available");
+    setBusy(true);
+    try {
+      await rename(current, title);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const runMarkUnread = async (item: BoardItem) => {
+    const current = rawItems.find((row) => row.key === item.key);
+    if (!current) return;
+    setBusy(true);
+    try {
+      await markUnread(current);
+    } catch (error) {
+      logger.warn("[agent-board] 标记会话未读失败", { error });
+      toast(intl.formatMessage({ id: "taskList.markAsUnreadFailed" }));
     } finally {
       setBusy(false);
     }
@@ -431,6 +456,7 @@ export function AgentBoardView({
           layoutMode={preferences.layoutMode}
           byStatus={byStatus}
           projects={projects}
+          busy={busy}
           onOpen={(item) => {
             setSelectedKey(item.key);
             if (item.kind === "work-task") preferences.markWorkTaskResultRead(item);
@@ -440,7 +466,11 @@ export function AgentBoardView({
                 toast(t("actionFailed"));
               });
           }}
+          onOpenSession={onOpenSession}
+          onArchive={(item) => void run(item, "archive")}
           onStage={toggleStaged}
+          onRename={runRename}
+          onMarkUnread={(item) => void runMarkUnread(item)}
         />
         {preferences.pickerOpen ? (
           <AgentBoardSourcePicker
@@ -509,6 +539,9 @@ export function AgentBoardView({
           container={detailContainer}
           onClose={() => setSelectedKey(null)}
           onOpenSession={onOpenSession}
+          onStage={toggleStaged}
+          onRename={runRename}
+          onMarkUnread={(item) => void runMarkUnread(item)}
         />
       </section>
       <DragOverlay>

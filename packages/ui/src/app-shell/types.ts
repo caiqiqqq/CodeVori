@@ -256,6 +256,7 @@ export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackS
     targetWorkspaceIdentity?: string,
     targetWorkspacePurpose?: import("@zcode/shared").WorkspacePurpose,
     createSource?: SessionCreateSource,
+    resetComposerDraft?: boolean,
   ) => void;
   handleOpenCommandCenter: () => void;
   handleRefreshGit: () => void;

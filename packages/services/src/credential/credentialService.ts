@@ -17,6 +17,10 @@ import {
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { getAppConfigDir } from "../paths.js";
 import { CredentialVaultRepository } from "./credentialVaultRepository.js";
+import type {
+  CredentialVaultReference,
+  CredentialVaultReferenceReader,
+} from "./credentialVaultReferenceReader.js";
 
 /**
  * 凭据存储路径
@@ -108,6 +112,11 @@ interface CredentialServiceDependencies {
   onDidMutate?: (event: { operation: "save" | "delete"; key: string }) => void;
 }
 
+export interface CredentialServiceWithReferenceReader {
+  service: ICredentialService;
+  credentialVaultReferenceReader: CredentialVaultReferenceReader;
+}
+
 function hasLiveMutationOwner(pid: number | null, startedAt: number | null): boolean {
   if (!pid) return false;
   if (pid === process.pid) return startedAt === PROCESS_STARTED_AT;
@@ -122,6 +131,12 @@ function hasLiveMutationOwner(pid: number | null, startedAt: number | null): boo
 export function createCredentialService(
   dependencies: CredentialServiceDependencies = {},
 ): ICredentialService {
+  return createCredentialServiceWithReferenceReader(dependencies).service;
+}
+
+export function createCredentialServiceWithReferenceReader(
+  dependencies: CredentialServiceDependencies = {},
+): CredentialServiceWithReferenceReader {
   const cipherProvider = dependencies.cipherProvider ?? createCredentialCipherProvider();
   const vaultRepository =
     dependencies.vaultRepository ??
@@ -164,9 +179,10 @@ export function createCredentialService(
     }
   };
 
-  const load = async (key: string): Promise<string | null> => {
+  const load = async (key: string, assertCurrent?: () => void): Promise<string | null> => {
     const validatedKey = credentialKeySchema.parse(key);
     const creds = await readAll();
+    assertCurrent?.();
     const rawValue = creds[validatedKey];
     return rawValue === undefined ? null : cipherProvider.decrypt(rawValue);
   };
@@ -195,7 +211,7 @@ export function createCredentialService(
     dependencies.onDidMutate?.({ operation: "delete", key: validatedKey });
   };
 
-  return {
+  const service: ICredentialService = {
     load,
     save,
     delete: del,
@@ -287,4 +303,55 @@ export function createCredentialService(
       }
     },
   };
+
+  const credentialVaultReferenceReader: CredentialVaultReferenceReader = {
+    async listReferences(rawWorkspaceIdentity) {
+      const identity = z.string().trim().min(1).max(2_048).parse(rawWorkspaceIdentity);
+      await recoverVaultMutations();
+      return (await vaultRepository.listActive())
+        .filter((entry) => entry.workspaceIdentity === null || entry.workspaceIdentity === identity)
+        .map(projectReference);
+    },
+    async readSecret(rawWorkspaceIdentity, reference, assertCurrent) {
+      const identity = z.string().trim().min(1).max(2_048).parse(rawWorkspaceIdentity);
+      const id = z.string().uuid().parse(reference.id);
+      const unavailable = () => new Error("Saved credential is unavailable or has changed");
+      assertCurrent();
+      const saved = await vaultRepository.findActiveSecret(id, identity);
+      assertCurrent();
+      // 中文依据：授权期间凭证可能已换目标或移到其他工作区，不能沿用旧的列表结果解密。
+      if (
+        !saved ||
+        JSON.stringify(projectReference(saved.entry)) !==
+          JSON.stringify(projectReference(reference))
+      )
+        throw unavailable();
+      const secret = await load(saved.secretKey, assertCurrent);
+      const current = await vaultRepository.findActiveSecret(id, identity);
+      assertCurrent();
+      // 中文依据：异步读取期间轮换、删除或改绑后，旧密码不能作为本次读取结果返回。
+      if (
+        secret === null ||
+        !current ||
+        current.secretKey !== saved.secretKey ||
+        JSON.stringify(current.entry) !== JSON.stringify(saved.entry)
+      )
+        throw unavailable();
+      return { ...projectReference(current.entry), secret };
+    },
+  };
+
+  return { service, credentialVaultReferenceReader };
+}
+
+function projectReference({
+  id,
+  name,
+  kind,
+  environment,
+  host,
+  port,
+  username,
+}: CredentialVaultReference): CredentialVaultReference {
+  return { id, name, kind, environment, host, port, username };
 }

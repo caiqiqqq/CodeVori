@@ -38,6 +38,7 @@ interface V4DraftFile {
 
 const STORAGE_KEY_PREFIX = "zcode-v4-composer-drafts:v1:";
 export const V4_DRAFT_SCOPE_ROOT = "__draft__";
+export const V4_PRIMARY_PANE_ACP_DRAFT_SCOPE_PREFIX = "acp-draft:workspace-main:";
 const warnedStorageKeys = new Set<string>();
 
 function warnStorageFailure(key: string, error: unknown) {
@@ -212,4 +213,35 @@ export function clearV4ComposerDraft(
   }
   delete file.scopes[scopeId];
   return writeDraftFile(key, file);
+}
+
+export function clearV4NewConversationDraftContent(
+  workspacePath: string,
+  workspaceIdentity?: string,
+) {
+  const key = getV4ComposerDraftStorageKey(workspacePath, workspaceIdentity);
+  const file = readDraftFile(key);
+  let changed = false;
+
+  for (const [scopeId, draft] of Object.entries(file.scopes)) {
+    if (
+      scopeId !== V4_DRAFT_SCOPE_ROOT &&
+      !scopeId.startsWith(V4_PRIMARY_PANE_ACP_DRAFT_SCOPE_PREFIX)
+    ) {
+      continue;
+    }
+    if (!draft.text && !draft.editorStateJson && !draft.mention) continue;
+
+    // 新建只清正文，保留该 scope 的 mode/model 等选择，避免配置偏好随正文一起丢失。
+    file.scopes[scopeId] = {
+      ...draft,
+      text: "",
+      editorStateJson: undefined,
+      mention: undefined,
+      updatedAt: Date.now(),
+    };
+    changed = true;
+  }
+
+  return changed ? writeDraftFile(key, file) : true;
 }

@@ -519,7 +519,9 @@ function ConversationTimelineImpl({
   const userScrollIntentRef = useRef<{
     intent: TimelineUserScrollIntent;
     observedAt: number;
-  }>({ intent: "none", observedAt: 0 });
+    sequence: number;
+  }>({ intent: "none", observedAt: 0, sequence: 0 });
+  const lastHistoryPrefetchIntentSequenceRef = useRef(0);
   const touchClientYRef = useRef<number | null>(null);
   const scrollbarPointerIdRef = useRef<number | null>(null);
   const layoutScrollGuardUntilRef = useRef(0);
@@ -890,7 +892,9 @@ function ConversationTimelineImpl({
   }, []);
 
   const clearUserScrollIntent = useCallback(() => {
-    userScrollIntentRef.current = { intent: "none", observedAt: 0 };
+    const sequence = userScrollIntentRef.current.sequence;
+    userScrollIntentRef.current = { intent: "none", observedAt: 0, sequence };
+    lastHistoryPrefetchIntentSequenceRef.current = sequence;
     touchClientYRef.current = null;
     scrollbarPointerIdRef.current = null;
   }, []);
@@ -912,7 +916,11 @@ function ConversationTimelineImpl({
   const markUserScrollIntent = useCallback(
     (intent: TimelineUserScrollIntent) => {
       if (intent === "none") return;
-      userScrollIntentRef.current = { intent, observedAt: Date.now() };
+      userScrollIntentRef.current = {
+        intent,
+        observedAt: Date.now(),
+        sequence: userScrollIntentRef.current.sequence + 1,
+      };
       const element = scrollRef.current;
       // running -> terminal 会在同一帧迁移 live tail、折叠工作历史并触发
       // virtualizer 测高。向上滚动必须在 scroll 事件之前先拿走滚动权，否则终态
@@ -1335,10 +1343,17 @@ function ConversationTimelineImpl({
     // 视口预取，让桌面和手机 Web 共用的 renderer 在用户抵达边界前完成补页。
     const loadOlder = loadOlderRef.current;
     const triggerPx = historyPrefetchTriggerPx(element.clientHeight);
+    // 修复依据：一次 wheel/touch/key/pointer 输入最多请求一页；前插测高产生的
+    // 后续 scroll 即使仍落在用户意图 TTL 内，也不能把整段历史连续拉入正文。
+    const userInitiated =
+      userScrollIntent !== "none" &&
+      userScrollIntentRef.current.sequence !== lastHistoryPrefetchIntentSequenceRef.current;
     const shouldLoadOlder = shouldTriggerLoadOlder({
       scrollTop: element.scrollTop,
       canLoadOlder: loadOlder.canLoadOlder,
       loadingOlder: loadOlder.loadingOlder,
+      userInitiated,
+      restoringScroll: pendingDetachedScrollRestoreRef.current !== null,
       triggerPx,
     });
     if (
@@ -1365,6 +1380,9 @@ function ConversationTimelineImpl({
       // 恢复请求发起时的旧位置，把已经滑过的距离再次滚回去。
     }
     if (shouldLoadOlder) {
+      if (userInitiated) {
+        lastHistoryPrefetchIntentSequenceRef.current = userScrollIntentRef.current.sequence;
+      }
       logger.debug("[v4-timeline] 接近历史窗口顶部，自动预取更早行", {
         scrollTop: element.scrollTop,
         triggerPx,
