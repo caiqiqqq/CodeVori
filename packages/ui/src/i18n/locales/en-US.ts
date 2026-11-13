@@ -7933,6 +7933,7 @@ const enUS: Record<string, string> = {
   "acp.transcript": "ACP transcript",
   "acp.toolResultUnknown": "Result unconfirmed",
   "acp.terminalOutputDescription": "Command and output",
+  "acp.terminalOutputUnavailable": "This terminal output was not saved and cannot be restored.",
   "acp.terminalOutputTruncated": "Output truncated",
   "acp.terminalStop": "Stop command",
   "acp.terminalStopFailed": "Could not stop the command. Please retry.",
