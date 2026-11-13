@@ -4243,14 +4243,17 @@ export function SessionPane({
     return lease?.store.loadOlder();
   }, [lease]);
 
-  const handleLoadAllOlder = useCallback((source: ConversationHistoryLoadSource = "share") => {
-    return lease
-      ? lease.store.loadAllOlder(source)
-      : Promise.resolve({
-          status: "stale" as const,
-          logEpoch: snapshot?.logEpoch ?? "unknown",
-        });
-  }, [lease, snapshot?.logEpoch]);
+  const handleLoadAllOlder = useCallback(
+    (source: ConversationHistoryLoadSource = "share") => {
+      return lease
+        ? lease.store.loadAllOlder(source)
+        : Promise.resolve({
+            status: "stale" as const,
+            logEpoch: snapshot?.logEpoch ?? "unknown",
+          });
+    },
+    [lease, snapshot?.logEpoch],
+  );
   const handleLoadTurnNavigatorDirectory = useCallback(
     () =>
       lease
@@ -5110,6 +5113,12 @@ export function SessionPane({
         acpConversation.selected?.status === "running" ||
         Boolean(acpConversation.selected?.queue?.items.some((item) => item.state === "reserved"))
       }
+      environmentBusy={Boolean(
+        acpAgent &&
+        (acpConversation.sending ||
+          acpConversation.busy ||
+          acpConversation.selected?.queue?.items.length),
+      )}
       onSendAcpText={handleSendAcpText}
       acpGoal={acpConversation.selected?.goal}
       onSetAcpGoal={acpConversation.setGoal}
@@ -5614,9 +5623,7 @@ export function SessionPane({
                 acpAgent ? acpConversation.loadOlderThrough : handleLoadOlderThrough
               }
               turnNavigatorDirectory={
-                acpAgent
-                  ? acpConversation.turnNavigatorDirectory
-                  : state.turnNavigatorDirectory
+                acpAgent ? acpConversation.turnNavigatorDirectory : state.turnNavigatorDirectory
               }
               turnNavigatorLoading={
                 acpAgent ? acpConversation.turnNavigatorLoading : state.turnNavigatorLoading

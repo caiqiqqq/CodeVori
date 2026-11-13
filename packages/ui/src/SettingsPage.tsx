@@ -1939,7 +1939,10 @@ export function SettingsPage({
                             }}
                           />
                         ) : activeSection === "credentials" ? (
-                          <CredentialVaultSection />
+                          <CredentialVaultSection
+                            workspacePath={activeWorkspacePath}
+                            workspaceIdentity={activeWorkspaceIdentity}
+                          />
                         ) : activeSection === "skill" ? (
                           <PluginsSection
                             key={`skill:${settingsSectionNavigationVersion}`}

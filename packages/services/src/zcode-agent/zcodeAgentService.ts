@@ -78,6 +78,8 @@ import {
   zcodeDelegationMcpRequestParamsSchema,
   zcodeDelegationMcpResponseSchema,
   zcodeIssuesMcpRequestParamsSchema,
+  zcodeEnvironmentMcpRequestParamsSchema,
+  zcodeEnvironmentMcpResponseSchema,
   zcodeIssuesMcpResponseSchema,
   summarizeOfficialMcpIdentityHeaders,
   zcodeProtocolEmptyResultSchema,
@@ -919,6 +921,11 @@ interface CreateZCodeAgentServiceOptions extends Omit<
     workspace: ZCodeAgentWorkspaceTarget,
     sessionId: string,
   ) => Promise<import("@zcode/shared").ZCodeProtocolMcpServer[]>;
+  resolveEnvironmentMcp?: (
+    workspace: ZCodeAgentWorkspaceTarget,
+    sessionId: string,
+  ) => Promise<import("@zcode/shared").ZCodeProtocolMcpServer[]>;
+  beginEnvironmentInput?: (workspace: ZCodeAgentWorkspaceTarget, sessionId: string) => () => void;
   onDelegationConversationCommand?: (
     workspace: ZCodeAgentWorkspaceTarget,
     envelope: CommandEnvelope,
@@ -2361,6 +2368,27 @@ export function createZCodeAgentService(
           return;
         }
 
+        if (request.method === zcodeProtocolMethods.interactionRequestEnvironmentMcp) {
+          const parsed = zcodeEnvironmentMcpRequestParamsSchema.safeParse(request.params);
+          if (!parsed.success) {
+            void client.respondError(request.id, {
+              code: -32602,
+              message: "Invalid environment MCP request",
+            });
+            return;
+          }
+          void (async () => {
+            const servers =
+              (await options?.resolveEnvironmentMcp?.(workspace, parsed.data.sessionId)) ?? [];
+            await client.respond(request.id, zcodeEnvironmentMcpResponseSchema.parse(servers));
+          })().catch(() => {
+            void client.respondError(request.id, {
+              code: -32000,
+              message: "Environment Host unavailable",
+            });
+          });
+          return;
+        }
         if (request.method === zcodeProtocolMethods.interactionRequestIssuesMcp) {
           const parsed = zcodeIssuesMcpRequestParamsSchema.safeParse(request.params);
           if (!parsed.success) {
@@ -5268,6 +5296,18 @@ export function createZCodeAgentService(
     },
 
     async sendConversationCommandV4(params: ZCodeAgentConversationCommandParams) {
+      const releaseEnvironmentInput =
+        params.envelope.sessionId &&
+        [
+          "sendText",
+          "sendGoalCommand",
+          "retryTurn",
+          "editUserQuery",
+          "sendQueuedNow",
+          "compact",
+        ].includes(params.envelope.type)
+          ? options?.beginEnvironmentInput?.(params, params.envelope.sessionId)
+          : undefined;
       const timing = new PhaseTimer(
         {
           scope: "api.host_command",
@@ -5388,6 +5428,7 @@ export function createZCodeAgentService(
         return ack;
       } finally {
         timing.finish(timingStatus);
+        releaseEnvironmentInput?.();
       }
     },
 

@@ -288,6 +288,12 @@ export function createAcpService(
         session: AcpSession,
       ): Promise<{ record: NativeMcpServerRecord; revoke(): void } | undefined>;
     };
+    projectEnvironments?: {
+      register(
+        session: AcpSession,
+      ): Promise<{ record: NativeMcpServerRecord; revoke(): void } | undefined>;
+    };
+    beginEnvironmentInput?: (workspace: AcpWorkspace, sessionId: string) => () => void;
   } = {},
 ): IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } {
   const directory = options.directory ?? join(getZCodeDataRootDir(), "acp-sessions");
@@ -370,6 +376,7 @@ export function createAcpService(
   const workflowMcp = createAcpWorkflowMcp(directory);
   const workflowRegistrations = new Map<string, { revoke(): void }>();
   const issuesRegistrations = new Map<string, { revoke(): void }>();
+  const environmentRegistrations = new Map<string, { revoke(): void }>();
   const memoryRegistrations = new Map<string, { revoke(): void }>();
   const credentialReferenceRegistrations = new Map<string, { revoke(): void }>();
   const directMemorySaves = new Map<string, string>();
@@ -1138,6 +1145,8 @@ export function createAcpService(
     delegationRegistrations.delete(id);
     issuesRegistrations.get(id)?.revoke();
     issuesRegistrations.delete(id);
+    environmentRegistrations.get(id)?.revoke();
+    environmentRegistrations.delete(id);
     memoryRegistrations.get(id)?.revoke();
     memoryRegistrations.delete(id);
     credentialReferenceRegistrations.get(id)?.revoke();
@@ -1170,6 +1179,7 @@ export function createAcpService(
     let receivedContextUsage = false;
     let updatedModeId: string | undefined;
     let issuesRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
+    let environmentRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
     let attachmentRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
     let memoryRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
     let credentialReferenceRegistration:
@@ -1214,13 +1224,18 @@ export function createAcpService(
       );
       if (delegationRegistration) delegationRegistrations.set(session.id, delegationRegistration);
       issuesRegistration = await options.issuesMcp?.register(session);
+      environmentRegistration = await options.projectEnvironments?.register(session);
       // 注册期间可能已 detach；迟到的 capability 不能挂到下一代连接或继续启动 Agent。
       if (disposed || generations.get(session.id) !== generation || removed.has(session.id)) {
         issuesRegistration?.revoke();
         issuesRegistration = undefined;
+        environmentRegistration?.revoke();
+        environmentRegistration = undefined;
         throw new Error("ACP session closed while registering issues MCP");
       }
       if (issuesRegistration) issuesRegistrations.set(session.id, issuesRegistration);
+      if (environmentRegistration)
+        environmentRegistrations.set(session.id, environmentRegistration);
       // 首次握手就提供恢复工具；同一轮内部压缩后不依赖 Host 再次发送提示。
       attachmentRegistration = await workflowMcp.register(
         ACP_ATTACHMENTS_MCP_NAME,
@@ -1447,6 +1462,7 @@ export function createAcpService(
           ...(workflowRegistration ? [workflowRegistration.record] : []),
           ...(delegationRegistration ? [delegationRegistration.record] : []),
           ...(issuesRegistration ? [issuesRegistration.record] : []),
+          ...(environmentRegistration ? [environmentRegistration.record] : []),
           attachmentRegistration.record,
           ...(memoryRegistration ? [memoryRegistration.record] : []),
           ...(credentialReferenceRegistration ? [credentialReferenceRegistration.record] : []),
@@ -2714,7 +2730,7 @@ export function createAcpService(
   };
 
   // 命令回执与 legacy prompt 只选择等待边界，共用校验、幂等、串行 admission 和 Agent 执行路径。
-  const dispatchPrompt = async (
+  const dispatchPromptInternal = async (
     input: AcpWorkspace & { id: string } & AcpPromptInput,
     observeAdmission?: (admission: Promise<AcpCommandReceipt>) => void,
     timing?: PhaseTimer,
@@ -2793,6 +2809,19 @@ export function createAcpService(
     });
     scheduleQueueDrain(session);
     return receipt;
+  };
+
+  const dispatchPrompt = async (
+    input: AcpWorkspace & { id: string } & AcpPromptInput,
+    observeAdmission?: (admission: Promise<AcpCommandReceipt>) => void,
+    timing?: PhaseTimer,
+  ) => {
+    const releaseEnvironmentInput = options.beginEnvironmentInput?.(input, input.id);
+    try {
+      return await dispatchPromptInternal(input, observeAdmission, timing);
+    } finally {
+      releaseEnvironmentInput?.();
+    }
   };
 
   const removeSession = async (
