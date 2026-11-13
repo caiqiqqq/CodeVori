@@ -4804,6 +4804,25 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.snapshotUnavailable":
     "Host installation subscription unavailable. Retrying the snapshot.",
   "settings.acpAgents.upgrade": "Upgrade to target",
+  "settings.acpAgents.batchUpgrade": "Batch upgrade",
+  "settings.acpAgents.upgradeAll": "Upgrade all ({count})",
+  "settings.acpAgents.upgradeSelected": "Upgrade selected ({count})",
+  "settings.acpAgents.batchUpgradeHint":
+    "Select agents to upgrade sequentially to their checked target versions.",
+  "settings.acpAgents.batchSystemNotice":
+    "Includes system-installed agents: upgrades will use app-managed adapters and preserve the system installations.",
+  "settings.acpAgents.noUpgrades":
+    "No agents are ready for upgrade. Check for updates and verify the runtime environment.",
+  "settings.acpAgents.selectAllUpgrades": "Select all",
+  "settings.acpAgents.selectUpgrade": "Select {name}",
+  "settings.acpAgents.cancelBatch": "Cancel",
+  "settings.acpAgents.batchResults": "Upgrade results",
+  "settings.acpAgents.batchProgress": "Completed {completed}/{total}",
+  "settings.acpAgents.batchSummary": "Succeeded {succeeded}, failed {failed}",
+  "settings.acpAgents.stopBatch": "Stop remaining upgrades",
+  "settings.acpAgents.batchStopped": "Remaining upgrades stopped",
+  "settings.acpAgents.upgradeSucceeded": "Upgrade succeeded",
+  "settings.acpAgents.upgradeFailed": "Upgrade failed",
   "settings.acpAgents.uninstall": "Uninstall managed adapter",
   "settings.acpAgents.uninstallConfirm": `Only the adapter managed by ${PRODUCT_NAME} on this Host is removed. System commands and saved sessions are kept.`,
   "settings.acpAgents.systemInstallConfirm":
