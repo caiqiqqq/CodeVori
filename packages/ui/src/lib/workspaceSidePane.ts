@@ -1381,7 +1381,7 @@ interface BrowserUseSidePaneScope {
   ownerTaskId: string | null;
 }
 
-/** ready/show 事件只允许激活其 origin workspace + session，后台事件仅挂载 guest。 */
+/** Ready 按 logical tab 复用原壳；只有首次创建的当前 owner 受控 tab 才展开。 */
 export function applyBrowserUseSidePaneEvent(
   current: WorkspaceSidePaneState | null,
   options: {
@@ -1393,7 +1393,34 @@ export function applyBrowserUseSidePaneEvent(
     browserGeneration?: number;
   },
   activeScope: BrowserUseSidePaneScope,
-): { state: WorkspaceSidePaneState; shouldReveal: boolean } {
+): { state: WorkspaceSidePaneState | null; shouldReveal: boolean } {
+  const existing = current?.tabs.find(
+    (tab): tab is BrowserSidePaneTab | BrowserUseSidePaneTab =>
+      (tab.type === "browser" && tab.id === options.tabId) ||
+      (tab.type === "browser-use" && tab.tabId === options.tabId),
+  );
+  // 普通 guest 的恢复也会重放 Ready。过去只查 browser-use 前缀，会为原 tab
+  // 再建一个共享底层 key 的 webview；关掉任意一份都会破坏另一份的生命周期。
+  if (existing) {
+    const sessionId =
+      existing.type === "browser-use" ? existing.sessionId : (existing.ownerTaskId ?? "unscoped");
+    if (
+      !sidePaneTabMatchesWorkspace(existing, options.workspaceKey) ||
+      sessionId !== options.sessionId ||
+      (existing.remoteSessionId ?? "") !== (options.remoteSessionId ?? "")
+    ) {
+      return { state: current, shouldReveal: false };
+    }
+    return {
+      state:
+        existing.type === "browser"
+          ? current
+          : openBrowserUseSidePane(current, { ...options, activate: false }),
+      shouldReveal: false,
+    };
+  }
+  // human shell 由用户打开入口先创建；缺席说明已关闭或缓存已释放，迟到恢复不能复活它。
+  if (options.browserId === "unclaimed-iab") return { state: current, shouldReveal: false };
   const shouldReveal =
     options.workspaceKey === activeScope.workspaceKey &&
     (options.remoteSessionId ?? "") === (activeScope.remoteSessionId ?? "") &&

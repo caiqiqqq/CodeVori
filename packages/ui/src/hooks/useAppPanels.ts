@@ -572,6 +572,14 @@ export function useAppPanels(options: {
         remoteSessionId: workspaceRemoteSessionId ?? undefined,
         ownerTaskId: sidePaneOwnerIdRef.current,
       };
+      // Ready 可能在切换 workspace 后才到达；必须写回来源 registry，不能在当前
+      // workspace 再挂一份后台壳，否则切回时同一 logical tab 会同时存在于两份缓存。
+      if (payload.workspaceKey !== activeSidePaneMemoryKeyRef.current) {
+        const stored = readTaskSidePaneMemoryState(payload.workspaceKey);
+        const result = applyBrowserUseSidePaneEvent(stored.sidePaneState, payload, activeScope);
+        saveTaskSidePaneMemoryState(payload.workspaceKey, { sidePaneState: result.state });
+        return;
+      }
       const result = applyBrowserUseSidePaneEvent(
         latestSidePaneMemoryRef.current.sidePaneState,
         payload,
