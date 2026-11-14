@@ -475,6 +475,19 @@ const enUS: Record<string, string> = {
   "workTasks.archiveAndRemoveWorktree": "Archive and delete worktree",
   "workTasks.archiveAndRemoveWorktreeBody":
     "Clean up the worktree in the background and archive the task on success. You can use other tasks while cleanup runs. The branch and conversation history will be kept. Uncommitted changes or active conversations prevent deletion.",
+  "workTasks.initialBranch": "Created on branch",
+  "workTasks.currentBranch": "Current branch",
+  "workTasks.branchChanged":
+    "This worktree was created on {initial} and is now on {current}. Confirm before continuing this conversation on the current branch.",
+  "workTasks.branchChecking":
+    "Checking the worktree branch. Conversation input is paused until the check finishes.",
+  "workTasks.branchCheckFailed":
+    "Could not verify the worktree or its current branch. The action is paused.",
+  "workTasks.acceptCurrentBranch": "Continue on current branch",
+  "workTasks.error.work-task.branch-confirmation-stale":
+    "The worktree branch or task state changed. Refresh and confirm again.",
+  "workTasks.error.work-task.worktree-inspection-unsupported":
+    "This Host cannot inspect task worktrees.",
   "workTasks.error.work-task.not-cleanable":
     "Only completed tasks with an isolated worktree can be cleaned up.",
   "workTasks.error.work-task.cleanup-in-progress":

@@ -14,7 +14,7 @@ export function archiveWorkTask(
     active: Map<string, WorkTaskCleanupRun>;
     owner: string;
     leaseMs: number;
-    remove?: (task: WorkTask) => Promise<void>;
+    remove?: (task: WorkTask, confirmedBranchName?: string) => Promise<void>;
     isClosed(): boolean;
     publish(): void;
   },
@@ -32,7 +32,7 @@ export function archiveWorkTask(
   run.promise = Promise.resolve().then(async () => {
     let error: string | undefined;
     try {
-      await timing.run("worktree-cleanup", () => remove(task));
+      await timing.run("worktree-cleanup", () => remove(task, input.confirmedBranchName));
       if (cleanup.isClosed()) error = "work-task.host-interrupted";
     } catch (cause) {
       // 清理状态只保存稳定业务码，不把 Git 输出或用户路径写入持久错误。

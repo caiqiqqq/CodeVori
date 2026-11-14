@@ -25,6 +25,8 @@ import {
   type WorkTaskAttachmentChunk,
   type WorkTaskAttachmentTarget,
   type WorkTaskArchive,
+  type WorkTaskAcceptBranch,
+  type WorkTaskWorktreeInspection,
   type WorkTaskResultRequest,
   type WorkTaskResultCancel,
   type WorkTaskResultDraft,
@@ -70,6 +72,8 @@ export interface IWorkTaskService {
   /** removeWorktree returns durable admission; list/events carry cleanup outcome. */
   /** removeWorktree 在有效议题同步租约期间拒绝为 work-task.forge-busy；本地完成事实不撤销。 */
   archive(input: WorkTaskArchive): Promise<WorkTask>;
+  inspectWorktree(input: WorkTaskTarget): Promise<WorkTaskWorktreeInspection>;
+  acceptWorktreeBranch(input: WorkTaskAcceptBranch): Promise<WorkTask>;
   /** @deprecated Compatibility setting only; does not limit task execution. */
   setConcurrency(input: WorkTaskScope & { concurrency: number }): Promise<void>;
   getEvents(input: WorkTaskTarget): Promise<WorkTaskEvent[]>;

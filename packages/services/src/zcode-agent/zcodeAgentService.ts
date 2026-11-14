@@ -930,6 +930,10 @@ interface CreateZCodeAgentServiceOptions extends Omit<
     workspace: ZCodeAgentWorkspaceTarget,
     envelope: CommandEnvelope,
   ) => Promise<void>;
+  beforeConversationInput?: (
+    workspace: ZCodeAgentWorkspaceTarget,
+    sessionId: string,
+  ) => Promise<void>;
   pauseDelegations?: (workspace: ZCodeAgentWorkspaceTarget, sessionId: string) => Promise<void>;
   canPurgeConversation?: (
     workspace: ZCodeAgentWorkspaceTarget,
@@ -5343,6 +5347,7 @@ export function createZCodeAgentService(
             throw new Error(
               "Restore the archived conversation before sending; pending deletion can only be retried",
             );
+          if (startsInput) await options?.beforeConversationInput?.(params, sessionId);
         }
         timing.phase("client_ready");
         const client = await getClient(params);
@@ -5413,6 +5418,18 @@ export function createZCodeAgentService(
             };
           }
         }
+        if (
+          envelope.sessionId &&
+          [
+            "sendText",
+            "sendGoalCommand",
+            "retryTurn",
+            "editUserQuery",
+            "compact",
+            "sendQueuedNow",
+          ].includes(envelope.type)
+        )
+          await options?.beforeConversationInput?.(params, envelope.sessionId);
         timing.phase("cli_command_rpc");
         const ack: CommandAck = await client.request(
           V4_METHODS.command,

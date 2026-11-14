@@ -73,12 +73,25 @@ function commands(scope: WorkTaskScope, run: Run) {
       ),
     archive: (id: string, archived: boolean) =>
       run(scope, (target) => target.archive({ ...scope, id, archived })),
-    archiveAndRemoveWorktree: (id: string, onError: (error: string) => void) =>
+    archiveAndRemoveWorktree: (
+      id: string,
+      confirmedBranchName: string,
+      onError: (error: string) => void,
+    ) =>
       run(
         scope,
-        (target) => target.archive({ ...scope, id, archived: true, removeWorktree: true }),
+        (target) =>
+          target.archive({
+            ...scope,
+            id,
+            archived: true,
+            removeWorktree: true,
+            confirmedBranchName,
+          }),
         onError,
       ),
+    acceptWorktreeBranch: (id: string, currentBranchName: string) =>
+      run(scope, (target) => target.acceptWorktreeBranch({ ...scope, id, currentBranchName })),
     setConcurrency: (concurrency: number) =>
       run(scope, (target) => target.setConcurrency({ ...scope, concurrency })),
   };

@@ -2,7 +2,11 @@ import { randomBytes } from "node:crypto";
 import { lstat, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { resolveWorktreeRootPath, type WorkTask } from "@zcode/shared";
+import {
+  resolveWorktreeRootPath,
+  type WorkTask,
+  type WorkTaskWorktreeInspection,
+} from "@zcode/shared";
 import type { IGitService } from "../git/git.js";
 import type { ISettingService } from "../setting/setting.js";
 import type { WorkTaskExecutionContext } from "../session/contract.js";
@@ -31,6 +35,49 @@ async function canonicalPath(path: string): Promise<string> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return resolve(path);
     throw error;
   }
+}
+
+export async function inspectWorkTaskWorktree(
+  git: IGitService,
+  task: WorkTask,
+): Promise<WorkTaskWorktreeInspection> {
+  const allocation = task.worktree;
+  if (!allocation) throw new Error("work-task.worktree-required");
+  const base = {
+    initialBranchName: allocation.branchName,
+    acceptedBranchName: allocation.acceptedBranchName ?? allocation.branchName,
+  };
+  const entry = await pathExists(allocation.path);
+  if (!entry) return { ...base, status: "missing" };
+  if (!entry.isDirectory() || entry.isSymbolicLink()) return { ...base, status: "invalid-target" };
+  const [info, projects, projectPath, worktreePath] = await Promise.all([
+    git.getWorkspaceRepositoryInfo({ workspacePath: allocation.path }),
+    git.listManagedWorktrees({ worktreeRootPath: allocation.rootPath }),
+    canonicalPath(allocation.projectPath),
+    canonicalPath(allocation.path),
+  ]);
+  let registered = false;
+  for (const project of projects) {
+    if ((await canonicalPath(project.projectPath)) !== projectPath) continue;
+    for (const item of project.worktrees) {
+      if ((await canonicalPath(item.worktreePath)) === worktreePath) {
+        registered = item.branchName === info.branchName;
+        break;
+      }
+    }
+  }
+  if (
+    !registered ||
+    info.kind !== "linked-worktree" ||
+    !info.mainWorktreePath ||
+    (await canonicalPath(info.mainWorktreePath)) !== projectPath
+  )
+    return { ...base, status: "invalid-target" };
+  return {
+    ...base,
+    status: info.branchName === base.acceptedBranchName ? "ready" : "branch-changed",
+    currentBranchName: info.branchName,
+  };
 }
 
 export async function prepareWorkTaskWorkspace(
@@ -148,32 +195,9 @@ export async function prepareWorkTaskWorkspace(
   } else if (!existing.isDirectory() || existing.isSymbolicLink()) {
     throw new Error("work-task.worktree-mismatch");
   }
-  const info = await deps.git.getWorkspaceRepositoryInfo({ workspacePath: worktree.path });
-  const projects = await deps.git.listManagedWorktrees({ worktreeRootPath: worktree.rootPath });
-  // macOS 临时目录经 Git 返回 /private/var；归属必须比较规范路径而非原始字符串。
-  const [projectPath, worktreePath] = await Promise.all([
-    canonicalPath(worktree.projectPath),
-    canonicalPath(worktree.path),
-  ]);
-  let registered = false;
-  for (const project of projects) {
-    if ((await canonicalPath(project.projectPath)) !== projectPath) continue;
-    for (const item of project.worktrees) {
-      if (
-        item.branchName === worktree.branchName &&
-        (await canonicalPath(item.worktreePath)) === worktreePath
-      )
-        registered = true;
-    }
-  }
-  if (
-    !registered ||
-    info.kind !== "linked-worktree" ||
-    !info.mainWorktreePath ||
-    (await canonicalPath(info.mainWorktreePath)) !== projectPath ||
-    info.branchName !== worktree.branchName
-  )
-    throw new Error("work-task.worktree-mismatch");
+  // macOS 临时目录经 Git 返回 /private/var；归属比较规范路径。分支确认只改变准入，不改变分配事实。
+  const inspection = await inspectWorkTaskWorktree(deps.git, { ...task, worktree });
+  if (inspection.status !== "ready") throw new Error("work-task.worktree-mismatch");
   context.signal.throwIfAborted();
   return worktree;
 }

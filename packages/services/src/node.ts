@@ -333,6 +333,8 @@ import {
 } from "./delegation/delegationModelInheritance.js";
 import { WorkTaskAttachmentStore } from "./session/workTaskAttachmentStore.js";
 import { createWorkTaskExecution } from "./work-task/workTaskExecution.js";
+import { inspectWorkTaskWorktree } from "./work-task/workTaskWorktree.js";
+import { createWorkTaskConversationBranchGuard } from "./work-task/workTaskConversationBranch.js";
 import { createWorkTaskMerge } from "./work-task/workTaskMerge.js";
 import { createWorkTaskResult } from "./work-task/workTaskResult.js";
 import { createWorkTaskConversation } from "./work-task/workTaskConversation.js";
@@ -2222,7 +2224,13 @@ export function createLocalServices(options: {
   const liveDelegationParents = new Map<string, string>();
   const liveParentKey = (workspace: WorkTaskScope, sessionId: string) =>
     JSON.stringify([resolveWorkspaceKey(workspace), sessionId]);
+  const assertWorkTaskConversationBranch = createWorkTaskConversationBranchGuard(
+    workTaskRepo,
+    (task) => inspectWorkTaskWorktree(gitService, task),
+  );
   const zcodeAgentService = createZCodeAgentService({
+    beforeConversationInput: (workspace, sessionId) =>
+      assertWorkTaskConversationBranch({ ...workspace, kind: "api", sessionId }),
     resolveEnvironmentMcp: async (workspace, sessionId) => {
       const scope = { ...workspace, kind: "api" as const, sessionId };
       const registration = await projectEnvironmentMcp.register(scope);
@@ -2559,6 +2567,14 @@ export function createLocalServices(options: {
     resolveDynamicWorkflowClientConfig: () =>
       codingPlanSubscriptionService.getDynamicWorkflowClientConfig(),
     hiddenSessionIds: (scope) => hiddenConversationSessionIds(scope, "acp"),
+    beforeConversationInput: (session) =>
+      assertWorkTaskConversationBranch({
+        workspacePath: session.workspacePath,
+        workspaceIdentity: session.workspaceIdentity,
+        remoteSessionId: session.remoteSessionId,
+        kind: "acp",
+        sessionId: session.id,
+      }),
     memoryContext: createProjectMemoryContext({
       cliStorageRoot: join(getZCodeDataRootDir(), "cli"),
       isEnabled: async () => (await settingService.get()).memoryEnabled === true,
@@ -2865,14 +2881,15 @@ export function createLocalServices(options: {
     execute: (task, context) => workTaskExecution.execute(task, context),
     merge: createWorkTaskMerge(workTaskExecutionDependencies),
     conversation: createWorkTaskConversation({ acp: acpService, agent: zcodeAgentService }),
-    removeWorktree: async (task) => {
+    inspectWorktree: (task) => inspectWorkTaskWorktree(gitService, task),
+    removeWorktree: async (task, confirmedBranchName) => {
       const allocation = task.worktree;
       if (!allocation) throw new Error("work-task.not-cleanable");
       const result = await gitService.removeManagedWorktree({
         worktreeRootPath: allocation.rootPath,
         worktreePath: allocation.path,
         projectPath: allocation.projectPath,
-        expectedBranchName: allocation.branchName,
+        expectedBranchName: confirmedBranchName ?? allocation.branchName,
         allowMissing: true,
       });
       if (!result.ok) throw new Error(`work-task.worktree-remove-${result.issue}`);

@@ -257,6 +257,7 @@ export function createAcpService(
     resolveDynamicWorkflowClientConfig?: () => Promise<DynamicWorkflowClientConfig>;
     /** 普通投影排除待办/委派绑定；精确读取与内部执行仍可访问原会话。 */
     hiddenSessionIds?: (scope: AcpWorkspace) => Promise<string[]>;
+    beforeConversationInput?: (session: AcpSession) => Promise<void>;
     connect?: AcpConnectionFactory;
     savedWorkflows?: import("./acpSavedWorkflows.js").AcpSavedWorkflowService;
     agentManager?: AcpAgentManager;
@@ -2525,6 +2526,8 @@ export function createAcpService(
       // admission 已接受本轮附件后再派生清单；不改用户历史，也不反复发送历史图片字节。
       const attachmentContext = acpAttachmentPromptContext(session);
       if (attachmentContext) blocks.push({ type: "text", text: attachmentContext });
+      // 排队后分支仍可能变化；Agent 真正执行前重新校验，不能只依赖输入受理时的状态。
+      await options.beforeConversationInput?.(session);
       const wirePrompt = { port, result: port.prompt(prompt.text, blocks) };
       wirePrompts.set(session.id, wirePrompt);
       let usage: AcpUsageReport | null | void;
@@ -2774,6 +2777,7 @@ export function createAcpService(
       )
         throw new Error("ACP session is running");
       if (active.has(session.id) || session.status === "running" || session.queue.items.length) {
+        await options.beforeConversationInput?.(session);
         const key = `${session.id}:${prompt.commandId}`;
         const admission = beginAdmission(session, prompt.commandId);
         observeAdmission?.(admission.promise);
@@ -2790,6 +2794,7 @@ export function createAcpService(
           promptAdmissions.delete(key);
         }
       }
+      await options.beforeConversationInput?.(session);
       active.set(session.id, prompt.commandId);
       activeTokens.set(session.id, {});
       const key = `${session.id}:${prompt.commandId}`;
