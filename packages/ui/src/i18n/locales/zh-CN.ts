@@ -442,6 +442,16 @@ const zhCN: Record<string, string> = {
   "workTasks.archiveAndRemoveWorktree": "归档并删除工作树",
   "workTasks.archiveAndRemoveWorktreeBody":
     "确认后将在后台删除工作树，成功后归档任务。清理期间可继续使用其他任务。分支和会话历史会保留；未提交改动或仍在执行的会话会阻止删除。",
+  "workTasks.initialBranch": "创建时分支",
+  "workTasks.currentBranch": "当前分支",
+  "workTasks.branchChanged":
+    "工作树原在 {initial}，现在位于 {current}。确认后才可在当前分支继续此会话。",
+  "workTasks.branchChecking": "正在检查工作树分支，检查完成前会话暂不可输入。",
+  "workTasks.branchCheckFailed": "无法验证工作树归属或当前分支，操作已暂停。",
+  "workTasks.acceptCurrentBranch": "确认在当前分支继续",
+  "workTasks.error.work-task.branch-confirmation-stale":
+    "工作树分支或任务状态已变化，请刷新后重新确认。",
+  "workTasks.error.work-task.worktree-inspection-unsupported": "当前运行环境无法检查待办工作树。",
   "workTasks.error.work-task.not-cleanable": "只有已完成且使用独立工作树的任务可以清理。",
   "workTasks.error.work-task.cleanup-in-progress": "此任务正在清理工作树，请等待操作完成。",
   "workTasks.error.work-task.cleanup-unsupported": "当前运行环境不支持归档并删除工作树。",

@@ -1,4 +1,4 @@
-import type { WorkTask } from "@zcode/shared";
+import type { WorkTask, WorkTaskWorktreeInspection } from "@zcode/shared";
 import type {
   WorkTaskExecutionContext,
   WorkTaskForgePort,
@@ -32,5 +32,6 @@ export interface WorkTaskServiceOptions {
   /** 从当前 Host 设置读取统一上限；队列及名额仍由 Repo 原子认领。 */
   getConcurrency?(): Promise<number>;
   /** Local Host adapter; receives the persisted task allocation, never a UI path. */
-  removeWorktree?(task: WorkTask): Promise<void>;
+  removeWorktree?(task: WorkTask, confirmedBranchName?: string): Promise<void>;
+  inspectWorktree?(task: WorkTask): Promise<WorkTaskWorktreeInspection>;
 }

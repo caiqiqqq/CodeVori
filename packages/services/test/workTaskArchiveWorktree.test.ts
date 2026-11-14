@@ -154,6 +154,113 @@ test("cleanup cannot be combined with unarchive and archive accepts no UI path o
   );
 });
 
+test("branch drift requires an explicit current branch for cleanup and rechecks it", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zcode-task-branch-cleanup-"));
+  const repo = new WorkTaskRepo(join(dir, "tasks.sqlite"));
+  let currentBranchName = "feature/next";
+  const removed: string[] = [];
+  const service = new WorkTaskService({
+    repo,
+    execute: async (_task, context) => {
+      await context.update({ worktree: allocation });
+    },
+    inspectWorktree: async (task) => ({
+      status: currentBranchName === task.worktree?.branchName ? "ready" : "branch-changed",
+      initialBranchName: task.worktree!.branchName,
+      acceptedBranchName: task.worktree!.acceptedBranchName ?? task.worktree!.branchName,
+      currentBranchName,
+    }),
+    removeWorktree: async (_task, expectedBranchName) => {
+      if (expectedBranchName !== currentBranchName)
+        throw new Error("work-task.worktree-remove-invalid-target");
+      removed.push(expectedBranchName);
+    },
+    pollIntervalMs: 10,
+  });
+  try {
+    const task = await service.create({
+      ...scope,
+      title: "Branch cleanup",
+      prompt: "Implement",
+      execution: { kind: "acp", agent: "codex", config: [] },
+    });
+    await service.start({ ...scope, id: task.id });
+    await waitFor(() => repo.get(scope, task.id).status === "review");
+    await service.complete({ ...scope, id: task.id });
+    const input = { ...scope, id: task.id, archived: true, removeWorktree: true };
+    await assert.rejects(
+      service.archive({ ...input, confirmedBranchName: "worktree/abcd" }),
+      /branch-confirmation-stale/,
+    );
+    await service.archive(input);
+    await waitFor(() => repo.get(scope, task.id).worktreeCleanup?.phase === "failed");
+    assert.equal(repo.get(scope, task.id).archived, false);
+    assert.deepEqual(removed, []);
+    const inspected = await service.inspectWorktree({ ...scope, id: task.id });
+    assert.equal(inspected.currentBranchName, "feature/next");
+    const admitted = await service.archive({ ...input, confirmedBranchName: "feature/next" });
+    assert.equal(admitted.worktreeCleanup?.phase, "running");
+    await waitFor(() => repo.get(scope, task.id).archived);
+    assert.deepEqual(removed, ["feature/next"]);
+    currentBranchName = "feature/changed-again";
+  } finally {
+    await service.disposeAllAndWait();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("accepting a live branch preserves the allocation and rejects stale confirmation", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zcode-task-branch-accept-"));
+  const repo = new WorkTaskRepo(join(dir, "tasks.sqlite"));
+  let currentBranchName = "feature/next";
+  const service = new WorkTaskService({
+    repo,
+    execute: async (_task, context) => {
+      await context.update({ worktree: allocation });
+    },
+    inspectWorktree: async (task) => ({
+      status: "branch-changed",
+      initialBranchName: task.worktree!.branchName,
+      acceptedBranchName: task.worktree!.acceptedBranchName ?? task.worktree!.branchName,
+      currentBranchName,
+    }),
+    pollIntervalMs: 10,
+  });
+  try {
+    const task = await service.create({
+      ...scope,
+      title: "Branch acceptance",
+      prompt: "Implement",
+      execution: {
+        kind: "api",
+        modelSelection: { providerId: "test", modelId: "model" },
+        mode: "build",
+      },
+    });
+    await service.start({ ...scope, id: task.id });
+    await waitFor(() => repo.get(scope, task.id).status === "review");
+    await assert.rejects(
+      service.acceptWorktreeBranch({ ...scope, id: task.id, currentBranchName: "feature/old" }),
+      /branch-confirmation-stale/,
+    );
+    const accepted = await service.acceptWorktreeBranch({
+      ...scope,
+      id: task.id,
+      currentBranchName,
+    });
+    assert.equal(accepted.worktree?.branchName, allocation.branchName);
+    assert.equal(accepted.worktree?.acceptedBranchName, "feature/next");
+    currentBranchName = "feature/another";
+    await assert.rejects(
+      service.acceptWorktreeBranch({ ...scope, id: task.id, currentBranchName: "feature/next" }),
+      /branch-confirmation-stale/,
+    );
+  } finally {
+    await service.disposeAllAndWait();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("completed direct tasks, missing allocations and unsupported Hosts cannot delete a directory", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zcode-task-no-cleanup-"));
   let calls = 0;

@@ -12,6 +12,7 @@ import {
 } from "./WorkTaskParts.js";
 import { WorkTaskAttachments } from "./WorkTaskAttachments.js";
 import { WorkTaskSourceLink } from "./WorkTaskSourceLink.js";
+import { useWorkTaskWorktreeInspection } from "@/hooks/useWorkTaskWorktreeInspection.js";
 
 export function WorkTaskDetail({
   task,
@@ -28,6 +29,7 @@ export function WorkTaskDetail({
 }) {
   const t = useWorkTaskMessages();
   const events = useWorkTaskEvents(task);
+  const { inspection } = useWorkTaskWorktreeInspection(task);
   const active = WORK_TASK_ACTIVE_STATUSES.includes(task.status) || task.status === "queued";
   const disabled = panel.busy || task.stopPending || task.worktreeCleanup?.phase === "running";
   const startable = ["todo", "failed", "canceled"].includes(task.status) && !task.archived;
@@ -72,8 +74,14 @@ export function WorkTaskDetail({
                 <dd className="break-all font-mono">{task.sourceBranch}</dd>
               </>
             ) : null}
-            <dt className="text-foreground-subtle">{t("branch")}</dt>
+            <dt className="text-foreground-subtle">{t("initialBranch")}</dt>
             <dd className="break-all font-mono">{task.worktree.branchName}</dd>
+            {inspection?.currentBranchName ? (
+              <>
+                <dt className="text-foreground-subtle">{t("currentBranch")}</dt>
+                <dd className="break-all font-mono">{inspection.currentBranchName}</dd>
+              </>
+            ) : null}
             <dt className="text-foreground-subtle">{t("worktree")}</dt>
             <dd className="break-all font-mono">{task.worktree.path}</dd>
           </dl>

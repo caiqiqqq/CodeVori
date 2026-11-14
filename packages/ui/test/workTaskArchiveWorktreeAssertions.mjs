@@ -271,6 +271,7 @@ export async function exerciseWorkTaskArchiveWorktree(page, artifacts) {
         id: task.id,
         archived: true,
         removeWorktree: true,
+        confirmedBranchName: `worktree/cleanup-${kind}`,
       },
     );
     await page.evaluate(() => {
@@ -293,5 +294,78 @@ export async function exerciseWorkTaskArchiveWorktree(page, artifacts) {
   }
   process.stdout.write(
     "PASS: API/ACP cleanup menu, ordinary archive boundary, cancel, failure/retry, busy exclusion, selection clearing, scoped command, bilingual responsive themes.\n",
+  );
+}
+
+export async function exerciseWorkTaskBranchDrift(page, artifacts) {
+  const panel = page.getByTestId("work-tasks-panel");
+  await panel.getByTestId("work-task-board").waitFor();
+  const task = await page.evaluate(() => {
+    const task = window.__tasks.seed({
+      title: "Branch drift",
+      prompt: "Done",
+      status: "done",
+      session: { kind: "api", id: "drift-session" },
+      worktree: {
+        rootPath: "/synthetic/trees",
+        path: "/synthetic/trees/drift/project",
+        projectPath: "/synthetic/project",
+        branchName: "worktree/drift",
+        baseCommit: "abcdef",
+      },
+    });
+    window.__tasks.actualWorktreeBranch = "feature/continued";
+    return task;
+  });
+  const card = panel.locator(`[data-testid="work-task-card"][data-task-id="${task.id}"]`);
+  await card.getByRole("button", { name: task.title, exact: true }).click();
+  const warning = panel.getByTestId("work-task-branch-warning");
+  await warning.waitFor();
+  assert.match(await warning.innerText(), /worktree\/drift/);
+  assert.match(await warning.innerText(), /feature\/continued/);
+  await warning.getByTestId("work-task-accept-branch").click();
+  await warning.waitFor({ state: "detached" });
+  assert.deepEqual(
+    await page.evaluate(() => window.__tasks.calls.findLast((call) => call.op === "accept-branch")),
+    {
+      op: "accept-branch",
+      workspacePath: "/synthetic/project",
+      id: task.id,
+      currentBranchName: "feature/continued",
+    },
+  );
+  await page.evaluate(() => {
+    window.__tasks.actualWorktreeBranch = "feature/cleanup";
+    window.dispatchEvent(new Event("focus"));
+  });
+  await warning.waitFor();
+  const menuButton = card.getByRole("button", { name: "任务操作", exact: true });
+  await menuButton.click();
+  await page
+    .locator('[role="menu"][data-state="open"]')
+    .getByRole("menuitem", { name: "归档并删除工作树", exact: true })
+    .click();
+  const dialog = page.getByTestId("work-task-archive-worktree-dialog");
+  await dialog.waitFor();
+  await dialog.getByTestId("work-task-cleanup-current-branch").waitFor();
+  assert.match(
+    await dialog.getByTestId("work-task-cleanup-current-branch").innerText(),
+    /feature\/cleanup/,
+  );
+  await page.setViewportSize({ width: 320, height: 850 });
+  await page.screenshot({
+    path: join(artifacts, "branch-drift-cleanup-mobile.png"),
+    animations: "disabled",
+  });
+  await dialog.getByRole("button", { name: "归档并删除工作树", exact: true }).click();
+  await card.waitFor({ state: "detached" });
+  assert.equal(
+    await page.evaluate(
+      () => window.__tasks.calls.findLast((call) => call.op === "archive")?.confirmedBranchName,
+    ),
+    "feature/cleanup",
+  );
+  process.stdout.write(
+    "PASS: branch drift warning, explicit continuation and current-branch cleanup confirmation.\n",
   );
 }

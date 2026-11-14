@@ -150,6 +150,43 @@ test("ACP applies saved agent options and persists session before prompting", as
   }
 });
 
+test("ACP retries stay on the allocated path and require an accepted current branch", async () => {
+  const f = await setup();
+  try {
+    const currentBranchName = "feature/continued";
+    Object.assign(f.git, {
+      getWorkspaceRepositoryInfo: async () => ({
+        kind: "linked-worktree",
+        repoRoot: f.task.worktree!.path,
+        mainWorktreePath: "/project",
+        branchName: currentBranchName,
+      }),
+      listManagedWorktrees: async () => [
+        {
+          projectPath: "/project",
+          worktrees: [{ worktreePath: f.task.worktree!.path, branchName: currentBranchName }],
+        },
+      ],
+    });
+    const port = createWorkTaskExecution({
+      git: f.git,
+      acp: f.acp,
+      agent: f.agent,
+      settings: {} as ISettingService,
+      ensureWorkspaceSubscription: () => {},
+    });
+    const context = { signal: new AbortController().signal, update: async () => true };
+    await assert.rejects(port.execute(f.task, context), /worktree-mismatch/);
+    assert.equal(f.calls.includes("create"), false);
+    f.task.worktree = { ...f.task.worktree!, acceptedBranchName: currentBranchName };
+    await port.execute(f.task, context);
+    assert.equal(f.createInputs[0]?.workspacePath, f.task.worktree.path);
+    assert.equal(f.task.worktree.branchName, "worktree/abcd");
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("lost ownership after ACP create never sends a prompt", async () => {
   const f = await setup();
   try {

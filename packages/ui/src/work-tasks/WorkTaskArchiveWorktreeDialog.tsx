@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog.js";
 import { WorkTaskError, useWorkTaskMessages } from "./WorkTaskParts.js";
+import { useWorkTaskWorktreeInspection } from "@/hooks/useWorkTaskWorktreeInspection.js";
 
 export function WorkTaskArchiveWorktreeDialog({
   task,
@@ -26,6 +27,8 @@ export function WorkTaskArchiveWorktreeDialog({
   const submitted = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const syncing = isWorkTaskForgeSyncing(task);
+  const { inspection, error: inspectionError } = useWorkTaskWorktreeInspection(task);
+  const confirmedBranchName = inspection?.currentBranchName ?? task.worktree?.branchName;
   const disabled =
     panel.busy ||
     !panel.executable ||
@@ -33,6 +36,9 @@ export function WorkTaskArchiveWorktreeDialog({
     task.status !== "done" ||
     !task.worktree ||
     task.worktreeCleanup?.phase === "running" ||
+    !inspection ||
+    !["ready", "branch-changed"].includes(inspection.status) ||
+    (inspection.status === "branch-changed" && !inspection.currentBranchName) ||
     syncing;
   return (
     <AlertDialog
@@ -54,6 +60,18 @@ export function WorkTaskArchiveWorktreeDialog({
           <p className="break-all font-mono text-ui-sm text-foreground-subtle">
             {task.worktree?.path}
           </p>
+          {inspection?.currentBranchName ? (
+            <p
+              className="break-all text-ui-sm text-foreground-subtle"
+              data-testid="work-task-cleanup-current-branch"
+            >
+              {t("currentBranch")}:{" "}
+              <span className="font-mono">{inspection.currentBranchName}</span>
+              {inspection.currentBranchName !== inspection.initialBranchName
+                ? ` (${t("initialBranch")}: ${inspection.initialBranchName})`
+                : null}
+            </p>
+          ) : null}
         </AlertDialogHeader>
         {syncing ? (
           <p role="status" className="text-ui-sm text-foreground-subtle">
@@ -61,6 +79,11 @@ export function WorkTaskArchiveWorktreeDialog({
           </p>
         ) : null}
         <WorkTaskError error={error ?? task.worktreeCleanup?.error ?? null} />
+        {inspectionError || inspection?.status === "invalid-target" ? (
+          <p role="alert" className="text-ui-sm text-destructive">
+            {t("branchCheckFailed")}
+          </p>
+        ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={panel.busy}>{t("close")}</AlertDialogCancel>
           <AlertDialogAction
@@ -69,12 +92,12 @@ export function WorkTaskArchiveWorktreeDialog({
             onClick={(event) => {
               // 仅等待 Host 持久受理；后台结果从任务投影读取，提交期间防止重复命令。
               event.preventDefault();
-              if (disabled || submitted.current) return;
+              if (disabled || submitted.current || !confirmedBranchName) return;
               submitted.current = true;
               // 本次确认拥有失败反馈；重试清除旧错误，关窗卸载后不再污染其他入口。
               setError(null);
               void panel
-                .archiveAndRemoveWorktree(task.id, setError)
+                .archiveAndRemoveWorktree(task.id, confirmedBranchName, setError)
                 .then((ok) => {
                   if (ok) onClose();
                 })
