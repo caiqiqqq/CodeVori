@@ -69,8 +69,10 @@ import {
   type CodingPlanUsageSource,
 } from "@/settings/usage-stats/CodingPlanUsagePanel.js";
 import { buildPersonalCodingPlanUsageSource } from "@/lib/codingPlanUsageSources.js";
+import { SubagentsSection } from "@/settings/SubagentsSection.js";
 import { AcpAgentsSection } from "@/settings/AcpAgentsSection.js";
-import { AgentsAndSquadsSection } from "@/settings/AgentsAndSquadsSection.js";
+import { DelegationSettingsSection } from "@/settings/DelegationSettingsSection.js";
+import { AgentSquadsSection } from "@/settings/AgentSquadsSection.js";
 import { DesktopLanAccessSection } from "@/settings/DesktopLanAccessSection.js";
 import { isMatchingAcpWorkspaceTab } from "@/settings/acpAgentSettingsCatalog.js";
 import { AutomationsSection } from "@/settings/AutomationsSection.js";
@@ -1979,10 +1981,20 @@ export function SettingsPage({
                             workspacePath={activeWorkspacePath ?? undefined}
                           />
                         ) : activeSection === "subagents" ? (
-                          <AgentsAndSquadsSection
-                            view={agentSettingsView}
-                            onViewChange={setAgentSettingsView}
+                          <SubagentsSection
                             onManageModels={handleOpenModelProviderSettings}
+                            workspacePath={activeWorkspacePath}
+                            workspaceIdentity={activeWorkspaceIdentity}
+                          />
+                        ) : activeSection === "delegation" ? (
+                          <DelegationSettingsSection
+                            workspacePath={activeWorkspacePath}
+                            workspaceIdentity={activeWorkspaceIdentity}
+                            remoteSessionId={acpWorkspaceTab?.remoteSessionId}
+                            remoteTarget={acpWorkspaceTab?.remoteTarget}
+                          />
+                        ) : activeSection === "squads" ? (
+                          <AgentSquadsSection
                             workspacePath={activeWorkspacePath}
                             workspaceIdentity={activeWorkspaceIdentity}
                             remoteSessionId={acpWorkspaceTab?.remoteSessionId}

@@ -3,12 +3,14 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import {
   delegationTaskSchema,
+  agentSquadSchema,
   delegationSettingsSchema,
   resolveWorkspaceKey,
   type DelegationParent,
   type DelegationTask,
   type DelegationSettings,
   type WorkTaskScope,
+  type AgentSquad,
 } from "@zcode/shared";
 import { DelegationResultCache } from "./delegationResultCache.js";
 
@@ -39,7 +41,8 @@ export class DelegationRepository {
           kind TEXT NOT NULL, session_id TEXT NOT NULL, task_id TEXT NOT NULL,
           PRIMARY KEY(workspace_key,workspace_path,kind,session_id));
         CREATE TABLE IF NOT EXISTS delegation_parents(key TEXT PRIMARY KEY, generation INTEGER NOT NULL, suspended INTEGER NOT NULL);
-        CREATE TABLE IF NOT EXISTS delegation_settings(key TEXT PRIMARY KEY, data TEXT NOT NULL);`);
+        CREATE TABLE IF NOT EXISTS delegation_settings(key TEXT PRIMARY KEY, data TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS delegation_squads(id TEXT PRIMARY KEY, data TEXT NOT NULL);`);
       this.database = db;
       // 修复原因：旧任务只保存当前 session；启动时把尚可恢复的绑定补进追加式归属表。
       for (const row of db.prepare("SELECT data FROM delegations").all() as { data: string }[]) {
@@ -160,6 +163,23 @@ export class DelegationRepository {
       )
       .run(resolveWorkspaceKey(scope), JSON.stringify(delegationSettingsSchema.parse(settings)));
     this.cache.clear();
+  }
+  squads(): AgentSquad[] {
+    return (
+      this.db().prepare("SELECT data FROM delegation_squads ORDER BY rowid").all() as {
+        data: string;
+      }[]
+    ).map((row) => agentSquadSchema.parse(JSON.parse(row.data)));
+  }
+  putSquad(squad: AgentSquad) {
+    this.db()
+      .prepare(
+        "INSERT INTO delegation_squads(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+      )
+      .run(squad.id, JSON.stringify(agentSquadSchema.parse(squad)));
+  }
+  deleteSquad(id: string) {
+    this.db().prepare("DELETE FROM delegation_squads WHERE id=?").run(id);
   }
   close() {
     this.cache.clear();

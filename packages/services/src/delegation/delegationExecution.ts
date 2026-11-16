@@ -4,6 +4,7 @@ import type { WorkTaskExecutionContext } from "../session/contract.js";
 import { executeWorkTaskConversation } from "../work-task/workTaskExecution.js";
 import { prepareWorkTaskWorktree } from "../work-task/workTaskWorktree.js";
 import { readDelegationApiAnswer } from "./delegationApiResult.js";
+import { squadPrompt } from "./squadPrompt.js";
 
 type Dependencies = Parameters<typeof executeWorkTaskConversation>[0];
 export function createDelegationExecution(deps: Dependencies) {
@@ -19,7 +20,7 @@ export function createDelegationExecution(deps: Dependencies) {
       id: task.id,
       title: task.title,
       prompt,
-      runText: prompt,
+      runText: prompt + squadPrompt(task),
       execution: task.execution,
       attachments: task.attachments,
       workspaceFiles: task.workspaceFiles,

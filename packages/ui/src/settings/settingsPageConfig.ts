@@ -24,6 +24,8 @@ import {
   MessageSquareText,
   Smartphone,
   Network,
+  KeyRound,
+  Users,
 } from "lucide-react";
 import { isSettingsSectionEnabled, type SettingsSectionId } from "@/lib/settingsNavigation.js";
 import type { Theme } from "@/useTheme.js";
@@ -120,9 +122,16 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
   {
     id: "subagents",
     icon: Bot,
-    titleId: "settings.agentsAndSquads.title",
+    titleId: "settings.subagents.title",
     groupId: "agentCapabilities",
   },
+  {
+    id: "delegation",
+    icon: Network,
+    titleId: "delegation.settingsTitle",
+    groupId: "agentCapabilities",
+  },
+  { id: "squads", icon: Users, titleId: "squads.title", groupId: "agentCapabilities" },
   {
     id: "plugin",
     icon: Blocks,
