@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { IWorkTaskService } from "@zcode/services";
 import type {
+  WorkTask,
   WorkTaskCreate,
   WorkTaskScope,
   WorkTaskUpdate,
@@ -30,8 +31,19 @@ function scopeOnly(input: WorkTaskScope): WorkTaskScope {
 function commands(scope: WorkTaskScope, run: Run) {
   return {
     scope,
-    create: (draft: Omit<WorkTaskCreate, keyof WorkTaskScope>) =>
-      run(scope, (target) => target.create({ ...scope, ...draft })),
+    create: async (
+      draft: Omit<WorkTaskCreate, keyof WorkTaskScope>,
+      onCreated?: (task: WorkTask) => void,
+    ) => {
+      let created: WorkTask | null = null;
+      const saved = await run(scope, async (target) => {
+        created = await target.create({ ...scope, ...draft });
+      });
+      // 修复原因：看板需要精确纳入新任务。仅在 Host 成功回执后传递 ID，
+      // 不能从可能并发刷新的列表按标题或时间猜测，也不创建第二条写入路径。
+      if (saved && created) onCreated?.(created);
+      return saved;
+    },
     rename: (id: string, title: string, onError?: (error: string) => void) =>
       run(scope, (target) => target.rename({ ...scope, id, title }), onError),
     update: (draft: Omit<WorkTaskUpdate, keyof WorkTaskScope>, startAfterSave = false) =>
@@ -61,12 +73,25 @@ function commands(scope: WorkTaskScope, run: Run) {
       ),
     archive: (id: string, archived: boolean) =>
       run(scope, (target) => target.archive({ ...scope, id, archived })),
-    archiveAndRemoveWorktree: (id: string, onError: (error: string) => void) =>
+    archiveAndRemoveWorktree: (
+      id: string,
+      confirmedBranchName: string,
+      onError: (error: string) => void,
+    ) =>
       run(
         scope,
-        (target) => target.archive({ ...scope, id, archived: true, removeWorktree: true }),
+        (target) =>
+          target.archive({
+            ...scope,
+            id,
+            archived: true,
+            removeWorktree: true,
+            confirmedBranchName,
+          }),
         onError,
       ),
+    acceptWorktreeBranch: (id: string, currentBranchName: string) =>
+      run(scope, (target) => target.acceptWorktreeBranch({ ...scope, id, currentBranchName })),
     setConcurrency: (concurrency: number) =>
       run(scope, (target) => target.setConcurrency({ ...scope, concurrency })),
   };

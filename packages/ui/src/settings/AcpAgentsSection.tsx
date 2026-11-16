@@ -10,6 +10,7 @@ import {
   useWorkspaceServicesResolution,
 } from "@/hooks/useWorkspaceServices.js";
 import { AcpAgentManagerPanel } from "@/settings/AcpAgentManagerPanel.js";
+import { AcpAgentUpgradeActions } from "@/settings/AcpAgentUpgradeActions.js";
 import { SettingsResourceHeaderActions } from "@/settings/SettingsResourceHeaderActions.js";
 import { useAcpAgentManagement } from "@/settings/useAcpAgentManagement.js";
 import {
@@ -52,6 +53,8 @@ function AcpAgentsContent({
           refreshTestId="settings-acp-agents-refresh"
         />
       </div>
+
+      <AcpAgentUpgradeActions management={management} />
 
       <div className="grid min-h-[36rem] grid-cols-[56px_minmax(0,1fr)] gap-3 md:grid-cols-[224px_minmax(0,1fr)]">
         <aside className="min-w-0 rounded-xl border border-border bg-card px-1.5 py-3 md:max-h-[calc(100dvh-12rem)] md:overflow-y-auto md:px-2 md:py-2">

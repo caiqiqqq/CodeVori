@@ -31,6 +31,7 @@ export function createAcpConversationTransport(
   const listeners = new Set<FrameListener>();
   const faults = new Set<FaultListener>();
   const subscriptions = new Map<string, { dispose(): void }>();
+  let navigatorPreviewsSupported = true;
   const assembler = new TopicWireFrameAssembler(conversationTopicFrameSchema);
   const matches = (change: AcpConversationChange) =>
     change.session.id === sessionId &&
@@ -153,6 +154,25 @@ export function createAcpConversationTransport(
     unsubscribe,
     rowsRange: ({ beforeRowId, limit }) =>
       service.conversationRowsRange({ ...workspace, id: sessionId, beforeRowId, limit }),
+    async turnNavigatorRange({ beforeRowId, limit }) {
+      const params = { ...workspace, id: sessionId, beforeRowId, limit };
+      if (navigatorPreviewsSupported) {
+        try {
+          return await service.conversationRowsRange({ ...params, navigationOnly: true });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          // 修复原因：旧远程 Host 的 strict schema 会拒绝新增字段；仅识别此兼容错误，
+          // 不吞掉归属、磁盘、连接等真实故障，也不在每一页重复探测。
+          if (
+            !message.includes("navigationOnly") ||
+            !/unrecognized_keys|unrecognized key|unknown (key|field)/i.test(message)
+          )
+            throw error;
+          navigatorPreviewsSupported = false;
+        }
+      }
+      return service.conversationRowsRange(params);
+    },
     // ACP plans are timeline rows; native plans-directory commands are never routed to ACP.
     plans: async () => ({ plans: [], atSeq: 0, atLogEpoch: "acp" }),
     onFrame(listener) {

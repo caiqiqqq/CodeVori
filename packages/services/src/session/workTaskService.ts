@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- 待办 Host 服务统一持有命令准入、会话观察与清理租约。 */
 import { WorkTaskEvents } from "./workTaskEvents.js";
 import { randomUUID } from "node:crypto";
 import { type Event, type IDisposable } from "@zcode/rpc";
@@ -6,6 +7,7 @@ import {
   workTaskMergeRequestSchema,
   isWorkTaskMerging,
   workTaskArchiveSchema,
+  workTaskAcceptBranchSchema,
   workTaskConcurrencySchema,
   workTaskCreateSchema,
   workTaskScopeSchema,
@@ -31,6 +33,7 @@ import {
   type WorkTaskRename,
   type WorkTaskMergeRequest,
   type WorkTaskArchive,
+  type WorkTaskAcceptBranch,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { assertWorkTaskLocal } from "./workTask.js";
@@ -345,6 +348,19 @@ export class WorkTaskService implements IWorkTaskService {
     const parsed = workTaskArchiveSchema.parse(input);
     if (parsed.removeWorktree) assertWorkTaskLocal(parsed, this.options.allowExecution);
     await this.ready();
+    if (parsed.confirmedBranchName) {
+      const inspection = await this.inspectWorktree({
+        workspacePath: parsed.workspacePath,
+        workspaceIdentity: parsed.workspaceIdentity,
+        remoteSessionId: parsed.remoteSessionId,
+        id: parsed.id,
+      });
+      if (
+        !["ready", "branch-changed"].includes(inspection.status) ||
+        inspection.currentBranchName !== parsed.confirmedBranchName
+      )
+        throw new Error("work-task.branch-confirmation-stale");
+    }
     const task = archiveWorkTask(this.options.repo, parsed, {
       active: this.cleaning,
       owner: this.owner,
@@ -360,6 +376,30 @@ export class WorkTaskService implements IWorkTaskService {
         logger.error(undefined, "Worktree cleanup persistence failed", { error: String(error) }),
       );
     return task;
+  }
+  async inspectWorktree(input: WorkTaskTarget) {
+    const parsed = workTaskTargetSchema.parse(input);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
+    await this.ready();
+    if (!this.options.inspectWorktree) throw new Error("work-task.worktree-inspection-unsupported");
+    return this.options.inspectWorktree(this.options.repo.get(parsed, parsed.id));
+  }
+  async acceptWorktreeBranch(input: WorkTaskAcceptBranch) {
+    const parsed = workTaskAcceptBranchSchema.parse(input);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
+    await this.ready();
+    const task = this.options.repo.get(parsed, parsed.id);
+    if (!task.worktree || !this.options.inspectWorktree)
+      throw new Error("work-task.worktree-inspection-unsupported");
+    const inspection = await this.options.inspectWorktree(task);
+    if (
+      !["ready", "branch-changed"].includes(inspection.status) ||
+      inspection.currentBranchName !== parsed.currentBranchName
+    )
+      throw new Error("work-task.branch-confirmation-stale");
+    const updated = this.options.repo.acceptWorktreeBranch(parsed, task.worktree);
+    this.publish();
+    return updated;
   }
   async setConcurrency(input: WorkTaskScope & { concurrency: number }) {
     const parsed = workTaskConcurrencySchema.parse(input);

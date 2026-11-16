@@ -1,6 +1,6 @@
 ---
 name: site-deploy
-description: Put a new or throwaway web project (a demo, prototype or page built here) online with CodeVori Sites for a preview or share link, and manage those sites. Not for the user's own project that has its own deploy or release process.
+description: Put a new or throwaway web project (a demo, prototype or page built here) online with ZCode Sites for a preview or share link, and manage those sites. Not for the user's own project that has its own deploy or release process.
 ---
 
 # Site Deploy
@@ -9,14 +9,14 @@ Turn the user's project into a **stage directory** whose root holds `start.sh`; 
 
 `zcode-site` below means `node "<skill-dir>/../../scripts/zcode-site.mjs"`, where `<skill-dir>` is the directory of this file. It runs the same on macOS, Linux and Windows. **`zcode-site help` is the full CLI reference** (commands, options, output, exit and error codes); read it when a command fails or you need one not listed here. Run everything from the project root, and use the user's shell for anything else (the machine may be Windows: PowerShell or cmd, `py -3` instead of `python3`).
 
-## Is CodeVori Sites the right target?
+## Is ZCode Sites the right target?
 
 "Deploy" means two different things. Decide before doing anything else:
 
-- **The user's own real project** → **not CodeVori Sites.** Follow the project's own deployment or release process, or ask the user how they ship it. Signs: deployment config (`Dockerfile`, `docker-compose.yml`, `vercel.json`, `netlify.toml`, `fly.toml`, `Procfile`, `app.yaml`, k8s/Helm/Terraform files, CI workflows that deploy, `deploy` / `release` scripts), a production domain or environment config, a long git history or a team remote.
-- **A new or temporary project the user wants to see online or share** (built in this conversation, a demo, prototype, mock-up or small tool) → CodeVori Sites.
+- **The user's own real project** → **not ZCode Sites.** Follow the project's own deployment or release process, or ask the user how they ship it. Signs: deployment config (`Dockerfile`, `docker-compose.yml`, `vercel.json`, `netlify.toml`, `fly.toml`, `Procfile`, `app.yaml`, k8s/Helm/Terraform files, CI workflows that deploy, `deploy` / `release` scripts), a production domain or environment config, a long git history or a team remote.
+- **A new or temporary project the user wants to see online or share** (built in this conversation, a demo, prototype, mock-up or small tool) → ZCode Sites.
 
-Use CodeVori Sites for a real project only when the user explicitly asks for CodeVori Sites (or invoked `/site-deploy`). When it is unclear which case applies, ask; don't default to CodeVori Sites.
+Use ZCode Sites for a real project only when the user explicitly asks for ZCode Sites (or invoked `/site-deploy`). When it is unclear which case applies, ask; don't default to ZCode Sites.
 
 ## The cloud runtime
 
@@ -49,7 +49,7 @@ Ask the user first when it's unclear which app to deploy or how it starts, or wh
 
 **Confirm with the user before changing or uploading anything**, and wait for an explicit yes. Say plainly that:
 
-- the project is uploaded to the CodeVori cloud: the stage contains the built files and, for Node/Python servers, the server source code;
+- the project is uploaded to the ZCode cloud: the stage contains the built files and, for Node/Python servers, the server source code;
 - it becomes a public site: anyone with the link can open it;
 - secrets are never uploaded, but anything else in the stage is (name what you plan to include if there's anything sensitive-looking, such as data files or internal docs).
 
@@ -98,7 +98,7 @@ Later deploys: `zcode-site deploy .zcode-site/stage`. If the user wants an unlin
 - The name and the prefix go through the server's content review. A name that fails gets 3611 and nothing is created: pick another display name and deploy again. A prefix that fails is replaced by `site` with a warning; tell the user the domain, since it never changes.
 - Deploy first checks the stage against the package contract, including that every native binary is linux x86-64. On `PACKAGE_CHECK_FAILED` nothing was created or uploaded: fix everything in `error.data.problems` and deploy again.
 - The deploy writes `.zcode-site.json`; keep it, never put it in the stage. It streams progress for a few minutes; let it finish.
-- On other failures follow `error.hint`. For `PACKAGE_INVALID` or `WARMUP_FAILED` read `zcode-site logs <deploymentId>`, fix steps 3–6 and deploy again. For quota errors (exit 3), tell the user new deployments are paused until the next period and upgrading their CodeVori plan raises the limits; don't retry. Exit 2: ask the user to sign in to CodeVori again.
+- On other failures follow `error.hint`. For `PACKAGE_INVALID` or `WARMUP_FAILED` read `zcode-site logs <deploymentId>`, fix steps 3–6 and deploy again. For quota errors (exit 3), tell the user new deployments are paused until the next period and upgrading their ZCode plan raises the limits; don't retry. Exit 2: ask the user to sign in to ZCode again.
 
 Report: the URL, what you changed and why, how it was verified (`check` live, or local run when skipped) and that the cloud health check passed, and anything that won't work in the cloud.
 
@@ -108,4 +108,4 @@ Report: the URL, what you changed and why, how it was verified (`check` live, or
 
 Site `status`: `pending` = never deployed successfully (the URL shows nothing yet), `online` = the URL serves `currentDeployment`, `offline` = taken offline. Deployed content goes through the server's content review after it is live; `offlineReason: review_rejected` means the review rejected the live version and took the site offline — `online` gets 3612, so tell the user, change the content and deploy again (a successful deploy puts it back online). Deployment progress is `latestDeployment.status`; while it is `preparing`, `uploading`, `publishing` or `verifying` the deployment is still running (it ends within about 10 minutes) — wait and check again, don't redeploy.
 
-Every site shows a small "CodeVori" badge. When the user asks to remove it, run `zcode-site badge hide`; only paid plans can, and free plans get 3608 — tell the user to upgrade.
+Every site shows a small "ZCode" badge. When the user asks to remove it, run `zcode-site badge hide`; only paid plans can, and free plans get 3608 — tell the user to upgrade.

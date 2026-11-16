@@ -1,6 +1,6 @@
 # Repository dependencies
 
-This directory contains versioned third-party artifacts required by CodeVori packaging.
+This directory contains versioned third-party artifacts required by ZCode packaging.
 Keep the original archives in Git; extracted binaries and build caches belong in
 the existing ignored output directories.
 

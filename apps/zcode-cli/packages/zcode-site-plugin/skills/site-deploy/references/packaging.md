@@ -69,4 +69,4 @@ When a limit is exceeded, in this order:
 4. Remove files that are never loaded at runtime: other platforms' prebuilt binaries, `*.map` source maps of dependencies, `docs/`, `test/`, `examples/` inside dependencies. Check before deleting anything you are unsure about.
 5. Large media: compress images/videos, or tell the user to host large media elsewhere. A single file over 25 MB can't ship.
 
-If the app is still too large (for example it needs PyTorch, TensorFlow, Chromium or a large model file), it can't run on CodeVori Sites; tell the user.
+If the app is still too large (for example it needs PyTorch, TensorFlow, Chromium or a large model file), it can't run on ZCode Sites; tell the user.

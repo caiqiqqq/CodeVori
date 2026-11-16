@@ -129,7 +129,7 @@ function ReadyV4ConversationProvider({
         ? { createLocalMediaPreviewUrl: platform.createLocalMediaPreviewUrl }
         : {}),
     });
-    const layer = new SessionDataLayer({ transport });
+    const layer = new SessionDataLayer({ transport, transportKind: "agent" });
     return {
       layer,
       sendCommand: (envelope: CommandEnvelope) => transport.sendCommand(envelope),

@@ -2,6 +2,10 @@
 export class AcpQueueGate {
   private readonly pending = new Map<string, Promise<unknown>>();
 
+  has(id: string): boolean {
+    return this.pending.has(id);
+  }
+
   async settle(): Promise<void> {
     await Promise.allSettled(this.pending.values());
   }

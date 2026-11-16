@@ -1338,6 +1338,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       targetWorkspaceIdentity?: string,
       targetWorkspacePurpose?: import("@zcode/shared").WorkspacePurpose,
       createSource?: import("@zcode/shared").SessionCreateSource,
+      resetComposerDraft?: boolean,
     ) => {
       setAcpOpenRequest(null);
       showChatMainView();
@@ -1346,6 +1347,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
         targetWorkspaceIdentity,
         targetWorkspacePurpose,
         createSource,
+        resetComposerDraft,
       );
     },
     [handleStartDraftInWorkspace, showChatMainView],
@@ -1454,7 +1456,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   );
   const handleCreateProjectDraft = useCallback(
     (path: string, identity?: string) =>
-      handleStartDraftInWorkspaceInChat(path, identity, undefined, "project"),
+      handleStartDraftInWorkspaceInChat(path, identity, undefined, "project", true),
     [handleStartDraftInWorkspaceInChat],
   );
   const handleSelectAcpSession = useCallback(
@@ -2435,12 +2437,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                           },
                                         }
                                       : undefined
-                                  }
-                                  onCreateSession={(tab) =>
-                                    handleCreateProjectDraft(
-                                      tab.workspacePath,
-                                      tab.workspaceIdentity,
-                                    )
                                   }
                                   onOpenSession={(item) => {
                                     if (item.kind === "work-task")

@@ -1,5 +1,5 @@
 ---
-description: Take the linked CodeVori Sites site offline.
+description: Take the linked ZCode Sites site offline.
 argument-hint: "[site id]"
 skills: site-deploy
 ---
