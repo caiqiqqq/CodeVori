@@ -72,7 +72,7 @@ try {
       const [sent, setSent] = useState('');
       state.remount = () => setKey(value => value + 1);
       state.switchKind = setKind;
-      return <main className="mx-auto max-w-3xl space-y-4 bg-background p-4 text-foreground">
+      return <main data-kind={kind} className="mx-auto max-w-3xl space-y-4 bg-background p-4 text-foreground">
         <nav>{createSettingsPageConfig().settingsSections.filter(item => ['general','squads'].includes(item.id)).map(item => <button key={item.id} onClick={() => setSection(item.id)} className="p-2 text-ui-base">{intl.formatMessage({ id: item.titleId })}</button>)}</nav>
         {section === 'squads' ? <AgentSquadsSection key={key} workspacePath="/synthetic/project" remoteTarget={remote ? { kind: "ssh" } : undefined} /> : null}
         <ChatPromptEditor key={kind} workspacePath="/synthetic/project" taskId={kind === 'api' ? 'api-parent' : null} acpMode={kind === 'acp'} acpAgent={kind === 'acp' ? 'codex' : null} acpSessionId={kind === 'acp' ? 'acp-parent' : null}
@@ -129,7 +129,10 @@ try {
     assert.equal(await page.evaluate(() => window.__squads.rows[0].revision), 2);
     for (const kind of ["acp", "api"]) {
       await page.evaluate((kind) => window.__squads.switchKind(kind), kind);
-      const input = page.getByTestId("main-input");
+      // 切换执行方式会重建编辑器，等待新输入框就绪，避免把内容填进旧节点。
+      await page.locator(`main[data-kind="${kind}"]`).waitFor();
+      const input = page.locator('[data-testid="main-input"][data-e2e-lexical-bridge="ready"]');
+      await input.waitFor();
       await input.fill("@研发");
       await page.getByRole("option").filter({ hasText: "研发[小队]" }).click();
       assert.equal(
@@ -173,6 +176,24 @@ try {
     await page.close();
   }
   console.log(JSON.stringify({ passed: true, widths: [1280, 375], screenshots: shots }));
+} catch (error) {
+  const page = browser
+    ?.contexts()
+    .flatMap((context) => context.pages())
+    .at(-1);
+  if (page) {
+    console.error(
+      await page.evaluate(() => ({
+        kind: document.querySelector("main")?.getAttribute("data-kind"),
+        input: document.querySelector('[data-testid="main-input"]')?.textContent,
+        options: [...document.querySelectorAll('[role="option"]')].map(
+          (option) => option.textContent,
+        ),
+      })),
+    );
+    await page.screenshot({ path: join(shots, "failure.png"), fullPage: true });
+  }
+  throw error;
 } finally {
   await browser?.close();
   await Promise.all([rm(html, { force: true }), rm(moduleFile, { force: true })]);
