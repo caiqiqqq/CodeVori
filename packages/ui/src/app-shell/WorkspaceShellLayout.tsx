@@ -467,7 +467,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   const [fileTreeOpenRequest, setFileTreeOpenRequest] = useState<SidebarFileTreeOpenRequest | null>(
     null,
   );
-  const [isSidebarFileTreeOpen, setIsSidebarFileTreeOpen] = useState(false);
   const workspaceKey = workspaceIdentity?.trim() || workspaceAbsPath;
   const followingDesktopWindow = useDesktopWindowView((state) => state.following);
   const handlePrimaryAcpSessionChange = useCallback(
@@ -603,9 +602,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   });
   const workspaceSessionActionDisabled =
     Boolean(workspaceReadOnlyReason) || reloadSessionDisabled || reloadSessionPending;
-  // 文件树打开时任务列表整屏滑出，侧栏里的 New Task 入口也随之不可见。
-  // 顶部浮层需要临时露出 New Task，关闭文件树后继续沿用侧栏收起态规则。
-  const showTopOverlayNewTaskButton = !isSidebarVisible || isSidebarFileTreeOpen;
+  // 快捷栏独立于文件树和任务列表的滑动区域；仅侧栏收起时补充顶部新建入口，避免重复。
+  const showTopOverlayNewTaskButton = !isSidebarVisible;
   const workspaceSidebarResizeLabel = intl.formatMessage({
     id: "workspaceSidebar.resizeSidebar",
   });
@@ -2072,6 +2070,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
           id="sidebar"
           className={cn(
             "w-[var(--workspace-sidebar-panel-width)] max-w-[50%] flex-none overflow-hidden duration-200 ease-out transition-[width,opacity] data-[workspace-sidebar-resizing=true]:transition-opacity",
+            // 独立快捷栏占用 48px，手机沿用半屏上限会截断列表；保留外侧关闭区域即可。
+            !isDesktop && "@max-[768px]/workspace-shell:max-w-[calc(100%_-_3rem)]",
             // 拖动侧栏宽度时如果继续过渡 width，会让指针移动和实际宽度之间产生滞后。
             // 拖拽 active 通过 DOM 标记切 transition，避免 pointerdown/up 为了切 class 重渲染整棵 workspace。
             isSidebarPanelVisible ? "opacity-100" : "pointer-events-none opacity-0",
@@ -2146,7 +2146,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                     agentBoardActive={workspaceMainView === "agent-board"}
                     onOpenWorkTasks={() => handleOpenWorkTasks()}
                     workTasksActive={workspaceMainView === "work-tasks"}
-                    onFileTreeOpenChange={setIsSidebarFileTreeOpen}
                   />
                 </WorkflowRunOpenProvider>
               </V4SplitPaneEntryProvider>

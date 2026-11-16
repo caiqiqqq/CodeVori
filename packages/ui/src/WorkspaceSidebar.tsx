@@ -15,8 +15,6 @@ import {
   type SetStateAction,
 } from "react";
 import {
-  Blocks,
-  CalendarClock,
   Clock3,
   Cloud,
   Folder,
@@ -29,7 +27,6 @@ import {
   MessageCirclePlus,
   Minimize2,
   Plus,
-  Search,
 } from "lucide-react";
 import {
   DndContext,
@@ -53,7 +50,6 @@ import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
 import {
   TID_CONVERSATION_NEW_TASK,
   TID_CONVERSATION_SECTION,
-  TID_AUTOMATIONS_OPEN,
   TID_PROJECT_ADD,
   TID_PROJECT_SECTION,
   TID_SIDEBAR,
@@ -77,7 +73,7 @@ import { useSettings } from "@/hooks/useSettingService.js";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { resolveWorkspaceKey } from "@zcode/shared";
 import { logger } from "@/logger.js";
-import { NewTaskButtonGroup } from "@/NewTaskButtonGroup.js";
+import { WorkspaceSidebarActionRail } from "@/WorkspaceSidebar/WorkspaceSidebarActionRail.js";
 import { selectWorkspaceZCodeState, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { useTabStore } from "@/store/TabStoreProvider.js";
@@ -97,7 +93,6 @@ import {
   readSidebarPurposeSectionPreferences,
   reorderSidebarPurposeSections,
 } from "@/lib/sidebarPurposeSectionPreferences.js";
-import { useShortcutCommandLabel } from "@/shortcuts/useShortcutBindings.js";
 import { setPendingSettingsSectionIntent } from "@/lib/settingsNavigation.js";
 import { buildTaskWorkspaceKey } from "@/lib/taskQueryCache.js";
 import {
@@ -145,21 +140,6 @@ import {
 } from "@/lib/workspaceSidebarDrag.js";
 import { createPortal } from "react-dom";
 
-function WorkspaceNewTaskTooltip({
-  children,
-  disabledReason,
-}: {
-  children: ReactNode;
-  disabledReason?: string;
-}) {
-  // 正常状态下按钮已带“新建任务”文案和快捷键，再挂 tooltip 只是重复；仅禁用时才解释原因。
-  if (!disabledReason) return children;
-  return (
-    <ControlHintTooltip title={disabledReason}>
-      <div>{children}</div>
-    </ControlHintTooltip>
-  );
-}
 export { applyWorkspaceTriggerSelection } from "@/WorkspaceSidebar/workspaceSidebarSelection.js";
 export { WorkspaceSidebarCollapsedRail } from "@/WorkspaceSidebar/WorkspaceSidebarCollapsedRail.js";
 
@@ -273,7 +253,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   pluginStoreActive = false,
   repositoryActive = false,
   workTasksActive = false,
-  onFileTreeOpenChange,
 }: {
   workspacePath: string;
   workspaceRemoteSessionId?: string;
@@ -332,7 +311,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   pluginStoreActive?: boolean;
   repositoryActive?: boolean;
   workTasksActive?: boolean;
-  onFileTreeOpenChange?: (open: boolean) => void;
 }) {
   const { intl, localePreference, setLocalePreference } = useZCodeIntl();
   const baseServices = useBaseWorkspaceServices();
@@ -401,7 +379,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
       })
     : undefined;
   const setTheme = useZCodeStore((state) => state.setTheme);
-  const commandCenterShortcutLabel = useShortcutCommandLabel("openCommandCenter");
   const tabs = useTabStore((state) => state.tabs);
   const activateTab = useTabStore((state) => state.activateTab);
   const closeTab = useTabStore((state) => state.closeTab);
@@ -671,12 +648,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     setFileTreeTarget(fileTreeOpenRequest.target);
     setIsFileTreeOpen(true);
   }, [fileTreeOpenRequest]);
-  useEffect(() => {
-    onFileTreeOpenChange?.(isFileTreeOpen);
-  }, [isFileTreeOpen, onFileTreeOpenChange]);
-  useEffect(() => {
-    return () => onFileTreeOpenChange?.(false);
-  }, [onFileTreeOpenChange]);
   useEffect(() => {
     if (desktopSidebar) return;
     persistSidebarTaskPreferences({
@@ -1128,7 +1099,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   const workspaceTaskToolbar = useCallback(
     () => (
       <div className="pl-2.5 pr-3">
-        <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1">
           <div className="flex min-w-0 shrink-0 items-center gap-1">
             <Tabs
               value={activePrimaryTaskMode}
@@ -1350,10 +1321,31 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     <aside
       data-testid={TID_SIDEBAR}
       // 这里用设计系统的结构面 token 固定侧栏层级，避免不同合成器把左侧容器混成异常灰块。
-      className="flex h-full flex-col overflow-hidden"
+      className="grid h-full grid-cols-[3rem_minmax(0,1fr)] grid-rows-[3rem_minmax(0,1fr)] overflow-hidden"
     >
-      <div className="h-12 [app-region:drag]"></div>
-      <div className="relative flex-1 min-h-0 overflow-hidden">
+      <div className="col-span-2 [app-region:drag]"></div>
+      <WorkspaceSidebarActionRail
+        workspaceReadOnly={workspaceReadOnly}
+        workspaceReadOnlyReason={workspaceReadOnlyReason}
+        onCreateTask={() => {
+          if (workspaceReadOnly) return;
+          if (taskViewMode === "grouped") {
+            if (createGroupedTaskDraftAction) {
+              createGroupedTaskDraftAction();
+              return;
+            }
+            onCreateTask({ groupedDraftPlacement: { type: "top" } });
+            return;
+          }
+          onCreateTask({ createSource: "project" });
+        }}
+        onOpenCommandCenter={onOpenCommandCenter}
+        onOpenAutomations={handleOpenAutomationsMain}
+        onOpenPluginStore={handleOpenPluginStoreMain}
+        automationsActive={automationsActive}
+        pluginStoreActive={pluginStoreActive}
+      />
+      <div className="relative min-w-0 flex-1 min-h-0 overflow-hidden">
         <div
           className={cn(
             "absolute inset-0 flex min-h-0 flex-col transition-transform duration-200 ease-out",
@@ -1362,88 +1354,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
           aria-hidden={isFileTreeOpen}
         >
           <div className={cn("flex flex-col gap-1 px-2", isWindowsDesktop ? "py-2" : "py-3")}>
-            <WorkspaceNewTaskTooltip disabledReason={workspaceReadOnlyReason}>
-              <NewTaskButtonGroup
-                disabled={workspaceReadOnly}
-                onCreateTask={() => {
-                  if (workspaceReadOnly) {
-                    return;
-                  }
-                  if (taskViewMode === "grouped") {
-                    if (createGroupedTaskDraftAction) {
-                      createGroupedTaskDraftAction();
-                      return;
-                    }
-                    onCreateTask({ groupedDraftPlacement: { type: "top" } });
-                    return;
-                  }
-                  onCreateTask({ createSource: "project" });
-                }}
-              />
-            </WorkspaceNewTaskTooltip>
-            <Button
-              variant="ghost"
-              onClick={onOpenCommandCenter}
-              data-icon="inline-start"
-              size="lg"
-              className="w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground"
-            >
-              <Search className="size-4" />
-              <span className="min-w-0 flex-1 truncate text-left">
-                {intl.formatMessage({ id: "commandCenter.open" })}
-              </span>
-              <span className="ml-auto shrink-0 text-ui-xs font-normal text-foreground-subtlest">
-                {commandCenterShortcutLabel}
-              </span>
-            </Button>
-            {/* 远程入口展示策略统一走 useRemoteConnectionEntryVisibility，避免与其他入口出现分叉。*/}
-            {/* {showRemoteConnectionEntry ? (
-              <SSHDialog
-                onConnect={onConnectRemote}
-                onSelectProject={onSelectRemoteProject}
-                onCancelSession={onCancelRemoteProject}
-                isWindowsDesktop={isWindowsDesktop}
-                triggerVariant="ghost"
-                triggerSize="lg"
-                triggerClassName="w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground"
-                trigger={
-                  <>
-                    <Cloud className="size-4" />
-                    <span>{intl.formatMessage({ id: "remote.trigger" })}</span>
-                  </>
-                }
-              />
-            ) : null} */}
-            <Button
-              variant="ghost"
-              onClick={handleOpenAutomationsMain}
-              data-icon="inline-start"
-              data-testid={TID_AUTOMATIONS_OPEN}
-              size="lg"
-              aria-pressed={automationsActive}
-              className={cn(
-                "w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
-                automationsActive && "bg-selected text-foreground",
-              )}
-            >
-              <CalendarClock className="size-4" />
-              {intl.formatMessage({ id: "workspace.openScheduledSettings" })}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={handleOpenPluginStoreMain}
-              data-icon="inline-start"
-              data-testid="plugin-store-sidebar-open"
-              size="lg"
-              aria-pressed={pluginStoreActive}
-              className={cn(
-                "w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
-                pluginStoreActive && "bg-selected text-foreground",
-              )}
-            >
-              <Blocks className="size-4" />
-              {intl.formatMessage({ id: "workspace.openPluginsSettings" })}
-            </Button>
             <Button
               variant="ghost"
               size="lg"
