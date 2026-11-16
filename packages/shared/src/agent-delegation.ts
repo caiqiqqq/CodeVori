@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { workTaskScopeSchema, workTaskExecutionSchema, workTaskSchema } from "./work-task.js";
 import { acpAgentAvailabilitySchema } from "./zcode-protocol/acp.js";
+import { delegationSquadContextSchema } from "./agent-squads.js";
 
 export const delegationApiAgentSchema = z
   .object({
@@ -83,9 +84,15 @@ export const delegationCreateSchema = delegationParentSchema
     workspaceFiles: workTaskSchema.shape.workspaceFiles,
     attachments: workTaskSchema.shape.attachments,
     dependsOn: z.array(z.string().uuid()).max(32).default([]),
+    squadMemberId: z.string().uuid().optional(),
   })
   .strict();
 export type DelegationCreate = z.infer<typeof delegationCreateSchema>;
+export const delegationSquadCreateSchema = delegationCreateSchema
+  .omit({ execution: true, squadMemberId: true })
+  .extend({ squadId: z.string().uuid() })
+  .strict();
+export type DelegationSquadCreate = z.infer<typeof delegationSquadCreateSchema>;
 export const delegationTargetSchema = delegationParentSchema
   .extend({ id: z.string().uuid() })
   .strict();
@@ -133,6 +140,7 @@ export const delegationTaskSchema = z
     expectedResult: z.string(),
     execution: workTaskExecutionSchema,
     intent: z.enum(["analysis", "edit"]),
+    squad: delegationSquadContextSchema.optional(),
     workspaceFiles: workTaskSchema.shape.workspaceFiles,
     attachments: workTaskSchema.shape.attachments,
     dependsOn: z.array(z.string().uuid()),

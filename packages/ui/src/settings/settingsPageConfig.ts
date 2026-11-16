@@ -26,6 +26,7 @@ import {
   Smartphone,
   Network,
   KeyRound,
+  Users,
 } from "lucide-react";
 import { isSettingsSectionEnabled, type SettingsSectionId } from "@/lib/settingsNavigation.js";
 import type { Theme } from "@/useTheme.js";
@@ -131,6 +132,7 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     titleId: "delegation.settingsTitle",
     groupId: "agentCapabilities",
   },
+  { id: "squads", icon: Users, titleId: "squads.title", groupId: "agentCapabilities" },
   {
     id: "plugin",
     icon: Blocks,

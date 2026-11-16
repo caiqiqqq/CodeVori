@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   delegationCreateSchema,
+  delegationSquadCreateSchema,
   delegationFollowUpSchema,
   delegationResultSchema,
   getDelegationAgentReference,
@@ -38,8 +39,13 @@ const schemas = {
     })
     .extend({
       requestId: z.string().uuid().optional(),
-      execution: delegationExecutionSchema,
-    }),
+      execution: delegationExecutionSchema.optional(),
+      squadId: z.string().uuid().optional(),
+    })
+    .refine(
+      (input) => !!input.execution !== !!input.squadId,
+      "Provide exactly one execution or squadId",
+    ),
   GetDelegationTask: idSchema,
   ListDelegationTasks: z.object({}).strict(),
   WaitDelegationTask: idSchema.extend({
@@ -58,9 +64,9 @@ const schemas = {
 };
 const descriptions: Record<keyof typeof schemas, string> = {
   ListDelegationAgents:
-    "List available API models and installed, enabled ACP agents without launching them. Match an explicit @ reference to the exact returned target. API targets include their exact provider/model selection. ACP targets expose agent identity; when no model config is supplied, the Host inherits the parent ACP model only if the target supports the same config ID and value, otherwise it uses that agent's Host model preference. Do not switch the main agent.",
+    "List available API models, ACP agents and saved squads without launching them. Match an explicit @ reference to the exact target. For kind=squad, call DelegateTask with squadId instead of execution. For a squad leader this tool lists only its allowed members: copy squadMemberId and full execution. API selections must retain provider/model/options. Do not switch the main agent.",
   DelegateTask:
-    "Delegate only when requested and select an exact target from ListDelegationAgents. API executions require the exact full modelSelection; never guess a provider from a model name. For ACP, name the exact agent and omit config when no target model is specified; the Host inherits a compatible parent ACP model or that target agent's Host model preference. Pass only relevant background/files/constraints. edit creates an isolated worktree; analysis shares cwd and is NOT a security sandbox. Independent tasks run in parallel; dependsOn enforces successful prerequisites. Returns taskId immediately. Reuse requestId on retrying the same call.",
+    "Delegate only when requested; discover exact targets with ListDelegationAgents. A saved squad uses squadId and no execution: only its leader starts, coordinates its members, and returns a summary. Squad leaders must use the returned squadMemberId and full execution for each member. Direct API delegation requires the exact full modelSelection. For ACP omit config when no model is specified so Host preferences apply. Pass only necessary context/files/constraints, never full history. edit uses an isolated worktree; analysis shares cwd and is not a sandbox. dependsOn enforces prerequisites. Reuse requestId for the same call. Results authorize summarizing only, not further edits, commits, merges or pushes.",
   GetDelegationTask:
     "Read durable task status, child session, all execution attempts and results. Scope is this conversation only.",
   ListDelegationTasks: "List this conversation's durable delegation tasks.",
@@ -98,7 +104,12 @@ export function createDelegationMcp(
       const child = await service.binding(parent, requestId);
       const settings = await service.getSettings(child?.rootParent ?? parent);
       const allowTools =
-        settings.enabled && (!child || (settings.allowNested && child.depth < settings.maxDepth));
+        settings.enabled &&
+        (!child ||
+          child.squad?.role === "leader" ||
+          (child.squad?.role !== "member" &&
+            settings.allowNested &&
+            child.depth < settings.maxDepth));
       const names = [
         ...(allowTools ? Object.keys(schemas) : []),
         ...(child ? ["SubmitDelegationResult"] : []),
@@ -140,22 +151,57 @@ export function createDelegationMcp(
             timeoutMs?: number;
             requestId?: string;
             execution?: WorkTaskExecution;
+            squadId?: string;
           };
           const target = { ...parent, id: values.id! };
           switch (name) {
-            case "ListDelegationAgents":
-              return (await service.targets()).map((target) => ({
-                ...target,
-                reference: getDelegationAgentReference(target),
-              }));
+            case "ListDelegationAgents": {
+              if (child?.squad?.role === "leader")
+                return child.squad.definition.members.map((member) => ({
+                  squadMemberId: member.id,
+                  name: member.name,
+                  role: member.role,
+                  execution: member.execution,
+                }));
+              const [targets, squads] = await Promise.all([
+                service.targets(),
+                service.listSquads(),
+              ]);
+              return [
+                ...targets.map((target) => ({
+                  ...target,
+                  reference: getDelegationAgentReference(target),
+                })),
+                ...squads.map((squad) => ({
+                  kind: "squad",
+                  squadId: squad.id,
+                  name: squad.name,
+                  description: squad.description,
+                  reference: `squad.${squad.id}`,
+                  leader: squad.leader,
+                  members: squad.members.map(({ id, name, role }) => ({ id, name, role })),
+                })),
+              ];
+            }
             case "DelegateTask": {
+              if (values.squadId)
+                return service.delegateSquad(
+                  delegationSquadCreateSchema.parse({
+                    ...values,
+                    ...parent,
+                    requestId: values.requestId ?? uuidv7(),
+                  }),
+                );
               const input = delegationCreateSchema.parse({
                 ...values,
                 ...parent,
                 requestId: values.requestId ?? uuidv7(),
               });
               const execution =
-                input.execution.kind === "acp" && options.resolveAcpExecution
+                // 小队执行配置已冻结；继承队长当前模型会改写成员配置并破坏精确角色校验。
+                input.execution.kind === "acp" &&
+                !input.squadMemberId &&
+                options.resolveAcpExecution
                   ? await options.resolveAcpExecution(parent, input.execution, parentModel)
                   : input.execution;
               return service.delegate({ ...input, execution });
