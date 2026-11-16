@@ -1,5 +1,6 @@
 import { resolveWorkspaceKey, uuidv7, type DelegationTask } from "@zcode/shared";
 import { parentKey, type DelegationRepository } from "./delegationRepository.js";
+import { squadChildren } from "./delegationLifecycle.js";
 const active = new Set(["preparing", "running", "awaiting_input"]);
 const terminal = new Set(["completed", "failed", "interrupted", "canceled"]);
 const leaseMs = 30_000;
@@ -13,7 +14,8 @@ export function claimDelegations(
   const claimed: DelegationTask[] = [];
   repo.transaction(() => {
     const now = Date.now();
-    const tasks = repo.list();
+    let tasks = repo.list();
+    const interruptedSquads: DelegationTask[] = [];
     for (const task of tasks) {
       if (!active.has(task.status)) continue;
       if (task.owner === owner && owned.has(task.id)) {
@@ -30,7 +32,15 @@ export function claimDelegations(
         attempt.endedAt = now;
         attempt.delivery = "pending";
         repo.put(task);
+        if (task.squad?.role === "leader") interruptedSquads.push(task);
       }
+    }
+    // 先处理完整批次的心跳，再取消失联队长的成员；否则旧投影中的心跳可能复活已取消成员。
+    if (interruptedSquads.length) {
+      for (const task of interruptedSquads)
+        for (const child of squadChildren(repo, task))
+          if (!terminal.has(child.status)) cancel(child);
+      tasks = repo.list();
     }
     for (const task of tasks) {
       if (task.status !== "queued") continue;
@@ -65,7 +75,9 @@ export function claimDelegations(
       // 调低设置不能堵住已接受的子任务；从未结束链条推导容量，完成后自动回落到配置值。
       const depth = Math.max(
         settings.allowNested ? settings.maxDepth : 1,
-        ...workspaceTasks.filter((t) => !terminal.has(t.status)).map((t) => t.depth),
+        ...workspaceTasks
+          .filter((t) => !terminal.has(t.status))
+          .map((t) => t.depth + (t.squad?.role === "leader" ? 1 : 0)),
       );
       const concurrency = Math.max(settings.concurrency, depth);
       if (

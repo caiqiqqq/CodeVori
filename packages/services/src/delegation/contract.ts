@@ -13,11 +13,20 @@ import {
   type DelegationSettings,
   type DelegationResult,
   type DelegationRedeliver,
+  type AgentSquad,
+  type AgentSquadSave,
+  type AgentSquadDelete,
+  type DelegationSquadCreate,
 } from "@zcode/shared";
 import type { WorkTaskExecutionContext } from "../session/contract.js";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IAgentDelegationService {
+  listSquads(): Promise<AgentSquad[]>;
+  saveSquad(input: AgentSquadSave): Promise<AgentSquad>;
+  deleteSquad(input: AgentSquadDelete): Promise<void>;
+  delegateSquad(input: DelegationSquadCreate): Promise<DelegationTask>;
+  onDynamicSquadsChanged(): Event<void>;
   targets(): Promise<DelegationAgent[]>;
   list(parent: DelegationParent): Promise<DelegationTask[]>;
   /** Read-only durable child membership; exact session reads remain available. */

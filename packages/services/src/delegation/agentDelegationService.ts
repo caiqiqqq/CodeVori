@@ -1,6 +1,5 @@
 import { Emitter } from "@zcode/rpc";
 import {
-  delegationFollowUpSchema,
   delegationParentSchema,
   delegationSettingsSchema,
   delegationTargetSchema,
@@ -16,14 +15,23 @@ import {
   type DelegationSettings,
   type WorkTaskScope,
   type DelegationRedeliver,
+  type AgentSquadSave,
+  type AgentSquadDelete,
+  type DelegationSquadCreate,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import type { IAgentDelegationService, DelegationDependencies } from "./contract.js";
 import { DelegationRepository, parentKey } from "./delegationRepository.js";
 import { claimDelegations, deliverDelegationResults } from "./delegationScheduler.js";
 import { executeDelegationAttempt } from "./delegationAttempt.js";
-import { admitDelegation, findDelegationBinding } from "./delegationAdmission.js";
+import { admitDelegation, findDelegationBinding, admitFollowUp } from "./delegationAdmission.js";
 import { listDelegationTargets } from "./delegationTargets.js";
+import {
+  cancelDelegationTree,
+  executeWithSquadCleanup,
+  squadChildren,
+} from "./delegationLifecycle.js";
+import { saveAgentSquad, deleteAgentSquad, admitSquad } from "./agentSquads.js";
 
 const active = new Set(["preparing", "running", "awaiting_input"]);
 const terminal = new Set(["completed", "failed", "interrupted", "canceled"]);
@@ -33,6 +41,8 @@ export class AgentDelegationService implements IAgentDelegationService {
   private readonly repo: DelegationRepository;
   private readonly owner = uuidv7();
   private readonly emitter = new Emitter<void>();
+  private readonly squadEmitter = new Emitter<void>();
+  private lastSquadProjection = "";
   private readonly runs = new Map<string, { abort: AbortController; done: Promise<void> }>();
   private timer?: ReturnType<typeof setInterval>;
   private ticking?: Promise<void>;
@@ -45,6 +55,30 @@ export class AgentDelegationService implements IAgentDelegationService {
   }
   async targets() {
     return listDelegationTargets(this.deps);
+  }
+  async listSquads() {
+    await this.repo.open();
+    return this.repo.squads();
+  }
+  onDynamicSquadsChanged() {
+    return this.squadEmitter.event;
+  }
+  async saveSquad(input: AgentSquadSave) {
+    if (this.disposed) throw new Error("delegation.closed");
+    const squad = await saveAgentSquad(this.repo, this.deps, input);
+    this.squadEmitter.fire();
+    return squad;
+  }
+  async deleteSquad(input: AgentSquadDelete) {
+    if (this.disposed) throw new Error("delegation.closed");
+    await deleteAgentSquad(this.repo, input);
+    this.squadEmitter.fire();
+  }
+  async delegateSquad(input: DelegationSquadCreate) {
+    if (this.disposed) throw new Error("delegation.closed");
+    const task = await admitSquad(this.repo, this.deps, input);
+    this.emitter.fire();
+    return task;
   }
   async list(input: DelegationParent) {
     await this.repo.open();
@@ -140,29 +174,8 @@ export class AgentDelegationService implements IAgentDelegationService {
     return task;
   }
   async followUp(raw: DelegationFollowUp) {
-    const input = delegationFollowUpSchema.parse(raw);
     if (this.disposed) throw new Error("delegation.closed");
-    await this.repo.open();
-    const old = this.scoped(input);
-    const task = await admitDelegation(
-      this.repo,
-      this.deps,
-      {
-        ...old.parent,
-        requestId: input.requestId,
-        title: old.title,
-        task: input.task,
-        background: old.background,
-        constraints: old.constraints,
-        expectedResult: old.expectedResult,
-        execution: old.execution,
-        intent: old.intent,
-        dependsOn: [],
-        workspaceFiles: input.workspaceFiles ?? old.workspaceFiles,
-        attachments: input.attachments ?? old.attachments,
-      },
-      old.id,
-    );
+    const task = await admitFollowUp(this.repo, this.deps, raw);
     this.emitter.fire();
     return task;
   }
@@ -195,32 +208,7 @@ export class AgentDelegationService implements IAgentDelegationService {
     return this.restart(input, true);
   }
   private cancelTask(task: DelegationTask) {
-    if (!terminal.has(task.status)) {
-      task.status = "canceled";
-      task.updatedAt = Date.now();
-      const attempt = task.attempts.at(-1);
-      if (attempt && !attempt.endedAt) {
-        attempt.status = "canceled";
-        attempt.endedAt = task.updatedAt;
-      }
-    }
-    for (const item of task.attempts)
-      if (item.delivery !== "delivered") item.delivery = "suppressed";
-    delete task.owner;
-    delete task.leaseUntil;
-    this.repo.put(task);
-    if (task.session) {
-      const childParent = {
-        ...task.parent,
-        workspacePath: task.worktree?.path ?? task.parent.workspacePath,
-        kind: task.session.kind,
-        sessionId: task.session.id,
-      };
-      // 已完成的下级也可能有待回传结果；取消树不能只遍历正在执行的节点。
-      const state = this.repo.parent(childParent);
-      this.repo.setParent(childParent, { generation: state.generation + 1, suspended: true });
-      for (const child of this.repo.list(childParent)) this.cancelTask(child);
-    }
+    cancelDelegationTree(this.repo, task);
   }
   private abortCanceled() {
     for (const [id, run] of this.runs)
@@ -278,6 +266,11 @@ export class AgentDelegationService implements IAgentDelegationService {
       )
         throw new Error("delegation.stale-attempt");
       task.attempts.at(-1)!.result = parsed;
+      if (
+        task.squad?.role === "leader" &&
+        squadChildren(this.repo, task).some((child) => !terminal.has(child.status))
+      )
+        throw new Error("delegation.squad-members-pending");
       this.repo.put(task);
     });
   }
@@ -327,7 +320,16 @@ export class AgentDelegationService implements IAgentDelegationService {
         abort,
         this.repo,
         this.owner,
-        this.deps.execute,
+        (task, context) =>
+          executeWithSquadCleanup(
+            this.repo,
+            this.owner,
+            task,
+            context,
+            this.deps.execute,
+            () => this.disposed,
+            () => this.abortCanceled(),
+          ),
         () => this.disposed,
         () => this.emitter.fire(),
       ).finally(() => {
@@ -352,6 +354,11 @@ export class AgentDelegationService implements IAgentDelegationService {
       .finally(() => {
         this.delivering = undefined;
       });
+    const squads = JSON.stringify(this.repo.squads());
+    if (squads !== this.lastSquadProjection) {
+      this.lastSquadProjection = squads;
+      this.squadEmitter.fire();
+    }
     const projection = JSON.stringify(
       this.repo.list().map(({ owner: _owner, leaseUntil: _lease, ...task }) => task),
     );
@@ -390,5 +397,6 @@ export class AgentDelegationService implements IAgentDelegationService {
     });
     this.repo.close();
     this.emitter.dispose();
+    this.squadEmitter.dispose();
   }
 }
