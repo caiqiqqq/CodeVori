@@ -1,5 +1,6 @@
 import { ServiceChannels } from "@zcode/shared";
 import { createServiceDescriptor } from "../descriptors.js";
+import type { ProjectEnvironmentService } from "./projectEnvironment.js";
 
 /**
  * 凭据管理服务
@@ -8,7 +9,7 @@ import { createServiceDescriptor } from "../descriptors.js";
  * 实现端（host process）负责加密存储细节，
  * 消费端（renderer）只通过 RPC 调用，不感知存储位置。
  */
-export interface ICredentialService {
+export interface ICredentialService extends Partial<ProjectEnvironmentService> {
   load(key: string): Promise<string | null>;
   save(key: string, value: string): Promise<void>;
   delete(key: string): Promise<void>;

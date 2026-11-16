@@ -475,6 +475,19 @@ const enUS: Record<string, string> = {
   "workTasks.archiveAndRemoveWorktree": "Archive and delete worktree",
   "workTasks.archiveAndRemoveWorktreeBody":
     "Clean up the worktree in the background and archive the task on success. You can use other tasks while cleanup runs. The branch and conversation history will be kept. Uncommitted changes or active conversations prevent deletion.",
+  "workTasks.initialBranch": "Created on branch",
+  "workTasks.currentBranch": "Current branch",
+  "workTasks.branchChanged":
+    "This worktree was created on {initial} and is now on {current}. Confirm before continuing this conversation on the current branch.",
+  "workTasks.branchChecking":
+    "Checking the worktree branch. Conversation input is paused until the check finishes.",
+  "workTasks.branchCheckFailed":
+    "Could not verify the worktree or its current branch. The action is paused.",
+  "workTasks.acceptCurrentBranch": "Continue on current branch",
+  "workTasks.error.work-task.branch-confirmation-stale":
+    "The worktree branch or task state changed. Refresh and confirm again.",
+  "workTasks.error.work-task.worktree-inspection-unsupported":
+    "This Host cannot inspect task worktrees.",
   "workTasks.error.work-task.not-cleanable":
     "Only completed tasks with an isolated worktree can be cleaned up.",
   "workTasks.error.work-task.cleanup-in-progress":
@@ -3741,6 +3754,44 @@ const enUS: Record<string, string> = {
   "settings.credentials.error.delete": "Could not delete the credential. Try again.",
   "settings.credentials.save": "Save",
   "settings.credentials.saving": "Saving…",
+  "settings.projectEnvironments.title": "Project environments",
+  "settings.projectEnvironments.description":
+    "Organize environment details for the active project and reference saved credentials.",
+  "settings.projectEnvironments.noProject": "Open a project to configure its environment profiles.",
+  "settings.projectEnvironments.add": "Add environment",
+  "settings.projectEnvironments.loading": "Loading environment profiles…",
+  "settings.projectEnvironments.empty": "No environment profiles for this project",
+  "settings.projectEnvironments.resourcesCount": "Resources: {count}",
+  "settings.projectEnvironments.unavailableCount": "Unavailable: {count}",
+  "settings.projectEnvironments.edit": "Edit environment profile",
+  "settings.projectEnvironments.delete": "Delete environment",
+  "settings.projectEnvironments.addTitle": "Add project environment",
+  "settings.projectEnvironments.editTitle": "Edit project environment",
+  "settings.projectEnvironments.formDescription":
+    "Reference existing credentials; secrets stay in the credential vault.",
+  "settings.projectEnvironments.name": "Environment name",
+  "settings.projectEnvironments.instructions": "Instructions",
+  "settings.projectEnvironments.resources": "Linked credentials",
+  "settings.projectEnvironments.resourcesDescription":
+    "A credential can be linked to multiple environment profiles.",
+  "settings.projectEnvironments.purpose": "Purpose",
+  "settings.projectEnvironments.resourceInstructions": "Resource notes",
+  "settings.projectEnvironments.noCredentials": "No credentials are available to this project yet.",
+  "settings.projectEnvironments.unavailableCredential": "The linked credential is unavailable",
+  "settings.projectEnvironments.removeUnavailable": "Remove unavailable credential link",
+  "settings.projectEnvironments.confirmDeleteTitle": "Delete project environment?",
+  "settings.projectEnvironments.confirmDeleteDescription":
+    "Existing session selections will remain unavailable and will not switch automatically.",
+  "settings.projectEnvironments.deleting": "Deleting…",
+  "settings.projectEnvironments.error.load": "Could not load project environments. Try again.",
+  "settings.projectEnvironments.error.save":
+    "Could not save the project environment. It may have changed elsewhere; reload and try again.",
+  "settings.projectEnvironments.error.delete":
+    "Could not delete the project environment. It may have changed elsewhere; reload and try again.",
+  "chat.toolbar.projectEnvironment.label": "Project environment",
+  "chat.toolbar.projectEnvironment.none": "No environment",
+  "chat.toolbar.projectEnvironment.unavailable": "Current environment unavailable",
+  "chat.toolbar.projectEnvironment.updateError": "Environment selection failed",
   "settings.mcp.description": `Manage MCP server configurations used by ${PRODUCT_NAME} Agent.`,
   "settings.mcp.create.open": "Add MCP server",
   "settings.mcp.import.open": "Import MCP servers from external agents",
@@ -4804,6 +4855,25 @@ const enUS: Record<string, string> = {
   "settings.acpAgents.snapshotUnavailable":
     "Host installation subscription unavailable. Retrying the snapshot.",
   "settings.acpAgents.upgrade": "Upgrade to target",
+  "settings.acpAgents.batchUpgrade": "Batch upgrade",
+  "settings.acpAgents.upgradeAll": "Upgrade all ({count})",
+  "settings.acpAgents.upgradeSelected": "Upgrade selected ({count})",
+  "settings.acpAgents.batchUpgradeHint":
+    "Select agents to upgrade sequentially to their checked target versions.",
+  "settings.acpAgents.batchSystemNotice":
+    "Includes system-installed agents: upgrades will use app-managed adapters and preserve the system installations.",
+  "settings.acpAgents.noUpgrades":
+    "No agents are ready for upgrade. Check for updates and verify the runtime environment.",
+  "settings.acpAgents.selectAllUpgrades": "Select all",
+  "settings.acpAgents.selectUpgrade": "Select {name}",
+  "settings.acpAgents.cancelBatch": "Cancel",
+  "settings.acpAgents.batchResults": "Upgrade results",
+  "settings.acpAgents.batchProgress": "Completed {completed}/{total}",
+  "settings.acpAgents.batchSummary": "Succeeded {succeeded}, failed {failed}",
+  "settings.acpAgents.stopBatch": "Stop remaining upgrades",
+  "settings.acpAgents.batchStopped": "Remaining upgrades stopped",
+  "settings.acpAgents.upgradeSucceeded": "Upgrade succeeded",
+  "settings.acpAgents.upgradeFailed": "Upgrade failed",
   "settings.acpAgents.uninstall": "Uninstall managed adapter",
   "settings.acpAgents.uninstallConfirm": `Only the adapter managed by ${PRODUCT_NAME} on this Host is removed. System commands and saved sessions are kept.`,
   "settings.acpAgents.systemInstallConfirm":
@@ -7933,6 +8003,7 @@ const enUS: Record<string, string> = {
   "acp.transcript": "ACP transcript",
   "acp.toolResultUnknown": "Result unconfirmed",
   "acp.terminalOutputDescription": "Command and output",
+  "acp.terminalOutputUnavailable": "This terminal output was not saved and cannot be restored.",
   "acp.terminalOutputTruncated": "Output truncated",
   "acp.terminalStop": "Stop command",
   "acp.terminalStopFailed": "Could not stop the command. Please retry.",

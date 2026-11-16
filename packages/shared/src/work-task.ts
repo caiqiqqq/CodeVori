@@ -161,6 +161,8 @@ export const workTaskWorktreeSchema = z
     projectPath: z.string().min(1),
     branchName: z.string().min(1),
     baseCommit: z.string().min(1),
+    /** Explicitly accepted current branch; absent on legacy tasks means branchName. */
+    acceptedBranchName: z.string().min(1).optional(),
   })
   .strict();
 
@@ -370,10 +372,28 @@ export const workTaskListSchema = workTaskScopeSchema
   .extend({ includeArchived: z.boolean().optional() })
   .strict();
 export const workTaskArchiveSchema = workTaskTargetSchema
-  .extend({ archived: z.boolean(), removeWorktree: z.boolean().optional() })
+  .extend({
+    archived: z.boolean(),
+    removeWorktree: z.boolean().optional(),
+    confirmedBranchName: z.string().min(1).optional(),
+  })
   .strict()
-  .refine((input) => !input.removeWorktree || input.archived);
+  .refine(
+    (input) =>
+      (!input.removeWorktree || input.archived) &&
+      (!input.confirmedBranchName || input.removeWorktree),
+  );
 export type WorkTaskArchive = z.infer<typeof workTaskArchiveSchema>;
+export const workTaskAcceptBranchSchema = workTaskTargetSchema
+  .extend({ currentBranchName: z.string().min(1) })
+  .strict();
+export type WorkTaskAcceptBranch = z.infer<typeof workTaskAcceptBranchSchema>;
+export interface WorkTaskWorktreeInspection {
+  status: "ready" | "branch-changed" | "missing" | "invalid-target";
+  initialBranchName: string;
+  acceptedBranchName: string;
+  currentBranchName?: string;
+}
 /** Legacy settings validation; retained for compatibility, not an execution limit. */
 export const workTaskConcurrencySchema = workTaskScopeSchema
   .extend({ concurrency: z.number().int().min(1).max(8) })

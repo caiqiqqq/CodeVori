@@ -8,6 +8,7 @@ import type {
 import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useCredentialVault } from "@/hooks/useCredentialVault.js";
+import { ProjectEnvironmentSection } from "./ProjectEnvironmentSection.js";
 import {
   CredentialVaultEntryDialog,
   type CredentialVaultDialogMode,
@@ -17,7 +18,13 @@ function environmentLabel(environment: CredentialVaultEnvironment, label: (id: s
   return label(`settings.credentials.environment.${environment}`);
 }
 
-export function CredentialVaultSection() {
+export function CredentialVaultSection({
+  workspacePath,
+  workspaceIdentity,
+}: {
+  workspacePath: string | null;
+  workspaceIdentity?: string;
+}) {
   const { intl } = useZCodeIntl();
   const { list } = useCredentialVault();
   const [entries, setEntries] = useState<CredentialVaultEntry[]>([]);
@@ -154,6 +161,11 @@ export function CredentialVaultSection() {
         mode={dialogMode}
         onClose={() => setDialogMode(null)}
         onChanged={refresh}
+      />
+      <ProjectEnvironmentSection
+        workspacePath={workspacePath}
+        workspaceIdentity={workspaceIdentity}
+        credentials={entries}
       />
     </section>
   );

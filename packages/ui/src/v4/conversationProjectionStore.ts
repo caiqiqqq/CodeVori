@@ -1274,9 +1274,10 @@ export class ConversationProjectionStore {
           !current ||
           current.logEpoch !== logEpoch
         ) {
-          outcome = this.closed || generation !== this.optionalHistoryHydrationGeneration
-            ? "cancelled"
-            : "stale";
+          outcome =
+            this.closed || generation !== this.optionalHistoryHydrationGeneration
+              ? "cancelled"
+              : "stale";
           return false;
         }
         if (current.rows.window.some((row) => row.rowId === rowId)) {
@@ -1346,7 +1347,8 @@ export class ConversationProjectionStore {
 
     const logEpoch = snapshot.logEpoch;
     const generation = this.optionalHistoryHydrationGeneration;
-    const questions: Array<ConversationTurnNavigatorDirectoryEntry & { productTurnId: string }> = [];
+    const questions: Array<ConversationTurnNavigatorDirectoryEntry & { productTurnId: string }> =
+      [];
     const firstAssistant = new Map<string, { rowId: number; text: string }>();
     const capturePreview = (rows: readonly ConversationRow[], collectQuestions: boolean) => {
       for (const row of rows) {
@@ -1381,7 +1383,10 @@ export class ConversationProjectionStore {
     this.setState({ turnNavigatorLoading: true });
     try {
       for (;;) {
-        const result = await this.transport.rowsRange({
+        const result = await (
+          this.transport.turnNavigatorRange?.bind(this.transport) ??
+          this.transport.rowsRange.bind(this.transport)
+        )({
           sessionId,
           beforeRowId,
           limit: PROTOCOL_V4_LIMITS.rowsRangeMaxLimit,
@@ -1394,12 +1399,12 @@ export class ConversationProjectionStore {
           !current ||
           current.logEpoch !== logEpoch ||
           result.atLogEpoch !== logEpoch ||
-          current.rows.window[0]?.rowId !== firstRowId ||
           this.state.turnNavigatorDirectoryRevision !== directoryRevision
         ) {
-          outcome = this.closed || generation !== this.optionalHistoryHydrationGeneration
-            ? "cancelled"
-            : "stale";
+          outcome =
+            this.closed || generation !== this.optionalHistoryHydrationGeneration
+              ? "cancelled"
+              : "stale";
           return stale(logEpoch);
         }
         const older = result.rows.filter((row) => row.rowId < beforeRowId);
@@ -1419,18 +1424,19 @@ export class ConversationProjectionStore {
       if (
         !current ||
         current.logEpoch !== logEpoch ||
-        current.rows.window[0]?.rowId !== firstRowId ||
         this.state.turnNavigatorDirectoryRevision !== directoryRevision
       ) {
         outcome = "stale";
         return stale(logEpoch);
       }
-      // 修复依据：旧历史只发布有限预览，不能把工具输出、图片或完整答复常驻 Renderer。
+      // 修复依据：正文补页只移动本地窗口首行，不改变目录读取的权威代际；
+      // 目录沿原游标完成后裁掉已进入正文的预览，避免 stale 重扫和重复常驻。
       const directory = questions
         .map(({ productTurnId, ...question }) => ({
           ...question,
           assistantText: firstAssistant.get(productTurnId)?.text,
         }))
+        .filter((question) => question.rowId < (current.rows.window[0]?.rowId ?? Infinity))
         .sort((left, right) => left.rowId - right.rowId);
       const queryCount =
         directory.length +
@@ -1574,9 +1580,8 @@ export class ConversationProjectionStore {
         current.logEpoch !== initialLogEpoch ||
         current.rows.window[0]?.rowId !== initialBeforeRowId
       ) {
-        outcome = hydrationGeneration !== this.optionalHistoryHydrationGeneration
-          ? "cancelled"
-          : "stale";
+        outcome =
+          hydrationGeneration !== this.optionalHistoryHydrationGeneration ? "cancelled" : "stale";
         return stale(initialLogEpoch);
       }
       const olderRows = [...pages].reverse().flat();

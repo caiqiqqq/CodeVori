@@ -106,9 +106,15 @@ test("API and ACP scoped MCP capabilities use strict tools; stdio wait does not 
   try {
     const registration = (await bridge.register(parent))!;
     assert.equal(
-      zcodeDelegationMcpResponseSchema.parse([delegationProtocolServer(registration.record)])
-        .length,
+      zcodeDelegationMcpResponseSchema.parse({
+        servers: [delegationProtocolServer(registration.record)],
+        canDelegate: registration.canDelegate,
+      }).servers.length,
       1,
+    );
+    assert.equal(registration.canDelegate, true);
+    assert.throws(() =>
+      zcodeDelegationMcpResponseSchema.parse([delegationProtocolServer(registration.record)]),
     );
     const tools = (await rpc(registration.record, "tools/list")).result.tools;
     assert.equal(tools.length, 10);

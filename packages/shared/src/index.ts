@@ -358,3 +358,4 @@ export {
   saveProjectMemoryInputSchema,
   type ProjectMemorySaveReceipt,
 } from "./projectMemoryTools.js";
+export * from "./project-environments.js";
