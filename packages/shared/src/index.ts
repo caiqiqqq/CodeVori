@@ -332,6 +332,7 @@ export * from "./work-task-result.js";
 export * from "./worktree.js";
 export { isAbsoluteFilePath, joinFilePath } from "./file-path.js";
 export * from "./agent-delegation.js";
+export * from "./agent-squads.js";
 export {
   PRODUCT_NAME,
   PRODUCT_DATA_DIRECTORY_NAME,
