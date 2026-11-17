@@ -3,7 +3,7 @@ import { lazy, Suspense, useMemo } from "react";
 import { Archive, ArrowUpRight, X } from "lucide-react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Button } from "@/components/ui/button.js";
-import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
 import {
   boardAgentLabel,
   boardStatusIndicator,
@@ -55,7 +55,45 @@ export function AgentBoardDetails({
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
   if (selected?.kind === "work-task")
     return (
-      <Suspense fallback={null}>
+      <Suspense
+        fallback={
+          // 懒加载期间空 fallback 会让选中卡片先更新、详情框延迟出现；保留同一面板的即时反馈。
+          <Dialog
+            modal={false}
+            open
+            onOpenChange={(open) => {
+              if (!open) onClose();
+            }}
+          >
+            <DialogContent
+              portalContainer={container}
+              showOverlay={false}
+              showCloseButton={false}
+              data-testid="agent-board-details"
+              onOpenAutoFocus={(event) => event.preventDefault()}
+              className="absolute inset-y-0 right-0 flex h-full w-[clamp(640px,calc(100%_-_16rem),960px)] translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-0 border-l border-border bg-background p-0 shadow-xl max-w-full"
+            >
+              <div
+                data-testid="agent-board-conversation-column"
+                className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+              >
+                <header className="flex min-w-0 items-center gap-2 border-b border-border p-4">
+                  <div className="min-w-0 flex-1">
+                    <DialogTitle className="truncate">{selected.title}</DialogTitle>
+                    <DialogDescription>{t("workTasks")}</DialogDescription>
+                  </div>
+                  <Button variant="ghost" size="icon" aria-label={t("close")} onClick={onClose}>
+                    <X className="size-4" />
+                  </Button>
+                </header>
+                <p role="status" className="p-4 text-ui-sm text-foreground-subtle">
+                  {t("loading")}
+                </p>
+              </div>
+            </DialogContent>
+          </Dialog>
+        }
+      >
         <WorkTaskDetails
           key={selected.key}
           item={selected}
