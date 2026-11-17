@@ -1,4 +1,3 @@
-import { useDroppable } from "@dnd-kit/core";
 import { Circle, LoaderCircle } from "lucide-react";
 import { AgentBoardCard, boardStatusColors } from "./AgentBoardCard.js";
 import {
@@ -14,13 +13,11 @@ export function AgentBoardGroups({
   byStatus,
   projects,
   onOpen,
-  onStage,
 }: {
   columns: BoardGroup[];
   byStatus: boolean;
   projects: BoardProject[];
   onOpen(item: BoardItem): void;
-  onStage(item: BoardItem): void;
 }) {
   // 项目分区只由当前可见会话构成；待办所属项目不能再占一个空列。
   const groups = byStatus ? columns : columns.filter((column) => column.items.length > 0);
@@ -73,7 +70,6 @@ export function AgentBoardGroups({
                 item={item}
                 projectLabel={projects.find((project) => project.key === item.projectKey)?.label}
                 onOpen={() => onOpen(item)}
-                onStage={onStage}
               />
             ))}
           </div>
@@ -92,19 +88,13 @@ function BoardColumn({
   byStatus: boolean;
   children: React.ReactNode;
 }) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `column:${column.key}`,
-    disabled: !byStatus || column.key !== "staged",
-    data: { boardStaging: true },
-  });
   return (
     <section
-      ref={setNodeRef}
       className={`${
         byStatus
           ? "flex min-h-0 w-72 shrink-0 flex-col md:flex-1 md:basis-60 md:min-w-60"
           : "min-w-0 shrink-0"
-      } rounded-lg ${isOver ? "bg-accent ring-2 ring-brand" : ""}`}
+      } rounded-lg`}
       data-board-column={column.key}
     >
       {children}

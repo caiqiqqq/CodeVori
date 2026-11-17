@@ -63,12 +63,6 @@ try {
     f.updateAcp(1, { status: "interrupted" });
     f.setSidebar(true);
   });
-  const card = (title) =>
-    page
-      .locator("article")
-      .filter({ has: page.getByRole("heading", { name: title, exact: true }) });
-  await card("Remote ACP 0").getByRole("button", { name: "暂存", exact: true }).click();
-  await card("Remote ACP 0").getByRole("button", { name: "移出暂存", exact: true }).waitFor();
   const countsBefore = await page
     .getByTestId("board-sidebar")
     .getByRole("button", { name: "所有项目", exact: true })

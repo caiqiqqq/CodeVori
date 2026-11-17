@@ -1,7 +1,5 @@
 import { WorkTaskAgent } from "@/work-tasks/WorkTaskParts.js";
-import { useDraggable } from "@dnd-kit/core";
-import { Folder, GripVertical, LoaderCircle } from "lucide-react";
-import { Button } from "@/components/ui/button.js";
+import { Folder, LoaderCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge.js";
 import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
@@ -9,7 +7,6 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import {
   boardResultTimestamp,
   boardAgentLabel,
-  canStageBoardItem,
   boardStatusIndicator,
   type BoardItem,
 } from "./agentBoardModel.js";
@@ -24,20 +21,13 @@ export function AgentBoardCard({
   item,
   projectLabel,
   onOpen,
-  onStage,
 }: {
   item: BoardItem;
   projectLabel?: string;
   onOpen(): void;
-  onStage(item: BoardItem): void;
 }) {
   const { intl, locale } = useZCodeIntl();
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
-  const canStage = canStageBoardItem(item);
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: item.key,
-    disabled: !canStage || item.staged,
-  });
   const colors = boardStatusColors;
   const status = boardStatusIndicator(item);
   const isConversation = item.workspacePurpose === "conversation";
@@ -51,8 +41,6 @@ export function AgentBoardCard({
     : item.summary;
   return (
     <article
-      ref={setNodeRef}
-      style={{ opacity: isDragging ? 0.4 : undefined }}
       className="rounded-lg border border-card-border bg-card transition-colors hover:border-border-hover hover:bg-hover"
       data-board-card={item.key}
     >
@@ -133,35 +121,6 @@ export function AgentBoardCard({
         </div>
         {!item.online ? <p className="mt-2 text-ui-caption text-warning">{t("offline")}</p> : null}
       </button>
-      {canStage || !isConversation ? (
-        <div className="flex items-center justify-end gap-2 border-t border-border/60 px-3 py-1">
-          {canStage && !item.staged ? (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="touch-none cursor-grab"
-              {...listeners}
-              {...attributes}
-              aria-label={t("dragToStaged")}
-            >
-              <GripVertical className="size-3.5" />
-            </Button>
-          ) : null}
-          {!isConversation ? (
-            <span
-              className="mr-auto truncate text-ui-xs text-foreground-subtlest"
-              title={item.workspaceIdentity ?? item.workspacePath}
-            >
-              {item.workspaceIdentity ?? item.workspacePath.split("/").pop()}
-            </span>
-          ) : null}
-          {canStage ? (
-            <Button variant="ghost" size="sm" onClick={() => onStage(item)}>
-              {t(item.staged ? "unstage" : "stage")}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
     </article>
   );
 }

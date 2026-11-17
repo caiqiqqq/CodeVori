@@ -117,12 +117,6 @@ export async function exerciseAgentBoardSidebar(page, artifacts) {
   await main.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("");
   await row("所有项目").click();
   await main.getByRole("tab", { name: /^全部/ }).click();
-  const acp = main
-    .locator("article")
-    .filter({ has: page.getByRole("heading", { name: "Remote ACP 0", exact: true }) });
-  await acp.getByRole("button", { name: "暂存", exact: true }).click();
-  await expectCounts(longName, { running: 1, staged: 2, error: 1 });
-  await acp.getByRole("button", { name: "移出暂存", exact: true }).click();
   await expectCounts(longName, { running: 1, completed: 1, staged: 1, error: 1 });
   assert.equal(await page.evaluate(() => window.__board.commands.length), before);
   for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {

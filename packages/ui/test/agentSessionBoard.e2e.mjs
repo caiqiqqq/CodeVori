@@ -80,6 +80,10 @@ try {
   await page.goto(origin + "/" + name + ".html");
   await page.getByRole("heading", { name: "Agent 看板", exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll("[data-board-card]").length === 25);
+  for (const card of await page.locator("[data-board-card]").all()) {
+    assert.equal(await card.locator(":scope > div").count(), 0, "card has no bottom action row");
+    assert.equal(await card.getByRole("button", { name: /暂存|移出暂存|拖动到暂存/ }).count(), 0);
+  }
   await assertLegacyFavoriteMigration(page);
   await assertBoardMessagePreviewsHidden(page);
   assert.equal(
@@ -102,8 +106,8 @@ try {
     .filter({ has: page.getByRole("heading", { name: "Implement project 20", exact: true }) });
   assert.equal(
     await realDefaultProject.getByText("default", { exact: true }).count(),
-    2,
-    "a real project named default retains project metadata",
+    1,
+    "a real project named default retains its project label without a workspace-path footer",
   );
   await localConversation.getByRole("button").first().click();
   await page.getByTestId("real-pane-contract").waitFor();
