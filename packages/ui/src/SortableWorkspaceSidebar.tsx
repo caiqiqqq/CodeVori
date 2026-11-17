@@ -29,6 +29,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   taskItems,
   taskListLoading,
   taskListHasMore,
+  taskSortBy,
   taskListHasUnread = false,
   taskListLiveWorkflowCount = 0,
   workspaceKey,
@@ -62,6 +63,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   taskItems: ZCodeTaskMeta[];
   taskListLoading: boolean;
   taskListHasMore: boolean;
+  taskSortBy?: "created" | "updated";
   taskListHasUnread?: boolean;
   taskListLiveWorkflowCount?: number;
   workspaceKey: string;
@@ -139,6 +141,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
       taskItems={taskItems}
       taskListLoading={taskListLoading}
       taskListHasMore={taskListHasMore}
+      taskSortBy={taskSortBy}
       taskListHasUnread={taskListHasUnread}
       taskListLiveWorkflowCount={taskListLiveWorkflowCount}
       onShowMoreTasks={handleShowMoreTasks}

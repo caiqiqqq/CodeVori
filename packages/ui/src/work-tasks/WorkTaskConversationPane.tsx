@@ -54,6 +54,7 @@ export function WorkTaskConversationPane({
   onComplete,
   onOpenConversation,
   onOpenNativeSession,
+  showBackButton = true,
   showMergeConversation = false,
   onToggleMergeConversation,
 }: {
@@ -67,6 +68,7 @@ export function WorkTaskConversationPane({
   onComplete(task: WorkTask): void;
   onOpenConversation(task: WorkTask): void;
   onOpenNativeSession?: OpenWorkTaskNativeSession;
+  showBackButton?: boolean;
   showMergeConversation?: boolean;
   onToggleMergeConversation?(): void;
 }) {
@@ -86,14 +88,16 @@ export function WorkTaskConversationPane({
         <>
           <header className="flex min-w-0 shrink-0 flex-wrap items-center gap-1 border-b border-border px-3 py-2">
             <div className="flex min-w-0 flex-1 basis-40 items-center gap-1">
-              <WorkTaskIconButton
-                label={t("backToBoard")}
-                data-testid="work-task-back"
-                className="group-data-[wide=true]/work-task-workbench:hidden"
-                onClick={() => onClose(task.id)}
-              >
-                <ChevronLeft className="size-4" />
-              </WorkTaskIconButton>
+              {showBackButton ? (
+                <WorkTaskIconButton
+                  label={t("backToBoard")}
+                  data-testid="work-task-back"
+                  className="group-data-[wide=true]/work-task-workbench:hidden"
+                  onClick={() => onClose(task.id)}
+                >
+                  <ChevronLeft className="size-4" />
+                </WorkTaskIconButton>
+              ) : null}
               <h2 className="min-w-0 flex-1 truncate text-ui-base font-medium" title={task.title}>
                 {task.title}
               </h2>

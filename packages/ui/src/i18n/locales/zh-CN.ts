@@ -302,6 +302,7 @@ const zhCN: Record<string, string> = {
   "workTasks.project": "项目",
   "workTasks.noProject": "未选择项目",
   "workTasks.create": "新建任务",
+  "workTasks.createTodo": "新建待办",
   "workTasks.edit": "编辑任务",
   "workTasks.save": "保存",
   "workTasks.sessionIdCopied": "已复制会话 ID",
