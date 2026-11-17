@@ -74,7 +74,9 @@ export function createProjectEnvironmentService(options: {
     beginInput(scope: ProjectEnvironmentSession): () => void;
   } = {
     beginInput(scope) {
-      const key = sessionKey(projectEnvironmentSessionSchema.parse(scope));
+      // 修复原因：内部 ACP/API admission 传入完整命令，附带正文或路由字段；
+      // 此处只投影并校验环境身份，对外 RPC/MCP 仍使用原来的严格 schema。
+      const key = sessionKey(projectEnvironmentSessionSchema.strip().parse(scope));
       admissions.set(key, (admissions.get(key) ?? 0) + 1);
       let released = false;
       return () => {
