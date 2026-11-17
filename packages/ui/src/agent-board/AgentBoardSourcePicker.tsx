@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "zustand";
-import { Check, LayoutGrid, MessageSquare, Star, ListTodo } from "lucide-react";
+import { Check, LayoutGrid, MessageSquare, Star } from "lucide-react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Button } from "@/components/ui/button.js";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
@@ -38,12 +38,6 @@ export function AgentBoardSourcePicker({
       selected: preferences.category === "standalone",
       select: preferences.selectStandalone,
     },
-    {
-      id: "workTasks",
-      icon: ListTodo,
-      selected: preferences.category === "work-tasks",
-      select: preferences.selectWorkTasks,
-    },
   ];
   const visibleProjects = realProjects.filter((p) =>
     `${p.label} ${p.key} ${p.tabs.map((tab) => tab.workspacePath).join(" ")}`
@@ -75,7 +69,7 @@ export function AgentBoardSourcePicker({
         <div
           role="group"
           aria-label={t("projects")}
-          className="grid shrink-0 grid-cols-1 gap-2 border-b border-border/60 pb-4 sm:grid-cols-3"
+          className="grid shrink-0 grid-cols-1 gap-2 border-b border-border/60 pb-4 sm:grid-cols-2"
         >
           {shortcuts.map(({ id, icon: Icon, selected, select }) => (
             <Button

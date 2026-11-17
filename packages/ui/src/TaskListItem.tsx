@@ -33,6 +33,7 @@ import { TaskRowActionButton } from "@/workspace-grouped-tasks/task-row-action-b
 import { TaskWorkflowRunLines } from "@/components/workflow-run-line/TaskWorkflowRunLines.js";
 import { WorktreeConversationIndicator } from "@/components/WorktreeConversationIndicator.js";
 import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
+import { ConversationTaskStatus } from "@/components/ConversationTaskStatus.js";
 
 type TaskListItemIntl = {
   formatMessage: (desc: { id: string }, values?: Record<string, string>) => string;
@@ -566,6 +567,7 @@ export const MemoTaskItem = memo(function TaskListItem({
                       grouped task 已改为右侧渐隐。这里统一 task 列表标题溢出策略，避免同一侧栏里出现两种截断语义。 */}
               {taskTitle}
             </TaskTitleOverflowText>
+            <ConversationTaskStatus source={{ kind: "native", item: task }} />
             {task.pendingInteraction ? (
               <TaskInteractionBadge
                 interaction={task.pendingInteraction}
@@ -669,6 +671,7 @@ export const MemoTaskItem = memo(function TaskListItem({
                   {changeSummaryNode}
                 </span>
               ) : null}
+              <ConversationTaskStatus source={{ kind: "native", item: task }} />
               {task.pendingInteraction ? (
                 <TaskInteractionBadge
                   interaction={task.pendingInteraction}

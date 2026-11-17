@@ -28,6 +28,7 @@ const providerSettings=key=>({getView:async()=>({revision:1,providers:[{provider
 const workRows=[],workListeners=new Set();
 const workService={
  list:async scope=>({tasks:workRows.filter(t=>(t.workspaceIdentity??t.workspacePath)===(scope.workspaceIdentity??scope.workspacePath)).map(t=>({...t})),concurrency:1}),
+ inspectWorktree:async input=>{const task=workRows.find(t=>t.id===input.id&&t.workspacePath===input.workspacePath);if(!task?.worktree)throw Error('work-task.worktree-required');return{status:'ready',initialBranchName:task.worktree.branchName,acceptedBranchName:task.worktree.acceptedBranchName??task.worktree.branchName,currentBranchName:task.worktree.acceptedBranchName??task.worktree.branchName}},
  onDynamicChanged:()=>listener=>{workListeners.add(listener);return{dispose(){workListeners.delete(listener)}}},
  getResultSource:async()=>null,
  archive:async input=>{commands.push({kind:"work-task-archive",...input});const task=workRows.find(t=>t.id===input.id&&t.workspacePath===input.workspacePath);task.archived=input.archived;for(const l of workListeners)l();},

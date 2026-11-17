@@ -3,6 +3,25 @@ import { join } from "node:path";
 
 export async function exerciseAgentBoardLayoutModes(page, artifacts) {
   await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.evaluate(() => {
+    // 完成任务现会保留；布局场景须重置前一场景的单项跟踪，不能依赖隐式移除。
+    const state = window.__board.store.getState();
+    state.selectProject(null);
+    state.setView("all");
+    state.setAgent("all");
+    state.setSearch("");
+    state.setGroup("status");
+    state.setTracking({
+      mode: "all",
+      projects: [],
+      standalone: false,
+      workTasks: false,
+      includedItems: [],
+      excludedItems: [],
+    });
+  });
+  await page.locator('[data-board-column="running"] [data-board-card]').nth(1).waitFor();
+  const workRows = await page.evaluate(() => window.__board.workRows);
   const switcher = page.getByRole("group", { name: "布局方式", exact: true });
   const cards = page.locator("[data-board-card]");
   const initialKeys = await cards.evaluateAll((nodes) =>
@@ -133,6 +152,11 @@ export async function exerciseAgentBoardLayoutModes(page, artifacts) {
 
   await page.reload();
   await page.getByRole("heading", { name: "Agent 看板", exact: true }).waitFor();
+  // 模拟 Host 数据在页面重载时会重建；恢复场景数据，避免后续布局用例失去任务。
+  await page.evaluate((rows) => {
+    window.__board.workRows.splice(0, window.__board.workRows.length, ...rows);
+    window.__board.notifyWork();
+  }, workRows);
   assert.equal(
     await switcher.getByRole("button", { name: "列表", exact: true }).getAttribute("aria-pressed"),
     "true",

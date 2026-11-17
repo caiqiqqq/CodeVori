@@ -123,7 +123,10 @@ export async function exerciseAgentBoardAgentLabels(page, artifacts) {
   await page
     .getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true })
     .fill("Label task codex");
-  await page.getByRole("dialog").getByText("Codex · 已完成", { exact: true }).waitFor();
+  await page
+    .getByRole("dialog")
+    .getByText(/^Codex\s*·\s*已完成$/)
+    .waitFor();
   await page.getByRole("button", { name: "取消", exact: true }).click();
   for (const [theme, width] of [
     ["theme-zai-light", 1600],

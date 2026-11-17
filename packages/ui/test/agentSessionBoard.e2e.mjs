@@ -126,7 +126,7 @@ try {
   await page.getByRole("tab", { name: /已完成/ }).click();
   assert.equal(await page.locator("[data-board-card]").count(), 23);
   await page.getByRole("tab", { name: /全部/ }).click();
-  await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("Remote");
+  await page.getByRole("textbox", { name: "搜索任务…", exact: true }).fill("Remote");
   assert.equal(await page.locator("[data-board-card]").count(), 3);
   await page.getByRole("button", { name: /Remote API session/ }).click();
   const pane = page.getByTestId("real-pane-contract");
@@ -141,7 +141,7 @@ try {
     .waitFor();
   await page.evaluate(() => (window.__board.rejectWrites = true));
   await page.getByRole("button", { name: "归档", exact: true }).click();
-  await page.getByText("操作失败，会话状态可能已变化，请刷新后重试", { exact: true }).waitFor();
+  await page.getByText("操作失败，任务状态可能已变化，请刷新后重试", { exact: true }).waitFor();
   await page.evaluate(() => (window.__board.rejectWrites = false));
   await page.getByRole("button", { name: "归档", exact: true }).click();
   await page.getByRole("button", { name: "恢复会话", exact: true }).waitFor();
@@ -166,7 +166,7 @@ try {
     () => document.querySelector('[data-testid="real-pane-contract"]')?.dataset.readonly === "true",
   );
   await page.keyboard.press("Escape");
-  await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("");
+  await page.getByRole("textbox", { name: "搜索任务…", exact: true }).fill("");
   await page.getByRole("tab", { name: /归档/ }).click();
   assert.equal(await page.locator("[data-board-card]").count(), 2);
   await page.getByRole("button", { name: /Remote ACP 0/ }).click();
@@ -232,12 +232,12 @@ try {
   await page.getByRole("button", { name: /Project 23.*project-23/ }).click();
   assert.equal(await page.locator("[data-board-card]").count(), 1);
   await page.evaluate(() => window.__board.store.getState().selectProject(null));
-  await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("Implement project 5");
+  await page.getByRole("textbox", { name: "搜索任务…", exact: true }).fill("Implement project 5");
   await page.getByRole("button", { name: /Implement project 5/ }).click();
   await pane.waitFor();
   assert.equal(await page.getByRole("button", { name: "归档", exact: true }).isDisabled(), true);
   await page.keyboard.press("Escape");
-  await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("");
+  await page.getByRole("textbox", { name: "搜索任务…", exact: true }).fill("");
   await page.evaluate(() => (document.documentElement.className = "dark theme-zai-dark"));
   await page.waitForFunction(
     () => getComputedStyle(document.querySelector("article")).backgroundColor === "rgb(43, 43, 43)",
@@ -266,13 +266,11 @@ try {
   );
   await page.screenshot({ path: join(artifacts, "mobile-details.png") });
   await page.keyboard.press("Escape");
-  await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("no-such-session");
-  await page.getByRole("status").filter({ hasText: "没有符合条件的会话" }).waitFor();
-  await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("");
-  await page.getByRole("button", { name: "新建会话", exact: true }).click();
-  await page.getByRole("textbox", { name: "搜索项目名称或路径…", exact: true }).fill("project-23");
-  await page.getByRole("button", { name: /Project 23.*project-23/ }).click();
-  assert.equal(await page.getByTestId("navigation").textContent(), "new:/fixture/project-23");
+  await page.getByRole("textbox", { name: "搜索任务…", exact: true }).fill("no-such-session");
+  await page.getByRole("status").filter({ hasText: "没有符合条件的任务" }).waitFor();
+  await page.getByRole("textbox", { name: "搜索任务…", exact: true }).fill("");
+  // 项目选择、草稿取消及首次发送准入由 agentBoardCreateItems.e2e 单独覆盖。
+  assert.ok(await page.getByRole("button", { name: "新建任务", exact: true }).isVisible());
   await page.setViewportSize({ width: 1600, height: 1000 });
   const manage = () => page.getByRole("button", { name: "管理显示范围", exact: true }).click();
   const save = () => page.getByRole("button", { name: "保存显示范围", exact: true }).click();
@@ -296,7 +294,7 @@ try {
     .locator("details")
     .filter({ has: page.locator("summary", { hasText: /^Project 3 / }) });
   await project3
-    .getByRole("checkbox", { name: "自动跟踪此组（含后续新对话）", exact: true })
+    .getByRole("checkbox", { name: "自动跟踪此组（含后续新任务）", exact: true })
     .check();
   await save();
   assert.equal(await page.locator("[data-board-card]").count(), 2);

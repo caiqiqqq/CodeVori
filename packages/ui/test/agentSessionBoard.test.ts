@@ -127,7 +127,11 @@ test("legacy starred view migrates to all without resetting board preferences", 
   }).getState();
   for (const [key, value] of Object.entries(preferences)) {
     if (key === "layoutVersion") continue;
-    assert.deepEqual(state[key as keyof typeof state], key === "view" ? "all" : value, key);
+    assert.deepEqual(
+      state[key as keyof typeof state],
+      key === "view" || key === "category" ? "all" : value,
+      key,
+    );
   }
 });
 
@@ -177,7 +181,6 @@ test("legacy project layout migrates without discarding scope; all-project navig
   );
   for (const select of [
     () => store.getState().selectProject("/project"),
-    () => store.getState().selectWorkTasks(),
     () => store.getState().selectStandalone(),
   ]) {
     select();
@@ -342,8 +345,8 @@ test("tracking and standalone category persist without losing temporarily absent
   assert.equal(recovered.project, "project-a");
 });
 test("new board items keep the current project or category selection", () => {
-  for (const selection of ["all", "project", "work-tasks", "standalone"] as const) {
-    for (const kind of ["work-task", "native"] as const) {
+  for (const selection of ["all", "project", "standalone"] as const) {
+    for (const kind of ["acp", "native"] as const) {
       const values = new Map<string, string>();
       const storage = {
         getItem: (key: string) => values.get(key) ?? null,
@@ -364,12 +367,10 @@ test("new board items keep the current project or category selection", () => {
         excludedItems: [],
       });
       if (selection === "project") store.getState().selectProject("project-a");
-      if (selection === "work-tasks") store.getState().selectWorkTasks();
       if (selection === "standalone") store.getState().selectStandalone();
       const before = store.getState();
       const target = { kind, key: `${kind}-${selection}`, projectKey: "project-b" };
-      if (kind === "work-task") store.getState().revealCreatedWorkTask(target);
-      else store.getState().revealCreatedSession(target);
+      store.getState().revealCreatedSession(target);
       const after = store.getState();
       assert.equal(after.project, before.project, `${kind} ${selection} project`);
       assert.equal(after.category, before.category, `${kind} ${selection} category`);
@@ -424,7 +425,7 @@ test("Agent board navigation has its own history entry and preserves remote iden
   });
 });
 
-test("work tasks retain lifecycle and have an independent tracking group", () => {
+test("work tasks retain lifecycle and share project tracking with conversations", () => {
   const task = { status: "review" } as any;
   for (const [status, expected] of Object.entries({
     todo: "todo",
@@ -455,8 +456,9 @@ test("work tasks retain lifecycle and have an independent tracking group", () =>
     includedItems: [],
     excludedItems: [],
   };
-  assert.equal(matchesBoardTracking(item, tracking), false);
-  assert.equal(matchesBoardTracking(item, { ...tracking, workTasks: true }), true);
+  assert.equal(matchesBoardTracking(item, tracking), true);
+  assert.equal(matchesBoardTracking(item, { ...tracking, projects: [] }), false);
+  assert.equal(matchesBoardTracking(item, { ...tracking, projects: [], workTasks: true }), true);
   assert.equal(
     matchesBoardTracking(item, { ...tracking, workTasks: true, excludedItems: [item.key] }),
     false,
@@ -514,8 +516,8 @@ test("legacy custom tracking preserves choices while new work tasks default to u
     includedItems: ["keep"],
     excludedItems: ["hide"],
   });
-  store.getState().selectWorkTasks();
-  assert.equal(store.getState().category, "work-tasks");
+  store.getState().selectProject(null);
+  assert.equal(store.getState().category, "all");
   assert.equal(store.getState().project, null);
 });
 

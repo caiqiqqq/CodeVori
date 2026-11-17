@@ -266,7 +266,7 @@ export function AgentBoardSessionEditor({
         data-testid="agent-board-session-editor"
       >
         <DialogHeader>
-          <DialogTitle>{t("newSession")}</DialogTitle>
+          <DialogTitle>{t("newTask")}</DialogTitle>
         </DialogHeader>
         <div className="flex min-w-0 flex-col gap-1.5 text-ui-sm text-foreground-subtle">
           <span>{t("sessionProject")}</span>

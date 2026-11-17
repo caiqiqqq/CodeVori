@@ -58,7 +58,7 @@ createRoot(document.getElementById('root')).render(<ZCodeIntlProvider><Fixture/>
     );
   };
   const button = (label) => dialog.getByRole("button", { name: label, exact: true });
-  const labels = ["所有项目", "独立任务", "待办任务"];
+  const labels = ["所有项目", "独立任务"];
   const selected = async (label) => {
     assert.equal(await dialog.getByRole("group").locator('button[aria-pressed="true"]').count(), 1);
     assert.equal(await button(label).getAttribute("aria-pressed"), "true");
@@ -67,7 +67,6 @@ createRoot(document.getElementById('root')).render(<ZCodeIntlProvider><Fixture/>
   await selected(labels[0]);
   for (const [label, category] of [
     [labels[1], "standalone"],
-    [labels[2], "work-tasks"],
     [labels[0], "all"],
   ]) {
     await button(label).click();
@@ -99,7 +98,7 @@ createRoot(document.getElementById('root')).render(<ZCodeIntlProvider><Fixture/>
   // 搜索、具体项目和固定操作继续可用。
   await dialog.getByRole("textbox").fill("project-19");
   await button("Project 19 /fixture/project-19").waitFor();
-  assert.equal(await button(labels[2]).isVisible(), true);
+  assert.equal(await button("待办任务").count(), 0);
   await button("固定项目 Project 19").click();
   assert.equal(await button("取消固定项目 Project 19").getAttribute("aria-pressed"), "true");
   await button("Project 19 /fixture/project-19").click();
@@ -149,7 +148,7 @@ createRoot(document.getElementById('root')).render(<ZCodeIntlProvider><Fixture/>
         };
       }),
     );
-    assert.equal(geometry.length, 3);
+    assert.equal(geometry.length, 2);
     assert.ok(geometry.every((b) => Math.abs(b.width - geometry[0].width) < 1));
     assert.ok(geometry.every((b) => b.height >= 44 && b.fits));
     assert.ok(

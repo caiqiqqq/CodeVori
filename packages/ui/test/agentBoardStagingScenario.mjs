@@ -35,7 +35,7 @@ export async function exerciseAgentBoardStaging(page, artifacts) {
   const native = card("Remote API session"),
     failed = card("Remote ACP 1");
   const staged = page.locator('[data-board-column="staged"]');
-  const tabs = page.getByRole("tablist", { name: "会话范围", exact: true });
+  const tabs = page.getByRole("tablist", { name: "任务范围", exact: true });
   const count = (label, n) =>
     tabs.getByRole("tab", { name: new RegExp(`^${label}\\s*${n}$`) }).waitFor();
   const choose = (label) =>

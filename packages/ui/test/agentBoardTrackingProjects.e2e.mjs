@@ -80,22 +80,21 @@ try {
   };
   const dialog = page.getByRole("dialog");
   const search = dialog.getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true });
-  const groups = dialog.getByTestId("tracking-work-task-project");
+  const groups = dialog.getByTestId("tracking-project-group");
   const project = (key) => groups.filter({ has: page.locator(`[title="${key}"]`) });
-  const tasks = dialog
-    .locator("details")
-    .filter({ has: page.locator(":scope > summary", { hasText: /^待办任务/ }) });
   const candidate = (title) => dialog.getByRole("checkbox", { name: new RegExp(title) });
   const save = () => dialog.getByRole("button", { name: "保存显示范围", exact: true }).click();
   await manage();
-  await tasks.locator("summary").click();
+  await search.fill("task");
   await project("/fixture/project-3").waitFor();
   assert.equal(await groups.count(), 3);
-  assert.equal(await project("/fixture/project-3").getByRole("checkbox").count(), 2);
-  assert.equal(await project("/fixture/project-4").getByRole("checkbox").count(), 1);
+  assert.equal(await project("/fixture/project-3").getByRole("checkbox").count(), 3);
+  assert.equal(await project("/fixture/project-4").getByRole("checkbox").count(), 2);
   assert.equal(await project("/fixture/project-5").count(), 0);
   assert.equal(await project("/fixture/project-6").count(), 0);
   assert.equal(await project("/fixture/project-8").count(), 0);
+  await search.fill("Completed only");
+  await candidate("Completed only").waitFor();
   await search.fill("Project 3");
   assert.equal(await groups.count(), 2, "same name retains separate project groups");
   await search.fill("/fixture/project-4");
@@ -104,12 +103,12 @@ try {
   await search.fill("Alpha task");
   assert.equal(await groups.count(), 1);
   assert.match(
-    await project("/fixture/project-3").getByRole("heading").textContent(),
+    await project("/fixture/project-3").locator("summary").textContent(),
     /Project 3\s*1/,
   );
   await candidate("Alpha task").check();
   await search.fill("Codex");
-  assert.equal(await groups.count(), 3);
+  assert.equal(await groups.count(), 4);
   await search.fill("remote:0");
   assert.equal(await groups.count(), 1);
   await candidate("Remote task").check();
@@ -119,9 +118,13 @@ try {
   assert.equal(await candidate("Alpha task").isChecked(), true);
   await search.fill("Remote task");
   assert.equal(await candidate("Remote task").isChecked(), true);
-  await search.fill("待办任务");
-  await tasks.getByRole("checkbox", { name: "自动跟踪此组（含后续新任务）", exact: true }).check();
+  await search.fill("/fixture/project-4");
+  await project("/fixture/project-4")
+    .getByRole("checkbox", { name: "自动跟踪此组（含后续新任务）", exact: true })
+    .check();
   assert.equal(await candidate("Gamma task").isChecked(), true);
+  assert.equal(await candidate("Implement project 4").isChecked(), true);
+  await search.fill("Beta task");
   await candidate("Beta task").uncheck();
   await save();
   for (const [width, theme] of [
@@ -131,7 +134,7 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate((value) => window.__board.setTheme(value), theme);
     await manage();
-    await search.fill("待办任务");
+    await search.fill("task");
     assert.equal(await groups.count(), 3);
     assert.equal(await candidate("Beta task").isChecked(), false);
     assert.equal(await candidate("Gamma task").isChecked(), true);
@@ -143,17 +146,17 @@ try {
     await page.keyboard.press("Escape");
   }
   await manage();
-  await search.fill("待办任务");
+  await search.fill("task");
   await page.evaluate(() => {
     for (const row of window.__board.workRows) row.archived = true;
     window.__board.notifyWork();
   });
   await groups.first().waitFor({ state: "hidden" });
-  assert.equal(await tasks.count(), 0, "empty work-task root is hidden even if its name matches");
+  assert.equal(await groups.count(), 0, "archived tasks leave the shared project candidates");
   assert.equal(await page.evaluate(() => window.__board.commands.length), 0);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: nonempty work-task project groups; same-name isolation; project/path/title/Agent search; saved item/global rules; live empty removal; desktop/mobile themes.",
+    "PASS: unified project groups; completed tasks retained; same-name identity isolation; project/path/title/Agent search; shared project tracking; live archive removal; desktop/mobile themes.",
   );
 } finally {
   await browser?.close();

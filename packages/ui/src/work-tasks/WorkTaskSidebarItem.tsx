@@ -4,7 +4,8 @@ import { cn } from "@/components/lib/utils.js";
 import { requestWorkTaskConversation } from "@/lib/worktreeSettingsNavigation.js";
 import { workTaskSelectionKey } from "@/store/workTaskNavigationStore.js";
 import { useWorkTaskSidebar } from "./WorkTaskSidebarContext.js";
-import { WorkTaskAgent, WorkTaskStatus } from "./WorkTaskParts.js";
+import { WorkTaskAgent } from "./WorkTaskParts.js";
+import { ConversationTaskStatus } from "@/components/ConversationTaskStatus.js";
 
 export function WorkTaskSidebarItem({ task }: { task: WorkTask }) {
   const { selectedKey } = useWorkTaskSidebar();
@@ -25,7 +26,7 @@ export function WorkTaskSidebarItem({ task }: { task: WorkTask }) {
       >
         <WorkTaskAgent task={task} iconOnly />
         <span className="min-w-0 flex-1 truncate text-left">{task.title}</span>
-        <WorkTaskStatus task={task} />
+        <ConversationTaskStatus source={{ kind: "work-task", item: task }} />
       </Button>
     </li>
   );
