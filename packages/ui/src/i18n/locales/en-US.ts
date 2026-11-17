@@ -315,6 +315,7 @@ const enUS: Record<string, string> = {
   "workTasks.project": "Project",
   "workTasks.noProject": "No project selected",
   "workTasks.create": "New task",
+  "workTasks.createTodo": "New to-do",
   "workTasks.edit": "Edit task",
   "workTasks.save": "Save",
   "workTasks.sessionIdCopied": "Session ID copied",

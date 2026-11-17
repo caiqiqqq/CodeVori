@@ -155,6 +155,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   selectedNativeTaskId,
   onStartDraftInWorkspace,
   taskItems,
+  taskSortBy = "updated",
   taskListLoading,
   taskListHasMore,
   taskListHasUnread = false,
@@ -191,6 +192,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   selectedNativeTaskId: string | null;
   onStartDraftInWorkspace: (targetWorkspacePath: string, targetWorkspaceIdentity?: string) => void;
   taskItems: ZCodeTaskMeta[];
+  taskSortBy?: "created" | "updated";
   taskListLoading: boolean;
   taskListHasMore: boolean;
   taskListHasUnread?: boolean;
@@ -1268,6 +1270,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
               remoteSessionId={tab.remoteSessionId}
               workspaceIdentity={tab.workspaceIdentity}
               tasks={taskItems}
+              sortBy={taskSortBy}
               acpSessions={acpSessions}
               acpService={services.acpService}
               activeAcpSessionId={isActiveWorkspace ? activeAcpSessionId : null}

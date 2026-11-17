@@ -21,6 +21,13 @@ import { logger } from "@/logger.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { clearV4NewConversationDraftContent } from "@/v4/composer/composerDraftStore.js";
 
+import {
+  buildSidebarConversationRows,
+  sidebarWorkTasksForScopes,
+} from "@/lib/sidebarConversationRows.js";
+import { useWorkTaskSidebar } from "@/work-tasks/WorkTaskSidebarContext.js";
+import { WorkTaskSidebarItem } from "@/work-tasks/WorkTaskSidebarItem.js";
+
 export { deriveTaskLeadingIndicator } from "@/lib/taskListItemPresentation.js";
 
 // 默认参数里的 [] 会在每次 TaskList render 时创建新数组；
@@ -81,6 +88,30 @@ export const TaskList = memo(function TaskList({
   readOnlyReason?: string;
 }) {
   const { intl } = useZCodeIntl();
+  const { tasks: workTasks, boundKeys, loading: workTasksLoading } = useWorkTaskSidebar();
+  const conversationRows = useMemo(
+    () =>
+      buildSidebarConversationRows({
+        native: tasks,
+        acp: acpService ? acpSessions.filter((item) => !item.archived && !item.pinned) : [],
+        workTasks: sidebarWorkTasksForScopes(workTasks, [
+          { workspacePath, workspaceIdentity, remoteSessionId },
+        ]),
+        boundKeys,
+        sortBy,
+      }),
+    [
+      tasks,
+      acpService,
+      acpSessions,
+      workTasks,
+      workspacePath,
+      workspaceIdentity,
+      remoteSessionId,
+      boundKeys,
+      sortBy,
+    ],
+  );
   const pinnedTaskIdSet = useMemo(
     () => new Set(pinnedTasks.map((task) => task.taskId)),
     [pinnedTasks],
@@ -442,9 +473,9 @@ export const TaskList = memo(function TaskList({
       {/* 任务列表 */}
       <div>
         <div className="space-y-1">
-          {Boolean(inputLoading) && visibleSourceTasks.length === 0 && !acpSessions.some((item) => !item.archived) ? (
+          {(Boolean(inputLoading) || workTasksLoading) && conversationRows.length === 0 ? (
             <TaskListLoadingHint />
-          ) : visibleSourceTasks.length === 0 && !acpSessions.some((item) => !item.archived) ? (
+          ) : conversationRows.length === 0 ? (
             showEmptyState ? (
               <div
                 data-testid={TID_TASK_EMPTY}
@@ -453,7 +484,7 @@ export const TaskList = memo(function TaskList({
                 {intl.formatMessage({ id: "taskList.noTasks" })}
               </div>
             ) : null
-          ) : visibleSourceTasks.length > 0 ? (
+          ) : conversationRows.length > 0 ? (
             <ContextMenu
               onOpenChange={(open) => {
                 if (!open) {
@@ -462,7 +493,24 @@ export const TaskList = memo(function TaskList({
               }}
             >
               <ContextMenuTrigger asChild>
-                <ul className="space-y-0.5">{visibleSourceTasks.map(renderTaskItem)}</ul>
+                <ul className="space-y-0.5">
+                  {conversationRows.map((row) =>
+                    row.kind === "native" ? (
+                      renderTaskItem(row.item)
+                    ) : row.kind === "work-task" ? (
+                      <WorkTaskSidebarItem key={row.key} task={row.item} />
+                    ) : acpService ? (
+                      <WorkspaceAcpTaskItem
+                        key={row.key}
+                        session={row.item}
+                        service={acpService}
+                        active={row.item.id === activeAcpSessionId}
+                        variant="default"
+                        onSelect={() => onSelectAcpSession?.(row.item)}
+                      />
+                    ) : null,
+                  )}
+                </ul>
               </ContextMenuTrigger>
               {contextMenuTask ? (
                 <TaskListItemContextMenuContent
@@ -480,24 +528,6 @@ export const TaskList = memo(function TaskList({
                 />
               ) : null}
             </ContextMenu>
-          ) : null}
-          {acpService && acpSessions.some((item) => !item.archived) ? (
-            <ul className="space-y-0.5">
-              {acpSessions
-                .filter((session) => !session.pinned && !session.archived)
-                .slice()
-                .sort((left, right) => right.updatedAt - left.updatedAt)
-                .map((session) => (
-                  <WorkspaceAcpTaskItem
-                    key={session.id}
-                    session={session}
-                    service={acpService}
-                    active={session.id === activeAcpSessionId}
-                    variant="default"
-                    onSelect={() => onSelectAcpSession?.(session)}
-                  />
-                ))}
-            </ul>
           ) : null}
         </div>
         {hasMore && onShowMore ? (
