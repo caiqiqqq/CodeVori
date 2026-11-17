@@ -20,7 +20,12 @@ export function createDelegationExecution(deps: Dependencies) {
       id: task.id,
       title: task.title,
       prompt,
-      runText: prompt + squadPrompt(task),
+      runText:
+        prompt +
+        (task.agentProfile
+          ? `\n智能体：${task.agentProfile.name}\n职责提示词：${task.agentProfile.instructions}`
+          : "") +
+        squadPrompt(task),
       execution: task.execution,
       attachments: task.attachments,
       workspaceFiles: task.workspaceFiles,

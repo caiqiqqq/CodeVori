@@ -2,7 +2,7 @@ import {
   agentSquadSaveSchema,
   agentSquadDeleteSchema,
   delegationSquadCreateSchema,
-  type AgentSquad,
+  type WorkTaskExecution,
   type AgentSquadSave,
   type AgentSquadDelete,
   type DelegationSquadCreate,
@@ -11,10 +11,11 @@ import type { DelegationDependencies } from "./contract.js";
 import { admitDelegation, findDelegationBinding } from "./delegationAdmission.js";
 import type { DelegationRepository } from "./delegationRepository.js";
 import { listDelegationTargets } from "./delegationTargets.js";
+import { resolveAgentSquad } from "./agentProfileStorage.js";
 
 export async function validateSquadTargets(
   deps: DelegationDependencies,
-  squad: Pick<AgentSquad, "leader" | "members">,
+  squad: { leader: { execution: WorkTaskExecution }; members: { execution: WorkTaskExecution }[] },
 ) {
   const targets = await listDelegationTargets(deps);
   for (const member of [squad.leader, ...squad.members]) {
@@ -38,20 +39,37 @@ export async function saveAgentSquad(
 ) {
   const input = agentSquadSaveSchema.parse(raw);
   await repo.open();
-  await validateSquadTargets(deps, input);
+  const profiles = repo.profiles();
+  const now = Date.now();
+  const definition = {
+    ...input,
+    revision: input.expectedRevision + 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const expanded = resolveAgentSquad(definition, profiles);
+  await validateSquadTargets(deps, expanded);
   return repo.transaction(() => {
     const current = repo.squads().find((squad) => squad.id === input.id);
     if ((current?.revision ?? 0) !== input.expectedRevision)
       throw new Error("delegation.squad-conflict");
+    const currentProfiles = repo.profiles();
+    for (const member of [input.leader, ...input.members]) {
+      if (
+        profiles.find((profile) => profile.id === member.agentId)?.revision !==
+        currentProfiles.find((profile) => profile.id === member.agentId)?.revision
+      )
+        throw new Error("delegation.profile-conflict");
+    }
     const { expectedRevision, ...fields } = input;
-    const squad: AgentSquad = {
+    const squad = {
       ...fields,
       revision: expectedRevision + 1,
       createdAt: current?.createdAt ?? Date.now(),
       updatedAt: Date.now(),
     };
     repo.putSquad(squad);
-    return squad;
+    return resolveAgentSquad(squad, currentProfiles);
   });
 }
 export async function deleteAgentSquad(repo: DelegationRepository, raw: AgentSquadDelete) {

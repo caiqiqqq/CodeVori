@@ -70,6 +70,7 @@ import { SubagentsSection } from "@/settings/SubagentsSection.js";
 import { AcpAgentsSection } from "@/settings/AcpAgentsSection.js";
 import { DelegationSettingsSection } from "@/settings/DelegationSettingsSection.js";
 import { AgentSquadsSection } from "@/settings/AgentSquadsSection.js";
+import { AgentProfilesSection } from "@/settings/AgentProfilesSection.js";
 import { DesktopLanAccessSection } from "@/settings/DesktopLanAccessSection.js";
 import { isMatchingAcpWorkspaceTab } from "@/settings/acpAgentSettingsCatalog.js";
 import { AutomationsSection } from "@/settings/AutomationsSection.js";
@@ -1981,6 +1982,13 @@ export function SettingsPage({
                           />
                         ) : activeSection === "acpAgents" ? (
                           <AcpAgentsSection
+                            workspacePath={activeWorkspacePath}
+                            workspaceIdentity={activeWorkspaceIdentity}
+                            remoteSessionId={acpWorkspaceTab?.remoteSessionId}
+                            remoteTarget={acpWorkspaceTab?.remoteTarget}
+                          />
+                        ) : activeSection === "agentProfiles" ? (
+                          <AgentProfilesSection
                             workspacePath={activeWorkspacePath}
                             workspaceIdentity={activeWorkspaceIdentity}
                             remoteSessionId={acpWorkspaceTab?.remoteSessionId}

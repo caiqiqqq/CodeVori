@@ -1,3 +1,4 @@
+import { saveSquadFixture } from "./agentSquadFixture.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -99,7 +100,7 @@ test("squad MCP routes API/ACP leaders to the frozen roster and restricts member
         kind === "api"
           ? targets.find((target) => target.kind === "api")!.execution
           : worker.execution;
-      const squad = await service.saveSquad({
+      const squad = await saveSquadFixture(service, {
         id: uuidv7(),
         expectedRevision: 0,
         name: "小队",
@@ -137,6 +138,14 @@ test("squad MCP routes API/ACP leaders to the frozen roster and restricts member
       const leaderParent = { ...parent, sessionId: leader.id };
       const registration = (await bridge.register(leaderParent))!;
       const members = await call(registration.record, "ListDelegationAgents");
+      await assert.rejects(
+        call(registration.record, "DelegateTask", {
+          title: "绕过成员目录",
+          task: "检查",
+          profileId: squad.members[0]!.agentId,
+        }),
+        /squad-member-invalid/,
+      );
       assert.deepEqual(members, [
         {
           squadMemberId: worker.id,
@@ -185,3 +194,80 @@ test("squad MCP routes API/ACP leaders to the frozen roster and restricts member
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+for (const parentKind of ["api", "acp"] as const)
+  test(`${parentKind} MCP resolves saved profile references without inheriting or replacing the main model`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "zcode-profile-mcp-"));
+    const service = new AgentDelegationService({
+      path: join(directory, "tasks.sqlite"),
+      targets: async () => [{ agent: "codex", enabled: true, ready: true }],
+      execute: async () => {
+        throw new Error("catalog access must not execute a model");
+      },
+      deliver: async () => false,
+    });
+    let resolutions = 0;
+    const bridge = createDelegationMcp(directory, service, {
+      resolveAcpExecution: async (_parent, execution) => {
+        resolutions++;
+        return execution;
+      },
+    });
+    try {
+      const profile = await service.saveAgentProfile({
+        id: uuidv7(),
+        expectedRevision: 0,
+        name: "审查员",
+        description: "可复用",
+        instructions: "核对源码和测试",
+        execution: {
+          kind: "acp",
+          agent: "codex",
+          config: [{ configId: "model", value: "saved-model" }],
+        },
+      });
+      const parent = { workspacePath: directory, kind: parentKind, sessionId: "parent" };
+      const registration = (await bridge.register(parent))!;
+      const catalog = await call(registration.record, "ListDelegationAgents");
+      assert.ok(
+        catalog.some(
+          (target: any) =>
+            target.kind === "profile" &&
+            target.profileId === profile.id &&
+            target.reference === `agent.${profile.id}`,
+        ),
+      );
+      const input = {
+        requestId: uuidv7(),
+        title: "核对",
+        task: "只检查指定文件",
+        intent: "analysis",
+        profileId: profile.id,
+      };
+      for (const extra of [
+        { execution: profile.execution },
+        { squadId: uuidv7() },
+        { squadMemberId: uuidv7() },
+      ]) {
+        await assert.rejects(
+          call(registration.record, "DelegateTask", { ...input, ...extra }),
+          /exactly one/,
+        );
+      }
+      const task = await call(registration.record, "DelegateTask", input);
+      assert.deepEqual(task.execution, profile.execution);
+      assert.equal(task.agentProfile.instructions, profile.instructions);
+      assert.equal(resolutions, 0);
+      assert.deepEqual(task.parent, parent);
+      await service.deleteAgentProfile({ id: profile.id, expectedRevision: 1 });
+      assert.equal((await call(registration.record, "DelegateTask", input)).id, task.id);
+      await assert.rejects(
+        call(registration.record, "DelegateTask", { ...input, requestId: uuidv7() }),
+        /profile-not-found/,
+      );
+    } finally {
+      bridge.dispose();
+      await service.disposeAllAndWait();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });

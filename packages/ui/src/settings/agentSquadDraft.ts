@@ -40,5 +40,15 @@ export function squadRoleDraft(
 }
 export function squadDraft(squad: AgentSquad): AgentSquadSave {
   const { revision, createdAt: _created, updatedAt: _updated, ...fields } = squad;
-  return { ...structuredClone(fields), expectedRevision: revision };
+  const reference = (member: AgentSquadMember) => ({
+    id: member.id,
+    agentId: member.agentId ?? "",
+    role: member.role,
+  });
+  return {
+    ...structuredClone(fields),
+    leader: reference(squad.leader),
+    members: squad.members.map(reference),
+    expectedRevision: revision,
+  };
 }

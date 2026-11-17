@@ -8,6 +8,7 @@ import {
   type DelegationParent,
   type DelegationTask,
   type DelegationSquadContext,
+  type AgentProfile,
 } from "@zcode/shared";
 import type { DelegationDependencies } from "./contract.js";
 import { parentKey, type DelegationRepository } from "./delegationRepository.js";
@@ -38,6 +39,7 @@ export async function admitDelegation(
   raw: DelegationCreate,
   previousId?: string,
   squadLeader?: Extract<DelegationSquadContext, { role: "leader" }>,
+  agentProfile?: AgentProfile,
 ) {
   const input = delegationCreateSchema.parse(raw);
   if (deps.allowExecution === false || input.workspaceIdentity || input.remoteSessionId)
@@ -95,7 +97,7 @@ export async function admitDelegation(
         squadName: child.squad.definition.name,
         memberId: member.id,
         name: member.name,
-        instructions: `${child.squad.definition.instructions}\n职责：${member.role}`,
+        instructions: `${member.instructions ?? ""}\n${child.squad.definition.instructions}\n职责：${member.role}`,
       };
     } else if (input.squadMemberId) throw new Error("delegation.squad-member-invalid");
     if (depth > 1 && !squad && (!settings.allowNested || depth > settings.maxDepth))
@@ -136,6 +138,7 @@ export async function admitDelegation(
       execution: input.execution,
       intent: input.intent,
       ...(squad ? { squad } : {}),
+      ...(agentProfile ? { agentProfile } : {}),
       workspaceFiles: input.workspaceFiles,
       attachments: input.attachments,
       dependsOn: input.dependsOn,
@@ -183,5 +186,6 @@ export async function admitFollowUp(
     },
     old.id,
     old.squad?.role === "leader" ? old.squad : undefined,
+    old.agentProfile,
   );
 }

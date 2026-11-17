@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   agentSquadSchema,
+  agentProfileSchema,
+  type AgentProfile,
+  type AgentProfileSave,
+  type AgentProfileDelete,
   delegationAgentsSchema,
   type AgentSquad,
   type AgentSquadSave,
@@ -52,22 +56,27 @@ export function useAgentSquads(
     owner: object;
     squads: AgentSquad[];
     targets: DelegationAgent[];
+    profiles: AgentProfile[];
     loading: boolean;
     error: string | null;
-  }>({ owner, squads: [], targets: [], loading: true, error: null });
+  }>({ owner, squads: [], targets: [], profiles: [], loading: true, error: null });
   const { intl } = useZCodeIntl();
   const refresh = useCallback(async () => {
     const request = ++sequence.current;
     if (!service) return;
     try {
-      const [rows, targets] = await Promise.all([
+      const [rows, targets, profiles] = await Promise.all([
         service.listSquads(),
         withTargets ? service.targets() : Promise.resolve([]),
+        typeof service.listAgentProfiles === "function"
+          ? service.listAgentProfiles()
+          : Promise.resolve([]),
       ]);
       if (current.current === owner && request === sequence.current)
         setState({
           owner,
           squads: rows.map((row) => agentSquadSchema.parse(row)),
+          profiles: profiles.map((profile) => agentProfileSchema.parse(profile)),
           targets: delegationAgentsSchema
             .parse(targets)
             .filter((target) => target.kind === "api" || (target.enabled && target.ready)),
@@ -79,6 +88,7 @@ export function useAgentSquads(
         setState((previous) => ({
           owner,
           squads: previous.owner === owner ? previous.squads : [],
+          profiles: previous.owner === owner ? previous.profiles : [],
           targets: previous.owner === owner ? previous.targets : [],
           loading: false,
           error: delegationErrorMessage(error, intl),
@@ -122,12 +132,22 @@ export function useAgentSquads(
   return {
     squads: state.owner === owner ? state.squads : [],
     targets: state.owner === owner ? state.targets : [],
+    profiles: state.owner === owner ? state.profiles : [],
     loading: !!service && (state.owner !== owner || state.loading),
     available: !!service,
+    profilesAvailable: !!service && typeof service.listAgentProfiles === "function",
     error: state.owner === owner ? state.error : null,
     busy: busyOwner === owner,
     save: (input: AgentSquadSave) => mutate(() => service!.saveSquad(input)),
     remove: (input: AgentSquadDelete) => mutate(() => service!.deleteSquad(input)),
+    saveProfile: async (input: AgentProfileSave): Promise<AgentProfile | null> => {
+      const result: { profile: AgentProfile | null } = { profile: null };
+      const saved = await mutate(async () => {
+        result.profile = await service!.saveAgentProfile(input);
+      });
+      return saved ? result.profile : null;
+    },
+    removeProfile: (input: AgentProfileDelete) => mutate(() => service!.deleteAgentProfile(input)),
     refresh,
   };
 }
