@@ -73,6 +73,8 @@ import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { resolveWorkspaceKey } from "@zcode/shared";
 import { logger } from "@/logger.js";
 import { WorkspaceSidebarActionRail } from "@/WorkspaceSidebar/WorkspaceSidebarActionRail.js";
+import { boardWorkspaceKey } from "@/agent-board/agentBoardModel.js";
+import { agentBoardStore } from "@/store/agentBoardStore.js";
 import { selectWorkspaceZCodeState, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { useTabStore } from "@/store/TabStoreProvider.js";
@@ -305,7 +307,10 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   onOpenAutomations?: () => void;
   onOpenPluginStore?: () => void;
   onOpenRepository?: () => void;
-  onOpenAgentBoard?: () => void;
+  onOpenAgentBoard?: (target?: {
+    workspacePath: string;
+    workspaceIdentity?: string;
+  }) => boolean | void;
   agentBoardActive?: boolean;
   automationsActive?: boolean;
   pluginStoreActive?: boolean;
@@ -333,6 +338,21 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
       );
     },
     [onSelectTask],
+  );
+  const handleOpenProjectAgentBoard = useCallback(
+    (tab: WorkspaceTabState) => {
+      if (!onOpenAgentBoard) return;
+      if (
+        onOpenAgentBoard({
+          workspacePath: tab.workspacePath,
+          workspaceIdentity: tab.workspaceIdentity,
+        }) === false
+      ) {
+        return;
+      }
+      agentBoardStore.getState().selectProject(boardWorkspaceKey(tab));
+    },
+    [onOpenAgentBoard],
   );
   const bumpTaskListVersion = useZCodeSessionStore((state) => state.bumpTaskListVersion);
   const workspaceIdentity = useTabStore((state) => {
@@ -382,7 +402,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     : undefined;
   const setTheme = useZCodeStore((state) => state.setTheme);
   const tabs = useTabStore((state) => state.tabs);
-  const activateTab = useTabStore((state) => state.activateTab);
   const closeTab = useTabStore((state) => state.closeTab);
   const openSettingsTab = useTabStore((state) => state.openSettingsTab);
   const expandedWorkspacePaths = useTabStore((state) => state.expandedWorkspacePaths);
@@ -1362,7 +1381,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                 size="lg"
                 aria-pressed={agentBoardActive}
                 className={cn("w-full justify-start gap-2", agentBoardActive && "bg-selected")}
-                onClick={onOpenAgentBoard}
+                onClick={() => onOpenAgentBoard?.()}
                 data-testid="agent-board-sidebar-open"
               >
                 <LayoutGrid className="size-4" />
@@ -1569,13 +1588,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                                 isActiveWorkspace={
                                                   workspaceKey === activeWorkspaceKey
                                                 }
-                                                hasActiveDescendant={worktrees.some(
-                                                  ({ tab: child }) =>
-                                                    buildTaskWorkspaceKey(
-                                                      child.workspacePath,
-                                                      child.workspaceIdentity,
-                                                    ) === activeWorkspaceKey,
-                                                )}
                                                 isExpanded={resolveWorkspaceDragExpanded({
                                                   activeDragId: activeWorkspaceDragId,
                                                   expanded: expandedWorkspacePaths.has(
@@ -1583,9 +1595,11 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                                   ),
                                                   tabId: tab.id,
                                                 })}
-                                                activateTab={activateTab}
                                                 closeTab={closeTab}
                                                 toggleWorkspaceExpanded={toggleWorkspaceExpanded}
+                                                onOpenProjectAgentBoard={() =>
+                                                  handleOpenProjectAgentBoard(tab)
+                                                }
                                                 onSelectTask={onSelectTask}
                                                 onSelectAcpSession={onSelectAcpSession}
                                                 activeAcpSessionId={activeAcpSessionId}

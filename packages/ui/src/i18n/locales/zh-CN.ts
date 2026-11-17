@@ -2385,6 +2385,8 @@ const zhCN: Record<string, string> = {
   "workspaceSidebar.sortByUpdated": "更新时间",
   "workspaceSidebar.expandAllGroups": "展开全部",
   "workspaceSidebar.collapseAllGroups": "收起全部",
+  "workspaceSidebar.expandProject": "展开项目 {project}",
+  "workspaceSidebar.collapseProject": "收起项目 {project}",
   "workspaceSidebar.searchTasks": "搜索任务",
   "workspaceSidebar.searchTasksPlaceholder": "搜索任务...",
   "workspaceSidebar.searchArchivedTasksPlaceholder": "搜索归档任务...",
