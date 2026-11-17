@@ -15,11 +15,13 @@ import {
   resolveConversationTurnNavigatorBarVisualState,
   resolveConversationTurnNavigatorVisualFocusItemIndex,
   type ConversationTurnNavigatorVirtualItem,
+  type ConversationTurnNavigatorDirectoryEntry,
 } from "@/v4/conversationTurnNavigatorHelpers.js";
 import type { ConversationTurnRenderUnit } from "@/v4/conversationTurnRenderUnits.js";
 
 interface ConversationTurnNavigatorProps {
   renderUnits: readonly ConversationTurnRenderUnit[];
+  directory?: readonly ConversationTurnNavigatorDirectoryEntry[];
   scrollOffsetPx: number;
   viewportHeightPx: number;
   virtualItems: readonly ConversationTurnNavigatorVirtualItem[];
@@ -47,6 +49,7 @@ function usePrefersReducedMotion() {
 
 function ConversationTurnNavigatorImpl({
   renderUnits,
+  directory = [],
   scrollOffsetPx,
   viewportHeightPx,
   virtualItems,
@@ -59,18 +62,16 @@ function ConversationTurnNavigatorImpl({
   const [interactionItemIndex, setInteractionItemIndex] = useState<number | undefined>(undefined);
   const items = useMemo(
     () =>
-      buildConversationTurnNavigatorItems(renderUnits, {
-        assistantEmptyPreview: intl.formatMessage({
-          id: "chat.turnNavigator.emptyAssistant",
-        }),
-        assistantRunningPreview: intl.formatMessage({
-          id: "chat.turnNavigator.runningAssistant",
-        }),
-        userFallbackPreview: intl.formatMessage({
-          id: "chat.turnNavigator.userFallback",
-        }),
-      }),
-    [intl, renderUnits],
+      buildConversationTurnNavigatorItems(
+        renderUnits,
+        {
+          assistantEmptyPreview: intl.formatMessage({ id: "chat.turnNavigator.emptyAssistant" }),
+          assistantRunningPreview: intl.formatMessage({ id: "chat.turnNavigator.runningAssistant" }),
+          userFallbackPreview: intl.formatMessage({ id: "chat.turnNavigator.userFallback" }),
+        },
+        directory,
+      ),
+    [directory, intl, renderUnits],
   );
 
   const activeUnitIndex = useMemo(

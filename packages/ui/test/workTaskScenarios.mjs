@@ -16,7 +16,10 @@ import { exerciseWorkTaskConcurrentExecution } from "./workTaskConcurrentExecuti
 import { exerciseWorkTaskCompletion } from "./workTaskCompletionAssertions.mjs";
 import { exerciseWorkTaskNavigation } from "./workTaskNavigationAssertions.mjs";
 import { exerciseWorkTaskSaveRefresh } from "./workTaskSaveRefreshAssertions.mjs";
-import { exerciseWorkTaskArchiveWorktree } from "./workTaskArchiveWorktreeAssertions.mjs";
+import {
+  exerciseWorkTaskArchiveWorktree,
+  exerciseWorkTaskBranchDrift,
+} from "./workTaskArchiveWorktreeAssertions.mjs";
 import { exerciseWorkTaskEqualWidths } from "./workTaskEqualWidthAssertions.mjs";
 import { exerciseWorkTaskComposer } from "./workTaskComposerAssertions.mjs";
 import { exerciseWorkTaskSelectionVisibility } from "./workTaskSelectionVisibilityAssertions.mjs";
@@ -70,6 +73,7 @@ export const workTaskScenarios = {
   composer: exerciseWorkTaskComposer,
   "all-projects": exerciseWorkTaskAllProjects,
   "archive-worktree": exerciseWorkTaskArchiveWorktree,
+  "branch-drift": exerciseWorkTaskBranchDrift,
   navigation: exerciseWorkTaskNavigation,
   "save-refresh": exerciseWorkTaskSaveRefresh,
   "workspace-mode": exerciseWorkTaskWorkspaceMode,

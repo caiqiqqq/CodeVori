@@ -72,6 +72,7 @@ export function useTreemappingConversationMessage(params: {
           workspacePath,
           workspaceIdentity,
         }),
+        transportKind: "agent",
       }),
     [zcodeAgentService, workspacePath, workspaceIdentity],
   );

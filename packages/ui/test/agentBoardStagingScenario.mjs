@@ -27,7 +27,6 @@ export async function exerciseAgentBoardStaging(page) {
       excludedItems: [],
     });
   });
-
   const cards = page.locator("[data-board-card]");
   await page.waitForFunction(() => document.querySelectorAll("[data-board-card]").length === 3);
   for (const card of await cards.all()) {

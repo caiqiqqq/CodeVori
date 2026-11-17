@@ -1,5 +1,4 @@
 import { LayoutGrid } from "lucide-react";
-import { AgentBoardSidebar } from "@/agent-board/AgentBoardSidebar.js";
 /* eslint-disable max-lines -- sidebar 聚合项目、分组、任务视图与拖拽交互。 */
 import { useDesktopWindowView } from "@/root/desktopWindowSession.js";
 import {
@@ -15,8 +14,6 @@ import {
   type SetStateAction,
 } from "react";
 import {
-  Blocks,
-  CalendarClock,
   Clock3,
   Cloud,
   Folder,
@@ -29,7 +26,6 @@ import {
   MessageCirclePlus,
   Minimize2,
   Plus,
-  Search,
 } from "lucide-react";
 import {
   DndContext,
@@ -53,7 +49,6 @@ import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
 import {
   TID_CONVERSATION_NEW_TASK,
   TID_CONVERSATION_SECTION,
-  TID_AUTOMATIONS_OPEN,
   TID_PROJECT_ADD,
   TID_PROJECT_SECTION,
   TID_SIDEBAR,
@@ -77,7 +72,9 @@ import { useSettings } from "@/hooks/useSettingService.js";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { resolveWorkspaceKey } from "@zcode/shared";
 import { logger } from "@/logger.js";
-import { NewTaskButtonGroup } from "@/NewTaskButtonGroup.js";
+import { WorkspaceSidebarActionRail } from "@/WorkspaceSidebar/WorkspaceSidebarActionRail.js";
+import { boardWorkspaceKey } from "@/agent-board/agentBoardModel.js";
+import { agentBoardStore } from "@/store/agentBoardStore.js";
 import { selectWorkspaceZCodeState, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { useTabStore } from "@/store/TabStoreProvider.js";
@@ -97,7 +94,6 @@ import {
   readSidebarPurposeSectionPreferences,
   reorderSidebarPurposeSections,
 } from "@/lib/sidebarPurposeSectionPreferences.js";
-import { useShortcutCommandLabel } from "@/shortcuts/useShortcutBindings.js";
 import { setPendingSettingsSectionIntent } from "@/lib/settingsNavigation.js";
 import { buildTaskWorkspaceKey } from "@/lib/taskQueryCache.js";
 import {
@@ -136,7 +132,10 @@ import {
   type SidebarTaskGroupTogglePresentation,
 } from "@/WorkspaceSidebar/taskGroupTogglePresentation.js";
 import { WorkspacePurposeSection } from "@/WorkspaceSidebar/WorkspacePurposeSection.js";
-import { WorkTasksSidebarButton } from "@/work-tasks/WorkTasksSidebarButton.js";
+import {
+  WorkTaskSidebarProvider,
+  WorkTaskSidebarReadError,
+} from "@/work-tasks/WorkTaskSidebarContext.js";
 import { cn } from "@/components/lib/utils.js";
 import {
   resolveWorkspaceDragGlobalIndices,
@@ -145,21 +144,6 @@ import {
 } from "@/lib/workspaceSidebarDrag.js";
 import { createPortal } from "react-dom";
 
-function WorkspaceNewTaskTooltip({
-  children,
-  disabledReason,
-}: {
-  children: ReactNode;
-  disabledReason?: string;
-}) {
-  // 正常状态下按钮已带“新建任务”文案和快捷键，再挂 tooltip 只是重复；仅禁用时才解释原因。
-  if (!disabledReason) return children;
-  return (
-    <ControlHintTooltip title={disabledReason}>
-      <div>{children}</div>
-    </ControlHintTooltip>
-  );
-}
 export { applyWorkspaceTriggerSelection } from "@/WorkspaceSidebar/workspaceSidebarSelection.js";
 export { WorkspaceSidebarCollapsedRail } from "@/WorkspaceSidebar/WorkspaceSidebarCollapsedRail.js";
 
@@ -266,14 +250,12 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   onOpenAutomations,
   onOpenPluginStore,
   onOpenRepository,
-  onOpenWorkTasks,
   onOpenAgentBoard,
   agentBoardActive = false,
   automationsActive = false,
   pluginStoreActive = false,
   repositoryActive = false,
   workTasksActive = false,
-  onFileTreeOpenChange,
 }: {
   workspacePath: string;
   workspaceRemoteSessionId?: string;
@@ -325,14 +307,15 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   onOpenAutomations?: () => void;
   onOpenPluginStore?: () => void;
   onOpenRepository?: () => void;
-  onOpenAgentBoard?: () => void;
+  onOpenAgentBoard?: (target?: {
+    workspacePath: string;
+    workspaceIdentity?: string;
+  }) => boolean | void;
   agentBoardActive?: boolean;
-  onOpenWorkTasks?: () => void;
   automationsActive?: boolean;
   pluginStoreActive?: boolean;
   repositoryActive?: boolean;
   workTasksActive?: boolean;
-  onFileTreeOpenChange?: (open: boolean) => void;
 }) {
   const { intl, localePreference, setLocalePreference } = useZCodeIntl();
   const baseServices = useBaseWorkspaceServices();
@@ -356,6 +339,21 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     },
     [onSelectTask],
   );
+  const handleOpenProjectAgentBoard = useCallback(
+    (tab: WorkspaceTabState) => {
+      if (!onOpenAgentBoard) return;
+      if (
+        onOpenAgentBoard({
+          workspacePath: tab.workspacePath,
+          workspaceIdentity: tab.workspaceIdentity,
+        }) === false
+      ) {
+        return;
+      }
+      agentBoardStore.getState().selectProject(boardWorkspaceKey(tab));
+    },
+    [onOpenAgentBoard],
+  );
   const bumpTaskListVersion = useZCodeSessionStore((state) => state.bumpTaskListVersion);
   const workspaceIdentity = useTabStore((state) => {
     if (!state.activeTabId) {
@@ -376,8 +374,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   const {
     workspacePath: selectedWorkspacePath,
     workspaceIdentity: selectedWorkspaceIdentity,
-    activeTaskId,
-    activeAcpSessionId,
+    activeTaskId: selectedTaskId,
+    activeAcpSessionId: selectedAcpSessionId,
   } = useSidebarConversationSelection(
     {
       workspacePath,
@@ -386,8 +384,10 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
       activeTaskId: primaryAcpSessionId ? null : primaryTaskId,
       activeAcpSessionId: primaryAcpSessionId ?? null,
     },
-    !workTasksActive,
+    !workTasksActive && !agentBoardActive,
   );
+  const activeTaskId = workTasksActive ? null : selectedTaskId;
+  const activeAcpSessionId = workTasksActive ? null : selectedAcpSessionId;
   const activeWorkspaceKey = buildTaskWorkspaceKey(
     selectedWorkspacePath,
     selectedWorkspaceIdentity,
@@ -401,9 +401,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
       })
     : undefined;
   const setTheme = useZCodeStore((state) => state.setTheme);
-  const commandCenterShortcutLabel = useShortcutCommandLabel("openCommandCenter");
   const tabs = useTabStore((state) => state.tabs);
-  const activateTab = useTabStore((state) => state.activateTab);
   const closeTab = useTabStore((state) => state.closeTab);
   const openSettingsTab = useTabStore((state) => state.openSettingsTab);
   const expandedWorkspacePaths = useTabStore((state) => state.expandedWorkspacePaths);
@@ -671,12 +669,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     setFileTreeTarget(fileTreeOpenRequest.target);
     setIsFileTreeOpen(true);
   }, [fileTreeOpenRequest]);
-  useEffect(() => {
-    onFileTreeOpenChange?.(isFileTreeOpen);
-  }, [isFileTreeOpen, onFileTreeOpenChange]);
-  useEffect(() => {
-    return () => onFileTreeOpenChange?.(false);
-  }, [onFileTreeOpenChange]);
   useEffect(() => {
     if (desktopSidebar) return;
     persistSidebarTaskPreferences({
@@ -1128,7 +1120,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   const workspaceTaskToolbar = useCallback(
     () => (
       <div className="pl-2.5 pr-3">
-        <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1">
           <div className="flex min-w-0 shrink-0 items-center gap-1">
             <Tabs
               value={activePrimaryTaskMode}
@@ -1347,131 +1339,64 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   );
 
   return (
-    <aside
-      data-testid={TID_SIDEBAR}
-      // 这里用设计系统的结构面 token 固定侧栏层级，避免不同合成器把左侧容器混成异常灰块。
-      className="flex h-full flex-col overflow-hidden"
-    >
-      <div className="h-12 [app-region:drag]"></div>
-      <div className="relative flex-1 min-h-0 overflow-hidden">
-        <div
-          className={cn(
-            "absolute inset-0 flex min-h-0 flex-col transition-transform duration-200 ease-out",
-            isFileTreeOpen && "-translate-x-full pointer-events-none",
-          )}
-          aria-hidden={isFileTreeOpen}
-        >
-          <div className={cn("flex flex-col gap-1 px-2", isWindowsDesktop ? "py-2" : "py-3")}>
-            <WorkspaceNewTaskTooltip disabledReason={workspaceReadOnlyReason}>
-              <NewTaskButtonGroup
-                disabled={workspaceReadOnly}
-                onCreateTask={() => {
-                  if (workspaceReadOnly) {
-                    return;
-                  }
-                  if (taskViewMode === "grouped") {
-                    if (createGroupedTaskDraftAction) {
-                      createGroupedTaskDraftAction();
-                      return;
-                    }
-                    onCreateTask({ groupedDraftPlacement: { type: "top" } });
-                    return;
-                  }
-                  onCreateTask({ createSource: "project" });
-                }}
+    <WorkTaskSidebarProvider workspaceTabs={workspaceTabs} active={workTasksActive}>
+      <aside
+        data-testid={TID_SIDEBAR}
+        // 这里用设计系统的结构面 token 固定侧栏层级，避免不同合成器把左侧容器混成异常灰块。
+        className="grid h-full grid-cols-[3rem_minmax(0,1fr)] grid-rows-[3rem_minmax(0,1fr)] overflow-hidden"
+      >
+        <div className="col-span-2 [app-region:drag]"></div>
+        <WorkspaceSidebarActionRail
+          workspaceReadOnly={workspaceReadOnly}
+          workspaceReadOnlyReason={workspaceReadOnlyReason}
+          onCreateTask={() => {
+            if (workspaceReadOnly) return;
+            if (taskViewMode === "grouped") {
+              if (createGroupedTaskDraftAction) {
+                createGroupedTaskDraftAction();
+                return;
+              }
+              onCreateTask({ groupedDraftPlacement: { type: "top" } });
+              return;
+            }
+            onCreateTask({ createSource: "project" });
+          }}
+          onOpenCommandCenter={onOpenCommandCenter}
+          onOpenAutomations={handleOpenAutomationsMain}
+          onOpenPluginStore={handleOpenPluginStoreMain}
+          automationsActive={automationsActive}
+          pluginStoreActive={pluginStoreActive}
+        />
+        <div className="relative min-w-0 flex-1 min-h-0 overflow-hidden">
+          <div
+            className={cn(
+              "absolute inset-0 flex min-h-0 flex-col transition-transform duration-200 ease-out",
+              isFileTreeOpen && "-translate-x-full pointer-events-none",
+            )}
+            aria-hidden={isFileTreeOpen}
+          >
+            <div className={cn("flex flex-col gap-1 px-2", isWindowsDesktop ? "py-2" : "py-3")}>
+              <Button
+                variant="ghost"
+                size="lg"
+                aria-pressed={agentBoardActive}
+                className={cn("w-full justify-start gap-2", agentBoardActive && "bg-selected")}
+                onClick={() => onOpenAgentBoard?.()}
+                data-testid="agent-board-sidebar-open"
+              >
+                <LayoutGrid className="size-4" />
+                {intl.formatMessage({ id: "agentBoard.title" })}
+              </Button>
+              <WorkTaskSidebarReadError />
+              <RepositorySidebarButton
+                projects={workTaskProjects}
+                projectsLoading={projectGroupsLoading}
+                onClick={onOpenRepository}
+                active={repositoryActive}
               />
-            </WorkspaceNewTaskTooltip>
-            <Button
-              variant="ghost"
-              onClick={onOpenCommandCenter}
-              data-icon="inline-start"
-              size="lg"
-              className="w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground"
-            >
-              <Search className="size-4" />
-              <span className="min-w-0 flex-1 truncate text-left">
-                {intl.formatMessage({ id: "commandCenter.open" })}
-              </span>
-              <span className="ml-auto shrink-0 text-ui-xs font-normal text-foreground-subtlest">
-                {commandCenterShortcutLabel}
-              </span>
-            </Button>
-            {/* 远程入口展示策略统一走 useRemoteConnectionEntryVisibility，避免与其他入口出现分叉。*/}
-            {/* {showRemoteConnectionEntry ? (
-              <SSHDialog
-                onConnect={onConnectRemote}
-                onSelectProject={onSelectRemoteProject}
-                onCancelSession={onCancelRemoteProject}
-                isWindowsDesktop={isWindowsDesktop}
-                triggerVariant="ghost"
-                triggerSize="lg"
-                triggerClassName="w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground"
-                trigger={
-                  <>
-                    <Cloud className="size-4" />
-                    <span>{intl.formatMessage({ id: "remote.trigger" })}</span>
-                  </>
-                }
-              />
-            ) : null} */}
-            <Button
-              variant="ghost"
-              onClick={handleOpenAutomationsMain}
-              data-icon="inline-start"
-              data-testid={TID_AUTOMATIONS_OPEN}
-              size="lg"
-              aria-pressed={automationsActive}
-              className={cn(
-                "w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
-                automationsActive && "bg-selected text-foreground",
-              )}
-            >
-              <CalendarClock className="size-4" />
-              {intl.formatMessage({ id: "workspace.openScheduledSettings" })}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={handleOpenPluginStoreMain}
-              data-icon="inline-start"
-              data-testid="plugin-store-sidebar-open"
-              size="lg"
-              aria-pressed={pluginStoreActive}
-              className={cn(
-                "w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
-                pluginStoreActive && "bg-selected text-foreground",
-              )}
-            >
-              <Blocks className="size-4" />
-              {intl.formatMessage({ id: "workspace.openPluginsSettings" })}
-            </Button>
-            <Button
-              variant="ghost"
-              size="lg"
-              aria-pressed={agentBoardActive}
-              className={cn("w-full justify-start gap-2", agentBoardActive && "bg-selected")}
-              onClick={onOpenAgentBoard}
-              data-testid="agent-board-sidebar-open"
-            >
-              <LayoutGrid className="size-4" />
-              {intl.formatMessage({ id: "agentBoard.title" })}
-            </Button>
-            <WorkTasksSidebarButton
-              projects={workTaskProjects}
-              projectsLoading={projectGroupsLoading}
-              active={workTasksActive}
-              onClick={onOpenWorkTasks}
-            />
-            <RepositorySidebarButton
-              projects={workTaskProjects}
-              projectsLoading={projectGroupsLoading}
-              onClick={onOpenRepository}
-              active={repositoryActive}
-            />
-          </div>
+            </div>
 
-          {agentBoardActive ? (
-            <AgentBoardSidebar workspaceTabs={workspaceTabs} />
-          ) : (
+            {/* 看板只切换主区域，保留同一棵项目／分组树，避免回到统计导航并重置展开状态。 */}
             <div className="relative flex min-h-0 flex-1 flex-col">
               <StickyGroupHeaderSlot header={groupedStickyHeader} />
               <div
@@ -1663,13 +1588,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                                 isActiveWorkspace={
                                                   workspaceKey === activeWorkspaceKey
                                                 }
-                                                hasActiveDescendant={worktrees.some(
-                                                  ({ tab: child }) =>
-                                                    buildTaskWorkspaceKey(
-                                                      child.workspacePath,
-                                                      child.workspaceIdentity,
-                                                    ) === activeWorkspaceKey,
-                                                )}
                                                 isExpanded={resolveWorkspaceDragExpanded({
                                                   activeDragId: activeWorkspaceDragId,
                                                   expanded: expandedWorkspacePaths.has(
@@ -1677,9 +1595,11 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                                   ),
                                                   tabId: tab.id,
                                                 })}
-                                                activateTab={activateTab}
                                                 closeTab={closeTab}
                                                 toggleWorkspaceExpanded={toggleWorkspaceExpanded}
+                                                onOpenProjectAgentBoard={() =>
+                                                  handleOpenProjectAgentBoard(tab)
+                                                }
                                                 onSelectTask={onSelectTask}
                                                 onSelectAcpSession={onSelectAcpSession}
                                                 activeAcpSessionId={activeAcpSessionId}
@@ -1688,6 +1608,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                                 taskItems={
                                                   taskGroup?.items ?? EMPTY_WORKSPACE_TASK_ITEMS
                                                 }
+                                                taskSortBy={taskSortBy}
                                                 taskListLoading={taskLoading}
                                                 taskListHasMore={taskGroup?.hasMore ?? false}
                                                 taskListHasUnread={taskGroup?.hasUnread ?? false}
@@ -1831,60 +1752,60 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                 </div>
               </div>
             </div>
-          )}
 
-          <WorkspaceSidebarFooter
-            className="pr-3"
-            showProfileMenu={false}
-            theme={theme}
-            localeMenuValue={localeMenuValue}
-            onLocaleChange={handleLocaleChange}
-            onThemeChange={handleThemeChange}
-            onSettingsButtonClick={openSettingsTab}
-            onUsageClick={openSettingsTab}
-            onLogout={onLogout}
-            user={user}
-            workspacePath={workspacePath}
-            workspaceIdentity={workspaceIdentity}
-            workspaceRemoteSessionId={workspaceRemoteSessionId}
-            activeTaskId={primaryTaskId}
-            isDesktop={isDesktop}
-          />
-        </div>
-        <div
-          className={cn(
-            "absolute inset-0 transition-transform duration-200 ease-out",
-            isFileTreeOpen ? "translate-x-0" : "translate-x-full pointer-events-none",
-          )}
-          aria-hidden={!isFileTreeOpen}
-        >
-          {fileTreeTarget ? (
-            <WorkspaceFileTree
-              workspacePath={fileTreeTarget.workspacePath}
-              workspaceName={fileTreeTarget.workspaceName}
-              workspaceIdentity={fileTreeTarget.workspaceIdentity}
-              workspaceRemoteSessionId={fileTreeTarget.workspaceRemoteSessionId}
-              revealPath={fileTreeTarget.revealPath}
-              temporaryExternalDirectory={fileTreeTarget.temporaryExternalDirectory}
-              canOpenLocalFileManager={isDesktop}
-              activePreviewPath={activePreviewPath}
-              onClose={() => setIsFileTreeOpen(false)}
-              onOpenBrowserUrl={isDesktop ? onOpenBrowserUrl : undefined}
-              onOpenPreview={(source) => {
-                // 文件树可以查看非当前 workspace 的文件。
-                // 预览 source 携带 workspace 作用域，PreviewPane 才能用正确 host 读取远程文件；
-                // 同时不切换当前 workspace，避免"Add to chat"丢给错误的 composer。
-                onOpenCodeViewer?.({
-                  ...source,
-                  workspacePath: fileTreeTarget.workspacePath,
-                  workspaceIdentity: fileTreeTarget.workspaceIdentity,
-                  workspaceRemoteSessionId: fileTreeTarget.workspaceRemoteSessionId,
-                });
-              }}
+            <WorkspaceSidebarFooter
+              className="pr-3"
+              showProfileMenu={false}
+              theme={theme}
+              localeMenuValue={localeMenuValue}
+              onLocaleChange={handleLocaleChange}
+              onThemeChange={handleThemeChange}
+              onSettingsButtonClick={openSettingsTab}
+              onUsageClick={openSettingsTab}
+              onLogout={onLogout}
+              user={user}
+              workspacePath={workspacePath}
+              workspaceIdentity={workspaceIdentity}
+              workspaceRemoteSessionId={workspaceRemoteSessionId}
+              activeTaskId={primaryTaskId}
+              isDesktop={isDesktop}
             />
-          ) : null}
+          </div>
+          <div
+            className={cn(
+              "absolute inset-0 transition-transform duration-200 ease-out",
+              isFileTreeOpen ? "translate-x-0" : "translate-x-full pointer-events-none",
+            )}
+            aria-hidden={!isFileTreeOpen}
+          >
+            {fileTreeTarget ? (
+              <WorkspaceFileTree
+                workspacePath={fileTreeTarget.workspacePath}
+                workspaceName={fileTreeTarget.workspaceName}
+                workspaceIdentity={fileTreeTarget.workspaceIdentity}
+                workspaceRemoteSessionId={fileTreeTarget.workspaceRemoteSessionId}
+                revealPath={fileTreeTarget.revealPath}
+                temporaryExternalDirectory={fileTreeTarget.temporaryExternalDirectory}
+                canOpenLocalFileManager={isDesktop}
+                activePreviewPath={activePreviewPath}
+                onClose={() => setIsFileTreeOpen(false)}
+                onOpenBrowserUrl={isDesktop ? onOpenBrowserUrl : undefined}
+                onOpenPreview={(source) => {
+                  // 文件树可以查看非当前 workspace 的文件。
+                  // 预览 source 携带 workspace 作用域，PreviewPane 才能用正确 host 读取远程文件；
+                  // 同时不切换当前 workspace，避免"Add to chat"丢给错误的 composer。
+                  onOpenCodeViewer?.({
+                    ...source,
+                    workspacePath: fileTreeTarget.workspacePath,
+                    workspaceIdentity: fileTreeTarget.workspaceIdentity,
+                    workspaceRemoteSessionId: fileTreeTarget.workspaceRemoteSessionId,
+                  });
+                }}
+              />
+            ) : null}
+          </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+    </WorkTaskSidebarProvider>
   );
 });
