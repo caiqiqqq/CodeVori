@@ -23,6 +23,7 @@ import { buildDelegationMentionMarkdown } from "@/mentions/mentionMarkdown.js";
 import { useDelegationTargets } from "@/hooks/useAgentDelegation.js";
 import { useAgentSquads } from "@/hooks/useAgentSquads.js";
 import { mapSquadsToMentionItems } from "./providers/squadsMentionProvider.js";
+import { mapAgentProfilesToMentionItems } from "./providers/agentProfilesMentionProvider.js";
 import {
   extractActivePromptInputTrigger,
   getActivePromptInputTokenTailLength,
@@ -301,9 +302,13 @@ export function MentionPlugin({
       delegation: {
         id: "delegation",
         title: intl.formatMessage({ id: "delegation.agents" }),
-        items: delegationItems,
-        loading: false,
-        errorText: null,
+        items: filterMentionItemsWithOptions(
+          [...mapAgentProfilesToMentionItems(squadResult.profiles), ...delegationItems],
+          deferredActiveQuery,
+          { limit: getMentionGroupLimitForQuery(deferredActiveQuery) },
+        ),
+        loading: squadResult.loading,
+        errorText: squadResult.error,
         emptyText: intl.formatMessage({ id: "delegation.noAgents" }),
       },
       files: {
@@ -362,6 +367,8 @@ export function MentionPlugin({
     squadItems,
     squadResult.loading,
     squadResult.error,
+    squadResult.profiles,
+    deferredActiveQuery,
     delegationItems,
     intl,
     fileResult.emptyText,

@@ -150,7 +150,7 @@ export function AgentSquadMemberEditor({
         <Textarea
           aria-label={t("role")}
           value={member.role}
-          maxLength={4000}
+          maxLength={12000}
           rows={2}
           onChange={(event) => onChange({ ...member, role: event.target.value })}
           required

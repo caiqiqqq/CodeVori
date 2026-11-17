@@ -15,13 +15,12 @@ import {
   type DelegationSettings,
   type WorkTaskScope,
   type DelegationRedeliver,
-  type AgentSquadSave,
-  type AgentSquadDelete,
   type DelegationSquadCreate,
+  type DelegationProfileCreate,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import type { IAgentDelegationService, DelegationDependencies } from "./contract.js";
-import { DelegationRepository, parentKey } from "./delegationRepository.js";
+import { parentKey } from "./delegationRepository.js";
 import { claimDelegations, deliverDelegationResults } from "./delegationScheduler.js";
 import { executeDelegationAttempt } from "./delegationAttempt.js";
 import { admitDelegation, findDelegationBinding, admitFollowUp } from "./delegationAdmission.js";
@@ -31,48 +30,36 @@ import {
   executeWithSquadCleanup,
   squadChildren,
 } from "./delegationLifecycle.js";
-import { saveAgentSquad, deleteAgentSquad, admitSquad } from "./agentSquads.js";
+import { admitSquad } from "./agentSquads.js";
+import { admitProfile } from "./agentProfiles.js";
+
+import { DelegationCatalog } from "./delegationCatalog.js";
 
 const active = new Set(["preparing", "running", "awaiting_input"]);
 const terminal = new Set(["completed", "failed", "interrupted", "canceled"]);
 const logger = createServiceLogger("agent-delegation");
 
-export class AgentDelegationService implements IAgentDelegationService {
-  private readonly repo: DelegationRepository;
+export class AgentDelegationService extends DelegationCatalog implements IAgentDelegationService {
   private readonly owner = uuidv7();
   private readonly emitter = new Emitter<void>();
-  private readonly squadEmitter = new Emitter<void>();
   private lastSquadProjection = "";
   private readonly runs = new Map<string, { abort: AbortController; done: Promise<void> }>();
   private timer?: ReturnType<typeof setInterval>;
   private ticking?: Promise<void>;
   private delivering?: Promise<void>;
   private lastProjection = "";
-  private disposed = false;
   private disposing?: Promise<void>;
-  constructor(private readonly deps: DelegationDependencies) {
-    this.repo = new DelegationRepository(deps.path);
+  constructor(deps: DelegationDependencies) {
+    super(deps);
   }
   async targets() {
     return listDelegationTargets(this.deps);
   }
-  async listSquads() {
-    await this.repo.open();
-    return this.repo.squads();
-  }
-  onDynamicSquadsChanged() {
-    return this.squadEmitter.event;
-  }
-  async saveSquad(input: AgentSquadSave) {
+  async delegateProfile(input: DelegationProfileCreate) {
     if (this.disposed) throw new Error("delegation.closed");
-    const squad = await saveAgentSquad(this.repo, this.deps, input);
-    this.squadEmitter.fire();
-    return squad;
-  }
-  async deleteSquad(input: AgentSquadDelete) {
-    if (this.disposed) throw new Error("delegation.closed");
-    await deleteAgentSquad(this.repo, input);
-    this.squadEmitter.fire();
+    const task = await admitProfile(this.repo, this.deps, input);
+    this.emitter.fire();
+    return task;
   }
   async delegateSquad(input: DelegationSquadCreate) {
     if (this.disposed) throw new Error("delegation.closed");
@@ -354,7 +341,7 @@ export class AgentDelegationService implements IAgentDelegationService {
       .finally(() => {
         this.delivering = undefined;
       });
-    const squads = JSON.stringify(this.repo.squads());
+    const squads = JSON.stringify([this.repo.squads(), this.repo.profiles()]);
     if (squads !== this.lastSquadProjection) {
       this.lastSquadProjection = squads;
       this.squadEmitter.fire();

@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   delegationCreateSchema,
   delegationSquadCreateSchema,
+  delegationProfileCreateSchema,
   delegationFollowUpSchema,
   delegationResultSchema,
   getDelegationAgentReference,
@@ -41,10 +42,13 @@ const schemas = {
       requestId: z.string().uuid().optional(),
       execution: delegationExecutionSchema.optional(),
       squadId: z.string().uuid().optional(),
+      profileId: z.string().uuid().optional(),
     })
     .refine(
-      (input) => !!input.execution !== !!input.squadId,
-      "Provide exactly one execution or squadId",
+      (input) =>
+        [input.execution, input.squadId, input.profileId].filter(Boolean).length === 1 &&
+        (!(input.squadId || input.profileId) || !input.squadMemberId),
+      "Provide exactly one execution, squadId or profileId; member IDs require execution",
     ),
   GetDelegationTask: idSchema,
   ListDelegationTasks: z.object({}).strict(),
@@ -64,9 +68,9 @@ const schemas = {
 };
 const descriptions: Record<keyof typeof schemas, string> = {
   ListDelegationAgents:
-    "List available API models, ACP agents and saved squads without launching them. Match an explicit @ reference to the exact target. For kind=squad, call DelegateTask with squadId instead of execution. For a squad leader this tool lists only its allowed members: copy squadMemberId and full execution. API selections must retain provider/model/options. Do not switch the main agent.",
+    "List saved agent profiles, available API models, ACP runtimes and saved squads without launching them. A profile reference agent.<id> uses profileId without execution; the Host supplies its saved instructions and model. Match an explicit @ reference to the exact target. For kind=squad, call DelegateTask with squadId instead of execution. For a squad leader this tool lists only its allowed members: copy squadMemberId and full execution. API selections must retain provider/model/options. Do not switch the main agent.",
   DelegateTask:
-    "Delegate only when requested; discover exact targets with ListDelegationAgents. A saved squad uses squadId and no execution: only its leader starts, coordinates its members, and returns a summary. Squad leaders must use the returned squadMemberId and full execution for each member. Direct API delegation requires the exact full modelSelection. For ACP omit config when no model is specified so Host preferences apply. Pass only necessary context/files/constraints, never full history. edit uses an isolated worktree; analysis shares cwd and is not a sandbox. dependsOn enforces prerequisites. Reuse requestId for the same call. Results authorize summarizing only, not further edits, commits, merges or pushes.",
+    "Delegate only when requested; discover exact targets with ListDelegationAgents. A saved agent profile uses profileId without execution or squadId. A saved squad uses squadId and no execution: only its leader starts, coordinates its members, and returns a summary. Squad leaders must use the returned squadMemberId and full execution for each member. Direct API delegation requires the exact full modelSelection. For ACP omit config when no model is specified so Host preferences apply. Pass only necessary context/files/constraints, never full history. edit uses an isolated worktree; analysis shares cwd and is not a sandbox. dependsOn enforces prerequisites. Reuse requestId for the same call. Results authorize summarizing only, not further edits, commits, merges or pushes.",
   GetDelegationTask:
     "Read durable task status, child session, all execution attempts and results. Scope is this conversation only.",
   ListDelegationTasks: "List this conversation's durable delegation tasks.",
@@ -152,6 +156,7 @@ export function createDelegationMcp(
             requestId?: string;
             execution?: WorkTaskExecution;
             squadId?: string;
+            profileId?: string;
           };
           const target = { ...parent, id: values.id! };
           switch (name) {
@@ -163,11 +168,19 @@ export function createDelegationMcp(
                   role: member.role,
                   execution: member.execution,
                 }));
-              const [targets, squads] = await Promise.all([
+              const [targets, squads, profiles] = await Promise.all([
                 service.targets(),
                 service.listSquads(),
+                service.listAgentProfiles(),
               ]);
               return [
+                ...profiles.map((profile) => ({
+                  kind: "profile",
+                  profileId: profile.id,
+                  name: profile.name,
+                  description: profile.description,
+                  reference: `agent.${profile.id}`,
+                })),
                 ...targets.map((target) => ({
                   ...target,
                   reference: getDelegationAgentReference(target),
@@ -184,6 +197,14 @@ export function createDelegationMcp(
               ];
             }
             case "DelegateTask": {
+              if (values.profileId)
+                return service.delegateProfile(
+                  delegationProfileCreateSchema.parse({
+                    ...values,
+                    ...parent,
+                    requestId: values.requestId ?? uuidv7(),
+                  }),
+                );
               if (values.squadId)
                 return service.delegateSquad(
                   delegationSquadCreateSchema.parse({
