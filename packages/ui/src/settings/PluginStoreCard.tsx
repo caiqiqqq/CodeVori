@@ -266,7 +266,7 @@ export function PluginStoreCard({
       tabIndex={0}
       data-testid="plugin-store-card"
       data-plugin-id={item.id}
-      className="group/card flex min-w-0 cursor-pointer items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused"
+      className="group/card flex min-w-0 cursor-pointer items-center gap-3 rounded-lg border border-card-border bg-card px-3 py-3 transition-colors hover:border-border-hover hover:bg-hover focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused"
       onClick={() => actions.onOpenDetail(item.id)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
