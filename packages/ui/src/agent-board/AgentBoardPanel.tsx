@@ -1,14 +1,6 @@
-/* eslint-disable max-lines -- 看板筛选、分组、拖动和详情共用同一份会话投影与选择状态。 */
+/* eslint-disable max-lines -- 看板筛选、分组和详情共用同一份会话投影与选择状态。 */
 import { BoardViewTab, boardViews } from "./AgentBoardViewTab.js";
 import { AgentBoardStatusOrder } from "./AgentBoardStatusOrder.js";
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  pointerWithin,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
 import { AgentBoardGroups } from "./AgentBoardGroups.js";
 import { AgentBoardTrackingDialog } from "./AgentBoardTrackingDialog.js";
 import { AgentBoardSourcePicker } from "./AgentBoardSourcePicker.js";
@@ -38,7 +30,6 @@ import {
   boardEntityKey,
   boardDisplayStatus,
   boardHasUnreadResult,
-  canStageBoardItem,
   isBoardItemStaged,
   matchesBoardView,
   matchesBoardTracking,
@@ -111,14 +102,6 @@ export function AgentBoardView({
     () => preferences.reconcileStagedItems(rawItems),
     [rawItems, preferences.reconcileStagedItems],
   );
-  const [draggingKey, setDraggingKey] = useState<string | null>(null);
-  const dragging = items.find((item) => item.key === draggingKey);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
-  const toggleStaged = (item: BoardItem) => {
-    const current = rawItems.find((row) => row.key === item.key);
-    if (current)
-      preferences.setItemStaged(current, !isBoardItemStaged(current, preferences.stagedItems));
-  };
   const [detailContainer, setDetailContainer] = useState<HTMLElement | null>(null);
   const [selectedKey, setSelectedKey] = useAgentBoardNotificationSelection({
     rawItems,
@@ -178,7 +161,7 @@ export function AgentBoardView({
     ? preferences.statusOrder
         .filter((status) =>
           ["active", "completed", "failed", "attention", "staged"].includes(preferences.view)
-            ? (status === "staged" && (preferences.view === "staged" || Boolean(dragging))) ||
+            ? (status === "staged" && preferences.view === "staged") ||
               filtered.some((item) => boardDisplayStatus(item) === status)
             : true,
         )
@@ -239,21 +222,13 @@ export function AgentBoardView({
       setBusy(false);
     }
   };
+  const toggleStaged = (item: BoardItem) => {
+    const current = rawItems.find((row) => row.key === item.key);
+    if (current)
+      preferences.setItemStaged(current, !isBoardItemStaged(current, preferences.stagedItems));
+  };
   return (
-    <DndContext
-      sensors={sensors}
-      // 卡片大于顶部标签，按指针位置判定投放，避免项目分组拖到标签时被矩形面积过滤。
-      collisionDetection={pointerWithin}
-      onDragStart={({ active }) => setDraggingKey(String(active.id))}
-      onDragCancel={() => setDraggingKey(null)}
-      onDragEnd={({ active, over }) => {
-        setDraggingKey(null);
-        if (!over?.data.current?.boardStaging) return;
-        // 拖动期间会话可能重新运行，必须用最新 Host 投影验证，不能使用起拖时的卡片。
-        const item = rawItems.find((row) => row.key === active.id);
-        if (item && canStageBoardItem(item)) preferences.setItemStaged(item, true);
-      }}
-    >
+    <>
       <section
         ref={setDetailContainer}
         className="relative flex h-full min-h-0 min-w-0 flex-col bg-background text-ui-base text-foreground"
@@ -485,13 +460,6 @@ export function AgentBoardView({
           onMarkUnread={(item) => void runMarkUnread(item)}
         />
       </section>
-      <DragOverlay>
-        {dragging ? (
-          <div className="max-w-72 rounded-xl border border-brand bg-card p-4 text-foreground shadow-lg">
-            {dragging.title}
-          </div>
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+    </>
   );
 }

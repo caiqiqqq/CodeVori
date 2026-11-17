@@ -12,7 +12,6 @@ import { exerciseAgentBoardLayout } from "./agentBoardLayoutScenario.mjs";
 import { exerciseAgentBoardInterruption } from "./agentBoardInterruptionScenario.mjs";
 import { agentBoardFixture } from "./agentBoardFixture.mjs";
 import { exerciseAgentBoardWorkTasks } from "./agentBoardWorkTasksScenario.mjs";
-// Real board components/data hooks and command routing; synthetic Host and chat pane.
 import assert from "node:assert/strict";
 import { writeFile, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -80,6 +79,10 @@ try {
   await page.goto(origin + "/" + name + ".html");
   await page.getByRole("heading", { name: "Agent 看板", exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll("[data-board-card]").length === 25);
+  for (const card of await page.locator("[data-board-card]").all()) {
+    assert.equal(await card.locator(":scope > div").count(), 0, "card has no bottom action row");
+    assert.equal(await card.getByRole("button", { name: /暂存|移出暂存|拖动到暂存/ }).count(), 0);
+  }
   await assertLegacyFavoriteMigration(page);
   await assertBoardMessagePreviewsHidden(page);
   assert.equal(
@@ -102,8 +105,8 @@ try {
     .filter({ has: page.getByRole("heading", { name: "Implement project 20", exact: true }) });
   assert.equal(
     await realDefaultProject.getByText("default", { exact: true }).count(),
-    2,
-    "a real project named default retains project metadata",
+    1,
+    "a real project named default retains its project label without a workspace-path footer",
   );
   await localConversation.getByRole("button").first().click();
   await page.getByTestId("real-pane-contract").waitFor();
@@ -390,10 +393,7 @@ try {
   await exerciseAgentBoardAgentLabels(page, artifacts);
   await exerciseAgentBoardSidebar(page, artifacts);
   assert.deepEqual(errors, []);
-  console.log(
-    "PASS: real board/hooks; 24 projects; identity routing; API/ACP automatic completion/archive; six-pin limit; search; desktop themes; mobile drawer; new session; work-task selection, scoped conversation, acceptance failure/retry, archive/read-only; staging drag/buttons/persistence/restart; waiting indicators and resume; unread acknowledgement/CAS/failure/reload; completion-time sorting; favorites removed/legacy migration; sidebar status counts/icons/zero hiding/tracking/live updates/narrow layout. Screenshots: " +
-      artifacts,
-  );
+  console.log("PASS: Agent Board E2E.", artifacts);
 } finally {
   await browser?.close();
   await Promise.all([rm(html, { force: true }), rm(moduleFile, { force: true })]);

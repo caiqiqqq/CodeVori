@@ -1,7 +1,5 @@
 import { WorkTaskAgent } from "@/work-tasks/WorkTaskParts.js";
-import { useDraggable } from "@dnd-kit/core";
-import { Archive, ArchiveRestore, Folder, GripVertical, LoaderCircle } from "lucide-react";
-import { Button } from "@/components/ui/button.js";
+import { Folder, LoaderCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge.js";
 import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
@@ -11,7 +9,6 @@ import { AgentBoardSessionContextMenu } from "./AgentBoardSessionContextMenu.js"
 import {
   boardResultTimestamp,
   boardAgentLabel,
-  canStageBoardItem,
   boardStatusIndicator,
   type BoardItem,
 } from "./agentBoardModel.js";
@@ -47,11 +44,6 @@ export function AgentBoardCard({
 }) {
   const { intl, locale } = useZCodeIntl();
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
-  const canStage = canStageBoardItem(item);
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: item.key,
-    disabled: !canStage || item.staged,
-  });
   const colors = boardStatusColors;
   const status = boardStatusIndicator(item);
   const isConversation = item.workspacePurpose === "conversation";
@@ -67,8 +59,6 @@ export function AgentBoardCard({
   const isCompact = layoutMode === "compact";
   const card = (
     <article
-      ref={setNodeRef}
-      style={{ opacity: isDragging ? 0.4 : undefined }}
       className={
         isList
           ? "flex min-w-0 items-center rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-brand/40"
@@ -214,55 +204,6 @@ export function AgentBoardCard({
           </p>
         ) : null}
       </button>
-      {canStage || !isConversation ? (
-        <div
-          className={
-            isList
-              ? "flex shrink-0 items-center justify-end gap-1 border-l border-border/60 px-1"
-              : "flex items-center justify-end gap-2 border-t border-border/60 px-3 py-1"
-          }
-        >
-          {canStage && !item.staged ? (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="touch-none cursor-grab"
-              {...listeners}
-              {...attributes}
-              aria-label={t("dragToStaged")}
-            >
-              <GripVertical className="size-3.5" />
-            </Button>
-          ) : null}
-          {!isConversation && !isList ? (
-            <span
-              className="mr-auto truncate text-ui-xs text-foreground-subtlest"
-              title={item.workspaceIdentity ?? item.workspacePath}
-            >
-              {item.workspaceIdentity ?? item.workspacePath.split("/").pop()}
-            </span>
-          ) : null}
-          {canStage ? (
-            <Button
-              variant="ghost"
-              size={isList ? "icon-sm" : "sm"}
-              aria-label={t(item.staged ? "unstage" : "stage")}
-              title={t(item.staged ? "unstage" : "stage")}
-              onClick={() => onStage(item)}
-            >
-              {isList ? (
-                item.staged ? (
-                  <ArchiveRestore className="size-4" />
-                ) : (
-                  <Archive className="size-4" />
-                )
-              ) : (
-                t(item.staged ? "unstage" : "stage")
-              )}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
     </article>
   );
   if (item.kind === "work-task") return card;
