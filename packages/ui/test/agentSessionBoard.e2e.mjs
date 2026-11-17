@@ -12,7 +12,6 @@ import { exerciseAgentBoardLayout } from "./agentBoardLayoutScenario.mjs";
 import { exerciseAgentBoardInterruption } from "./agentBoardInterruptionScenario.mjs";
 import { agentBoardFixture } from "./agentBoardFixture.mjs";
 import { exerciseAgentBoardWorkTasks } from "./agentBoardWorkTasksScenario.mjs";
-// Real board components/data hooks and command routing; synthetic Host and chat pane.
 import assert from "node:assert/strict";
 import { writeFile, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -394,10 +393,7 @@ try {
   await exerciseAgentBoardAgentLabels(page, artifacts);
   await exerciseAgentBoardSidebar(page, artifacts);
   assert.deepEqual(errors, []);
-  console.log(
-    "PASS: Agent Board flows, context-menu staging, persistence, and responsive layout. " +
-      artifacts,
-  );
+  console.log("PASS: Agent Board E2E.", artifacts);
 } finally {
   await browser?.close();
   await Promise.all([rm(html, { force: true }), rm(moduleFile, { force: true })]);
