@@ -53,11 +53,11 @@ export function AgentBoardCard({
     <article
       ref={setNodeRef}
       style={{ opacity: isDragging ? 0.4 : undefined }}
-      className="rounded-xl border border-border bg-card shadow-sm transition-colors hover:border-brand/40"
+      className="rounded-lg border border-card-border bg-card transition-colors hover:border-border-hover hover:bg-hover"
       data-board-card={item.key}
     >
       <button
-        className="w-full rounded-xl p-4 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        className="w-full rounded-lg p-3 text-start outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused"
         onClick={onOpen}
       >
         <div className="mb-3 flex items-center justify-between gap-2 text-ui-caption text-foreground-subtle">
@@ -98,7 +98,9 @@ export function AgentBoardCard({
             </span>
           </span>
         </div>
-        <h3 className="line-clamp-2 font-medium leading-relaxed">{item.title || t("untitled")}</h3>
+        <h3 className="line-clamp-2 text-ui-base font-semibold leading-snug">
+          {item.title || t("untitled")}
+        </h3>
         {summary ? (
           <p className="mt-2 line-clamp-2 text-ui-caption leading-relaxed text-foreground-subtle">
             {summary}
