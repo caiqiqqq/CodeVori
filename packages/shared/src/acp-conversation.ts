@@ -114,6 +114,8 @@ export const acpConversationRowsRangeSchema = acpWorkspaceSchema
     id: z.string().min(1),
     beforeRowId: v4ConversationRowsRangeParamsSchema.shape.beforeRowId,
     limit: v4ConversationRowsRangeParamsSchema.shape.limit,
+    /** Metadata-only navigator page; never merge these previews into the body. */
+    navigationOnly: z.boolean().optional(),
   })
   .strict();
 export type AcpConversationRowsRange = z.infer<typeof acpConversationRowsRangeSchema>;

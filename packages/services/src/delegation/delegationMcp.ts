@@ -9,11 +9,21 @@ import {
   type DelegationParent,
   type NativeMcpServerRecord,
   type ZCodeProtocolMcpServer,
+  type WorkTaskExecution,
+  workTaskExecutionSchema,
 } from "@zcode/shared";
 import { createAcpWorkflowMcp } from "../acp/acpWorkflowMcp.js";
 import type { AgentDelegationService } from "./agentDelegationService.js";
+import type { DelegationAcpModelSelection } from "./delegationModelInheritance.js";
 
 const idSchema = z.object({ id: z.string().uuid() }).strict();
+const acpExecutionSchema = workTaskExecutionSchema.options[1];
+const delegationExecutionSchema = z.discriminatedUnion("kind", [
+  workTaskExecutionSchema.options[0],
+  acpExecutionSchema
+    .omit({ modelPreference: true })
+    .extend({ config: acpExecutionSchema.shape.config.optional().default([]) }),
+]);
 const schemas = {
   ListDelegationAgents: z.object({}).strict(),
   DelegateTask: delegationCreateSchema
@@ -24,8 +34,12 @@ const schemas = {
       kind: true,
       sessionId: true,
       requestId: true,
+      execution: true,
     })
-    .extend({ requestId: z.string().uuid().optional() }),
+    .extend({
+      requestId: z.string().uuid().optional(),
+      execution: delegationExecutionSchema,
+    }),
   GetDelegationTask: idSchema,
   ListDelegationTasks: z.object({}).strict(),
   WaitDelegationTask: idSchema.extend({
@@ -44,9 +58,9 @@ const schemas = {
 };
 const descriptions: Record<keyof typeof schemas, string> = {
   ListDelegationAgents:
-    "List available API models and installed, enabled ACP agents without launching them. Match a user's @ reference to the exact returned reference. For API, copy execution including providerId, modelId and reasoningLevel; for ACP use execution.kind=acp, agent and config=[]. Do not switch the main agent.",
+    "List available API models and installed, enabled ACP agents without launching them. Match an explicit @ reference to the exact returned target. API targets include their exact provider/model selection. ACP targets expose agent identity; when no model config is supplied, the Host inherits the parent ACP model only if the target supports the same config ID and value, otherwise it uses that agent's Host model preference. Do not switch the main agent.",
   DelegateTask:
-    "Delegate an explicit task to an API model or ACP agent from ListDelegationAgents. Preserve the exact target identity and full modelSelection; never guess a provider from a model name. Pass only relevant background/files/constraints. edit creates an isolated worktree; analysis shares cwd and is NOT a security sandbox. Independent tasks run in parallel; dependsOn enforces successful prerequisites. Returns taskId immediately. Reuse requestId on retrying the same call.",
+    "Delegate only when requested and select an exact target from ListDelegationAgents. API executions require the exact full modelSelection; never guess a provider from a model name. For ACP, name the exact agent and omit config when no target model is specified; the Host inherits a compatible parent ACP model or that target agent's Host model preference. Pass only relevant background/files/constraints. edit creates an isolated worktree; analysis shares cwd and is NOT a security sandbox. Independent tasks run in parallel; dependsOn enforces successful prerequisites. Returns taskId immediately. Reuse requestId on retrying the same call.",
   GetDelegationTask:
     "Read durable task status, child session, all execution attempts and results. Scope is this conversation only.",
   ListDelegationTasks: "List this conversation's durable delegation tasks.",
@@ -62,11 +76,25 @@ const descriptions: Record<keyof typeof schemas, string> = {
   CancelAllDelegations: "Cancel all delegation tasks in this conversation.",
 };
 
-export function createDelegationMcp(directory: string, service: AgentDelegationService) {
+export function createDelegationMcp(
+  directory: string,
+  service: AgentDelegationService,
+  options: {
+    resolveAcpExecution?: (
+      parent: DelegationParent,
+      execution: Extract<WorkTaskExecution, { kind: "acp" }>,
+      parentModel?: DelegationAcpModelSelection,
+    ) => Promise<Extract<WorkTaskExecution, { kind: "acp" }>>;
+  } = {},
+) {
   const bridge = createAcpWorkflowMcp(directory);
   const registrations = new Map<string, { workspaceKey: string; revoke(): void }>();
   return {
-    async register(parent: DelegationParent, requestId?: string) {
+    async register(
+      parent: DelegationParent,
+      requestId?: string,
+      parentModel?: DelegationAcpModelSelection,
+    ) {
       const child = await service.binding(parent, requestId);
       const settings = await service.getSettings(child?.rootParent ?? parent);
       const allowTools =
@@ -111,6 +139,7 @@ export function createDelegationMcp(directory: string, service: AgentDelegationS
             task?: string;
             timeoutMs?: number;
             requestId?: string;
+            execution?: WorkTaskExecution;
           };
           const target = { ...parent, id: values.id! };
           switch (name) {
@@ -119,14 +148,18 @@ export function createDelegationMcp(directory: string, service: AgentDelegationS
                 ...target,
                 reference: getDelegationAgentReference(target),
               }));
-            case "DelegateTask":
-              return service.delegate(
-                delegationCreateSchema.parse({
-                  ...values,
-                  ...parent,
-                  requestId: values.requestId ?? uuidv7(),
-                }),
-              );
+            case "DelegateTask": {
+              const input = delegationCreateSchema.parse({
+                ...values,
+                ...parent,
+                requestId: values.requestId ?? uuidv7(),
+              });
+              const execution =
+                input.execution.kind === "acp" && options.resolveAcpExecution
+                  ? await options.resolveAcpExecution(parent, input.execution, parentModel)
+                  : input.execution;
+              return service.delegate({ ...input, execution });
+            }
             case "ListDelegationTasks":
               return service.list(parent);
             case "GetDelegationTask":

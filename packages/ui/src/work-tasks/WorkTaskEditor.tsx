@@ -188,7 +188,8 @@ export function WorkTaskEditor({
               branches={branches.branches}
               allowHead={useWorktree}
               testId="work-task-source-branch"
-              disabled={busy || lockedWorkspace || branches.loading}
+              // 修复原因：打开菜单会后台刷新；已有分支列表可继续选，不能让刷新关闭菜单。
+              disabled={busy || lockedWorkspace || (branches.loading && !branches.value)}
               onChange={(value) => setSourceDraft({ value })}
               onOpen={() => {
                 void branches.refresh();

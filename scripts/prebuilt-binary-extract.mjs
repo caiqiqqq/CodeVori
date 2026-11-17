@@ -9,30 +9,34 @@ import {
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, posix, win32 } from "node:path";
 import process from "node:process";
 import { runCommand } from "./spawn-command.mjs";
 
-// Bugfix: Windows GNU tar（Git Bash）会把绝对路径里的盘符冒号（C:）当成远程主机名，
-// 反斜杠路径也会被 MSYS 参数转换破坏。tar 参数统一转正斜杠，归档路径优先改用
-// 相对 cwd 的形式避开盘符冒号；对 bsdtar 与 Linux/macOS CI 无影响。
+// Bugfix: Windows GNU tar 会把归档绝对路径里的盘符冒号当成远程主机名。
+// 缓存归档与临时解包目录可能分属 D: 和 C:，不能从解包目录计算相对归档路径。
+// 让 tar 在归档所在目录运行，-f 只传文件名；-C 继续指向目标目录。
 function toTarPosixPath(pathValue) {
   return pathValue.replaceAll("\\", "/");
 }
 
-function resolveTarArchiveArg(archivePath, cwd) {
-  if (process.platform === "win32") {
-    try {
-      const relativeArchivePath = relative(cwd, archivePath);
-      if (relativeArchivePath && !relativeArchivePath.startsWith("..")) {
-        return toTarPosixPath(relativeArchivePath);
-      }
-    } catch {
-      // 跨盘符时 relative 会抛错，退回正斜杠绝对路径（bsdtar 可用）。
-    }
-  }
-
-  return toTarPosixPath(archivePath);
+export function resolveTarExtractionCommand({
+  archivePath,
+  extractDir,
+  cwd = process.cwd(),
+  platform = process.platform,
+}) {
+  const pathApi = platform === "win32" ? win32 : posix;
+  const absoluteArchivePath = pathApi.resolve(cwd, archivePath);
+  return {
+    cwd: pathApi.dirname(absoluteArchivePath),
+    args: [
+      "-xzf",
+      pathApi.basename(absoluteArchivePath),
+      "-C",
+      toTarPosixPath(pathApi.resolve(extractDir)),
+    ],
+  };
 }
 
 export function extractPrebuiltArchive({ archivePath, archiveExt, extractDir, cwd }) {
@@ -54,12 +58,8 @@ export function extractPrebuiltArchive({ archivePath, archiveExt, extractDir, cw
     return;
   }
 
-  const tarCwd = cwd ?? process.cwd();
-  runCommand(
-    "tar",
-    ["-xzf", resolveTarArchiveArg(archivePath, tarCwd), "-C", toTarPosixPath(extractDir)],
-    { cwd: tarCwd },
-  );
+  const tarCommand = resolveTarExtractionCommand({ archivePath, extractDir, cwd });
+  runCommand("tar", tarCommand.args, { cwd: tarCommand.cwd });
 }
 
 export function findPrebuiltBinary(rootDir, binaryName) {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 
 export async function exerciseAgentBoardAgentLabels(page, artifacts) {
+  await page.setViewportSize({ width: 1600, height: 1000 });
   await page.reload();
   await page.getByRole("heading", { name: "Agent 看板", exact: true }).waitFor();
   await page.evaluate(() => {
@@ -33,6 +34,23 @@ export async function exerciseAgentBoardAgentLabels(page, artifacts) {
         createdAt: 100,
         updatedAt: 4000,
       });
+    f.workRows.push({
+      workspacePath: "/fixture/project-3",
+      id: "label-api-model",
+      title: "Label task API model",
+      prompt: "Compare model labels",
+      status: "review",
+      execution: {
+        kind: "api",
+        modelSelection: { providerId: "fixture-provider", modelId: "fixture-model" },
+        mode: "build",
+      },
+      archived: false,
+      stopPending: false,
+      runSeq: 1,
+      createdAt: 100,
+      updatedAt: 4000,
+    });
     f.notifyWork();
   });
   const card = (title) =>
@@ -49,6 +67,48 @@ export async function exerciseAgentBoardAgentLabels(page, artifacts) {
       assert.doesNotMatch(await target.locator("[data-board-agent-label]").textContent(), /ACP/);
     }
   }
+  const modelTask = card("Label task API model").locator("[data-board-agent-label]");
+  await modelTask.getByText("fixture-model", { exact: true }).waitFor();
+  const layout = page.getByRole("group", { name: "布局方式", exact: true });
+  await layout.getByRole("button", { name: "列表", exact: true }).click();
+  for (const title of [
+    "Remote API session",
+    "Remote ACP 0",
+    "Remote ACP 1",
+    "Label task codex",
+    "Label task claude",
+    "Label task API model",
+  ]) {
+    const label = card(title).locator("[data-board-agent-label]");
+    assert.equal(await label.isVisible(), true, `${title} keeps its execution identity in List`);
+    assert.ok((await label.innerText()).trim().length > 0, `${title} has a visible label in List`);
+  }
+  assert.equal(
+    (await card("Label task API model").locator("[data-board-agent-label]").innerText()).trim(),
+    "fixture-model",
+  );
+  assert.ok(
+    (await card("Label task API model")
+      .locator("h3")
+      .evaluate((node) => node.clientWidth)) >= 90,
+    "the model label leaves readable width for the item title",
+  );
+  await page.screenshot({
+    path: join(artifacts, "agent-labels-list.png"),
+    animations: "disabled",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await card("Label task API model").locator("[data-board-agent-label]").isVisible(),
+    true,
+  );
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({
+    path: join(artifacts, "agent-labels-list-mobile.png"),
+    animations: "disabled",
+  });
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await layout.getByRole("button", { name: "卡片", exact: true }).click();
   const select = page.getByRole("combobox", { name: "智能体筛选", exact: true });
   assert.equal(await select.locator('option[value="codex"]').textContent(), "Codex");
   await select.selectOption("codex");

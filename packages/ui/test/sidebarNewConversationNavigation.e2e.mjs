@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright-core";
+import { assertSidebarActionRail } from "./sidebarActionRailAssertions.mjs";
 
 const desktop = resolve(import.meta.dirname, "../../desktop");
 const requireDesktop = createRequire(join(desktop, "package.json"));
@@ -79,7 +80,8 @@ try {
           reconnectingRemoteWorkspaceKeys={[]} remoteWorkspaceErrorByWorkspaceKey={{}}
           onCreateTask={()=>{state.fallback++;useZCodeSessionStore.getState().startDraft(path)}} onCreateConversationTask={callback?actions.handleCreateConversationTask:undefined}
           onConnectRemote={noop} onSelectRemoteProject={noop} onCancelRemoteProject={noop} onReconnectRemoteWorkspace={noop} handleSelectTask={noop} handleStartDraftInWorkspace={noop}
-          handleTaskNavBack={noop} handleTaskNavForward={noop} handleOpenAutomations={noop} handleOpenPluginStore={noop} handleOpenRepository={noop} handleOpenAgentBoard={nav.handleOpenAgentBoard} handleOpenWorkTasks={noop}
+          handleTaskNavBack={noop} handleTaskNavForward={noop} handleOpenAutomations={()=>setView('automations')} handleOpenPluginStore={()=>setView('plugin-store')} handleOpenRepository={noop} handleOpenAgentBoard={nav.handleOpenAgentBoard} handleOpenWorkTasks={noop}
+          handleOpenCommandCenter={()=>state.searches=(state.searches??0)+1}
           updateReadyVersion={null} updateState={null} desktopWindowChromeState={null} macWindowControlsLeftPaddingPx={0} sidebarContainerRef={ref} taskFindDialogProps={{}}
           taskNativeSessionLogFile={{path:null,provider:null,exists:false,loading:false}} taskSessionFile={{path:null}}/>
       </div></TooltipProvider></ZCodeIntlProvider>;
@@ -112,9 +114,7 @@ try {
   // Only unrelated content/read projections are replaced; the real sidebar owns the clicked button.
   for (const [path, symbol] of [
     ["WorkspaceHeader.tsx", "WorkspaceHeader"],
-    ["DesktopTopOverlay.tsx", "DesktopTopOverlay"],
     ["WorkspaceSidebarFooter.tsx", "WorkspaceSidebarFooter"],
-    ["WorkspacePinnedTasksSection.tsx", "WorkspacePinnedTasksSection"],
     ["command-center/CommandCenterDialog.tsx", "CommandCenterDialog"],
     ["quickpick/TaskFindDialog.tsx", "TaskFindDialog"],
     ["work-tasks/WorkTasksPanel.tsx", "WorkTasksPanel"],
@@ -123,6 +123,22 @@ try {
     ["agent-board/AgentBoardPanel.tsx", "AgentBoardPanel"],
   ])
     await stub(path, `export function ${symbol}(){return null}`);
+  await stub(
+    "DesktopTopOverlay.tsx",
+    `export function DesktopTopOverlay(p){return window.__React.createElement('output',{'data-testid':'top-new-task-state','data-visible':p.showNewTaskButton})}`,
+  );
+  await stub(
+    "WorkspacePinnedTasksSection.tsx",
+    `export function WorkspacePinnedTasksSection(p){return window.__React.createElement('button',{'data-testid':'fixture-open-files',onClick:()=>p.onOpenFileTree({workspacePath:'/synthetic/project',workspaceName:'Synthetic project'})},'Show files')}`,
+  );
+  await stub(
+    "WorkspaceFileTree.tsx",
+    `export function WorkspaceFileTree(p){return window.__React.createElement('div',{'data-testid':'fixture-files'},'Synthetic file tree',window.__React.createElement('button',{onClick:p.onClose},'Back to tasks'))}`,
+  );
+  await stub(
+    "WorkspaceGroupedTasksSection.tsx",
+    `export function WorkspaceGroupedTasksSection(p){window.__React.useEffect(()=>{p.onCreateDraftTaskActionChange(()=>{window.__newTask.grouped=(window.__newTask.grouped??0)+1});return ()=>p.onCreateDraftTaskActionChange(null)},[p.onCreateDraftTaskActionChange]);return window.__React.createElement('div',{'data-testid':'fixture-grouped'},'Synthetic task group')}`,
+  );
   await stub(
     "WorkspaceTimelineTasksSection.tsx",
     `export function WorkspaceTimelineTasksSection(p){return window.__React.createElement('button',{'data-testid':'old-acp',onClick:()=>p.onSelectAcpSession({id:'old-acp',agent:'codex',workspacePath:'/synthetic/tasks'})},'Old ACP')}`,
@@ -135,7 +151,9 @@ try {
     "v4/V4WorkspaceChatArea.tsx",
     `export function V4WorkspaceChatArea(p){return window.__React.createElement('textarea',{'data-testid':'new-task-draft','data-workspace':p.workspacePath,'data-session':p.sessionId??'','data-acp-request':p.acpOpenRequest?.session.id??'',placeholder:'Independent task draft'})}`,
   );
-  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/${name}.html`);
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/${name}.html`, {
+    timeout: 60000,
+  });
   const button = page.getByTestId("conversation-new-task");
   await button.waitFor().catch((error) => {
     throw Error(errors.join("\n") || error.message);
@@ -236,6 +254,7 @@ try {
     await page.getByTestId("agent-board-sidebar-open").getAttribute("aria-pressed"),
     "true",
   );
+  await assertSidebarActionRail({ page, prepare, artifacts });
   assert.deepEqual(await page.evaluate(() => window.__newTask.writes), []);
   assert.deepEqual(errors, []);
   console.log(

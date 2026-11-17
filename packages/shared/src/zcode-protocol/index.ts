@@ -660,8 +660,23 @@ export type ZCodeProtocolMcpServer = z.infer<typeof zcodeProtocolMcpServerSchema
 export const zcodeDelegationMcpRequestParamsSchema = z
   .object({ sessionId: nonEmptyString, createRequestId: nonEmptyString.optional() })
   .strict();
-export const zcodeDelegationMcpResponseSchema = z.array(zcodeProtocolMcpServerSchema).max(1);
+export const zcodeDelegationMcpResponseSchema = z
+  .object({
+    servers: z.array(zcodeProtocolMcpServerSchema).max(1),
+    canDelegate: z.boolean(),
+  })
+  .strict();
 export const zcodeIssuesMcpRequestParamsSchema = z.object({ sessionId: nonEmptyString }).strict();
+export const zcodeEnvironmentMcpRequestParamsSchema = z
+  .object({ sessionId: nonEmptyString })
+  .strict();
+export const zcodeEnvironmentMcpResponseSchema = z
+  .array(
+    zcodeProtocolMcpServerSchema.and(
+      z.object({ name: z.literal("zcode-environments"), isolation: z.literal("session") }),
+    ),
+  )
+  .max(1);
 export const zcodeIssuesMcpResponseSchema = z
   .array(
     zcodeProtocolMcpServerSchema.and(
@@ -3805,6 +3820,7 @@ export const zcodeProtocolMethods = {
   interactionRequestOfficialMcpAuthHeaders: "interaction/requestOfficialMcpAuthHeaders",
   interactionRequestDelegationMcp: "interaction/requestDelegationMcp",
   interactionRequestIssuesMcp: "interaction/requestIssuesMcp",
+  interactionRequestEnvironmentMcp: "interaction/requestEnvironmentMcp",
   interactionPauseDelegations: "interaction/pauseDelegations",
   // browser-use 反向请求由 agent 发起，host 转给 main 中的 CDP executor。
   interactionBrowserList: "interaction/browserList",

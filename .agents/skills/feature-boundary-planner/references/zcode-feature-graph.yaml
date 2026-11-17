@@ -466,6 +466,8 @@ nodes:
       - 智能体设置
       - Codex 原生配置
       - Codex 官方模型目录
+      - Codex MCP 工具审批
+      - Codex ACP 提问与授权分类
       - 外部 Agent 会话
       - ACP 调用轨迹
       - ACP 执行轨迹
@@ -479,6 +481,8 @@ nodes:
         symbol: createAcpService
       - file: packages/services/src/acp/acpStdioConnection.ts
         symbol: connectAcpAgent
+      - file: packages/services/src/acp/acpClientTransport.ts
+        symbol: connectAcpClientTransport
       - file: packages/shared/src/zcode-protocol/acp.ts
         symbol: ACP_AGENT_CATALOG
       - file: packages/shared/src/zcode-protocol/acp.ts
@@ -487,6 +491,8 @@ nodes:
         symbol: createAcpAgentManager
       - file: packages/services/src/acp/acpCodexConfig.ts
         symbol: updateCodexNativeConfig
+      - file: packages/ui/src/settings/AcpCodexConfigEditor.tsx
+        symbol: AcpCodexConfigEditor
       - file: packages/services/src/acp/acpCodexModels.ts
         symbol: listCodexOfficialModels
       - file: packages/services/src/mcp-sync/mcpSyncService.ts
@@ -505,6 +511,8 @@ nodes:
       - Auxiliary summaries use a separate text run with the source conversation model; Codex uses an ephemeral read-only native CLI and Claude disables tools at creation. Source sessions, queues, modes and task admission are untouched; unsupported adapters fail without API fallback.
       - Reported ACP thoughts and full plans belong to Host snapshots; transcript replay does not duplicate them.
       - ACP session-scoped form elicitation shares the Host blocking queue with tool permissions; answers are validated before adapter receipt and are not persisted.
+      - Codex MCP tool-call elicitation approvals are identified by `_meta.codex_approval_kind` and use the existing permission card; ordinary elicitation fields remain questions and require validated answers.
+      - "features.default_mode_request_user_input is opt-in Codex configuration for new sessions; it does not bypass MCP approvals or disable Plan-mode questions."
   - id: surface.acp-conversation
     kind: ui-surface
     label: ACP conversation target inside the existing pane
@@ -517,6 +525,8 @@ nodes:
         symbol: projectAcpStatusPanel
       - file: packages/ui/src/v4/AcpConversationContent.tsx
         symbol: AcpConversationStatus
+      - file: packages/ui/src/v4/AcpElicitationForm.tsx
+        symbol: AcpElicitationForm
       - file: packages/ui/src/v4/SessionPane.tsx
         symbol: SessionPane
       - file: packages/ui/src/v4/ConversationComposer.tsx
@@ -587,6 +597,26 @@ nodes:
       - Project options wait for Git worktree relationships; same-name independent identities stay distinct.
       - Board and sidebar share one read projection and event subscription per Service and scope; Host owns task facts.
       - Source badges, conversation headers and details read only the selected task's persisted source; opening its validated external URL does not select or mutate a task.
+  - id: surface.agent-board-create
+    kind: ui-surface
+    label: Agent board entrypoints for work tasks and project conversations
+    aliases: [Agent 看板, 看板添加待办, 看板新建会话, 添加对话]
+    codeSeeds:
+      - file: packages/ui/src/agent-board/AgentBoardPanel.tsx
+        symbol: AgentBoardPanel
+      - file: packages/ui/src/agent-board/AgentBoardSourcePicker.tsx
+        symbol: AgentBoardSourcePicker
+      - file: packages/ui/src/agent-board/AgentBoardSessionEditor.tsx
+        symbol: AgentBoardSessionEditor
+      - file: packages/ui/src/hooks/useAgentBoardWorkTasks.ts
+        symbol: useAgentBoardWorkTasks
+      - file: packages/ui/src/store/agentBoardStore.ts
+        symbol: createAgentBoardStore
+    invariants:
+      - A successful Host task create returns the exact task ID for display inclusion; the board stores only visibility preferences.
+      - A new conversation is a draft until its first Host-backed send; no empty board card is fabricated.
+      - The board creates conversations in a modal through the original SessionPane composer; only an accepted exact session ID updates visibility and closes the modal.
+      - Work task creation uses only resolved executable local project scopes and the existing task editor.
   - id: surface.work-task-editor
     kind: ui-surface
     label: Work task shared composer draft, attachments and saved API or ACP configuration
@@ -861,6 +891,14 @@ edges:
   - from: capability.work-tasks
     to: surface.work-tasks-board
     type: renders-in
+    rank: must-inspect
+  - from: capability.work-tasks
+    to: surface.agent-board-create
+    type: creates-in
+    rank: must-inspect
+  - from: surface.agent-board-create
+    to: surface.work-task-editor
+    type: edits-through
     rank: must-inspect
   - from: surface.work-tasks-board
     to: surface.work-task-editor

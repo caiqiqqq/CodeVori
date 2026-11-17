@@ -5,6 +5,7 @@ import type { TabStoreState } from "@/store/tabStore.js";
 import { useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { usePaneLayoutStore } from "@/v4/paneLayoutStore.js";
 import { useWorkbenchGroupStore } from "@/v4/workbenchGroupStore.js";
+import { clearV4NewConversationDraftContent } from "@/v4/composer/composerDraftStore.js";
 import { useDesktopWindowView } from "./desktopWindowSession.js";
 
 export function useConversationWorkspaceActions({
@@ -65,7 +66,10 @@ export function useConversationWorkspaceActions({
       // “对话 +”是显式目标，不应被当前 split pane / workbench group 的项目绑定覆盖。
       useWorkbenchGroupStore.getState().deactivateActiveGroup();
       usePaneLayoutStore.getState().resetToPrimaryPane();
-      useZCodeSessionStore.getState().startDraft(path);
+      clearV4NewConversationDraftContent(path);
+      useZCodeSessionStore.getState().startDraft(path, undefined, undefined, {
+        resetComposerDraft: true,
+      });
     } catch {
       // handleResolveConversationWorkspace 已记录错误并保留当前 workspace。
     }
