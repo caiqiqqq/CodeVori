@@ -247,6 +247,53 @@ test("an input admitted during the idle check prevents an environment switch", a
   assert.equal((await guarded.getSessionEnvironment(scope)).environmentId, null);
 });
 
+for (const kind of ["acp", "api"] as const) {
+  test(`${kind} structural input guards project environment identity without accepting message fields in public operations`, async (t) => {
+    const { service, scope } = await fixture(t);
+    const target = { ...scope, kind };
+    const input = {
+      ...target,
+      remoteSessionId: "attachment-one",
+      id: scope.sessionId,
+      commandId: "input-one",
+      text: "Continue the conversation",
+      attachments: [],
+      workspaceFiles: [],
+      envelope: { sessionId: scope.sessionId, type: "sendText" },
+    };
+    const releaseFirst = service.beginInput(input);
+    const releaseSecond = service.beginInput({ ...input, remoteSessionId: "attachment-two" });
+    const selection = { ...target, environmentId: null, expectedRevision: 0 };
+    try {
+      await assert.rejects(service.setSessionEnvironment(selection), /environment.session-busy/);
+      await service.setSessionEnvironment({ ...selection, workspaceIdentity: "remote:other" });
+      await service.setSessionEnvironment({ ...selection, sessionId: "another-session" });
+      await service.setSessionEnvironment({
+        ...selection,
+        kind: kind === "acp" ? "api" : "acp",
+      });
+      releaseFirst();
+      releaseFirst();
+      await assert.rejects(service.setSessionEnvironment(selection), /environment.session-busy/);
+      await assert.rejects(service.getSessionEnvironment(input), /Unrecognized keys/);
+      await assert.rejects(
+        service.setSessionEnvironment({ ...input, environmentId: null, expectedRevision: 0 }),
+        /Unrecognized keys/,
+      );
+      for (const invalid of [
+        { ...input, workspacePath: " " },
+        { ...input, workspaceIdentity: " " },
+        { ...input, sessionId: " " },
+      ])
+        assert.throws(() => service.beginInput(invalid));
+    } finally {
+      releaseFirst();
+      releaseSecond();
+    }
+    assert.equal((await service.setSessionEnvironment(selection)).revision, 1);
+  });
+}
+
 test("environment MCP binds scope at registration and returns metadata without secrets", async (t) => {
   const { service, input, scope } = await fixture(t);
   const saved = await service.saveProjectEnvironment(input);
