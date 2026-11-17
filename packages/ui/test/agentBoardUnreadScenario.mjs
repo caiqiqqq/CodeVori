@@ -89,7 +89,7 @@ export async function exerciseAgentBoardUnread(page, artifacts) {
   assert.deepEqual(await order(), expected, "read acknowledgement does not reorder results");
   await page.evaluate(() => (window.__board.rejectReads = true));
   await acp.getByRole("button").first().click();
-  await page.getByText("操作失败，会话状态可能已变化，请刷新后重试", { exact: true }).waitFor();
+  await page.getByText("操作失败，任务状态可能已变化，请刷新后重试", { exact: true }).waitFor();
   await page.keyboard.press("Escape");
   await acp.getByText("未读", { exact: true }).waitFor();
   await page.evaluate(() => (window.__board.rejectReads = false));
@@ -162,7 +162,12 @@ export async function exerciseAgentBoardUnread(page, artifacts) {
     row.updatedAt++;
     f.notifyWork();
   });
-  await work.waitFor({ state: "hidden" });
+  await work.getByText("已完成", { exact: true }).waitFor();
+  assert.equal(
+    await work.locator("[data-board-unread]").count(),
+    0,
+    "acceptance retains the completed task without making its read result unread again",
+  );
   await page.evaluate(() => {
     const f = window.__board,
       row = f.workRows.find((row) => row.id === "unread-result");

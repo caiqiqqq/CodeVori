@@ -54,11 +54,11 @@ export function matchesBoardTracking(item: BoardTrackingTarget, tracking: BoardT
   if (tracking.excludedItems.includes(item.key)) return false;
   return (
     tracking.includedItems.includes(item.key) ||
-    (item.kind === "work-task"
-      ? tracking.workTasks
-      : item.workspacePurpose === "conversation"
-        ? tracking.standalone
-        : tracking.projects.includes(item.projectKey))
+    (item.workspacePurpose === "conversation"
+      ? tracking.standalone
+      : tracking.projects.includes(item.projectKey)) ||
+    // 旧待办跟踪开关保留读取兼容；新的项目选择对全部任务生效。
+    (item.kind === "work-task" && tracking.workTasks)
   );
 }
 export type BoardItem = {
@@ -103,7 +103,15 @@ export const boardEntityKey = (
   kind: BoardItem["kind"],
   id: string,
 ) => JSON.stringify([boardWorkspaceKey(scope), kind, id]);
-export function nativeBoardStatus(task: WindowHostControllerTaskListItem): BoardStatus {
+export function nativeBoardStatus(
+  task: Partial<Pick<WindowHostControllerTaskListItem, "liveStatus" | "pendingInteraction">> & {
+    activity?: Pick<
+      NonNullable<WindowHostControllerTaskListItem["activity"]>,
+      "phase" | "hasBackgroundWork" | "pendingInteractions"
+    > | null;
+    status?: string;
+  },
+): BoardStatus {
   const activity = task.activity;
   if (
     task.liveStatus === "waiting" ||
@@ -122,6 +130,7 @@ export function nativeBoardStatus(task: WindowHostControllerTaskListItem): Board
     return "running";
   // 主动中断的 liveStatus 也可能是 completed，需读原始 phase，避免又被归入进行中。
   return task.liveStatus === "error" ||
+    (!activity && !task.liveStatus && task.status === "error") ||
     activity?.phase === "error" ||
     activity?.phase === "completedInterrupted"
     ? "error"
@@ -155,7 +164,12 @@ export function workTaskBoardStatus(task: WorkTask): BoardStatus {
       return "idle";
   }
 }
-function boardOutcomeStatus(item: BoardItem): Exclude<BoardDisplayStatus, "staged"> {
+export type BoardTaskState = Pick<
+  BoardItem,
+  "key" | "status" | "updatedAt" | "archived" | "staged"
+> &
+  ({ kind: "native" | "acp" } | { kind: "work-task"; workTask: WorkTask });
+function boardOutcomeStatus(item: BoardTaskState): Exclude<BoardDisplayStatus, "staged"> {
   // 正常执行结束即完成；待办 review 只保留原验收操作，不再把结束的会话显示为进行中。
   if (item.status === "completed" || (item.kind === "work-task" && item.status === "review"))
     return "completed";
@@ -167,10 +181,10 @@ export type BoardStagedItems = Record<
   string,
   { updatedAt: number; outcome: "completed" | "error" }
 >;
-export function canStageBoardItem(item: BoardItem) {
+export function canStageBoardItem(item: BoardTaskState) {
   return !item.archived && boardOutcomeStatus(item) !== "running";
 }
-export function isBoardItemStaged(item: BoardItem, stagedItems: BoardStagedItems) {
+export function isBoardItemStaged(item: BoardTaskState, stagedItems: BoardStagedItems) {
   const marker = stagedItems[item.key];
   return Boolean(
     marker &&
@@ -179,10 +193,10 @@ export function isBoardItemStaged(item: BoardItem, stagedItems: BoardStagedItems
     boardOutcomeStatus(item) === marker.outcome,
   );
 }
-export function boardDisplayStatus(item: BoardItem): BoardDisplayStatus {
+export function boardDisplayStatus(item: BoardTaskState): BoardDisplayStatus {
   return item.staged && canStageBoardItem(item) ? "staged" : boardOutcomeStatus(item);
 }
-export function boardStatusIndicator(item: BoardItem): BoardDisplayStatus | "waiting" {
+export function boardStatusIndicator(item: BoardTaskState): BoardDisplayStatus | "waiting" {
   const status = boardDisplayStatus(item);
   // 分组会将等待合并到进行中；卡片需保留等待事实，避免把排队或等用户操作误标为正在执行。
   return status === "running" &&

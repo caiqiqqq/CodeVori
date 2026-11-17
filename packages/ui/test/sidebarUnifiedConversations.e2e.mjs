@@ -89,6 +89,7 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={{
         deviceScaleFactor: 1,
       });
       page.setDefaultTimeout(15000);
+      page.setDefaultNavigationTimeout(60000);
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
       for (const [path, symbol] of [
@@ -180,41 +181,29 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={{
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       await page.screenshot({ path: join(output, `sidebar-${width}-${theme}.png`) });
 
-      const editor = page.getByTestId("work-task-editor");
-      await page.evaluate(() => window.__unified.setWorkspacePath("/fixture/worktree"));
-      await page.getByTestId("work-task-sidebar-create").click();
-      await editor.waitFor().catch((error) => {
-        throw new Error(errors.join("\n") || error.message);
-      });
-      assert.match(await editor.getByTestId("work-task-editor-project").innerText(), /Project/);
-      await editor.getByTestId("work-task-prompt").fill("Discard this draft");
-      await editor.getByRole("button", { name: "取消", exact: true }).click();
-      await editor.waitFor({ state: "detached" });
-      assert.deepEqual(await page.evaluate(() => window.__unified.calls), []);
-      await page.getByTestId("work-task-sidebar-create").click();
-      await editor.getByTestId("work-task-prompt").waitFor();
-      assert.equal((await editor.getByTestId("work-task-prompt").innerText()).trim(), "");
-      await editor.getByTestId("work-task-editor-project").click();
-      await page.getByRole("option", { name: "Other", exact: true }).click();
-      await editor.getByText("/fixture/other", { exact: true }).waitFor();
-      await editor.getByTestId("work-task-prompt").fill("Create from the unified sidebar");
-      await page.screenshot({ path: join(output, `create-${width}-${theme}.png`) });
-      await editor.getByTestId("work-task-save").click();
-      await editor.waitFor({ state: "detached" }).catch((error) => {
-        throw new Error(errors.join("\n") || error.message);
-      });
-      await page
-        .getByTestId("v4-row-1")
-        .getByText("Create from the unified sidebar", { exact: true })
-        .waitFor();
-      assert.equal(await row("created-exact-id").locator('[data-selected="true"]').count(), 1);
-      const calls = await page.evaluate(() => window.__unified.calls);
-      assert.equal(calls.length, 1);
-      assert.equal(calls[0].op, "create");
-      assert.equal(calls[0].workspacePath, "/fixture/other");
-      assert.equal(calls[0].prompt, "Create from the unified sidebar");
-      await close();
-
+      assert.equal(await page.getByTestId("work-task-sidebar-create").count(), 0);
+      assert.equal(await page.getByRole("button", { name: "新建待办", exact: true }).count(), 0);
+      const nativeRow = page.getByTestId("task-item-Ordinary API");
+      assert.equal(
+        await nativeRow.locator('[data-conversation-task-status="completed"]').count(),
+        1,
+      );
+      assert.equal(
+        await page
+          .locator(
+            '[data-acp-session-id="ordinary-acp"] [data-conversation-task-status="completed"]',
+          )
+          .count(),
+        1,
+      );
+      assert.equal(
+        await row("Completed").locator('[data-conversation-task-status="completed"]').count(),
+        1,
+      );
+      assert.equal(
+        await row("Canceled").locator('[data-conversation-task-status="error"]').count(),
+        1,
+      );
       await page.evaluate(() => window.__unified.setMode("grouped"));
       await row("API task").waitFor();
       await page.getByText("Saved group", { exact: true }).waitFor();
@@ -236,7 +225,12 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={{
         "saving visible group operations must preserve the hidden bound member",
       );
       await page.evaluate(() => window.__unified.setLocale("en-US"));
-      await page.getByRole("button", { name: "New to-do", exact: true }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "New to-do", exact: true }).count(), 0);
+      await page.getByTestId("task-new-button").waitFor();
+      assert.equal(
+        await page.getByTestId("task-new-button").getAttribute("aria-label"),
+        "New task",
+      );
       await row("Canceled").click();
       await page.getByRole("button", { name: "Close task view", exact: true }).waitFor();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -263,7 +257,7 @@ createRoot(document.getElementById('root')).render(<PlatformProvider platform={{
       assert.deepEqual(errors, []);
       await page.close();
       console.log(
-        `PASS ${width}px ${theme}: mixed rows, exact binding, direct pane, lifecycle, archive, scoped create/cancel, group persistence and English`,
+        `PASS ${width}px ${theme}: mixed rows, exact binding, direct pane, lifecycle, archive, unified task status, group persistence and English`,
       );
     }
 } finally {

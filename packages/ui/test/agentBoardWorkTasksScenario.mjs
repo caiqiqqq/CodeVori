@@ -4,6 +4,14 @@ export async function exerciseAgentBoardWorkTasks(page, { manage, save, pane, ar
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.evaluate(() => {
     const f = window.__board;
+    f.store.getState().setTracking({
+      mode: "all",
+      projects: [],
+      standalone: false,
+      workTasks: false,
+      includedItems: [],
+      excludedItems: [],
+    });
     for (const [i, status] of ["review", "awaiting_input", "todo"].entries())
       f.workRows.push({
         workspacePath: "/fixture/project-3",
@@ -39,7 +47,7 @@ export async function exerciseAgentBoardWorkTasks(page, { manage, save, pane, ar
       f.workRows.push({
         ...f.workRows[0],
         id: "completed-" + archived,
-        title: "Completed hidden " + archived,
+        title: "Completed task " + archived,
         status: "done",
         archived,
       });
@@ -47,40 +55,42 @@ export async function exerciseAgentBoardWorkTasks(page, { manage, save, pane, ar
   });
   await page.getByRole("heading", { name: "Tracked work 0", exact: true }).waitFor();
   await manage();
-  const completedCandidates = page.getByRole("checkbox", { name: /Completed hidden/ });
+  await page
+    .getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true })
+    .fill("Completed task");
+  const completedCandidates = page.getByRole("checkbox", { name: /Completed task/ });
   assert.equal(
     await completedCandidates.count(),
-    0,
-    "completed and archived completed tasks are hidden from tracking candidates",
+    1,
+    "completed tasks remain available while archived tasks leave active tracking",
   );
   const expectedCandidates = await page.evaluate(
     () =>
       window.__board.native.filter((item) => !item.archived).length +
       window.__board.acp.filter((item) => !item.archived).length +
-      3,
+      4,
   );
   await page.getByText("当前范围包含 " + expectedCandidates + " 项", { exact: true }).waitFor();
   await page
     .getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true })
-    .fill("Completed hidden");
-  assert.equal(await completedCandidates.count(), 0, "search must not reveal completed tasks");
+    .fill("Completed task");
+  assert.equal(await completedCandidates.count(), 1, "search includes completed tasks");
   await page.getByRole("radio", { name: "自定义显示", exact: true }).check();
   await page
     .getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true })
     .fill("Tracked work");
   const workGroup = page
     .locator("details")
-    .filter({ has: page.locator("summary", { hasText: /^待办任务/ }) });
-  assert.match(await workGroup.locator("summary").textContent(), /待办任务\s*3/);
-  await workGroup.getByRole("checkbox").first().check();
+    .filter({ has: page.locator("summary", { hasText: /^Project 3/ }) });
+  assert.match(await workGroup.locator("summary").textContent(), /Project 3\s*3/);
+  await page.getByRole("checkbox", { name: /Tracked work 0/ }).check();
+  await page.getByRole("checkbox", { name: /Tracked work 1/ }).check();
   await page.getByRole("checkbox", { name: /Tracked work 2/ }).uncheck();
   await save();
-  await page.getByRole("button", { name: "所有项目", exact: true }).click();
-  await page.getByRole("button", { name: "待办任务", exact: true }).click();
   assert.equal(
     await page.locator("[data-board-card]").count(),
     2,
-    "completed work tasks are excluded from the entire board projection",
+    "individual selection keeps only the selected project tasks",
   );
   let releaseDetailsModule;
   let detailsModuleRequested;
@@ -129,11 +139,12 @@ export async function exerciseAgentBoardWorkTasks(page, { manage, save, pane, ar
     await page.evaluate(() => window.__board.commands.at(-1).kind),
     "work-task-complete",
   );
+  await page.keyboard.press("Escape");
   await page.getByTestId("work-task-content").waitFor({ state: "hidden" });
   assert.equal(
     await page.getByRole("heading", { name: "Tracked work 0", exact: true }).count(),
-    0,
-    "successful acceptance removes the card and closes its details",
+    1,
+    "successful acceptance keeps the completed task visible",
   );
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: /Tracked work 1/ }).click();
@@ -169,16 +180,17 @@ export async function exerciseAgentBoardWorkTasks(page, { manage, save, pane, ar
     window.__board.workRows[1].status = "done";
     window.__board.notifyWork();
   });
-  await page.getByRole("button", { name: /Tracked work 1/ }).waitFor({ state: "hidden" });
+  await page.getByRole("tab", { name: /^全部/ }).click();
+  await page.getByRole("heading", { name: "Tracked work 1", exact: true }).waitFor();
   await manage();
   await page
     .getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true })
     .fill("Tracked work");
   assert.equal(
     await page.getByRole("checkbox", { name: /Tracked work [01]/ }).count(),
-    0,
-    "newly completed tasks leave the tracking candidates",
+    2,
+    "newly completed tasks remain in the shared tracking candidates",
   );
-  assert.match(await workGroup.locator("summary").textContent(), /待办任务\s*1/);
+  assert.match(await workGroup.locator("summary").textContent(), /Project 3\s*3/);
   await page.getByRole("button", { name: "取消", exact: true }).click();
 }

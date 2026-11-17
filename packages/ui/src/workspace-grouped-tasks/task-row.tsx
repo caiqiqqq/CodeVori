@@ -35,6 +35,7 @@ import { useOptionalTabStore } from "@/store/TabStoreProvider.js";
 import { isWorkspaceReadOnly } from "@/store/tabStore.js";
 import { TaskTitleOverflowText } from "@/components/TaskTitleOverflowText.js";
 import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
+import { ConversationTaskStatus } from "@/components/ConversationTaskStatus.js";
 
 function GroupedTaskRowComponent({
   task,
@@ -174,6 +175,7 @@ function GroupedTaskRowComponent({
           {taskTitle}
         </TaskTitleOverflowText>
         <span className="ml-auto flex shrink-0 items-center gap-1.5 text-ui-sm text-foreground-subtle">
+          <ConversationTaskStatus source={{ kind: "native", item: task }} />
           {task.pendingInteraction ? (
             <TaskInteractionBadge
               interaction={task.pendingInteraction}
@@ -344,6 +346,7 @@ function GroupedTaskRowComponent({
           {taskTitle}
         </TaskTitleOverflowText>
         <span className="ml-auto flex shrink-0 items-center gap-1.5 text-ui-sm text-foreground-subtle">
+          <ConversationTaskStatus source={{ kind: "native", item: task }} />
           {task.pendingInteraction ? (
             <TaskInteractionBadge
               interaction={task.pendingInteraction}

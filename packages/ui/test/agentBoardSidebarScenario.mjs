@@ -93,37 +93,37 @@ export async function exerciseAgentBoardSidebar(page, artifacts) {
       Object.keys(expected).length,
     );
   };
-  await expectCounts("所有项目", { running: 2, completed: 2, staged: 1, error: 2 });
-  await expectCounts(longName, { running: 1, completed: 1, staged: 1, error: 1 });
+  await expectCounts("所有项目", { running: 2, completed: 3, staged: 1, error: 2 });
+  await expectCounts(longName, { running: 1, completed: 2, staged: 1, error: 1 });
   await expectCounts("独立任务", { completed: 1, error: 1 });
-  await expectCounts("待办任务", { running: 1, staged: 1, error: 1 });
+  assert.equal(await row("待办任务").count(), 0);
   await expectCounts("Project 2", {});
   assert.equal(await row("Project 2").locator("[data-board-sidebar-counts]").count(), 0);
   const iconNames = ["play", "circle-check", "inbox", "triangle-alert"];
   for (const name of iconNames)
     assert.equal(await row(longName).locator(`svg.lucide-${name}`).count(), 1);
-  assert.equal(await row("待办任务").locator("svg.lucide-list-todo").count(), 1);
+
   assert.match(
     await row(longName).getAttribute("aria-description"),
-    /进行中 1.*已完成 1.*暂存 1.*失败 1/,
+    /进行中 1.*已完成 2.*暂存 1.*失败 1/,
   );
   const before = await page.evaluate(() => window.__board.commands.length);
-  await row("待办任务").click();
-  assert.equal(await row("待办任务").getAttribute("aria-pressed"), "true");
+  await row(longName).click();
+  assert.equal(await row(longName).getAttribute("aria-pressed"), "true");
   const main = page.locator("main");
   await main.getByRole("tab", { name: /^失败/ }).click();
-  await main.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("no matching result");
-  await expectCounts(longName, { running: 1, completed: 1, staged: 1, error: 1 });
-  await main.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("");
+  await main.getByRole("textbox", { name: "搜索任务…", exact: true }).fill("no matching result");
+  await expectCounts(longName, { running: 1, completed: 2, staged: 1, error: 1 });
+  await main.getByRole("textbox", { name: "搜索任务…", exact: true }).fill("");
   await row("所有项目").click();
   await main.getByRole("tab", { name: /^全部/ }).click();
   const acp = main
     .locator("article")
     .filter({ has: page.getByRole("heading", { name: "Remote ACP 0", exact: true }) });
   await acp.getByRole("button", { name: "暂存", exact: true }).click();
-  await expectCounts(longName, { running: 1, staged: 2, error: 1 });
+  await expectCounts(longName, { running: 1, completed: 1, staged: 2, error: 1 });
   await acp.getByRole("button", { name: "移出暂存", exact: true }).click();
-  await expectCounts(longName, { running: 1, completed: 1, staged: 1, error: 1 });
+  await expectCounts(longName, { running: 1, completed: 2, staged: 1, error: 1 });
   assert.equal(await page.evaluate(() => window.__board.commands.length), before);
   for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {
     await page.setViewportSize({ width: 1600, height: 1000 });
@@ -155,7 +155,7 @@ export async function exerciseAgentBoardSidebar(page, artifacts) {
     f.updateAcp(1, { status: "running" });
     f.update(1, { archived: true });
   });
-  await expectCounts(longName, { completed: 2, staged: 1, error: 1 });
+  await expectCounts(longName, { completed: 3, staged: 1, error: 1 });
   await expectCounts("独立任务", { running: 1 });
   await page.evaluate(() =>
     window.__board.store.getState().setTracking({
@@ -167,9 +167,9 @@ export async function exerciseAgentBoardSidebar(page, artifacts) {
       excludedItems: [],
     }),
   );
-  await expectCounts("所有项目", { running: 1, staged: 1, error: 1 });
+  await expectCounts("所有项目", { running: 1, completed: 1, staged: 1, error: 1 });
   await expectCounts("独立任务", {});
-  await expectCounts(longName, { staged: 1, error: 1 });
+  await expectCounts(longName, { completed: 1, staged: 1, error: 1 });
   await page.evaluate(() => {
     const f = window.__board;
     const task = f.workRows.find((task) => task.id === "sidebar-staged");
@@ -177,25 +177,25 @@ export async function exerciseAgentBoardSidebar(page, artifacts) {
     task.forgeWriteback = { commentState: "pending", closeState: "done" };
     f.notifyWork();
   });
-  await expectCounts("待办任务", { running: 1, staged: 1, error: 1 });
+  assert.equal(await row("待办任务").count(), 0);
   await page.evaluate(() => {
     const f = window.__board;
     f.workRows.find((task) => task.id === "sidebar-staged").forgeWriteback.commentState = "done";
     f.notifyWork();
   });
-  await expectCounts("所有项目", { running: 1, error: 1 });
-  await expectCounts("待办任务", { running: 1, error: 1 });
-  await expectCounts(longName, { error: 1 });
+  await expectCounts("所有项目", { running: 1, completed: 1, staged: 1, error: 1 });
+  assert.equal(await row("待办任务").count(), 0);
+  await expectCounts(longName, { completed: 1, staged: 1, error: 1 });
   await page.setViewportSize({ width: 1600, height: 1000 });
   for (const label of ["全部", "已完成", "暂存", "归档"]) {
     await main.getByRole("tab", { name: new RegExp("^" + label + "\\s*\\d+$") }).click();
     assert.equal(
       await main.getByRole("heading", { name: "sidebar-staged", exact: true }).count(),
-      0,
+      label === "全部" || label === "暂存" ? 1 : 0,
     );
     assert.equal(
       await main.getByRole("heading", { name: "sidebar-completed", exact: true }).count(),
-      0,
+      label === "全部" || label === "已完成" ? 1 : 0,
     );
   }
   await main.getByRole("tab", { name: /^全部/ }).click();
@@ -206,7 +206,7 @@ export async function exerciseAgentBoardSidebar(page, artifacts) {
     task.updatedAt++;
     f.notifyWork();
   });
-  await expectCounts("所有项目", { running: 2, error: 1 });
+  await expectCounts("所有项目", { running: 2, completed: 1, error: 1 });
   await main.getByRole("heading", { name: "sidebar-staged", exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.__board.commands.length), before);
   await page.evaluate(() =>
@@ -220,6 +220,6 @@ export async function exerciseAgentBoardSidebar(page, artifacts) {
     }),
   );
   await expectCounts("所有项目", {});
-  await expectCounts("待办任务", {});
+  assert.equal(await row("待办任务").count(), 0);
   assert.equal(await sidebar.locator("[data-board-sidebar-counts]").count(), 0);
 }

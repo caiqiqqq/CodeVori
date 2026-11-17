@@ -5,6 +5,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
 import { WorktreeConversationIndicator } from "@/components/WorktreeConversationIndicator.js";
 import { TaskRowActionButton } from "@/workspace-grouped-tasks/task-row-action-button.js";
+import { ConversationTaskStatus } from "./ConversationTaskStatus.js";
 
 /** 复用原生右侧置顶/归档控件；确认状态和 scoped Host 动作由会话行唯一持有。 */
 export function AcpTaskRowContent({
@@ -41,8 +42,13 @@ export function AcpTaskRowContent({
         variant === "timeline" ? "flex-col gap-0.5" : "items-center gap-2",
       )}
     >
-      <span className="min-w-0 flex-1 truncate text-foreground" title={session.title}>
-        {session.title}
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="min-w-0 flex-1 truncate text-foreground" title={session.title}>
+          {session.title}
+        </span>
+        {variant === "timeline" ? (
+          <ConversationTaskStatus source={{ kind: "acp", item: session }} />
+        ) : null}
       </span>
       <span
         className={cn(
@@ -51,6 +57,9 @@ export function AcpTaskRowContent({
           variant === "timeline" ? "justify-end text-ui-base" : "shrink-0 text-ui-sm",
         )}
       >
+        {variant !== "timeline" ? (
+          <ConversationTaskStatus source={{ kind: "acp", item: session }} />
+        ) : null}
         {showPin || showArchive ? (
           <span data-task-row-actions="true" className="flex shrink-0 items-center gap-0.5">
             {showPin ? (

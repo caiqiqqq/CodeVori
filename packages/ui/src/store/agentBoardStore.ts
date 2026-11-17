@@ -12,6 +12,7 @@ import {
   type BoardDisplayStatus,
   type BoardTrackingTarget,
   type BoardItem,
+  type BoardTaskState,
   type BoardStagedItems,
   type BoardTracking,
   type BoardView,
@@ -29,13 +30,13 @@ interface Preferences {
   agent: string;
   search: string;
   tracking: BoardTracking;
-  category: "all" | "standalone" | "work-tasks";
+  category: "all" | "standalone";
 }
 interface BoardStore extends Preferences {
   setStatusOrder(order: readonly BoardDisplayStatus[]): void;
   pickerOpen: boolean;
   markWorkTaskResultRead(item: BoardItem): void;
-  setItemStaged(item: BoardItem, staged: boolean): void;
+  setItemStaged(item: BoardTaskState, staged: boolean): void;
   reconcileStagedItems(items: BoardItem[]): void;
   setPickerOpen(open: boolean): void;
   selectProject(key: string | null): void;
@@ -48,10 +49,8 @@ interface BoardStore extends Preferences {
   revealItem(item: BoardItem): void;
   setTracking(tracking: BoardTracking): void;
   includeItem(item: BoardTrackingTarget): void;
-  revealCreatedWorkTask(item: BoardTrackingTarget): void;
   revealCreatedSession(item: BoardTrackingTarget): void;
   selectStandalone(): void;
-  selectWorkTasks(): void;
 }
 const key = "zcode-agent-board:v1";
 const layoutVersion = 2;
@@ -160,7 +159,8 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         agent: v.agent,
         search: v.search,
         tracking: readTracking(v.tracking),
-        category: v.category === "standalone" || v.category === "work-tasks" ? v.category : "all",
+        // 所有会话共用任务分类；旧待办专属入口迁移为全部，保留其它偏好。
+        category: v.category === "standalone" ? v.category : "all",
         pinnedProjects: v.pinnedProjects
           ? [...new Set<string>(v.pinnedProjects)].slice(0, 6)
           : null,
@@ -266,7 +266,6 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
       setPickerOpen: (pickerOpen) => set({ pickerOpen }),
       selectProject: (project) =>
         save({ project, category: "all", ...(project === null ? { group: "status" } : {}) }),
-      selectWorkTasks: () => save({ project: null, category: "work-tasks" }),
       selectStandalone: () => save({ project: null, category: "standalone" }),
       setTracking: (tracking) => save({ tracking: readTracking(tracking) }),
       includeItem: (item) => {
@@ -281,7 +280,6 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
           },
         });
       },
-      revealCreatedWorkTask: (item) => revealCreated(item),
       revealCreatedSession: (item) => revealCreated(item),
       toggleProject: (project, defaultKeys = [], knownKeys) => {
         const saved = get().pinnedProjects ?? defaultKeys;

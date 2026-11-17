@@ -1,4 +1,4 @@
-// Real board and task editor with synthetic Host writes; no Agent process is started.
+// Unified task creation through the real board/composer and synthetic Host; no Agent process is started.
 import assert from "node:assert/strict";
 import { writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -73,41 +73,9 @@ services.workTaskService.create=async input=>{if(window.__board.failCreate){wind
     store.setSearch("hidden");
     store.setView("failed");
   });
-  await page.getByTestId("agent-board-new-work-task").click();
-  const editor = page.getByTestId("work-task-editor");
-  await editor.waitFor();
-  await editor.getByTestId("work-task-prompt").fill("Created from Agent board");
-  await page.evaluate(() => (window.__board.failCreate = true));
-  await editor.getByTestId("work-task-save").click();
-  await editor.getByText("Synthetic create failed", { exact: true }).waitFor();
-  assert.equal(
-    await editor.getByTestId("work-task-prompt").innerText(),
-    "Created from Agent board",
-  );
-  assert.equal(await page.evaluate(() => window.__board.workRows.length), 0);
-  await editor.getByTestId("work-task-save").click();
-  await editor.waitFor({ state: "detached" });
-  await page.getByRole("heading", { name: "Created from Agent board", exact: true }).waitFor();
-  assert.deepEqual(
-    await page.evaluate(() => {
-      const { project, category } = window.__board.store.getState();
-      return { project, category };
-    }),
-    { project: "/fixture/project-3", category: "all" },
-  );
-  await page.getByRole("button", { name: "Project 3", exact: true }).waitFor();
-  assert.equal(await page.evaluate(() => window.__board.workRows[0].status), "todo");
-  assert.equal(
-    await page.evaluate(
-      () => window.__board.commands.filter((row) => row.kind === "work-task-create").length,
-    ),
-    1,
-  );
-  assert.equal(
-    await page.evaluate(() => window.__board.store.getState().tracking.includedItems.length),
-    1,
-  );
-  await page.getByRole("button", { name: "新建会话", exact: true }).click();
+  assert.equal(await page.getByTestId("agent-board-new-work-task").count(), 0);
+  assert.equal(await page.getByRole("button", { name: "待办任务", exact: true }).count(), 0);
+  await page.getByRole("button", { name: "新建任务", exact: true }).click();
   const sessionEditor = page.getByTestId("agent-board-session-editor");
   await sessionEditor.waitFor();
   await sessionEditor.getByTestId("agent-board-session-project").waitFor();
@@ -164,7 +132,13 @@ services.workTaskService.create=async input=>{if(window.__board.failCreate){wind
     await page.evaluate(() => window.__board.store.getState().tracking.projects.length),
     0,
   );
-  await page.getByRole("heading", { name: "Created from Agent board", exact: true }).waitFor();
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const { project, category } = window.__board.store.getState();
+      return { project, category };
+    }),
+    { project: "/fixture/project-3", category: "all" },
+  );
   await page.getByTestId("agent-board-new-session").click();
   const remoteEditor = page.getByTestId("agent-board-session-editor");
   await remoteEditor.getByTestId("agent-board-session-project").click();
@@ -290,15 +264,23 @@ services.workTaskService.create=async input=>{if(window.__board.failCreate){wind
     [],
   );
   await page.setViewportSize({ width: 390, height: 844 });
-  assert.ok(await page.getByTestId("agent-board-new-work-task").isVisible());
-  assert.ok(await page.getByRole("button", { name: "新建会话", exact: true }).isVisible());
+  assert.equal(await page.getByTestId("agent-board-new-work-task").count(), 0);
+  assert.ok(await page.getByRole("button", { name: "新建任务", exact: true }).isVisible());
   await page.evaluate(() => window.__board.store.getState().selectProject(null));
   await page.getByRole("button", { name: "所有项目", exact: true }).waitFor();
-  await page.getByTestId("agent-board-new-work-task").click();
-  const allProjectsEditor = page.getByTestId("work-task-editor");
-  await allProjectsEditor.getByTestId("work-task-prompt").fill("Keep all projects selected");
-  await allProjectsEditor.getByTestId("work-task-save").click();
+  const beforeCancel = await page.evaluate(() => window.__board.commands.length);
+  await page.getByRole("button", { name: "新建任务", exact: true }).click();
+  const allProjectsEditor = page.getByTestId("agent-board-session-editor");
+  await allProjectsEditor.getByTestId("v4-composer-input").fill("Discard unified draft");
+  await allProjectsEditor.getByRole("button", { name: "取消", exact: true }).click();
   await allProjectsEditor.waitFor({ state: "detached" });
+  assert.equal(await page.evaluate(() => window.__board.commands.length), beforeCancel);
+  assert.equal(
+    await page.evaluate(
+      () => window.__board.commands.filter((row) => row.kind === "work-task-create").length,
+    ),
+    0,
+  );
   await page.getByRole("button", { name: "所有项目", exact: true }).waitFor();
   assert.deepEqual(
     await page.evaluate(() => {
@@ -308,7 +290,9 @@ services.workTaskService.create=async input=>{if(window.__board.failCreate){wind
     { project: null, category: "all" },
   );
   assert.deepEqual(errors, []);
-  console.log("PASS: board work task create/failure/reveal and inline session draft");
+  console.log(
+    "PASS: unified task create, scoped branch/worktree admission, preserved selection and canceled draft",
+  );
 } catch (error) {
   console.error("Board page errors:", errors, error);
   throw error;

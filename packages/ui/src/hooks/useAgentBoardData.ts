@@ -1,4 +1,8 @@
 import { useAgentBoardWorkTasks } from "./useAgentBoardWorkTasks.js";
+import {
+  sidebarConversationKey,
+  workTaskBoundConversationKeys,
+} from "@/lib/sidebarConversationRows.js";
 import { useCallback, useMemo } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
@@ -83,6 +87,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
     );
     const tabByScope = new Map(workspaceTabs.map((tab) => [boardWorkspaceKey(tab), tab]));
     const rows = new Map<string, BoardItem>();
+    const boundKeys = workTaskBoundConversationKeys(workTasks.board?.tasks ?? []);
     // 原收藏会话仍属于全部列表；仅移除看板收藏操作，不能遗漏 pinned 来源的成员。
     for (const [list, isArchived] of [
       [timeline.items, false],
@@ -90,7 +95,11 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
       [archived.items, true],
     ] as const) {
       for (const task of list) {
-        if (task.deletionState) continue;
+        if (
+          task.deletionState ||
+          boundKeys.has(sidebarConversationKey({ ...task, kind: "native", id: task.taskId }))
+        )
+          continue;
         const scope = boardWorkspaceKey(task);
         const key = boardEntityKey(task, "native", task.taskId);
         rows.set(key, {
@@ -117,7 +126,11 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
       }
     }
     for (const session of acp.rows) {
-      if (session.deletionState) continue;
+      if (
+        session.deletionState ||
+        boundKeys.has(sidebarConversationKey({ ...session, kind: "acp" }))
+      )
+        continue;
       const scope = boardWorkspaceKey(session);
       const key = boardEntityKey(session, "acp", session.id);
       rows.set(key, {
@@ -144,8 +157,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
     }
     for (const workTask of workTasks.board?.tasks ?? []) {
       const status = workTaskBoardStatus(workTask);
-      // 正式完成的待办退出看板公共投影，卡片和计数同步隐藏；待验收及未完成回执仍保留。
-      if (status === "completed") continue;
+      // 所有任务保留相同的完成展示；绑定会话已在上方按准确地址去重。
       const scope = boardWorkspaceKey(workTask);
       const key = boardEntityKey(workTask, "work-task", workTask.id);
       rows.set(key, {
@@ -156,6 +168,7 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
         title: workTask.title,
         workspacePath: workTask.workspacePath,
         workspaceIdentity: workTask.workspaceIdentity,
+        workspacePurpose: tabByScope.get(scope)?.workspacePurpose,
         remoteSessionId: workTask.remoteSessionId,
         updatedAt: workTask.updatedAt,
         startedAt: workTask.startedAt ?? workTask.createdAt,

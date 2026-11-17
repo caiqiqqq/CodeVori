@@ -133,7 +133,7 @@ import {
 import { WorkspacePurposeSection } from "@/WorkspaceSidebar/WorkspacePurposeSection.js";
 import {
   WorkTaskSidebarProvider,
-  WorkTaskSidebarCreateButton,
+  WorkTaskSidebarReadError,
 } from "@/work-tasks/WorkTaskSidebarContext.js";
 import { cn } from "@/components/lib/utils.js";
 import {
@@ -443,15 +443,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     () => projectGroups.filter((group) => !group.isLinkedWorktree).map((group) => group.tab),
     [projectGroups],
   );
-  // 当前工作树的新待办仍属于其主项目，不能回退到列表中的另一个项目。
-  const workTaskCreationScope = projectGroups.find((group) =>
-    group.workspaceTabs.some(
-      (tab) =>
-        buildTaskWorkspaceKey(tab.workspacePath, tab.workspaceIdentity) ===
-          buildTaskWorkspaceKey(workspacePath, workspaceIdentity) &&
-        (tab.remoteSessionId ?? "") === (workspaceRemoteSessionId ?? ""),
-    ),
-  )?.tab;
   const worktreeWorkspaceKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const group of projectGroups) {
@@ -1330,17 +1321,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   );
 
   return (
-    <WorkTaskSidebarProvider
-      workspaceTabs={workspaceTabs}
-      active={workTasksActive}
-      currentScope={
-        workTaskCreationScope ?? {
-          workspacePath,
-          workspaceIdentity,
-          remoteSessionId: workspaceRemoteSessionId,
-        }
-      }
-    >
+    <WorkTaskSidebarProvider workspaceTabs={workspaceTabs} active={workTasksActive}>
       <aside
         data-testid={TID_SIDEBAR}
         // 这里用设计系统的结构面 token 固定侧栏层级，避免不同合成器把左侧容器混成异常灰块。
@@ -1388,7 +1369,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                 <LayoutGrid className="size-4" />
                 {intl.formatMessage({ id: "agentBoard.title" })}
               </Button>
-              <WorkTaskSidebarCreateButton />
+              <WorkTaskSidebarReadError />
               <RepositorySidebarButton
                 projects={workTaskProjects}
                 projectsLoading={projectGroupsLoading}

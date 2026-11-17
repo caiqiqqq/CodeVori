@@ -115,9 +115,6 @@ export function AgentBoardCard({
               ) : null}
               <span className="truncate">{isConversation ? t("conversations") : projectName}</span>
             </Badge>
-            {item.kind === "work-task" && !isList ? (
-              <span className="shrink-0 text-ui-xs">{t("workTasks")}</span>
-            ) : null}
           </div>
           <span
             className={
