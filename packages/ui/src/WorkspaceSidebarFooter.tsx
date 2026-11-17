@@ -96,6 +96,7 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
   workspaceRemoteSessionId,
   activeTaskId,
   isDesktop = false,
+  layout = "footer",
   className,
 }: {
   theme: Theme;
@@ -113,6 +114,7 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
   workspaceRemoteSessionId?: string;
   activeTaskId?: string | null;
   isDesktop?: boolean;
+  layout?: "footer" | "rail";
   className?: string;
 }) {
   const { intl } = useZCodeIntl();
@@ -207,8 +209,21 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
 
   return (
     // footer 被 Settings 复用，页面专属边距由调用方传入，避免修改共享默认样式。
-    <footer className={cn("flex shrink-0 flex-col gap-2.5 px-4 pt-2 pb-4", className)}>
-      <div className={cn("flex min-w-0 gap-2", !showProfileMenu && "justify-end")}>
+    <footer
+      data-sidebar-utility-rail={layout === "rail" ? "true" : undefined}
+      className={cn(
+        "flex shrink-0 flex-col gap-2.5 pt-2 pb-4",
+        layout === "rail" ? "justify-end border-r border-border px-1" : "px-4",
+        className,
+      )}
+    >
+      <div
+        className={cn(
+          "flex min-w-0 gap-2",
+          !showProfileMenu && "justify-end",
+          layout === "rail" && "flex-col items-center",
+        )}
+      >
         {showProfileMenu ? (
           <DropdownMenu open={profileMenuOpen} onOpenChange={setProfileMenuOpen}>
             <DropdownMenuTrigger asChild>
@@ -348,7 +363,7 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className={cn("flex shrink-0 items-center gap-1.5", layout === "rail" && "flex-col")}>
           {isDesktop && workspacePath ? (
             <WorkspaceWebRemoteControlTrigger
               workspacePath={workspacePath}
