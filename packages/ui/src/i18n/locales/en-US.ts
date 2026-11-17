@@ -2602,6 +2602,8 @@ const enUS: Record<string, string> = {
   "workspaceSidebar.sortByUpdated": "Updated",
   "workspaceSidebar.expandAllGroups": "Expand all",
   "workspaceSidebar.collapseAllGroups": "Collapse all",
+  "workspaceSidebar.expandProject": "Expand {project}",
+  "workspaceSidebar.collapseProject": "Collapse {project}",
   "workspaceSidebar.searchTasks": "Search tasks",
   "workspaceSidebar.searchTasksPlaceholder": "Search tasks...",
   "workspaceSidebar.searchArchivedTasksPlaceholder": "Search archived tasks...",

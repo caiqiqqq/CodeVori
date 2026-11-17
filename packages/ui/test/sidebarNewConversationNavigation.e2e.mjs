@@ -34,6 +34,7 @@ try {
     import {StoreProvider} from '../../../ui/src/store/StoreProvider.tsx';
     import {TabStoreProvider,useTabStore,useTabStoreApi} from '../../../ui/src/store/TabStoreProvider.tsx';
     import {useZCodeSessionStore} from '../../../ui/src/store/zcodeSessionStore.ts';
+    import {agentBoardStore} from '../../../ui/src/store/agentBoardStore.ts';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
     import {persistSidebarTaskPreferences} from '../../../ui/src/lib/sidebarTaskPreferences.ts';
@@ -67,7 +68,7 @@ try {
         setView(view);setDesktop(desktop);setLocale(locale);setCallback(callback);setReadOnly(readOnly);
         Object.assign(state,{ensured:0,fallback:0,error:null,defer,fail});
       };
-      state.tabs=tabStore;state.sessions=useZCodeSessionStore;state.theme=applyTheme;
+      state.tabs=tabStore;state.sessions=useZCodeSessionStore;state.board=agentBoardStore;state.theme=applyTheme;
       useEffect(()=>{tabStore.getState().addTab(conversation,{workspacePurpose:'conversation'});useZCodeSessionStore.getState().setActiveTaskId(conversation,'old-session')},[]);
       return <ZCodeIntlProvider initialLocale={locale} key={locale}><TooltipProvider><div className='h-dvh' data-testid='navigation' data-view={view}>
         <WorkspaceShellLayout services={services} platform={{isWeb:true}} workspaceAbsPath={path} workspaceMainView={view} onWorkspaceMainViewChange={setView}
@@ -254,6 +255,66 @@ try {
     await page.getByTestId("agent-board-sidebar-open").getAttribute("aria-pressed"),
     "true",
   );
+  await prepare({ source: "/synthetic/project", view: "chat" });
+  await page.evaluate(() => {
+    const tabs = window.__newTask.tabs.getState();
+    tabs.activateTabByPath("/synthetic/tasks");
+    tabs.toggleWorkspaceExpanded("/synthetic/project");
+  });
+  const projectFolder = page.getByTestId("workspace-item-/synthetic/project");
+  const projectName = page.getByTestId("workspace-name-/synthetic/project");
+  await projectFolder.waitFor();
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="workspace-item-/synthetic/project"]')
+        ?.getAttribute("aria-expanded") === "false",
+  );
+  const activeWorkspaceBeforeExpand = await page.evaluate(
+    () => window.__newTask.tabs.getState().activeWorkspacePath,
+  );
+  await projectFolder.click();
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="workspace-item-/synthetic/project"]')
+        ?.getAttribute("aria-expanded") === "true",
+  );
+  assert.equal(
+    await page.evaluate(() => window.__newTask.tabs.getState().activeWorkspacePath),
+    activeWorkspaceBeforeExpand,
+    "folder expansion does not activate another workspace",
+  );
+  assert.equal(await page.getByTestId("navigation").getAttribute("data-view"), "chat");
+  await projectFolder.focus();
+  await page.keyboard.press("Space");
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="workspace-item-/synthetic/project"]')
+        ?.getAttribute("aria-expanded") === "false",
+  );
+  await projectName.click();
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="navigation"]')?.dataset.view === "agent-board",
+  );
+  assert.equal(
+    await page.evaluate(() => window.__newTask.board.getState().project),
+    "/synthetic/project",
+    "project name opens the board filtered to that project",
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window.__newTask.tabs.getState().expandedWorkspacePaths.has("/synthetic/project"),
+    ),
+    true,
+    "opening a project board activates and reveals its workspace through tab navigation",
+  );
+  await page.evaluate(() => {
+    window.__newTask.board.getState().selectProject(null);
+    window.__newTask.tabs.getState().activateTabByPath("/synthetic/tasks");
+  });
+  await prepare({ source: "/synthetic/tasks", view: "chat" });
   await assertSidebarActionRail({ page, prepare, artifacts });
   assert.deepEqual(await page.evaluate(() => window.__newTask.writes), []);
   assert.deepEqual(errors, []);

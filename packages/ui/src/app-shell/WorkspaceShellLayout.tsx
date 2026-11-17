@@ -2142,7 +2142,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                     onOpenRepository={() => handleOpenRepository()}
                     repositoryActive={workspaceMainView === "repository"}
                     // 原因：按钮会传入点击事件；只有通知解析才能提供看板目标 workspace。
-                    onOpenAgentBoard={() => handleOpenAgentBoard?.()}
+                    onOpenAgentBoard={(target) => handleOpenAgentBoard?.(target)}
                     agentBoardActive={workspaceMainView === "agent-board"}
                     workTasksActive={workspaceMainView === "work-tasks"}
                   />
