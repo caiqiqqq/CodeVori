@@ -82,8 +82,28 @@ export async function exerciseAgentBoardWorkTasks(page, { manage, save, pane, ar
     2,
     "completed work tasks are excluded from the entire board projection",
   );
+  let releaseDetailsModule;
+  let detailsModuleRequested;
+  const detailsModuleRequest = new Promise((resolve) => {
+    detailsModuleRequested = resolve;
+  });
+  const detailsModuleGate = new Promise((resolve) => {
+    releaseDetailsModule = resolve;
+  });
+  await page.route("**/AgentBoardWorkTaskDetails.tsx*", async (route) => {
+    detailsModuleRequested();
+    await detailsModuleGate;
+    await route.continue();
+  });
   await page.getByRole("button", { name: /Tracked work 1/ }).click();
+  await detailsModuleRequest;
+  const details = page.getByTestId("agent-board-details");
+  await details.waitFor();
+  await details.getByRole("heading", { name: "Tracked work 1", exact: true }).waitFor();
+  await details.getByRole("status").waitFor();
+  releaseDetailsModule();
   await pane.waitFor();
+  await page.unroute("**/AgentBoardWorkTaskDetails.tsx*");
   assert.equal(
     await page.evaluate(() => window.__pane.workspacePath),
     "/fixture/worktrees/execution",

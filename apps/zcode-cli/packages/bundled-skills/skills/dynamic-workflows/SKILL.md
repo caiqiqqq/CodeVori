@@ -1454,8 +1454,8 @@ settles. Do not wait for it or poll it with `TaskOutput`.
 
 Saves a script with its metadata so it can be run again by name — through `CreateWorkflow`'s
 `saved` source, discovered with `ListSavedWorkflows`. Project definitions go in
-`.zcode/workflows/<name>.dwf.ts`, committed with the repository and visible only inside it;
-global definitions go in `~/.zcode/workflows/<name>.dwf.ts` and are available from every
+`.codevori/workflows/<name>.dwf.ts`, committed with the repository and visible only inside it;
+global definitions go in `~/.codevori/workflows/<name>.dwf.ts` and are available from every
 project on this machine.
 
 **When to call it.**
