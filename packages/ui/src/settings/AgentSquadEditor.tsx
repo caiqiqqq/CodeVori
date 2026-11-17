@@ -1,22 +1,23 @@
 import { Plus } from "lucide-react";
-import { agentSquadSaveSchema, type AgentSquadSave, type DelegationAgent } from "@zcode/shared";
+import { agentSquadSaveSchema, type AgentSquadSave, type AgentProfile } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import { Textarea } from "@/components/ui/textarea.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { AgentSquadMemberEditor } from "./AgentSquadMemberEditor.js";
-import { squadRoleDraft } from "./agentSquadDraft.js";
+import { SquadAgentPicker } from "./SquadAgentPicker.js";
 
 export function AgentSquadEditor({
   draft,
-  targets,
+  profiles,
+  onCreateProfile,
   busy,
   onChange,
   onSave,
   onCancel,
 }: {
   draft: AgentSquadSave;
-  targets: DelegationAgent[];
+  profiles: AgentProfile[];
+  onCreateProfile(memberId: string): void;
   busy: boolean;
   onChange(draft: AgentSquadSave): void;
   onSave(): void;
@@ -64,10 +65,12 @@ export function AgentSquadEditor({
         </label>
       </fieldset>
       <p className="text-ui-caption text-foreground-subtle">{t("leaderHint")}</p>
-      <AgentSquadMemberEditor
+      <SquadAgentPicker
         title={t("leader")}
         member={draft.leader}
-        targets={targets}
+        profiles={profiles}
+        excludedIds={draft.members.map((member) => member.agentId)}
+        onCreate={() => onCreateProfile(draft.leader.id)}
         disabled={busy}
         onChange={(leader) => onChange({ ...draft, leader })}
       />
@@ -76,11 +79,11 @@ export function AgentSquadEditor({
         <Button
           type="button"
           variant="outline"
-          disabled={busy || draft.members.length >= 8 || !targets.length}
+          disabled={busy || draft.members.length >= 8}
           onClick={() =>
             onChange({
               ...draft,
-              members: [...draft.members, squadRoleDraft(targets[0]!, t("defaultMember"), "")],
+              members: [...draft.members, { id: crypto.randomUUID(), agentId: "", role: "" }],
             })
           }
         >
@@ -89,11 +92,15 @@ export function AgentSquadEditor({
         </Button>
       </div>
       {draft.members.map((member, index) => (
-        <AgentSquadMemberEditor
+        <SquadAgentPicker
           key={member.id}
           title={`${t("member")} ${index + 1}`}
           member={member}
-          targets={targets}
+          profiles={profiles}
+          excludedIds={[draft.leader, ...draft.members.filter((item) => item.id !== member.id)].map(
+            (item) => item.agentId,
+          )}
+          onCreate={() => onCreateProfile(member.id)}
           disabled={busy}
           onChange={(next) =>
             onChange({
@@ -116,7 +123,7 @@ export function AgentSquadEditor({
         <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
           {intl.formatMessage({ id: "common.cancel" })}
         </Button>
-        <Button type="submit" disabled={busy || !valid || !targets.length}>
+        <Button type="submit" disabled={busy || !valid}>
           {intl.formatMessage({ id: "common.save" })}
         </Button>
       </div>

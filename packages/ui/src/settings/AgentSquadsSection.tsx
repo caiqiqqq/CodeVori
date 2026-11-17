@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pencil, Plus, Trash2, Users } from "lucide-react";
-import type { AgentSquad, AgentSquadSave } from "@zcode/shared";
+import type { AgentSquad, AgentSquadSave, AgentProfileSave } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import {
   AlertDialog,
@@ -16,6 +16,7 @@ import { useAgentSquads } from "@/hooks/useAgentSquads.js";
 import { useWorkspaceServicesResolution } from "@/hooks/useWorkspaceServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { AgentSquadEditor } from "./AgentSquadEditor.js";
+import { AgentProfileEditor } from "./AgentProfileEditor.js";
 import { squadDraft, squadRoleDraft } from "./agentSquadDraft.js";
 
 type Props = {
@@ -54,8 +55,28 @@ function SquadsContent({ workspacePath, workspaceIdentity, remoteSessionId, remo
     remoteTarget,
   );
   const [draft, setDraft] = useState<AgentSquadSave | null>(null);
+  const [profileDraft, setProfileDraft] = useState<{
+    draft: AgentProfileSave;
+    memberId?: string;
+  } | null>(null);
   const [deleting, setDeleting] = useState<AgentSquad | null>(null);
   const blocked = squads.busy || squads.loading || !squads.available;
+  const createProfile = (memberId?: string) => {
+    const target = squads.targets[0];
+    if (!target) return;
+    const role = squadRoleDraft(target, "", "");
+    setProfileDraft({
+      memberId,
+      draft: {
+        id: role.id,
+        expectedRevision: 0,
+        name: "",
+        description: "",
+        instructions: "",
+        execution: role.execution,
+      },
+    });
+  };
   return (
     <section data-testid="squads-settings" className="mt-3 min-w-0 space-y-4">
       <p className="text-ui-caption text-foreground-subtle">{t("intro")}</p>
@@ -76,8 +97,9 @@ function SquadsContent({ workspacePath, workspaceIdentity, remoteSessionId, remo
       {draft ? (
         <AgentSquadEditor
           draft={draft}
-          targets={squads.targets}
-          busy={blocked}
+          profiles={squads.profiles}
+          onCreateProfile={createProfile}
+          busy={blocked || !!profileDraft}
           onChange={setDraft}
           onCancel={() => setDraft(null)}
           onSave={() => {
@@ -91,18 +113,29 @@ function SquadsContent({ workspacePath, workspaceIdentity, remoteSessionId, remo
           <div className="flex items-center justify-between gap-2">
             <span className="text-ui-caption text-foreground-subtle">{t("usage")}</span>
             <Button
-              disabled={blocked || !squads.targets.length}
+              disabled={blocked || !squads.profiles.length || !!profileDraft}
               onClick={() => {
-                const target = squads.targets[0];
-                if (!target) return;
+                const leader = squads.profiles[0];
+                if (!leader) return;
+                const member = squads.profiles[1];
                 setDraft({
                   id: crypto.randomUUID(),
                   expectedRevision: 0,
                   name: "",
                   description: "",
                   instructions: "",
-                  leader: squadRoleDraft(target, t("defaultLeader"), t("defaultLeaderRole")),
-                  members: [squadRoleDraft(target, t("defaultMember"), "")],
+                  leader: {
+                    id: crypto.randomUUID(),
+                    agentId: leader.id,
+                    role: t("defaultLeaderRole"),
+                  },
+                  members: [
+                    {
+                      id: crypto.randomUUID(),
+                      agentId: member?.id ?? "",
+                      role: member?.instructions.slice(0, 4000) ?? "",
+                    },
+                  ],
                 });
               }}
             >
@@ -110,8 +143,23 @@ function SquadsContent({ workspacePath, workspaceIdentity, remoteSessionId, remo
               {t("create")}
             </Button>
           </div>
-          {!squads.loading && squads.available && !squads.targets.length ? (
-            <p className="text-ui-caption text-foreground-subtle">{t("noTargets")}</p>
+          {!squads.loading && squads.available && !squads.profiles.length ? (
+            <div className="space-y-2">
+              <p className="text-ui-caption text-foreground-subtle">{t("noProfiles")}</p>
+              <Button
+                variant="outline"
+                disabled={blocked || !squads.targets.length || !!profileDraft}
+                onClick={() => createProfile()}
+              >
+                <Plus className="size-4" />
+                {intl.formatMessage({ id: "agentProfiles.create" })}
+              </Button>
+              {!squads.targets.length ? (
+                <p className="text-ui-caption text-foreground-subtle">
+                  {intl.formatMessage({ id: "agentProfiles.noTargets" })}
+                </p>
+              ) : null}
+            </div>
           ) : null}
           {squads.squads.length ? (
             <div className="divide-y divide-border overflow-hidden rounded-xl border border-card-border bg-card">
@@ -181,6 +229,41 @@ function SquadsContent({ workspacePath, workspaceIdentity, remoteSessionId, remo
           )}
         </>
       )}
+      {profileDraft ? (
+        <AgentProfileEditor
+          draft={profileDraft.draft}
+          workspacePath={workspacePath}
+          targets={squads.targets}
+          busy={blocked}
+          onChange={(next) =>
+            setProfileDraft((previous) => (previous ? { ...previous, draft: next } : null))
+          }
+          onCancel={() => setProfileDraft(null)}
+          onSave={() => {
+            const memberId = profileDraft.memberId;
+            void squads.saveProfile(profileDraft.draft).then((saved) => {
+              if (!saved) return;
+              setDraft((previous) => {
+                if (!previous || !memberId) return previous;
+                const assign = (member: AgentSquadSave["leader"]) =>
+                  member.id === memberId
+                    ? {
+                        ...member,
+                        agentId: saved.id,
+                        role: member.role || saved.instructions.slice(0, 4000),
+                      }
+                    : member;
+                return {
+                  ...previous,
+                  leader: assign(previous.leader),
+                  members: previous.members.map(assign),
+                };
+              });
+              setProfileDraft(null);
+            });
+          }}
+        />
+      ) : null}
       <AlertDialog
         open={!!deleting}
         onOpenChange={(open) => {

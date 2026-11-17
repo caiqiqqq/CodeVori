@@ -41,3 +41,24 @@ export async function delegateAnalysis(service: IAgentDelegationService, parent:
     dependsOn: [],
   });
 }
+
+/** 可复用智能体由 Host 按稳定 ID 解析，调用者不复制其执行配置。 */
+export async function delegateSavedAgentAnalysis(
+  service: IAgentDelegationService,
+  parent: DelegationParent,
+) {
+  const profile = (await service.listAgentProfiles())[0];
+  if (!profile) return undefined;
+  return service.delegateProfile({
+    ...parent,
+    profileId: profile.id,
+    requestId: uuidv7(),
+    title: "智能体审查",
+    task: "按已配置职责核对当前模块",
+    background: "",
+    constraints: "只分析，不提交",
+    expectedResult: "结论和证据",
+    intent: "analysis",
+    dependsOn: [],
+  });
+}

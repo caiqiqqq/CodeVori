@@ -131,6 +131,7 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     titleId: "delegation.settingsTitle",
     groupId: "agentCapabilities",
   },
+  { id: "agentProfiles", icon: Bot, titleId: "agentProfiles.title", groupId: "agentCapabilities" },
   { id: "squads", icon: Users, titleId: "squads.title", groupId: "agentCapabilities" },
   {
     id: "plugin",

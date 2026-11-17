@@ -205,7 +205,9 @@ export function parseMentionMarkdown(content: string): MentionTextPart[] {
         ...(pluginId ? { pluginId } : {}),
       });
     } else if (
-      /^delegation:\/\/(?:api\.[0-9a-f]+\.[0-9a-f]+|squad\.[0-9a-f-]{36})$/.test(destination)
+      /^delegation:\/\/(?:api\.[0-9a-f]+\.[0-9a-f]+|(?:squad|agent)\.[0-9a-f-]{36})$/.test(
+        destination,
+      )
     ) {
       // API 身份包含 provider，展示名可能带中文/斜杠；不能把智能体引用还原成项目文件。
       parts.push({

@@ -22,6 +22,7 @@ try {
     import React, { useState } from 'react';
     import { createRoot } from 'react-dom/client';
     import { AgentSquadsSection } from '../../../ui/src/settings/AgentSquadsSection.tsx';
+    import { AgentProfilesSection } from '../../../ui/src/settings/AgentProfilesSection.tsx';
     import { createSettingsPageConfig } from '../../../ui/src/settings/settingsPageConfig.ts';
     import { ChatPromptEditor } from '../../../ui/src/prompt-editor/ChatPromptEditor.tsx';
     import { ConversationUserInputContent } from '../../../ui/src/v4/ConversationUserInputContent.tsx';
@@ -30,26 +31,40 @@ try {
     import { PlatformProvider } from '../../../ui/src/hooks/usePlatform.tsx';
     import { ZCodeIntlProvider, useZCodeIntl } from '../../../ui/src/i18n/IntlProvider.tsx';
     import { TooltipProvider } from '../../../ui/src/components/ui/tooltip.tsx';
-    import { agentSquadSaveSchema } from '@zcode/shared';
+    import { agentSquadSaveSchema, agentProfileSaveSchema } from '@zcode/shared';
     import '../../../ui/src/styles.css';
     const clone = value => structuredClone(value);
-    const state = window.__squads = { rows: [], calls: [], sent: [], noTargets: false };
+    const state = window.__squads = { rows: [], definitions: [], profiles: [], calls: [], sent: [], noTargets: false };
     const callbacks = new Set();
-    const changed = () => callbacks.forEach(fn => fn());
+    const expand = member => ({ ...member, ...Object.fromEntries(Object.entries(state.profiles.find(profile => profile.id === member.agentId)).filter(([key]) => ['name','instructions','execution'].includes(key))) });
+    const changed = () => { state.rows = state.definitions.map(row => ({ ...row, leader: expand(row.leader), members: row.members.map(expand) })); callbacks.forEach(fn => fn()); };
     const delegation = {
       listSquads: async () => clone(state.rows),
+      listAgentProfiles: async () => clone(state.profiles),
+      saveAgentProfile: async raw => {
+        const input = agentProfileSaveSchema.parse(raw);
+        const current = state.profiles.find(row => row.id === input.id);
+        if (state.conflict || (current?.revision ?? 0) !== input.expectedRevision) { state.conflict = false; throw new Error('delegation.profile-conflict'); }
+        const { expectedRevision, ...fields } = input;
+        const row = { ...fields, revision: expectedRevision + 1, createdAt: current?.createdAt ?? Date.now(), updatedAt: Date.now() };
+        state.profiles = [...state.profiles.filter(item => item.id !== row.id), row]; changed(); return clone(row);
+      },
+      deleteAgentProfile: async input => {
+        if (state.definitions.some(row => [row.leader, ...row.members].some(member => member.agentId === input.id))) throw new Error('delegation.profile-in-use');
+        state.profiles = state.profiles.filter(row => row.id !== input.id); changed();
+      },
       targets: async () => state.noTargets ? [] : [{ kind: 'acp', agent: 'codex', enabled: true, ready: true }, { kind: 'api', providerName: 'Fixture API', execution: { kind: 'api', mode: 'build', modelSelection: { providerId: 'fixture', modelId: 'review-model', options: { reasoningLevel: 'high' } } }, reasoningLevels: ['low', 'high'] }],
       onDynamicSquadsChanged: () => fn => { callbacks.add(fn); return { dispose: () => callbacks.delete(fn) }; },
       saveSquad: async raw => {
         const input = agentSquadSaveSchema.parse(raw);
         state.calls.push({ op: 'save', ...clone(input) });
-        const current = state.rows.find(row => row.id === input.id);
+        const current = state.definitions.find(row => row.id === input.id);
         if (state.conflict || (current?.revision ?? 0) !== input.expectedRevision) { state.conflict = false; throw new Error('delegation.squad-conflict'); }
         const { expectedRevision, ...fields } = input;
         const row = { ...fields, revision: expectedRevision + 1, createdAt: current?.createdAt ?? Date.now(), updatedAt: Date.now() };
-        state.rows = [...state.rows.filter(item => item.id !== row.id), row]; changed(); return clone(row);
+        state.definitions = [...state.definitions.filter(item => item.id !== row.id), row]; changed(); return clone(state.rows.find(item => item.id === row.id));
       },
-      deleteSquad: async input => { state.calls.push({ op: 'delete', ...clone(input) }); state.rows = state.rows.filter(row => row.id !== input.id); changed(); },
+      deleteSquad: async input => { state.calls.push({ op: 'delete', ...clone(input) }); state.definitions = state.definitions.filter(row => row.id !== input.id); changed(); },
     };
     const service = {};
     const services = { workTaskService: service, agentDelegationService: delegation };
@@ -57,7 +72,7 @@ try {
     ${workTaskPromptAssetsFixture}
     services.clientConfigService = { getSnapshot: async () => ({ pluginStoreOrder: null }) };
     services.pluginManagementService = { getPluginReferenceCatalog: async input => ({ plugins: [], authority: input.sessionId ? 'session' : 'workspace' }) };
-    services.acpService = { listAgents: async () => [], listPlugins: async () => [] };
+    services.acpService = { listAgents: async () => [], listPlugins: async () => [], listAgentConfigs: async () => [{ agent: 'codex', source: 'host', modeState: null, configOptions: [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'history-model', options: [{ value: 'history-model', name: 'History model' }, { value: 'profile-model', name: 'Profile model' }] }, { id: 'thought', name: 'Reasoning', category: 'thought_level', type: 'select', currentValue: 'high', options: [{ value: 'low', name: 'Low' }, { value: 'high', name: 'High' }] }] }] };
     services.subagentsService = { list: async () => [] };
     services.zcodeSessionService = { list: async () => [] };
     services.skillsService = { list: async () => ({ skills: [], diagnostics: [], capability: { userScopeAvailable: true } }) };
@@ -72,9 +87,9 @@ try {
       const [sent, setSent] = useState('');
       state.remount = () => setKey(value => value + 1);
       state.switchKind = setKind;
-      return <main className="mx-auto max-w-3xl space-y-4 bg-background p-4 text-foreground">
-        <nav>{createSettingsPageConfig().settingsSections.filter(item => ['general','squads'].includes(item.id)).map(item => <button key={item.id} onClick={() => setSection(item.id)} className="p-2 text-ui-base">{intl.formatMessage({ id: item.titleId })}</button>)}</nav>
-        {section === 'squads' ? <AgentSquadsSection key={key} workspacePath="/synthetic/project" remoteTarget={remote ? { kind: "ssh" } : undefined} /> : null}
+      return <main data-kind={kind} className="mx-auto max-w-3xl space-y-4 bg-background p-4 text-foreground">
+        <nav>{createSettingsPageConfig().settingsSections.filter(item => ['general','agentsAndSquads'].includes(item.id)).map(item => <button key={item.id} onClick={() => setSection(item.id)} className="p-2 text-ui-base">{intl.formatMessage({ id: item.titleId })}</button>)}</nav>
+        {section === 'agentsAndSquads' ? <div className="space-y-3"><div role="tablist" aria-label="智能体与小队"><button role="tab" aria-selected={kind === 'profile'} onClick={() => setKind('profile')}>智能体</button><button role="tab" aria-selected={kind === 'squad'} onClick={() => setKind('squad')}>小队</button></div>{kind === 'profile' ? <AgentProfilesSection workspacePath="/synthetic/project" remoteTarget={remote ? { kind: 'ssh' } : undefined} /> : <AgentSquadsSection key={key} workspacePath="/synthetic/project" remoteTarget={remote ? { kind: "ssh" } : undefined} />}</div> : null}
         <ChatPromptEditor key={kind} workspacePath="/synthetic/project" taskId={kind === 'api' ? 'api-parent' : null} acpMode={kind === 'acp'} acpAgent={kind === 'acp' ? 'codex' : null} acpSessionId={kind === 'acp' ? 'acp-parent' : null}
           showMentionButton enableMentionPanel inputTestId="main-input" submitLabel="发送主消息" onSubmit={value => { state.sent.push(value); setSent(value); return true; }} />
         <div data-testid="sent-user-message"><ConversationUserInputContent text={sent} /></div>
@@ -92,16 +107,56 @@ try {
     await page.getByRole("button", { name: "小队", exact: true }).click();
     const settings = page.getByTestId("squads-settings");
     await settings.getByText("还没有小队", { exact: true }).waitFor();
+    assert.equal(await settings.getByRole("button", { name: "新建小队" }).isDisabled(), true);
+    await settings.getByRole("button", { name: "新建智能体", exact: true }).click();
+    let profileEditor = page.getByTestId("agent-profile-editor");
+    await profileEditor.getByLabel("智能体名称", { exact: true }).fill("协调者");
+    await profileEditor.getByLabel("职责提示词", { exact: true }).fill("拆解任务并汇总结果");
+    await profileEditor.getByTestId("acp-config-trigger-model").waitFor();
+    assert.match(
+      await profileEditor.getByTestId("acp-config-trigger-model").getAttribute("aria-label"),
+      /运行时默认值/,
+    );
+    await profileEditor.getByTestId("acp-config-trigger-model").click();
+    await page.getByTestId("acp-config-choice-model-profile-model").click();
+    await profileEditor.getByTestId("agent-profile-config-refresh").click();
+    assert.match(
+      await profileEditor.getByTestId("acp-config-trigger-model").getAttribute("aria-label"),
+      /Profile model/,
+    );
+    await profileEditor.getByTestId("acp-config-trigger-thought").click();
+    await page.getByTestId("acp-config-choice-thought-low").click();
+    await profileEditor.getByRole("button", { name: "保存", exact: true }).click();
+    assert.deepEqual(await page.evaluate(() => window.__squads.profiles[0].execution.config), [
+      { configId: "model", value: "profile-model" },
+      { configId: "thought", value: "low" },
+    ]);
     await settings.getByRole("button", { name: "新建小队" }).click();
     let editor = page.getByTestId("squad-editor");
     await editor.getByLabel("小队名称", { exact: true }).fill("研发[小队]");
-    await editor.getByLabel("职责", { exact: true }).nth(1).fill("核对实现与测试，只汇报证据");
-    // Same-engine roles are allowed; choose an API executor for the member as well.
-    await editor.getByLabel("执行智能体", { exact: true }).nth(1).click();
+    await editor.getByRole("button", { name: "新建智能体", exact: true }).nth(1).click();
+    profileEditor = page.getByTestId("agent-profile-editor");
+    await profileEditor.getByLabel("智能体名称", { exact: true }).fill("审查[智能体]");
+    await profileEditor
+      .getByLabel("职责提示词", { exact: true })
+      .fill("核对实现与测试，只汇报证据");
+    await profileEditor.getByLabel("运行时 / 模型", { exact: true }).click();
     await page.getByRole("option", { name: "review-model (Fixture API)", exact: true }).click();
-    await editor.getByRole("button", { name: "添加成员" }).click();
-    await editor.getByLabel("角色名称").nth(2).fill("测试员");
-    await editor.getByLabel("职责", { exact: true }).nth(2).fill("检查验收场景");
+    await profileEditor.getByLabel("思考强度", { exact: true }).click();
+    await page.getByRole("option", { name: "low", exact: true }).click();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await page.screenshot({ path: join(shots, `${width}-profile-editor.png`), fullPage: true });
+    await profileEditor.getByRole("button", { name: "保存", exact: true }).click();
+    await profileEditor.waitFor({ state: "detached" });
+    assert.equal(await editor.getByLabel("小队名称").inputValue(), "研发[小队]");
+    await editor
+      .getByLabel("选择智能体")
+      .nth(1)
+      .getByText("审查[智能体]", { exact: true })
+      .waitFor();
+    await editor.getByLabel("选择智能体").first().click();
+    assert.equal(await page.getByRole("option", { name: "审查[智能体]", exact: true }).count(), 0);
+    await page.keyboard.press("Escape");
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await page.screenshot({ path: join(shots, `${width}-editor.png`), fullPage: true });
     await page.evaluate(() => {
@@ -115,21 +170,75 @@ try {
     assert.equal(await editor.getByLabel("小队名称").inputValue(), "研发[小队]");
     await editor.getByRole("button", { name: "保存", exact: true }).click();
     await page.getByTestId("squad-row").waitFor();
-    assert.equal(await page.evaluate(() => window.__squads.rows[0].members.length), 2);
     assert.equal(
       await page.evaluate(() => window.__squads.rows[0].members[0].execution.kind),
       "api",
     );
-    await page.evaluate(() => window.__squads.remount());
+    assert.equal(
+      await page.evaluate(
+        () => window.__squads.rows[0].members[0].execution.modelSelection.options.reasoningLevel,
+      ),
+      "low",
+    );
+    assert.equal(
+      await page.evaluate(() => "execution" in window.__squads.definitions[0].members[0]),
+      false,
+    );
+    await page.getByRole("button", { name: "智能体", exact: true }).click();
+    let profiles = page.getByTestId("agent-profiles-settings");
+    assert.equal(await profiles.getByTestId("agent-profile-row").count(), 2);
+    const profileRow = profiles
+      .getByTestId("agent-profile-row")
+      .filter({ hasText: "审查[智能体]" });
+    await profileRow.getByRole("button", { name: "删除智能体", exact: true }).click();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "删除智能体", exact: true })
+      .click();
+    await profiles
+      .getByRole("alert")
+      .getByText(/此智能体仍被小队引用/)
+      .waitFor();
+    await profileRow.getByRole("button", { name: "编辑智能体", exact: true }).click();
+    profileEditor = page.getByTestId("agent-profile-editor");
+    await profileEditor.getByLabel("说明", { exact: true }).fill("可在多个小队复用");
+    await page.evaluate(() => {
+      window.__squads.conflict = true;
+    });
+    await profileEditor.getByRole("button", { name: "保存", exact: true }).click();
+    await profiles
+      .getByRole("alert")
+      .getByText(/智能体已被更新/)
+      .waitFor();
+    assert.equal(await profileEditor.getByLabel("说明").inputValue(), "可在多个小队复用");
+    await profileEditor.getByRole("button", { name: "保存", exact: true }).click();
+    await profiles.getByText("可在多个小队复用", { exact: true }).waitFor();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await page.screenshot({ path: join(shots, `${width}-profiles.png`), fullPage: true });
+    await page.getByRole("button", { name: "小队", exact: true }).click();
     await settings.getByRole("button", { name: "编辑小队" }).click();
     editor = page.getByTestId("squad-editor");
     await editor.getByLabel("说明", { exact: true }).fill("前后端核对");
     await editor.getByRole("button", { name: "保存", exact: true }).click();
     await page.getByTestId("squad-row").getByText("前后端核对").waitFor();
-    assert.equal(await page.evaluate(() => window.__squads.rows[0].revision), 2);
     for (const kind of ["acp", "api"]) {
       await page.evaluate((kind) => window.__squads.switchKind(kind), kind);
-      const input = page.getByTestId("main-input");
+      // 切换执行方式会重建编辑器，等待新输入框就绪，避免把内容填进旧节点。
+      await page.locator(`main[data-kind="${kind}"]`).waitFor();
+      const input = page.locator('[data-testid="main-input"][data-e2e-lexical-bridge="ready"]');
+      await input.waitFor();
+      await input.fill("@审查");
+      await page.getByRole("option").filter({ hasText: "审查[智能体]" }).click();
+      await page.getByRole("button", { name: "发送主消息", exact: true }).click();
+      await page
+        .getByTestId("sent-user-message")
+        .getByText("审查[智能体]", { exact: false })
+        .waitFor();
+      const profileSent = await page.evaluate(() => ({
+        sent: window.__squads.sent.at(-1),
+        id: window.__squads.profiles.find((profile) => profile.name === "审查[智能体]").id,
+      }));
+      assert.ok(profileSent.sent.includes(`delegation://agent.${profileSent.id}`));
       await input.fill("@研发");
       await page.getByRole("option").filter({ hasText: "研发[小队]" }).click();
       assert.equal(
@@ -160,12 +269,33 @@ try {
       .getByRole("button", { name: "删除小队", exact: true })
       .click();
     await settings.getByText("还没有小队", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "智能体", exact: true }).click();
+    profiles = page.getByTestId("agent-profiles-settings");
+    for (let count = 2; count > 0; count--) {
+      await profiles
+        .getByTestId("agent-profile-row")
+        .first()
+        .getByRole("button", { name: "删除智能体", exact: true })
+        .click();
+      await page
+        .getByRole("alertdialog")
+        .getByRole("button", { name: "删除智能体", exact: true })
+        .click();
+      await page.waitForFunction(
+        (expected) => window.__squads.profiles.length === expected,
+        count - 1,
+      );
+    }
+    await profiles.getByText("还没有智能体", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "小队", exact: true }).click();
     await page.evaluate(() => {
       window.__squads.noTargets = true;
       window.__squads.remount();
     });
-    await settings.getByText(/请先配置可用的 API/).waitFor();
-    assert.equal(await settings.getByRole("button", { name: "新建小队" }).isDisabled(), true);
+    await page.getByRole("button", { name: "智能体", exact: true }).click();
+    profiles = page.getByTestId("agent-profiles-settings");
+    await profiles.getByText(/请先在模型设置/).waitFor();
+    await page.getByRole("button", { name: "小队", exact: true }).click();
     await page.evaluate(() => window.__squads.setRemote(true));
     await settings.getByText(/当前连接不支持小队配置/).waitFor();
     assert.equal(await settings.getByRole("button", { name: "新建小队" }).isDisabled(), true);

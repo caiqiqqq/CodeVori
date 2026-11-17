@@ -1,9 +1,10 @@
+import { saveSquadFixture } from "./agentSquadFixture.js";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { uuidv7, type AgentSquadSave, type DelegationTask } from "@zcode/shared";
+import { uuidv7, type DelegationTask } from "@zcode/shared";
 import type { DelegationDependencies } from "../src/delegation/contract.js";
 import { squadPrompt } from "../src/delegation/squadPrompt.js";
 import { DelegationRepository } from "../src/delegation/delegationRepository.js";
@@ -16,7 +17,7 @@ const member = (name: string) => ({
   role: `${name}职责`,
   execution: { kind: "acp" as const, agent: "codex" as const, config: [] },
 });
-const definition = (): AgentSquadSave => ({
+const definition = () => ({
   id: uuidv7(),
   expectedRevision: 0,
   name: "研发小队",
@@ -108,16 +109,23 @@ test("squad configuration uses revisions and accepted tasks retain an immutable 
   const f = await fixture();
   try {
     const draft = definition();
-    const squad = await f.service.saveSquad(draft);
+    const squad = await saveSquadFixture(f.service, draft);
     assert.equal(squad.revision, 1);
-    await assert.rejects(f.service.saveSquad({ ...draft, name: "陈旧写入" }), /squad-conflict/);
+    await assert.rejects(
+      saveSquadFixture(f.service, { ...draft, name: "陈旧写入" }),
+      /squad-conflict/,
+    );
     const input = { ...taskInput(), squadId: squad.id };
     const leader = await f.service.delegateSquad(input);
     assert.equal(leader.parent.sessionId, "parent");
     assert.equal(leader.squad?.role, "leader");
     assert.equal(leader.intent, "analysis");
     assert.equal((await f.service.list(parent)).length, 1);
-    const edited = await f.service.saveSquad({ ...draft, expectedRevision: 1, name: "新名称" });
+    const edited = await saveSquadFixture(f.service, {
+      ...draft,
+      expectedRevision: 1,
+      name: "新名称",
+    });
     await f.service.deleteSquad({ id: edited.id, expectedRevision: edited.revision });
     assert.deepEqual(await f.service.listSquads(), []);
     assert.equal((await f.service.delegateSquad(input)).id, leader.id);
@@ -139,7 +147,7 @@ test("a squad reserves worker capacity without enabling unrestricted nested dele
       maxDepth: 1,
       completedCacheMaxMb: 0,
     });
-    const squad = await f.service.saveSquad(definition());
+    const squad = await saveSquadFixture(f.service, definition());
     const leader = await f.service.delegateSquad({ ...taskInput(), squadId: squad.id });
     await f.flush();
     assert.equal(f.runs.length, 1);
@@ -182,7 +190,7 @@ test("a squad reserves worker capacity without enabling unrestricted nested dele
 test("a leader that exits before its members fails and cancels descendants", async () => {
   const f = await fixture();
   try {
-    const squad = await f.service.saveSquad(definition());
+    const squad = await saveSquadFixture(f.service, definition());
     const leader = await f.service.delegateSquad({ ...taskInput(), squadId: squad.id });
     await f.flush();
     const leaderParent = { ...parent, sessionId: `session-${leader.id}` };
@@ -207,7 +215,7 @@ test("a leader that exits before its members fails and cancels descendants", asy
 test("remote squad requests are rejected before any task is accepted", async () => {
   const f = await fixture();
   try {
-    const squad = await f.service.saveSquad(definition());
+    const squad = await saveSquadFixture(f.service, definition());
     await assert.rejects(
       f.service.delegateSquad({
         ...taskInput(),
@@ -226,7 +234,7 @@ for (const failed of [false, true])
   test(`leader ${failed ? "failure cancels members" : "waits for members then completes"}`, async () => {
     const f = await fixture();
     try {
-      const squad = await f.service.saveSquad(definition());
+      const squad = await saveSquadFixture(f.service, definition());
       const leader = await f.service.delegateSquad({ ...taskInput(), squadId: squad.id });
       await f.flush();
       const leaderParent = { ...parent, sessionId: `session-${leader.id}` };
@@ -261,7 +269,7 @@ test("squad settings and accepted snapshots survive restart without replaying ru
   let next: AgentDelegationService | undefined;
   try {
     const draft = definition();
-    const squad = await f.service.saveSquad(draft);
+    const squad = await saveSquadFixture(f.service, draft);
     const input = { ...taskInput(), squadId: squad.id };
     const leader = await f.service.delegateSquad(input);
     await f.flush();
@@ -286,7 +294,7 @@ test("an expired leader cancels old members while its late return cannot cancel 
   const other = new AgentDelegationService(f.deps);
   const repo = new DelegationRepository(f.path);
   try {
-    const squad = await f.service.saveSquad(definition());
+    const squad = await saveSquadFixture(f.service, definition());
     const leader = await f.service.delegateSquad({ ...taskInput(), squadId: squad.id });
     await f.flush();
     const leaderParent = { ...parent, sessionId: `session-${leader.id}` };
@@ -346,7 +354,7 @@ test("same API engine roles retain independent IDs and reasoning settings", asyn
         },
       },
     ];
-    const squad = await f.service.saveSquad(draft);
+    const squad = await saveSquadFixture(f.service, draft);
     const leader = await f.service.delegateSquad({ ...taskInput(), squadId: squad.id });
     await f.flush();
     const prompt = squadPrompt(leader);

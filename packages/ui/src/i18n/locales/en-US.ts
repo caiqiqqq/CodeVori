@@ -7904,6 +7904,37 @@ const enUS: Record<string, string> = {
   "acp.goalSave": "Save objective",
   "acp.goalCancel": "Cancel",
   "acp.pluginsUnavailable": "No plugins are available to this ACP session",
+  "agentProfiles.title": "Agents",
+  "agentProfiles.intro":
+    "Create reusable agents with instructions, a runtime and a model, then organize them into squads.",
+  "agentProfiles.usage": "Mention an agent directly or reuse it in multiple squads",
+  "agentProfiles.create": "New agent",
+  "agentProfiles.edit": "Edit agent",
+  "agentProfiles.delete": "Delete agent",
+  "agentProfiles.deleteTitle": "Delete this agent?",
+  "agentProfiles.deleteHint":
+    "Accepted tasks keep their configuration. Remove this agent from its squads before deleting it.",
+  "agentProfiles.configuration": "Agent configuration",
+  "agentProfiles.runtimeDefault": "Runtime default",
+  "agentProfiles.refreshConfig": "Refresh model options",
+  "agentProfiles.configFailed":
+    "Could not read model options. Retry; your selected configuration is preserved.",
+  "agentProfiles.configUnavailable":
+    "No model options are available; runtime defaults apply. Open a session with this runtime in the workspace, then refresh.",
+  "agentProfiles.description": "Description",
+  "agentProfiles.noTargets":
+    "Configure an available model or runtime in Model settings or Agent SDK management first.",
+  "agentProfiles.empty": "No agents yet",
+  "agentProfiles.loading": "Loading agents…",
+  "agentProfiles.unavailable":
+    "Agent configuration is unavailable on this connection. Manage agents in a local workspace.",
+  "squads.noProfiles": "Create agents first, then select a leader and members for your squad.",
+  "squads.selectAgent": "Select agent",
+  "squads.teamRole": "Squad responsibilities",
+  "delegation.profile-conflict": "This agent was updated or deleted. Refresh before editing again.",
+  "delegation.profile-in-use":
+    "This agent is used by a squad. Remove it from its squads before deleting it.",
+  "delegation.profile-not-found": "Agent not found. Select it again.",
   "squads.title": "Squads",
   "squads.intro":
     "Group agents into squads with a leader, members, and responsibilities. The leader assigns work and gathers member results into one report.",
@@ -7915,9 +7946,9 @@ const enUS: Record<string, string> = {
   "squads.leader": "Leader",
   "squads.members": "Members",
   "squads.member": "Member",
-  "squads.roleName": "Role name",
-  "squads.executor": "Agent",
-  "squads.role": "Responsibilities",
+  "squads.roleName": "Agent name",
+  "squads.executor": "Runtime / model",
+  "squads.role": "Instructions",
   "squads.reasoning": "Reasoning level",
   "squads.leaderHint":
     "The leader plans and summarizes; members run as needed. Member edits stay in their individual worktrees.",

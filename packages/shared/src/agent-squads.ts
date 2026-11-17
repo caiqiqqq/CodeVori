@@ -6,6 +6,8 @@ export const agentSquadMemberSchema = z
     id: z.string().uuid(),
     name: z.string().trim().min(1).max(80),
     role: z.string().trim().min(1).max(4000),
+    agentId: z.string().uuid().optional(),
+    instructions: z.string().max(12000).optional(),
     execution: z.discriminatedUnion("kind", [
       workTaskExecutionSchema.options[0],
       workTaskExecutionSchema.options[1].omit({ modelPreference: true }),
@@ -41,16 +43,45 @@ export const agentSquadSchema = z
     "Leader and member IDs must differ",
   );
 export type AgentSquad = z.infer<typeof agentSquadSchema>;
+const memberReferenceSchema = z
+  .object({
+    id: z.string().uuid(),
+    agentId: z.string().uuid(),
+    role: z.string().trim().min(1).max(4000),
+  })
+  .strict();
+const referenceFields = {
+  ...squadFields,
+  leader: memberReferenceSchema,
+  members: z.array(memberReferenceSchema).min(1).max(8),
+};
+function uniqueReferences(squad: {
+  leader: { id: string; agentId: string };
+  members: { id: string; agentId: string }[];
+}) {
+  const roles = [squad.leader, ...squad.members];
+  return (
+    new Set(roles.map((role) => role.id)).size === roles.length &&
+    new Set(roles.map((role) => role.agentId)).size === roles.length
+  );
+}
+export const agentSquadDefinitionSchema = z
+  .object({
+    ...referenceFields,
+    revision: z.number().int().positive(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+  })
+  .strict()
+  .refine(uniqueReferences, "Squad agents and role IDs must be unique");
+export type AgentSquadDefinition = z.infer<typeof agentSquadDefinitionSchema>;
 export const agentSquadSaveSchema = z
   .object({
-    ...squadFields,
+    ...referenceFields,
     expectedRevision: z.number().int().nonnegative(),
   })
   .strict()
-  .refine(
-    (squad) => !squad.members.some((member) => member.id === squad.leader.id),
-    "Leader and member IDs must differ",
-  );
+  .refine(uniqueReferences, "Squad agents and role IDs must be unique");
 export type AgentSquadSave = z.infer<typeof agentSquadSaveSchema>;
 export const agentSquadDeleteSchema = z
   .object({

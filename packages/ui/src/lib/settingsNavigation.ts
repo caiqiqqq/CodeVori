@@ -20,6 +20,7 @@ export type SettingsSectionId =
   | "acpAgents"
   | "delegation"
   | "squads"
+  | "agentProfiles"
   | "commands"
   | "hooks"
   | "workspaceFileSearch"
@@ -91,6 +92,7 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
     value === "acpAgents" ||
     value === "delegation" ||
     value === "squads" ||
+    value === "agentProfiles" ||
     value === "commands" ||
     value === "hooks" ||
     value === "workspaceFileSearch" ||
