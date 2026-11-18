@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { createAcpService } from "../../services/src/acp/acpServiceImpl.js";
+import { createProjectEnvironmentService } from "../../services/src/credential/projectEnvironmentService.js";
 import { readPersistedAcpSession } from "../../services/test/acpTestStorage.js";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
@@ -28,8 +29,15 @@ try {
     let finish: (() => void) | undefined;
     const cancelSeen = Promise.withResolvers<void>();
     const secondStarted = Promise.withResolvers<void>();
+    const environments = createProjectEnvironmentService({
+      databasePath: join(directory, String(width), "environments.sqlite"),
+      listCredentials: async () => [],
+      assertSessionIdle: async () => {},
+    });
     const service = createAcpService({
       directory: join(directory, String(width)),
+      beginEnvironmentInput: (scope, sessionId) =>
+        environments.beginInput({ ...scope, kind: "acp", sessionId }),
       connect: async (input) => {
         connections++;
         return {
@@ -220,6 +228,7 @@ try {
       for (const subscription of subscriptions.values()) subscription.dispose();
       await page.close();
       await service.disposeAllAndWait();
+      environments.dispose();
     }
   }
 } finally {

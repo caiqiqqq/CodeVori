@@ -35,6 +35,7 @@ import { isDeepStrictEqual } from "node:util";
 import {
   WORK_TASK_ACTIVE_STATUSES,
   isWorkTaskMerging,
+  workTaskExecutionPath,
   resolveWorkspaceKey,
   uuidv7,
   workTaskSchema,
@@ -49,6 +50,7 @@ import {
   type WorkTaskMerge,
   type WorkTaskChangeRecord,
   type WorkTaskMergeRequest,
+  type WorkTaskAcceptBranch,
 } from "@zcode/shared";
 import type { WorkTaskConversationEvent, WorkTaskExecutionUpdate } from "./workTask.js";
 
@@ -115,6 +117,32 @@ export class WorkTaskRepo {
   }
   conversationTasks(): WorkTask[] {
     return listWorkTaskConversations(this.database());
+  }
+  boundConversation(
+    workspacePath: string,
+    kind: "api" | "acp",
+    sessionId: string,
+  ): WorkTask | null {
+    const rows = this.database()
+      .prepare(
+        `SELECT data FROM work_tasks
+         WHERE json_extract(data, '$.session.id') = ?
+           AND json_extract(data, '$.session.kind') = ?
+           AND (
+             json_extract(data, '$.worktree.path') = ? OR
+             (json_extract(data, '$.worktree.path') IS NULL AND json_extract(data, '$.workspacePath') = ?)
+           )`,
+      )
+      .all(sessionId, kind, workspacePath, workspacePath) as { data: string }[];
+    const matches = rows
+      .map((row) => workTaskSchema.parse(JSON.parse(row.data)))
+      .filter(
+        (task) =>
+          workTaskExecutionPath(task) === workspacePath &&
+          !task.workspaceIdentity &&
+          !task.remoteSessionId,
+      );
+    return matches.length === 1 ? matches[0]! : null;
   }
   conversationSessionIds(scope: WorkTaskScope, kind: "api" | "acp"): string[] {
     return listWorkTaskConversationSessionIds(this.database(), scope, kind);
@@ -183,6 +211,35 @@ export class WorkTaskRepo {
       if (task.title === input.title) return task;
       // 运行中不能复用草稿 update；从最新记录仅改标题，保留队列、绑定与 owner/lease。
       return this.write({ ...task, title: input.title, updatedAt: Date.now() }, "renamed");
+    });
+  }
+  acceptWorktreeBranch(
+    input: WorkTaskAcceptBranch,
+    observed: NonNullable<WorkTask["worktree"]>,
+  ): WorkTask {
+    return this.transaction(() => {
+      const row = this.row(input, input.id);
+      const task = decode(row);
+      if (
+        row.owner ||
+        task.archived ||
+        task.stopPending ||
+        task.worktreeCleanup?.phase === "running" ||
+        task.status === "queued" ||
+        WORK_TASK_ACTIVE_STATUSES.includes(task.status) ||
+        !task.worktree ||
+        !isDeepStrictEqual(task.worktree, observed)
+      )
+        throw new Error("work-task.branch-confirmation-stale");
+      if (task.worktree.acceptedBranchName === input.currentBranchName) return task;
+      return this.write(
+        {
+          ...task,
+          worktree: { ...task.worktree, acceptedBranchName: input.currentBranchName },
+          updatedAt: Date.now(),
+        },
+        "worktree-branch-accepted",
+      );
     });
   }
   private enqueueInside(scope: WorkTaskScope, id: string, feedback?: string, fresh = false) {

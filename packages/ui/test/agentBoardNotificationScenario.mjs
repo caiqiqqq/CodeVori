@@ -14,7 +14,7 @@ export async function exerciseAgentBoardNotificationNavigation(page) {
     });
   });
   await page.getByRole("dialog").getByText("Waiting for review", { exact: true }).waitFor();
-  assert.equal(await page.getByRole("textbox", { name: "搜索会话…" }).inputValue(), "");
+  assert.equal(await page.getByRole("textbox", { name: "搜索任务…" }).inputValue(), "");
   assert.equal(await page.getByRole("tab", { name: /全部/ }).getAttribute("aria-selected"), "true");
   await page.keyboard.press("Escape");
   await page.getByRole("dialog").waitFor({ state: "hidden" });

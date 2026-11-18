@@ -59,6 +59,11 @@ try {
         await settings().waitFor();
         const rail = page.locator('[data-sidebar-utility-rail="true"]');
         assert.equal(await rail.count(), 1, "One left utility rail owns both buttons");
+        const actions = page.getByTestId("workspace-sidebar-action-rail");
+        assert.equal(await actions.count(), 1, "Reuse the existing navigation rail");
+        assert.equal(await actions.locator('[data-sidebar-utility-rail="true"]').count(), 1);
+        assert.equal(await actions.getByTestId("sidebar-search-open").count(), 1);
+        assert.equal(await actions.getByTestId("plugin-store-sidebar-open").count(), 1);
         assert.equal(await settings().count(), 1);
         assert.equal(await phone().count(), 1);
         const a = await phone().boundingBox(),
@@ -127,11 +132,15 @@ try {
     window.__rail.tree({ id: 1, target: { workspacePath: "/fixture", workspaceName: "Fixture" } }),
   );
   await page.getByTestId("fixture-file-tree").waitFor();
-  await page.waitForFunction(
-    () =>
-      document.querySelector('[data-sidebar-utility-rail="true"]').getBoundingClientRect().right <=
-      0,
+  const railBounds = await page.locator('[data-sidebar-utility-rail="true"]').boundingBox();
+  assert.ok(
+    railBounds.x >= 0 && railBounds.x + railBounds.width <= 48,
+    "File tree keeps global navigation accessible",
   );
+  await page.evaluate(() => window.__rail.closeSettings());
+  await page.waitForFunction(() => !window.__rail.settingsOpen);
+  await settings().click();
+  await page.waitForFunction(() => window.__rail.settingsOpen);
   await page.getByRole("button", { name: "Close tree" }).click();
   await settings().waitFor();
   await page.evaluate(() => window.__rail.desktop(false));

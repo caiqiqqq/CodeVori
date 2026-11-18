@@ -96,6 +96,7 @@ export interface IAcpService {
   onDynamicSessionSummaryChanged(workspace: AcpWorkspace): Event<AcpSessionSummaryChanged>;
   /** Durable V4 tail snapshot / cursor page; no Agent connection or command admission. */
   readConversation(input: AcpConversationRead): Promise<AcpConversationChange[]>;
+  /** navigationOnly returns bounded user/assistant previews for the directory, never body rows. */
   conversationRowsRange(input: AcpConversationRowsRange): Promise<V4ConversationRowsRangeResult>;
   onDynamicConversationChanged(input: AcpConversationTarget): Event<AcpConversationChange>;
   /** Persisted archive scopes on this Host only; no Agent connections. */

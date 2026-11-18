@@ -213,7 +213,7 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
       data-sidebar-utility-rail={layout === "rail" ? "true" : undefined}
       className={cn(
         "flex shrink-0 flex-col gap-2.5 pt-2 pb-4",
-        layout === "rail" ? "justify-end border-r border-border px-1" : "px-4",
+        layout === "rail" ? "justify-end px-1" : "px-4",
         className,
       )}
     >

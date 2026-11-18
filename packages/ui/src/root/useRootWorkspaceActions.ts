@@ -29,7 +29,12 @@ import {
 import { resolveWorkbenchNewTaskTarget } from "@/v4/workbenchNewTaskTarget.js";
 import type { WorkbenchNewTaskTarget } from "@/v4/workbenchNewTaskTarget.js";
 import { useWorkbenchGroupStore } from "@/v4/workbenchGroupStore.js";
-import { persistV4ComposerDraft, V4_DRAFT_SCOPE_ROOT } from "@/v4/composer/composerDraftStore.js";
+import {
+  clearV4NewConversationDraftContent,
+  persistV4ComposerDraft,
+  readV4ComposerDraft,
+  V4_DRAFT_SCOPE_ROOT,
+} from "@/v4/composer/composerDraftStore.js";
 import { useDesktopWindowView } from "./desktopWindowSession.js";
 
 interface OpenRemoteConnectionPreference {
@@ -258,6 +263,10 @@ export function useRootWorkspaceActions({
       // group / paneLayout 中继续拆一个 draft；目标 workspace 取 focused pane。
       useWorkbenchGroupStore.getState().deactivateActiveGroup();
       usePaneLayoutStore.getState().resetToPrimaryPane();
+      clearV4NewConversationDraftContent(
+        newTaskTarget.workspacePath,
+        newTaskTarget.workspaceIdentity ?? undefined,
+      );
       useZCodeSessionStore
         .getState()
         .startDraft(
@@ -267,19 +276,27 @@ export function useRootWorkspaceActions({
           {
             groupedDraftPlacement,
             createSource: typeof request === "string" ? undefined : request?.createSource,
+            resetComposerDraft: true,
           },
         );
       if (initialPrompt) {
         // insert request 被首个 composer 消费后会清空；如果随后因 pane/config
         // 切换 remount，新 composer 会从空的 __draft__ 恢复并覆盖预填。先写草稿事实源，
         // 再发即时插入请求：当前 composer 立即可见，后续 remount 也恢复同一文本。
+        const existingRootDraft = readV4ComposerDraft(
+          newTaskTarget.workspacePath,
+          newTaskTarget.workspaceIdentity ?? undefined,
+          V4_DRAFT_SCOPE_ROOT,
+        );
         persistV4ComposerDraft(
           newTaskTarget.workspacePath,
           newTaskTarget.workspaceIdentity ?? undefined,
           V4_DRAFT_SCOPE_ROOT,
           {
+            ...existingRootDraft,
             text: initialPrompt,
-            ...(initialPromptMention ? { mention: initialPromptMention } : {}),
+            editorStateJson: undefined,
+            mention: initialPromptMention,
           },
         );
         useZCodeSessionStore

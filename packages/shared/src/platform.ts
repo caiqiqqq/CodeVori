@@ -45,7 +45,8 @@ export interface TaskNotificationPayload {
     | "permission_request"
     | "elicitation_request"
     | "feedback_update"
-    | "repository_issue";
+    | "repository_issue"
+    | "repository_merge_request";
   requestId?: string;
   title: string;
   body: string;
