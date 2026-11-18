@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AcpAgent } from "@zcode/shared";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AcpAgent, WorkTaskWorkflow } from "@zcode/shared";
+import type { useAgentBoardWorkTasks } from "@/hooks/useAgentBoardWorkTasks.js";
+import { workTaskNavigationKey } from "@/store/workTaskNavigationStore.js";
+import { WorkTaskError } from "@/work-tasks/WorkTaskParts.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Button } from "@/components/ui/button.js";
 import { Checkbox } from "@/components/ui/checkbox.js";
@@ -33,6 +36,9 @@ import { boardWorkspaceKey } from "./agentBoardModel.js";
 import type { BoardConversationOptions } from "./AgentBoardConversation.js";
 
 type SessionTarget = { project: BoardProject; tab: WorkspaceTabState };
+const WorkTaskEditor = lazy(() =>
+  import("@/work-tasks/WorkTaskEditor.js").then((module) => ({ default: module.WorkTaskEditor })),
+);
 
 function ScopedSessionDraft({
   target,
@@ -212,6 +218,7 @@ function ScopedSessionDraft({
 export function AgentBoardSessionEditor({
   projects,
   initialProjectKey,
+  workTasks,
   canCreateSession,
   options,
   onClose,
@@ -219,10 +226,11 @@ export function AgentBoardSessionEditor({
 }: {
   projects: BoardProject[];
   initialProjectKey: string | null;
+  workTasks: ReturnType<typeof useAgentBoardWorkTasks>;
   canCreateSession(tab: WorkspaceTabState): boolean;
   options?: BoardConversationOptions;
   onClose(): void;
-  onAccepted(kind: "native" | "acp", id: string, target: SessionTarget): void;
+  onAccepted(kind: "native" | "acp" | "work-task", id: string, target: SessionTarget): void;
 }) {
   const { intl } = useZCodeIntl();
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
@@ -247,7 +255,64 @@ export function AgentBoardSessionEditor({
   );
   const [creatingWorktree, setCreatingWorktree] = useState(false);
   const target = targets.find((candidate) => candidate.project.key === projectKey) ?? targets[0];
+  const workflowScope = workTasks.projectTabs.find(
+    (tab) => boardWorkspaceKey(tab) === target?.project.key,
+  );
+  const workflowPanel = workflowScope ? workTasks.forScope(workflowScope) : null;
+  const workflowLoading =
+    workflowPanel?.loading ||
+    (!workflowScope &&
+      workTasks.projectsLoading &&
+      target?.tab.workspacePurpose !== "conversation" &&
+      !target?.tab.workspaceIdentity &&
+      !target?.tab.remoteSessionId);
+  const [workflowDraft, setWorkflowDraft] = useState<{
+    project: string;
+    workflow: WorkTaskWorkflow | null;
+  } | null>(null);
+  // 等主项目读模型就绪后固定本次创建方式，避免后台配置更新突然卸载用户正在输入的草稿。
+  if (
+    target &&
+    !workflowLoading &&
+    (!workflowPanel?.error || workflowPanel.board) &&
+    workflowDraft?.project !== target.project.key
+  )
+    setWorkflowDraft({
+      project: target.project.key,
+      workflow: workflowPanel?.board?.workflow ?? null,
+    });
   if (!target) return null;
+  const workflow = workflowDraft?.project === target.project.key ? workflowDraft.workflow : null;
+  if (workflow && workflowPanel && workflowScope) {
+    const projectOptions = targets.map(
+      (candidate) =>
+        workTasks.projectTabs.find((tab) => boardWorkspaceKey(tab) === candidate.project.key) ??
+        candidate.tab,
+    );
+    return (
+      <Suspense fallback={null}>
+        <WorkTaskEditor
+          key={target.project.key}
+          scope={workflowPanel.scope}
+          task={null}
+          workflow={workflow}
+          projectOptions={projectOptions}
+          onProjectChange={(key) => {
+            const index = projectOptions.findIndex((tab) => workTaskNavigationKey(tab) === key);
+            if (targets[index]) setProjectKey(targets[index].project.key);
+          }}
+          busy={workflowPanel.busy || !workflowPanel.executable}
+          error={workflowPanel.error}
+          onClose={onClose}
+          onSave={(draft) =>
+            workflowPanel.create(draft, (task) =>
+              onAccepted("work-task", task.id, { project: target.project, tab: workflowScope }),
+            )
+          }
+        />
+      </Suspense>
+    );
+  }
   const scope = {
     workspacePath: target.tab.workspacePath,
     workspaceIdentity: target.tab.workspaceIdentity,
@@ -294,15 +359,28 @@ export function AgentBoardSessionEditor({
             <span className="break-all font-mono">{target.tab.workspacePath}</span>
           ) : null}
         </div>
-        <V4PaneConversationProvider key={boardWorkspaceKey(target.tab)} scope={scope}>
-          <ScopedSessionDraft
-            target={target}
-            scope={scope}
-            options={options}
-            onAccepted={onAccepted}
-            onCreatingChange={setCreatingWorktree}
-          />
-        </V4PaneConversationProvider>
+        {workflowDraft?.project !== target.project.key ? (
+          workflowPanel?.error ? (
+            <>
+              <WorkTaskError error={workflowPanel.error} />
+              <Button onClick={() => void workflowPanel.refresh()}>
+                {intl.formatMessage({ id: "workTasks.retry" })}
+              </Button>
+            </>
+          ) : (
+            <p role="status">{intl.formatMessage({ id: "workTasks.loading" })}</p>
+          )
+        ) : (
+          <V4PaneConversationProvider key={boardWorkspaceKey(target.tab)} scope={scope}>
+            <ScopedSessionDraft
+              target={target}
+              scope={scope}
+              options={options}
+              onAccepted={onAccepted}
+              onCreatingChange={setCreatingWorktree}
+            />
+          </V4PaneConversationProvider>
+        )}
         <div className="flex justify-end">
           <Button variant="ghost" onClick={onClose} disabled={creatingWorktree}>
             {t("cancel")}

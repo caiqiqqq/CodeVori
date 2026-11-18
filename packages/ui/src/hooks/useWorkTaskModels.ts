@@ -43,7 +43,7 @@ export function useWorkTaskModels(scope: WorkTaskScope) {
   });
   const sequence = useRef(0);
   const refreshConfigs = useCallback(async () => {
-    if (!rpcReady) return;
+    if (!rpcReady || !scope.workspacePath) return;
     const request = ++sequence.current;
     setCatalog((previous) => ({
       owner,
@@ -82,7 +82,7 @@ export function useWorkTaskModels(scope: WorkTaskScope) {
     scope.remoteSessionId,
   ]);
   useEffect(() => {
-    if (!rpcReady) return;
+    if (!rpcReady || !scope.workspacePath) return;
     void refreshConfigs();
     return () => {
       sequence.current++;
@@ -92,7 +92,7 @@ export function useWorkTaskModels(scope: WorkTaskScope) {
   useEffect(() => {
     // 修复原因：旧 Host 没有新增事件；先由成功查询确认接口，再订阅并补读，
     // 避免未知事件影响已有 API，也不丢失初次查询与订阅之间的配置变更。
-    if (!rpcReady || !catalogAvailable) return;
+    if (!rpcReady || !catalogAvailable || !scope.workspacePath) return;
     const subscription = services.acpService.onDynamicAgentConfigsChanged()(() => {
       void refreshConfigs();
     });
@@ -110,7 +110,11 @@ export function useWorkTaskModels(scope: WorkTaskScope) {
     agents: agents.agents,
     refreshAgents: agents.refresh,
     configs: catalog.owner === owner ? catalog.configs : [],
-    configStatus: catalog.owner === owner ? catalog.status : "loading",
+    configStatus: !scope.workspacePath
+      ? ("ready" as const)
+      : catalog.owner === owner
+        ? catalog.status
+        : "loading",
     configError: catalog.owner === owner ? catalog.error : null,
     refreshConfigs,
   };

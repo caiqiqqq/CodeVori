@@ -27,6 +27,7 @@ import {
   Network,
   KeyRound,
   Users,
+  Workflow,
 } from "lucide-react";
 import { isSettingsSectionEnabled, type SettingsSectionId } from "@/lib/settingsNavigation.js";
 import type { Theme } from "@/useTheme.js";
@@ -40,7 +41,7 @@ export const THEME_MODES: Array<{
   { mode: "zai-light", icon: Sun },
 ];
 
-type SettingsSectionGroupId = "basics" | "agentCapabilities" | "dataAndStats";
+type SettingsSectionGroupId = "basics" | "agentCapabilities" | "tasksAndWorkflows" | "dataAndStats";
 
 interface SettingsSectionDefinition {
   id: SettingsSectionId;
@@ -56,6 +57,7 @@ const BASE_SETTINGS_SECTION_GROUPS: Array<{
   titleId: string;
 }> = [
   { id: "basics", titleId: "settings.sidebar.group.basics" },
+  { id: "tasksAndWorkflows", titleId: "settings.sidebar.group.tasksAndWorkflows" },
   {
     id: "agentCapabilities",
     titleId: "settings.sidebar.group.agentCapabilities",
@@ -64,6 +66,12 @@ const BASE_SETTINGS_SECTION_GROUPS: Array<{
 ];
 
 const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
+  {
+    id: "taskWorkflows",
+    icon: Workflow,
+    titleId: "workTasks.workflow.libraryTitle",
+    groupId: "tasksAndWorkflows",
+  },
   { id: "projects", icon: FolderTree, titleId: "settings.projects.title", groupId: "basics" },
   {
     id: "remoteSync",

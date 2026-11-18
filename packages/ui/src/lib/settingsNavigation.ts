@@ -29,6 +29,7 @@ export type SettingsSectionId =
   | "automations"
   | "shortcuts"
   | "quickMessages"
+  | "taskWorkflows"
   | "projects"
   | "remoteSync"
   | "worktrees"
@@ -101,6 +102,7 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
     value === "automations" ||
     value === "shortcuts" ||
     value === "quickMessages" ||
+    value === "taskWorkflows" ||
     value === "projects" ||
     value === "remoteSync" ||
     value === "worktrees" ||

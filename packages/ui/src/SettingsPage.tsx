@@ -4,6 +4,8 @@ import { ProjectsSection } from "@/settings/ProjectsSection.js";
 /* oxlint-disable eslint(max-lines) */
 import { ArrowLeft, type LucideIcon } from "lucide-react";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -284,6 +286,12 @@ function SettingsSidebarButton({
     </ControlHintTooltip>
   );
 }
+
+const TaskWorkflowsSection = lazy(() =>
+  import("@/settings/task-workflows/TaskWorkflowsSection.js").then((module) => ({
+    default: module.TaskWorkflowsSection,
+  })),
+);
 
 export function SettingsPage({
   isDesktop,
@@ -1848,6 +1856,10 @@ export function SettingsPage({
                           </ServiceProvider>
                         ) : activeSection === "remoteSync" ? (
                           <RemoteDataSyncSection isDesktop={Boolean(isDesktop)} />
+                        ) : activeSection === "taskWorkflows" ? (
+                          <Suspense fallback={null}>
+                            <TaskWorkflowsSection />
+                          </Suspense>
                         ) : activeSection === "projects" ? (
                           <ProjectsSection />
                         ) : activeSection === "worktrees" ? (

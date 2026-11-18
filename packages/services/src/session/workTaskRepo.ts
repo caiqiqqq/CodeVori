@@ -29,6 +29,15 @@ import {
   prepareWorkTaskForge,
   completeWorkTaskForge,
 } from "./workTaskForgeState.js";
+import {
+  initializeWorkTaskWorkflowLibrary,
+  readWorkTaskWorkflow,
+  listWorkTaskWorkflows,
+  saveWorkTaskWorkflowDefinition,
+  selectWorkTaskWorkflow,
+  deleteWorkTaskWorkflowDefinition,
+  workTaskWorkflowCatalogRevision,
+} from "./workTaskWorkflowPersistence.js";
 import { createWorkTaskDraft } from "./workTaskDraft.js";
 import { admitWorkTaskMerge } from "./workTaskMergeAdmission.js";
 import { isDeepStrictEqual } from "node:util";
@@ -51,8 +60,17 @@ import {
   type WorkTaskChangeRecord,
   type WorkTaskMergeRequest,
   type WorkTaskAcceptBranch,
+  type WorkTaskWorkflowConfig,
+  type WorkTaskWorkflowDefinitionSave,
+  type WorkTaskWorkflowDefinitionDelete,
+  type WorkTaskWorkflowSave,
+  type WorkTaskWorkflowTransition,
 } from "@zcode/shared";
 import type { WorkTaskConversationEvent, WorkTaskExecutionUpdate } from "./workTask.js";
+import {
+  assertWorkTaskWorkflowFinalStage,
+  buildWorkTaskStagePrompt,
+} from "./workTaskWorkflowState.js";
 
 interface Row {
   data: string;
@@ -71,7 +89,14 @@ export class WorkTaskRepo {
     return this.initialization;
   }
   private async initialize() {
-    this.db = await openWorkTaskDatabase(this.path);
+    const db = await openWorkTaskDatabase(this.path);
+    try {
+      initializeWorkTaskWorkflowLibrary(db);
+      this.db = db;
+    } catch (error) {
+      db.close();
+      throw error;
+    }
   }
   close() {
     this.db?.close();
@@ -114,6 +139,24 @@ export class WorkTaskRepo {
         (task) => task.workspacePath === scope.workspacePath && (includeArchived || !task.archived),
       )
       .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+  }
+  workflow(scope: WorkTaskScope): WorkTaskWorkflowConfig {
+    return readWorkTaskWorkflow(this.database(), scope);
+  }
+  listWorkflows() {
+    return listWorkTaskWorkflows(this.database());
+  }
+  workflowCatalogRevision() {
+    return workTaskWorkflowCatalogRevision(this.database());
+  }
+  saveWorkflowDefinition(input: WorkTaskWorkflowDefinitionSave) {
+    return this.transaction(() => saveWorkTaskWorkflowDefinition(this.database(), input));
+  }
+  deleteWorkflowDefinition(input: WorkTaskWorkflowDefinitionDelete) {
+    return this.transaction(() => deleteWorkTaskWorkflowDefinition(this.database(), input));
+  }
+  saveWorkflow(input: WorkTaskWorkflowSave): WorkTaskWorkflowConfig {
+    return this.transaction(() => selectWorkTaskWorkflow(this.database(), input));
   }
   conversationTasks(): WorkTask[] {
     return listWorkTaskConversations(this.database());
@@ -181,7 +224,12 @@ export class WorkTaskRepo {
   }
   create(input: WorkTaskCreate): WorkTask {
     return this.transaction(() =>
-      createWorkTaskDraft(this.database(), input, input.source ? this.list(input, true) : []),
+      createWorkTaskDraft(
+        this.database(),
+        input,
+        input.source ? this.list(input, true) : [],
+        this.workflow(input).workflow ?? undefined,
+      ),
     );
   }
   update(input: WorkTaskUpdate): WorkTask {
@@ -197,7 +245,15 @@ export class WorkTaskRepo {
           sourceBranch: input.sourceBranch,
           useWorktree: input.useWorktree,
           promptEditorState: input.promptEditorState,
-          runText: input.prompt,
+          runText: task.workflow
+            ? buildWorkTaskStagePrompt(
+                input.prompt,
+                task.workflow.definition.stages.find(
+                  (stage) => stage.id === task.workflow!.currentStageId,
+                )!,
+                task.workflow.history.at(-1)?.handoffNote,
+              )
+            : input.prompt,
           runUsesPromptAssets: true,
           updatedAt: Date.now(),
         },
@@ -285,6 +341,7 @@ export class WorkTaskRepo {
       const { id, targetBranch } = input;
       const row = this.row(input, id);
       const task = decode(row);
+      assertWorkTaskWorkflowFinalStage(task);
       if (!admitWorkTaskMerge(task, !!row.owner, targetBranch)) return task;
       appendWorkTaskQueue(this.database(), id);
       const merge: WorkTaskMerge = { id: uuidv7(), projectPath, targetBranch, phase: "queued" };
@@ -397,8 +454,101 @@ export class WorkTaskRepo {
     records?: WorkTaskChangeRecord,
   ): WorkTask {
     return this.transaction(() => {
-      const task = completeWorkTaskForge(this.get(scope, id), forge, records);
+      const current = this.get(scope, id);
+      assertWorkTaskWorkflowFinalStage(current);
+      const task = completeWorkTaskForge(current, forge, records);
       return this.write(task, "accepted");
+    });
+  }
+  transitionWorkflow(input: WorkTaskWorkflowTransition): WorkTask {
+    return this.transaction(() => {
+      const row = this.row(input, input.id);
+      const task = decode(row);
+      const state = task.workflow;
+      const currentStage = state?.definition.stages.find(
+        (stage) => stage.id === state.currentStageId,
+      );
+      const targetStage = state?.definition.stages.find(
+        (stage) => stage.id === input.targetStageId,
+      );
+      const statusWorkflow = !!state?.definition.initialStageId;
+      if (
+        !state ||
+        !currentStage ||
+        !targetStage ||
+        row.owner ||
+        task.runSeq !== input.expectedRunSeq ||
+        state.currentStageId !== input.expectedStageId ||
+        !(statusWorkflow ? ["todo", "review", "failed", "canceled"] : ["review"]).includes(
+          task.status,
+        ) ||
+        targetStage.enabled === false ||
+        task.archived ||
+        task.stopPending ||
+        task.worktreeCleanup?.phase === "running" ||
+        isWorkTaskMerging(task)
+      )
+        throw new Error("work-task.workflow-transition-stale");
+      if (
+        currentStage.id === targetStage.id ||
+        (!statusWorkflow &&
+          currentStage.nextStageId !== targetStage.id &&
+          currentStage.returnStageId !== targetStage.id)
+      )
+        throw new Error("work-task.workflow-transition-invalid");
+
+      assertWorkTaskSourceAvailable(this.list(input, true), task.source, task.id);
+
+      const now = Date.now();
+      const handoff = targetStage.handoff ?? (statusWorkflow ? "none" : "agent");
+      const startsAgent =
+        handoff === "agent" && targetStage.status !== "done" && targetStage.status !== "canceled";
+      // 修复依据：进入状态时的“不交接/成员”只更新业务状态，不能沿用旧实现无条件入队。
+      if (startsAgent) appendWorkTaskQueue(this.database(), task.id);
+      return this.write(
+        {
+          ...task,
+          execution: startsAgent ? (targetStage.execution ?? task.execution) : task.execution,
+          workflow: {
+            ...state,
+            currentStageId: targetStage.id,
+            owner: handoff === "none" ? (state.owner ?? currentStage.owner) : targetStage.owner,
+            history: [
+              ...state.history,
+              {
+                stageId: currentStage.id,
+                stageName: currentStage.name,
+                owner: state.owner ?? currentStage.owner,
+                session: task.session,
+                execution: task.execution,
+                worktree: task.worktree,
+                directBranch: task.directBranch,
+                runSeq: task.runSeq,
+                targetStageId: targetStage.id,
+                handoffNote: input.handoffNote,
+                transitionedAt: now,
+              },
+            ],
+          },
+          status: startsAgent
+            ? "queued"
+            : targetStage.status === "canceled"
+              ? "canceled"
+              : "review",
+          runText: buildWorkTaskStagePrompt(task.prompt, targetStage, input.handoffNote),
+          runUsesPromptAssets: true,
+          session: startsAgent ? undefined : task.session,
+          sessionRequestId: startsAgent ? uuidv7() : task.sessionRequestId,
+          failureReason: undefined,
+          completion: undefined,
+          merge: undefined,
+          finishedAt: startsAgent ? undefined : task.finishedAt,
+          startedAt: startsAgent ? undefined : task.startedAt,
+          stopPending: false,
+          updatedAt: now,
+        },
+        "workflow-stage-transitioned",
+      );
     });
   }
   claimForgeWriteback(scope: WorkTaskScope & { id: string }, owner: string): WorkTask {

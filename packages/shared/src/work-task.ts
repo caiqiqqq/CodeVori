@@ -1,21 +1,23 @@
 import { z } from "zod";
 import { forgeItemRequestSchema } from "./forge.js";
 import { modelSelectionSchema } from "./model-selection.js";
+import {
+  workTaskExecutionSchema,
+  workTaskScopeSchema,
+  workTaskTargetSchema,
+  workTaskWorktreeSchema,
+} from "./work-task-core.js";
+import { workTaskWorkflowStateSchema, type WorkTaskWorkflow } from "./work-task-workflow.js";
+export * from "./work-task-core.js";
+export * from "./work-task-workflow.js";
 import { workTaskChangeRecordSchema } from "./work-task-result.js";
-import { acpAgentSchema, acpTextSourceSchema } from "./zcode-protocol/acp.js";
+import { acpTextSourceSchema } from "./zcode-protocol/acp.js";
 import { attachmentRefSchema } from "./zcode-protocol-v4/attachment-ref.js";
 import { PROTOCOL_V4_LIMITS } from "./zcode-protocol-v4/core.js";
 import {
   v4AttachmentBeginParamsSchema,
   v4AttachmentChunkParamsSchema,
 } from "./zcode-protocol-v4/transport.js";
-
-export const workTaskScopeSchema = z.object({
-  workspacePath: z.string().trim().min(1),
-  workspaceIdentity: z.string().trim().min(1).optional(),
-  remoteSessionId: z.string().trim().min(1).optional(),
-});
-export type WorkTaskScope = z.infer<typeof workTaskScopeSchema>;
 
 export const workTaskAttachmentSchema = attachmentRefSchema.omit({ previewRef: true }).extend({
   ref: z.string().min(1),
@@ -97,41 +99,6 @@ export const workTaskAttachmentChunkSchema = workTaskAttachmentTargetSchema
   .strict();
 export type WorkTaskAttachmentChunk = z.infer<typeof workTaskAttachmentChunkSchema>;
 
-export const workTaskExecutionSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("api"),
-      modelSelection: modelSelectionSchema,
-      mode: z.enum(["build", "edit", "plan", "yolo", "guarded"]),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("acp"),
-      agent: acpAgentSchema,
-      config: z
-        .array(
-          z
-            .object({
-              configId: z.string().trim().min(1),
-              value: z.union([z.string(), z.boolean()]),
-            })
-            .strict(),
-        )
-        .max(32),
-      /** Resolved ACP Host preference; MCP callers cannot select this field. */
-      modelPreference: z
-        .object({
-          configId: z.string().trim().min(1).max(256),
-          value: z.string().min(1).max(512),
-        })
-        .strict()
-        .optional(),
-    })
-    .strict(),
-]);
-export type WorkTaskExecution = z.infer<typeof workTaskExecutionSchema>;
-
 export const workTaskStatusSchema = z.enum([
   "todo",
   "queued",
@@ -153,18 +120,6 @@ export const WORK_TASK_ACTIVE_STATUSES: readonly WorkTaskStatus[] = [
 /** 应用级待办调度上限；旧项目 concurrency 字段继续独立兼容。 */
 export const workTaskExecutionConcurrencySchema = z.number().int().min(1);
 export const DEFAULT_WORK_TASK_CONCURRENCY = 4;
-
-export const workTaskWorktreeSchema = z
-  .object({
-    rootPath: z.string().min(1),
-    path: z.string().min(1),
-    projectPath: z.string().min(1),
-    branchName: z.string().min(1),
-    baseCommit: z.string().min(1),
-    /** Explicitly accepted current branch; absent on legacy tasks means branchName. */
-    acceptedBranchName: z.string().min(1).optional(),
-  })
-  .strict();
 
 export const workTaskMergeSchema = z
   .object({
@@ -270,6 +225,7 @@ export const workTaskSchema = workTaskScopeSchema
       .object({ kind: z.enum(["api", "acp"]), id: z.string().min(1) })
       .strict()
       .optional(),
+    workflow: workTaskWorkflowStateSchema.optional(),
     worktree: workTaskWorktreeSchema.optional(),
     worktreeCleanup: z
       .object({
@@ -292,6 +248,7 @@ export const workTaskSchema = workTaskScopeSchema
   })
   .strict();
 export type WorkTask = z.infer<typeof workTaskSchema>;
+
 export const workTaskCreateSchema = workTaskScopeSchema
   .extend({
     ...promptAssetsShape,
@@ -309,8 +266,6 @@ export type WorkTaskCreate = z.infer<typeof workTaskCreateSchema>;
 export function workTaskExecutionPath(task: WorkTask): string | undefined {
   return task.useWorktree === false && task.directBranch ? task.workspacePath : task.worktree?.path;
 }
-export const workTaskTargetSchema = workTaskScopeSchema.extend({ id: z.string().min(1) }).strict();
-export type WorkTaskTarget = z.infer<typeof workTaskTargetSchema>;
 export const workTaskRenameSchema = workTaskTargetSchema
   .extend({ title: workTaskSchema.shape.title })
   .strict();
@@ -401,6 +356,8 @@ export const workTaskConcurrencySchema = workTaskScopeSchema
 
 export interface WorkTaskBoard {
   tasks: WorkTask[];
+  workflow?: WorkTaskWorkflow | null;
+  workflowRevision?: number;
   /** @deprecated Saved compatibility value; tasks have no project concurrency limit. */
   concurrency: number;
 }

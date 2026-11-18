@@ -1,0 +1,30 @@
+export const agentBoardWorkflowFixture = `
+import {SettingsPage} from '../../../ui/src/SettingsPage.tsx';
+import {ConfirmDialogHost} from '../../../ui/src/ConfirmDialog.tsx';
+import {applyTheme} from '../../../ui/src/useTheme.ts';
+const workflows=new Map(),definitions=new Map(),catalogListeners=new Set();
+const scopeKey=input=>input.workspaceIdentity?.trim()||input.workspacePath;
+const getWorkflow=input=>{const binding=workflows.get(scopeKey(input));return {workflow:binding?.workflowId?definitions.get(binding.workflowId)?.workflow??null:null,revision:binding?.revision??0}};
+const notifyWorkflow=()=>{for(const listener of workListeners)listener();for(const listener of catalogListeners)listener()};
+const oldList=workService.list;
+workService.list=async input=>({...await oldList(input),workflow:structuredClone(getWorkflow(input).workflow),workflowRevision:getWorkflow(input).revision});
+workService.listWorkflows=async()=>[...definitions.values()].map(entry=>({...structuredClone(entry),projectKeys:[...workflows.entries()].filter(([,v])=>v.workflowId===entry.workflow.id).map(([key])=>key)}));
+workService.onDynamicWorkflowsChanged=()=>listener=>{catalogListeners.add(listener);return{dispose(){catalogListeners.delete(listener)}}};
+workService.saveWorkflowDefinition=async input=>{commands.push({kind:'workflow-definition-save',...structuredClone(input)});const current=definitions.get(input.workflow.id);if((current?.revision??0)!==input.expectedRevision||window.__board.rejectWorkflowSave)throw Error('work-task.workflow-stale');const entry={workflow:structuredClone(input.workflow),revision:input.expectedRevision+1};definitions.set(entry.workflow.id,entry);for(const binding of workflows.values())if(binding.workflowId===entry.workflow.id)binding.revision++;notifyWorkflow();return structuredClone({...entry,projectKeys:[]})};
+workService.deleteWorkflowDefinition=async input=>{if([...workflows.values()].some(v=>v.workflowId===input.id))throw Error('work-task.workflow-in-use');definitions.delete(input.id);commands.push({kind:'workflow-definition-delete',...input});notifyWorkflow()};
+workService.saveWorkflow=async input=>{commands.push({kind:'workflow-select',...structuredClone(input)});const current=getWorkflow(input);if(current.revision!==input.expectedRevision)throw Error('work-task.workflow-stale');workflows.set(scopeKey(input),{workflowId:input.workflowId,revision:current.revision+1});notifyWorkflow();return getWorkflow(input)};
+workService.create=async input=>{const definition=structuredClone(getWorkflow(input).workflow);const task={...input,id:'workflow-'+workRows.length,commandId:'command',sessionRequestId:crypto.randomUUID(),status:'todo',archived:false,stopPending:false,runSeq:0,runText:input.prompt,createdAt:Date.now(),updatedAt:Date.now()};if(definition){const initial=definition.stages.find(s=>s.id===definition.initialStageId)??definition.stages[0];task.workflow={definition,currentStageId:initial.id,owner:initial.owner,history:[]};task.execution=initial.execution??task.execution}commands.push({kind:'work-task-create',...structuredClone(input)});workRows.push(task);notifyWorkflow();return structuredClone(task)};
+workService.transitionWorkflow=async input=>{commands.push({kind:'workflow-transition',...structuredClone(input)});const task=workRows.find(task=>task.id===input.id&&scopeKey(task)===scopeKey(input));const state=task.workflow;const prior=state.definition.stages.find(stage=>stage.id===state.currentStageId);const next=state.definition.stages.find(stage=>stage.id===input.targetStageId);state.history.push({stageId:prior.id,stageName:prior.name,owner:state.owner??prior.owner,targetStageId:next.id,execution:structuredClone(task.execution),session:structuredClone(task.session),worktree:structuredClone(task.worktree),runSeq:task.runSeq,transitionedAt:Date.now(),handoffNote:input.handoffNote});state.currentStageId=next.id;state.owner=next.handoff==='none'?state.owner:next.owner;const agent=next.handoff==='agent'&&!['done','canceled'].includes(next.status);if(agent){task.execution=next.execution??task.execution;task.session=undefined;task.sessionRequestId=crypto.randomUUID()}task.status=agent?'queued':next.status==='canceled'?'canceled':'review';notifyWorkflow();return structuredClone(task)};
+const modelView={revision:1,preferredSelection:{providerId:'api',modelId:'TestModel',options:{reasoningLevel:'high'}},providers:[{providerId:'api',providerName:'Test API',config:{api:{type:'openai-chat-completions'}},models:[{modelId:'TestModel',config:{optionSpecs:{reasoningLevel:{values:['low','high']}}}}]}]};
+services.broadcastService={send:async()=>{},onMessage:()=>({dispose(){}})};
+services.clientConfigService={getSnapshot:async()=>({pluginStoreOrder:null})};
+services.zcodeAgentService={onDynamicConversationFrame:()=>()=>({dispose(){}}),onAgentRuntimeRestarted:()=>({dispose(){}})};
+services.systemService.info=async()=>({platform:'darwin',homedir:'/fixture'});
+services.modelSelectionService={getView:async input=>({...modelView,effectiveSelection:input?.selection??modelView.preferredSelection}),onDidChange:()=>({dispose(){}})};
+services.settingService={get:async()=>({recentProjects:['/fixture/project-3','/fixture/project-4'],worktreeRootDirectory:'/fixture/worktrees'}),update:async()=>{}};
+services.acpService.listAvailableAgents=async()=>[{agent:'codex',enabled:true,ready:true}];
+services.acpService.listAgentConfigs=async()=>[];
+services.acpService.onDynamicAgentConfigsChanged=()=>()=>({dispose(){}});
+services.gitService.getLocalBranches=async()=>({headRefType:'branch',currentBranchName:'main',branches:[{name:'main',isCurrent:true,upstreamName:null,commitHash:'base',commitTimestampMs:1}]});
+function WorkflowFixture(){window.__board.setTheme=applyTheme;const [view,setView]=useState('settings');window.__board.showBoard=()=>setView('board');window.__board.showSettings=()=>setView('settings');return <><ConfirmDialogHost/>{view==='settings'?<SettingsPage isDesktop={false}/>:<BoardFixture/>}</>}
+`;

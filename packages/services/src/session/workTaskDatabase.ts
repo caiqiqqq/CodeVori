@@ -120,9 +120,21 @@ export function listWorkTaskConversationSessionIds(
     const task = workTaskSchema.parse(JSON.parse(row.data));
     // 待办完成/归档不解除会话归属；执行目录可能是原项目，也可能是独立工作树。
     // 普通列表必须按持久绑定过滤，不能凭标题或分支名猜测，也不能串到另一 Host identity。
+    const historical = (task.workflow?.history ?? []).map(
+      (entry) =>
+        [
+          workTaskExecutionPath({
+            ...task,
+            worktree: entry.worktree,
+            directBranch: entry.directBranch,
+          }),
+          entry.session,
+        ] as const,
+    );
     for (const [path, session] of [
       [workTaskExecutionPath(task), task.session],
       [task.merge?.worktree?.path, task.merge?.session],
+      ...historical,
     ] as const) {
       if (
         path === scope.workspacePath &&
@@ -141,9 +153,7 @@ export function recordWorkTaskChange(
   type: string,
   message?: string,
 ) {
-  db.prepare(
-    "INSERT INTO work_task_projects(workspace_key,revision) VALUES (?,1) ON CONFLICT(workspace_key) DO UPDATE SET revision=revision+1",
-  ).run(resolveWorkspaceKey(task));
+  touchWorkTaskProject(db, resolveWorkspaceKey(task));
   db.prepare("INSERT INTO work_task_events(task_id,run_seq,at,type,message) VALUES(?,?,?,?,?)").run(
     task.id,
     task.runSeq,
@@ -151,6 +161,12 @@ export function recordWorkTaskChange(
     type,
     message ?? null,
   );
+}
+
+export function touchWorkTaskProject(db: WorkTaskDatabase, workspaceKey: string) {
+  db.prepare(
+    "INSERT INTO work_task_projects(workspace_key,revision) VALUES (?,1) ON CONFLICT(workspace_key) DO UPDATE SET revision=revision+1",
+  ).run(workspaceKey);
 }
 
 export function writeWorkTask(
@@ -191,6 +207,8 @@ export async function openWorkTaskDatabase(path: string) {
       CREATE INDEX IF NOT EXISTS work_tasks_queue ON work_tasks(status, queue_position);
       CREATE TABLE IF NOT EXISTS work_task_projects (
         workspace_key TEXT PRIMARY KEY, concurrency INTEGER NOT NULL DEFAULT 1, revision INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS work_task_workflows (
+        workspace_key TEXT PRIMARY KEY, revision INTEGER NOT NULL, data TEXT);
       CREATE TABLE IF NOT EXISTS work_task_events (
         sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
         run_seq INTEGER NOT NULL, at INTEGER NOT NULL, type TEXT NOT NULL, message TEXT);

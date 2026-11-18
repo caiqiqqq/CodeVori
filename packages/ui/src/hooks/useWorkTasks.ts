@@ -54,6 +54,25 @@ function commands(scope: WorkTaskScope, run: Run) {
       }),
     start: (id: string, feedback?: string) =>
       run(scope, (target) => target.start({ ...scope, id, ...(feedback ? { feedback } : {}) })),
+    saveWorkflow: (workflowId: string | null, expectedRevision: number) =>
+      run(scope, (target) => target.saveWorkflow({ ...scope, workflowId, expectedRevision })),
+    transitionWorkflow: (
+      id: string,
+      expectedRunSeq: number,
+      expectedStageId: string,
+      targetStageId: string,
+      handoffNote?: string,
+    ) =>
+      run(scope, (target) =>
+        target.transitionWorkflow({
+          ...scope,
+          id,
+          expectedRunSeq,
+          expectedStageId,
+          targetStageId,
+          ...(handoffNote ? { handoffNote } : {}),
+        }),
+      ),
     restartWithNewSession: (id: string) =>
       run(scope, (target) => target.start({ ...scope, id, newSession: true })),
     startAll: () => run(scope, (target) => target.startAll(scope)),
@@ -178,22 +197,32 @@ export function useWorkTasks(
     },
     [owner, sources],
   );
-  const forScope = (target: WorkTaskScope): WorkTaskPanel => ({
-    ...commands(scopeOnly(target), run),
+  const forScope = (target: WorkTaskScope): WorkTaskPanel => {
+    const selectedSources = sources.filter(
+      (source) => workTaskNavigationKey(source.scope) === workTaskNavigationKey(target),
+    );
+    // 修复原因：汇总面板没有单项目工作流；必须从已有的精确 scope 读投影取配置和 CAS 版本。
+    const selectedResource = combineWorkTaskReads(selectedSources);
+    const selectedRead = selectedResource.getSnapshot();
+    return {
+      ...commands(scopeOnly(target), run),
+      board: selectedRead.data,
+      loading: selectedRead.loading,
+      settled: selectedRead.settled,
+      error: mutation.owner === owner && mutation.error ? mutation.error : selectedRead.error,
+      busy: mutation.owner === owner && mutation.busy,
+      executable: selectedSources.some((source) => source.executable),
+      refresh: selectedResource.refresh,
+    };
+  };
+  const panel = forScope(scope);
+  return {
+    ...panel,
     board: read.data,
     loading: read.loading,
     settled: read.settled,
     error: mutation.owner === owner && mutation.error ? mutation.error : read.error,
-    busy: mutation.owner === owner && mutation.busy,
-    executable: sources.some(
-      (item) =>
-        workTaskNavigationKey(item.scope) === workTaskNavigationKey(target) && item.executable,
-    ),
     refresh: resource.refresh,
-  });
-  const panel = forScope(scope);
-  return {
-    ...panel,
     forScope,
     executable: sources.some((source) => source.executable),
     startAll: async () => {
