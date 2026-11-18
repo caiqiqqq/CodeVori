@@ -792,22 +792,23 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
   }, [remoteWorkspaceError]);
   const renderWorkspaceIcon = () => {
     // 项目文件夹图标同时表达并控制项目任务列表的展开状态。
+    // Button 的 icon-sm 默认规则会把 h-4/w-4 覆盖为 12px，显式使用 size-4 才保持 16px。
     if (isExpanded && !isDisconnectedRemoteWorkspace) {
       return isRemoteWorkspace ? (
-        <Cloud className="h-4 w-4 text-foreground-subtle" />
+        <Cloud className="size-4 text-foreground-subtle" />
       ) : isHomeWorkspace ? (
-        <House className="h-4 w-4 text-foreground-subtle" />
+        <House className="size-4 text-foreground-subtle" />
       ) : (
-        <FolderOpen className="h-4 w-4 text-foreground-subtle" />
+        <FolderOpen className="size-4 text-foreground-subtle" />
       );
     }
 
     return isRemoteWorkspace ? (
-      <Cloud className="h-4 w-4 text-foreground-subtle" />
+      <Cloud className="size-4 text-foreground-subtle" />
     ) : isHomeWorkspace ? (
-      <House className="h-4 w-4 text-foreground-subtle" />
+      <House className="size-4 text-foreground-subtle" />
     ) : (
-      <Folder className="h-4 w-4 text-foreground-subtle" />
+      <Folder className="size-4 text-foreground-subtle" />
     );
   };
 
@@ -876,7 +877,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
           void handleSubmitWorkspaceRename();
         }}
       />
-      {/* 修复原因：侧栏项目标题过高且标题下方有重复留白；改用紧凑行高并移除行间隔。 */}
+      {/* 修复依据：图标和名称之间原叠加 gap-2、px-2 与透明边框；移除多余留白并保留 24px 图标点击区。 */}
       <Collapsible
         className="flex flex-col gap-0"
         open={isExpanded && !isDisconnectedRemoteWorkspace}
@@ -890,7 +891,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
         >
           <div
             className={cn(
-              "group flex items-center gap-2 rounded-lg transition-[background-color,box-shadow]",
+              "group flex items-center gap-0 rounded-lg transition-[background-color,box-shadow]",
               isReconnectPending
                 ? "bg-brand/10 workspace-remote-connecting-breathe"
                 : isDisconnectedRemoteWorkspace
@@ -945,7 +946,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
               size="default"
               data-testid={`workspace-name-${tab.workspacePath}`}
               className={cn(
-                "flex h-6 min-w-0 flex-1 justify-start gap-2 rounded-lg px-2 text-left text-foreground hover:bg-surface-hover hover:text-foreground",
+                "flex h-6 min-w-0 flex-1 justify-start gap-2 rounded-lg border-0 px-0 text-left text-foreground hover:bg-surface-hover hover:text-foreground",
                 isDisconnectedRemoteWorkspace && "hover:bg-transparent",
                 sortableBindings && "cursor-grab active:cursor-grabbing",
               )}
