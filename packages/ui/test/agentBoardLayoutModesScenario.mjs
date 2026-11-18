@@ -62,10 +62,28 @@ export async function exerciseAgentBoardLayoutModes(page, artifacts) {
     initialKeys,
   );
   assert.deepEqual(await columns(), cardColumns, "compact keeps the horizontal card-column layout");
+  // 用旧版上下 10px 内边距测量同一张卡片，确认只增加纵向空间而不改变宽度。
+  const compactButton = cards.first().locator(":scope > button");
+  await compactButton.evaluate((node) => {
+    node.style.paddingBlock = "10px";
+  });
+  const previousCompactBox = await compactButton.boundingBox();
+  await compactButton.evaluate((node) => {
+    node.style.removeProperty("padding-block");
+  });
   const compactCardBox = await cards.first().boundingBox();
+  const compactContentBox = await compactButton.boundingBox();
+  assert.equal(
+    compactContentBox.width,
+    previousCompactBox.width,
+    "compact card width stays unchanged",
+  );
+  assert.ok(
+    Math.abs(compactContentBox.height - previousCompactBox.height - 40) < 1,
+    "compact cards gain 40px height",
+  );
   assert.ok(compactCardBox.width <= 224, "compact cards stay small-card width");
   assert.ok(compactCardBox.width < firstCardBox.width - 24, "compact cards are visibly narrower");
-  assert.ok(compactCardBox.height < firstCardBox.height, "compact cards use less height");
   const runningCards = page.locator('[data-board-column="running"] [data-board-card]');
   const firstCompact = await runningCards.nth(0).boundingBox();
   const secondCompact = await runningCards.nth(1).boundingBox();
