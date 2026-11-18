@@ -72,6 +72,7 @@ export function AgentBoardGroups({
                 key={item.key}
                 item={item}
                 projectLabel={projects.find((project) => project.key === item.projectKey)?.label}
+                compact={byStatus}
                 onOpen={() => onOpen(item)}
                 onStage={onStage}
               />

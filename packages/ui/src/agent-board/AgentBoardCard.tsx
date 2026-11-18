@@ -23,11 +23,13 @@ export const boardStatusColors = {
 export function AgentBoardCard({
   item,
   projectLabel,
+  compact = false,
   onOpen,
   onStage,
 }: {
   item: BoardItem;
   projectLabel?: string;
+  compact?: boolean;
   onOpen(): void;
   onStage(item: BoardItem): void;
 }) {
@@ -57,7 +59,7 @@ export function AgentBoardCard({
       data-board-card={item.key}
     >
       <button
-        className="w-full rounded-xl p-4 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        className={`w-full rounded-xl px-4 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand ${compact ? "py-9" : "py-4"}`}
         onClick={onOpen}
       >
         <div className="mb-3 flex items-center justify-between gap-2 text-ui-caption text-foreground-subtle">

@@ -43,6 +43,22 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
     a.width <= 385 && b.width <= 385,
     "sparse groups must not stretch cards across the page",
   );
+  const statusCardBefore = await cards.first().boundingBox();
+  await page.getByRole("combobox", { name: "分组方式", exact: true }).selectOption("status");
+  const statusCardAfter = await page
+    .locator('[data-board-column="running"] article')
+    .first()
+    .boundingBox();
+  assert.ok(statusCardAfter.width <= 385, "compact cards keep the existing narrow column width");
+  assert.ok(statusCardAfter.height >= statusCardBefore.height + 35, "compact cards gain height");
+  assert.ok(
+    Math.abs(
+      statusCardAfter.width -
+        (await page.locator('[data-board-column="running"]').boundingBox()).width,
+    ) < 1,
+    "cards continue to fill the existing status column",
+  );
+  await page.getByRole("combobox", { name: "分组方式", exact: true }).selectOption("project");
   assert.ok(Math.abs(a.y - b.y) < 2 && b.x > a.x, "desktop work tasks share one row");
   for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {
     await page.evaluate((value) => (document.documentElement.className = value), theme);
@@ -173,6 +189,23 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
     expectedTabs,
   );
   await page.setViewportSize({ width: 390, height: 844 });
+  const mobileStatusCard = await page
+    .locator('[data-board-column="running"] article')
+    .first()
+    .boundingBox();
+  assert.equal(mobileStatusCard.width, 288, "mobile status cards keep their column width");
+  assert.deepEqual(
+    await page
+      .locator('[data-board-column="running"] article > button')
+      .first()
+      .evaluate((node) => {
+        const style = getComputedStyle(node);
+        return [style.paddingTop, style.paddingBottom];
+      }),
+    ["36px", "36px"],
+    "mobile status cards retain the extra vertical space",
+  );
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   assert.deepEqual(
     await groups.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn)),
     ["running", "completed", "staged", "error"],
