@@ -5,7 +5,7 @@ import { buildAcpConversationRows, ACP_DISPLAY_TOOL_NAME } from "../src/v4/acpCo
 import { buildAssistantWorkRenderItems } from "../src/v4/conversationAssistantWorkItems.ts";
 import { toolCallRowToLegacyNode } from "../src/v4/toolCallRowAdapter.ts";
 import { isPlainRecord } from "../src/ToolCallBlocks/fileSummaryTypes.ts";
-import { readAcpToolEntry } from "../src/lib/acpToolPresentation.ts";
+import { acpToolDetailSections, readAcpToolEntry } from "../src/lib/acpToolPresentation.ts";
 
 function project(entries: AcpEntry[], running = true, terminalGrouping = true) {
   const rows = buildAcpConversationRows({ entries, status: running ? "running" : "idle" });
@@ -119,6 +119,28 @@ test("ACP adapter keeps absent/truncated input and explicit output in generic de
   const details = readAcpToolEntry(node.toolCall.raw.acpTool);
   assert.equal(details?.input, entry.input);
   assert.equal(details?.output, "raw output");
+});
+
+test("ACP tool details show joined terminal output and hide terminal ID placeholders", () => {
+  const entry = readAcpToolEntry({
+    kind: "tool",
+    title: "run command",
+    terminalIds: ["terminal-1"],
+    content: "terminal:terminal-1",
+    terminalOutput: "command output",
+  });
+  assert.deepEqual(acpToolDetailSections(entry), ["command output"]);
+
+  const missing = readAcpToolEntry({
+    kind: "tool",
+    title: "run command",
+    terminalIds: ["terminal-1"],
+    content: "terminal:terminal-1",
+    terminalOutputUnavailable: true,
+  });
+  assert.equal(missing?.terminalOutputUnavailable, true);
+  assert.deepEqual(acpToolDetailSections(missing), []);
+  assert.deepEqual(acpToolDetailSections(undefined, "legacy raw output"), ["legacy raw output"]);
 });
 
 test("unfamiliar or empty ACP execute parameters never hide a running tool", () => {

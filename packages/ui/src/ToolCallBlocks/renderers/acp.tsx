@@ -1,6 +1,6 @@
 import { WrenchIcon } from "lucide-react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { readAcpToolEntry } from "@/lib/acpToolPresentation.js";
+import { acpToolDetailSections, readAcpToolEntry } from "@/lib/acpToolPresentation.js";
 import { ToolLayout } from "@/ToolCallBlocks/ToolLayout.js";
 import type { ToolCallBlockRenderContext } from "@/ToolCallBlocks/shared.js";
 import { isPlainRecord } from "@/ToolCallBlocks/fileSummaryTypes.js";
@@ -16,10 +16,15 @@ export function AcpToolCallBlock(context: ToolCallBlockRenderContext) {
   const statusLabel = unknown
     ? intl.formatMessage({ id: "acp.toolResultUnknown" })
     : context.statusLabel;
-  const details = [entry?.input, entry?.content ?? toolCall.output, entry?.output].filter(
-    (text, index, all): text is string =>
-      typeof text === "string" && text.length > 0 && all.indexOf(text) === index,
+  const details = acpToolDetailSections(
+    entry,
+    typeof toolCall.output === "string" ? toolCall.output : undefined,
   );
+  const hasTruncatedOutput =
+    entry?.terminalOutputTruncated ||
+    entry?.inputTruncated ||
+    entry?.outputTruncated ||
+    entry?.contentTruncated;
   return (
     <ToolLayout
       toolId={toolCall.toolId}
@@ -41,9 +46,21 @@ export function AcpToolCallBlock(context: ToolCallBlockRenderContext) {
       title={title}
       canToggle={Boolean(title) || details.length > 0}
       renderContent={() => (
-        <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface px-3 py-2 font-mono text-ui-sm text-foreground-subtle">
-          {[title, ...details].join("\n\n")}
-        </pre>
+        <div className="space-y-2">
+          {entry?.terminalOutputUnavailable ? (
+            <p className="text-ui-base text-foreground-subtle">
+              {intl.formatMessage({ id: "acp.terminalOutputUnavailable" })}
+            </p>
+          ) : null}
+          {hasTruncatedOutput ? (
+            <p className="text-ui-base text-foreground-subtle">
+              {intl.formatMessage({ id: "acp.terminalOutputTruncated" })}
+            </p>
+          ) : null}
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface px-3 py-2 font-mono text-ui-sm text-foreground-subtle">
+            {[title, ...details].join("\n\n")}
+          </pre>
+        </div>
       )}
     />
   );

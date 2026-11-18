@@ -1,3 +1,10 @@
+import { useWorkTaskSidebar } from "@/work-tasks/WorkTaskSidebarContext.js";
+import { WorkTaskSidebarItem } from "@/work-tasks/WorkTaskSidebarItem.js";
+import { workTaskSelectionKey } from "@/store/workTaskNavigationStore.js";
+import {
+  sidebarConversationKey,
+  sidebarWorkTasksForScopes,
+} from "@/lib/sidebarConversationRows.js";
 /* eslint-disable max-lines -- 顶层 grouped task 容器仍集中维护远程 workspace service 解析、group 菜单、task 菜单和列表写回；子行与纯 helper 已拆到 workspace-grouped-tasks 目录。 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
@@ -606,11 +613,27 @@ export function WorkspaceGroupedTasksSection({
   } = useGroupedTaskView({
     workspaceTabs,
   });
+  const { tasks: workTasks, boundKeys } = useWorkTaskSidebar();
+  const sidebarWorkTasks = useMemo(
+    () => sidebarWorkTasksForScopes(workTasks, workspaceTabs),
+    [workTasks, workspaceTabs],
+  );
   const [archivingTaskKeys, setArchivingTaskKeys] = useState<ReadonlySet<string>>(() => new Set());
   const view = useMemo(
     () => filterGroupedViewByTaskKeys(authoritativeView, archivingTaskKeys),
     [archivingTaskKeys, authoritativeView],
   );
+  // 只对 render 输入去重；拖动和保存仍读取完整 view，避免隐藏绑定被写出原分组。
+  const displayView = useMemo(() => {
+    const hidden = new Set<string>();
+    for (const node of view.nodes) {
+      const tasks = node.type === "task" ? [node.task] : node.tasks;
+      for (const task of tasks)
+        if (boundKeys.has(sidebarConversationKey({ ...task, kind: "native", id: task.taskId })))
+          hidden.add(taskKey(task));
+    }
+    return filterGroupedViewByTaskKeys(view, hidden);
+  }, [view, boundKeys]);
 
   useEffect(() => {
     if (archivingTaskKeys.size === 0) {
@@ -1683,6 +1706,13 @@ export function WorkspaceGroupedTasksSection({
 
   return (
     <>
+      {sidebarWorkTasks.length ? (
+        <ul className="space-y-0.5">
+          {sidebarWorkTasks.map((task) => (
+            <WorkTaskSidebarItem key={workTaskSelectionKey(task)} task={task} />
+          ))}
+        </ul>
+      ) : null}
       <TaskRenameDialog
         open={renamingTaskKey !== null}
         value={renameDraft}
@@ -1723,7 +1753,7 @@ export function WorkspaceGroupedTasksSection({
             />
           ) : null}
           <VirtualizedGroupedTopLevelList
-            nodes={view.nodes}
+            nodes={displayView.nodes}
             isGroupCollapsed={isGroupCollapsed}
             renderNode={renderTopLevelNode}
           />

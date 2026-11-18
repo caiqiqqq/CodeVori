@@ -1,3 +1,4 @@
+/* oxlint-disable eslint(max-lines) -- ACP stdio connection keeps protocol callbacks and launch lifecycle together. */
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
@@ -105,7 +106,10 @@ async function connectWithDiagnostics(
   let configOptions: AcpConnectionPort["configOptions"] = [];
   let modeState: AcpConnectionPort["modeState"] = null;
   let receivingLiveUpdates = false;
-  const promptLifecycle = new AcpPromptLifecycle(input.onUpdate);
+  const promptLifecycle = new AcpPromptLifecycle(
+    input.onUpdate,
+    () => cleanup.requested || !receivingLiveUpdates,
+  );
   const compactionIds = new Set<string>();
   let receivingInitialUsage = false;
   const initialUsageBySession = new Map<string, AcpUpdate & { kind: "context_usage" }>();
@@ -242,9 +246,18 @@ async function connectWithDiagnostics(
     },
   };
   const transport = connectAcpClientTransport({
+    agent: input.agent,
     client,
     isActiveSession: (id) => !cleanup.requested && receivingLiveUpdates && id === sessionId,
     onElicitation: input.onElicitation,
+    onElicitationApproval: input.onElicitationApproval
+      ? (request, signal) =>
+          promptLifecycle.authorizeElicitationApproval(
+            request,
+            signal,
+            input.onElicitationApproval!,
+          )
+      : undefined,
     stream: ndJsonStream(
       Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
       Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,

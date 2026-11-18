@@ -1,25 +1,12 @@
-## Agent board compact cards
+## 紧凑视图卡片高度
 
-The status-column layout shows narrow cards to keep multiple status groups visible. Give
-each card a taller content area so titles and supporting details have room to scan, while
-preserving the existing column and card width. The project-grouped card grid keeps its
-current natural height.
+仅调整 Agent 看板 `layoutMode === "compact"` 的卡片：上下内边距由 10px
+增加到 30px，使同一内容的卡片纵向增加 40px。卡片宽度、列宽、网格列数、
+标题截断、卡片模式和列表模式的尺寸遵循现有规则。
 
-`AgentBoardGroups` selects this presentation for status grouping and `AgentBoardCard`
-owns its geometry through an optional `compact` prop (default false). It adds no
-persisted preference, protocol, or data state. The checked-out version has no separate
-compact/cards/list mode selector, so this change applies to the existing status-column
-cards without introducing a new mode or restoring removed features.
+布局偏好仍由 `agentBoardStore.layoutMode` 唯一持有；`AgentBoardCard` 使用现有
+`layoutMode` 参数派生样式。无新增状态、协议、持久化迁移或异步事件。
 
-Card content gains 40px of height through vertical padding (16px → 36px on each side)
-and can grow with translated text or larger UI fonts.
-Keep the existing responsive column widths: 288px below the desktop breakpoint and
-flexible columns with a 240px minimum above it. Keep all existing widths, padding,
-title truncation, themes, click targets, staging, and drag behavior. No data migration
-or new failure path is needed.
-
-Acceptance: the layout E2E checks taller status cards, the existing desktop column
-width, 288px mobile cards with the extra vertical padding and without page overflow,
-project-grouped cards at their natural
-height, and light/dark presentation. Existing detail opening and staging scenarios
-remain applicable.
+验收：在现有布局模式 E2E 中，同一紧凑卡片相对旧的 10px 上下内边距高度
+增加 40px、宽度不变；桌面同组仍可多列排列；手机宽度不超过 224px 且页面
+不横向溢出。卡片、紧凑、列表切换、详情打开及布局偏好恢复继续可用。

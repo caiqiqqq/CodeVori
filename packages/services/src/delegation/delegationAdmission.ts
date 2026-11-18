@@ -1,14 +1,19 @@
 import {
   delegationCreateSchema,
+  delegationFollowUpSchema,
+  type DelegationFollowUp,
   delegationParentSchema,
   uuidv7,
   type DelegationCreate,
   type DelegationParent,
   type DelegationTask,
+  type DelegationSquadContext,
+  type AgentProfile,
 } from "@zcode/shared";
 import type { DelegationDependencies } from "./contract.js";
 import { parentKey, type DelegationRepository } from "./delegationRepository.js";
 import { listDelegationTargets } from "./delegationTargets.js";
+import { sameSquadExecution } from "./squadPolicy.js";
 
 const terminal = new Set(["completed", "failed", "interrupted", "canceled"]);
 
@@ -33,6 +38,8 @@ export async function admitDelegation(
   deps: DelegationDependencies,
   raw: DelegationCreate,
   previousId?: string,
+  squadLeader?: Extract<DelegationSquadContext, { role: "leader" }>,
+  agentProfile?: AgentProfile,
 ) {
   const input = delegationCreateSchema.parse(raw);
   if (deps.allowExecution === false || input.workspaceIdentity || input.remoteSessionId)
@@ -74,7 +81,26 @@ export async function admitDelegation(
     const settings = repo.settings(rootParent);
     // 异步目标/附件检查期间设置可能改变；最终事务仍校验主开关，旧连接不能绕过关闭状态。
     if (!settings.enabled) throw new Error("delegation.disabled");
-    if (depth > 1 && (!settings.allowNested || depth > settings.maxDepth))
+    if (child?.squad?.role === "member") throw new Error("delegation.nesting-disabled");
+    let squad: DelegationSquadContext | undefined = squadLeader;
+    if (child?.squad?.role === "leader") {
+      const member = child.squad.definition.members.find((item) => item.id === input.squadMemberId);
+      if (!member || !sameSquadExecution(input.execution, member.execution))
+        throw new Error("delegation.squad-member-invalid");
+      if (child.squad.memberIntent === "analysis" && input.intent !== "analysis")
+        throw new Error("delegation.squad-analysis-only");
+      if (!["preparing", "running", "awaiting_input"].includes(child.status))
+        throw new Error("delegation.parent-stopped");
+      squad = {
+        role: "member",
+        squadId: child.squad.definition.id,
+        squadName: child.squad.definition.name,
+        memberId: member.id,
+        name: member.name,
+        instructions: `${member.instructions ?? ""}\n${child.squad.definition.instructions}\n职责：${member.role}`,
+      };
+    } else if (input.squadMemberId) throw new Error("delegation.squad-member-invalid");
+    if (depth > 1 && !squad && (!settings.allowNested || depth > settings.maxDepth))
       throw new Error("delegation.nesting-disabled");
     const state = repo.parent(rootParent);
     if (
@@ -104,10 +130,15 @@ export async function admitDelegation(
       title: input.title,
       task: input.task,
       background: input.background,
-      constraints: input.constraints,
+      constraints:
+        squad?.role === "member"
+          ? `${input.constraints}\n${squad.instructions}`
+          : input.constraints,
       expectedResult: input.expectedResult,
       execution: input.execution,
       intent: input.intent,
+      ...(squad ? { squad } : {}),
+      ...(agentProfile ? { agentProfile } : {}),
       workspaceFiles: input.workspaceFiles,
       attachments: input.attachments,
       dependsOn: input.dependsOn,
@@ -124,4 +155,37 @@ export async function admitDelegation(
     repo.put(task);
     return task;
   });
+}
+
+export async function admitFollowUp(
+  repo: DelegationRepository,
+  deps: DelegationDependencies,
+  raw: DelegationFollowUp,
+) {
+  const input = delegationFollowUpSchema.parse(raw);
+  await repo.open();
+  const old = repo.get(input.id);
+  if (!old || parentKey(old.parent) !== parentKey(input)) throw new Error("delegation.not-found");
+  return admitDelegation(
+    repo,
+    deps,
+    {
+      ...old.parent,
+      requestId: input.requestId,
+      title: old.title,
+      task: input.task,
+      background: old.background,
+      constraints: old.constraints,
+      expectedResult: old.expectedResult,
+      execution: old.execution,
+      intent: old.intent,
+      dependsOn: [],
+      workspaceFiles: input.workspaceFiles ?? old.workspaceFiles,
+      attachments: input.attachments ?? old.attachments,
+      ...(old.squad?.role === "member" ? { squadMemberId: old.squad.memberId } : {}),
+    },
+    old.id,
+    old.squad?.role === "leader" ? old.squad : undefined,
+    old.agentProfile,
+  );
 }

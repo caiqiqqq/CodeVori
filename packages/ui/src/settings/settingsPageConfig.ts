@@ -25,6 +25,8 @@ import {
   MessageSquareText,
   Smartphone,
   Network,
+  KeyRound,
+  Users,
 } from "lucide-react";
 import { isSettingsSectionEnabled, type SettingsSectionId } from "@/lib/settingsNavigation.js";
 import type { Theme } from "@/useTheme.js";
@@ -130,6 +132,8 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     titleId: "delegation.settingsTitle",
     groupId: "agentCapabilities",
   },
+  { id: "agentProfiles", icon: Bot, titleId: "agentProfiles.title", groupId: "agentCapabilities" },
+  { id: "squads", icon: Users, titleId: "squads.title", groupId: "agentCapabilities" },
   {
     id: "plugin",
     icon: Blocks,
@@ -140,6 +144,12 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     id: "mcp",
     icon: Cable,
     titleId: "settings.mcpTitle",
+    groupId: "agentCapabilities",
+  },
+  {
+    id: "credentials",
+    icon: KeyRound,
+    titleId: "settings.credentials.title",
     groupId: "agentCapabilities",
   },
   {

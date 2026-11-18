@@ -19,5 +19,6 @@ export function useAgentBoardWorkTasks(tabs: WorkspaceTabState[]) {
     () => resolvedGroups.filter((group) => !group.isLinkedWorktree).map((group) => group.tab),
     [resolvedGroups],
   );
-  return useWorkTasks(scopes[0] ?? { workspacePath: "" }, true, scopes.length > 0, scopes);
+  const panel = useWorkTasks(scopes[0] ?? { workspacePath: "" }, true, scopes.length > 0, scopes);
+  return { ...panel, projectTabs: scopes };
 }

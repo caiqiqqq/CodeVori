@@ -7,7 +7,10 @@ import { join } from "node:path";
 import test from "node:test";
 import type { AcpConfigOption, AcpSession } from "@zcode/shared";
 import { createAcpService, type AcpConnectionFactory } from "../src/acp/acpServiceImpl.js";
-import { AcpPermissionPreferences } from "../src/acp/acpPermissionPreferences.js";
+import {
+  AcpPermissionPreferences,
+  sessionHasFullAccess,
+} from "../src/acp/acpPermissionPreferences.js";
 
 const target = { workspacePath: "/fixture/permission", workspaceIdentity: "remote:fixture" };
 const full = "agent-full-access";
@@ -18,6 +21,38 @@ const mode = (value = "agent", values = ["agent", full]): AcpConfigOption => ({
   type: "select",
   currentValue: value,
   options: values.map((value) => ({ value, name: value })),
+});
+
+test("Host full access uses confirmed agent permission semantics and ignores stale defaults", () => {
+  const session = {
+    agent: "codex" as const,
+    configOptions: [mode()],
+    modeState: {
+      currentModeId: full,
+      availableModes: [{ id: full, name: full }],
+    },
+    permissionSelection: { configId: "mode", value: full },
+  };
+  assert.equal(sessionHasFullAccess(session), false);
+  assert.equal(sessionHasFullAccess({ ...session, configOptions: [mode(full)] }), true);
+  assert.equal(sessionHasFullAccess({ ...session, configOptions: [] }), true);
+  assert.equal(sessionHasFullAccess({ ...session, configOptions: [], modeState: null }), false);
+  assert.equal(
+    sessionHasFullAccess({ ...session, agent: "claude", configOptions: [mode(full)] }),
+    false,
+  );
+  assert.equal(
+    sessionHasFullAccess({
+      ...session,
+      agent: "codex",
+      configOptions: [mode("bypassPermissions", ["bypassPermissions"])],
+    }),
+    false,
+  );
+  assert.equal(
+    sessionHasFullAccess({ ...session, agent: "gemini", configOptions: [mode(full)] }),
+    false,
+  );
 });
 
 function fixture() {
