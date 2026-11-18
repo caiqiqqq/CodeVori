@@ -169,6 +169,34 @@ try {
     assert.ok(boardEntryBounds.x >= railBounds.x + 48);
     const projectBounds = await project.boundingBox();
     assert.ok(projectBounds.x >= railBounds.x + 48);
+    const projectName = sidebar.getByTestId("workspace-name-/synthetic/project");
+    const projectItem = project.locator("xpath=ancestor::li[1]");
+    const otherName = sidebar.getByTestId("workspace-name-/synthetic/other");
+    const assertProjectSpacing = async () => {
+      // 项目展开动画会暂时裁切任务，须等真实动画完成后再测量相邻项目的间距。
+      await projectItem.locator('[data-slot="collapsible-content"]').evaluate(async (element) => {
+        await Promise.all(
+          element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+        );
+      });
+      const header = await projectName.boundingBox();
+      const firstTask = await projectItem
+        .locator(".sidebar-conversation-row")
+        .first()
+        .boundingBox();
+      const lastTask = await projectItem.locator(".sidebar-conversation-row").last().boundingBox();
+      const nextHeader = await otherName.boundingBox();
+      const taskGap = firstTask.y - (header.y + header.height);
+      const projectGap = nextHeader.y - (lastTask.y + lastTask.height);
+      assert.equal(header.height, 24, "Single-line project title uses a compact 24px hit area");
+      assert.equal(taskGap, 0, `Title/task gap must be 0px, got ${taskGap}`);
+      assert.ok(projectGap >= 0 && projectGap <= 2.5, `Project gap must be 2px, got ${projectGap}`);
+    };
+    await assertProjectSpacing();
+    await projectName.hover();
+    await assertProjectSpacing();
+    await projectName.focus();
+    await assertProjectSpacing();
     await rail.evaluate((element) => (window.__tree.rail = element));
     await other.click();
     assert.equal(await other.getAttribute("aria-expanded"), "false");
@@ -192,6 +220,7 @@ try {
       assert.equal(await native.isVisible(), true);
       assert.equal(await acp.isVisible(), true);
       assert.equal(await other.getAttribute("aria-expanded"), "false");
+      await assertProjectSpacing();
       assert.equal(await sidebar.getByTestId("sidebar-unread-filter").isVisible(), true);
       assert.equal(await sidebar.locator("[data-board-sidebar-counts]").count(), 0);
       assert.equal(
@@ -281,7 +310,7 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
     console.log(
-      `PASS ${width}px ${locale} ${theme}: real board/repository entry, shared tree lifetime, collapse, Native/ACP navigation and group preference`,
+      `PASS ${width}px ${locale} ${theme}: 24px title, 0px title/task gap, 2px project gap, real board/repository entry, shared tree lifetime, collapse, Native/ACP navigation and group preference`,
     );
   }
 } finally {
