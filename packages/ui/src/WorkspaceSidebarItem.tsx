@@ -876,8 +876,9 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
           void handleSubmitWorkspaceRename();
         }}
       />
+      {/* 修复原因：侧栏项目标题过高且标题下方有重复留白；改用紧凑行高并移除行间隔。 */}
       <Collapsible
-        className="flex flex-col gap-1"
+        className="flex flex-col gap-0"
         open={isExpanded && !isDisconnectedRemoteWorkspace}
       >
         <BorderBeam
@@ -944,7 +945,7 @@ export const WorkspaceSidebarItem = memo(function WorkspaceSidebarItem({
               size="default"
               data-testid={`workspace-name-${tab.workspacePath}`}
               className={cn(
-                "flex h-8 min-w-0 flex-1 justify-start gap-2 rounded-lg px-2 text-left text-foreground hover:bg-surface-hover hover:text-foreground",
+                "flex h-6 min-w-0 flex-1 justify-start gap-2 rounded-lg px-2 text-left text-foreground hover:bg-surface-hover hover:text-foreground",
                 isDisconnectedRemoteWorkspace && "hover:bg-transparent",
                 sortableBindings && "cursor-grab active:cursor-grabbing",
               )}

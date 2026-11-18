@@ -1499,7 +1499,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                                     >
                                       <ul
                                         data-testid={TID_WORKSPACE_LIST}
-                                        className="space-y-2 pb-4"
+                                        className="space-y-0.5 pb-4"
                                       >
                                         {projectGroups.map(
                                           ({
