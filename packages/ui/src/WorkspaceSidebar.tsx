@@ -739,9 +739,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     // grouped 主体会主动过滤 pinned task；如果同页不渲染全局置顶区，
     // 从 Header 置顶当前任务后整条 row 会无处展示，看起来像 session 被删除。
     (taskViewMode === "workspace" || taskViewMode === "timeline" || taskViewMode === "grouped");
-  const workspaceScrollRef = useRef<HTMLDivElement | null>(null);
-  const [showWorkspaceTopMask, setShowWorkspaceTopMask] = useState(false);
-  const [showWorkspaceBottomMask, setShowWorkspaceBottomMask] = useState(false);
   const workspaceSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
@@ -779,29 +776,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     setFileTreeTarget(target);
     setIsFileTreeOpen(true);
   }, []);
-  const workspaceScrollMaskStyle = useMemo<CSSProperties>(() => {
-    const baseStyle: CSSProperties = { overflowAnchor: "none" };
-    if (!showWorkspaceTopMask && !showWorkspaceBottomMask) {
-      return baseStyle;
-    }
-    const topStop = showWorkspaceTopMask ? "transparent 0px, black 32px" : "black 0px, black 32px";
-    const bottomStop = showWorkspaceBottomMask
-      ? "black calc(100% - 32px), transparent 100%"
-      : "black calc(100% - 32px), black 100%";
-
-    return {
-      ...baseStyle,
-      // 这里直接对滚动容器应用 CSS mask，而不是盖一层 overlay。
-      // 这样顶部和底部的渐隐都会作用在真实内容上，并且滚到边界时能立刻消失。
-      WebkitMaskImage: `linear-gradient(to bottom, ${topStop}, ${bottomStop})`,
-      maskImage: `linear-gradient(to bottom, ${topStop}, ${bottomStop})`,
-      WebkitMaskRepeat: "no-repeat",
-      maskRepeat: "no-repeat",
-      WebkitMaskSize: "100% 100%",
-      maskSize: "100% 100%",
-    };
-  }, [showWorkspaceBottomMask, showWorkspaceTopMask]);
-
   const resetWorkspaceDrag = useCallback(() => {
     setActiveWorkspaceDragId(null);
     setActiveWorkspaceDragWidth(null);
@@ -881,62 +855,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   const handleOpenAutomationsMain = useCallback(() => {
     onOpenAutomations?.();
   }, [onOpenAutomations]);
-
-  useEffect(() => {
-    const scrollNode = workspaceScrollRef.current;
-    if (!scrollNode) {
-      return;
-    }
-
-    const contentNode = scrollNode.firstElementChild;
-
-    const updateWorkspaceScrollMask = () => {
-      const hasOverflow = scrollNode.scrollHeight > scrollNode.clientHeight + 1;
-      const isAtTop = scrollNode.scrollTop <= 1;
-      const isAtBottom =
-        scrollNode.scrollTop + scrollNode.clientHeight >= scrollNode.scrollHeight - 1;
-
-      setShowWorkspaceTopMask(hasOverflow && !isAtTop);
-      setShowWorkspaceBottomMask(hasOverflow && !isAtBottom);
-    };
-
-    // RAF-based debounce to coalesce resize events
-    let rafId: number | null = null;
-    let latestCallback = updateWorkspaceScrollMask;
-    const debouncedUpdate = () => {
-      if (rafId !== null) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        latestCallback();
-      });
-    };
-
-    // workspace 列表的滚动条只在内容溢出后才出现。
-    // 如果只监听 scroll，像"展开 workspace 后首次产生滚动条"这类场景不会立刻出现顶部/底部渐隐；
-    // 这里同时监听容器与内容尺寸变化，让 mask 能跟随内容增减和滚动位置一起更新。
-    updateWorkspaceScrollMask();
-
-    const resizeObserver = new ResizeObserver(() => {
-      latestCallback = updateWorkspaceScrollMask;
-      debouncedUpdate();
-    });
-    resizeObserver.observe(scrollNode);
-    if (contentNode instanceof HTMLElement) {
-      resizeObserver.observe(contentNode);
-    }
-
-    scrollNode.addEventListener("scroll", updateWorkspaceScrollMask, {
-      passive: true,
-    });
-    window.addEventListener("resize", debouncedUpdate);
-
-    return () => {
-      resizeObserver.disconnect();
-      scrollNode.removeEventListener("scroll", updateWorkspaceScrollMask);
-      window.removeEventListener("resize", debouncedUpdate);
-      if (rafId !== null) cancelAnimationFrame(rafId);
-    };
-  }, [expandedWorkspacePaths, workspaceTabs.length]);
 
   const isGroupedTaskGroupView = taskOrganizeBy === "grouped";
   const toggleableGroupedTaskGroupIds =
@@ -1366,6 +1284,26 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
           onOpenPluginStore={handleOpenPluginStoreMain}
           automationsActive={automationsActive}
           pluginStoreActive={pluginStoreActive}
+          footer={
+            <WorkspaceSidebarFooter
+              layout="rail"
+              className="mt-auto w-full px-0 pt-3 pb-1"
+              showProfileMenu={false}
+              theme={theme}
+              localeMenuValue={localeMenuValue}
+              onLocaleChange={handleLocaleChange}
+              onThemeChange={handleThemeChange}
+              onSettingsButtonClick={openSettingsTab}
+              onUsageClick={openSettingsTab}
+              onLogout={onLogout}
+              user={user}
+              workspacePath={workspacePath}
+              workspaceIdentity={workspaceIdentity}
+              workspaceRemoteSessionId={workspaceRemoteSessionId}
+              activeTaskId={primaryTaskId}
+              isDesktop={isDesktop}
+            />
+          }
         />
         <div className="relative min-w-0 flex-1 min-h-0 overflow-hidden">
           <div
@@ -1400,12 +1338,13 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
             <div className="relative flex min-h-0 flex-1 flex-col">
               <StickyGroupHeaderSlot header={groupedStickyHeader} />
               <div
-                ref={workspaceScrollRef}
+                data-testid="workspace-sidebar-task-scroll"
                 className={
                   // grouped task 拖拽预览会改变列表高度，禁用 scroll anchoring 避免浏览器自动锚定把 dnd-kit 测量放大成抖动。
                   "flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto"
                 }
-                style={workspaceScrollMaskStyle}
+                // 渐隐会降低边缘任务的可读性；移除遮罩，仍禁用滚动锚定以保留拖拽稳定性。
+                style={{ overflowAnchor: "none" }}
               >
                 {workspaceTaskToolbar()}
                 {shouldShowPinnedTasks ? (
@@ -1752,24 +1691,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                 </div>
               </div>
             </div>
-
-            <WorkspaceSidebarFooter
-              className="pr-3"
-              showProfileMenu={false}
-              theme={theme}
-              localeMenuValue={localeMenuValue}
-              onLocaleChange={handleLocaleChange}
-              onThemeChange={handleThemeChange}
-              onSettingsButtonClick={openSettingsTab}
-              onUsageClick={openSettingsTab}
-              onLogout={onLogout}
-              user={user}
-              workspacePath={workspacePath}
-              workspaceIdentity={workspaceIdentity}
-              workspaceRemoteSessionId={workspaceRemoteSessionId}
-              activeTaskId={primaryTaskId}
-              isDesktop={isDesktop}
-            />
           </div>
           <div
             className={cn(

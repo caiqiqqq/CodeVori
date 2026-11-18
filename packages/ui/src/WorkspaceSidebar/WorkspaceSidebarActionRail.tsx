@@ -1,4 +1,5 @@
 import { Blocks, CalendarClock, Search } from "lucide-react";
+import type { ReactNode } from "react";
 import { TID_AUTOMATIONS_OPEN } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/components/lib/utils.js";
@@ -16,6 +17,7 @@ export function WorkspaceSidebarActionRail({
   onOpenPluginStore,
   automationsActive = false,
   pluginStoreActive = false,
+  footer,
 }: {
   onCreateTask: () => void;
   workspaceReadOnly?: boolean;
@@ -25,6 +27,7 @@ export function WorkspaceSidebarActionRail({
   onOpenPluginStore?: () => void;
   automationsActive?: boolean;
   pluginStoreActive?: boolean;
+  footer?: ReactNode;
 }) {
   const { intl } = useZCodeIntl();
   const searchShortcut = useShortcutCommandLabel("openCommandCenter");
@@ -83,6 +86,7 @@ export function WorkspaceSidebarActionRail({
           <Blocks className="size-4" />
         </Button>
       </ControlHintTooltip>
+      {footer}
     </div>
   );
 }
