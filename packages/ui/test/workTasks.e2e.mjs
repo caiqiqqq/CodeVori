@@ -40,6 +40,7 @@ import { workTaskPanelFixture, workTaskForgeServiceFixture } from "./workTaskPan
 import { workTaskNavigationFixture } from "./workTaskNavigationAssertions.mjs";
 import { workTaskPromptAssetsFixture } from "./workTaskPromptAssetsFixture.mjs";
 import { routeWorkTaskConversationFixture } from "./workTaskConversationFixture.mjs";
+import { workTaskWorkflowFixture } from "./workTaskWorkflowFixture.mjs";
 
 import {
   workTaskScenarios,
@@ -128,6 +129,7 @@ try {
     const conversationTab:any={workspacePath:'/synthetic/default',label:'Conversation',workspacePurpose:'conversation'};
     const toolTargetChanged=(target:any)=>{state.toolTarget=clone(target)};
     const platform:any={async getInstalledEditors(){return [{id:'finder',name:'Finder',iconDataUrl:toolIcon},{id:'vscode',name:'VS Code',iconDataUrl:toolIcon}]},async openInEditor(editor:string,path:string,options:any){state.toolCalls.push({op:'editor',editor,path,options});return {success:true}},async openExternal(url:string){state.toolCalls.push({op:'external',url})}};
+    ${process.env.ZCODE_E2E_SCENARIO === "workflow" ? workTaskWorkflowFixture : ""}
     ${workTaskPromptAssetsFixture}
     ${process.env.ZCODE_E2E_SCENARIO === "navigation" ? workTaskNavigationFixture : ""}
     ${workTaskPanelFixture}

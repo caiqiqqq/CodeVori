@@ -29,6 +29,7 @@ import { exerciseWorkTaskDetail } from "./workTaskDetailAssertions.mjs";
 import { exerciseWorkTaskCleanupSync } from "./workTaskCleanupSyncAssertions.mjs";
 import { exerciseWorkTaskNewSession } from "./workTaskNewSessionAssertions.mjs";
 import { exerciseWorkTaskHttpAttachments } from "./workTaskHttpAttachmentsAssertions.mjs";
+import { exerciseWorkTaskWorkflow } from "./workTaskWorkflowAssertions.mjs";
 
 export function launchWorkTaskBrowser() {
   return chromium.launch({
@@ -57,6 +58,7 @@ export {
 import { exerciseWorkTaskCardActions } from "./workTaskCardActionsAssertions.mjs";
 
 export const workTaskScenarios = {
+  workflow: exerciseWorkTaskWorkflow,
   "card-actions": exerciseWorkTaskCardActions,
   "http-attachments": exerciseWorkTaskHttpAttachments,
   "new-session": exerciseWorkTaskNewSession,

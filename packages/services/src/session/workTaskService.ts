@@ -19,6 +19,12 @@ import {
   workTaskAttachmentBeginSchema,
   workTaskAttachmentChunkSchema,
   workTaskAttachmentTargetSchema,
+  workTaskWorkflowDefinitionSaveSchema,
+  workTaskWorkflowDefinitionDeleteSchema,
+  type WorkTaskWorkflowDefinitionSave,
+  type WorkTaskWorkflowDefinitionDelete,
+  workTaskWorkflowSaveSchema,
+  workTaskWorkflowTransitionSchema,
   type WorkTaskAttachment,
   type WorkTaskAttachmentImport,
   type WorkTaskAttachmentBegin,
@@ -34,6 +40,8 @@ import {
   type WorkTaskMergeRequest,
   type WorkTaskArchive,
   type WorkTaskAcceptBranch,
+  type WorkTaskWorkflowSave,
+  type WorkTaskWorkflowTransition,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { assertWorkTaskLocal } from "./workTask.js";
@@ -101,7 +109,13 @@ export class WorkTaskService implements IWorkTaskService {
       throw new Error("work-task.cleanup-in-progress");
   }
   private publish() {
-    if (this.events.publish(this.options.repo.revisions())) this.syncObservations();
+    if (
+      this.events.publish(
+        this.options.repo.revisions(),
+        this.options.repo.workflowCatalogRevision(),
+      )
+    )
+      this.syncObservations();
   }
 
   private syncObservations() {
@@ -256,6 +270,45 @@ export class WorkTaskService implements IWorkTaskService {
     await this.forge.validateSource(parsed);
     const task = this.options.repo.create(parsed);
     this.publish();
+    return task;
+  }
+  async listWorkflows() {
+    await this.ready();
+    return this.options.repo.listWorkflows();
+  }
+  onDynamicWorkflowsChanged(): Event<void> {
+    return this.events.workflows.event;
+  }
+  async saveWorkflowDefinition(input: WorkTaskWorkflowDefinitionSave) {
+    assertWorkTaskLocal({ workspacePath: "" }, this.options.allowExecution);
+    const parsed = workTaskWorkflowDefinitionSaveSchema.parse(input);
+    await this.ready();
+    const result = this.options.repo.saveWorkflowDefinition(parsed);
+    this.publish();
+    return result;
+  }
+  async deleteWorkflowDefinition(input: WorkTaskWorkflowDefinitionDelete) {
+    assertWorkTaskLocal({ workspacePath: "" }, this.options.allowExecution);
+    const parsed = workTaskWorkflowDefinitionDeleteSchema.parse(input);
+    await this.ready();
+    this.options.repo.deleteWorkflowDefinition(parsed);
+    this.publish();
+  }
+  async saveWorkflow(input: WorkTaskWorkflowSave) {
+    const parsed = workTaskWorkflowSaveSchema.parse(input);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
+    await this.ready();
+    const workflow = this.options.repo.saveWorkflow(parsed);
+    this.publish();
+    return workflow;
+  }
+  async transitionWorkflow(input: WorkTaskWorkflowTransition) {
+    const parsed = workTaskWorkflowTransitionSchema.parse(input);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
+    await this.ready();
+    const task = this.options.repo.transitionWorkflow(parsed);
+    this.publish();
+    this.wake();
     return task;
   }
   async update(input: WorkTaskUpdate) {

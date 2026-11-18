@@ -27,6 +27,7 @@ export function WorkTaskCreationEditor({
       key={workTaskNavigationKey(project)}
       scope={target.scope}
       task={null}
+      workflow={target.board?.workflow}
       projectOptions={projects}
       onProjectChange={setProjectKey}
       busy={target.busy}

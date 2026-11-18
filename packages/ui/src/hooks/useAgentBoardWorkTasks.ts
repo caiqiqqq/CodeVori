@@ -13,12 +13,13 @@ export function useAgentBoardWorkTasks(tabs: WorkspaceTabState[]) {
       ),
     [tabs],
   );
-  const { resolvedGroups } = useWorktreeProjectGroupsResolution(projectTabs);
+  const { resolvedGroups, loading: projectsLoading } =
+    useWorktreeProjectGroupsResolution(projectTabs);
   // 关联工作树共用主项目待办仓库；关系确认前不能向临时 cwd 发起另一份查询。
   const scopes = useMemo(
     () => resolvedGroups.filter((group) => !group.isLinkedWorktree).map((group) => group.tab),
     [resolvedGroups],
   );
   const panel = useWorkTasks(scopes[0] ?? { workspacePath: "" }, true, scopes.length > 0, scopes);
-  return { ...panel, projectTabs: scopes };
+  return { ...panel, projectTabs: scopes, projectsLoading };
 }

@@ -13,6 +13,7 @@ import {
 import { WorkTaskAttachments } from "./WorkTaskAttachments.js";
 import { WorkTaskSourceLink } from "./WorkTaskSourceLink.js";
 import { useWorkTaskWorktreeInspection } from "@/hooks/useWorkTaskWorktreeInspection.js";
+import { WorkTaskWorkflowControls } from "./WorkTaskWorkflowControls.js";
 
 export function WorkTaskDetail({
   task,
@@ -56,6 +57,7 @@ export function WorkTaskDetail({
           </span>
         </div>
         <p className="whitespace-pre-wrap break-all text-ui-base">{task.prompt}</p>
+        <WorkTaskWorkflowControls task={task} panel={panel} />
         {task.merge && !["merged", "failed", "canceled"].includes(task.merge.phase) ? (
           <p
             className="break-all text-ui-sm text-foreground-subtle"

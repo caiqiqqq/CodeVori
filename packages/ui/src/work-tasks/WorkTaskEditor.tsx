@@ -5,6 +5,7 @@ import {
   type WorkTaskCreate,
   type WorkTaskExecution,
   type WorkTaskScope,
+  type WorkTaskWorkflow,
 } from "@zcode/shared";
 import { useWorkTaskModels } from "@/hooks/useWorkTaskModels.js";
 import { useWorkTaskBranches } from "@/hooks/useWorkTaskBranches.js";
@@ -45,6 +46,7 @@ interface Props {
   projectOptions?: readonly WorkspaceTabState[];
   onProjectChange?(key: string): void;
   task: WorkTask | null;
+  workflow?: WorkTaskWorkflow | null;
   initialDraft?: Pick<WorkTaskCreate, "title" | "prompt"> & { attachmentFiles?: File[] };
   busy: boolean;
   error: string | null;
@@ -58,6 +60,7 @@ export function WorkTaskEditor({
   projectOptions,
   onProjectChange,
   task,
+  workflow,
   initialDraft,
   busy: externalBusy,
   error,
@@ -87,7 +90,12 @@ export function WorkTaskEditor({
   const [rememberedExecution] = useState(() =>
     task ? null : workTaskExecutionPreferenceStore.getState().read(scope),
   );
+  const firstStage = !task
+    ? (workflow?.stages.find((stage) => stage.id === workflow.initialStageId) ??
+      workflow?.stages[0])
+    : undefined;
   const execution: WorkTaskExecution | null =
+    firstStage?.execution ??
     draftExecution ??
     resolveWorkTaskExecutionPreference(rememberedExecution, models.view, models.agents);
   const thought =
@@ -246,7 +254,7 @@ export function WorkTaskEditor({
                 task={task}
                 models={models}
                 execution={execution}
-                busy={busy}
+                busy={busy || !!firstStage?.execution}
                 selectExecutor={selectExecutor}
               />
             }
@@ -260,7 +268,7 @@ export function WorkTaskEditor({
                 <WorkTaskExecutionControls
                   models={models}
                   execution={execution}
-                  busy={busy}
+                  busy={busy || !!firstStage?.execution}
                   thought={thought}
                   changeExecution={changeExecution}
                 />
@@ -268,6 +276,11 @@ export function WorkTaskEditor({
             }
           />
           <p className="text-ui-sm text-foreground-subtle">{t("executionConfigHint")}</p>
+          {firstStage ? (
+            <p className="text-ui-sm text-foreground-subtle" data-testid="work-task-initial-stage">
+              {t("workflow.initialStage", { stage: firstStage.name })}
+            </p>
+          ) : null}
           <WorkTaskError error={submission.error ?? assets.attachmentError ?? error} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>

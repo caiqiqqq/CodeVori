@@ -33,6 +33,12 @@ import {
   type WorkTaskResultSource,
   type WorkTaskResultSourceRequest,
   type WorkTaskChangeRecord,
+  type WorkTaskWorkflowDefinition,
+  type WorkTaskWorkflowDefinitionSave,
+  type WorkTaskWorkflowDefinitionDelete,
+  type WorkTaskWorkflowConfig,
+  type WorkTaskWorkflowSave,
+  type WorkTaskWorkflowTransition,
   type RepositoryIssueSummaryRequest,
   type RepositoryIssueSummary,
   type ForgeRepositoryRequest,
@@ -61,6 +67,17 @@ export interface IWorkTaskService {
   attachmentAbort(input: WorkTaskAttachmentTarget): Promise<void>;
   list(input: WorkTaskScope & { includeArchived?: boolean }): Promise<WorkTaskBoard>;
   create(input: WorkTaskCreate): Promise<WorkTask>;
+  /** Host 目录定义与项目引用分别 CAS；新任务快照化，设置编辑不入队。 */
+  listWorkflows(): Promise<WorkTaskWorkflowDefinition[]>;
+  saveWorkflowDefinition(
+    input: WorkTaskWorkflowDefinitionSave,
+  ): Promise<WorkTaskWorkflowDefinition>;
+  deleteWorkflowDefinition(input: WorkTaskWorkflowDefinitionDelete): Promise<void>;
+  onDynamicWorkflowsChanged(): Event<void>;
+  /** 只选择目录 ID；远程 scope 不允许回落到本地引用。 */
+  saveWorkflow(input: WorkTaskWorkflowSave): Promise<WorkTaskWorkflowConfig>;
+  /** 比较 runSeq/状态快照；仅 Agent 入口入队，Keep/Member 保留原会话。 */
+  transitionWorkflow(input: WorkTaskWorkflowTransition): Promise<WorkTask>;
   update(input: WorkTaskUpdate): Promise<WorkTask>;
   /** 元数据改名适用于运行中任务，仅改标题，不编辑或重新执行草稿。 */
   rename(input: WorkTaskRename): Promise<WorkTask>;

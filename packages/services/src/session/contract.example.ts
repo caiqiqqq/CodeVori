@@ -3,6 +3,9 @@ import type {
   WorkTaskCreate,
   WorkTaskResultRequest,
   WorkTaskRename,
+  WorkTaskWorkflowSave,
+  WorkTaskWorkflowDefinitionSave,
+  WorkTaskWorkflowTransition,
   RepositoryIssueProject,
 } from "@zcode/shared";
 import type { IWorkTaskService } from "./contract.js";
@@ -14,6 +17,27 @@ export async function enqueueProjectTasks(service: IWorkTaskService, workspacePa
 
 export async function renameWorkTask(service: IWorkTaskService, request: WorkTaskRename) {
   return service.rename(request);
+}
+
+export async function saveReusableWorkflow(
+  service: IWorkTaskService,
+  request: WorkTaskWorkflowDefinitionSave,
+) {
+  return service.saveWorkflowDefinition(request);
+}
+
+export async function saveProjectWorkflow(
+  service: IWorkTaskService,
+  request: WorkTaskWorkflowSave,
+) {
+  return service.saveWorkflow(request);
+}
+
+export async function transitionTaskStage(
+  service: IWorkTaskService,
+  request: WorkTaskWorkflowTransition,
+) {
+  return service.transitionWorkflow(request);
 }
 
 export async function readUnhandledRepositoryIssues(

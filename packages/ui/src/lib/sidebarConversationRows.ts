@@ -17,10 +17,22 @@ export function sidebarConversationKey(address: SessionAddress) {
 export function workTaskBoundConversationKeys(tasks: readonly WorkTask[]) {
   const keys = new Set<string>();
   for (const task of tasks) {
-    for (const merge of [false, true]) {
-      const binding = workTaskConversationBinding(task, merge);
+    const bindings = [
+      workTaskConversationBinding(task),
+      workTaskConversationBinding(task, true),
+      ...(task.workflow?.history ?? []).map((entry) =>
+        workTaskConversationBinding({
+          ...task,
+          execution: entry.execution,
+          session: entry.session,
+          worktree: entry.worktree,
+          directBranch: entry.directBranch,
+        }),
+      ),
+    ];
+    for (const binding of bindings) {
       if (!binding) continue;
-      // 工作目录相同并不代表同一个会话；只隐藏 Host 已保存的准确绑定，包括合并会话。
+      // 阶段交接后旧会话仍属于待办，不能重新作为可编辑的普通会话出现在侧栏。
       keys.add(
         sidebarConversationKey({
           workspacePath: binding.workspacePath,

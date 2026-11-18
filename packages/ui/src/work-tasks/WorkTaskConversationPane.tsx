@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { Check, ChevronLeft, GitMerge, Info, MessageSquare, X } from "lucide-react";
 import { isWorkTaskMerging, type WorkTask } from "@zcode/shared";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
@@ -16,6 +16,7 @@ import { WorkTaskActions } from "./WorkTaskActions.js";
 import { WorkTaskPendingConversation } from "./WorkTaskPendingConversation.js";
 import { useWorkTaskWorktreeInspection } from "@/hooks/useWorkTaskWorktreeInspection.js";
 import { WorkTaskSourceLink } from "./WorkTaskSourceLink.js";
+import { WorkTaskWorkflowControls } from "./WorkTaskWorkflowControls.js";
 import {
   WorkTaskError,
   WorkTaskIconButton,
@@ -73,6 +74,14 @@ export function WorkTaskConversationPane({
   onToggleMergeConversation?(): void;
 }) {
   const t = useWorkTaskMessages();
+  const selectionKey = task ? workTaskSelectionKey(task) : null;
+  const [workflowDialogTask, setWorkflowDialogTask] = useState<string | null>(null);
+  const onWorkflowDialogOpenChange = useCallback(
+    (open: boolean) => {
+      setWorkflowDialogTask(open ? selectionKey : null);
+    },
+    [selectionKey],
+  );
   const { inspection, error: inspectionError } = useWorkTaskWorktreeInspection(task);
   const binding = task ? workTaskConversationBinding(task, showMergeConversation) : null;
   const toolTarget = task ? workTaskWorkspaceToolTarget(task, showMergeConversation) : null;
@@ -213,6 +222,16 @@ export function WorkTaskConversationPane({
               ) : null}
             </div>
           ) : null}
+          {task.workflow ? (
+            <div className="shrink-0 border-b border-border px-3 py-2">
+              <WorkTaskWorkflowControls
+                key={workTaskSelectionKey(task)}
+                task={task}
+                panel={panel}
+                onDialogOpenChange={onWorkflowDialogOpenChange}
+              />
+            </div>
+          ) : null}
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
             {binding ? (
               <ScopedErrorBoundary
@@ -248,7 +267,10 @@ export function WorkTaskConversationPane({
                         ? !showMergeConversation || task.merge?.phase === "applying"
                         : showMergeConversation)
                     }
-                    options={options}
+                    options={{
+                      ...options,
+                      focused: options?.focused !== false && workflowDialogTask !== selectionKey,
+                    }}
                     onClose={onClose}
                     onOpenNativeSession={onOpenNativeSession}
                   />

@@ -442,6 +442,7 @@ export function AgentBoardView({
             <AgentBoardSessionEditor
               projects={projects}
               initialProjectKey={preferences.project}
+              workTasks={workTasks}
               canCreateSession={canCreateSession}
               options={conversationOptions}
               onClose={() => setCreatingSession(false)}
@@ -475,7 +476,10 @@ export function AgentBoardView({
           projects={projects}
           busy={busy}
           run={run}
-          options={conversationOptions}
+          options={{
+            ...conversationOptions,
+            focused: conversationOptions?.focused !== false && !creatingSession,
+          }}
           workspaceTools={workspaceTools}
           container={detailContainer}
           onClose={() => setSelectedKey(null)}

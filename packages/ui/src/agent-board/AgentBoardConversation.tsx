@@ -7,6 +7,7 @@ import type { AgentBoardToolActions } from "./AgentBoardTools.js";
 export type BoardConversationOptions = Pick<
   SessionPaneProps,
   | "isDesktop"
+  | "focused"
   | "onOpenBrowserUrl"
   | "onOpenCodeViewer"
   | "onOpenFileLink"
