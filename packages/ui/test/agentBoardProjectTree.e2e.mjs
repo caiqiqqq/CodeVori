@@ -170,6 +170,9 @@ try {
     const projectBounds = await project.boundingBox();
     assert.ok(projectBounds.x >= railBounds.x + 48);
     const projectName = sidebar.getByTestId("workspace-name-/synthetic/project");
+    const projectFolder = sidebar.getByTestId("workspace-item-/synthetic/project");
+    const projectIcon = projectFolder.locator("svg");
+    const projectLabel = projectName.locator("div.truncate").first();
     const projectItem = project.locator("xpath=ancestor::li[1]");
     const otherName = sidebar.getByTestId("workspace-name-/synthetic/other");
     const assertProjectSpacing = async () => {
@@ -186,11 +189,17 @@ try {
         .boundingBox();
       const lastTask = await projectItem.locator(".sidebar-conversation-row").last().boundingBox();
       const nextHeader = await otherName.boundingBox();
+      const folderBounds = await projectFolder.boundingBox();
+      const iconBounds = await projectIcon.boundingBox();
+      const labelBounds = await projectLabel.boundingBox();
       const taskGap = firstTask.y - (header.y + header.height);
       const projectGap = nextHeader.y - (lastTask.y + lastTask.height);
+      const iconLabelGap = labelBounds.x - (iconBounds.x + iconBounds.width);
       assert.equal(header.height, 24, "Single-line project title uses a compact 24px hit area");
       assert.equal(taskGap, 0, `Title/task gap must be 0px, got ${taskGap}`);
       assert.ok(projectGap >= 0 && projectGap <= 2.5, `Project gap must be 2px, got ${projectGap}`);
+      assert.equal(folderBounds.width, 24, "Project folder control retains a 24px hit target");
+      assert.equal(iconLabelGap, 4, `Folder icon/label gap must be 4px, got ${iconLabelGap}`);
     };
     await assertProjectSpacing();
     await projectName.hover();
@@ -310,7 +319,7 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
     console.log(
-      `PASS ${width}px ${locale} ${theme}: 24px title, 0px title/task gap, 2px project gap, real board/repository entry, shared tree lifetime, collapse, Native/ACP navigation and group preference`,
+      `PASS ${width}px ${locale} ${theme}: 24px title, 0px title/task gap, 2px project gap, 4px icon/label gap, real board/repository entry, shared tree lifetime, collapse, Native/ACP navigation and group preference`,
     );
   }
 } finally {
