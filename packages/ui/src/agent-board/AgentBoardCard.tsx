@@ -73,7 +73,7 @@ export function AgentBoardCard({
           isList
             ? "flex h-12 min-w-0 flex-1 items-center gap-1 overflow-hidden rounded-lg px-2 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
             : isCompact
-              ? "w-full rounded-lg p-2.5 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              ? "w-full rounded-lg px-2.5 py-7.5 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
               : "w-full rounded-xl p-4 text-start outline-none focus-visible:ring-2 focus-visible:ring-brand"
         }
         onClick={onOpen}
