@@ -5,7 +5,6 @@ import {
   Settings2,
   Package,
   Bot,
-  Bubbles,
   Palette,
   Sun,
   BarChart3,
@@ -121,13 +120,7 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
   {
     id: "subagents",
     icon: Bot,
-    titleId: "settings.subagents.title",
-    groupId: "agentCapabilities",
-  },
-  {
-    id: "delegation",
-    icon: Bubbles,
-    titleId: "delegation.settingsTitle",
+    titleId: "settings.agentsAndSquads.title",
     groupId: "agentCapabilities",
   },
   {
@@ -261,7 +254,8 @@ export function resolveSettingsSectionForPlatform(
   visibleSections: ReadonlyArray<Pick<SettingsSectionDefinition, "id">>,
   fallbackSection: SettingsSectionId = "general",
 ): SettingsSectionId {
-  if (visibleSections.some((candidate) => candidate.id === section)) return section;
+  const resolvedSection = resolveSettingsSection(section, fallbackSection);
+  if (visibleSections.some((candidate) => candidate.id === resolvedSection)) return resolvedSection;
   if (visibleSections.some((candidate) => candidate.id === fallbackSection)) {
     return fallbackSection;
   }

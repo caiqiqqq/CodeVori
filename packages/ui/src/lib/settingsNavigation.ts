@@ -41,6 +41,7 @@ const SETTINGS_SECTION_INTENT_KEY = "zcode-settings-section-intent",
   SETTINGS_PLUGIN_ORIGIN_INTENT_KEY = "zcode-settings-plugin-origin-intent",
   SETTINGS_PLUGIN_SCOPE_KEY_INTENT_KEY = "zcode-settings-plugin-scope-key-intent";
 const SETTINGS_MODEL_PROVIDER_ID_INTENT_KEY = "zcode-settings-model-provider-id-intent";
+const SETTINGS_AGENT_VIEW_INTENT_KEY = "zcode-settings-agent-view-intent";
 const SETTINGS_SECTION_INTENT_EVENT = "zcode:settings-section-intent",
   SETTINGS_LAST_SECTION_STORAGE_KEY = "zcode-settings-last-section";
 const HIDDEN_SETTINGS_SECTIONS = new Set<SettingsSectionId>([
@@ -111,7 +112,30 @@ export function resolveSettingsSection(
   fallbackSection: SettingsSectionId = "general",
 ): SettingsSectionId {
   if (section === "plugins") return "plugin";
+  if (section === "delegation") return "subagents";
   return isSettingsSectionEnabled(section) ? section : fallbackSection;
+}
+
+export type AgentSettingsView = "agents" | "squads";
+
+export function consumePendingAgentSettingsView(): AgentSettingsView {
+  if (typeof window === "undefined") return "agents";
+  try {
+    return window.sessionStorage.getItem(SETTINGS_AGENT_VIEW_INTENT_KEY) === "squads"
+      ? "squads"
+      : "agents";
+  } catch {
+    return "agents";
+  }
+}
+
+export function clearPendingAgentSettingsView(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(SETTINGS_AGENT_VIEW_INTENT_KEY);
+  } catch {
+    // 忽略浏览器存储异常，不影响设置页打开。
+  }
 }
 
 function getLocalStorage(): Storage | null {
@@ -156,6 +180,13 @@ function readLastSettingsSectionPreference(
       return "appearance";
     }
     if (raw && isSettingsSectionId(raw)) {
+      if (raw === "delegation") {
+        try {
+          window.sessionStorage.setItem(SETTINGS_AGENT_VIEW_INTENT_KEY, "squads");
+        } catch {
+          // 忽略浏览器存储异常，仍可打开合并设置页。
+        }
+      }
       return resolveSettingsSection(raw, fallbackSection);
     }
     if (raw !== null) {
@@ -249,6 +280,11 @@ export function setPendingSettingsSectionIntent(
 
   try {
     window.sessionStorage.setItem(SETTINGS_SECTION_INTENT_KEY, section);
+    if (section === "delegation") {
+      window.sessionStorage.setItem(SETTINGS_AGENT_VIEW_INTENT_KEY, "squads");
+    } else {
+      window.sessionStorage.removeItem(SETTINGS_AGENT_VIEW_INTENT_KEY);
+    }
     if (options.pluginTab) {
       window.sessionStorage.setItem(SETTINGS_PLUGIN_TAB_INTENT_KEY, options.pluginTab);
     } else {
@@ -328,6 +364,13 @@ function consumePendingSettingsSection(
       return "skill";
     }
     if (raw && isSettingsSectionId(raw)) {
+      if (raw === "delegation") {
+        try {
+          window.sessionStorage.setItem(SETTINGS_AGENT_VIEW_INTENT_KEY, "squads");
+        } catch {
+          // 忽略浏览器存储异常，仍可打开合并设置页。
+        }
+      }
       return resolveSettingsSection(raw, fallbackSection);
     }
   } catch {
