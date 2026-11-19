@@ -1,5 +1,5 @@
 ---
-description: Bring the linked ZCode Sites site back online.
+description: Bring the linked CodeVori Sites site back online.
 argument-hint: "[site id]"
 skills: site-deploy
 ---
