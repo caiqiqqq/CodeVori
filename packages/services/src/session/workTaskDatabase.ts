@@ -209,6 +209,10 @@ export async function openWorkTaskDatabase(path: string) {
         workspace_key TEXT PRIMARY KEY, concurrency INTEGER NOT NULL DEFAULT 1, revision INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS work_task_workflows (
         workspace_key TEXT PRIMARY KEY, revision INTEGER NOT NULL, data TEXT);
+      CREATE TABLE IF NOT EXISTS work_task_conversation_workflows (
+        workspace_key TEXT NOT NULL, workspace_path TEXT NOT NULL, workspace_identity TEXT,
+        source_kind TEXT NOT NULL, session_id TEXT NOT NULL, revision INTEGER NOT NULL, data TEXT NOT NULL,
+        PRIMARY KEY(workspace_key, workspace_path, source_kind, session_id));
       CREATE TABLE IF NOT EXISTS work_task_events (
         sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
         run_seq INTEGER NOT NULL, at INTEGER NOT NULL, type TEXT NOT NULL, message TEXT);

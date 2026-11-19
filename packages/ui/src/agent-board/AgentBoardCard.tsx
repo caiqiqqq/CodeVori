@@ -1,5 +1,5 @@
 import { WorkTaskAgent } from "@/work-tasks/WorkTaskParts.js";
-import { Folder, LoaderCircle } from "lucide-react";
+import { Folder, LoaderCircle, Workflow } from "lucide-react";
 import { Badge } from "@/components/ui/badge.js";
 import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
@@ -10,6 +10,7 @@ import {
   boardResultTimestamp,
   boardAgentLabel,
   boardStatusIndicator,
+  boardWorkflowStageLabel,
   type BoardItem,
 } from "./agentBoardModel.js";
 export const boardStatusColors = {
@@ -46,6 +47,7 @@ export function AgentBoardCard({
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
   const colors = boardStatusColors;
   const status = boardStatusIndicator(item);
+  const workflowStage = boardWorkflowStageLabel(item);
   const isConversation = item.workspacePurpose === "conversation";
   const projectName = projectLabel ?? item.workspacePath.split("/").pop();
   const change = item.kind === "native" ? item.task.changeSummary : undefined;
@@ -105,6 +107,16 @@ export function AgentBoardCard({
               ) : null}
               <span className="truncate">{isConversation ? t("conversations") : projectName}</span>
             </Badge>
+            {workflowStage ? (
+              <span
+                data-board-workflow-stage
+                title={workflowStage}
+                className="inline-flex max-w-28 min-w-0 items-center gap-1 rounded bg-surface px-1.5 py-0.5 text-ui-xs text-foreground-subtle"
+              >
+                <Workflow aria-hidden="true" className="size-3 shrink-0" />
+                <span className="truncate">{workflowStage}</span>
+              </span>
+            ) : null}
           </div>
           <span
             className={

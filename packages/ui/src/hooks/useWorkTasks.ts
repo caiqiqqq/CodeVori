@@ -73,6 +73,27 @@ function commands(scope: WorkTaskScope, run: Run) {
           ...(handoffNote ? { handoffNote } : {}),
         }),
       ),
+    attachConversationWorkflow: (kind: "api" | "acp", sessionId: string) =>
+      run(scope, (target) => target.attachConversationWorkflow({ ...scope, kind, sessionId })),
+    transitionConversationWorkflow: (
+      kind: "api" | "acp",
+      sessionId: string,
+      expectedRevision: number,
+      expectedStageId: string,
+      targetStageId: string,
+      handoffNote?: string,
+    ) =>
+      run(scope, (target) =>
+        target.transitionConversationWorkflow({
+          ...scope,
+          kind,
+          sessionId,
+          expectedRevision,
+          expectedStageId,
+          targetStageId,
+          ...(handoffNote ? { handoffNote } : {}),
+        }),
+      ),
     restartWithNewSession: (id: string) =>
       run(scope, (target) => target.start({ ...scope, id, newSession: true })),
     startAll: () => run(scope, (target) => target.startAll(scope)),

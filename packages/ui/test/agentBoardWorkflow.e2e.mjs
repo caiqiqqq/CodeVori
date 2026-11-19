@@ -181,6 +181,88 @@ try {
   await page.getByRole("button", { name: "所有项目", exact: true }).click();
   await page.getByRole("textbox", { name: "搜索项目名称或路径…", exact: true }).fill("Project 3");
   await page.getByRole("button", { name: /Project 3.*project-3/ }).click();
+  await page.evaluate(() =>
+    window.__board.update(3, {
+      status: "completed",
+      liveStatus: "completed",
+      sourceAvailability: "offline",
+    }),
+  );
+  const ordinaryCard = page.locator("[data-board-card]").filter({ hasText: "Implement project 3" });
+  await ordinaryCard.getByRole("button").first().click();
+  const conversationWorkflow = page.getByTestId("conversation-workflow");
+  await conversationWorkflow.getByTestId("conversation-workflow-attach").click();
+  await conversationWorkflow.getByTestId("conversation-workflow-status").click();
+  await page.getByRole("option", { name: "进行中", exact: true }).click();
+  await page.getByTestId("conversation-workflow-transition").waitFor();
+  await page
+    .getByTestId("conversation-workflow-transition")
+    .getByRole("textbox")
+    .fill("开始处理这个会话");
+  await page.getByTestId("conversation-workflow-confirm").click();
+  await page.getByTestId("conversation-workflow-transition").waitFor({ state: "detached" });
+  await ordinaryCard
+    .locator("[data-board-workflow-stage]")
+    .getByText("进行中", { exact: true })
+    .waitFor();
+  assert.deepEqual(
+    await page.evaluate(() => ({
+      runtime: window.__board.native[3].liveStatus,
+      workTasks: window.__board.workRows.length,
+      workflow: (() => {
+        const state = [...window.__conversationWorkflows.values()][0].state;
+        const entry = state.history[0];
+        return {
+          currentStageId: state.currentStageId,
+          revision: state.revision,
+          history: {
+            stageName: entry.stageName,
+            targetStageId: entry.targetStageId,
+            handoffNote: entry.handoffNote,
+          },
+        };
+      })(),
+      mutations: window.__conversationCommands.map((command) => command.operation),
+    })),
+    {
+      runtime: "completed",
+      workTasks: 0,
+      workflow: {
+        currentStageId: "active",
+        revision: 2,
+        history: {
+          stageName: "待办",
+          targetStageId: "active",
+          handoffNote: "开始处理这个会话",
+        },
+      },
+      mutations: ["attach", "transition"],
+    },
+  );
+  await conversationWorkflow.getByRole("button", { name: "阶段历史" }).click();
+  const conversationHistory = page.getByTestId("conversation-workflow-history");
+  await conversationHistory.getByText("待办", { exact: false }).waitFor();
+  await conversationHistory.getByText("开始处理这个会话", { exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  await conversationHistory.waitFor({ state: "detached" });
+  await page.screenshot({
+    path: join(artifacts, "conversation-workflow-desktop.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await conversationWorkflow.evaluate((element) => element.scrollWidth <= element.clientWidth),
+    true,
+  );
+  await page.screenshot({
+    path: join(artifacts, "conversation-workflow-mobile.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.setViewportSize({ width: 1500, height: 1000 });
+  await page.getByTestId("agent-board-header-actions").locator("button").first().click();
+  await page.getByTestId("agent-board-details").waitFor({ state: "detached" });
   await page.getByTestId("agent-board-new-session").click();
   const create = page.getByTestId("work-task-editor");
   await create.getByTestId("work-task-initial-stage").waitFor();

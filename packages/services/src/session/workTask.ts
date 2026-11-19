@@ -39,6 +39,9 @@ import {
   type WorkTaskWorkflowConfig,
   type WorkTaskWorkflowSave,
   type WorkTaskWorkflowTransition,
+  type ConversationWorkflowAttach,
+  type ConversationWorkflowRecord,
+  type ConversationWorkflowTransition,
   type RepositoryIssueSummaryRequest,
   type RepositoryIssueSummary,
   type ForgeRepositoryRequest,
@@ -78,6 +81,13 @@ export interface IWorkTaskService {
   saveWorkflow(input: WorkTaskWorkflowSave): Promise<WorkTaskWorkflowConfig>;
   /** 比较 runSeq/状态快照；仅 Agent 入口入队，Keep/Member 保留原会话。 */
   transitionWorkflow(input: WorkTaskWorkflowTransition): Promise<WorkTask>;
+  /** 普通 API/ACP 会话显式采用项目工作流；只保存业务状态，不影响会话执行。 */
+  attachConversationWorkflow(
+    input: ConversationWorkflowAttach,
+  ): Promise<ConversationWorkflowRecord>;
+  transitionConversationWorkflow(
+    input: ConversationWorkflowTransition,
+  ): Promise<ConversationWorkflowRecord>;
   update(input: WorkTaskUpdate): Promise<WorkTask>;
   /** 元数据改名适用于运行中任务，仅改标题，不编辑或重新执行草稿。 */
   rename(input: WorkTaskRename): Promise<WorkTask>;

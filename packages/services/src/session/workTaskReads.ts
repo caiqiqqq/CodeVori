@@ -15,6 +15,7 @@ export function createWorkTaskReads(
       const config = options.repo.workflow(scope);
       return {
         tasks: options.repo.list(scope, scope.includeArchived),
+        conversationWorkflows: options.repo.conversationWorkflows(scope),
         workflow: config.workflow,
         workflowRevision: config.revision,
         concurrency: options.repo.concurrency(scope),

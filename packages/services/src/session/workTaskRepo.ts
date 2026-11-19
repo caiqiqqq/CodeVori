@@ -38,6 +38,11 @@ import {
   deleteWorkTaskWorkflowDefinition,
   workTaskWorkflowCatalogRevision,
 } from "./workTaskWorkflowPersistence.js";
+import {
+  attachConversationWorkflow,
+  listConversationWorkflows,
+  transitionConversationWorkflow,
+} from "./workTaskConversationWorkflowPersistence.js";
 import { createWorkTaskDraft } from "./workTaskDraft.js";
 import { admitWorkTaskMerge } from "./workTaskMergeAdmission.js";
 import { isDeepStrictEqual } from "node:util";
@@ -65,6 +70,9 @@ import {
   type WorkTaskWorkflowDefinitionDelete,
   type WorkTaskWorkflowSave,
   type WorkTaskWorkflowTransition,
+  type ConversationWorkflowAttach,
+  type ConversationWorkflowRecord,
+  type ConversationWorkflowTransition,
 } from "@zcode/shared";
 import type { WorkTaskConversationEvent, WorkTaskExecutionUpdate } from "./workTask.js";
 import {
@@ -148,6 +156,25 @@ export class WorkTaskRepo {
   }
   workflowCatalogRevision() {
     return workTaskWorkflowCatalogRevision(this.database());
+  }
+  conversationWorkflows(scope: Pick<WorkTaskScope, "workspacePath" | "workspaceIdentity">) {
+    return listConversationWorkflows(this.database(), scope);
+  }
+  attachConversationWorkflow(input: ConversationWorkflowAttach): ConversationWorkflowRecord {
+    return this.transaction(() => {
+      if (this.conversationSessionIds(input, input.kind).includes(input.sessionId))
+        throw new Error("work-task.conversation-workflow-already-bound");
+      return attachConversationWorkflow(this.database(), input);
+    });
+  }
+  transitionConversationWorkflow(
+    input: ConversationWorkflowTransition,
+  ): ConversationWorkflowRecord {
+    return this.transaction(() => {
+      if (this.conversationSessionIds(input, input.kind).includes(input.sessionId))
+        throw new Error("work-task.conversation-workflow-already-bound");
+      return transitionConversationWorkflow(this.database(), input);
+    });
   }
   saveWorkflowDefinition(input: WorkTaskWorkflowDefinitionSave) {
     return this.transaction(() => saveWorkTaskWorkflowDefinition(this.database(), input));

@@ -3,6 +3,7 @@ import {
   isWorkTaskMerging,
   isWorkTaskForgePending,
   type WorkTask,
+  type ConversationWorkflowState,
 } from "@zcode/shared";
 import type { WindowHostControllerTaskListItem } from "@zcode/services";
 import type { AcpSidebarSession } from "@/lib/acpSidebarSessions.js";
@@ -80,8 +81,12 @@ export type BoardItem = {
   staged?: boolean;
   summary?: string;
 } & (
-  | { kind: "native"; task: WindowHostControllerTaskListItem }
-  | { kind: "acp"; session: AcpSidebarSession }
+  | {
+      kind: "native";
+      task: WindowHostControllerTaskListItem;
+      conversationWorkflow?: ConversationWorkflowState;
+    }
+  | { kind: "acp"; session: AcpSidebarSession; conversationWorkflow?: ConversationWorkflowState }
   | { kind: "work-task"; workTask: WorkTask }
 );
 export const boardWorkspaceKey = (scope: { workspacePath: string; workspaceIdentity?: string }) =>
@@ -97,6 +102,10 @@ export function boardAgentLabel(item: BoardItem) {
   return agent
     ? (ACP_AGENT_CATALOG.find((entry) => entry.id === agent)?.name ?? agent).replace(/\s+ACP$/i, "")
     : item.agent;
+}
+export function boardWorkflowStageLabel(item: BoardItem): string | undefined {
+  const workflow = item.kind === "work-task" ? item.workTask.workflow : item.conversationWorkflow;
+  return workflow?.definition.stages.find((stage) => stage.id === workflow.currentStageId)?.name;
 }
 export const boardEntityKey = (
   scope: { workspacePath: string; workspaceIdentity?: string },
