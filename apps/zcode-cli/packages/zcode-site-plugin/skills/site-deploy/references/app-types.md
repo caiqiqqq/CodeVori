@@ -1,6 +1,6 @@
-# App types on ZCode Sites
+# App types on CodeVori Sites
 
-Build and start the app the way its framework documents for production; this page only covers what is specific to ZCode Sites. Every app binds `0.0.0.0:$PORT` (3000) and answers 200 on `/`.
+Build and start the app the way its framework documents for production; this page only covers what is specific to CodeVori Sites. Every app binds `0.0.0.0:$PORT` (3000) and answers 200 on `/`.
 
 ## Static sites
 

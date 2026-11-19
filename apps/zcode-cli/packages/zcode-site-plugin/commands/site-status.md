@@ -1,5 +1,5 @@
 ---
-description: Show the ZCode Sites site linked to this project.
+description: Show the CodeVori Sites site linked to this project.
 argument-hint: "[site id]"
 skills: site-deploy
 ---
