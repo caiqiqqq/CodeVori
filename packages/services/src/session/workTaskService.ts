@@ -25,6 +25,8 @@ import {
   type WorkTaskWorkflowDefinitionDelete,
   workTaskWorkflowSaveSchema,
   workTaskWorkflowTransitionSchema,
+  conversationWorkflowAttachSchema,
+  conversationWorkflowTransitionSchema,
   type WorkTaskAttachment,
   type WorkTaskAttachmentImport,
   type WorkTaskAttachmentBegin,
@@ -42,6 +44,8 @@ import {
   type WorkTaskAcceptBranch,
   type WorkTaskWorkflowSave,
   type WorkTaskWorkflowTransition,
+  type ConversationWorkflowAttach,
+  type ConversationWorkflowTransition,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { assertWorkTaskLocal } from "./workTask.js";
@@ -310,6 +314,22 @@ export class WorkTaskService implements IWorkTaskService {
     this.publish();
     this.wake();
     return task;
+  }
+  async attachConversationWorkflow(input: ConversationWorkflowAttach) {
+    const parsed = conversationWorkflowAttachSchema.parse(input);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
+    await this.ready();
+    const record = this.options.repo.attachConversationWorkflow(parsed);
+    this.publish();
+    return record;
+  }
+  async transitionConversationWorkflow(input: ConversationWorkflowTransition) {
+    const parsed = conversationWorkflowTransitionSchema.parse(input);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
+    await this.ready();
+    const record = this.options.repo.transitionConversationWorkflow(parsed);
+    this.publish();
+    return record;
   }
   async update(input: WorkTaskUpdate) {
     const parsed = workTaskUpdateSchema.parse(input);

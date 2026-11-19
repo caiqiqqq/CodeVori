@@ -15,6 +15,7 @@ import type { BoardConversationOptions } from "./AgentBoardConversation.js";
 import { WorkspaceHeaderActionSection } from "@/WorkspaceHeaderSections/WorkspaceHeaderActionSection.js";
 import { AgentBoardTools, type AgentBoardWorkspaceTools } from "./AgentBoardTools.js";
 import { AgentBoardSessionContextMenu } from "./AgentBoardSessionContextMenu.js";
+import { AgentBoardConversationWorkflow } from "./AgentBoardConversationWorkflow.js";
 const WorkTaskDetails = lazy(() =>
   import("./AgentBoardWorkTaskDetails.js").then((m) => ({ default: m.AgentBoardWorkTaskDetails })),
 );
@@ -205,6 +206,7 @@ export function AgentBoardDetails({
                   {t("openSession")}
                 </Button>
               </div>
+              <AgentBoardConversationWorkflow item={selected} panel={workTasks.forScope(scope)} />
               <div className="min-h-0 flex-1 overflow-hidden">
                 <Suspense fallback={<p className="p-4">{t("loading")}</p>}>
                   <Conversation

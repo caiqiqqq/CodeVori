@@ -576,12 +576,15 @@ nodes:
         symbol: IWorkTaskService
       - file: packages/shared/src/work-task-workflow.ts
         symbol: workTaskWorkflowStateSchema
+      - file: packages/services/src/session/workTaskConversationWorkflowPersistence.ts
+        symbol: attachConversationWorkflow
     invariants:
       - The target Host owns accepted task state; UI drafts and board projections are not another queue.
       - Starting and local task merging are explicit; ordinary completion and archive never write Git or delete a worktree or session.
       - A failed task with a bound session may explicitly enqueue with a fresh session request while retaining the task and worktree; ordinary retry retains the binding.
       - The first phase executes local Git projects only; remote targets cannot fall back to local execution.
       - Workflow stages are separate from execution status; new tasks snapshot the project definition and stage transitions never accept or merge automatically.
+      - Ordinary API/ACP conversations may explicitly adopt the selected project workflow; Host SQLite owns their independent stage snapshots and compare-and-set transition history without starting execution.
   - id: surface.work-tasks-board
     kind: ui-surface
     label: Work tasks and conversations in the existing workspace shell
@@ -608,6 +611,8 @@ nodes:
         symbol: TaskWorkflowEditor
       - file: packages/ui/src/work-tasks/WorkTaskWorkflowControls.tsx
         symbol: WorkTaskWorkflowControls
+      - file: packages/ui/src/agent-board/AgentBoardConversationWorkflow.tsx
+        symbol: AgentBoardConversationWorkflow
     invariants:
       - Project options wait for Git worktree relationships; same-name independent identities stay distinct.
       - Board and sidebar share one read projection and event subscription per Service and scope; Host owns task facts.
@@ -615,6 +620,7 @@ nodes:
       - Opening a sidebar work task displays its existing conversation pane directly without starting execution or duplicating the board list; grouped order writes retain hidden bindings.
       - Source badges, conversation headers and details read only the selected task's persisted source; opening its validated external URL does not select or mutate a task.
       - Historical workflow sessions remain exact task bindings in board/sidebar filtering; history is read-only and dialog focus suspends the underlying conversation.
+      - Agent Board conversation stages are projected from the Host work-task read model and share the board with Work Tasks; ordinary conversation transitions never submit session input.
   - id: surface.agent-board-create
     kind: ui-surface
     label: Agent board entrypoints for work tasks and project conversations

@@ -88,6 +88,12 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
     const tabByScope = new Map(workspaceTabs.map((tab) => [boardWorkspaceKey(tab), tab]));
     const rows = new Map<string, BoardItem>();
     const boundKeys = workTaskBoundConversationKeys(workTasks.board?.tasks ?? []);
+    const conversationWorkflowByKey = new Map(
+      (workTasks.board?.conversationWorkflows ?? []).map((record) => [
+        boardEntityKey(record, record.kind === "api" ? "native" : "acp", record.sessionId),
+        record.state,
+      ]),
+    );
     // 原收藏会话仍属于全部列表；仅移除看板收藏操作，不能遗漏 pinned 来源的成员。
     for (const [list, isArchived] of [
       [timeline.items, false],
@@ -105,6 +111,9 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
         rows.set(key, {
           kind: "native",
           task,
+          ...(conversationWorkflowByKey.get(key)
+            ? { conversationWorkflow: conversationWorkflowByKey.get(key) }
+            : {}),
           key,
           projectKey: projectByScope.get(scope) ?? scope,
           title: task.title,
@@ -136,6 +145,9 @@ export function useAgentBoardData(workspaceTabs: WorkspaceTabState[]) {
       rows.set(key, {
         kind: "acp",
         session: { ...session, remoteSessionId: lookup.get(scope)?.remoteSessionId },
+        ...(conversationWorkflowByKey.get(key)
+          ? { conversationWorkflow: conversationWorkflowByKey.get(key) }
+          : {}),
         key,
         projectKey: projectByScope.get(scope) ?? scope,
         title: session.title,

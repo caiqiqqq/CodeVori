@@ -350,6 +350,15 @@ const enUS: Record<string, string> = {
   "workTasks.workflow.default": "Default (existing behavior)",
   "workTasks.workflow.mainProject": "Uses the main project workflow",
   "workTasks.workflow.changeStatus": "Change workflow status",
+  "workTasks.workflow.useProjectWorkflow": "Use project workflow",
+  "workTasks.workflow.noProjectWorkflow": "No project workflow configured",
+  "workTasks.workflow.selectForProjectFirst":
+    "Choose a workflow for this project in Settings first.",
+  "workTasks.workflow.conversationStatusOnly":
+    "Business stage is separate from conversation runtime status. Changing it will not send a message.",
+  "workTasks.workflow.conversationAgentHandoffNote":
+    "Agent handoffs apply to Work Tasks. Ordinary conversations only record the stage and do not send a message.",
+  "workTasks.workflow.changeStatusTo": "Change status to {name}",
   "workTasks.workflow.confirmStatus": "Confirm status change",
   "workTasks.workflow.passiveHandoff":
     "This status does not start an agent. The current conversation and execution settings are retained.",

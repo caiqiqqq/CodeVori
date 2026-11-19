@@ -6,6 +6,8 @@ import type {
   WorkTaskWorkflowSave,
   WorkTaskWorkflowDefinitionSave,
   WorkTaskWorkflowTransition,
+  ConversationWorkflowAttach,
+  ConversationWorkflowTransition,
   RepositoryIssueProject,
 } from "@zcode/shared";
 import type { IWorkTaskService } from "./contract.js";
@@ -38,6 +40,21 @@ export async function transitionTaskStage(
   request: WorkTaskWorkflowTransition,
 ) {
   return service.transitionWorkflow(request);
+}
+
+export async function adoptConversationWorkflow(
+  service: IWorkTaskService,
+  request: ConversationWorkflowAttach,
+) {
+  return service.attachConversationWorkflow(request);
+}
+
+export async function transitionConversationStage(
+  service: IWorkTaskService,
+  request: ConversationWorkflowTransition,
+) {
+  // 普通会话只更新业务阶段，不会向 API/ACP 会话提交新输入。
+  return service.transitionConversationWorkflow(request);
 }
 
 export async function readUnhandledRepositoryIssues(

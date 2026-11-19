@@ -180,6 +180,64 @@ export interface WorkTaskWorkflowDefinition {
   projectKeys: string[];
 }
 
+export const conversationWorkflowTargetSchema = workTaskScopeSchema
+  .extend({ kind: z.enum(["api", "acp"]), sessionId: z.string().min(1) })
+  .strict();
+export type ConversationWorkflowTarget = z.infer<typeof conversationWorkflowTargetSchema>;
+
+export const conversationWorkflowStateSchema = z
+  .object({
+    definition: workTaskWorkflowSchema,
+    currentStageId: z.string().trim().min(1).max(64),
+    owner: z.string().trim().min(1).max(120).optional(),
+    revision: z.number().int().positive(),
+    history: z.array(
+      z
+        .object({
+          stageId: z.string().trim().min(1).max(64),
+          stageName: z.string().trim().min(1).max(80),
+          owner: z.string().trim().min(1).max(120).optional(),
+          targetStageId: z.string().trim().min(1).max(64),
+          handoffNote: z.string().trim().min(1).max(12_000).optional(),
+          transitionedAt: z.number().finite().nonnegative(),
+        })
+        .strict(),
+    ),
+  })
+  .strict()
+  .superRefine((state, ctx) => {
+    const stages = new Set(state.definition.stages.map((stage) => stage.id));
+    if (!state.definition.initialStageId)
+      ctx.addIssue({ code: "custom", path: ["definition"], message: "Status workflow required" });
+    if (!stages.has(state.currentStageId))
+      ctx.addIssue({ code: "custom", path: ["currentStageId"], message: "Unknown current stage" });
+    state.history.forEach((entry, index) => {
+      if (!stages.has(entry.stageId) || !stages.has(entry.targetStageId))
+        ctx.addIssue({
+          code: "custom",
+          path: ["history", index],
+          message: "Unknown history stage",
+        });
+    });
+  });
+export type ConversationWorkflowState = z.infer<typeof conversationWorkflowStateSchema>;
+export interface ConversationWorkflowRecord extends ConversationWorkflowTarget {
+  state: ConversationWorkflowState;
+}
+
+export const conversationWorkflowAttachSchema = conversationWorkflowTargetSchema;
+export type ConversationWorkflowAttach = z.infer<typeof conversationWorkflowAttachSchema>;
+
+export const conversationWorkflowTransitionSchema = conversationWorkflowTargetSchema
+  .extend({
+    expectedRevision: z.number().int().positive(),
+    expectedStageId: z.string().trim().min(1).max(64),
+    targetStageId: z.string().trim().min(1).max(64),
+    handoffNote: z.string().trim().min(1).max(12_000).optional(),
+  })
+  .strict();
+export type ConversationWorkflowTransition = z.infer<typeof conversationWorkflowTransitionSchema>;
+
 export const workTaskWorkflowStateSchema = z
   .object({
     definition: workTaskWorkflowSchema,

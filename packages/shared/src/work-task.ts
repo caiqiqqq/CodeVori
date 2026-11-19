@@ -7,7 +7,11 @@ import {
   workTaskTargetSchema,
   workTaskWorktreeSchema,
 } from "./work-task-core.js";
-import { workTaskWorkflowStateSchema, type WorkTaskWorkflow } from "./work-task-workflow.js";
+import {
+  workTaskWorkflowStateSchema,
+  type ConversationWorkflowRecord,
+  type WorkTaskWorkflow,
+} from "./work-task-workflow.js";
 export * from "./work-task-core.js";
 export * from "./work-task-workflow.js";
 import { workTaskChangeRecordSchema } from "./work-task-result.js";
@@ -356,6 +360,7 @@ export const workTaskConcurrencySchema = workTaskScopeSchema
 
 export interface WorkTaskBoard {
   tasks: WorkTask[];
+  conversationWorkflows?: ConversationWorkflowRecord[];
   workflow?: WorkTaskWorkflow | null;
   workflowRevision?: number;
   /** @deprecated Saved compatibility value; tasks have no project concurrency limit. */

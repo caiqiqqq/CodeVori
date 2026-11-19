@@ -333,6 +333,14 @@ const zhCN: Record<string, string> = {
   "workTasks.workflow.default": "默认（保持现有行为）",
   "workTasks.workflow.mainProject": "跟随主项目的工作流",
   "workTasks.workflow.changeStatus": "更改工作流状态",
+  "workTasks.workflow.useProjectWorkflow": "采用项目工作流",
+  "workTasks.workflow.noProjectWorkflow": "尚未配置项目工作流",
+  "workTasks.workflow.selectForProjectFirst": "请先在设置的项目选项中选择工作流。",
+  "workTasks.workflow.conversationStatusOnly":
+    "这是业务阶段，与会话运行状态分开保存；变更阶段不会发送新消息。",
+  "workTasks.workflow.conversationAgentHandoffNote":
+    "Agent 交接仅对待办任务生效。普通会话只记录阶段，不会发送消息。",
+  "workTasks.workflow.changeStatusTo": "将状态更改为「{name}」",
   "workTasks.workflow.confirmStatus": "确认变更状态",
   "workTasks.workflow.passiveHandoff": "此状态不会启动智能体；保留当前会话和执行配置。",
   "workTasks.workflow.owner": "负责人名称",
