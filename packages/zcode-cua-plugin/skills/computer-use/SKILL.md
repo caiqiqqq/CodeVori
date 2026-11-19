@@ -8,7 +8,7 @@ description: 在本地 macOS 或 Windows 上操作桌面应用，读取辅助功
 通过此插件的 `computer-use` MCP 工具操作本地 macOS 或 Windows。不要使用浏览器控制工具替代
 原生应用操作，不要写 AppleScript、shell 或其他控制脚本绕过这些工具的状态校验。
 
-先调用 `request_access` 读取权限；缺失时请用户在 ZCode 设置的电脑控制区域完成授权。
+先调用 `request_access` 读取权限；缺失时请用户在 CodeVori 设置的电脑控制区域完成授权。
 该工具不会自动弹系统权限窗口。支持本地 macOS 14+ 和 Windows；Linux、远端、WSL、Docker 不支持。Windows 不需要 macOS 隐私授权，但需要交互桌面并受 UIPI 权限级别限制。
 
 用 `list_apps` 取得真实 app 标识，用 `list_windows` 定位窗口；`get_app_state` 会尝试启动精确匹配的已安装应用。
