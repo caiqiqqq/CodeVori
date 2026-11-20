@@ -113,7 +113,6 @@ try {
   for (const [path, symbol] of [
     ["WorkspaceHeader.tsx", "WorkspaceHeader"],
     ["DesktopTopOverlay.tsx", "DesktopTopOverlay"],
-    ["WorkspaceSidebarFooter.tsx", "WorkspaceSidebarFooter"],
     ["WorkspacePinnedTasksSection.tsx", "WorkspacePinnedTasksSection"],
     ["command-center/CommandCenterDialog.tsx", "CommandCenterDialog"],
     ["quickpick/TaskFindDialog.tsx", "TaskFindDialog"],
@@ -140,6 +139,7 @@ try {
   await button.waitFor().catch((error) => {
     throw Error(errors.join("\n") || error.message);
   });
+  assert.equal(await page.getByRole("button", { name: "移动端远程控制" }).count(), 0);
   const prepare = async (options) => {
     await page.evaluate((options) => window.__newTask.prepare(options), options);
     await page.waitForFunction(
