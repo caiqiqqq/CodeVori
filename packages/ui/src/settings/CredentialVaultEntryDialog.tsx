@@ -67,12 +67,10 @@ function toDraft(entry?: CredentialVaultEntry): CredentialDraft {
 
 export function CredentialVaultEntryDialog({
   mode,
-  workspaceIdentity,
   onClose,
   onChanged,
 }: {
   mode: CredentialVaultDialogMode | null;
-  workspaceIdentity: string;
   onClose: () => void;
   onChanged: () => Promise<void>;
 }) {
@@ -108,7 +106,7 @@ export function CredentialVaultEntryDialog({
       host: draft.host,
       port: draft.port ? Number(draft.port) : null,
       username: draft.username || null,
-      workspaceIdentity,
+      workspaceIdentity: mode.kind === "create" ? null : mode.entry.workspaceIdentity,
       ...(draft.secret ? { secret: draft.secret } : {}),
     };
     try {
@@ -128,7 +126,7 @@ export function CredentialVaultEntryDialog({
     setRemoving(true);
     setErrorId(null);
     try {
-      await remove(mode.entry.id, workspaceIdentity);
+      await remove(mode.entry.id, mode.entry.workspaceIdentity);
       onClose();
       await onChanged();
     } catch {

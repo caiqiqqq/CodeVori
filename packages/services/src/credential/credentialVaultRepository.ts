@@ -90,6 +90,46 @@ export class CredentialVaultRepository {
     return rows.map(projectEntry);
   }
 
+  async listUnassigned(): Promise<CredentialVaultEntry[]> {
+    const database = await this.getDatabase();
+    const rows = database
+      .prepare(
+        `SELECT id, name, kind, environment, host, port, username, workspace_identity,
+                secret_key, previous_secret_key, status, operation_owner_pid,
+                operation_owner_started_at, created_at, updated_at
+         FROM credential_vault_entries
+         WHERE status = 'active' AND workspace_identity IS NULL
+         ORDER BY updated_at DESC, id`,
+      )
+      .all() as unknown as CredentialVaultRow[];
+    return rows.map(projectEntry);
+  }
+
+  async attach(id: string, workspaceIdentity: string): Promise<void> {
+    const database = await this.getDatabase();
+    // 同一 SQL 条件更新避免两个项目并发把同一条未关联凭证同时认领。
+    const result = database
+      .prepare(
+        `UPDATE credential_vault_entries
+         SET workspace_identity = ?
+         WHERE id = ? AND status = 'active' AND workspace_identity IS NULL`,
+      )
+      .run(workspaceIdentity, id);
+    if (result.changes !== 1) throw new Error("Credential entry is missing or already attached");
+  }
+
+  async detach(id: string, workspaceIdentity: string): Promise<void> {
+    const database = await this.getDatabase();
+    const result = database
+      .prepare(
+        `UPDATE credential_vault_entries
+         SET workspace_identity = NULL
+         WHERE id = ? AND status = 'active' AND workspace_identity = ?`,
+      )
+      .run(id, workspaceIdentity);
+    if (result.changes !== 1) throw new Error("Credential entry was not found in this project");
+  }
+
   async find(id: string): Promise<CredentialVaultMutation | CredentialVaultEntry | null> {
     const database = await this.getDatabase();
     const row = database
@@ -152,7 +192,7 @@ export class CredentialVaultRepository {
 
   async beginRotate(
     id: string,
-    workspaceIdentity: string,
+    workspaceIdentity: string | null,
     secretKey: string,
     operationOwnerPid: number,
     operationOwnerStartedAt: number,
@@ -163,7 +203,7 @@ export class CredentialVaultRepository {
       const row = database
         .prepare(
           `SELECT secret_key FROM credential_vault_entries
-           WHERE id = ? AND status = 'active' AND workspace_identity = ?`,
+           WHERE id = ? AND status = 'active' AND workspace_identity IS ?`,
         )
         .get(id, workspaceIdentity) as { secret_key: string } | undefined;
       if (!row) throw new Error("Credential entry is missing or busy");
@@ -172,7 +212,7 @@ export class CredentialVaultRepository {
           `UPDATE credential_vault_entries
            SET previous_secret_key = secret_key, secret_key = ?, status = 'rotating',
                operation_owner_pid = ?, operation_owner_started_at = ?, updated_at = ?
-           WHERE id = ? AND status = 'active' AND workspace_identity = ?`,
+           WHERE id = ? AND status = 'active' AND workspace_identity IS ?`,
         )
         .run(secretKey, operationOwnerPid, operationOwnerStartedAt, now, id, workspaceIdentity);
       return row.secret_key;
@@ -213,7 +253,7 @@ export class CredentialVaultRepository {
         `UPDATE credential_vault_entries
          SET name = ?, kind = ?, environment = ?, host = ?, port = ?, username = ?,
              workspace_identity = ?, updated_at = ?
-         WHERE id = ? AND status = 'active' AND workspace_identity = ?`,
+         WHERE id = ? AND status = 'active' AND workspace_identity IS ?`,
       )
       .run(
         input.name,
@@ -232,7 +272,7 @@ export class CredentialVaultRepository {
 
   async beginDelete(
     id: string,
-    workspaceIdentity: string,
+    workspaceIdentity: string | null,
     operationOwnerPid: number,
     operationOwnerStartedAt: number,
   ): Promise<string | null> {
@@ -241,7 +281,7 @@ export class CredentialVaultRepository {
       const row = database
         .prepare(
           `SELECT secret_key, status FROM credential_vault_entries
-           WHERE id = ? AND workspace_identity = ?`,
+           WHERE id = ? AND workspace_identity IS ?`,
         )
         .get(id, workspaceIdentity) as
         | { secret_key: string; status: CredentialVaultRow["status"] }
@@ -253,9 +293,9 @@ export class CredentialVaultRepository {
         .prepare(
           `UPDATE credential_vault_entries
            SET status = 'deleting', operation_owner_pid = ?, operation_owner_started_at = ?
-           WHERE id = ? AND status = 'active'`,
+           WHERE id = ? AND status = 'active' AND workspace_identity IS ?`,
         )
-        .run(operationOwnerPid, operationOwnerStartedAt, id);
+        .run(operationOwnerPid, operationOwnerStartedAt, id, workspaceIdentity);
       return row.secret_key;
     });
   }

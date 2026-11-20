@@ -12,9 +12,12 @@ export interface ICredentialService {
   load(key: string): Promise<string | null>;
   save(key: string, value: string): Promise<void>;
   delete(key: string): Promise<void>;
+  listUnassignedVaultEntries?(): Promise<CredentialVaultEntry[]>;
   listVaultEntries?(workspaceIdentity: string): Promise<CredentialVaultEntry[]>;
   saveVaultEntry?(input: SaveCredentialVaultEntryInput): Promise<CredentialVaultEntry>;
-  deleteVaultEntry?(id: string, workspaceIdentity: string): Promise<void>;
+  attachVaultEntry?(id: string, workspaceIdentity: string): Promise<void>;
+  detachVaultEntry?(id: string, workspaceIdentity: string): Promise<void>;
+  deleteVaultEntry?(id: string, workspaceIdentity: string | null): Promise<void>;
 }
 
 export type CredentialVaultKind = "server" | "database";
@@ -42,7 +45,7 @@ export interface SaveCredentialVaultEntryInput {
   host: string;
   port: number | null;
   username: string | null;
-  workspaceIdentity: string;
+  workspaceIdentity: string | null;
   /** Omitted or empty on edit means keep the current secret. */
   secret?: string;
 }

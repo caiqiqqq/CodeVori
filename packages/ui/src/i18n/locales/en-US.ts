@@ -3694,11 +3694,18 @@ const enUS: Record<string, string> = {
   "settings.mcpTitle": "MCP Servers",
   "settings.credentials.title": "Credentials",
   "settings.credentials.description":
-    "Credentials belong to the current project and are encrypted by the Host. The target environment label identifies which environment the credential points to.",
+    "Credentials are encrypted by the Host. New credentials start unassigned and can be selected by a project; each credential can belong to one project at a time.",
   "settings.credentials.add": "Add credential",
   "settings.credentials.loading": "Loading credentials…",
   "settings.credentials.empty": "No saved credentials",
-  "settings.credentials.noProject": "Open a project to manage its credentials.",
+  "settings.credentials.noProject":
+    "No project is open. You can still create and manage unassigned credentials.",
+  "settings.credentials.projectEntries": "Attached to this project",
+  "settings.credentials.projectEmpty": "No credentials are attached to this project.",
+  "settings.credentials.availableEntries": "Unassigned credentials",
+  "settings.credentials.availableEmpty": "No credentials are available to attach.",
+  "settings.credentials.attach": "Attach to current project",
+  "settings.credentials.detach": "Remove from current project",
   "settings.credentials.saved": "Saved",
   "settings.credentials.kind.server": "Server",
   "settings.credentials.kind.database": "Database",
@@ -3729,6 +3736,9 @@ const enUS: Record<string, string> = {
   "settings.credentials.error.save":
     "Could not save the credential. Check the fields and try again.",
   "settings.credentials.error.delete": "Could not delete the credential. Try again.",
+  "settings.credentials.error.attach":
+    "Could not attach the credential. It may already belong to another project.",
+  "settings.credentials.error.detach": "Could not remove the attachment. Refresh and try again.",
   "settings.credentials.save": "Save",
   "settings.credentials.saving": "Saving…",
   "settings.mcp.description": `Manage MCP server configurations used by ${PRODUCT_NAME} Agent.`,

@@ -33,7 +33,10 @@ async function createFixture(t: test.TestContext) {
     vaultRepository: repository,
   });
   assert.ok(service.listVaultEntries);
+  assert.ok(service.listUnassignedVaultEntries);
   assert.ok(service.saveVaultEntry);
+  assert.ok(service.attachVaultEntry);
+  assert.ok(service.detachVaultEntry);
   assert.ok(service.deleteVaultEntry);
   t.after(async () => {
     repository.close();
@@ -45,8 +48,11 @@ async function createFixture(t: test.TestContext) {
     repository,
     service,
     list: (workspaceIdentity = "workspace:test:qa") => service.listVaultEntries!(workspaceIdentity),
+    listUnassigned: () => service.listUnassignedVaultEntries!(),
     save: service.saveVaultEntry,
-    remove: (id: string, workspaceIdentity = "workspace:test:qa") =>
+    attach: service.attachVaultEntry,
+    detach: service.detachVaultEntry,
+    remove: (id: string, workspaceIdentity: string | null = "workspace:test:qa") =>
       service.deleteVaultEntry!(id, workspaceIdentity),
   };
 }
@@ -61,14 +67,16 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
     host: "db.qa.example.invalid",
     port: 5432,
     username: "qa_reader",
-    workspaceIdentity: "workspace:test:qa",
+    workspaceIdentity: null,
     secret: firstSecret,
   });
 
   assert.equal(created.hasSecret, true);
   assert.equal("secret" in created, false);
   assert.equal("secretKey" in created, false);
-  assert.deepEqual(await fixture.list("workspace:test:qa"), [created]);
+  assert.equal(created.workspaceIdentity, null);
+  assert.deepEqual(await fixture.listUnassigned(), [created]);
+  assert.deepEqual(await fixture.list("workspace:test:qa"), []);
   assert.deepEqual(await fixture.list("workspace:other"), []);
 
   const databasePath = join(fixture.root, ".codevori", "v2", "credential-vault.sqlite");
@@ -83,6 +91,43 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
   const originalSecretKey = secretKeyFor(created.id);
   assert.ok(originalSecretKey);
   assert.equal(await fixture.service.load(originalSecretKey), firstSecret);
+
+  const unassignedRotation = await fixture.save({
+    id: created.id,
+    name: created.name,
+    kind: created.kind,
+    environment: created.environment,
+    host: created.host,
+    port: created.port,
+    username: created.username,
+    workspaceIdentity: null,
+  });
+  assert.equal(unassignedRotation.workspaceIdentity, null);
+  const rotatedUnassigned = await fixture.save({
+    id: created.id,
+    name: created.name,
+    kind: created.kind,
+    environment: created.environment,
+    host: created.host,
+    port: created.port,
+    username: created.username,
+    workspaceIdentity: null,
+    secret: "unassigned-rotated-token",
+  });
+  assert.equal(rotatedUnassigned.workspaceIdentity, null);
+  assert.equal(await fixture.service.load(originalSecretKey), null);
+  assert.deepEqual(await fixture.listUnassigned(), [rotatedUnassigned]);
+  const unassignedSecretKey = secretKeyFor(created.id);
+  assert.ok(unassignedSecretKey);
+  assert.equal(await fixture.service.load(unassignedSecretKey), "unassigned-rotated-token");
+
+  await fixture.attach(created.id, "workspace:test:qa");
+  await assert.rejects(fixture.attach(created.id, "workspace:other"), /already attached/);
+  assert.deepEqual(await fixture.listUnassigned(), []);
+  assert.deepEqual(await fixture.list("workspace:test:qa"), [
+    { ...rotatedUnassigned, workspaceIdentity: "workspace:test:qa" },
+  ]);
+
   const databaseArtifacts = await Promise.all(
     [databasePath, `${databasePath}-wal`].map((path) =>
       readFile(path).catch(() => Buffer.alloc(0)),
@@ -110,8 +155,8 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
   });
   const unchangedKey = await fixture.repository.find(created.id);
   assert.ok(unchangedKey && !("status" in unchangedKey));
-  assert.equal(secretKeyFor(created.id), originalSecretKey);
-  assert.equal(await fixture.service.load(originalSecretKey), firstSecret);
+  assert.equal(secretKeyFor(created.id), unassignedSecretKey);
+  assert.equal(await fixture.service.load(unassignedSecretKey), "unassigned-rotated-token");
 
   const updated = await fixture.save({
     id: created.id,
@@ -152,7 +197,15 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
   );
   await assert.rejects(fixture.remove(created.id, "workspace:other"), /not found in this project/);
   assert.deepEqual(await fixture.list("workspace:test:qa"), [updated]);
-  await fixture.remove(created.id, "workspace:test:qa");
+  await assert.rejects(fixture.detach(created.id, "workspace:other"), /not found in this project/);
+  await fixture.detach(created.id, "workspace:test:qa");
+  assert.deepEqual(await fixture.list("workspace:test:qa"), []);
+  assert.deepEqual(await fixture.listUnassigned(), [{ ...updated, workspaceIdentity: null }]);
+  await fixture.attach(created.id, "workspace:other");
+  assert.deepEqual(await fixture.list("workspace:other"), [
+    { ...updated, workspaceIdentity: "workspace:other" },
+  ]);
+  await fixture.remove(created.id, "workspace:other");
   assert.deepEqual(await fixture.list("workspace:test:qa"), []);
   assert.equal(await fixture.service.load(rotatedSecretKey), null);
 });

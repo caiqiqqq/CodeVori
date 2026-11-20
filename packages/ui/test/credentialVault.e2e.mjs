@@ -37,6 +37,7 @@ try {
     const entries:any[]=[];const secrets=new Map<string,string>();
     const service:any={
       async listVaultEntries(workspaceIdentity:string){const snapshot=entries.filter(entry=>entry.workspaceIdentity===workspaceIdentity).map(entry=>({...entry}));if(state.delayScope===workspaceIdentity)return new Promise(resolve=>state.pendingReads.push(()=>resolve(snapshot)));return snapshot},
+      async listUnassignedVaultEntries(){return entries.filter(entry=>entry.workspaceIdentity===null).map(entry=>({...entry}))},
       async saveVaultEntry(input:any){
         state.calls.push({operation:'save',hasSecret:Boolean(input.secret),workspaceIdentity:input.workspaceIdentity});
         let entry=entries.find(candidate=>candidate.id===input.id);
@@ -46,7 +47,9 @@ try {
         state.values=()=>({count:entries.length,hasActiveSecret:Boolean(secrets.get(entry.id)),entryName:entry.name,kind:entry.kind,environment:entry.environment});
         return {...entry};
       },
-      async deleteVaultEntry(id:string,workspaceIdentity:string){state.calls.push({operation:'delete',workspaceIdentity});const index=entries.findIndex(entry=>entry.id===id&&entry.workspaceIdentity===workspaceIdentity);if(index>=0)entries.splice(index,1);secrets.delete(id)},
+      async attachVaultEntry(id:string,workspaceIdentity:string){state.calls.push({operation:'attach',workspaceIdentity});const entry=entries.find(candidate=>candidate.id===id&&candidate.workspaceIdentity===null);if(!entry)throw new Error('already attached');entry.workspaceIdentity=workspaceIdentity},
+      async detachVaultEntry(id:string,workspaceIdentity:string){state.calls.push({operation:'detach',workspaceIdentity});const entry=entries.find(candidate=>candidate.id===id&&candidate.workspaceIdentity===workspaceIdentity);if(!entry)throw new Error('not found');entry.workspaceIdentity=null},
+      async deleteVaultEntry(id:string,workspaceIdentity:string|null){state.calls.push({operation:'delete',workspaceIdentity});const index=entries.findIndex(entry=>entry.id===id&&entry.workspaceIdentity===workspaceIdentity);if(index>=0)entries.splice(index,1);secrets.delete(id)},
       async load(){return null},async save(){},async delete(){},
     };
     function Fixture(){const [visible,setVisible]=useState(true),[workspace,setWorkspace]=useState({workspacePath:'/project-a',workspaceIdentity:'remote:project-a'});state.setVisible=setVisible;state.setWorkspace=setWorkspace;state.releaseReads=()=>state.pendingReads.splice(0).forEach((release:()=>void)=>release());return <div className='min-h-screen bg-background p-6 text-foreground'><ServiceProvider services={{credentialService:service}}>{visible?<CredentialVaultSection {...workspace}/>:null}</ServiceProvider></div>}
@@ -67,7 +70,7 @@ try {
   page.setDefaultTimeout(30_000);
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/${name}.html`);
-  await page.getByText("还没有保存的凭证", { exact: true }).waitFor();
+  await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
   await page.screenshot({
     path: join(artifacts, "credential-vault-empty.png"),
     animations: "disabled",
@@ -84,7 +87,6 @@ try {
   await dialog.getByLabel("主机").fill("db.qa.example.invalid");
   await dialog.getByLabel("端口").fill("5432");
   await dialog.getByLabel("用户名").fill("qa_reader");
-  assert.equal(await dialog.getByLabel("授权工作区标识（可选）").count(), 0);
   await dialog.getByLabel("密码或令牌").fill("synthetic-initial-secret");
   await page.screenshot({
     path: join(artifacts, "credential-vault-form.png"),
@@ -103,15 +105,33 @@ try {
   assert.doesNotMatch(await page.locator("body").innerText(), /synthetic-initial-secret/);
   assert.equal(
     (await page.evaluate(() => window.__credentialVault.calls)).at(-1).workspaceIdentity,
+    null,
+  );
+  await page.getByText("QA 数据库", { exact: true }).waitFor();
+  await page.screenshot({
+    path: join(artifacts, "credential-vault-unassigned.png"),
+    animations: "disabled",
+  });
+  await page.getByRole("button", { name: "关联到当前项目", exact: true }).click();
+  assert.equal(
+    (await page.evaluate(() => window.__credentialVault.calls)).at(-1).operation,
+    "attach",
+  );
+  assert.equal(
+    (await page.evaluate(() => window.__credentialVault.calls)).at(-1).workspaceIdentity,
     "remote:project-a",
   );
+  await page.getByRole("button", { name: "编辑", exact: true }).click();
+  const staleEditDialog = page.getByRole("dialog");
+  await staleEditDialog.waitFor();
   await page.evaluate(() =>
     window.__credentialVault.setWorkspace({
       workspacePath: "/project-b",
       workspaceIdentity: "remote:project-b",
     }),
   );
-  await page.getByText("还没有保存的凭证", { exact: true }).waitFor();
+  await staleEditDialog.waitFor({ state: "detached" });
+  await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
   assert.equal(await page.getByText("QA 数据库", { exact: true }).count(), 0);
   await page.evaluate(() => {
     window.__credentialVault.delayScope = "remote:project-a";
@@ -127,7 +147,7 @@ try {
       workspaceIdentity: "remote:project-b",
     }),
   );
-  await page.getByText("还没有保存的凭证", { exact: true }).waitFor();
+  await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
   await page.evaluate(() => window.__credentialVault.releaseReads());
   assert.equal(await page.getByText("QA 数据库", { exact: true }).count(), 0);
   await page.evaluate(() => {
@@ -166,11 +186,26 @@ try {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: join(artifacts, "credential-vault-mobile.png"), fullPage: true });
 
+  await page.getByRole("button", { name: "从当前项目移除", exact: true }).click();
+  await page.getByText("QA 数据库", { exact: true }).waitFor();
+  assert.equal(
+    (await page.evaluate(() => window.__credentialVault.calls)).at(-1).operation,
+    "detach",
+  );
+  await page.evaluate(() =>
+    window.__credentialVault.setWorkspace({
+      workspacePath: "/project-b",
+      workspaceIdentity: "remote:project-b",
+    }),
+  );
+  await page.getByRole("button", { name: "关联到当前项目", exact: true }).click();
+  await page.getByText("QA 数据库", { exact: true }).waitFor();
+
   await page.getByRole("button", { name: "删除", exact: true }).click();
   const confirm = page.getByRole("dialog");
   await confirm.getByRole("button", { name: "删除", exact: true }).click();
   await confirm.waitFor({ state: "detached" });
-  await page.getByText("还没有保存的凭证", { exact: true }).waitFor();
+  await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
   assert.equal((await page.evaluate(() => window.__credentialVault.values())).count, 0);
 
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));

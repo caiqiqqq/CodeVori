@@ -46,7 +46,7 @@ const credentialVaultInputSchema = z
       .refine((value) => !/[\s/@?#]/u.test(value), "Enter a host name or address, not a URL"),
     port: z.number().int().min(1).max(65_535).nullable(),
     username: z.string().trim().max(255).nullable(),
-    workspaceIdentity: z.string().trim().min(1).max(2_048),
+    workspaceIdentity: z.string().trim().min(1).max(2_048).nullable(),
     secret: z.string().max(16_384).optional(),
   })
   .strict();
@@ -204,6 +204,11 @@ export function createCredentialService(
     save,
     delete: del,
 
+    async listUnassignedVaultEntries() {
+      await recoverVaultMutations();
+      return vaultRepository.listUnassigned();
+    },
+
     async listVaultEntries(workspaceIdentity) {
       const scope = z.string().trim().min(1).max(2_048).parse(workspaceIdentity);
       await recoverVaultMutations();
@@ -271,6 +276,30 @@ export function createCredentialService(
       return savedEntry;
     },
 
+    async attachVaultEntry(id, workspaceIdentity) {
+      const validatedId = z.string().uuid().parse(id);
+      const validatedWorkspaceIdentity = z
+        .string()
+        .trim()
+        .min(1)
+        .max(2_048)
+        .parse(workspaceIdentity);
+      await recoverVaultMutations();
+      await vaultRepository.attach(validatedId, validatedWorkspaceIdentity);
+    },
+
+    async detachVaultEntry(id, workspaceIdentity) {
+      const validatedId = z.string().uuid().parse(id);
+      const validatedWorkspaceIdentity = z
+        .string()
+        .trim()
+        .min(1)
+        .max(2_048)
+        .parse(workspaceIdentity);
+      await recoverVaultMutations();
+      await vaultRepository.detach(validatedId, validatedWorkspaceIdentity);
+    },
+
     async deleteVaultEntry(id, workspaceIdentity) {
       const validatedId = z.string().uuid().parse(id);
       const validatedWorkspaceIdentity = z
@@ -278,6 +307,7 @@ export function createCredentialService(
         .trim()
         .min(1)
         .max(2_048)
+        .nullable()
         .parse(workspaceIdentity);
       await recoverVaultMutations();
       const existing = await vaultRepository.find(validatedId);

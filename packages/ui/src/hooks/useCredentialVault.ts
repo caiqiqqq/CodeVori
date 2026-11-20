@@ -4,6 +4,12 @@ import { useServices } from "./useServices.js";
 
 export function useCredentialVault() {
   const { credentialService } = useServices();
+  const listUnassigned = useCallback(() => {
+    if (!credentialService.listUnassignedVaultEntries) {
+      throw new Error("Credential vault is not available on this Host");
+    }
+    return credentialService.listUnassignedVaultEntries();
+  }, [credentialService]);
   const list = useCallback(
     (workspaceIdentity: string) => {
       if (!credentialService.listVaultEntries) {
@@ -23,7 +29,7 @@ export function useCredentialVault() {
     [credentialService],
   );
   const remove = useCallback(
-    (id: string, workspaceIdentity: string) => {
+    (id: string, workspaceIdentity: string | null) => {
       if (!credentialService.deleteVaultEntry) {
         throw new Error("Credential vault is not available on this Host");
       }
@@ -31,5 +37,23 @@ export function useCredentialVault() {
     },
     [credentialService],
   );
-  return { list, save, remove };
+  const attach = useCallback(
+    (id: string, workspaceIdentity: string) => {
+      if (!credentialService.attachVaultEntry) {
+        throw new Error("Credential vault is not available on this Host");
+      }
+      return credentialService.attachVaultEntry(id, workspaceIdentity);
+    },
+    [credentialService],
+  );
+  const detach = useCallback(
+    (id: string, workspaceIdentity: string) => {
+      if (!credentialService.detachVaultEntry) {
+        throw new Error("Credential vault is not available on this Host");
+      }
+      return credentialService.detachVaultEntry(id, workspaceIdentity);
+    },
+    [credentialService],
+  );
+  return { list, listUnassigned, save, remove, attach, detach };
 }
