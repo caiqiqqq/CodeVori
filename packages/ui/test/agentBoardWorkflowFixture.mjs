@@ -26,10 +26,11 @@ services.clientConfigService={getSnapshot:async()=>({pluginStoreOrder:null})};
 services.zcodeAgentService={onDynamicConversationFrame:()=>()=>({dispose(){}}),onAgentRuntimeRestarted:()=>({dispose(){}})};
 services.systemService.info=async()=>({platform:'darwin',homedir:'/fixture'});
 services.modelSelectionService={getView:async input=>({...modelView,effectiveSelection:input?.selection??modelView.preferredSelection}),onDidChange:()=>({dispose(){}})};
-services.settingService={get:async()=>({recentProjects:['/fixture/project-3','/fixture/project-4'],worktreeRootDirectory:'/fixture/worktrees'}),update:async()=>{}};
+services.settingService={get:async()=>({recentProjects:['/fixture/project-3','/fixture/project-4','/fixture/project-linked'],worktreeRootDirectory:'/fixture/worktrees'}),update:async()=>{}};
 services.acpService.listAvailableAgents=async()=>[{agent:'codex',enabled:true,ready:true}];
 services.acpService.listAgentConfigs=async()=>[];
 services.acpService.onDynamicAgentConfigsChanged=()=>()=>({dispose(){}});
 services.gitService.getLocalBranches=async()=>({headRefType:'branch',currentBranchName:'main',branches:[{name:'main',isCurrent:true,upstreamName:null,commitHash:'base',commitTimestampMs:1}]});
+services.gitService.getWorkspaceRepositoryInfo=async({workspacePath})=>({workspacePath,kind:workspacePath==='/fixture/project-3'?'main-tree':workspacePath==='/fixture/project-linked'?'linked-worktree':'not-repository',repoRoot:'/fixture/project-3',...(workspacePath==='/fixture/project-linked'?{mainWorktreePath:'/fixture/project-3',branchName:'feature/test'}:{})});
 function WorkflowFixture(){window.__conversationWorkflows=conversationWorkflows;window.__conversationCommands=conversationCommands;window.__board.setTheme=applyTheme;const [view,setView]=useState('settings');window.__board.showBoard=()=>setView('board');window.__board.showSettings=()=>setView('settings');return <><ConfirmDialogHost/>{view==='settings'?<SettingsPage isDesktop={false}/>:<BoardFixture/>}</>}
 `;
