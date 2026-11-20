@@ -102,6 +102,49 @@ test("Project Memory catalog shows repository path and hides migrated legacy roo
   }
 });
 
+test("Project Memory catalog hides sources migrated to the legacy product profile", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "zcode-memory-legacy-profile-"));
+  setDataBaseDir(dir);
+  try {
+    const projectsRoot = join(getZCodeDataRootDir(), "cli", "memories", "projects");
+    const migratedSource = join(projectsRoot, "zcode-1111111111111111", "memory");
+    const invalidSource = join(projectsRoot, "zcode-2222222222222222", "memory");
+    const legacyProjectsRoot = join(dir, ".zcode", "cli", "memories", "projects");
+    const legacyDestination = join(legacyProjectsRoot, "zcode-3333333333333333", "memory");
+    await mkdir(migratedSource, { recursive: true });
+    await mkdir(invalidSource, { recursive: true });
+    await mkdir(legacyDestination, { recursive: true });
+    await writeFile(join(migratedSource, "MEMORY.md"), "- [Fact](fact.md)\n");
+    await writeFile(join(invalidSource, "MEMORY.md"), "- [Unverified](fact.md)\n");
+    await writeFile(join(legacyDestination, "MEMORY.md"), "- [Fact](fact.md)\n");
+    await writeFile(
+      join(migratedSource, ".migrated-to"),
+      JSON.stringify({ destination: legacyDestination, sourceDigest: "fixture" }),
+    );
+    await writeFile(
+      join(invalidSource, ".migrated-to"),
+      JSON.stringify({
+        destination: join(legacyProjectsRoot, "missing", "memory"),
+        sourceDigest: "fixture",
+      }),
+    );
+
+    const catalog = await createMemoryService().listProjectMemories();
+    assert.deepEqual(
+      catalog.map((entry) => entry.id),
+      ["zcode-2222222222222222"],
+    );
+    assert.equal(
+      await readFile(join(migratedSource, "MEMORY.md"), "utf8"),
+      "- [Fact](fact.md)\n",
+      "hiding a migrated source must preserve its recoverable copy",
+    );
+  } finally {
+    setDataBaseDir(null);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("Project Memory catalog identifies remote workspaces with the same path", async () => {
   const dir = await mkdtemp(join(tmpdir(), "zcode-remote-memory-catalog-"));
   setDataBaseDir(dir);
