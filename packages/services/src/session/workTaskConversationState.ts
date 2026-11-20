@@ -33,7 +33,7 @@ export function workTaskRunPrompt(task: WorkTask, feedback?: string) {
   // 文字追问不是原始描述的重发；失败重试则保留该轮的附件归属。
   if (feedback) return { runText: feedback, runUsesPromptAssets: false };
   return {
-    runText: task.status === "todo" ? task.prompt : task.runText,
+    runText: task.status === "todo" && !task.workflow ? task.prompt : task.runText,
     runUsesPromptAssets: task.status === "todo" ? true : task.runUsesPromptAssets,
   };
 }

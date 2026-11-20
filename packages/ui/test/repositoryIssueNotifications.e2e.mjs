@@ -7,15 +7,10 @@ import { chromium } from "playwright-core";
 
 const root = new URL("../../desktop/src/renderer/", import.meta.url).pathname;
 const name = `__issue-notifications-e2e-${process.pid}`;
-const html = join(root, `${name}.html`);
 const moduleFile = join(root, `${name}.tsx`);
 const artifacts = await mkdtemp(join(tmpdir(), "zcode-issue-notifications-"));
 let browser;
 try {
-  await writeFile(
-    html,
-    `<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"/><div id="root"></div><script type="module" src="./${name}.tsx"></script></html>`,
-  );
   await writeFile(
     moduleFile,
     `
@@ -31,15 +26,17 @@ try {
     import {repositoryNavigationStore} from '../../../ui/src/store/repositoryNavigationStore.ts';
     const project={workspacePath:'/synthetic/project'};
     const remote={...project,workspaceIdentity:'synthetic-endpoint-b',remoteSessionId:'attachment-b'};
-    const state:any={calls:[],sent:[],opened:[],listeners:{A:new Set(),B:new Set()},clicks:new Set(),issues:{A:[],B:[]},fail:false,delay:false,pending:[],count:3};
+    const state:any={calls:[],sent:[],opened:[],listeners:{A:new Set(),B:new Set()},clicks:new Set(),issues:{A:[],B:[]},mergeRequests:{A:[],B:[]},fail:false,delay:false,pending:[],count:3};
     const issue=(number:number,repositoryKey='repo-A')=>({...project,repositoryKey,repositoryName:repositoryKey,number,title:'Synthetic issue '+number,url:'https://forge.example.invalid/issues/'+number});
+    const mergeRequest=(number:number,repositoryKey='repo-A')=>({...project,repositoryKey,repositoryName:repositoryKey,number,title:'Synthetic merge request '+number,url:'https://forge.example.invalid/merge-requests/'+number});
+    state.mergeRequest=mergeRequest;
     state.issue=issue;
     const platform:any={showTaskNotification:payload=>state.sent.push(payload),openExternal:url=>state.opened.push(url),onTaskNotificationClick:callback=>{state.clicks.add(callback);return()=>state.clicks.delete(callback)}};
     const hosts:any={};
     for(const host of ['A','B']) hosts[host]={workTaskService:{
       async getRepositoryIssueSummary(input:any){
         state.calls.push({host,...input});
-        const data={pending:state.count,checkedAt:Date.now(),newIssues:[...state.issues[host]]};
+        const data={pending:state.count,pendingMergeRequests:state.mergeRequests[host].length,checkedAt:Date.now(),newIssues:[...state.issues[host]],newMergeRequests:[...state.mergeRequests[host]]};
         if(state.delay){state.delay=false;await new Promise(resolve=>state.pending.push(resolve))}
         if(state.fail)throw new Error('FORGE_NETWORK');
         return data;
@@ -48,6 +45,7 @@ try {
     }};
     state.refresh=(host='A')=>{for(const listener of state.listeners[host])listener()};
     state.add=(number:number,host='A')=>{state.issues[host].push(issue(number,'repo-'+host));state.refresh(host)};
+    state.addMergeRequest=(number:number,host='A')=>{state.mergeRequests[host].push(mergeRequest(number,'repo-'+host));state.refresh(host)};
     window.__notifications=state;
     function Observer({projects,enabled}:any){
       const sources=useRepositoryIssueSources(projects);
@@ -75,24 +73,37 @@ try {
     createRoot(document.getElementById('root')!).render(<ServiceProvider services={hosts.A}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><Fixture/></TooltipProvider></ZCodeIntlProvider></ServiceProvider>);
   `,
   );
+  const origin = process.env.ZCODE_E2E_BASE_URL ?? "http://127.0.0.1:5174";
+  await fetch(`${origin}/${name}.tsx`);
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1120, height: 700 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
+  await page.goto(origin, { waitUntil: "domcontentloaded" });
+  await page.setContent(
+    '<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"/><div id="root"></div></html>',
+  );
+  errors.length = 0;
   await page.clock.install({ time: new Date("2026-10-29T00:00:00Z") });
   await page.clock.pauseAt(new Date("2026-10-29T00:00:01Z"));
-  await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://127.0.0.1:5174"}/${name}.html`);
+  await page.evaluate((url) => import(url), `${origin}/${name}.tsx`);
   const waitCalls = (expected) =>
     page.waitForFunction((n) => window.__notifications?.calls.length >= n, expected);
+  const firstReadCount = async () => {
+    while (true) {
+      await waitCalls(1);
+      try {
+        return await page.evaluate(() => window.__notifications.calls.length);
+      } catch (error) {
+        if (!String(error).includes("Execution context was destroyed")) throw error;
+      }
+    }
+  };
   const sent = () => page.evaluate(() => window.__notifications.sent);
   const settle = () => page.clock.runFor(30);
-  await waitCalls(1);
+  const initialReadCount = await firstReadCount();
   await settle();
-  assert.equal(
-    await page.evaluate(() => window.__notifications.calls.length),
-    1,
-    "badge and observer share one read",
-  );
+  assert.equal(initialReadCount, 1, "badge and observer share one read");
   assert.equal((await sent()).length, 0, "existing issues establish baseline");
   await page.evaluate(() => {
     window.__notifications.count++;
@@ -106,24 +117,37 @@ try {
   assert.equal((await sent())[0].title, "新增仓库议题");
   assert.equal((await sent())[0].status, "repository_issue");
   assert.match((await sent())[0].body, /repo-A #4: Synthetic issue 4/);
+  await page.evaluate(() => window.__notifications.addMergeRequest(10));
+  await page.waitForFunction(() => window.__notifications.sent.length === 2);
+  assert.equal((await sent())[1].title, "新增仓库合并请求");
+  assert.equal((await sent())[1].status, "repository_merge_request");
+  assert.match((await sent())[1].body, /repo-A #10: Synthetic merge request 10/);
   await page.evaluate(() => {
     const s = window.__notifications;
     s.refresh();
     for (const listener of s.clicks) listener(s.sent[0].taskId);
   });
   await settle();
-  assert.equal((await sent()).length, 1);
+  assert.equal((await sent()).length, 2);
   assert.deepEqual(await page.evaluate(() => window.__notifications.opened), [
     "https://forge.example.invalid/issues/4",
   ]);
+  await page.evaluate(() => {
+    const s = window.__notifications;
+    for (const listener of s.clicks) listener(s.sent[1].taskId);
+  });
+  assert.equal(
+    await page.evaluate(() => window.__notifications.opened.at(-1)),
+    "https://forge.example.invalid/merge-requests/10",
+  );
   await page.getByRole("button", { name: "toggle notifications", exact: true }).click();
   await page.evaluate(() => window.__notifications.add(5));
   await settle();
-  assert.equal((await sent()).length, 1);
+  assert.equal((await sent()).length, 2);
   await page.getByRole("button", { name: "toggle notifications", exact: true }).click();
   await page.evaluate(() => window.__notifications.refresh());
   await settle();
-  assert.equal((await sent()).length, 1, "enabling does not replay disabled-period facts");
+  assert.equal((await sent()).length, 2, "enabling does not replay disabled-period facts");
   await page.getByRole("button", { name: "hide sidebar", exact: true }).click();
   await page.getByRole("button", { name: "English", exact: true }).click();
   await page.evaluate(() => {
@@ -131,19 +155,19 @@ try {
     window.__notifications.issues.A.push(window.__notifications.issue(6));
   });
   await page.clock.runFor(60_000);
-  await page.waitForFunction(() => window.__notifications.sent.length === 2);
-  assert.equal((await sent())[1].title, "New repository issue");
+  await page.waitForFunction(() => window.__notifications.sent.length === 3);
+  assert.equal((await sent())[2].title, "New repository issue");
   await page.evaluate(() => {
     window.__notifications.fail = true;
     window.__notifications.add(7);
   });
   await settle();
-  assert.equal((await sent()).length, 2);
+  assert.equal((await sent()).length, 3);
   await page.evaluate(() => {
     window.__notifications.fail = false;
     window.__notifications.refresh();
   });
-  await page.waitForFunction(() => window.__notifications.sent.length === 3);
+  await page.waitForFunction(() => window.__notifications.sent.length === 4);
   await page.evaluate(() => {
     window.__notifications.delay = true;
     window.__notifications.add(8);
@@ -156,13 +180,13 @@ try {
   await settle();
   await page.evaluate(() => window.__notifications.pending.shift()());
   await settle();
-  assert.equal((await sent()).length, 3, "late old scope response is discarded");
+  assert.equal((await sent()).length, 4, "late old scope response is discarded");
   await page.getByRole("button", { name: "switch host", exact: true }).click();
   await page.waitForFunction(() => window.__notifications.calls.at(-1).host === "B");
   await settle();
   await page.evaluate(() => window.__notifications.add(9, "B"));
-  await page.waitForFunction(() => window.__notifications.sent.length === 4);
-  assert.match((await sent())[3].body, /repo-B #9/);
+  await page.waitForFunction(() => window.__notifications.sent.length === 5);
+  assert.match((await sent())[4].body, /repo-B #9/);
   await page.evaluate(() => {
     const s = window.__notifications;
     for (const listener of s.clicks) listener(s.sent[0].taskId);
@@ -193,9 +217,8 @@ try {
     0,
   );
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ status: "passed", artifacts, notifications: 4 }));
+  console.log(JSON.stringify({ status: "passed", artifacts, notifications: 5 }));
 } finally {
   await browser?.close();
-  await rm(html, { force: true });
   await rm(moduleFile, { force: true });
 }

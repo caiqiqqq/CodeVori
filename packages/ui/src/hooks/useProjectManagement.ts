@@ -1,5 +1,6 @@
 import { useMemo, useState, useRef } from "react";
 import { useTabStore } from "@/store/TabStoreProvider.js";
+import type { WorkspaceTabState } from "@/store/tabStore.js";
 import { isWorkspaceTab } from "@/store/tabStore.js";
 import { useRemoteWorkspaceSessionStore } from "@/store/remoteWorkspaceSessionStore.js";
 import { useBaseWorkspaceServices } from "./useWorkspaceServices.js";
@@ -25,7 +26,7 @@ export function useProjectManagement() {
         workspacePath: string;
         workspaceIdentity?: string;
         remoteSessionId?: string;
-        remoteTarget?: unknown;
+        remoteTarget?: WorkspaceTabState["remoteTarget"];
         tabIds: (typeof tabs)[number]["id"][];
       }
     >();

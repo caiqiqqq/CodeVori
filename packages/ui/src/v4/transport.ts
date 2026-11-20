@@ -165,7 +165,12 @@ export type ConversationProjectionTransport = Pick<
   | "onAssemblyFault"
   | "onRuntimeRestart"
   | "onRuntimeLifecycle"
->;
+> & {
+  /** Optional Host metadata page: bounded question/answer previews, never body hydration. */
+  turnNavigatorRange?(
+    params: V4ConversationRowsRangeParams,
+  ): Promise<V4ConversationRowsRangeResult>;
+};
 
 export interface ConversationAttachmentReadParams {
   sessionId: string;

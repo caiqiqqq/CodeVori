@@ -1497,6 +1497,13 @@ function SubagentStatusSection({
                 <span className="line-clamp-2 text-ui-base leading-5 text-[var(--color-foreground)]">
                   {task.title}
                 </span>
+                {task.squad ? (
+                  <span className="truncate text-ui-caption text-foreground-subtle">
+                    {task.squad.role === "leader"
+                      ? task.squad.definition.name
+                      : `${task.squad.squadName} · ${task.squad.name}`}
+                  </span>
+                ) : null}
                 <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-ui-base">
                   <span className="text-ui-base tabular-nums text-[var(--color-foreground-subtle)]">
                     {formatBackgroundTaskElapsedLabel(

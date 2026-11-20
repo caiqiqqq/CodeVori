@@ -16,6 +16,7 @@ import {
   ConversationProjectionStore,
   hasOlderRows,
   shouldAutoLoadIncompleteLeadingTurn,
+  type ConversationHistoryLoadSource,
 } from "@/v4/conversationProjectionStore.js";
 import { acquireAcpConversationProjection } from "@/v4/acpConversationDataLayer.js";
 import { useConversationProjection } from "@/v4/useConversationProjection.js";
@@ -1013,10 +1014,24 @@ export function useAcpConversation(
     [projectionKey, projectionLease],
   );
   const loadAllOlder = useCallback(
+    (source: ConversationHistoryLoadSource = "unspecified") =>
+      projectionLease?.key === projectionKey
+        ? projectionLease.store.loadAllOlder(source)
+        : Promise.resolve({ status: "stale" as const, logEpoch: "acp" }),
+    [projectionKey, projectionLease],
+  );
+  const loadTurnNavigatorDirectory = useCallback(
     () =>
       projectionLease?.key === projectionKey
-        ? projectionLease.store.loadAllOlder()
+        ? projectionLease.store.loadTurnNavigatorDirectory()
         : Promise.resolve({ status: "stale" as const, logEpoch: "acp" }),
+    [projectionKey, projectionLease],
+  );
+  const loadOlderThrough = useCallback(
+    (rowId: number) =>
+      projectionLease?.key === projectionKey
+        ? projectionLease.store.loadOlderThrough(rowId)
+        : Promise.resolve(false),
     [projectionKey, projectionLease],
   );
   const displayError = error ?? projection.lastError;
@@ -1029,8 +1044,12 @@ export function useAcpConversation(
     canLoadOlder: hasOlderRows(projection.snapshot),
     loadingOlder: projection.loadingOlder,
     turnNavigatorDirectoryRevision: projection.turnNavigatorDirectoryRevision,
+    turnNavigatorDirectory: projection.turnNavigatorDirectory,
+    turnNavigatorLoading: projection.turnNavigatorLoading,
     loadOlder,
     loadAllOlder,
+    loadTurnNavigatorDirectory,
+    loadOlderThrough,
     loaded,
     ready: Boolean(
       selected && previousAgentRef.current === agent && readyIds.current.has(selected.id),

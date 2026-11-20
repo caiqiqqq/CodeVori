@@ -86,3 +86,55 @@ test("removed project releases its read and late responses cannot repopulate the
   assert.equal(b.listeners.size, 0);
   finish();
 });
+
+test("ordinary API and ACP workflows are combined with exact attached workspace scope", async () => {
+  const local = host();
+  const remote = host();
+  const attachment = { ...scope, workspaceIdentity: "remote-id", remoteSessionId: "host-b" };
+  const all = combineWorkTaskReads([
+    { resource: local.resource, error: null, scope },
+    { resource: remote.resource, error: null, scope: attachment },
+  ]);
+  const workflowRecord = {
+    workspacePath: scope.workspacePath,
+    kind: "api" as const,
+    sessionId: "ordinary-session",
+    state: {
+      definition: {
+        id: "00000000-0000-4000-8000-000000000001",
+        name: "Delivery",
+        initialStageId: "todo",
+        stages: [],
+      },
+      currentStageId: "todo",
+      revision: 1,
+      history: [],
+    },
+  } as NonNullable<WorkTaskBoard["conversationWorkflows"]>[number];
+  const subscription = all.subscribe(() => {});
+  local.requests[0]!.resolve({
+    tasks: [],
+    conversationWorkflows: [workflowRecord],
+    concurrency: 1,
+  });
+  remote.requests[0]!.resolve({
+    tasks: [],
+    conversationWorkflows: [{ ...workflowRecord, sessionId: "remote-session" }],
+    concurrency: 1,
+  });
+  await settle();
+  assert.deepEqual(
+    all
+      .getSnapshot()
+      .data?.conversationWorkflows?.map((record) => [
+        record.sessionId,
+        record.workspaceIdentity,
+        record.remoteSessionId,
+      ]),
+    [
+      ["ordinary-session", undefined, undefined],
+      ["remote-session", "remote-id", "host-b"],
+    ],
+  );
+  subscription();
+});

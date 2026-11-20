@@ -1,24 +1,17 @@
 import { useState } from "react";
 import { useStore } from "zustand";
-import { MessageSquare, Star, ListTodo } from "lucide-react";
+import { Check, LayoutGrid, MessageSquare, Star } from "lucide-react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Button } from "@/components/ui/button.js";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog.js";
 import { agentBoardStore } from "@/store/agentBoardStore.js";
-import type { WorkspaceTabState } from "@/store/tabStore.js";
 import type { BoardProject } from "./agentBoardModel.js";
 
 export function AgentBoardSourcePicker({
   projects,
-  creating,
-  canCreateSession,
-  onCreateSession,
   onClose,
 }: {
   projects: BoardProject[];
-  creating: boolean;
-  canCreateSession(tab: WorkspaceTabState): boolean;
-  onCreateSession(tab: WorkspaceTabState): void;
   onClose(): void;
 }) {
   const { intl } = useZCodeIntl();
@@ -29,16 +22,30 @@ export function AgentBoardSourcePicker({
   const pinned = (preferences.pinnedProjects ?? realProjects.slice(0, 4).map((p) => p.key)).filter(
     (key) => realProjects.some((project) => project.key === key),
   );
-  const visibleProjects = (creating ? projects : realProjects).filter((p) =>
+  // 快捷入口与侧栏从同一偏好派生选中态，失效项目也按现有规则回到“所有项目”。
+  const shortcuts = [
+    {
+      id: "allProjects",
+      icon: LayoutGrid,
+      selected:
+        preferences.category === "all" &&
+        !realProjects.some((project) => project.key === preferences.project),
+      select: () => preferences.selectProject(null),
+    },
+    {
+      id: "standalone",
+      icon: MessageSquare,
+      selected: preferences.category === "standalone",
+      select: preferences.selectStandalone,
+    },
+  ];
+  const visibleProjects = realProjects.filter((p) =>
     `${p.label} ${p.key} ${p.tabs.map((tab) => tab.workspacePath).join(" ")}`
       .toLocaleLowerCase()
       .includes(projectSearch.toLocaleLowerCase()),
   );
   const pickProject = (p: BoardProject) => {
-    if (creating) {
-      const tab = p.tabs[0];
-      if (tab) onCreateSession(tab);
-    } else preferences.selectProject(p.key);
+    preferences.selectProject(p.key);
     onClose();
   };
   return (
@@ -48,8 +55,8 @@ export function AgentBoardSourcePicker({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[85dvh] sm:max-w-xl">
-        <DialogTitle>{creating ? t("chooseNewProject") : t("projects")}</DialogTitle>
+      <DialogContent className="flex max-h-[85dvh] flex-col sm:max-w-xl">
+        <DialogTitle>{t("projects")}</DialogTitle>
         <DialogDescription>{t("projectLimit")}</DialogDescription>
         <input
           autoFocus
@@ -57,53 +64,40 @@ export function AgentBoardSourcePicker({
           placeholder={t("searchProjects")}
           value={projectSearch}
           onChange={(e) => setProjectSearch(e.target.value)}
-          className="h-10 w-full rounded-lg border border-border bg-input px-3 text-mobile-input-safe md:text-ui-base"
+          className="h-10 w-full shrink-0 rounded-lg border border-border bg-input px-3 text-mobile-input-safe md:text-ui-base"
         />
+        <div
+          role="group"
+          aria-label={t("projects")}
+          className="grid shrink-0 grid-cols-1 gap-2 border-b border-border/60 pb-4 sm:grid-cols-2"
+        >
+          {shortcuts.map(({ id, icon: Icon, selected, select }) => (
+            <Button
+              key={id}
+              variant="ghost"
+              aria-pressed={selected}
+              className="relative h-auto min-h-11 min-w-0 justify-start gap-3 rounded-lg border-border/60 bg-surface py-2.5 ps-3 pe-8 text-start text-ui-caption font-medium whitespace-normal text-foreground-subtle hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-brand aria-pressed:border-border-hover aria-pressed:bg-selected aria-pressed:text-foreground sm:min-h-18 sm:flex-col sm:justify-center sm:gap-2 sm:px-2 sm:py-3 sm:text-center"
+              onClick={() => {
+                select();
+                onClose();
+              }}
+            >
+              <Icon aria-hidden="true" className="size-4" />
+              <span className="min-w-0 max-w-full">{t(id)}</span>
+              {selected ? (
+                <Check
+                  aria-hidden="true"
+                  className="absolute end-3 top-1/2 size-3 -translate-y-1/2 text-brand sm:end-2 sm:top-2 sm:translate-y-0"
+                />
+              ) : null}
+            </Button>
+          ))}
+        </div>
         <div className="min-h-0 max-h-[55dvh] overflow-y-auto">
-          {!creating ? (
-            <Button
-              variant="ghost"
-              className="w-full justify-start"
-              onClick={() => {
-                preferences.selectProject(null);
-                onClose();
-              }}
-            >
-              {t("allProjects")}
-            </Button>
-          ) : null}
-          {!creating ? (
-            <Button
-              variant="ghost"
-              className="w-full justify-start"
-              onClick={() => {
-                preferences.selectStandalone();
-                onClose();
-              }}
-            >
-              <MessageSquare className="size-4" />
-              {t("standalone")}
-            </Button>
-          ) : null}
-          {!creating ? (
-            <Button
-              variant="ghost"
-              className="justify-start gap-2"
-              aria-pressed={preferences.category === "work-tasks"}
-              onClick={() => {
-                preferences.selectWorkTasks();
-                onClose();
-              }}
-            >
-              <ListTodo aria-hidden="true" className="size-4 shrink-0" />
-              <span>{t("workTasks")}</span>
-            </Button>
-          ) : null}
           {visibleProjects.map((p) => (
             <div key={p.key} className="flex items-center gap-2 border-b border-border/60 py-1">
               <button
                 className="min-w-0 flex-1 rounded-lg px-2 py-2 text-start hover:bg-surface-hover disabled:opacity-50"
-                disabled={creating && (!p.tabs[0] || !canCreateSession(p.tabs[0]))}
                 onClick={() => pickProject(p)}
               >
                 <span className="block truncate font-medium">{p.label}</span>
@@ -113,26 +107,24 @@ export function AgentBoardSourcePicker({
                   </span>
                 ) : null}
               </button>
-              {!creating ? (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  disabled={!pinned.includes(p.key) && pinned.length >= 6}
-                  aria-label={`${pinned.includes(p.key) ? t("unpinProject") : t("pinProject")} ${p.label}`}
-                  aria-pressed={pinned.includes(p.key)}
-                  onClick={() =>
-                    preferences.toggleProject(
-                      p.key,
-                      realProjects.slice(0, 4).map((p) => p.key),
-                      realProjects.map((p) => p.key),
-                    )
-                  }
-                >
-                  <Star
-                    className={`size-4 ${pinned.includes(p.key) ? "fill-current text-warning" : ""}`}
-                  />
-                </Button>
-              ) : null}
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={!pinned.includes(p.key) && pinned.length >= 6}
+                aria-label={`${pinned.includes(p.key) ? t("unpinProject") : t("pinProject")} ${p.label}`}
+                aria-pressed={pinned.includes(p.key)}
+                onClick={() =>
+                  preferences.toggleProject(
+                    p.key,
+                    realProjects.slice(0, 4).map((p) => p.key),
+                    realProjects.map((p) => p.key),
+                  )
+                }
+              >
+                <Star
+                  className={`size-4 ${pinned.includes(p.key) ? "fill-current text-warning" : ""}`}
+                />
+              </Button>
             </div>
           ))}
           {visibleProjects.length === 0 ? (

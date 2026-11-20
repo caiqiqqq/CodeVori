@@ -48,6 +48,7 @@ interface GitBranchSwitcherProps {
   worktreeSourceBranchName?: string | null;
   worktreeCreating?: boolean;
   onWorktreeSelectedChange?: (selected: boolean, sourceBranchName?: string) => void;
+  onMutationPendingChange?: (pending: boolean) => void;
 }
 
 export function GitBranchSwitcher({
@@ -68,6 +69,7 @@ export function GitBranchSwitcher({
   worktreeSourceBranchName = null,
   worktreeCreating = false,
   onWorktreeSelectedChange,
+  onMutationPendingChange,
 }: GitBranchSwitcherProps) {
   const { intl, locale } = useZCodeIntl();
   const numberFormatter = new Intl.NumberFormat(locale);
@@ -105,6 +107,10 @@ export function GitBranchSwitcher({
     headRefType: gitSummary.headRefType,
     onRefreshGit,
   });
+  useEffect(() => {
+    onMutationPendingChange?.(mutationPending);
+    return () => onMutationPendingChange?.(false);
+  }, [mutationPending, onMutationPendingChange]);
 
   const isVisible = gitSummary.isGitAvailable && gitSummary.isRepository;
   const displayedCurrentBranchName = branchesResult?.currentBranchName ?? gitSummary.branchName;

@@ -13,8 +13,21 @@ export async function exerciseWorkTaskWorkspaceMode(page, artifacts) {
     await editor
       .getByTestId("work-task-prompt")
       .fill(`Mode ${enabled}\nModify the selected branch`);
+    if (enabled) await page.evaluate(() => (window.__tasks.delayBranches = true));
     await editor.getByTestId("work-task-source-branch").click();
+    if (enabled) {
+      await page.waitForFunction(() => window.__tasks.pendingBranchReads.length === 1);
+      assert.equal(await editor.getByTestId("work-task-source-branch").isDisabled(), false);
+      assert.equal(
+        await page.getByRole("option", { name: "release", exact: true }).isVisible(),
+        true,
+      );
+    }
     await page.getByRole("option", { name: "release", exact: true }).click();
+    if (enabled) {
+      await page.evaluate(() => window.__tasks.finishBranchRead());
+      await page.waitForFunction(() => window.__tasks.pendingBranchReads.length === 0);
+    }
     if (!enabled) {
       await toggle.click();
       assert.equal(await toggle.getAttribute("aria-checked"), "false");

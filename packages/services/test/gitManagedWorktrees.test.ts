@@ -186,6 +186,33 @@ test("task cleanup verifies the allocated branch and permits retry only after un
   }
 });
 
+test("confirmed current branch still requires clean worktree and preserves both branches", async () => {
+  const f = await fixture();
+  const service = createGitService();
+  try {
+    await exec("git", ["-C", f.target, "switch", "-qc", "feature/continued"]);
+    const input = {
+      worktreeRootPath: f.root,
+      worktreePath: f.target,
+      projectPath: f.project,
+      expectedBranchName: "feature/continued",
+    };
+    assert.equal(
+      (await service.removeManagedWorktree({ ...input, expectedBranchName: "worktree/abcd" }))
+        .issue,
+      "invalid-target",
+    );
+    await writeFile(join(f.target, "keep.txt"), "keep");
+    assert.equal((await service.removeManagedWorktree(input)).issue, "dirty-worktree");
+    await rm(join(f.target, "keep.txt"));
+    assert.deepEqual(await service.removeManagedWorktree(input), { ok: true });
+    await exec("git", ["-C", f.project, "show-ref", "--verify", "refs/heads/worktree/abcd"]);
+    await exec("git", ["-C", f.project, "show-ref", "--verify", "refs/heads/feature/continued"]);
+  } finally {
+    await rm(f.directory, { recursive: true, force: true });
+  }
+});
+
 async function fixture() {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "zcode-managed-worktrees-")));
   const project = join(directory, "project with spaces");
