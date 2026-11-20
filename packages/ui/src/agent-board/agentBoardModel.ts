@@ -21,6 +21,15 @@ export const BOARD_STATUSES = [
 export type BoardStatus = (typeof BOARD_STATUSES)[number];
 export const BOARD_DISPLAY_STATUSES = ["running", "completed", "staged", "error"] as const;
 export type BoardDisplayStatus = (typeof BOARD_DISPLAY_STATUSES)[number];
+export type BoardWorkflowStatus = { id: string; label: string; enabled: boolean };
+export const DEFAULT_BOARD_WORKFLOW_STATUSES: readonly BoardWorkflowStatus[] = [
+  { id: "todo", label: "待办", enabled: true },
+  { id: "in-progress", label: "进行中", enabled: true },
+  { id: "review", label: "审核中", enabled: true },
+  { id: "blocked", label: "已阻塞", enabled: true },
+  { id: "completed", label: "已完成", enabled: true },
+  { id: "canceled", label: "已取消", enabled: true },
+];
 export type BoardView =
   | "all"
   | "active"
@@ -204,6 +213,14 @@ export function isBoardItemStaged(item: BoardTaskState, stagedItems: BoardStaged
 }
 export function boardDisplayStatus(item: BoardTaskState): BoardDisplayStatus {
   return item.staged && canStageBoardItem(item) ? "staged" : boardOutcomeStatus(item);
+}
+export function defaultWorkflowStatusId(item: BoardItem) {
+  if (item.kind === "work-task" && item.workTask.status === "canceled") return "canceled";
+  if (item.status === "todo") return "todo";
+  if (item.status === "review") return "review";
+  if (item.status === "error") return "blocked";
+  if (item.status === "completed") return "completed";
+  return "in-progress";
 }
 export function boardStatusIndicator(item: BoardTaskState): BoardDisplayStatus | "waiting" {
   const status = boardDisplayStatus(item);

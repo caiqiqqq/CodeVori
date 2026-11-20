@@ -1,4 +1,5 @@
 import { Circle, LoaderCircle } from "lucide-react";
+import { useDroppable } from "@dnd-kit/core";
 import { AgentBoardCard, boardStatusColors } from "./AgentBoardCard.js";
 import type { BoardLayoutMode } from "@/store/agentBoardStore.js";
 import {
@@ -8,7 +9,7 @@ import {
   type BoardDisplayStatus,
 } from "./agentBoardModel.js";
 
-type BoardGroup = { key: string; label: string; items: BoardItem[] };
+type BoardGroup = { key: string; label: string; items: BoardItem[]; workflowStatusId?: string };
 export function AgentBoardGroups({
   columns,
   byStatus,
@@ -19,6 +20,7 @@ export function AgentBoardGroups({
   onOpenSession,
   onArchive,
   onStage,
+  workflowStatuses,
   onRename,
   onMarkUnread,
 }: {
@@ -31,6 +33,7 @@ export function AgentBoardGroups({
   onOpenSession(item: BoardItem): void;
   onArchive(item: BoardItem): void;
   onStage(item: BoardItem): void;
+  workflowStatuses: boolean;
   onRename(item: BoardItem, title: string): Promise<void>;
   onMarkUnread(item: BoardItem): void;
 }) {
@@ -49,7 +52,12 @@ export function AgentBoardGroups({
       data-testid="agent-board-columns"
     >
       {groups.map((column) => (
-        <BoardColumn key={column.key} column={column} byStatus={byStatus}>
+        <BoardColumn
+          key={column.key}
+          column={column}
+          byStatus={byStatus}
+          workflowStatuses={workflowStatuses}
+        >
           <h2 className="mb-3 flex items-center gap-2 px-1 font-medium">
             {byStatus &&
             column.key === "running" &&
@@ -101,6 +109,7 @@ export function AgentBoardGroups({
                 onOpenSession={onOpenSession}
                 onArchive={onArchive}
                 onStage={onStage}
+                draggable={workflowStatuses}
                 onRename={onRename}
                 onMarkUnread={onMarkUnread}
               />
@@ -115,19 +124,29 @@ export function AgentBoardGroups({
 function BoardColumn({
   column,
   byStatus,
+  workflowStatuses,
   children,
 }: {
   column: BoardGroup;
   byStatus: boolean;
+  workflowStatuses: boolean;
   children: React.ReactNode;
 }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `column:${column.key}`,
+    disabled: !byStatus || (!workflowStatuses && column.key !== "staged"),
+    data: workflowStatuses
+      ? { boardWorkflowStatusId: column.workflowStatusId }
+      : { boardStaging: true },
+  });
   return (
     <section
+      ref={setNodeRef}
       className={`${
         byStatus
           ? "flex min-h-0 w-72 shrink-0 flex-col md:flex-1 md:basis-60 md:min-w-60"
           : "min-w-0 shrink-0"
-      } rounded-lg`}
+      } rounded-lg ${isOver ? "bg-brand/5 ring-1 ring-brand/30" : ""}`}
       data-board-column={column.key}
     >
       {children}

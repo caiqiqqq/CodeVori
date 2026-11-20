@@ -12,6 +12,8 @@ import { exerciseAgentBoardLayout } from "./agentBoardLayoutScenario.mjs";
 import { exerciseAgentBoardInterruption } from "./agentBoardInterruptionScenario.mjs";
 import { agentBoardFixture } from "./agentBoardFixture.mjs";
 import { exerciseAgentBoardWorkTasks } from "./agentBoardWorkTasksScenario.mjs";
+import { exerciseAgentBoardWorkflow } from "./agentBoardWorkflowScenario.mjs";
+// Real board components/data hooks and command routing; synthetic Host and chat pane.
 import assert from "node:assert/strict";
 import { writeFile, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -392,8 +394,9 @@ try {
   await exerciseAgentBoardUnread(page, artifacts);
   await exerciseAgentBoardAgentLabels(page, artifacts);
   await exerciseAgentBoardSidebar(page, artifacts);
+  await exerciseAgentBoardWorkflow(page);
   assert.deepEqual(errors, []);
-  console.log("PASS: Agent Board E2E.", artifacts);
+  console.log("PASS: Agent Board sessions/tasks and workflow interactions.");
 } finally {
   await browser?.close();
   await Promise.all([rm(html, { force: true }), rm(moduleFile, { force: true })]);

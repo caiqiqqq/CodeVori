@@ -12,6 +12,7 @@ export async function exerciseAgentBoardInterruption(page, artifacts) {
     s.setSearch("");
     s.setAgent("all");
     s.setView("all");
+    s.setGroup("status");
     s.setTracking({
       mode: "custom",
       projects: [],

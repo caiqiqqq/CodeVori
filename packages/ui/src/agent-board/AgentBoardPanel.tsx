@@ -1,8 +1,17 @@
 /* eslint-disable max-lines -- 看板筛选、分组和详情共用同一份会话投影与选择状态。 */
 import { BoardViewTab, boardViews } from "./AgentBoardViewTab.js";
 import { AgentBoardStatusOrder } from "./AgentBoardStatusOrder.js";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 import { AgentBoardGroups } from "./AgentBoardGroups.js";
 import { AgentBoardTrackingDialog } from "./AgentBoardTrackingDialog.js";
+import { AgentBoardWorkflowSettings } from "./AgentBoardWorkflowSettings.js";
 import { AgentBoardSourcePicker } from "./AgentBoardSourcePicker.js";
 import { AgentBoardDetails } from "./AgentBoardDetails.js";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
@@ -17,6 +26,7 @@ import {
   Plus,
   Search,
   ListFilter,
+  Settings2,
 } from "lucide-react";
 import { toast } from "@/components/ui/toast.js";
 import { Button } from "@/components/ui/button.js";
@@ -29,7 +39,10 @@ import {
   boardAgentLabel,
   boardEntityKey,
   boardDisplayStatus,
+  defaultWorkflowStatusId,
   boardHasUnreadResult,
+  DEFAULT_BOARD_WORKFLOW_STATUSES,
+  canStageBoardItem,
   isBoardItemStaged,
   matchesBoardView,
   matchesBoardTracking,
@@ -102,6 +115,9 @@ export function AgentBoardView({
     () => preferences.reconcileStagedItems(rawItems),
     [rawItems, preferences.reconcileStagedItems],
   );
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const dragging = items.find((item) => item.key === draggingKey);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [detailContainer, setDetailContainer] = useState<HTMLElement | null>(null);
   const [selectedKey, setSelectedKey] = useAgentBoardNotificationSelection({
     rawItems,
@@ -115,6 +131,7 @@ export function AgentBoardView({
   const [busy, setBusy] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
   const [managing, setManaging] = useState(false);
+  const [workflowSettingsOpen, setWorkflowSettingsOpen] = useState(false);
   const realProjects = projects.filter((p) => p.tabs[0]?.workspacePurpose !== "conversation");
   const hasSessionProject = projects.some((p) => p.tabs.some(canCreateSession));
   const trackedItems = useMemo(
@@ -151,43 +168,78 @@ export function AgentBoardView({
       ),
     [scopeItems, preferences.view, preferences.agent, preferences.search, project, projects],
   );
+  const workflowGrouping = preferences.group === "workflow";
   const byStatus =
     preferences.group === "status" ||
+    workflowGrouping ||
     preferences.view === "staged" ||
     Boolean(project) ||
     preferences.category !== "all" ||
     groupedProjects.length > 6;
-  const columns = byStatus
-    ? preferences.statusOrder
-        .filter((status) =>
-          ["active", "completed", "failed", "attention", "staged"].includes(preferences.view)
-            ? (status === "staged" && preferences.view === "staged") ||
-              filtered.some((item) => boardDisplayStatus(item) === status)
-            : true,
-        )
-        .map((status) => ({
-          key: status,
-          label: t(`status.${status}`),
-          items: filtered.filter((item) => boardDisplayStatus(item) === status),
-        }))
-    : [
-        ...(scopeItems.some((item) => item.workspacePurpose === "conversation")
-          ? [
-              {
-                key: "standalone",
-                label: t("standalone"),
-                items: filtered.filter((item) => item.workspacePurpose === "conversation"),
-              },
-            ]
-          : []),
-        ...groupedProjects.map((p) => ({
-          key: p.key,
-          label: p.label,
-          items: filtered.filter(
-            (item) => item.workspacePurpose !== "conversation" && item.projectKey === p.key,
-          ),
-        })),
-      ];
+  const enabledWorkflowStatuses = preferences.workflowStatuses.filter((status) => status.enabled);
+  const workflowFallbackId = enabledWorkflowStatuses[0]?.id;
+  const workflowStatusLabel = (status: (typeof preferences.workflowStatuses)[number]) => {
+    const initial = DEFAULT_BOARD_WORKFLOW_STATUSES.find((entry) => entry.id === status.id);
+    return initial?.label === status.label ? t(`workflow.status.${status.id}`) : status.label;
+  };
+  const workflowStatusForItem = (item: BoardItem) => {
+    const assigned = preferences.workflowAssignments[item.key];
+    if (enabledWorkflowStatuses.some((status) => status.id === assigned)) return assigned;
+    const inferred = defaultWorkflowStatusId(item);
+    return enabledWorkflowStatuses.some((status) => status.id === inferred)
+      ? inferred
+      : workflowFallbackId;
+  };
+  const columns = workflowGrouping
+    ? enabledWorkflowStatuses.map((status) => ({
+        key: `workflow:${status.id}`,
+        workflowStatusId: status.id,
+        label: workflowStatusLabel(status),
+        items: filtered.filter((item) => workflowStatusForItem(item) === status.id),
+      }))
+    : byStatus
+      ? preferences.statusOrder
+          .filter((status) =>
+            ["active", "completed", "failed", "attention", "staged"].includes(preferences.view)
+              ? (status === "staged" && (preferences.view === "staged" || Boolean(dragging))) ||
+                filtered.some((item) => boardDisplayStatus(item) === status)
+              : true,
+          )
+          .map((status) => ({
+            key: status,
+            label: t(`status.${status}`),
+            items: filtered.filter((item) => boardDisplayStatus(item) === status),
+          }))
+      : [
+          ...(scopeItems.some((item) => item.kind === "work-task")
+            ? [
+                {
+                  key: "work-tasks",
+                  label: t("workTasks"),
+                  items: filtered.filter((item) => item.kind === "work-task"),
+                },
+              ]
+            : []),
+          ...(scopeItems.some((item) => item.workspacePurpose === "conversation")
+            ? [
+                {
+                  key: "standalone",
+                  label: t("standalone"),
+                  items: filtered.filter((item) => item.workspacePurpose === "conversation"),
+                },
+              ]
+            : []),
+          ...groupedProjects.map((p) => ({
+            key: p.key,
+            label: p.label,
+            items: filtered.filter(
+              (item) =>
+                item.kind !== "work-task" &&
+                item.workspacePurpose !== "conversation" &&
+                item.projectKey === p.key,
+            ),
+          })),
+        ];
   const run = async (item: BoardItem, action: Parameters<typeof mutate>[1]) => {
     setBusy(true);
     try {
@@ -228,7 +280,26 @@ export function AgentBoardView({
       preferences.setItemStaged(current, !isBoardItemStaged(current, preferences.stagedItems));
   };
   return (
-    <>
+    <DndContext
+      sensors={sensors}
+      // 卡片大于顶部标签，按指针位置判定投放，避免项目分组拖到标签时被矩形面积过滤。
+      collisionDetection={pointerWithin}
+      onDragStart={({ active }) => setDraggingKey(String(active.id))}
+      onDragCancel={() => setDraggingKey(null)}
+      onDragEnd={({ active, over }) => {
+        setDraggingKey(null);
+        const workflowStatusId = over?.data.current?.boardWorkflowStatusId;
+        if (workflowGrouping && typeof workflowStatusId === "string") {
+          const item = rawItems.find((row) => row.key === active.id);
+          if (item) preferences.setItemWorkflowStatus(item, workflowStatusId);
+          return;
+        }
+        if (!over?.data.current?.boardStaging) return;
+        // 拖动期间会话可能重新运行，必须用最新 Host 投影验证，不能使用起拖时的卡片。
+        const item = rawItems.find((row) => row.key === active.id);
+        if (item && canStageBoardItem(item)) preferences.setItemStaged(item, true);
+      }}
+    >
       <section
         ref={setDetailContainer}
         className="relative flex h-full min-h-0 min-w-0 flex-col bg-background text-ui-base text-foreground"
@@ -277,6 +348,16 @@ export function AgentBoardView({
               ))}
             </div>
             <AgentBoardStatusOrder />
+            <Button
+              variant="outline"
+              onClick={() => {
+                preferences.setGroup("workflow");
+                setWorkflowSettingsOpen(true);
+              }}
+            >
+              <Settings2 className="size-4" />
+              {t("workflow.manage")}
+            </Button>
             <Button variant="outline" onClick={() => setManaging(true)}>
               <ListFilter className="size-4" />
               {t("manageTracking")}
@@ -329,12 +410,13 @@ export function AgentBoardView({
             disabled={
               Boolean(project) || preferences.category !== "all" || groupedProjects.length > 6
             }
-            value={byStatus ? "status" : "project"}
-            onChange={(e) => preferences.setGroup(e.target.value as "project" | "status")}
+            value={workflowGrouping ? "workflow" : byStatus ? "status" : "project"}
+            onChange={(e) => preferences.setGroup(e.target.value as typeof preferences.group)}
             className="h-9 rounded-lg border border-border bg-input px-2 text-ui-base disabled:opacity-60"
           >
             <option value="project">{t("groupProject")}</option>
             <option value="status">{t("groupStatus")}</option>
+            <option value="workflow">{t("groupWorkflow")}</option>
           </select>
         </div>
         <div
@@ -401,6 +483,7 @@ export function AgentBoardView({
           onOpenSession={onOpenSession}
           onArchive={(item) => void run(item, "archive")}
           onStage={toggleStaged}
+          workflowStatuses={workflowGrouping}
           onRename={runRename}
           onMarkUnread={(item) => void runMarkUnread(item)}
         />
@@ -445,6 +528,10 @@ export function AgentBoardView({
             onClose={() => setManaging(false)}
           />
         ) : null}
+        <AgentBoardWorkflowSettings
+          open={workflowSettingsOpen}
+          onOpenChange={setWorkflowSettingsOpen}
+        />
         <AgentBoardDetails
           selected={selected}
           workTasks={workTasks}
@@ -464,6 +551,13 @@ export function AgentBoardView({
           onMarkUnread={(item) => void runMarkUnread(item)}
         />
       </section>
-    </>
+      <DragOverlay>
+        {dragging ? (
+          <div className="max-w-72 rounded-xl border border-brand bg-card p-4 text-foreground shadow-lg">
+            {dragging.title}
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }

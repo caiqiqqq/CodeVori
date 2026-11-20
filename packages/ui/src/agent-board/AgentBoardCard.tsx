@@ -1,6 +1,8 @@
 import { WorkTaskAgent } from "@/work-tasks/WorkTaskParts.js";
-import { Folder, LoaderCircle, Workflow } from "lucide-react";
+import { useDraggable } from "@dnd-kit/core";
+import { Folder, GripVertical, LoaderCircle, Workflow } from "lucide-react";
 import { Badge } from "@/components/ui/badge.js";
+import { Button } from "@/components/ui/button.js";
 import { AcpAgentIcon } from "@/components/AcpAgentIcon.js";
 import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -11,6 +13,7 @@ import {
   boardAgentLabel,
   boardStatusIndicator,
   boardWorkflowStageLabel,
+  canStageBoardItem,
   type BoardItem,
 } from "./agentBoardModel.js";
 export const boardStatusColors = {
@@ -29,6 +32,7 @@ export function AgentBoardCard({
   onOpenSession,
   onArchive,
   onStage,
+  draggable = false,
   onRename,
   onMarkUnread,
 }: {
@@ -40,11 +44,17 @@ export function AgentBoardCard({
   onOpenSession(item: BoardItem): void;
   onArchive(item: BoardItem): void;
   onStage(item: BoardItem): void;
+  draggable?: boolean;
   onRename(item: BoardItem, title: string): Promise<void>;
   onMarkUnread(item: BoardItem): void;
 }) {
   const { intl, locale } = useZCodeIntl();
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
+  const canStage = canStageBoardItem(item);
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: item.key,
+    disabled: draggable ? item.archived : !canStage || item.staged,
+  });
   const colors = boardStatusColors;
   const status = boardStatusIndicator(item);
   const workflowStage = boardWorkflowStageLabel(item);
@@ -61,6 +71,7 @@ export function AgentBoardCard({
   const isCompact = layoutMode === "compact";
   const card = (
     <article
+      ref={setNodeRef}
       className={
         isList
           ? "flex min-w-0 items-center rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-brand/40"
@@ -68,6 +79,7 @@ export function AgentBoardCard({
             ? "max-w-56 rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-brand/40"
             : "rounded-xl border border-border bg-card shadow-sm transition-colors hover:border-brand/40"
       }
+      style={{ opacity: isDragging ? 0.45 : undefined }}
       data-board-card={item.key}
     >
       <button
@@ -216,6 +228,35 @@ export function AgentBoardCard({
           </p>
         ) : null}
       </button>
+      {canStage || draggable || !isConversation ? (
+        <div className="flex items-center justify-end gap-2 border-t border-border/60 px-3 py-1">
+          {draggable || (canStage && !item.staged) ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="touch-none cursor-grab"
+              {...listeners}
+              {...attributes}
+              aria-label={t(draggable ? "dragToWorkflowStatus" : "dragToStaged")}
+            >
+              <GripVertical className="size-3.5" />
+            </Button>
+          ) : null}
+          {!isConversation ? (
+            <span
+              className="mr-auto truncate text-ui-xs text-foreground-subtlest"
+              title={item.workspaceIdentity ?? item.workspacePath}
+            >
+              {item.workspaceIdentity ?? item.workspacePath.split("/").pop()}
+            </span>
+          ) : null}
+          {canStage ? (
+            <Button variant="ghost" size="sm" onClick={() => onStage(item)}>
+              {t(item.staged ? "unstage" : "stage")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
   if (item.kind === "work-task") return card;
