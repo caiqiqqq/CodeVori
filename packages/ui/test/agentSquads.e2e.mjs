@@ -1,6 +1,6 @@
 // Real settings and composer against a disposable fake Host. Never calls a model.
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
@@ -10,6 +10,8 @@ const name = `__squads-e2e-${process.pid}`;
 const html = join(root, `${name}.html`),
   moduleFile = join(root, `${name}.tsx`);
 const shots = await mkdtemp(join(tmpdir(), "zcode-squads-ui-"));
+const screenshotDir = process.env.ZCODE_E2E_SCREENSHOT_DIR ?? shots;
+await mkdir(screenshotDir, { recursive: true });
 let browser;
 try {
   await writeFile(
@@ -89,7 +91,7 @@ try {
       const [sent, setSent] = useState('');
       state.remount = () => setKey(value => value + 1);
       state.switchKind = setKind;
-      return <main data-kind={kind} className="mx-auto max-w-3xl space-y-4 bg-background p-4 text-foreground">
+      return <main data-kind={kind} className="min-h-screen space-y-4 bg-background p-4 text-foreground">
         <nav>{createSettingsPageConfig().settingsSections.filter(item => ['general','agentProfiles'].includes(item.id)).map(item => <button key={item.id} onClick={() => setSection(item.id)} className="p-2 text-ui-base">{intl.formatMessage({ id: item.titleId })}</button>)}</nav>
         {section === 'agentProfiles' ? <AgentsAndSquadsSection view={view} onViewChange={setView} onManageModels={() => {}} workspacePath="/synthetic/project" remoteTarget={remote ? { kind: 'ssh' } : undefined} /> : null}
         <ChatPromptEditor key={kind} workspacePath="/synthetic/project" taskId={kind === 'api' ? 'api-parent' : null} acpMode={kind === 'acp'} acpAgent={kind === 'acp' ? 'codex' : null} acpSessionId={kind === 'acp' ? 'acp-parent' : null}
@@ -100,14 +102,29 @@ try {
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform as never}><TabStoreProvider><ServiceProvider services={services as never}><ZCodeIntlProvider initialLocale="zh-CN"><TooltipProvider><Fixture /></TooltipProvider></ZCodeIntlProvider></ServiceProvider></TabStoreProvider></PlatformProvider>);
   `,
   );
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    executablePath: process.env.ZCODE_E2E_CHROME_PATH || undefined,
+  });
   for (const width of [1280, 375]) {
     const page = await browser.newPage({ viewport: { width, height: 1000 } });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
+    const captureLayout = async (name) => {
+      const view = page.getByTestId("agents-and-squads-view");
+      for (const theme of ["zai-light", "zai-dark"]) {
+        await page.evaluate((value) => {
+          document.documentElement.className = `theme-${value}${value === "zai-dark" ? " dark" : ""}`;
+        }, theme);
+        await view.screenshot({ path: join(screenshotDir, `${width}-${name}-${theme}.png`) });
+      }
+      await page.evaluate(() => {
+        document.documentElement.className = "";
+      });
+    };
     await page.goto(`${process.env.ZCODE_E2E_BASE_URL ?? "http://127.0.0.1:5189"}/${name}.html`);
     await page.getByRole("button", { name: "智能体与小队", exact: true }).click();
-    await page.getByRole("tab", { name: "小队", exact: true }).click();
+    await page.getByRole("button", { name: "小队", exact: true }).click();
     const settings = page.getByTestId("squads-settings");
     await settings.getByText("还没有小队", { exact: true }).waitFor();
     assert.equal(await settings.getByRole("button", { name: "新建小队" }).isDisabled(), true);
@@ -187,7 +204,8 @@ try {
       await page.evaluate(() => "execution" in window.__squads.definitions[0].members[0]),
       false,
     );
-    await page.getByRole("tab", { name: "智能体", exact: true }).click();
+    await captureLayout("squads");
+    await page.getByRole("button", { name: "全部智能体", exact: true }).click();
     let profiles = page.getByTestId("agent-profiles-settings");
     assert.equal(await profiles.getByTestId("agent-profile-row").count(), 2);
     const profileRow = profiles
@@ -217,8 +235,8 @@ try {
     await profileEditor.getByRole("button", { name: "保存", exact: true }).click();
     await profiles.getByText("可在多个小队复用", { exact: true }).waitFor();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
-    await page.screenshot({ path: join(shots, `${width}-profiles.png`), fullPage: true });
-    await page.getByRole("tab", { name: "小队", exact: true }).click();
+    await captureLayout("agents");
+    await page.getByRole("button", { name: "小队", exact: true }).click();
     await settings.getByRole("button", { name: "编辑小队" }).click();
     editor = page.getByTestId("squad-editor");
     await editor.getByLabel("说明", { exact: true }).fill("前后端核对");
@@ -272,7 +290,7 @@ try {
       .getByRole("button", { name: "删除小队", exact: true })
       .click();
     await settings.getByText("还没有小队", { exact: true }).waitFor();
-    await page.getByRole("tab", { name: "智能体", exact: true }).click();
+    await page.getByRole("button", { name: "全部智能体", exact: true }).click();
     profiles = page.getByTestId("agent-profiles-settings");
     for (let count = 2; count > 0; count--) {
       await profiles
@@ -290,15 +308,15 @@ try {
       );
     }
     await profiles.getByText("还没有智能体", { exact: true }).waitFor();
-    await page.getByRole("tab", { name: "小队", exact: true }).click();
+    await page.getByRole("button", { name: "小队", exact: true }).click();
     await page.evaluate(() => {
       window.__squads.noTargets = true;
       window.__squads.remount();
     });
-    await page.getByRole("tab", { name: "智能体", exact: true }).click();
+    await page.getByRole("button", { name: "全部智能体", exact: true }).click();
     profiles = page.getByTestId("agent-profiles-settings");
     await profiles.getByText(/请先在模型设置/).waitFor();
-    await page.getByRole("tab", { name: "小队", exact: true }).click();
+    await page.getByRole("button", { name: "小队", exact: true }).click();
     await page.evaluate(() => window.__squads.setRemote(true));
     await settings.getByText(/当前连接不支持小队配置/).waitFor();
     assert.equal(await settings.getByRole("button", { name: "新建小队" }).isDisabled(), true);

@@ -4914,6 +4914,8 @@ const enUS: Record<string, string> = {
   "settings.skills.diagnostics.code.skill_not_found": "Skill not found",
   "settings.subagents.title": "Subagents",
   "settings.agentsAndSquads.title": "Agents & Squads",
+  "agentsAndSquads.allAgents": "All agents",
+  "agentsAndSquads.squadsAndMembers": "Squads & members",
   "settings.acpAgents.title": "Agent SDK Management",
   "settings.acpAgents.description": "Manage 15 built-in ACP agents on the target Host.",
   "settings.acpAgents.list": "ACP agents",

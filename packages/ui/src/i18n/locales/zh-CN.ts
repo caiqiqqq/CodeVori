@@ -4561,6 +4561,8 @@ const zhCN: Record<string, string> = {
   "settings.skills.diagnostics.code.skill_not_found": "技能未找到",
   "settings.subagents.title": "子智能体",
   "settings.agentsAndSquads.title": "智能体与小队",
+  "agentsAndSquads.allAgents": "全部智能体",
+  "agentsAndSquads.squadsAndMembers": "小队与成员",
   "settings.acpAgents.title": "Agent SDK 管理",
   "settings.acpAgents.description": "管理目标 Host 的 15 个内置 ACP 智能体。",
   "settings.acpAgents.list": "ACP 智能体列表",
