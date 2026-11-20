@@ -12,6 +12,7 @@ export type SettingsSectionId =
   | "memory"
   | "plugin"
   | "mcp"
+  | "credentials"
   | "skill"
   | "plugins"
   | "usage"
@@ -21,6 +22,7 @@ export type SettingsSectionId =
   | "delegation"
   | "squads"
   | "agentProfiles"
+  | "agentsAndSquads"
   | "commands"
   | "hooks"
   | "workspaceFileSearch"
@@ -28,6 +30,7 @@ export type SettingsSectionId =
   | "automations"
   | "shortcuts"
   | "quickMessages"
+  | "taskWorkflows"
   | "projects"
   | "remoteSync"
   | "worktrees"
@@ -52,6 +55,8 @@ const HIDDEN_SETTINGS_SECTIONS = new Set<SettingsSectionId>([
   // 产品语义：定时任务是 workspace 主视图，不能再作为设置页分区出现。
   // 注意：hooks 已是正式设置页分区，不在此列。
   "automations",
+  // 多智能体协同设置页暂时下线；保留实现与历史数据，后续恢复时从这里移除。
+  "delegation",
   // 旧插件市场已迁出设置页；保留 id 只用于迁移历史偏好和旧调用。
   "plugins",
   // 工作区搜索（.codevoriignore）设置入口先隐藏：规则文件仍生效并可手动编辑，
@@ -84,6 +89,7 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
     value === "memory" ||
     value === "plugin" ||
     value === "mcp" ||
+    value === "credentials" ||
     value === "skill" ||
     value === "plugins" ||
     value === "usage" ||
@@ -93,6 +99,7 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
     value === "delegation" ||
     value === "squads" ||
     value === "agentProfiles" ||
+    value === "agentsAndSquads" ||
     value === "commands" ||
     value === "hooks" ||
     value === "workspaceFileSearch" ||
@@ -100,6 +107,7 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
     value === "automations" ||
     value === "shortcuts" ||
     value === "quickMessages" ||
+    value === "taskWorkflows" ||
     value === "projects" ||
     value === "remoteSync" ||
     value === "worktrees" ||
@@ -116,7 +124,8 @@ export function resolveSettingsSection(
   fallbackSection: SettingsSectionId = "general",
 ): SettingsSectionId {
   if (section === "plugins") return "plugin";
-  if (section === "delegation") return "subagents";
+  if (section === "squads") return "agentProfiles";
+  if (section === "agentsAndSquads") return "agentProfiles";
   return isSettingsSectionEnabled(section) ? section : fallbackSection;
 }
 
@@ -184,7 +193,7 @@ function readLastSettingsSectionPreference(
       return "appearance";
     }
     if (raw && isSettingsSectionId(raw)) {
-      if (raw === "delegation") {
+      if (raw === "squads") {
         try {
           window.sessionStorage.setItem(SETTINGS_AGENT_VIEW_INTENT_KEY, "squads");
         } catch {
@@ -284,8 +293,10 @@ export function setPendingSettingsSectionIntent(
 
   try {
     window.sessionStorage.setItem(SETTINGS_SECTION_INTENT_KEY, section);
-    if (section === "delegation") {
+    if (section === "squads") {
       window.sessionStorage.setItem(SETTINGS_AGENT_VIEW_INTENT_KEY, "squads");
+    } else if (section === "agentProfiles" || section === "agentsAndSquads") {
+      window.sessionStorage.setItem(SETTINGS_AGENT_VIEW_INTENT_KEY, "agents");
     } else {
       window.sessionStorage.removeItem(SETTINGS_AGENT_VIEW_INTENT_KEY);
     }
@@ -368,7 +379,7 @@ function consumePendingSettingsSection(
       return "skill";
     }
     if (raw && isSettingsSectionId(raw)) {
-      if (raw === "delegation") {
+      if (raw === "squads") {
         try {
           window.sessionStorage.setItem(SETTINGS_AGENT_VIEW_INTENT_KEY, "squads");
         } catch {
@@ -516,6 +527,19 @@ export function addPendingSettingsSectionListener(
       // 这里同步清掉 sessionStorage，避免用户随后切到别的分区并退出后，
       // 下次挂载又被陈旧 pending 意图覆盖“上次停留分区”。
       clearPendingSettingsSectionIntent();
+      if (detail.section === "squads") {
+        try {
+          window.sessionStorage.setItem(SETTINGS_AGENT_VIEW_INTENT_KEY, "squads");
+        } catch {
+          // 忽略浏览器存储异常，不影响设置页导航。
+        }
+      } else if (detail.section === "agentProfiles" || detail.section === "agentsAndSquads") {
+        try {
+          window.sessionStorage.setItem(SETTINGS_AGENT_VIEW_INTENT_KEY, "agents");
+        } catch {
+          // 忽略浏览器存储异常，不影响设置页导航。
+        }
+      }
       listener(detail.section, detail);
     }
   };

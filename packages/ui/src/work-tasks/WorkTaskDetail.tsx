@@ -12,6 +12,8 @@ import {
 } from "./WorkTaskParts.js";
 import { WorkTaskAttachments } from "./WorkTaskAttachments.js";
 import { WorkTaskSourceLink } from "./WorkTaskSourceLink.js";
+import { useWorkTaskWorktreeInspection } from "@/hooks/useWorkTaskWorktreeInspection.js";
+import { WorkTaskWorkflowControls } from "./WorkTaskWorkflowControls.js";
 
 export function WorkTaskDetail({
   task,
@@ -28,6 +30,7 @@ export function WorkTaskDetail({
 }) {
   const t = useWorkTaskMessages();
   const events = useWorkTaskEvents(task);
+  const { inspection } = useWorkTaskWorktreeInspection(task);
   const active = WORK_TASK_ACTIVE_STATUSES.includes(task.status) || task.status === "queued";
   const disabled = panel.busy || task.stopPending || task.worktreeCleanup?.phase === "running";
   const startable = ["todo", "failed", "canceled"].includes(task.status) && !task.archived;
@@ -54,6 +57,7 @@ export function WorkTaskDetail({
           </span>
         </div>
         <p className="whitespace-pre-wrap break-all text-ui-base">{task.prompt}</p>
+        <WorkTaskWorkflowControls task={task} panel={panel} />
         {task.merge && !["merged", "failed", "canceled"].includes(task.merge.phase) ? (
           <p
             className="break-all text-ui-sm text-foreground-subtle"
@@ -72,8 +76,14 @@ export function WorkTaskDetail({
                 <dd className="break-all font-mono">{task.sourceBranch}</dd>
               </>
             ) : null}
-            <dt className="text-foreground-subtle">{t("branch")}</dt>
+            <dt className="text-foreground-subtle">{t("initialBranch")}</dt>
             <dd className="break-all font-mono">{task.worktree.branchName}</dd>
+            {inspection?.currentBranchName ? (
+              <>
+                <dt className="text-foreground-subtle">{t("currentBranch")}</dt>
+                <dd className="break-all font-mono">{inspection.currentBranchName}</dd>
+              </>
+            ) : null}
             <dt className="text-foreground-subtle">{t("worktree")}</dt>
             <dd className="break-all font-mono">{task.worktree.path}</dd>
           </dl>

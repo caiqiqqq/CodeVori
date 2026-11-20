@@ -36,6 +36,16 @@ export function combineWorkTaskReads(sources: readonly WorkTaskReadSource[]) {
                   ...source.scope,
                 })),
               ),
+              conversationWorkflows: sources.flatMap((source) =>
+                (source.resource?.getSnapshot().data?.conversationWorkflows ?? []).map(
+                  (record) => ({
+                    ...record,
+                    ...source.scope,
+                  }),
+                ),
+              ),
+              workflow: boards.length === 1 ? boards[0]!.workflow : null,
+              workflowRevision: boards.length === 1 ? boards[0]!.workflowRevision : 0,
               concurrency: boards[0]!.concurrency,
             }
           : null,

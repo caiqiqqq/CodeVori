@@ -93,6 +93,89 @@ async function until(predicate: () => boolean, store: ConversationProjectionStor
   });
 }
 
+test("real ACP RPC navigator pages remain bounded and never replace full body rows", async () => {
+  const f = await setup();
+  const [clientProtocol, serverProtocol] = createQueuePair();
+  const server = new ChannelServer(serverProtocol);
+  server.registerChannel("acp", ProxyChannel.fromService(f.service));
+  const client = new ChannelClient(clientProtocol);
+  const remote = ProxyChannel.toService<IAcpService>(client.getChannel("acp"));
+  const transport = createAcpConversationTransport(remote, f.workspace, f.target.id, () => {});
+  const store = new ConversationProjectionStore(`conversation/${f.target.id}`, transport);
+  const off = transport.onFrame((frame, context) => store.handleFrame(frame, context));
+  try {
+    await store.connect();
+    const initial = store.getState().snapshot!.rows.window;
+    const page = await transport.turnNavigatorRange!({
+      sessionId: f.target.id,
+      beforeRowId: initial[0]!.rowId,
+      limit: 200,
+    });
+    assert.ok(page.rows.length <= 200);
+    assert.ok(
+      page.rows.every(
+        (row) =>
+          (row.kind === "userInput" || row.kind === "assistantText") && row.text.length <= 220,
+      ),
+    );
+    assert.equal((await store.loadTurnNavigatorDirectory()).status, "hydrated");
+    assert.equal(store.getState().snapshot!.rows.window, initial);
+    assert.ok(store.getState().turnNavigatorDirectory.length > 1600);
+    await store.loadOlderThrough(2);
+    const body = store.getState().snapshot!.rows.window.find((row) => row.rowId === 2);
+    assert.ok(body?.kind === "userInput" && body.text.length > 220);
+  } finally {
+    off();
+    await store.close();
+    transport.dispose();
+    client.dispose();
+    server.dispose();
+    await f.cleanup();
+  }
+});
+
+test("navigator probes an older Host once and propagates unrelated failures", async () => {
+  const input = { sessionId: "legacy", limit: 200 };
+  let calls = 0;
+  const empty = { rows: [], atSeq: 1, atRevision: 1, atLogEpoch: "legacy", hasMore: false };
+  const service = {
+    conversationRowsRange: async (params: { navigationOnly?: boolean }) => {
+      calls++;
+      if (params.navigationOnly) throw new Error('Unrecognized key: "navigationOnly"');
+      return empty;
+    },
+  } as unknown as IAcpService;
+  const transport = createAcpConversationTransport(
+    service,
+    { workspacePath: "/synthetic" },
+    "legacy",
+    () => {},
+  );
+  try {
+    assert.equal(await transport.turnNavigatorRange!(input), empty);
+    assert.equal(calls, 2);
+    assert.equal(await transport.turnNavigatorRange!(input), empty);
+    assert.equal(calls, 3);
+    service.conversationRowsRange = async () => {
+      throw new Error("workspace does not match");
+    };
+    await assert.rejects(transport.turnNavigatorRange!(input), /workspace does not match/);
+    const failing = createAcpConversationTransport(
+      service,
+      { workspacePath: "/synthetic" },
+      "legacy",
+      () => {},
+    );
+    try {
+      await assert.rejects(failing.turnNavigatorRange!(input), /workspace does not match/);
+    } finally {
+      failing.dispose();
+    }
+  } finally {
+    transport.dispose();
+  }
+});
+
 test("large-history command returns a small ACK and repairs a completely silent projection without resending", async () => {
   const f = await setup();
   const transport = createAcpConversationTransport(f.service, f.workspace, f.target.id, () => {});

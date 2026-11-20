@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -45,11 +45,14 @@ test("Host release catalog covers every builtin agent with Codeg launch argument
   }
 });
 
-test("npm 安装只请求固定版，旧 latest 标志不生效，失败保留原托管包", async () => {
+test("npm 安装隔离用户缓存并复用托管缓存，只请求固定版，失败保留原托管包", async () => {
   if (process.platform === "win32") return; // Fake npm fixture uses POSIX executable shims.
   const root = await mkdtemp(join(tmpdir(), "zcode-acp-channel-"));
   const bin = join(root, "bin");
   const attempts = join(root, "attempts");
+  const cacheRecords = join(root, "cache-records");
+  const userCache = join(root, "user-cache");
+  const uppercaseCache = join(root, "uppercase-cache");
   const switches = { failAll: "0" };
   const managerRoot = join(root, "agents");
   const manager = createAcpAgentManager({
@@ -57,8 +60,11 @@ test("npm 安装只请求固定版，旧 latest 标志不生效，失败保留�
     fetchMetadata: async () => ({ name: "@google/gemini-cli", version: "0.59.0" }),
     env: {
       PATH: bin,
+      npm_config_cache: userCache,
+      NPM_CONFIG_CACHE: uppercaseCache,
       ZCODE_ADAPTER_CHANNEL: "latest",
       ACP_FAKE_ATTEMPTS: attempts,
+      ACP_FAKE_CACHE_RECORDS: cacheRecords,
       ACP_FAKE_SWITCHES: join(root, "switches.json"),
     },
   });
@@ -69,6 +75,9 @@ test("npm 安装只请求固定版，旧 latest 标志不生效，失败保留�
   try {
     await mkdir(bin);
     await symlink(process.execPath, join(bin, "node"));
+    // 用普通文件模拟不可写入的缓存目标，避免回归测试依赖 root 权限或修改用户目录。
+    await writeFile(userCache, "keep user cache");
+    await writeFile(uppercaseCache, "keep uppercase cache");
     await writeFile(join(root, "switches.json"), JSON.stringify(switches));
     await writeFile(
       join(bin, "npm"),
@@ -78,6 +87,11 @@ const path = require('node:path');
 if (process.argv.includes('--version')) { process.stdout.write('1.0.0\\n'); process.exit(0); }
 const spec = process.argv.at(-1);
 fs.appendFileSync(process.env.ACP_FAKE_ATTEMPTS, spec + '\\n');
+const cache = process.env.npm_config_cache;
+fs.mkdirSync(path.join(cache, '_cacache'), { recursive: true });
+fs.appendFileSync(process.env.ACP_FAKE_CACHE_RECORDS, JSON.stringify({ cache, keys: Object.keys(process.env).filter(key => key.toLowerCase() === 'npm_config_cache') }) + '\\n');
+const child = require('node:child_process').spawnSync(process.execPath, ['-e', "require('node:fs').writeFileSync(require('node:path').join(process.env.npm_config_cache, '_cacache/postinstall'), 'reused')"]);
+if (child.status !== 0) process.exit(8);
 const { failAll } = JSON.parse(fs.readFileSync(process.env.ACP_FAKE_SWITCHES, 'utf8'));
 if (failAll === '1') process.exit(7);
 const version = '0.59.0';
@@ -128,6 +142,22 @@ fs.writeFileSync(path.join(directory, 'bin/gemini.js'), '// fake ACP');
       "@google/gemini-cli@0.59.0",
     ]);
     assert.ok(logs.every((line) => !line.includes("@latest")));
+    const managedCache = join(managerRoot, "npm-cache");
+    const records = (await readFile(cacheRecords, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      records,
+      Array.from({ length: 3 }, () => ({
+        cache: managedCache,
+        keys: ["npm_config_cache"],
+      })),
+    );
+    assert.equal(await readFile(join(managedCache, "_cacache/postinstall"), "utf8"), "reused");
+    assert.equal(await readFile(userCache, "utf8"), "keep user cache");
+    assert.equal(await readFile(uppercaseCache, "utf8"), "keep uppercase cache");
+    assert.deepEqual(await readdir(join(managerRoot, "gemini")), ["npm"]);
   } finally {
     subscription.dispose();
     manager.dispose();

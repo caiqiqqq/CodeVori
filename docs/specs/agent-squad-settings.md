@@ -2,37 +2,36 @@
 
 ## 产品规则
 
-- 设置侧边栏只显示一个“智能体与小队”入口；入口内提供“智能体”和“小队协作”两个分段视图。
-- “智能体”视图继续管理现有子智能体配置；“小队协作”视图继续管理现有多智能体委派配置。
-- 两个视图复用现有组件、hooks、服务和持久化，各自仍是对应配置的唯一读写路径。切换视图只改变页面局部选择，不重置或复制业务状态。
-- 既有 `subagents` 导航进入“智能体”；既有 `delegation` 导航进入“小队协作”。旧导航 ID 保留为兼容输入，不再作为单独的侧边栏入口。
-- 用户直接打开设置页时默认显示“智能体”视图；设置页打开期间收到旧 `delegation` 意图时，合并入口和“小队协作”视图同时生效。
-- 布局遵循 `DESIGN.md`：使用语义主题色与 `text-ui-*` 字级，内容宽度适配桌面和窄屏，不依赖固定屏幕宽度。
+- 将智能体档案（`agentProfiles`）和小队（`squads`）合并为一个“智能体与小队”设置入口，内部使用“智能体”和“小队”两个分段。
+- `SubagentsSection` 不属于本次合并；`delegation` 继续遵循主分支的独立导航和隐藏策略，不映射到合并页。
+- 复用 `AgentProfilesSection`、`AgentSquadsSection` 及其 hooks、服务和持久化，不新增业务写入路径。切换分段只改变局部 UI 选择。
+- `agentProfiles` 是合并入口的规范 ID；旧 `squads` 意图进入同一入口并选中“小队”。显式 `agentProfiles` 意图选中“智能体”。冷启动与已打开页面都遵守同一规则。
+- 普通打开合并页默认显示“智能体”；上次保存的旧 `squads` 位置仍可恢复到“小队”。导航意图消费后不应影响后续打开。
+- 使用主题语义色、`text-ui-*` 字级、现有分段组件和宽内容容器，兼容桌面及窄屏 Web、中英文。
 
 ## 状态所有者与接口
 
-- `SettingsPage` 拥有一级设置 section 和当前内部视图选择。
-- `settingsNavigation` 保留既有 `SettingsSectionId` 协议，并把 `delegation` 解析到 `subagents` 合并入口；原导航事件中的 section 值用于选择内部视图。
-- `SubagentsSection` 继续通过现有子智能体服务管理配置；`DelegationSettingsSection` 继续通过现有委派设置 hook 管理协作配置。
-- 内部视图切换只影响 Renderer 局部 UI，不写服务端状态。
+- `SettingsPage` 是一级设置 section 和内部 `AgentSettingsView` 的唯一状态所有者；`AgentsAndSquadsSection` 是受控展示组件。
+- `settingsNavigation` 保留旧 `SettingsSectionId` 输入，通过 `resolveSettingsSection` 将 `squads` 映射为 `agentProfiles`；原始意图用于选中分段。
+- `AgentProfilesSection` 和 `AgentSquadsSection` 仍通过原有 hooks 读写服务端配置；局部选择不写入服务端、不复制配置。
+- 存储不可用时沿用现有安全回退，不影响通过同窗口事件导航；本次不改变远程 workspace 身份、同步或委派语义。
 
 ```mermaid
 sequenceDiagram
-    participant Nav as 设置导航意图
-    participant Page as SettingsPage
-    participant View as 合并页分段
-    participant Agent as SubagentsSection
-    participant Squad as DelegationSettingsSection
-    Nav->>Page: subagents / delegation
-    Page->>Page: delegation 归一到 subagents，并选择 squads
-    Page->>View: 渲染 agents 或 squads
-    View->>Agent: agents 视图读取和修改子智能体
-    View->>Squad: squads 视图读取和修改委派设置
+    participant Nav as 导航意图
+    participant Page as SettingsPage（唯一 UI 状态所有者）
+    participant View as AgentsAndSquadsSection
+    participant Config as 原有配置组件与 hooks
+    Nav->>Page: agentProfiles / squads
+    Page->>Page: squads 归一为 agentProfiles，并选中 squads 分段
+    Page->>View: view 与 onViewChange
+    View->>Config: 按分段渲染原有组件
+    Config->>Config: 沿用原有服务读写配置
 ```
 
 ## 验收场景
 
-1. Web、桌面平台配置都只渲染一个智能体设置导航入口，且不再出现单独的多智能体协同入口。
-2. 合并页可在“智能体”和“小队协作”间切换，两个视图都展示原有内容。
-3. `subagents` 导航定位到“智能体”；`delegation` 导航定位到“小队协作”，包括设置页已打开时收到的导航事件。
-4. 未带显式导航意图地打开设置时默认显示“智能体”；主题和窄屏布局不产生溢出。
+1. Web、macOS、Windows 的设置配置均只保留一个档案/小队入口；子智能体入口与主分支的协同隐藏策略保持独立。
+2. 页面分段能切换到真实的智能体档案和小队内容；新建、编辑、删除、冲突、远程不可用行为继续由现有组件处理。
+3. 冷启动和已挂载时的 `squads` 意图均定位“小队”；`agentProfiles` 意图定位“智能体”。消费一次性意图后不残留。
+4. 1280px 与 375px 下页面没有横向溢出，两个分段均可访问；中英文标签正确。

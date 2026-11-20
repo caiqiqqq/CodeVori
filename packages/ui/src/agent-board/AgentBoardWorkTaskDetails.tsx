@@ -71,7 +71,7 @@ export function AgentBoardWorkTaskDetails({
                   options={{
                     ...options,
                     ...git,
-                    focused: !modal,
+                    focused: options?.focused !== false && !modal,
                     statusPanel: binding
                       ? {
                           ...git,

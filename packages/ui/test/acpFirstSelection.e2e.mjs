@@ -36,7 +36,7 @@ try {
     const key=scope=>scope.workspaceIdentity?.trim()||scope.workspacePath;
     const sharedId=crypto.randomUUID();
     const snapshots=new Map(Object.entries(scopes).map(([label,scope])=>[key(scope),{...scope,id:label.startsWith('host')?sharedId:crypto.randomUUID(),agent:'codex',acpSessionId:'native-'+label,title:'history-'+label,revision:1,status:'idle',entries:[{id:'user:'+label,kind:'user',text:'history-content-'+label}],configOptions:[],modeState:null,contextUsage:null,usageTurns:[],goal:null,pendingPermission:null,error:null,queue:{items:[],autoDrain:true}}]));
-    const calls=[],archived=[],held=new Map(),delays=new Set(),listeners=new Set(),preferenceListeners=new Set();
+    const calls=[],archived=[],accepted=[],held=new Map(),delays=new Set(),listeners=new Set(),preferenceListeners=new Set();
     const preference={revision:1,acpModels:{}};
     const preconnect=new URLSearchParams(location.search).has('preconnect'),drafts=new Map();
     const copy=scope=>structuredClone(drafts.get(scope.id)??snapshots.get(key(scope)));
@@ -62,8 +62,8 @@ try {
       const initial=new URLSearchParams(location.search).get('initial')||'source';
       const [label,setLabel]=useState(initial),[request,setRequest]=useState(null),[attachment,setAttachment]=useState(1),[paneEpoch,setPaneEpoch]=useState(0),[suppressPreference,setSuppressPreference]=useState(false);
       const scope=scopes[label];
-      window.__first={calls,held,archived,preference,open:next=>{setLabel(next);setRequest(previous=>({requestId:(previous?.requestId??0)+1,session:copy(scopes[next])}))},reconnect:()=>setAttachment(n=>n+1),hold:(op,next)=>delays.add(op+':'+key(scopes[next])),release:(op,next)=>{const id=op+':'+key(scopes[next]);held.get(id)?.();held.delete(id)},newDraft:()=>{setSuppressPreference(false);setRequest(null);useZCodeSessionStore.getState().startDraft(scope.workspacePath,undefined,scope.workspaceIdentity)},preferAcp:()=>{preference.target={kind:'acp',agent:'codex'};preference.revision++;for(const listener of preferenceListeners)listener({...preference})},archive:next=>{const session=snapshots.get(key(scopes[next]));const nextSession={...session,archived:true,revision:session.revision+1};snapshots.set(key(scopes[next]),nextSession);for(const listener of listeners)listener({kind:'updated',session:nextSession})}};
-      return <main className='h-dvh bg-background text-foreground'><SessionPane key={paneEpoch} paneId='workspace-main' {...scope} remoteSessionId={new URLSearchParams(location.search).has('replayable')?'attachment-'+attachment:undefined} sessionId={null} focused draftComposerHeader={<span>synthetic project</span>} acpOpenRequest={request} suppressAcpPreferenceForDraft={suppressPreference} onAcpSessionArchived={id=>{archived.push(id);setSuppressPreference(true);setRequest(null);setPaneEpoch(value=>value+1)}}/></main>;
+      window.__first={calls,held,archived,accepted,preference,open:next=>{setLabel(next);setRequest(previous=>({requestId:(previous?.requestId??0)+1,session:copy(scopes[next])}))},reconnect:()=>setAttachment(n=>n+1),hold:(op,next)=>delays.add(op+':'+key(scopes[next])),release:(op,next)=>{const id=op+':'+key(scopes[next]);held.get(id)?.();held.delete(id)},newDraft:()=>{setSuppressPreference(false);setRequest(null);useZCodeSessionStore.getState().startDraft(scope.workspacePath,undefined,scope.workspaceIdentity)},preferAcp:()=>{preference.target={kind:'acp',agent:'codex'};preference.revision++;for(const listener of preferenceListeners)listener({...preference})},archive:next=>{const session=snapshots.get(key(scopes[next]));const nextSession={...session,archived:true,revision:session.revision+1};snapshots.set(key(scopes[next]),nextSession);for(const listener of listeners)listener({kind:'updated',session:nextSession})}};
+      return <main className='h-dvh bg-background text-foreground'><SessionPane key={paneEpoch} paneId='workspace-main' {...scope} remoteSessionId={new URLSearchParams(location.search).has('replayable')?'attachment-'+attachment:undefined} sessionId={null} focused draftComposerHeader={<span>synthetic project</span>} acpOpenRequest={request} suppressAcpPreferenceForDraft={suppressPreference} onAcpFirstInputAccepted={(id,agent)=>accepted.push({id,agent})} onAcpSessionArchived={id=>{archived.push(id);setSuppressPreference(true);setRequest(null);setPaneEpoch(value=>value+1)}}/></main>;
     }
     createRoot(document.getElementById('root')!).render(<PlatformProvider platform={{isWeb:true} as never}><TabStoreProvider><ServiceProvider services={services as never}><ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><V4ConversationContext.Provider value={native as never}><Fixture/></V4ConversationContext.Provider></TooltipProvider></ZCodeIntlProvider></ServiceProvider></TabStoreProvider></PlatformProvider>);
   `,
@@ -221,6 +221,8 @@ try {
     assert.equal(await centeredComposer.count(), 0);
     assert.equal(await count("create"), 1, "First input reuses the preconnected session");
     assert.equal(await count("prompt"), 1);
+    assert.equal(await page.evaluate(() => window.__first.accepted.length), 1);
+    assert.equal(await page.evaluate(() => window.__first.accepted[0].agent), "codex");
     assert.deepEqual(errors, []);
     await page.close();
   }

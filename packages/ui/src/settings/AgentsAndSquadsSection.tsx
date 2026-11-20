@@ -23,8 +23,8 @@ export function AgentsAndSquadsSection({
 }) {
   const { intl } = useZCodeIntl();
   const views: Array<{ value: AgentSettingsView; label: string }> = [
-    { value: "agents", label: intl.formatMessage({ id: "settings.subagents.title" }) },
-    { value: "squads", label: intl.formatMessage({ id: "delegation.settingsTitle" }) },
+    { value: "agents", label: intl.formatMessage({ id: "agentProfiles.title" }) },
+    { value: "squads", label: intl.formatMessage({ id: "squads.title" }) },
   ];
 
   return (

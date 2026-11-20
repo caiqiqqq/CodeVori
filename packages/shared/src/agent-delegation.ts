@@ -6,6 +6,7 @@ import { agentProfileSchema } from "./agent-profiles.js";
 
 export const DELEGATION_MAIN_AGENT_INSTRUCTION =
   "用户提到委派、@智能体或 @小队时，使用 zcode-delegation 的 ListDelegationAgents / DelegateTask；保持当前主智能体。已保存智能体使用目录中精确的 profileId，不填写 execution；小队引用使用目录中精确的 squadId，不填写 execution；小队队长按目录中的 squadMemberId 和 execution 派活。显式传递必要上下文，不复制全部历史。子任务完成只汇总，不自动继续修改、提交、合并或推送。";
+
 export const delegationApiAgentSchema = z
   .object({
     kind: z.literal("api"),
