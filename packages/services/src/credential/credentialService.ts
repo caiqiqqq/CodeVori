@@ -46,8 +46,19 @@ const credentialVaultInputSchema = z
       .refine((value) => !/[\s/@?#]/u.test(value), "Enter a host name or address, not a URL"),
     port: z.number().int().min(1).max(65_535).nullable(),
     username: z.string().trim().max(255).nullable(),
-    workspaceIdentity: z.string().trim().max(2_048).nullable(),
+    scope: z.enum(["unassigned", "global", "project"]),
+    workspaceIdentity: z.string().trim().min(1).max(2_048).nullable(),
     secret: z.string().max(16_384).optional(),
+  })
+  .superRefine((input, context) => {
+    const requiresIdentity = input.scope === "project";
+    if (requiresIdentity !== (input.workspaceIdentity !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Project credentials require an identity; other scopes do not use one",
+        path: ["workspaceIdentity"],
+      });
+    }
   })
   .strict();
 
@@ -112,12 +123,6 @@ interface CredentialServiceDependencies {
   onDidMutate?: (event: { operation: "save" | "delete"; key: string }) => void;
 }
 
-export interface CredentialServiceWithReferenceReader {
-  service: ICredentialService;
-  credentialVaultReferenceReader: CredentialVaultReferenceReader;
-  listVaultMetadata(): Promise<CredentialVaultEntry[]>;
-}
-
 function hasLiveMutationOwner(pid: number | null, startedAt: number | null): boolean {
   if (!pid) return false;
   if (pid === process.pid) return startedAt === PROCESS_STARTED_AT;
@@ -133,6 +138,12 @@ export function createCredentialService(
   dependencies: CredentialServiceDependencies = {},
 ): ICredentialService {
   return createCredentialServiceWithReferenceReader(dependencies).service;
+}
+
+export interface CredentialServiceWithReferenceReader {
+  service: ICredentialService;
+  credentialVaultReferenceReader: CredentialVaultReferenceReader;
+  listVaultMetadata(): Promise<CredentialVaultEntry[]>;
 }
 
 export function createCredentialServiceWithReferenceReader(
@@ -217,9 +228,20 @@ export function createCredentialServiceWithReferenceReader(
     save,
     delete: del,
 
-    async listVaultEntries() {
+    async listUnassignedVaultEntries() {
       await recoverVaultMutations();
-      return vaultRepository.listActive();
+      return vaultRepository.listUnassigned();
+    },
+
+    async listGlobalVaultEntries() {
+      await recoverVaultMutations();
+      return vaultRepository.listGlobal();
+    },
+
+    async listVaultEntries(workspaceIdentity) {
+      const scope = z.string().trim().min(1).max(2_048).parse(workspaceIdentity);
+      await recoverVaultMutations();
+      return vaultRepository.listActive(scope);
     },
 
     async saveVaultEntry(rawInput) {
@@ -229,6 +251,14 @@ export function createCredentialServiceWithReferenceReader(
       const existing = input.id ? await vaultRepository.find(id) : null;
       if (input.id && !existing) throw new Error("Credential entry was not found");
       if (existing && "status" in existing) throw new Error("Credential entry is busy");
+      // Renderer 的项目筛选只负责展示；Host 写操作仍需独立校验归属。
+      if (
+        existing &&
+        (existing.scope !== input.scope || existing.workspaceIdentity !== input.workspaceIdentity)
+      ) {
+        // 中文依据：全局凭证会投影到项目列表，但只有 Global scope 能修改其归属和内容。
+        throw new Error("Credential entry was not found in this scope");
+      }
 
       const secretValue = input.secret;
       if (!existing) {
@@ -253,6 +283,8 @@ export function createCredentialServiceWithReferenceReader(
         const secretKey = `${CREDENTIAL_VAULT_SECRET_PREFIX}${randomUUID()}`;
         const oldSecretKey = await vaultRepository.beginRotate(
           id,
+          input.scope,
+          input.workspaceIdentity,
           secretKey,
           process.pid,
           PROCESS_STARTED_AT,
@@ -278,11 +310,68 @@ export function createCredentialServiceWithReferenceReader(
       return savedEntry;
     },
 
-    async deleteVaultEntry(id) {
+    async attachVaultEntry(id, workspaceIdentity) {
+      const validatedId = z.string().uuid().parse(id);
+      const validatedWorkspaceIdentity = z
+        .string()
+        .trim()
+        .min(1)
+        .max(2_048)
+        .parse(workspaceIdentity);
+      await recoverVaultMutations();
+      await vaultRepository.attach(validatedId, validatedWorkspaceIdentity);
+    },
+
+    async attachVaultEntryGlobally(id) {
       const validatedId = z.string().uuid().parse(id);
       await recoverVaultMutations();
+      await vaultRepository.attachGlobal(validatedId);
+    },
+
+    async detachVaultEntry(id, workspaceIdentity) {
+      const validatedId = z.string().uuid().parse(id);
+      const validatedWorkspaceIdentity = z
+        .string()
+        .trim()
+        .min(1)
+        .max(2_048)
+        .parse(workspaceIdentity);
+      await recoverVaultMutations();
+      await vaultRepository.detach(validatedId, validatedWorkspaceIdentity);
+    },
+
+    async detachGlobalVaultEntry(id) {
+      const validatedId = z.string().uuid().parse(id);
+      await recoverVaultMutations();
+      await vaultRepository.detachGlobal(validatedId);
+    },
+
+    async deleteVaultEntry(id, scope, workspaceIdentity) {
+      const validatedId = z.string().uuid().parse(id);
+      const validatedScope = z.enum(["unassigned", "global", "project"]).parse(scope);
+      const validatedWorkspaceIdentity = z
+        .string()
+        .trim()
+        .min(1)
+        .max(2_048)
+        .nullable()
+        .parse(workspaceIdentity);
+      await recoverVaultMutations();
+      const existing = await vaultRepository.find(validatedId);
+      if (existing && "status" in existing) throw new Error("Credential entry is busy");
+      // 删除同样必须校验项目归属，避免只靠 UI 隐藏条目形成越权边界。
+      if (
+        existing &&
+        (existing.scope !== validatedScope ||
+          existing.workspaceIdentity !== validatedWorkspaceIdentity)
+      ) {
+        // 中文依据：workspaceIdentity 为 null 时还需比较 scope，防止未分配凭证与全局凭证互相越权。
+        throw new Error("Credential entry was not found in this scope");
+      }
       const secretKey = await vaultRepository.beginDelete(
         validatedId,
+        validatedScope,
+        validatedWorkspaceIdentity,
         process.pid,
         PROCESS_STARTED_AT,
       );
@@ -309,9 +398,7 @@ export function createCredentialServiceWithReferenceReader(
     async listReferences(rawWorkspaceIdentity) {
       const identity = z.string().trim().min(1).max(2_048).parse(rawWorkspaceIdentity);
       await recoverVaultMutations();
-      return (await vaultRepository.listActive())
-        .filter((entry) => entry.workspaceIdentity === null || entry.workspaceIdentity === identity)
-        .map(projectReference);
+      return (await vaultRepository.listActive(identity)).map(projectReference);
     },
     async readSecret(rawWorkspaceIdentity, reference, assertCurrent) {
       const identity = z.string().trim().min(1).max(2_048).parse(rawWorkspaceIdentity);
@@ -320,24 +407,24 @@ export function createCredentialServiceWithReferenceReader(
       assertCurrent();
       const saved = await vaultRepository.findActiveSecret(id, identity);
       assertCurrent();
-      // 中文依据：授权期间凭证可能已换目标或移到其他工作区，不能沿用旧的列表结果解密。
       if (
         !saved ||
         JSON.stringify(projectReference(saved.entry)) !==
           JSON.stringify(projectReference(reference))
-      )
+      ) {
         throw unavailable();
+      }
       const secret = await load(saved.secretKey, assertCurrent);
       const current = await vaultRepository.findActiveSecret(id, identity);
       assertCurrent();
-      // 中文依据：异步读取期间轮换、删除或改绑后，旧密码不能作为本次读取结果返回。
       if (
         secret === null ||
         !current ||
         current.secretKey !== saved.secretKey ||
         JSON.stringify(current.entry) !== JSON.stringify(saved.entry)
-      )
+      ) {
         throw unavailable();
+      }
       return { ...projectReference(current.entry), secret };
     },
   };
@@ -345,8 +432,7 @@ export function createCredentialServiceWithReferenceReader(
   return {
     service,
     credentialVaultReferenceReader,
-    // 环境档案只读取活动条目的元数据，绕过可能读取加密秘密的中断变更恢复路径。
-    listVaultMetadata: () => vaultRepository.listActive(),
+    listVaultMetadata: () => vaultRepository.listAllActive(),
   };
 }
 

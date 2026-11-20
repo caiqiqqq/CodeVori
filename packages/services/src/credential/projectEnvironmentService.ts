@@ -46,7 +46,8 @@ export function createProjectEnvironmentService(options: {
   const resolve = async (profile: ProjectEnvironment): Promise<ResolvedProjectEnvironment> => {
     const key = resolveWorkspaceKey(profile);
     const credentials = (await options.listCredentials()).filter(
-      (entry) => entry.workspaceIdentity === null || entry.workspaceIdentity === key,
+      (entry) =>
+        entry.scope === "global" || (entry.scope === "project" && entry.workspaceIdentity === key),
     );
     return {
       ...profile,
@@ -109,7 +110,8 @@ export function createProjectEnvironmentService(options: {
           !credentials.some(
             (entry) =>
               entry.id === resource.credentialId &&
-              (entry.workspaceIdentity === null || entry.workspaceIdentity === key),
+              (entry.scope === "global" ||
+                (entry.scope === "project" && entry.workspaceIdentity === key)),
           )
         )
           throw new Error("environment.credential-unavailable");

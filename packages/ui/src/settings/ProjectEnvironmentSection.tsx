@@ -55,7 +55,9 @@ export function ProjectEnvironmentSection({
   const availableCredentials = useMemo(
     () =>
       credentials.filter(
-        (entry) => entry.workspaceIdentity === null || entry.workspaceIdentity === identity,
+        (entry) =>
+          entry.scope === "global" ||
+          (entry.scope === "project" && entry.workspaceIdentity === identity),
       ),
     [credentials, identity],
   );

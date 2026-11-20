@@ -41,6 +41,7 @@ test("credential reference reader returns all workspace metadata without decrypt
     host: "192.0.2.10",
     port: 2222,
     username: "deploy",
+    scope: "project",
     workspaceIdentity: "workspace:one",
     secret: "private-password-one",
   });
@@ -51,6 +52,7 @@ test("credential reference reader returns all workspace metadata without decrypt
     host: "192.0.2.11",
     port: 22,
     username: "root",
+    scope: "project",
     workspaceIdentity: "workspace:two",
     secret: "private-password-two",
   });
@@ -61,6 +63,7 @@ test("credential reference reader returns all workspace metadata without decrypt
     host: "shared.example.invalid",
     port: null,
     username: "observer",
+    scope: "global",
     workspaceIdentity: null,
     secret: "private-password-shared",
   });
@@ -71,6 +74,7 @@ test("credential reference reader returns all workspace metadata without decrypt
     host: "custom.example.invalid",
     port: 2200,
     username: "tester",
+    scope: "global",
     workspaceIdentity: null,
     secret: "private-custom-type-secret",
   });
@@ -81,6 +85,7 @@ test("credential reference reader returns all workspace metadata without decrypt
     host: "db.example.invalid",
     port: 5432,
     username: "reader",
+    scope: "global",
     workspaceIdentity: null,
     secret: "private-database-password",
   });
@@ -176,10 +181,8 @@ test("credential reference reader returns all workspace metadata without decrypt
   );
   assert.equal(decryptCalls, 2, "cross-workspace, missing and stopped reads never decrypt");
 
-  await save({
-    ...custom,
-    workspaceIdentity: "workspace:two",
-  });
+  await host.service.detachGlobalVaultEntry!(custom.id);
+  await host.service.attachVaultEntry!(custom.id, "workspace:two");
   await assert.rejects(
     host.credentialVaultReferenceReader.readSecret("workspace:one", custom, noCancellation),
     /unavailable/,

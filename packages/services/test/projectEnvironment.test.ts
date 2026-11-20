@@ -19,6 +19,7 @@ async function fixture(t: test.TestContext) {
       host: "app.example.invalid",
       port: 22,
       username: "observer",
+      scope: "global",
       workspaceIdentity: null,
       hasSecret: true,
       createdAt: 1,
@@ -125,6 +126,7 @@ test("environment profiles persist and reject stale edits/deletes", async (t) =>
 
 test("environment reads and credential bindings enforce exact workspace identity", async (t) => {
   const { service, input, entries, projectScope, scope } = await fixture(t);
+  entries[0]!.scope = "project";
   entries[0]!.workspaceIdentity = scope.workspaceIdentity;
   const saved = await service.saveProjectEnvironment(input);
   const other = { ...projectScope, workspaceIdentity: "remote:two" };
@@ -151,6 +153,8 @@ test("environment reads and credential bindings enforce exact workspace identity
 
 test("environment resources resolve current metadata and retain unavailable references", async (t) => {
   const { service, entries, input, projectScope } = await fixture(t);
+  entries[0]!.scope = "project";
+  entries[0]!.workspaceIdentity = projectScope.workspaceIdentity;
   const saved = await service.saveProjectEnvironment(input);
   entries[0]!.host = "updated.example.invalid";
   const read = await service.readProjectEnvironment({ ...projectScope, id: saved.id });

@@ -122,6 +122,7 @@ async function fixture(
     host: "server.example.invalid",
     port: 22,
     username: "root",
+    scope: "global" as const,
     workspaceIdentity: null,
     secret,
   };
@@ -405,6 +406,7 @@ for (const fullAccess of [false, true]) {
     const other = await f.save({
       ...f.input,
       name: "Other workspace",
+      scope: "project",
       workspaceIdentity: "workspace:two",
     });
     let result: unknown;
