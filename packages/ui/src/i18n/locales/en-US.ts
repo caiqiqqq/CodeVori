@@ -3846,7 +3846,7 @@ const enUS: Record<string, string> = {
   "settings.mcpTitle": "MCP Servers",
   "settings.credentials.title": "Credentials",
   "settings.credentials.description":
-    "Credential metadata uses built-in SQLite; secrets stay in the Host credential store. No separate database is needed for this vault.",
+    "Manage server and database credentials. Link them to a project or make them available globally to all projects.",
   "settings.credentials.add": "Add credential",
   "settings.credentials.loading": "Loading credentials…",
   "settings.credentials.empty": "No saved credentials",

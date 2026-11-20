@@ -3558,7 +3558,7 @@ const zhCN: Record<string, string> = {
   "settings.mcpTitle": "MCP 服务器",
   "settings.credentials.title": "凭证",
   "settings.credentials.description":
-    "凭证目录使用应用内置 SQLite，密码由 Host 加密保管；管理凭证无需另装数据库。",
+    "统一管理服务器和数据库凭证，选择项目关联凭证，或设为全局供所有项目使用。",
   "settings.credentials.add": "添加凭证",
   "settings.credentials.loading": "正在读取凭证…",
   "settings.credentials.empty": "还没有保存的凭证",

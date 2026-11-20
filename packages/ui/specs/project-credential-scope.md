@@ -10,6 +10,8 @@
 - The selected project's list shows project-owned credentials and inherited global credentials as separate groups. The unassigned pool remains visible regardless of scope selection and can be attached to the selected project or Global.
 - `workspaceIdentity?.trim() || workspacePath` is the canonical project identity. The environment field is only the credential's target classification (`development`, `test`, `staging`, or `production`).
 - The Host owns vault persistence, encryption, and attachment state. UI receives metadata and `hasSecret`, never secret values.
+- The system settings layout uses a compact bordered scope navigator and grouped credential lists, following the existing plugin and Agent settings surfaces. Selected scope, inherited global entries, and available entries must remain visually distinct without adding decorative cards around individual page sections.
+- Use the settings page title once, with a short usage description beside the add action. Long project lists scroll inside a bounded navigator; narrow screens stack the navigator and credential groups, with row actions below metadata. Metadata uses the shared type scale, environment badges, and monospace addresses in both light and dark themes.
 
 ## Ownership and interface
 
@@ -61,6 +63,7 @@ sequenceDiagram
 10. A project cannot edit, detach, or delete an inherited global credential; those actions are available in Global.
 11. A delayed project A list response is discarded after switching to project B or Global.
 12. Existing project attachments remain project-scoped and existing null-identity records remain unassigned after migration.
+13. The scope navigator and credential groups use the shared settings card, border, selection, and typography tokens, and remain readable at narrow mobile widths.
 
 ## Migration boundary
 

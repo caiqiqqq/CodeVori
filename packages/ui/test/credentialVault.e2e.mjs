@@ -32,8 +32,9 @@ try {
     import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
+    import {applyTheme} from '../../../ui/src/useTheme.ts';
     import '../../../ui/src/styles.css';
-    const state:any={calls:[],pendingReads:[],delayScope:null};window.__credentialVault=state;
+    const state:any={calls:[],pendingReads:[],delayScope:null,setTheme:applyTheme};window.__credentialVault=state;
     const entries:any[]=[];const secrets=new Map<string,string>();
     const service:any={
       async listVaultEntries(workspaceIdentity:string){const snapshot=entries.filter(entry=>entry.scope==='global'||(entry.scope==='project'&&entry.workspaceIdentity===workspaceIdentity)).map(entry=>({...entry}));if(state.delayScope===workspaceIdentity)return new Promise(resolve=>state.pendingReads.push(()=>resolve(snapshot)));return snapshot},
@@ -55,7 +56,8 @@ try {
       async deleteVaultEntry(id:string,scope:string,workspaceIdentity:string|null){state.calls.push({operation:'delete',scope,workspaceIdentity});const index=entries.findIndex(entry=>entry.id===id&&entry.scope===scope&&entry.workspaceIdentity===workspaceIdentity);if(index>=0)entries.splice(index,1);secrets.delete(id)},
       async load(){return null},async save(){},async delete(){},
     };
-    function Fixture(){const [visible,setVisible]=useState(true);state.setVisible=setVisible;state.releaseReads=()=>state.pendingReads.splice(0).forEach((release:()=>void)=>release());const projects=[{workspacePath:'/project-a',workspaceIdentity:'remote:project-a',label:'项目 A'},{workspacePath:'/project-b',workspaceIdentity:'remote:project-b',label:'项目 B'}];return <div className='min-h-screen bg-background p-6 text-foreground'><ServiceProvider services={{credentialService:service}}>{visible?<CredentialVaultSection initialWorkspacePath='/project-a' initialWorkspaceIdentity='remote:project-a' projects={projects}/>:null}</ServiceProvider></div>}
+    state.seedLayout=()=>{entries.push(...['project','global','unassigned'].map((scope,index)=>({id:'layout-'+index,name:['项目数据库','共享服务器','待关联数据库'][index],kind:index===1?'server':'database',environment:index===1?'production':'test',host:'service.example.invalid',port:index===1?22:5432,username:'demo_reader',scope,workspaceIdentity:scope==='project'?'remote:project-a':null,hasSecret:true,createdAt:0,updatedAt:0})))};
+    function Fixture(){const [visible,setVisible]=useState(true);state.setVisible=setVisible;state.releaseReads=()=>state.pendingReads.splice(0).forEach((release:()=>void)=>release());const projects=[{workspacePath:'/project-a',workspaceIdentity:'remote:project-a',label:'项目 A'},{workspacePath:'/project-b',workspaceIdentity:'remote:project-b',label:'项目 B'},...Array.from({length:12},(_,index)=>({workspacePath:'/projects/'+('long-project-path/').repeat(8)+index,label:'示例项目 '+(index+1)}))];return <div className='min-h-screen bg-background px-4 py-8 text-foreground'><div className='mx-auto max-w-4xl lg:px-8'><h1 className='mb-8 text-ui-xl font-semibold'>凭证</h1><ServiceProvider services={{credentialService:service}}>{visible?<CredentialVaultSection initialWorkspacePath='/project-a' initialWorkspaceIdentity='remote:project-a' projects={projects}/>:null}</ServiceProvider></div></div>}
     createRoot(document.getElementById('root')!).render(<ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><Fixture/></TooltipProvider></ZCodeIntlProvider>);
   `,
   );
@@ -75,6 +77,10 @@ try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/${name}.html`);
   await page.getByRole("button", { name: /项目 A/ }).waitFor();
   await page.getByRole("button", { name: /项目 B/ }).waitFor();
+  assert.equal(
+    await page.getByRole("button", { name: /项目 A/ }).getAttribute("aria-pressed"),
+    "true",
+  );
   await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
   await page.screenshot({
     path: join(artifacts, "credential-vault-empty.png"),
@@ -87,7 +93,7 @@ try {
   await dialog.getByLabel("名称").fill("QA 数据库");
   await dialog.getByLabel("类型").click();
   await page.getByRole("option", { name: "数据库", exact: true }).click();
-  await dialog.getByLabel("用途环境").click();
+  await dialog.getByLabel("环境").click();
   await page.getByRole("option", { name: "预发布", exact: true }).click();
   await dialog.getByLabel("主机").fill("db.qa.example.invalid");
   await dialog.getByLabel("端口").fill("5432");
@@ -218,6 +224,35 @@ try {
   await confirm.waitFor({ state: "detached" });
   await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
   assert.equal((await page.evaluate(() => window.__credentialVault.values())).count, 0);
+
+  await page.evaluate(() => window.__credentialVault.seedLayout());
+  await page.getByRole("button", { name: /项目 A/ }).click();
+  await page.getByText("项目数据库", { exact: true }).waitFor();
+  for (const theme of ["zai-light", "zai-dark"]) {
+    await page.evaluate((theme) => window.__credentialVault.setTheme(theme), theme);
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert.ok(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        `${theme}/${width}: no horizontal overflow`,
+      );
+      const nav = page.getByRole("navigation", { name: "项目", exact: true });
+      const navBox = await nav.boundingBox();
+      assert.ok(navBox.height < 720, `${theme}/${width}: long project list stays bounded`);
+      for (const button of await page.locator("li button").all()) {
+        const box = await button.boundingBox();
+        assert.ok(
+          box.x >= 0 && box.x + box.width <= width,
+          `${theme}/${width}: row actions stay on screen`,
+        );
+      }
+      await page.screenshot({
+        path: join(artifacts, `credential-vault-${theme}-${width}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+  }
 
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   assert.deepEqual(errors, []);

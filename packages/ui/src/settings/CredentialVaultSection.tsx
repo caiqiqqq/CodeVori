@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Globe2, Plus } from "lucide-react";
+import { Folder, Globe2, Plus } from "lucide-react";
 import type {
   CredentialVaultEntry,
   CredentialVaultEnvironment,
@@ -153,17 +153,12 @@ export function CredentialVaultSection({
   };
 
   return (
-    <section className="space-y-5" aria-labelledby="credential-vault-heading">
+    <section className="space-y-4" aria-label={label("settings.credentials.title")}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 id="credential-vault-heading" className="text-ui-lg font-semibold text-foreground">
-            {label("settings.credentials.title")}
-          </h2>
-          <p className="mt-1 max-w-2xl text-ui-base leading-6 text-foreground-subtle">
-            {label("settings.credentials.description")}
-          </p>
-        </div>
-        <Button type="button" size="sm" onClick={openCreate}>
+        <p className="min-w-0 flex-1 text-ui-base leading-6 text-foreground-subtle">
+          {label("settings.credentials.description")}
+        </p>
+        <Button type="button" size="sm" className="shrink-0" onClick={openCreate}>
           <Plus aria-hidden="true" />
           {label("settings.credentials.add")}
         </Button>
@@ -180,45 +175,48 @@ export function CredentialVaultSection({
         </p>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(12rem,15rem)_minmax(0,1fr)]">
-        <nav aria-label={label("settings.credentials.projectsHeading")} className="min-w-0">
-          <h3 className="mb-2 text-ui-base font-medium text-foreground">
+      <div className="grid items-start gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
+        <nav
+          aria-label={label("settings.credentials.projectsHeading")}
+          className="min-w-0 rounded-xl border border-border bg-card p-2"
+        >
+          <h3 className="px-2 py-1.5 text-ui-sm font-semibold text-foreground-subtlest">
             {label("settings.credentials.projectsHeading")}
           </h3>
-          <ul className="divide-y divide-border border-y border-border">
+          <ul className="max-h-48 space-y-1 overflow-y-auto md:max-h-[calc(100dvh-18rem)]">
             <li>
-              <Button
+              <button
                 type="button"
-                variant={isGlobalSelected ? "secondary" : "ghost"}
                 aria-pressed={isGlobalSelected}
-                className="h-auto w-full min-w-0 justify-start rounded-none px-2 py-2 text-left"
+                className={`flex w-full min-w-0 items-center gap-2 rounded-lg border px-2 py-2 text-left text-ui-base font-medium transition-colors focus-visible:outline-2 focus-visible:outline-brand ${isGlobalSelected ? "border-border-hover bg-card-selected text-foreground" : "border-transparent text-foreground-subtle hover:bg-hover hover:text-foreground"}`}
                 onClick={() => setSelectedScope({ kind: "global" })}
               >
-                <Globe2 aria-hidden="true" />
+                <Globe2 className="size-4 shrink-0" aria-hidden="true" />
                 <span>{label("settings.credentials.globalScope")}</span>
-              </Button>
+              </button>
             </li>
             {knownProjects.map((project) => (
               <li key={project.identity}>
-                <Button
+                <button
                   type="button"
-                  variant={project.identity === projectIdentity ? "secondary" : "ghost"}
                   aria-pressed={project.identity === projectIdentity}
-                  className="h-auto w-full min-w-0 justify-start rounded-none px-2 py-2 text-left"
+                  title={project.workspacePath}
+                  className={`flex w-full min-w-0 items-center gap-2 rounded-lg border px-2 py-2 text-left text-ui-base font-medium transition-colors focus-visible:outline-2 focus-visible:outline-brand ${project.identity === projectIdentity ? "border-border-hover bg-card-selected text-foreground" : "border-transparent text-foreground-subtle hover:bg-hover hover:text-foreground"}`}
                   onClick={() => setSelectedScope({ kind: "project", identity: project.identity })}
                 >
-                  <span className="min-w-0">
+                  <Folder className="size-4 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
                     <span className="block truncate">{project.label}</span>
-                    <span className="block truncate text-ui-xs text-foreground-subtle">
+                    <span className="mt-0.5 block truncate text-ui-xs font-normal text-foreground-subtlest">
                       {project.workspacePath}
                     </span>
                   </span>
-                </Button>
+                </button>
               </li>
             ))}
           </ul>
           {knownProjects.length === 0 ? (
-            <p className="pt-2 text-ui-sm text-foreground-subtle">
+            <p className="px-2 py-2 text-ui-sm text-foreground-subtle">
               {label("settings.credentials.projectsEmpty")}
             </p>
           ) : null}
@@ -229,16 +227,16 @@ export function CredentialVaultSection({
             <section aria-labelledby="credential-global-heading" className="space-y-2">
               <h3
                 id="credential-global-heading"
-                className="text-ui-base font-medium text-foreground"
+                className="px-1 text-ui-base font-semibold text-foreground"
               >
                 {label("settings.credentials.globalEntries")}
               </h3>
               {loading ? (
-                <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+                <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                   {label("settings.credentials.loading")}
                 </p>
               ) : visibleGlobalEntries.length === 0 ? (
-                <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+                <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                   {label("settings.credentials.globalEmpty")}
                 </p>
               ) : (
@@ -265,7 +263,7 @@ export function CredentialVaultSection({
             <section aria-labelledby="credential-project-heading" className="space-y-2">
               <h3
                 id="credential-project-heading"
-                className="text-ui-base font-medium text-foreground"
+                className="px-1 text-ui-base font-semibold text-foreground"
               >
                 {intl.formatMessage(
                   { id: "settings.credentials.projectEntries" },
@@ -273,11 +271,11 @@ export function CredentialVaultSection({
                 )}
               </h3>
               {loading ? (
-                <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+                <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                   {label("settings.credentials.loading")}
                 </p>
               ) : !selectedProject || visibleProjectEntries.length === 0 ? (
-                <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+                <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                   {label("settings.credentials.projectEmpty")}
                 </p>
               ) : (
@@ -306,16 +304,16 @@ export function CredentialVaultSection({
             <section aria-labelledby="credential-inherited-heading" className="space-y-2">
               <h3
                 id="credential-inherited-heading"
-                className="text-ui-base font-medium text-foreground"
+                className="px-1 text-ui-base font-semibold text-foreground"
               >
                 {label("settings.credentials.inheritedGlobalEntries")}
               </h3>
               {loading ? (
-                <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+                <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                   {label("settings.credentials.loading")}
                 </p>
               ) : visibleGlobalEntries.length === 0 ? (
-                <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+                <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                   {label("settings.credentials.globalEmpty")}
                 </p>
               ) : (
@@ -334,16 +332,16 @@ export function CredentialVaultSection({
           <section aria-labelledby="credential-available-heading" className="space-y-2">
             <h3
               id="credential-available-heading"
-              className="text-ui-base font-medium text-foreground"
+              className="px-1 text-ui-base font-semibold text-foreground"
             >
               {label("settings.credentials.availableEntries")}
             </h3>
             {loading ? (
-              <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+              <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                 {label("settings.credentials.loading")}
               </p>
             ) : visibleAvailableEntries.length === 0 ? (
-              <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+              <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                 {label("settings.credentials.availableEmpty")}
               </p>
             ) : (
