@@ -104,7 +104,7 @@ try {
         const [settingsSection, setSettingsSection] = useState('delegation');
         const [summaryVariant, setSummaryVariant] = useState('mini');
         const { intl } = useZCodeIntl();
-        const sections = createSettingsPageConfig().settingsSections.filter(section => ['delegation', 'acpAgents'].includes(section.id));
+        const sections = createSettingsPageConfig().settingsSections.filter(section => ['delegation', 'modelProvider', 'acpAgents'].includes(section.id));
         const currentSection = sections.find(section => section.id === settingsSection)!;
         const openSettings = section => { writeLastSettingsSectionPreference(section); setSettingsSection(section); };
         state.reopenSettings = () => { openSettings(resolveSettingsSectionForPlatform(consumeInitialSettingsSection(), sections)); setSettingsKey(key => key + 1); };
@@ -133,13 +133,10 @@ try {
             inputTestId="main-input" submitLabel="发送主消息" onSubmit={value => { state.sent.push(value); setSentText(value); return false; }} />
           <div data-testid="sent-user-message"><ConversationUserInputContent text={sentText} /></div>
           <div className="mt-8" data-testid="delegation-settings-section" data-section={settingsSection}>
-            <nav className="mb-4 flex flex-wrap gap-3 text-ui-base" data-testid="delegation-settings-navigation">
-              {sections.map(({id, titleId, icon: Icon}) => <button key={id} aria-current={settingsSection === id ? 'page' : undefined} onClick={() => openSettings(id)} className="flex items-center gap-2"><Icon className="size-4" aria-hidden />{intl.formatMessage({id: titleId})}</button>)}
-            </nav>
-            <h2 className="mb-4 text-ui-base font-medium">{intl.formatMessage({id: currentSection.titleId})}</h2>
-            {settingsSection === 'delegation' ? <DelegationSettingsSection key={settingsKey} workspacePath={parent.workspacePath} /> : <AcpAgentsSection workspacePath={parent.workspacePath} />}
-          </div>
-        </main>;
+            <nav className="mb-4 flex flex-wrap gap-3 text-ui-base" data-testid="delegation-settings-navigation">{sections.filter(({id}) => id !== 'acpAgents').map(({id, titleId, icon: Icon}) => <button key={id} aria-current={settingsSection === id || (id === 'modelProvider' && settingsSection === 'acpAgents') ? 'page' : undefined} onClick={() => openSettings(id)} className="flex items-center gap-2"><Icon className="size-4" aria-hidden />{intl.formatMessage({id: titleId})}</button>)}</nav>
+            {(settingsSection === 'modelProvider' || settingsSection === 'acpAgents') ? <div className="mb-4 flex gap-2" role="group" aria-label="模型设置" data-testid="settings-model-tabs"><button aria-pressed={settingsSection === 'modelProvider'} onClick={() => openSettings('modelProvider')}>模型供应商</button><button aria-pressed={settingsSection === 'acpAgents'} onClick={() => openSettings('acpAgents')}>Agent SDK 管理</button></div> : null}
+            <h2 className="mb-4 text-ui-base font-medium">{intl.formatMessage({id: settingsSection === 'acpAgents' ? 'settings.modelProviderTitle' : currentSection.titleId})}</h2>{settingsSection === 'delegation' ? <DelegationSettingsSection key={settingsKey} workspacePath={parent.workspacePath} /> : settingsSection === 'acpAgents' ? <AcpAgentsSection workspacePath={parent.workspacePath} /> : <div data-testid="settings-model-providers" />}
+          </div></main>;
       }
       createRoot(document.getElementById('root')!).render(<PlatformProvider platform={platform as never}><TabStoreProvider><ServiceProvider services={services as never}><ZCodeIntlProvider initialLocale="zh-CN"><TooltipProvider><Fixture /></TooltipProvider></ZCodeIntlProvider></ServiceProvider></TabStoreProvider></PlatformProvider>);
     `,

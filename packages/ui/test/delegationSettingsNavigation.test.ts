@@ -9,7 +9,7 @@ import {
 import zhCN from "../src/i18n/locales/zh-CN.js";
 import enUS from "../src/i18n/locales/en-US.js";
 
-test("collaboration has one independent entry in agent capabilities on desktop and web", () => {
+test("model providers and ACP share one settings sidebar entry on desktop and web", () => {
   for (const options of [
     {},
     { isDesktop: true },
@@ -17,6 +17,17 @@ test("collaboration has one independent entry in agent capabilities on desktop a
     { isWindowsDesktop: true },
   ]) {
     const { settingsSections, settingsSectionGroups } = createSettingsPageConfig(options);
+    const modelSettingsSidebarEntries = settingsSectionGroups
+      .flatMap((group) => group.sections)
+      .filter((section) => section.id === "modelProvider" || section.id === "acpAgents");
+    assert.deepEqual(
+      modelSettingsSidebarEntries.map((section) => section.id),
+      ["modelProvider"],
+    );
+    assert.equal(
+      settingsSections.some((section) => section.id === "acpAgents"),
+      true,
+    );
     const entries = settingsSections.filter((section) => section.id === "delegation");
     assert.equal(entries.length, 1);
     assert.equal(entries[0].titleId, "delegation.settingsTitle");
@@ -33,7 +44,7 @@ test("collaboration has one independent entry in agent capabilities on desktop a
   assert.equal(resolveSettingsSection("delegation"), "delegation");
 });
 
-test("collaboration labels and disabled guidance point to the independent settings entry", () => {
+test("collaboration labels and disabled guidance point to the collaboration settings entry", () => {
   assert.equal(zhCN["delegation.settingsTitle"], "多智能体协同");
   assert.match(zhCN["delegation.disabled"], /设置.*多智能体协同/);
   assert.doesNotMatch(zhCN["delegation.disabled"], /SDK/);
