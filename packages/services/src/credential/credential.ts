@@ -13,15 +13,23 @@ export interface ICredentialService {
   save(key: string, value: string): Promise<void>;
   delete(key: string): Promise<void>;
   listUnassignedVaultEntries?(): Promise<CredentialVaultEntry[]>;
+  listGlobalVaultEntries?(): Promise<CredentialVaultEntry[]>;
   listVaultEntries?(workspaceIdentity: string): Promise<CredentialVaultEntry[]>;
   saveVaultEntry?(input: SaveCredentialVaultEntryInput): Promise<CredentialVaultEntry>;
   attachVaultEntry?(id: string, workspaceIdentity: string): Promise<void>;
+  attachVaultEntryGlobally?(id: string): Promise<void>;
   detachVaultEntry?(id: string, workspaceIdentity: string): Promise<void>;
-  deleteVaultEntry?(id: string, workspaceIdentity: string | null): Promise<void>;
+  detachGlobalVaultEntry?(id: string): Promise<void>;
+  deleteVaultEntry?(
+    id: string,
+    scope: CredentialVaultScope,
+    workspaceIdentity: string | null,
+  ): Promise<void>;
 }
 
 export type CredentialVaultKind = "server" | "database";
 export type CredentialVaultEnvironment = "development" | "test" | "staging" | "production";
+export type CredentialVaultScope = "unassigned" | "global" | "project";
 
 export interface CredentialVaultEntry {
   id: string;
@@ -31,6 +39,7 @@ export interface CredentialVaultEntry {
   host: string;
   port: number | null;
   username: string | null;
+  scope: CredentialVaultScope;
   workspaceIdentity: string | null;
   hasSecret: true;
   createdAt: number;
@@ -45,6 +54,7 @@ export interface SaveCredentialVaultEntryInput {
   host: string;
   port: number | null;
   username: string | null;
+  scope: CredentialVaultScope;
   workspaceIdentity: string | null;
   /** Omitted or empty on edit means keep the current secret. */
   secret?: string;

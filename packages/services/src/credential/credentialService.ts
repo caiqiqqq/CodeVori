@@ -46,8 +46,19 @@ const credentialVaultInputSchema = z
       .refine((value) => !/[\s/@?#]/u.test(value), "Enter a host name or address, not a URL"),
     port: z.number().int().min(1).max(65_535).nullable(),
     username: z.string().trim().max(255).nullable(),
+    scope: z.enum(["unassigned", "global", "project"]),
     workspaceIdentity: z.string().trim().min(1).max(2_048).nullable(),
     secret: z.string().max(16_384).optional(),
+  })
+  .superRefine((input, context) => {
+    const requiresIdentity = input.scope === "project";
+    if (requiresIdentity !== (input.workspaceIdentity !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Project credentials require an identity; other scopes do not use one",
+        path: ["workspaceIdentity"],
+      });
+    }
   })
   .strict();
 
@@ -209,6 +220,11 @@ export function createCredentialService(
       return vaultRepository.listUnassigned();
     },
 
+    async listGlobalVaultEntries() {
+      await recoverVaultMutations();
+      return vaultRepository.listGlobal();
+    },
+
     async listVaultEntries(workspaceIdentity) {
       const scope = z.string().trim().min(1).max(2_048).parse(workspaceIdentity);
       await recoverVaultMutations();
@@ -223,8 +239,12 @@ export function createCredentialService(
       if (input.id && !existing) throw new Error("Credential entry was not found");
       if (existing && "status" in existing) throw new Error("Credential entry is busy");
       // Renderer 的项目筛选只负责展示；Host 写操作仍需独立校验归属。
-      if (existing && existing.workspaceIdentity !== input.workspaceIdentity) {
-        throw new Error("Credential entry was not found in this project");
+      if (
+        existing &&
+        (existing.scope !== input.scope || existing.workspaceIdentity !== input.workspaceIdentity)
+      ) {
+        // 中文依据：全局凭证会投影到项目列表，但只有 Global scope 能修改其归属和内容。
+        throw new Error("Credential entry was not found in this scope");
       }
 
       const secretValue = input.secret;
@@ -250,6 +270,7 @@ export function createCredentialService(
         const secretKey = `${CREDENTIAL_VAULT_SECRET_PREFIX}${randomUUID()}`;
         const oldSecretKey = await vaultRepository.beginRotate(
           id,
+          input.scope,
           input.workspaceIdentity,
           secretKey,
           process.pid,
@@ -288,6 +309,12 @@ export function createCredentialService(
       await vaultRepository.attach(validatedId, validatedWorkspaceIdentity);
     },
 
+    async attachVaultEntryGlobally(id) {
+      const validatedId = z.string().uuid().parse(id);
+      await recoverVaultMutations();
+      await vaultRepository.attachGlobal(validatedId);
+    },
+
     async detachVaultEntry(id, workspaceIdentity) {
       const validatedId = z.string().uuid().parse(id);
       const validatedWorkspaceIdentity = z
@@ -300,8 +327,15 @@ export function createCredentialService(
       await vaultRepository.detach(validatedId, validatedWorkspaceIdentity);
     },
 
-    async deleteVaultEntry(id, workspaceIdentity) {
+    async detachGlobalVaultEntry(id) {
       const validatedId = z.string().uuid().parse(id);
+      await recoverVaultMutations();
+      await vaultRepository.detachGlobal(validatedId);
+    },
+
+    async deleteVaultEntry(id, scope, workspaceIdentity) {
+      const validatedId = z.string().uuid().parse(id);
+      const validatedScope = z.enum(["unassigned", "global", "project"]).parse(scope);
       const validatedWorkspaceIdentity = z
         .string()
         .trim()
@@ -313,11 +347,17 @@ export function createCredentialService(
       const existing = await vaultRepository.find(validatedId);
       if (existing && "status" in existing) throw new Error("Credential entry is busy");
       // 删除同样必须校验项目归属，避免只靠 UI 隐藏条目形成越权边界。
-      if (existing && existing.workspaceIdentity !== validatedWorkspaceIdentity) {
-        throw new Error("Credential entry was not found in this project");
+      if (
+        existing &&
+        (existing.scope !== validatedScope ||
+          existing.workspaceIdentity !== validatedWorkspaceIdentity)
+      ) {
+        // 中文依据：workspaceIdentity 为 null 时还需比较 scope，防止未分配凭证与全局凭证互相越权。
+        throw new Error("Credential entry was not found in this scope");
       }
       const secretKey = await vaultRepository.beginDelete(
         validatedId,
+        validatedScope,
         validatedWorkspaceIdentity,
         process.pid,
         PROCESS_STARTED_AT,

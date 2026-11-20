@@ -36,20 +36,23 @@ try {
     const state:any={calls:[],pendingReads:[],delayScope:null};window.__credentialVault=state;
     const entries:any[]=[];const secrets=new Map<string,string>();
     const service:any={
-      async listVaultEntries(workspaceIdentity:string){const snapshot=entries.filter(entry=>entry.workspaceIdentity===workspaceIdentity).map(entry=>({...entry}));if(state.delayScope===workspaceIdentity)return new Promise(resolve=>state.pendingReads.push(()=>resolve(snapshot)));return snapshot},
-      async listUnassignedVaultEntries(){return entries.filter(entry=>entry.workspaceIdentity===null).map(entry=>({...entry}))},
+      async listVaultEntries(workspaceIdentity:string){const snapshot=entries.filter(entry=>entry.scope==='global'||(entry.scope==='project'&&entry.workspaceIdentity===workspaceIdentity)).map(entry=>({...entry}));if(state.delayScope===workspaceIdentity)return new Promise(resolve=>state.pendingReads.push(()=>resolve(snapshot)));return snapshot},
+      async listGlobalVaultEntries(){return entries.filter(entry=>entry.scope==='global').map(entry=>({...entry}))},
+      async listUnassignedVaultEntries(){return entries.filter(entry=>entry.scope==='unassigned').map(entry=>({...entry}))},
       async saveVaultEntry(input:any){
-        state.calls.push({operation:'save',hasSecret:Boolean(input.secret),workspaceIdentity:input.workspaceIdentity});
+        state.calls.push({operation:'save',hasSecret:Boolean(input.secret),scope:input.scope,workspaceIdentity:input.workspaceIdentity});
         let entry=entries.find(candidate=>candidate.id===input.id);
         if(!entry){entry={id:crypto.randomUUID(),createdAt:Date.now(),hasSecret:true};entries.push(entry)}
-        Object.assign(entry,{name:input.name,kind:input.kind,environment:input.environment,host:input.host,port:input.port,username:input.username,workspaceIdentity:input.workspaceIdentity,updatedAt:Date.now()});
+        Object.assign(entry,{name:input.name,kind:input.kind,environment:input.environment,host:input.host,port:input.port,username:input.username,scope:input.scope,workspaceIdentity:input.workspaceIdentity,updatedAt:Date.now()});
         if(input.secret)secrets.set(entry.id,input.secret);
         state.values=()=>({count:entries.length,hasActiveSecret:Boolean(secrets.get(entry.id)),entryName:entry.name,kind:entry.kind,environment:entry.environment});
         return {...entry};
       },
-      async attachVaultEntry(id:string,workspaceIdentity:string){state.calls.push({operation:'attach',workspaceIdentity});const entry=entries.find(candidate=>candidate.id===id&&candidate.workspaceIdentity===null);if(!entry)throw new Error('already attached');entry.workspaceIdentity=workspaceIdentity},
-      async detachVaultEntry(id:string,workspaceIdentity:string){state.calls.push({operation:'detach',workspaceIdentity});const entry=entries.find(candidate=>candidate.id===id&&candidate.workspaceIdentity===workspaceIdentity);if(!entry)throw new Error('not found');entry.workspaceIdentity=null},
-      async deleteVaultEntry(id:string,workspaceIdentity:string|null){state.calls.push({operation:'delete',workspaceIdentity});const index=entries.findIndex(entry=>entry.id===id&&entry.workspaceIdentity===workspaceIdentity);if(index>=0)entries.splice(index,1);secrets.delete(id)},
+      async attachVaultEntry(id:string,workspaceIdentity:string){state.calls.push({operation:'attach',workspaceIdentity});const entry=entries.find(candidate=>candidate.id===id&&candidate.scope==='unassigned');if(!entry)throw new Error('already attached');entry.scope='project';entry.workspaceIdentity=workspaceIdentity},
+      async attachVaultEntryGlobally(id:string){state.calls.push({operation:'attach-global'});const entry=entries.find(candidate=>candidate.id===id&&candidate.scope==='unassigned');if(!entry)throw new Error('already attached');entry.scope='global'},
+      async detachVaultEntry(id:string,workspaceIdentity:string){state.calls.push({operation:'detach',workspaceIdentity});const entry=entries.find(candidate=>candidate.id===id&&candidate.scope==='project'&&candidate.workspaceIdentity===workspaceIdentity);if(!entry)throw new Error('not found');entry.scope='unassigned';entry.workspaceIdentity=null},
+      async detachGlobalVaultEntry(id:string){state.calls.push({operation:'detach-global'});const entry=entries.find(candidate=>candidate.id===id&&candidate.scope==='global');if(!entry)throw new Error('not found');entry.scope='unassigned'},
+      async deleteVaultEntry(id:string,scope:string,workspaceIdentity:string|null){state.calls.push({operation:'delete',scope,workspaceIdentity});const index=entries.findIndex(entry=>entry.id===id&&entry.scope===scope&&entry.workspaceIdentity===workspaceIdentity);if(index>=0)entries.splice(index,1);secrets.delete(id)},
       async load(){return null},async save(){},async delete(){},
     };
     function Fixture(){const [visible,setVisible]=useState(true);state.setVisible=setVisible;state.releaseReads=()=>state.pendingReads.splice(0).forEach((release:()=>void)=>release());const projects=[{workspacePath:'/project-a',workspaceIdentity:'remote:project-a',label:'项目 A'},{workspacePath:'/project-b',workspaceIdentity:'remote:project-b',label:'项目 B'}];return <div className='min-h-screen bg-background p-6 text-foreground'><ServiceProvider services={{credentialService:service}}>{visible?<CredentialVaultSection initialWorkspacePath='/project-a' initialWorkspaceIdentity='remote:project-a' projects={projects}/>:null}</ServiceProvider></div>}
@@ -108,6 +111,10 @@ try {
   assert.equal(
     (await page.evaluate(() => window.__credentialVault.calls)).at(-1).workspaceIdentity,
     null,
+  );
+  assert.equal(
+    (await page.evaluate(() => window.__credentialVault.calls)).at(-1).scope,
+    "unassigned",
   );
   await page.getByText("QA 数据库", { exact: true }).waitFor();
   await page.screenshot({
@@ -169,6 +176,7 @@ try {
   await page.setViewportSize({ width: 320, height: 780 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: join(artifacts, "credential-vault-mobile.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   await page.getByRole("button", { name: "从所选项目移除", exact: true }).click();
   await page.getByText("QA 数据库", { exact: true }).waitFor();
@@ -176,6 +184,30 @@ try {
     (await page.evaluate(() => window.__credentialVault.calls)).at(-1).operation,
     "detach",
   );
+  await page.getByRole("button", { name: "全局", exact: true }).click();
+  await page.getByRole("button", { name: "设为全局", exact: true }).click();
+  assert.equal(
+    (await page.evaluate(() => window.__credentialVault.calls)).at(-1).operation,
+    "attach-global",
+  );
+  await page.getByText("QA 数据库", { exact: true }).waitFor();
+  await page.getByRole("button", { name: /项目 B/ }).click();
+  await page.getByText("全局凭证（所有项目可用）", { exact: true }).waitFor();
+  await page.screenshot({
+    path: join(artifacts, "credential-vault-global-inherited.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  assert.equal(await page.getByRole("button", { name: "编辑", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "删除", exact: true }).count(), 0);
+  assert.equal(await page.getByText("QA 数据库", { exact: true }).count(), 1);
+  await page.getByRole("button", { name: "全局", exact: true }).click();
+  await page.getByRole("button", { name: "取消全局并移回未分配", exact: true }).click();
+  assert.equal(
+    (await page.evaluate(() => window.__credentialVault.calls)).at(-1).operation,
+    "detach-global",
+  );
+  await page.getByText("QA 数据库", { exact: true }).waitFor();
   await page.getByRole("button", { name: /项目 B/ }).click();
   await page.getByRole("button", { name: "关联到所选项目", exact: true }).click();
   await page.getByText("QA 数据库", { exact: true }).waitFor();

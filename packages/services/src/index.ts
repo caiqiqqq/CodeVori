@@ -82,6 +82,7 @@ export type {
   CredentialVaultEntry,
   CredentialVaultEnvironment,
   CredentialVaultKind,
+  CredentialVaultScope,
   SaveCredentialVaultEntryInput,
 } from "./credential/credential.js";
 

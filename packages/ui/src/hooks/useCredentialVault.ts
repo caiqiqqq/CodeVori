@@ -10,6 +10,12 @@ export function useCredentialVault() {
     }
     return credentialService.listUnassignedVaultEntries();
   }, [credentialService]);
+  const listGlobal = useCallback(() => {
+    if (!credentialService.listGlobalVaultEntries) {
+      throw new Error("Credential vault is not available on this Host");
+    }
+    return credentialService.listGlobalVaultEntries();
+  }, [credentialService]);
   const list = useCallback(
     (workspaceIdentity: string) => {
       if (!credentialService.listVaultEntries) {
@@ -29,11 +35,11 @@ export function useCredentialVault() {
     [credentialService],
   );
   const remove = useCallback(
-    (id: string, workspaceIdentity: string | null) => {
+    (id: string, scope: "unassigned" | "global" | "project", workspaceIdentity: string | null) => {
       if (!credentialService.deleteVaultEntry) {
         throw new Error("Credential vault is not available on this Host");
       }
-      return credentialService.deleteVaultEntry(id, workspaceIdentity);
+      return credentialService.deleteVaultEntry(id, scope, workspaceIdentity);
     },
     [credentialService],
   );
@@ -46,6 +52,15 @@ export function useCredentialVault() {
     },
     [credentialService],
   );
+  const attachGlobal = useCallback(
+    (id: string) => {
+      if (!credentialService.attachVaultEntryGlobally) {
+        throw new Error("Credential vault is not available on this Host");
+      }
+      return credentialService.attachVaultEntryGlobally(id);
+    },
+    [credentialService],
+  );
   const detach = useCallback(
     (id: string, workspaceIdentity: string) => {
       if (!credentialService.detachVaultEntry) {
@@ -55,5 +70,24 @@ export function useCredentialVault() {
     },
     [credentialService],
   );
-  return { list, listUnassigned, save, remove, attach, detach };
+  const detachGlobal = useCallback(
+    (id: string) => {
+      if (!credentialService.detachGlobalVaultEntry) {
+        throw new Error("Credential vault is not available on this Host");
+      }
+      return credentialService.detachGlobalVaultEntry(id);
+    },
+    [credentialService],
+  );
+  return {
+    list,
+    listUnassigned,
+    listGlobal,
+    save,
+    remove,
+    attach,
+    attachGlobal,
+    detach,
+    detachGlobal,
+  };
 }

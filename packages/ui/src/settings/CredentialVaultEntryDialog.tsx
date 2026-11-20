@@ -106,6 +106,7 @@ export function CredentialVaultEntryDialog({
       host: draft.host,
       port: draft.port ? Number(draft.port) : null,
       username: draft.username || null,
+      scope: mode.kind === "create" ? "unassigned" : mode.entry.scope,
       workspaceIdentity: mode.kind === "create" ? null : mode.entry.workspaceIdentity,
       ...(draft.secret ? { secret: draft.secret } : {}),
     };
@@ -126,7 +127,7 @@ export function CredentialVaultEntryDialog({
     setRemoving(true);
     setErrorId(null);
     try {
-      await remove(mode.entry.id, mode.entry.workspaceIdentity);
+      await remove(mode.entry.id, mode.entry.scope, mode.entry.workspaceIdentity);
       onClose();
       await onChanged();
     } catch {

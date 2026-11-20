@@ -3694,13 +3694,19 @@ const enUS: Record<string, string> = {
   "settings.mcpTitle": "MCP Servers",
   "settings.credentials.title": "Credentials",
   "settings.credentials.description":
-    "Manage credentials for all projects from system settings. New credentials start unassigned and can be selected by a project; each credential can belong to one project at a time.",
+    "Manage credentials from system settings. Each credential can be shared globally or assigned to one project; new credentials start unassigned until you choose a scope.",
   "settings.credentials.add": "Add credential",
   "settings.credentials.loading": "Loading credentials…",
   "settings.credentials.empty": "No saved credentials",
   "settings.credentials.projectsHeading": "Projects",
   "settings.credentials.projectsEmpty":
     "No projects yet. You can still create unassigned credentials.",
+  "settings.credentials.globalScope": "Global",
+  "settings.credentials.globalEntries": "Global credentials",
+  "settings.credentials.globalEmpty":
+    "No global credentials. Assign one from the unassigned list to share it.",
+  "settings.credentials.inheritedGlobalEntries": "Global credentials available to all projects",
+  "settings.credentials.inheritedReadOnly": "Shared globally · manage in Global",
   "settings.credentials.projectEntries": "Attached to {project}",
   "settings.credentials.projectEntriesNoSelection": "Select a project to view its credentials",
   "settings.credentials.projectEmpty": "No credentials are attached to this project.",
@@ -3708,6 +3714,8 @@ const enUS: Record<string, string> = {
   "settings.credentials.availableEmpty": "No credentials are available to attach.",
   "settings.credentials.attach": "Attach to selected project",
   "settings.credentials.detach": "Remove from selected project",
+  "settings.credentials.attachGlobal": "Make global",
+  "settings.credentials.detachGlobal": "Remove from Global",
   "settings.credentials.saved": "Saved",
   "settings.credentials.kind.server": "Server",
   "settings.credentials.kind.database": "Database",
@@ -3741,6 +3749,10 @@ const enUS: Record<string, string> = {
   "settings.credentials.error.attach":
     "Could not attach the credential. It may already belong to another project.",
   "settings.credentials.error.detach": "Could not remove the attachment. Refresh and try again.",
+  "settings.credentials.error.attachGlobal":
+    "Could not make the credential global. Refresh and try again.",
+  "settings.credentials.error.detachGlobal":
+    "Could not remove the global scope. Refresh and try again.",
   "settings.credentials.save": "Save",
   "settings.credentials.saving": "Saving…",
   "settings.mcp.description": `Manage MCP server configurations used by ${PRODUCT_NAME} Agent.`,

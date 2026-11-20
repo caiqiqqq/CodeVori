@@ -34,6 +34,7 @@ async function createFixture(t: test.TestContext) {
   });
   assert.ok(service.listVaultEntries);
   assert.ok(service.listUnassignedVaultEntries);
+  assert.ok(service.listGlobalVaultEntries);
   assert.ok(service.saveVaultEntry);
   assert.ok(service.attachVaultEntry);
   assert.ok(service.detachVaultEntry);
@@ -49,11 +50,17 @@ async function createFixture(t: test.TestContext) {
     service,
     list: (workspaceIdentity = "workspace:test:qa") => service.listVaultEntries!(workspaceIdentity),
     listUnassigned: () => service.listUnassignedVaultEntries!(),
+    listGlobal: () => service.listGlobalVaultEntries!(),
     save: service.saveVaultEntry,
     attach: service.attachVaultEntry,
+    attachGlobal: service.attachVaultEntryGlobally,
     detach: service.detachVaultEntry,
-    remove: (id: string, workspaceIdentity: string | null = "workspace:test:qa") =>
-      service.deleteVaultEntry!(id, workspaceIdentity),
+    detachGlobal: service.detachGlobalVaultEntry,
+    remove: (
+      id: string,
+      scope: "unassigned" | "global" | "project" = "project",
+      workspaceIdentity: string | null = "workspace:test:qa",
+    ) => service.deleteVaultEntry!(id, scope, workspaceIdentity),
   };
 }
 
@@ -67,6 +74,7 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
     host: "db.qa.example.invalid",
     port: 5432,
     username: "qa_reader",
+    scope: "unassigned",
     workspaceIdentity: null,
     secret: firstSecret,
   });
@@ -100,6 +108,7 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
     host: created.host,
     port: created.port,
     username: created.username,
+    scope: "unassigned",
     workspaceIdentity: null,
   });
   assert.equal(unassignedRotation.workspaceIdentity, null);
@@ -111,6 +120,7 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
     host: created.host,
     port: created.port,
     username: created.username,
+    scope: "unassigned",
     workspaceIdentity: null,
     secret: "unassigned-rotated-token",
   });
@@ -125,7 +135,7 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
   await assert.rejects(fixture.attach(created.id, "workspace:other"), /already attached/);
   assert.deepEqual(await fixture.listUnassigned(), []);
   assert.deepEqual(await fixture.list("workspace:test:qa"), [
-    { ...rotatedUnassigned, workspaceIdentity: "workspace:test:qa" },
+    { ...rotatedUnassigned, scope: "project", workspaceIdentity: "workspace:test:qa" },
   ]);
 
   const databaseArtifacts = await Promise.all(
@@ -151,6 +161,7 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
     host: "db.qa.example.invalid",
     port: 5432,
     username: "qa_reader",
+    scope: "project",
     workspaceIdentity: "workspace:test:qa",
   });
   const unchangedKey = await fixture.repository.find(created.id);
@@ -166,6 +177,7 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
     host: "db.qa.example.invalid",
     port: 5432,
     username: "qa_reader",
+    scope: "project",
     workspaceIdentity: "workspace:test:qa",
     secret: "rotated-token-9b31",
   });
@@ -191,21 +203,27 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
       host: "other.example.invalid",
       port: null,
       username: null,
+      scope: "project",
       workspaceIdentity: "workspace:other",
     }),
-    /not found in this project/,
+    /not found in this scope/,
   );
-  await assert.rejects(fixture.remove(created.id, "workspace:other"), /not found in this project/);
+  await assert.rejects(
+    fixture.remove(created.id, "project", "workspace:other"),
+    /not found in this scope/,
+  );
   assert.deepEqual(await fixture.list("workspace:test:qa"), [updated]);
   await assert.rejects(fixture.detach(created.id, "workspace:other"), /not found in this project/);
   await fixture.detach(created.id, "workspace:test:qa");
   assert.deepEqual(await fixture.list("workspace:test:qa"), []);
-  assert.deepEqual(await fixture.listUnassigned(), [{ ...updated, workspaceIdentity: null }]);
+  assert.deepEqual(await fixture.listUnassigned(), [
+    { ...updated, scope: "unassigned", workspaceIdentity: null },
+  ]);
   await fixture.attach(created.id, "workspace:other");
   assert.deepEqual(await fixture.list("workspace:other"), [
     { ...updated, workspaceIdentity: "workspace:other" },
   ]);
-  await fixture.remove(created.id, "workspace:other");
+  await fixture.remove(created.id, "project", "workspace:other");
   assert.deepEqual(await fixture.list("workspace:test:qa"), []);
   assert.equal(await fixture.service.load(rotatedSecretKey), null);
 });
@@ -219,12 +237,100 @@ test("credential vault resumes an interrupted deletion when the Host restarts", 
     host: "qa.example.invalid",
     port: 22,
     username: "deploy",
+    scope: "project",
     workspaceIdentity: "workspace:test:qa",
     secret: "private-key-passphrase",
   });
 
-  await fixture.repository.beginDelete(created.id, "workspace:test:qa", process.pid, -1);
+  await fixture.repository.beginDelete(created.id, "project", "workspace:test:qa", process.pid, -1);
   assert.deepEqual(await fixture.list("workspace:test:qa"), []);
   const existing = await fixture.repository.find(created.id);
   assert.equal(existing, null);
+});
+
+test("global credentials are inherited by projects and mutable only in Global scope", async (t) => {
+  const fixture = await createFixture(t);
+  const unassigned = await fixture.save({
+    name: "Shared deployment server",
+    kind: "server",
+    environment: "production",
+    host: "deploy.example.invalid",
+    port: 22,
+    username: "release",
+    scope: "unassigned",
+    workspaceIdentity: null,
+    secret: "shared-secret",
+  });
+
+  await fixture.attachGlobal!(unassigned.id);
+  const global = { ...unassigned, scope: "global" as const };
+  assert.deepEqual(await fixture.listGlobal(), [global]);
+  assert.deepEqual(await fixture.list("workspace:one"), [global]);
+  assert.deepEqual(await fixture.list("workspace:two"), [global]);
+  assert.deepEqual(await fixture.listUnassigned(), []);
+  await assert.rejects(
+    fixture.save({
+      id: global.id,
+      name: global.name,
+      kind: global.kind,
+      environment: global.environment,
+      host: global.host,
+      port: global.port,
+      username: global.username,
+      scope: "project",
+      workspaceIdentity: "workspace:one",
+    }),
+    /not found in this scope/,
+  );
+  await assert.rejects(fixture.remove(unassigned.id, "project", null), /not found in this scope/);
+
+  await fixture.detachGlobal!(unassigned.id);
+  assert.deepEqual(await fixture.listGlobal(), []);
+  assert.deepEqual(await fixture.listUnassigned(), [{ ...global, scope: "unassigned" as const }]);
+  await fixture.attach(unassigned.id, "workspace:one");
+  assert.deepEqual(await fixture.list("workspace:one"), [
+    { ...unassigned, scope: "project" as const, workspaceIdentity: "workspace:one" },
+  ]);
+  assert.deepEqual(await fixture.list("workspace:two"), []);
+});
+
+test("vault migration preserves legacy project attachments and unassigned rows", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "codevori-credential-vault-migration-"));
+  const databasePath = join(root, "credential-vault.sqlite");
+  const legacyDatabase = new DatabaseSync(databasePath);
+  legacyDatabase.exec(`
+    CREATE TABLE credential_vault_entries (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, environment TEXT NOT NULL,
+      host TEXT NOT NULL, port INTEGER, username TEXT, workspace_identity TEXT,
+      secret_key TEXT NOT NULL, previous_secret_key TEXT,
+      status TEXT NOT NULL, operation_owner_pid INTEGER, operation_owner_started_at INTEGER,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    INSERT INTO credential_vault_entries VALUES
+      ('legacy-project', 'Project', 'server', 'test', 'project.example.invalid', 22, NULL,
+       'workspace:legacy', 'secret-project', NULL, 'active', NULL, NULL, 1, 1),
+      ('legacy-unassigned', 'Unassigned', 'server', 'test', 'free.example.invalid', 22, NULL,
+       NULL, 'secret-free', NULL, 'active', NULL, NULL, 2, 2);
+  `);
+  legacyDatabase.close();
+  const repository = new CredentialVaultRepository(databasePath);
+  t.after(async () => {
+    repository.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  assert.deepEqual(
+    (await repository.listActive("workspace:legacy")).map(({ scope, workspaceIdentity }) => ({
+      scope,
+      workspaceIdentity,
+    })),
+    [{ scope: "project", workspaceIdentity: "workspace:legacy" }],
+  );
+  assert.deepEqual(
+    (await repository.listUnassigned()).map(({ scope, workspaceIdentity }) => ({
+      scope,
+      workspaceIdentity,
+    })),
+    [{ scope: "unassigned", workspaceIdentity: null }],
+  );
 });
