@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Database, KeyRound, Pencil, Plus, Server, Trash2 } from "lucide-react";
 import type {
   CredentialVaultEntry,
@@ -17,26 +17,48 @@ function environmentLabel(environment: CredentialVaultEnvironment, label: (id: s
   return label(`settings.credentials.environment.${environment}`);
 }
 
-export function CredentialVaultSection() {
+export function CredentialVaultSection({
+  workspacePath,
+  workspaceIdentity,
+}: {
+  workspacePath: string | null;
+  workspaceIdentity?: string | null;
+}) {
   const { intl } = useZCodeIntl();
   const { list } = useCredentialVault();
+  const projectIdentity = workspaceIdentity?.trim() || workspacePath?.trim() || "";
   const [entries, setEntries] = useState<CredentialVaultEntry[]>([]);
+  const [entriesScope, setEntriesScope] = useState("");
   const [loading, setLoading] = useState(true);
   const [errorId, setErrorId] = useState<string | null>(null);
   const [dialogMode, setDialogMode] = useState<CredentialVaultDialogMode | null>(null);
+  const refreshVersion = useRef(0);
 
   const label = useCallback((id: string) => intl.formatMessage({ id }), [intl]);
   const refresh = useCallback(async () => {
+    const version = ++refreshVersion.current;
+    if (!projectIdentity) {
+      setEntries([]);
+      setEntriesScope("");
+      setLoading(false);
+      setErrorId(null);
+      return;
+    }
     setLoading(true);
     setErrorId(null);
     try {
-      setEntries(await list());
+      const result = await list(projectIdentity);
+      // 项目切换后，旧读取结果不能覆盖当前凭据列表。
+      if (refreshVersion.current === version) {
+        setEntries(result);
+        setEntriesScope(projectIdentity);
+      }
     } catch {
-      setErrorId("settings.credentials.error.load");
+      if (refreshVersion.current === version) setErrorId("settings.credentials.error.load");
     } finally {
-      setLoading(false);
+      if (refreshVersion.current === version) setLoading(false);
     }
-  }, [list]);
+  }, [list, projectIdentity]);
 
   useEffect(() => {
     void refresh();
@@ -46,6 +68,7 @@ export function CredentialVaultSection() {
   const openEdit = (entry: CredentialVaultEntry) => setDialogMode({ kind: "edit", entry });
   const openDelete = (entry: CredentialVaultEntry) => setDialogMode({ kind: "delete", entry });
   const kindLabel = (kind: CredentialVaultKind) => label(`settings.credentials.kind.${kind}`);
+  const visibleEntries = entriesScope === projectIdentity ? entries : [];
 
   return (
     <section className="space-y-5" aria-labelledby="credential-vault-heading">
@@ -58,7 +81,7 @@ export function CredentialVaultSection() {
             {label("settings.credentials.description")}
           </p>
         </div>
-        <Button type="button" size="sm" onClick={openCreate}>
+        <Button type="button" size="sm" onClick={openCreate} disabled={!projectIdentity}>
           <Plus aria-hidden="true" />
           {label("settings.credentials.add")}
         </Button>
@@ -74,7 +97,11 @@ export function CredentialVaultSection() {
         <p className="py-6 text-ui-base text-foreground-subtle">
           {label("settings.credentials.loading")}
         </p>
-      ) : entries.length === 0 ? (
+      ) : !projectIdentity ? (
+        <p className="border-y border-border py-8 text-center text-ui-sm text-foreground-subtle">
+          {label("settings.credentials.noProject")}
+        </p>
+      ) : visibleEntries.length === 0 ? (
         <div className="border-y border-border py-8 text-center">
           <KeyRound className="mx-auto mb-2 size-5 text-foreground-subtle" aria-hidden="true" />
           <p className="text-ui-base text-foreground-subtle">
@@ -83,7 +110,7 @@ export function CredentialVaultSection() {
         </div>
       ) : (
         <ul className="divide-y divide-border border-y border-border">
-          {entries.map((entry) => (
+          {visibleEntries.map((entry) => (
             <li
               key={entry.id}
               className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3"
@@ -149,6 +176,7 @@ export function CredentialVaultSection() {
 
       <CredentialVaultEntryDialog
         mode={dialogMode}
+        workspaceIdentity={projectIdentity}
         onClose={() => setDialogMode(null)}
         onChanged={refresh}
       />

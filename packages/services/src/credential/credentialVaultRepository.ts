@@ -75,16 +75,18 @@ export class CredentialVaultRepository {
 
   constructor(private readonly databasePath: string) {}
 
-  async listActive(): Promise<CredentialVaultEntry[]> {
+  async listActive(workspaceIdentity: string): Promise<CredentialVaultEntry[]> {
     const database = await this.getDatabase();
     const rows = database
       .prepare(
         `SELECT id, name, kind, environment, host, port, username, workspace_identity,
                 secret_key, previous_secret_key, status, operation_owner_pid,
                 operation_owner_started_at, created_at, updated_at
-         FROM credential_vault_entries WHERE status = 'active' ORDER BY updated_at DESC, id`,
+         FROM credential_vault_entries
+         WHERE status = 'active' AND workspace_identity = ?
+         ORDER BY updated_at DESC, id`,
       )
-      .all() as unknown as CredentialVaultRow[];
+      .all(workspaceIdentity) as unknown as CredentialVaultRow[];
     return rows.map(projectEntry);
   }
 
@@ -150,6 +152,7 @@ export class CredentialVaultRepository {
 
   async beginRotate(
     id: string,
+    workspaceIdentity: string,
     secretKey: string,
     operationOwnerPid: number,
     operationOwnerStartedAt: number,
@@ -159,18 +162,19 @@ export class CredentialVaultRepository {
     return this.transaction(database, () => {
       const row = database
         .prepare(
-          `SELECT secret_key FROM credential_vault_entries WHERE id = ? AND status = 'active'`,
+          `SELECT secret_key FROM credential_vault_entries
+           WHERE id = ? AND status = 'active' AND workspace_identity = ?`,
         )
-        .get(id) as { secret_key: string } | undefined;
+        .get(id, workspaceIdentity) as { secret_key: string } | undefined;
       if (!row) throw new Error("Credential entry is missing or busy");
       database
         .prepare(
           `UPDATE credential_vault_entries
            SET previous_secret_key = secret_key, secret_key = ?, status = 'rotating',
                operation_owner_pid = ?, operation_owner_started_at = ?, updated_at = ?
-           WHERE id = ? AND status = 'active'`,
+           WHERE id = ? AND status = 'active' AND workspace_identity = ?`,
         )
-        .run(secretKey, operationOwnerPid, operationOwnerStartedAt, now, id);
+        .run(secretKey, operationOwnerPid, operationOwnerStartedAt, now, id, workspaceIdentity);
       return row.secret_key;
     });
   }
@@ -209,7 +213,7 @@ export class CredentialVaultRepository {
         `UPDATE credential_vault_entries
          SET name = ?, kind = ?, environment = ?, host = ?, port = ?, username = ?,
              workspace_identity = ?, updated_at = ?
-         WHERE id = ? AND status = 'active'`,
+         WHERE id = ? AND status = 'active' AND workspace_identity = ?`,
       )
       .run(
         input.name,
@@ -221,20 +225,27 @@ export class CredentialVaultRepository {
         input.workspaceIdentity,
         now,
         input.id,
+        input.workspaceIdentity,
       );
     if (result.changes !== 1) throw new Error("Credential entry is missing or busy");
   }
 
   async beginDelete(
     id: string,
+    workspaceIdentity: string,
     operationOwnerPid: number,
     operationOwnerStartedAt: number,
   ): Promise<string | null> {
     const database = await this.getDatabase();
     return this.transaction(database, () => {
       const row = database
-        .prepare(`SELECT secret_key, status FROM credential_vault_entries WHERE id = ?`)
-        .get(id) as { secret_key: string; status: CredentialVaultRow["status"] } | undefined;
+        .prepare(
+          `SELECT secret_key, status FROM credential_vault_entries
+           WHERE id = ? AND workspace_identity = ?`,
+        )
+        .get(id, workspaceIdentity) as
+        | { secret_key: string; status: CredentialVaultRow["status"] }
+        | undefined;
       if (!row) return null;
       if (row.status === "deleting") return row.secret_key;
       if (row.status !== "active") throw new Error("Credential entry is busy");

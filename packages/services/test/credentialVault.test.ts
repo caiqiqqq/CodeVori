@@ -44,9 +44,10 @@ async function createFixture(t: test.TestContext) {
     root,
     repository,
     service,
-    list: service.listVaultEntries,
+    list: (workspaceIdentity = "workspace:test:qa") => service.listVaultEntries!(workspaceIdentity),
     save: service.saveVaultEntry,
-    remove: service.deleteVaultEntry,
+    remove: (id: string, workspaceIdentity = "workspace:test:qa") =>
+      service.deleteVaultEntry!(id, workspaceIdentity),
   };
 }
 
@@ -67,7 +68,8 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
   assert.equal(created.hasSecret, true);
   assert.equal("secret" in created, false);
   assert.equal("secretKey" in created, false);
-  assert.deepEqual(await fixture.list(), [created]);
+  assert.deepEqual(await fixture.list("workspace:test:qa"), [created]);
+  assert.deepEqual(await fixture.list("workspace:other"), []);
 
   const databasePath = join(fixture.root, ".codevori", "v2", "credential-vault.sqlite");
   const database = new DatabaseSync(databasePath);
@@ -93,7 +95,7 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
   );
   assert.equal(credentialsText.includes(firstSecret), false);
 
-  const listed = await fixture.list();
+  const listed = await fixture.list("workspace:test:qa");
   assert.equal("secretKey" in listed[0]!, false);
 
   await fixture.save({
@@ -135,8 +137,23 @@ test("credential vault keeps secrets out of SQLite and list results, then rotate
   assert.equal(credentialsAfterRotation.includes(firstSecret), false);
   assert.equal(credentialsAfterRotation.includes("rotated-token-9b31"), false);
 
-  await fixture.remove(created.id);
-  assert.deepEqual(await fixture.list(), []);
+  await assert.rejects(
+    fixture.save({
+      id: created.id,
+      name: "Attempted cross-project edit",
+      kind: "database",
+      environment: "test",
+      host: "other.example.invalid",
+      port: null,
+      username: null,
+      workspaceIdentity: "workspace:other",
+    }),
+    /not found in this project/,
+  );
+  await assert.rejects(fixture.remove(created.id, "workspace:other"), /not found in this project/);
+  assert.deepEqual(await fixture.list("workspace:test:qa"), [updated]);
+  await fixture.remove(created.id, "workspace:test:qa");
+  assert.deepEqual(await fixture.list("workspace:test:qa"), []);
   assert.equal(await fixture.service.load(rotatedSecretKey), null);
 });
 
@@ -149,12 +166,12 @@ test("credential vault resumes an interrupted deletion when the Host restarts", 
     host: "qa.example.invalid",
     port: 22,
     username: "deploy",
-    workspaceIdentity: null,
+    workspaceIdentity: "workspace:test:qa",
     secret: "private-key-passphrase",
   });
 
-  await fixture.repository.beginDelete(created.id, process.pid, -1);
-  assert.deepEqual(await fixture.list(), []);
+  await fixture.repository.beginDelete(created.id, "workspace:test:qa", process.pid, -1);
+  assert.deepEqual(await fixture.list("workspace:test:qa"), []);
   const existing = await fixture.repository.find(created.id);
   assert.equal(existing, null);
 });

@@ -33,12 +33,12 @@ try {
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
     import '../../../ui/src/styles.css';
-    const state:any={calls:[]};window.__credentialVault=state;
+    const state:any={calls:[],pendingReads:[],delayScope:null};window.__credentialVault=state;
     const entries:any[]=[];const secrets=new Map<string,string>();
     const service:any={
-      async listVaultEntries(){return entries.map(entry=>({...entry}))},
+      async listVaultEntries(workspaceIdentity:string){const snapshot=entries.filter(entry=>entry.workspaceIdentity===workspaceIdentity).map(entry=>({...entry}));if(state.delayScope===workspaceIdentity)return new Promise(resolve=>state.pendingReads.push(()=>resolve(snapshot)));return snapshot},
       async saveVaultEntry(input:any){
-        state.calls.push({operation:'save',hasSecret:Boolean(input.secret)});
+        state.calls.push({operation:'save',hasSecret:Boolean(input.secret),workspaceIdentity:input.workspaceIdentity});
         let entry=entries.find(candidate=>candidate.id===input.id);
         if(!entry){entry={id:crypto.randomUUID(),createdAt:Date.now(),hasSecret:true};entries.push(entry)}
         Object.assign(entry,{name:input.name,kind:input.kind,environment:input.environment,host:input.host,port:input.port,username:input.username,workspaceIdentity:input.workspaceIdentity,updatedAt:Date.now()});
@@ -46,10 +46,10 @@ try {
         state.values=()=>({count:entries.length,hasActiveSecret:Boolean(secrets.get(entry.id)),entryName:entry.name,kind:entry.kind,environment:entry.environment});
         return {...entry};
       },
-      async deleteVaultEntry(id:string){state.calls.push({operation:'delete'});entries.splice(entries.findIndex(entry=>entry.id===id),1);secrets.delete(id)},
+      async deleteVaultEntry(id:string,workspaceIdentity:string){state.calls.push({operation:'delete',workspaceIdentity});const index=entries.findIndex(entry=>entry.id===id&&entry.workspaceIdentity===workspaceIdentity);if(index>=0)entries.splice(index,1);secrets.delete(id)},
       async load(){return null},async save(){},async delete(){},
     };
-    function Fixture(){const [visible,setVisible]=useState(true);state.setVisible=setVisible;return <div className='min-h-screen bg-background p-6 text-foreground'><ServiceProvider services={{credentialService:service}}>{visible?<CredentialVaultSection/>:null}</ServiceProvider></div>}
+    function Fixture(){const [visible,setVisible]=useState(true),[workspace,setWorkspace]=useState({workspacePath:'/project-a',workspaceIdentity:'remote:project-a'});state.setVisible=setVisible;state.setWorkspace=setWorkspace;state.releaseReads=()=>state.pendingReads.splice(0).forEach((release:()=>void)=>release());return <div className='min-h-screen bg-background p-6 text-foreground'><ServiceProvider services={{credentialService:service}}>{visible?<CredentialVaultSection {...workspace}/>:null}</ServiceProvider></div>}
     createRoot(document.getElementById('root')!).render(<ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><Fixture/></TooltipProvider></ZCodeIntlProvider>);
   `,
   );
@@ -79,12 +79,12 @@ try {
   await dialog.getByLabel("名称").fill("QA 数据库");
   await dialog.getByLabel("类型").click();
   await page.getByRole("option", { name: "数据库", exact: true }).click();
-  await dialog.getByLabel("环境").click();
+  await dialog.getByLabel("用途环境").click();
   await page.getByRole("option", { name: "预发布", exact: true }).click();
   await dialog.getByLabel("主机").fill("db.qa.example.invalid");
   await dialog.getByLabel("端口").fill("5432");
   await dialog.getByLabel("用户名").fill("qa_reader");
-  await dialog.getByLabel("授权工作区标识（可选）").fill("workspace:test:qa");
+  assert.equal(await dialog.getByLabel("授权工作区标识（可选）").count(), 0);
   await dialog.getByLabel("密码或令牌").fill("synthetic-initial-secret");
   await page.screenshot({
     path: join(artifacts, "credential-vault-form.png"),
@@ -101,6 +101,45 @@ try {
     environment: "staging",
   });
   assert.doesNotMatch(await page.locator("body").innerText(), /synthetic-initial-secret/);
+  assert.equal(
+    (await page.evaluate(() => window.__credentialVault.calls)).at(-1).workspaceIdentity,
+    "remote:project-a",
+  );
+  await page.evaluate(() =>
+    window.__credentialVault.setWorkspace({
+      workspacePath: "/project-b",
+      workspaceIdentity: "remote:project-b",
+    }),
+  );
+  await page.getByText("还没有保存的凭证", { exact: true }).waitFor();
+  assert.equal(await page.getByText("QA 数据库", { exact: true }).count(), 0);
+  await page.evaluate(() => {
+    window.__credentialVault.delayScope = "remote:project-a";
+    window.__credentialVault.setWorkspace({
+      workspacePath: "/project-a",
+      workspaceIdentity: "remote:project-a",
+    });
+  });
+  await page.waitForFunction(() => window.__credentialVault.pendingReads.length === 1);
+  await page.evaluate(() =>
+    window.__credentialVault.setWorkspace({
+      workspacePath: "/project-b",
+      workspaceIdentity: "remote:project-b",
+    }),
+  );
+  await page.getByText("还没有保存的凭证", { exact: true }).waitFor();
+  await page.evaluate(() => window.__credentialVault.releaseReads());
+  assert.equal(await page.getByText("QA 数据库", { exact: true }).count(), 0);
+  await page.evaluate(() => {
+    window.__credentialVault.delayScope = null;
+  });
+  await page.evaluate(() =>
+    window.__credentialVault.setWorkspace({
+      workspacePath: "/project-a",
+      workspaceIdentity: "remote:project-a",
+    }),
+  );
+  await page.getByText("QA 数据库", { exact: true }).waitFor();
   await page.screenshot({
     path: join(artifacts, "credential-vault-list.png"),
     animations: "disabled",

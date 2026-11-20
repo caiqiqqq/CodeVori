@@ -4,12 +4,15 @@ import { useServices } from "./useServices.js";
 
 export function useCredentialVault() {
   const { credentialService } = useServices();
-  const list = useCallback(() => {
-    if (!credentialService.listVaultEntries) {
-      throw new Error("Credential vault is not available on this Host");
-    }
-    return credentialService.listVaultEntries();
-  }, [credentialService]);
+  const list = useCallback(
+    (workspaceIdentity: string) => {
+      if (!credentialService.listVaultEntries) {
+        throw new Error("Credential vault is not available on this Host");
+      }
+      return credentialService.listVaultEntries(workspaceIdentity);
+    },
+    [credentialService],
+  );
   const save = useCallback(
     (input: SaveCredentialVaultEntryInput) => {
       if (!credentialService.saveVaultEntry) {
@@ -20,11 +23,11 @@ export function useCredentialVault() {
     [credentialService],
   );
   const remove = useCallback(
-    (id: string) => {
+    (id: string, workspaceIdentity: string) => {
       if (!credentialService.deleteVaultEntry) {
         throw new Error("Credential vault is not available on this Host");
       }
-      return credentialService.deleteVaultEntry(id);
+      return credentialService.deleteVaultEntry(id, workspaceIdentity);
     },
     [credentialService],
   );

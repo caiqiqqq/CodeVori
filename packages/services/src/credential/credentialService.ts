@@ -46,7 +46,7 @@ const credentialVaultInputSchema = z
       .refine((value) => !/[\s/@?#]/u.test(value), "Enter a host name or address, not a URL"),
     port: z.number().int().min(1).max(65_535).nullable(),
     username: z.string().trim().max(255).nullable(),
-    workspaceIdentity: z.string().trim().max(2_048).nullable(),
+    workspaceIdentity: z.string().trim().min(1).max(2_048),
     secret: z.string().max(16_384).optional(),
   })
   .strict();
@@ -204,9 +204,10 @@ export function createCredentialService(
     save,
     delete: del,
 
-    async listVaultEntries() {
+    async listVaultEntries(workspaceIdentity) {
+      const scope = z.string().trim().min(1).max(2_048).parse(workspaceIdentity);
       await recoverVaultMutations();
-      return vaultRepository.listActive();
+      return vaultRepository.listActive(scope);
     },
 
     async saveVaultEntry(rawInput) {
@@ -216,6 +217,10 @@ export function createCredentialService(
       const existing = input.id ? await vaultRepository.find(id) : null;
       if (input.id && !existing) throw new Error("Credential entry was not found");
       if (existing && "status" in existing) throw new Error("Credential entry is busy");
+      // Renderer 的项目筛选只负责展示；Host 写操作仍需独立校验归属。
+      if (existing && existing.workspaceIdentity !== input.workspaceIdentity) {
+        throw new Error("Credential entry was not found in this project");
+      }
 
       const secretValue = input.secret;
       if (!existing) {
@@ -240,6 +245,7 @@ export function createCredentialService(
         const secretKey = `${CREDENTIAL_VAULT_SECRET_PREFIX}${randomUUID()}`;
         const oldSecretKey = await vaultRepository.beginRotate(
           id,
+          input.workspaceIdentity,
           secretKey,
           process.pid,
           PROCESS_STARTED_AT,
@@ -265,11 +271,24 @@ export function createCredentialService(
       return savedEntry;
     },
 
-    async deleteVaultEntry(id) {
+    async deleteVaultEntry(id, workspaceIdentity) {
       const validatedId = z.string().uuid().parse(id);
+      const validatedWorkspaceIdentity = z
+        .string()
+        .trim()
+        .min(1)
+        .max(2_048)
+        .parse(workspaceIdentity);
       await recoverVaultMutations();
+      const existing = await vaultRepository.find(validatedId);
+      if (existing && "status" in existing) throw new Error("Credential entry is busy");
+      // 删除同样必须校验项目归属，避免只靠 UI 隐藏条目形成越权边界。
+      if (existing && existing.workspaceIdentity !== validatedWorkspaceIdentity) {
+        throw new Error("Credential entry was not found in this project");
+      }
       const secretKey = await vaultRepository.beginDelete(
         validatedId,
+        validatedWorkspaceIdentity,
         process.pid,
         PROCESS_STARTED_AT,
       );

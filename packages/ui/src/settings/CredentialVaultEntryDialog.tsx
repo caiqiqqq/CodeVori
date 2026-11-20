@@ -37,7 +37,6 @@ interface CredentialDraft {
   host: string;
   port: string;
   username: string;
-  workspaceIdentity: string;
   secret: string;
 }
 
@@ -48,7 +47,6 @@ const EMPTY_DRAFT: CredentialDraft = {
   host: "",
   port: "",
   username: "",
-  workspaceIdentity: "",
   secret: "",
 };
 
@@ -63,17 +61,18 @@ function toDraft(entry?: CredentialVaultEntry): CredentialDraft {
     host: entry.host,
     port: entry.port === null ? "" : String(entry.port),
     username: entry.username ?? "",
-    workspaceIdentity: entry.workspaceIdentity ?? "",
     secret: "",
   };
 }
 
 export function CredentialVaultEntryDialog({
   mode,
+  workspaceIdentity,
   onClose,
   onChanged,
 }: {
   mode: CredentialVaultDialogMode | null;
+  workspaceIdentity: string;
   onClose: () => void;
   onChanged: () => Promise<void>;
 }) {
@@ -109,7 +108,7 @@ export function CredentialVaultEntryDialog({
       host: draft.host,
       port: draft.port ? Number(draft.port) : null,
       username: draft.username || null,
-      workspaceIdentity: draft.workspaceIdentity || null,
+      workspaceIdentity,
       ...(draft.secret ? { secret: draft.secret } : {}),
     };
     try {
@@ -129,7 +128,7 @@ export function CredentialVaultEntryDialog({
     setRemoving(true);
     setErrorId(null);
     try {
-      await remove(mode.entry.id);
+      await remove(mode.entry.id, workspaceIdentity);
       onClose();
       await onChanged();
     } catch {
@@ -260,17 +259,6 @@ export function CredentialVaultEntryDialog({
                   autoCorrect="off"
                   value={draft.username}
                   onChange={(event) => setDraft({ ...draft, username: event.target.value })}
-                />
-              </Field>
-              <Field label={label("settings.credentials.workspaceIdentity")}>
-                <Input
-                  maxLength={2048}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  value={draft.workspaceIdentity}
-                  onChange={(event) =>
-                    setDraft({ ...draft, workspaceIdentity: event.target.value })
-                  }
                 />
               </Field>
               <Field label={label("settings.credentials.secret")}>
