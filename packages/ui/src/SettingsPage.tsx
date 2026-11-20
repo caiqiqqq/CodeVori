@@ -2014,7 +2014,6 @@ export function SettingsPage({
                           <AgentsAndSquadsSection
                             view={agentSettingsView}
                             onViewChange={setAgentSettingsView}
-                            onManageModels={handleOpenModelProviderSettings}
                             workspacePath={activeWorkspacePath}
                             workspaceIdentity={activeWorkspaceIdentity}
                             remoteSessionId={acpWorkspaceTab?.remoteSessionId}
