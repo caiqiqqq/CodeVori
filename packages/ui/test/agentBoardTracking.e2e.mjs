@@ -67,7 +67,7 @@ try {
     return (
       f.native.filter((row) => !row.archived).length +
       f.acp.filter((row) => !row.archived).length +
-      1
+      2
     );
   });
   const manage = async () => {
@@ -113,16 +113,13 @@ try {
     "Implement project 22",
     "Remote ACP 0",
     "archived-review",
-    "completed-task",
   ]) {
     await search().fill(name);
-    assert.equal(
-      await candidate(name).count(),
-      0,
-      "archived/completed candidates cannot be searched",
-    );
+    assert.equal(await candidate(name).count(), 0, "archived candidates cannot be searched");
     await count(expected);
   }
+  await search().fill("completed-task");
+  await candidate("completed-task").waitFor();
   await dialog().getByRole("radio", { name: "自定义显示", exact: true }).check();
   await count(0);
   await search().fill("Remote ACP 1");
@@ -166,9 +163,9 @@ try {
   const group = dialog()
     .locator("details")
     .filter({ has: page.locator("summary", { hasText: /^Project 3 / }) });
-  assert.match(await group.locator("summary").textContent(), /Project 3\s*1/);
-  await group.getByRole("checkbox", { name: "自动跟踪此组（含后续新对话）", exact: true }).check();
-  await count(3);
+  assert.match(await group.locator("summary").textContent(), /Project 3\s*3/);
+  await group.getByRole("checkbox", { name: "自动跟踪此组（含后续新任务）", exact: true }).check();
+  await count(4);
   await save();
   const preserved = await page.evaluate(
     () => window.__board.store.getState().tracking.includedItems,
@@ -184,7 +181,7 @@ try {
     await search().fill("Remote ACP");
     assert.equal(await candidate("Remote ACP 0").count(), 0);
     assert.equal(await candidate("Remote ACP 1").isChecked(), true);
-    await count(3);
+    await count(4);
     await page.screenshot({
       path: join(artifacts, `board-tracking-archive-${width}.png`),
       animations: "disabled",

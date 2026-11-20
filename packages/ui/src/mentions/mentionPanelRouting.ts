@@ -1,15 +1,18 @@
 import type { PromptInputTrigger } from "@/lib/promptInputTriggers.js";
 
 export type MentionPanelGroupId =
+  | "squads"
   | "plugins"
   | "files"
   | "sessions"
   | "whiteboards"
   | "skills"
   | "delegation";
+// 小队与直接智能体共用委派执行路径，发现入口分别展示。
 export type SessionMentionWorkspaceScope = "current-workspace" | "same-authority-workspaces";
 
 const CONTEXT_GROUP_ORDER: readonly MentionPanelGroupId[] = [
+  "squads",
   "delegation",
   "plugins",
   "files",

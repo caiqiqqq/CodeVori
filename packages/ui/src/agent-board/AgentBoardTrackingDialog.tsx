@@ -35,23 +35,14 @@ export function AgentBoardTrackingDialog({
   const [draft, setDraft] = useState(tracking);
   const [search, setSearch] = useState("");
   const query = search.trim().toLocaleLowerCase();
-  // 完成待办已由公共看板投影排除；此处仅排除归档候选，搜索和计数共用同一列表。
+  // 所有任务使用相同项目分组；搜索和计数共享未归档投影。
   const items = allItems.filter((item) => !item.archived);
   const groups = [
-    {
-      key: "work-tasks",
-      label: t("workTasks"),
-      standalone: false,
-      items: items.filter((item) => item.kind === "work-task"),
-      path: "",
-    },
     {
       key: "standalone",
       label: t("standalone"),
       standalone: true,
-      items: items.filter(
-        (item) => item.kind !== "work-task" && item.workspacePurpose === "conversation",
-      ),
+      items: items.filter((item) => item.workspacePurpose === "conversation"),
       path: "",
     },
     ...projects
@@ -62,16 +53,12 @@ export function AgentBoardTrackingDialog({
         standalone: false,
         path: p.key,
         items: items.filter(
-          (item) =>
-            item.kind !== "work-task" &&
-            item.workspacePurpose !== "conversation" &&
-            item.projectKey === p.key,
+          (item) => item.workspacePurpose !== "conversation" && item.projectKey === p.key,
         ),
       })),
   ];
   const projectByKey = new Map(projects.map((project) => [project.key, project]));
   const visibleGroups = groups
-    .filter((group) => group.key !== "work-tasks" || group.items.length > 0)
     .map((group) => ({
       ...group,
       items: `${group.label} ${group.path}`.toLocaleLowerCase().includes(query)
@@ -82,12 +69,11 @@ export function AgentBoardTrackingDialog({
               .includes(query),
           ),
     }))
-    .filter((group) =>
-      group.key === "work-tasks"
-        ? group.items.length > 0
-        : !query ||
-          group.items.length > 0 ||
-          `${group.label} ${group.path}`.toLocaleLowerCase().includes(query),
+    .filter(
+      (group) =>
+        !query ||
+        group.items.length > 0 ||
+        `${group.label} ${group.path}`.toLocaleLowerCase().includes(query),
     );
   const setItem = (item: BoardItem, checked: boolean) =>
     setDraft((current) => ({
@@ -138,6 +124,8 @@ export function AgentBoardTrackingDialog({
             {visibleGroups.map((group) => (
               <details
                 key={group.key}
+                data-testid="tracking-project-group"
+                data-project-key={group.key}
                 open={Boolean(query) || group.standalone}
                 className="rounded-xl border border-border p-3 text-ui-base"
               >
@@ -158,31 +146,23 @@ export function AgentBoardTrackingDialog({
                 <label className="mt-3 flex items-center gap-2 border-b border-border pb-3">
                   <Checkbox
                     checked={
-                      group.key === "work-tasks"
-                        ? draft.workTasks
-                        : group.standalone
-                          ? draft.standalone
-                          : draft.projects.includes(group.key)
+                      group.standalone ? draft.standalone : draft.projects.includes(group.key)
                     }
                     onCheckedChange={(checked) =>
                       setDraft((current) =>
-                        group.key === "work-tasks"
-                          ? { ...current, workTasks: checked === true }
-                          : group.standalone
-                            ? { ...current, standalone: checked === true }
-                            : {
-                                ...current,
-                                projects: toggleKey(current.projects, group.key, checked === true),
-                              },
+                        group.standalone
+                          ? { ...current, standalone: checked === true }
+                          : {
+                              ...current,
+                              projects: toggleKey(current.projects, group.key, checked === true),
+                            },
                       )
                     }
                   />
-                  {t(group.key === "work-tasks" ? "trackWholeWorkTasks" : "trackWholeGroup")}
+                  {t("trackWholeGroup")}
                 </label>
                 <AgentBoardTrackingItems
                   items={group.items}
-                  projects={projectByKey}
-                  byProject={group.key === "work-tasks"}
                   tracking={draft}
                   onCheckedChange={setItem}
                 />

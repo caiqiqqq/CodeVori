@@ -25,12 +25,23 @@ import {
   type WorkTaskAttachmentChunk,
   type WorkTaskAttachmentTarget,
   type WorkTaskArchive,
+  type WorkTaskAcceptBranch,
+  type WorkTaskWorktreeInspection,
   type WorkTaskResultRequest,
   type WorkTaskResultCancel,
   type WorkTaskResultDraft,
   type WorkTaskResultSource,
   type WorkTaskResultSourceRequest,
   type WorkTaskChangeRecord,
+  type WorkTaskWorkflowDefinition,
+  type WorkTaskWorkflowDefinitionSave,
+  type WorkTaskWorkflowDefinitionDelete,
+  type WorkTaskWorkflowConfig,
+  type WorkTaskWorkflowSave,
+  type WorkTaskWorkflowTransition,
+  type ConversationWorkflowAttach,
+  type ConversationWorkflowRecord,
+  type ConversationWorkflowTransition,
   type RepositoryIssueSummaryRequest,
   type RepositoryIssueSummary,
   type ForgeRepositoryRequest,
@@ -47,7 +58,7 @@ import type { Event, IDisposable } from "@zcode/rpc";
 import { createServiceDescriptor } from "../descriptors.js";
 
 export interface IWorkTaskService {
-  /** Host 派生只读数量；议题状态归 Forge，任务关联归 WorkTaskRepo。 */
+  /** Host 派生议题及合并请求只读数量；条目状态归 Forge，任务关联归 WorkTaskRepo。 */
   getRepositoryIssueSummary(input: RepositoryIssueSummaryRequest): Promise<RepositoryIssueSummary>;
   getResultSource(input: WorkTaskResultSourceRequest): Promise<WorkTaskResultSource>;
   generateResult(input: WorkTaskResultRequest): Promise<WorkTaskResultDraft>;
@@ -59,6 +70,24 @@ export interface IWorkTaskService {
   attachmentAbort(input: WorkTaskAttachmentTarget): Promise<void>;
   list(input: WorkTaskScope & { includeArchived?: boolean }): Promise<WorkTaskBoard>;
   create(input: WorkTaskCreate): Promise<WorkTask>;
+  /** Host 目录定义与项目引用分别 CAS；新任务快照化，设置编辑不入队。 */
+  listWorkflows(): Promise<WorkTaskWorkflowDefinition[]>;
+  saveWorkflowDefinition(
+    input: WorkTaskWorkflowDefinitionSave,
+  ): Promise<WorkTaskWorkflowDefinition>;
+  deleteWorkflowDefinition(input: WorkTaskWorkflowDefinitionDelete): Promise<void>;
+  onDynamicWorkflowsChanged(): Event<void>;
+  /** 只选择目录 ID；远程 scope 不允许回落到本地引用。 */
+  saveWorkflow(input: WorkTaskWorkflowSave): Promise<WorkTaskWorkflowConfig>;
+  /** 比较 runSeq/状态快照；仅 Agent 入口入队，Keep/Member 保留原会话。 */
+  transitionWorkflow(input: WorkTaskWorkflowTransition): Promise<WorkTask>;
+  /** 普通 API/ACP 会话显式采用项目工作流；只保存业务状态，不影响会话执行。 */
+  attachConversationWorkflow(
+    input: ConversationWorkflowAttach,
+  ): Promise<ConversationWorkflowRecord>;
+  transitionConversationWorkflow(
+    input: ConversationWorkflowTransition,
+  ): Promise<ConversationWorkflowRecord>;
   update(input: WorkTaskUpdate): Promise<WorkTask>;
   /** 元数据改名适用于运行中任务，仅改标题，不编辑或重新执行草稿。 */
   rename(input: WorkTaskRename): Promise<WorkTask>;
@@ -70,6 +99,8 @@ export interface IWorkTaskService {
   /** removeWorktree returns durable admission; list/events carry cleanup outcome. */
   /** removeWorktree 在有效议题同步租约期间拒绝为 work-task.forge-busy；本地完成事实不撤销。 */
   archive(input: WorkTaskArchive): Promise<WorkTask>;
+  inspectWorktree(input: WorkTaskTarget): Promise<WorkTaskWorktreeInspection>;
+  acceptWorktreeBranch(input: WorkTaskAcceptBranch): Promise<WorkTask>;
   /** @deprecated Compatibility setting only; does not limit task execution. */
   setConcurrency(input: WorkTaskScope & { concurrency: number }): Promise<void>;
   getEvents(input: WorkTaskTarget): Promise<WorkTaskEvent[]>;

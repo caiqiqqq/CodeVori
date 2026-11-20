@@ -9,18 +9,18 @@ import {
   credentialValueSchema,
   formatZodError,
 } from "@zcode/shared";
-import type { ICredentialService } from "./credential.js";
+import type { CredentialVaultEntry, ICredentialService } from "./credential.js";
 import {
   createCredentialCipherProvider,
   type CredentialCipherProvider,
 } from "./providers/credentialCipherProvider.js";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { getAppConfigDir } from "../paths.js";
-import {
-  projectCredentialReferences,
-  type CredentialReferenceReader,
-} from "./credentialReferences.js";
 import { CredentialVaultRepository } from "./credentialVaultRepository.js";
+import type {
+  CredentialVaultReference,
+  CredentialVaultReferenceReader,
+} from "./credentialVaultReferenceReader.js";
 
 /**
  * 凭据存储路径
@@ -36,7 +36,7 @@ const credentialVaultInputSchema = z
   .object({
     id: z.string().uuid().optional(),
     name: z.string().trim().min(1).max(120),
-    kind: z.enum(["server", "database"]),
+    kind: z.string().trim().min(1).max(80),
     environment: z.enum(["development", "test", "staging", "production"]),
     host: z
       .string()
@@ -137,6 +137,18 @@ function hasLiveMutationOwner(pid: number | null, startedAt: number | null): boo
 export function createCredentialService(
   dependencies: CredentialServiceDependencies = {},
 ): ICredentialService {
+  return createCredentialServiceWithReferenceReader(dependencies).service;
+}
+
+export interface CredentialServiceWithReferenceReader {
+  service: ICredentialService;
+  credentialVaultReferenceReader: CredentialVaultReferenceReader;
+  listVaultMetadata(): Promise<CredentialVaultEntry[]>;
+}
+
+export function createCredentialServiceWithReferenceReader(
+  dependencies: CredentialServiceDependencies = {},
+): CredentialServiceWithReferenceReader {
   const cipherProvider = dependencies.cipherProvider ?? createCredentialCipherProvider();
   const vaultRepository =
     dependencies.vaultRepository ??
@@ -179,9 +191,10 @@ export function createCredentialService(
     }
   };
 
-  const load = async (key: string): Promise<string | null> => {
+  const load = async (key: string, assertCurrent?: () => void): Promise<string | null> => {
     const validatedKey = credentialKeySchema.parse(key);
     const creds = await readAll();
+    assertCurrent?.();
     const rawValue = creds[validatedKey];
     return rawValue === undefined ? null : cipherProvider.decrypt(rawValue);
   };
@@ -210,7 +223,7 @@ export function createCredentialService(
     dependencies.onDidMutate?.({ operation: "delete", key: validatedKey });
   };
 
-  return {
+  const service: ICredentialService = {
     load,
     save,
     delete: del,
@@ -380,14 +393,57 @@ export function createCredentialService(
       }
     },
   };
-}
 
-/** Host-only metadata reader; ACP receives the projection and never sees storage keys or values. */
-export function createCredentialReferenceReader(): CredentialReferenceReader {
-  return {
-    async list() {
-      // 中文依据：仅投影 key 名，不解密或复制凭据值，避免把秘密带入 ACP 上下文。
-      return projectCredentialReferences(Object.keys(await readAll()));
+  const credentialVaultReferenceReader: CredentialVaultReferenceReader = {
+    async listReferences(rawWorkspaceIdentity) {
+      const identity = z.string().trim().min(1).max(2_048).parse(rawWorkspaceIdentity);
+      await recoverVaultMutations();
+      return (await vaultRepository.listActive(identity)).map(projectReference);
+    },
+    async readSecret(rawWorkspaceIdentity, reference, assertCurrent) {
+      const identity = z.string().trim().min(1).max(2_048).parse(rawWorkspaceIdentity);
+      const id = z.string().uuid().parse(reference.id);
+      const unavailable = () => new Error("Saved credential is unavailable or has changed");
+      assertCurrent();
+      const saved = await vaultRepository.findActiveSecret(id, identity);
+      assertCurrent();
+      if (
+        !saved ||
+        JSON.stringify(projectReference(saved.entry)) !==
+          JSON.stringify(projectReference(reference))
+      ) {
+        throw unavailable();
+      }
+      const secret = await load(saved.secretKey, assertCurrent);
+      const current = await vaultRepository.findActiveSecret(id, identity);
+      assertCurrent();
+      if (
+        secret === null ||
+        !current ||
+        current.secretKey !== saved.secretKey ||
+        JSON.stringify(current.entry) !== JSON.stringify(saved.entry)
+      ) {
+        throw unavailable();
+      }
+      return { ...projectReference(current.entry), secret };
     },
   };
+
+  return {
+    service,
+    credentialVaultReferenceReader,
+    listVaultMetadata: () => vaultRepository.listAllActive(),
+  };
+}
+
+function projectReference({
+  id,
+  name,
+  kind,
+  environment,
+  host,
+  port,
+  username,
+}: CredentialVaultReference): CredentialVaultReference {
+  return { id, name, kind, environment, host, port, username };
 }

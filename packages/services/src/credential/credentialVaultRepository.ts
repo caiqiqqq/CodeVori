@@ -70,6 +70,39 @@ export class CredentialVaultRepository {
     return rows.map(projectCredentialVaultRow);
   }
 
+  async listAllActive(): Promise<CredentialVaultEntry[]> {
+    const database = await this.getDatabase();
+    const rows = database
+      .prepare(
+        `SELECT id, name, kind, environment, host, port, username, scope, workspace_identity,
+                secret_key, previous_secret_key, status, operation_owner_pid,
+                operation_owner_started_at, created_at, updated_at
+         FROM credential_vault_entries
+         WHERE status = 'active'
+         ORDER BY updated_at DESC, id`,
+      )
+      .all() as unknown as CredentialVaultRow[];
+    return rows.map(projectCredentialVaultRow);
+  }
+
+  async findActiveSecret(
+    id: string,
+    workspaceIdentity: string,
+  ): Promise<{ entry: CredentialVaultEntry; secretKey: string } | null> {
+    const database = await this.getDatabase();
+    const row = database
+      .prepare(
+        `SELECT id, name, kind, environment, host, port, username, scope, workspace_identity,
+                secret_key, previous_secret_key, status, operation_owner_pid,
+                operation_owner_started_at, created_at, updated_at
+         FROM credential_vault_entries
+         WHERE id = ? AND status = 'active'
+           AND (scope = 'global' OR (scope = 'project' AND workspace_identity = ?))`,
+      )
+      .get(id, workspaceIdentity) as CredentialVaultRow | undefined;
+    return row ? { entry: projectCredentialVaultRow(row), secretKey: row.secret_key } : null;
+  }
+
   async attach(id: string, workspaceIdentity: string): Promise<void> {
     const database = await this.getDatabase();
     // 同一 SQL 条件更新避免两个项目并发把同一条未关联凭证同时认领。

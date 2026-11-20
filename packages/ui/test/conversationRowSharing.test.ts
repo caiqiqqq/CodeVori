@@ -315,6 +315,151 @@ test("released view stops optional full-history hydration before committing olde
   }
 });
 
+test("navigator outline keeps full query directory without retaining older body rows", async () => {
+  const f = fixture();
+  const rows: ConversationRow[] = [];
+  for (let index = 0; index < 300; index++) {
+    const turnId = `turn-${index}`;
+    rows.push({
+      ...userRow(index * 2 + 1),
+      turnId,
+      text: `question-${index} ` + "q".repeat(1_000),
+    });
+    rows.push({
+      ...textRow(index * 2 + 2, `answer-${index} ` + "a".repeat(10_000)),
+      turnId,
+    });
+  }
+  f.setRows(rows, 60);
+  const { store, close } = await f.open();
+  try {
+    const originalWindow = store.getState().snapshot!.rows.window;
+    assert.equal((await store.loadTurnNavigatorDirectory()).status, "hydrated");
+    const state = store.getState();
+    assert.equal(state.snapshot!.rows.window, originalWindow);
+    assert.equal(state.turnNavigatorDirectory.length, 270);
+    assert.equal(state.turnNavigatorDirectory[0]?.rowId, 1);
+    assert.equal(state.turnNavigatorDirectory[0]?.userText.length, 220);
+    assert.equal(state.turnNavigatorDirectory[0]?.assistantText?.length, 220);
+    assert.equal(await store.loadOlderThrough(1), true);
+    assert.equal(store.getState().snapshot!.rows.window[0]?.rowId, 1);
+    assert.equal(store.getState().turnNavigatorDirectory.length, 0);
+  } finally {
+    await close();
+  }
+});
+
+test("body pagination does not restart a concurrent navigator directory scan", async () => {
+  const f = fixture();
+  const rows = Array.from({ length: 150 }, (_, index) => [
+    { ...userRow(index * 2 + 1), turnId: `turn-${index}` },
+    { ...textRow(index * 2 + 2), turnId: `turn-${index}` },
+  ]).flat();
+  f.setRows(rows, 60);
+  const { store, close } = await f.open();
+  const rowsRange = f.transport.rowsRange;
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let calls = 0;
+  f.transport.rowsRange = async (params) => {
+    calls++;
+    if (calls === 1) await gate;
+    return rowsRange(params);
+  };
+  try {
+    const directory = store.loadTurnNavigatorDirectory();
+    assert.equal(calls, 1);
+    await store.loadOlder();
+    assert.equal(store.getState().snapshot!.rows.window.length, 120);
+    release();
+    assert.equal((await directory).status, "hydrated");
+    const state = store.getState();
+    assert.equal(calls, 3, "the directory keeps its original scan cursor");
+    assert.equal(state.turnNavigatorDirectory.length, 90);
+    assert.ok(
+      state.turnNavigatorDirectory.every(
+        (entry) => entry.rowId < state.snapshot!.rows.window[0]!.rowId,
+      ),
+    );
+  } finally {
+    release();
+    await close();
+  }
+});
+
+for (const recovery of [false, true]) {
+  test(`${recovery ? "recovery" : "initial"} navigator uses the metadata port while body loading keeps full rows`, async () => {
+    const f = fixture();
+    const rows = Array.from({ length: 150 }, (_, index) => [
+      { ...userRow(index * 2 + 1), turnId: `turn-${index}` },
+      { ...textRow(index * 2 + 2, "complete answer".repeat(100)), turnId: `turn-${index}` },
+    ]).flat();
+    f.setRows(rows, 60);
+    const range = f.transport.rowsRange;
+    let bodyCalls = 0,
+      directoryCalls = 0;
+    f.transport.rowsRange = async (params) => {
+      bodyCalls++;
+      return range(params);
+    };
+    f.transport.turnNavigatorRange = async (params) => {
+      directoryCalls++;
+      const page = await range(params);
+      return {
+        ...page,
+        rows: page.rows.map((row) =>
+          row.kind === "userInput" || row.kind === "assistantText"
+            ? { ...row, text: row.text.slice(0, 220) }
+            : row,
+        ),
+      };
+    };
+    const { store, close } = await f.open();
+    if (recovery) f.snapshot("recovery");
+    try {
+      const original = store.getState().snapshot!.rows.window;
+      assert.equal((await store.loadTurnNavigatorDirectory()).status, "hydrated");
+      assert.equal(bodyCalls, 0);
+      assert.equal(directoryCalls, 2);
+      assert.equal(store.getState().snapshot!.rows.window, original);
+      assert.equal(store.getState().turnNavigatorDirectory.length, 120);
+      assert.equal(await store.loadOlderThrough(1), true);
+      assert.ok(bodyCalls > 0);
+      const restored = store.getState().snapshot!.rows.window.find((row) => row.rowId === 2);
+      assert.ok(restored?.kind === "assistantText" && restored.text.length > 220);
+    } finally {
+      await close();
+    }
+  });
+}
+
+test("stale navigator outline is discarded after a branch snapshot", async () => {
+  const f = fixture();
+  const { store, close } = await f.open();
+  const rowsRange = f.transport.rowsRange;
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.transport.rowsRange = async (params) => {
+    await gate;
+    return rowsRange(params);
+  };
+  try {
+    const pending = store.loadTurnNavigatorDirectory();
+    f.setRows([userRow(3), textRow(4)]);
+    f.snapshot();
+    release();
+    assert.equal((await pending).status, "stale");
+    assert.deepEqual(store.getState().turnNavigatorDirectory, []);
+  } finally {
+    release();
+    await close();
+  }
+});
+
 test("stale history cannot enter projection or replace pool entries", async () => {
   const f = fixture();
   const { store, close } = await f.open();

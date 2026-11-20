@@ -300,7 +300,8 @@ test("vault migration preserves legacy project attachments and unassigned rows",
   const legacyDatabase = new DatabaseSync(databasePath);
   legacyDatabase.exec(`
     CREATE TABLE credential_vault_entries (
-      id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, environment TEXT NOT NULL,
+      id TEXT PRIMARY KEY, name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('server', 'database')), environment TEXT NOT NULL,
       host TEXT NOT NULL, port INTEGER, username TEXT, workspace_identity TEXT,
       secret_key TEXT NOT NULL, previous_secret_key TEXT,
       status TEXT NOT NULL, operation_owner_pid INTEGER, operation_owner_started_at INTEGER,
@@ -333,4 +334,23 @@ test("vault migration preserves legacy project attachments and unassigned rows",
     })),
     [{ scope: "unassigned", workspaceIdentity: null }],
   );
+  await repository.reserveCreate(
+    {
+      name: "Custom type",
+      kind: "vendor-specific",
+      environment: "test",
+      host: "custom.example.invalid",
+      port: null,
+      username: null,
+      scope: "unassigned",
+      workspaceIdentity: null,
+      secret: "stored-separately",
+    },
+    "00000000-0000-4000-8000-000000000001",
+    "credential-vault:custom-type",
+    process.pid,
+    Date.now(),
+    Date.now(),
+  );
+  assert.equal((await repository.find("00000000-0000-4000-8000-000000000001"))?.status, "creating");
 });
