@@ -101,12 +101,6 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     groupId: "basics",
   },
   {
-    id: "worktrees",
-    icon: FolderTree,
-    titleId: "settings.worktrees.title",
-    groupId: "basics",
-  },
-  {
     id: "versionControl",
     icon: GitBranch,
     titleId: "settings.versionControl.title",
@@ -205,6 +199,12 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     id: "conversationArchive",
     icon: Archive,
     titleId: "workspaceSidebar.archivedTasks",
+    groupId: "dataAndStats",
+  },
+  {
+    id: "worktrees",
+    icon: FolderTree,
+    titleId: "settings.worktrees.title",
     groupId: "dataAndStats",
   },
   {

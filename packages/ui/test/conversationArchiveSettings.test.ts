@@ -21,10 +21,11 @@ test("archive has one data menu entry on all platforms", () => {
     const entries = settingsSections.filter((section) => section.id === "conversationArchive");
     assert.equal(entries.length, 1);
     assert.equal(entries[0].titleId, "workspaceSidebar.archivedTasks");
-    assert.ok(
-      settingsSectionGroups
-        .find((group) => group.id === "dataAndStats")
-        ?.sections.includes(entries[0]),
+    const dataAndStats = settingsSectionGroups.find((group) => group.id === "dataAndStats");
+    assert.ok(dataAndStats?.sections.includes(entries[0]));
+    assert.deepEqual(
+      dataAndStats?.sections.map((section) => section.id),
+      ["remoteSync", "conversationArchive", "worktrees", "usage"],
     );
     assert.equal(
       resolveSettingsSectionForPlatform("conversationArchive", settingsSections),
