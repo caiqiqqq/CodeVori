@@ -265,22 +265,17 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   await page.waitForFunction(() => document.querySelectorAll("[data-board-card]").length === 3);
   assert.equal(
     await page.getByRole("combobox", { name: "分组方式", exact: true }).inputValue(),
-    "status",
+    "workflow",
   );
-  assert.deepEqual(
-    await groups.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn)),
-    ["running", "completed", "staged", "error"],
-  );
-  assert.equal(await page.locator('[data-board-column="running"] article').count(), 2);
-  assert.equal(await page.locator('[data-board-column="completed"] article').count(), 1);
-  assert.equal(await page.locator('[data-board-column="error"] article').count(), 0);
-  // 用户可主动选项目分组，但从选择器回到所有项目后恢复四列。
+  assert.equal(await groups.count(), 6);
+  assert.equal(await page.locator("[data-board-column] [data-board-card]").count(), 3);
+  // 用户可主动选项目分组，但从选择器回到所有项目后恢复工作流列。
   await page.getByRole("combobox", { name: "分组方式", exact: true }).selectOption("project");
   assert.equal(await groups.count(), 2);
   await page.getByRole("button", { name: "所有项目", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "所有项目", exact: true }).click();
-  assert.equal(await groups.count(), 4);
-  assert.equal(await page.evaluate(() => window.__board.store.getState().group), "status");
+  assert.equal(await groups.count(), 6);
+  assert.equal(await page.evaluate(() => window.__board.store.getState().group), "workflow");
   await page.setViewportSize({ width: 1600, height: 1000 });
   for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {
     await page.evaluate((value) => (document.documentElement.className = value), theme);

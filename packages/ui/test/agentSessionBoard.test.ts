@@ -17,6 +17,7 @@ import {
   workTaskResultToken,
   boardStatusIndicator,
   BOARD_DISPLAY_STATUSES,
+  DEFAULT_BOARD_WORKFLOW_STATUSES,
   type BoardItem,
   type BoardTracking,
 } from "../src/agent-board/agentBoardModel.js";
@@ -57,6 +58,65 @@ test("custom status order persists and invalid orders only reset that preference
   assert.deepEqual(createAgentBoardStore(storage).getState().statusOrder, BOARD_DISPLAY_STATUSES);
 });
 
+test("workflow configuration and per-item assignments persist and disabled lanes migrate atomically", () => {
+  let raw: string | null = null;
+  let writes = 0;
+  const storage = {
+    getItem: () => raw,
+    setItem: (_: string, value: string) => {
+      raw = value;
+      writes += 1;
+    },
+    removeItem() {},
+  };
+  const item = { key: "[workspace,native,session]", kind: "native" } as BoardItem;
+  const store = createAgentBoardStore(storage);
+  store.getState().setItemWorkflowStatus(item, "review");
+  const configured = store
+    .getState()
+    .workflowStatuses.map((status) =>
+      status.id === "review" ? { ...status, label: "验收" } : status,
+    );
+  store.getState().setWorkflowStatuses(configured);
+  const restored = createAgentBoardStore(storage);
+  assert.equal(
+    restored.getState().workflowStatuses.find((status) => status.id === "review")?.label,
+    "验收",
+  );
+  assert.equal(restored.getState().workflowAssignments[item.key], "review");
+  const beforeDisable = writes;
+  restored
+    .getState()
+    .setWorkflowStatuses(
+      configured.map((status) => (status.id === "review" ? { ...status, enabled: false } : status)),
+    );
+  assert.equal(writes, beforeDisable + 1);
+  assert.equal(createAgentBoardStore(storage).getState().workflowAssignments[item.key], "todo");
+});
+
+test("invalid workflow preferences recover without accepting disabled or duplicate statuses", () => {
+  const state = createAgentBoardStore({
+    getItem: () =>
+      JSON.stringify({
+        group: "workflow",
+        view: "all",
+        project: null,
+        pinnedProjects: null,
+        agent: "all",
+        search: "",
+        workflowStatuses: [
+          { id: "same", label: "One", enabled: true },
+          { id: "same", label: "Two", enabled: true },
+        ],
+        workflowAssignments: { kept: "same" },
+      }),
+    setItem() {},
+    removeItem() {},
+  }).getState();
+  assert.deepEqual(state.workflowStatuses, DEFAULT_BOARD_WORKFLOW_STATUSES);
+  assert.deepEqual(state.workflowAssignments, {});
+});
+
 test("status views separate ongoing, completed, failed and archived work", () => {
   for (const status of BOARD_STATUSES) {
     const item = { status, archived: false } as BoardItem;
@@ -79,7 +139,7 @@ test("status views separate ongoing, completed, failed and archived work", () =>
   assert.equal(boardDisplayStatus({ kind: "native", status: "idle" } as BoardItem), "running");
 });
 
-test("new preferences use status columns and new status views restore saved grouping", () => {
+test("new preferences use workflow columns and status views restore saved grouping", () => {
   let raw: string | null = null;
   const storage = {
     getItem: () => raw,
@@ -89,7 +149,7 @@ test("new preferences use status columns and new status views restore saved grou
     removeItem() {},
   };
   const store = createAgentBoardStore(storage);
-  assert.equal(store.getState().group, "status");
+  assert.equal(store.getState().group, "workflow");
   store.getState().setGroup("project");
   for (const view of ["completed", "failed"] as const) {
     store.getState().setView(view);
@@ -101,7 +161,7 @@ test("new preferences use status columns and new status views restore saved grou
 
 test("legacy starred view migrates to all without resetting board preferences", () => {
   const preferences = {
-    layoutVersion: 2,
+    layoutVersion: 3,
     project: "/project",
     pinnedProjects: ["/project"],
     view: "starred",
@@ -158,7 +218,7 @@ test("legacy project layout migrates without discarding scope; all-project navig
     removeItem() {},
   };
   const store = createAgentBoardStore(storage);
-  assert.equal(store.getState().group, "status");
+  assert.equal(store.getState().group, "workflow");
   for (const field of [
     "project",
     "pinnedProjects",
@@ -186,7 +246,7 @@ test("legacy project layout migrates without discarding scope; all-project navig
     const restored = createAgentBoardStore(storage).getState();
     assert.equal(restored.project, null);
     assert.equal(restored.category, "all");
-    assert.equal(restored.group, "status");
+    assert.equal(restored.group, "workflow");
     assert.deepEqual(restored.tracking, legacy.tracking);
   }
 });

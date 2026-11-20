@@ -12,6 +12,7 @@ import { exerciseAgentBoardLayout } from "./agentBoardLayoutScenario.mjs";
 import { exerciseAgentBoardInterruption } from "./agentBoardInterruptionScenario.mjs";
 import { agentBoardFixture } from "./agentBoardFixture.mjs";
 import { exerciseAgentBoardWorkTasks } from "./agentBoardWorkTasksScenario.mjs";
+import { exerciseAgentBoardWorkflow } from "./agentBoardWorkflowScenario.mjs";
 // Real board components/data hooks and command routing; synthetic Host and chat pane.
 import assert from "node:assert/strict";
 import { writeFile, rm, mkdir } from "node:fs/promises";
@@ -391,6 +392,7 @@ try {
   await exerciseAgentBoardUnread(page, artifacts);
   await exerciseAgentBoardAgentLabels(page, artifacts);
   await exerciseAgentBoardSidebar(page, artifacts);
+  await exerciseAgentBoardWorkflow(page);
   assert.deepEqual(errors, []);
   console.log(
     "PASS: real board/hooks; 24 projects; identity routing; API/ACP automatic completion/archive; six-pin limit; search; desktop themes; mobile drawer; new session; work-task selection, scoped conversation, acceptance failure/retry, archive/read-only; staging drag/buttons/persistence/restart; waiting indicators and resume; unread acknowledgement/CAS/failure/reload; completion-time sorting; favorites removed/legacy migration; sidebar status counts/icons/zero hiding/tracking/live updates/narrow layout. Screenshots: " +

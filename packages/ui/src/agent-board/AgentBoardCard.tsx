@@ -25,18 +25,20 @@ export function AgentBoardCard({
   projectLabel,
   onOpen,
   onStage,
+  draggable = false,
 }: {
   item: BoardItem;
   projectLabel?: string;
   onOpen(): void;
   onStage(item: BoardItem): void;
+  draggable?: boolean;
 }) {
   const { intl, locale } = useZCodeIntl();
   const t = (id: string) => intl.formatMessage({ id: `agentBoard.${id}` });
   const canStage = canStageBoardItem(item);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: item.key,
-    disabled: !canStage || item.staged,
+    disabled: draggable ? item.archived : !canStage || item.staged,
   });
   const colors = boardStatusColors;
   const status = boardStatusIndicator(item);
@@ -131,16 +133,16 @@ export function AgentBoardCard({
         </div>
         {!item.online ? <p className="mt-2 text-ui-caption text-warning">{t("offline")}</p> : null}
       </button>
-      {canStage || !isConversation ? (
+      {canStage || draggable || !isConversation ? (
         <div className="flex items-center justify-end gap-2 border-t border-border/60 px-3 py-1">
-          {canStage && !item.staged ? (
+          {draggable || (canStage && !item.staged) ? (
             <Button
               variant="ghost"
               size="icon-sm"
               className="touch-none cursor-grab"
               {...listeners}
               {...attributes}
-              aria-label={t("dragToStaged")}
+              aria-label={t(draggable ? "dragToWorkflowStatus" : "dragToStaged")}
             >
               <GripVertical className="size-3.5" />
             </Button>

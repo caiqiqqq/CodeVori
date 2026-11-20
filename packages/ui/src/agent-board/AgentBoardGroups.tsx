@@ -8,19 +8,21 @@ import {
   type BoardDisplayStatus,
 } from "./agentBoardModel.js";
 
-type BoardGroup = { key: string; label: string; items: BoardItem[] };
+type BoardGroup = { key: string; label: string; items: BoardItem[]; workflowStatusId?: string };
 export function AgentBoardGroups({
   columns,
   byStatus,
   projects,
   onOpen,
   onStage,
+  workflowStatuses,
 }: {
   columns: BoardGroup[];
   byStatus: boolean;
   projects: BoardProject[];
   onOpen(item: BoardItem): void;
   onStage(item: BoardItem): void;
+  workflowStatuses: boolean;
 }) {
   // 项目分区只由当前可见会话构成；待办所属项目不能再占一个空列。
   const groups = byStatus ? columns : columns.filter((column) => column.items.length > 0);
@@ -34,7 +36,12 @@ export function AgentBoardGroups({
       data-testid="agent-board-columns"
     >
       {groups.map((column) => (
-        <BoardColumn key={column.key} column={column} byStatus={byStatus}>
+        <BoardColumn
+          key={column.key}
+          column={column}
+          byStatus={byStatus}
+          workflowStatuses={workflowStatuses}
+        >
           <h2 className="mb-3 flex items-center gap-2 px-1 font-medium">
             {byStatus &&
             column.key === "running" &&
@@ -74,6 +81,7 @@ export function AgentBoardGroups({
                 projectLabel={projects.find((project) => project.key === item.projectKey)?.label}
                 onOpen={() => onOpen(item)}
                 onStage={onStage}
+                draggable={workflowStatuses}
               />
             ))}
           </div>
@@ -86,16 +94,20 @@ export function AgentBoardGroups({
 function BoardColumn({
   column,
   byStatus,
+  workflowStatuses,
   children,
 }: {
   column: BoardGroup;
   byStatus: boolean;
+  workflowStatuses: boolean;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column:${column.key}`,
-    disabled: !byStatus || column.key !== "staged",
-    data: { boardStaging: true },
+    disabled: !byStatus || (!workflowStatuses && column.key !== "staged"),
+    data: workflowStatuses
+      ? { boardWorkflowStatusId: column.workflowStatusId }
+      : { boardStaging: true },
   });
   return (
     <section
