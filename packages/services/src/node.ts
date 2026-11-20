@@ -1473,7 +1473,7 @@ export function createLocalServices(options: {
   let acpServiceForEnvironment: import("./acp/acpService.js").IAcpService | undefined;
   const projectEnvironmentService = createProjectEnvironmentService({
     databasePath: join(resolveAppConfigDir(), "credential-vault.sqlite"),
-    listCredentials: () => credentialHost.listVaultMetadata(),
+    listCredentials: (workspaceIdentity) => credentialHost.listVaultMetadata(workspaceIdentity),
     assertSessionIdle: async (scope) => {
       if (scope.kind === "api") {
         if (!agentServiceForEnvironment) throw new Error("environment.session-unavailable");

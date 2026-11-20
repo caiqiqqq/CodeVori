@@ -78,4 +78,21 @@ export function initializeCredentialVaultSchema(database: DatabaseSync): void {
       COMMIT;
     `);
   }
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS credential_vault_project_attachments (
+      credential_id TEXT NOT NULL REFERENCES credential_vault_entries(id) ON DELETE CASCADE,
+      workspace_identity TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (credential_id, workspace_identity)
+    );
+    CREATE INDEX IF NOT EXISTS credential_vault_project_attachments_workspace
+      ON credential_vault_project_attachments(workspace_identity, credential_id);
+    INSERT OR IGNORE INTO credential_vault_project_attachments
+      (credential_id, workspace_identity, created_at)
+    SELECT id, workspace_identity, updated_at
+    FROM credential_vault_entries
+    WHERE scope = 'project' AND workspace_identity IS NOT NULL;
+    UPDATE credential_vault_entries SET workspace_identity = NULL WHERE scope = 'project';
+  `);
 }

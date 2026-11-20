@@ -25,6 +25,15 @@ export function useCredentialVault() {
     }
     return credentialService.listUnassignedVaultEntries();
   }, [credentialService]);
+  const listAttachable = useCallback(
+    (workspaceIdentity: string) => {
+      if (!credentialService.listAttachableVaultEntries) {
+        throw new Error("Credential vault is not available on this Host");
+      }
+      return credentialService.listAttachableVaultEntries(workspaceIdentity);
+    },
+    [credentialService],
+  );
   const listGlobal = useCallback(() => {
     if (!credentialService.listGlobalVaultEntries) {
       throw new Error("Credential vault is not available on this Host");
@@ -149,6 +158,7 @@ export function useCredentialVault() {
   return {
     list,
     listUnassigned,
+    listAttachable,
     listGlobal,
     save,
     remove,

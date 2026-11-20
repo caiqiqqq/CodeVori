@@ -25,7 +25,7 @@ const sessionKey = (scope: ProjectEnvironmentSession) =>
 
 export function createProjectEnvironmentService(options: {
   databasePath: string;
-  listCredentials(): Promise<CredentialVaultEntry[]>;
+  listCredentials(workspaceIdentity: string): Promise<CredentialVaultEntry[]>;
   assertSessionIdle(scope: ProjectEnvironmentSession): Promise<void>;
 }): ProjectEnvironmentService & {
   dispose(): void;
@@ -45,7 +45,7 @@ export function createProjectEnvironmentService(options: {
   };
   const resolve = async (profile: ProjectEnvironment): Promise<ResolvedProjectEnvironment> => {
     const key = resolveWorkspaceKey(profile);
-    const credentials = (await options.listCredentials()).filter(
+    const credentials = (await options.listCredentials(key)).filter(
       (entry) =>
         entry.scope === "global" || (entry.scope === "project" && entry.workspaceIdentity === key),
     );
@@ -99,7 +99,7 @@ export function createProjectEnvironmentService(options: {
       const key = resolveWorkspaceKey(input);
       const existing = input.id ? repo.find(input.id) : null;
       if (existing) owned(existing, input);
-      const credentials = await options.listCredentials();
+      const credentials = await options.listCredentials(key);
       for (const resource of input.resources) {
         // 已失效的旧引用可保留供修复；新引用不能越过凭证自身的授权范围。
         const unchanged = existing?.resources.some(

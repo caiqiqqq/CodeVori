@@ -14,6 +14,7 @@ export interface ICredentialService extends Partial<ProjectEnvironmentService> {
   save(key: string, value: string): Promise<void>;
   delete(key: string): Promise<void>;
   listUnassignedVaultEntries?(): Promise<CredentialVaultEntry[]>;
+  listAttachableVaultEntries?(workspaceIdentity: string): Promise<CredentialVaultEntry[]>;
   listGlobalVaultEntries?(): Promise<CredentialVaultEntry[]>;
   listVaultEntries?(workspaceIdentity: string): Promise<CredentialVaultEntry[]>;
   saveVaultEntry?(input: SaveCredentialVaultEntryInput): Promise<CredentialVaultEntry>;
