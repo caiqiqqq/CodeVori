@@ -162,6 +162,21 @@ try {
   await page.getByRole("button", { name: "为项目选择工作流", exact: true }).click();
   const projects = page.getByTestId("settings-projects");
   await projects.waitFor();
+  const projectGroup = projects
+    .getByTestId("project-group")
+    .filter({ hasText: "/fixture/project-3" });
+  const worktreeRow = projectGroup.getByTestId("project-worktree-row");
+  assert.equal(await worktreeRow.count(), 1);
+  assert.equal(await worktreeRow.getByText("/fixture/project-linked", { exact: true }).count(), 1);
+  assert.equal(
+    await projectGroup.getByRole("combobox", { name: "项目工作流", exact: true }).count(),
+    1,
+  );
+  assert.equal(await worktreeRow.getByRole("combobox", { name: "项目工作流" }).count(), 0);
+  await projects.getByRole("textbox", { name: "搜索项目", exact: true }).fill("project-linked");
+  assert.equal(await projects.getByTestId("project-group").count(), 1);
+  assert.equal(await projects.getByTestId("project-worktree-row").count(), 1);
+  await projects.getByRole("textbox", { name: "搜索项目", exact: true }).fill("");
   const project = projects.getByText("/fixture/project-3", { exact: true }).locator("../..");
   await project.getByRole("combobox", { name: "项目工作流", exact: true }).click();
   await page.getByRole("option", { name: "研发流程", exact: true }).click();
@@ -170,6 +185,11 @@ try {
     .getByText("研发流程", { exact: true })
     .waitFor();
   await page.getByRole("button", { name: "工作流", exact: true }).click();
+  await page.getByTestId("workflow-stage-preview").waitFor();
+  assert.deepEqual(
+    await page.getByTestId("workflow-stage-preview").first().locator("li").allTextContents(),
+    ["待办", "进行中", "审核中", "已阻塞", "已完成", "已取消"],
+  );
   await page.getByRole("button", { name: "删除「研发流程」", exact: true }).waitFor();
   assert.equal(
     await page.getByRole("button", { name: "删除「研发流程」", exact: true }).isDisabled(),

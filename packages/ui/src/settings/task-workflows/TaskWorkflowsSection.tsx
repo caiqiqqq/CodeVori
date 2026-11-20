@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Workflow, ArrowUpRight, Trash2 } from "lucide-react";
+import { Plus, Workflow, ArrowUpRight, Trash2, ChevronRight } from "lucide-react";
 import type { WorkTaskWorkflowDefinition } from "@zcode/shared";
 import { useTaskWorkflows } from "@/hooks/useTaskWorkflows.js";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
@@ -8,6 +8,7 @@ import { setPendingSettingsSection } from "@/lib/settingsNavigation.js";
 import { Button } from "@/components/ui/button.js";
 import { WorkTaskError, useWorkTaskMessages } from "@/work-tasks/WorkTaskParts.js";
 import { TaskWorkflowEditor } from "./TaskWorkflowEditor.js";
+import { WorkflowStatusIcon } from "./WorkflowStepList.js";
 
 export function TaskWorkflowsSection() {
   const catalog = useTaskWorkflows();
@@ -65,32 +66,58 @@ export function TaskWorkflowsSection() {
           {t("loading")}
         </p>
       ) : null}
-      <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+      <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
         {catalog.definitions.map((definition) => (
-          <li key={definition.workflow.id} className="flex min-w-0 items-center gap-3 px-4 py-4">
+          <li
+            key={definition.workflow.id}
+            className="flex min-w-0 flex-col gap-3 px-4 py-4 md:flex-row md:items-center"
+          >
             <button
               type="button"
-              className="flex min-w-0 flex-1 items-start gap-3 text-left"
+              className="flex min-w-0 flex-1 flex-col gap-3 text-left sm:flex-row sm:items-start"
               onClick={() => setEditor({ definition })}
             >
               <Workflow className="mt-0.5 size-4 shrink-0 text-foreground-subtle" />
-              <span className="min-w-0">
-                <span className="block text-ui-base font-medium">{definition.workflow.name}</span>
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="text-ui-base font-medium">{definition.workflow.name}</span>
+                  <span className="text-ui-xs text-foreground-subtlest">
+                    {t("workflow.summary", {
+                      steps: definition.workflow.stages.filter((item) => item.enabled !== false)
+                        .length,
+                      projects: definition.projectKeys.length,
+                    })}
+                  </span>
+                </span>
                 {definition.workflow.description ? (
                   <span className="mt-1 block text-ui-sm text-foreground-subtle">
                     {definition.workflow.description}
                   </span>
                 ) : null}
-                <span className="mt-2 block text-ui-sm text-foreground-subtlest">
-                  {t("workflow.summary", {
-                    steps: definition.workflow.stages.filter((item) => item.enabled !== false)
-                      .length,
-                    projects: definition.projectKeys.length,
-                  })}
-                </span>
+                <ol
+                  aria-label={definition.workflow.name}
+                  className="mt-2 flex min-w-0 flex-wrap items-center gap-y-1 text-ui-xs"
+                  data-testid="workflow-stage-preview"
+                >
+                  {definition.workflow.stages
+                    .filter((stage) => stage.enabled !== false)
+                    .map((stage, index) => (
+                      <li key={stage.id} className="inline-flex min-w-0 items-center gap-1">
+                        {index ? (
+                          <ChevronRight
+                            aria-hidden="true"
+                            className="mx-1 size-3 shrink-0 text-foreground-subtlest"
+                          />
+                        ) : null}
+                        <span className="inline-flex min-w-0 items-center gap-1 rounded-full border border-border bg-surface px-2 py-1">
+                          <WorkflowStatusIcon stage={stage} />
+                          <span className="max-w-36 truncate">{stage.name}</span>
+                        </span>
+                      </li>
+                    ))}
+                </ol>
               </span>
             </button>
-            <ArrowUpRight className="size-4 text-foreground-subtle" />
             <Button
               variant="ghost"
               size="icon"
@@ -114,10 +141,19 @@ export function TaskWorkflowsSection() {
         ))}
       </ul>
       {!catalog.loading && !catalog.definitions.length ? (
-        <div className="space-y-2 py-12 text-center">
-          <Workflow className="mx-auto size-6 text-foreground-subtlest" />
-          <p className="text-ui-base">{t("workflow.empty")}</p>
-          <p className="text-ui-sm text-foreground-subtle">{t("workflow.emptyHelp")}</p>
+        <div className="flex min-h-40 flex-col items-center justify-center gap-2 border-y border-border py-8 text-center">
+          <Workflow className="size-5 text-foreground-subtlest" />
+          <p className="text-ui-base font-medium">{t("workflow.empty")}</p>
+          <p className="max-w-md text-ui-sm text-foreground-subtle">{t("workflow.emptyHelp")}</p>
+          <Button
+            variant="outline"
+            className="mt-2"
+            disabled={catalog.busy || catalog.loading || !!catalog.error}
+            onClick={() => setEditor({ definition: null })}
+          >
+            <Plus className="size-4" />
+            {t("workflow.new")}
+          </Button>
         </div>
       ) : null}
       <Button variant="ghost" onClick={onProjects}>
