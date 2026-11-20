@@ -81,6 +81,7 @@ import { DeviceBridgeSettingsSection } from "@/settings/DeviceBridgeSettingsSect
 import { BrowserSettingsSection } from "@/settings/BrowserSettingsSection.js";
 import { ComputerUseSection } from "@/settings/ComputerUseSection.js";
 import { CredentialVaultSection } from "@/settings/CredentialVaultSection.js";
+import { useProjectManagement } from "@/hooks/useProjectManagement.js";
 import { ShortcutSettingsSection } from "@/settings/ShortcutSettingsSection.js";
 import { QuickMessagesSection } from "@/settings/QuickMessagesSection.js";
 import { WorktreesSection } from "@/settings/WorktreesSection.js";
@@ -694,6 +695,7 @@ export function SettingsPage({
   const services = useServices();
   const onboardingRecordService = services.onboardingRecordService;
   const localHostServices = useBaseWorkspaceServices();
+  const { projects: managedProjects } = useProjectManagement();
   const { settings: sharedSettings, update: updateSharedSettings } = useSettings();
   const memoryWorkspaceDisplayNames = useMemo(() => {
     const names = new Set<string>();
@@ -1940,8 +1942,9 @@ export function SettingsPage({
                           />
                         ) : activeSection === "credentials" ? (
                           <CredentialVaultSection
-                            workspacePath={activeWorkspacePath}
-                            workspaceIdentity={activeWorkspaceIdentity}
+                            initialWorkspacePath={activeWorkspacePath}
+                            initialWorkspaceIdentity={activeWorkspaceIdentity}
+                            projects={managedProjects}
                           />
                         ) : activeSection === "skill" ? (
                           <PluginsSection

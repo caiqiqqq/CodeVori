@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Database, Link2, Pencil, Plus, Server, Trash2, Unlink } from "lucide-react";
 import type {
   CredentialVaultEntry,
@@ -18,15 +18,40 @@ function environmentLabel(environment: CredentialVaultEnvironment, label: (id: s
 }
 
 export function CredentialVaultSection({
-  workspacePath,
-  workspaceIdentity,
+  initialWorkspacePath,
+  initialWorkspaceIdentity,
+  projects,
 }: {
-  workspacePath: string | null;
-  workspaceIdentity?: string | null;
+  initialWorkspacePath: string | null;
+  initialWorkspaceIdentity?: string | null;
+  projects: Array<{
+    workspacePath: string;
+    workspaceIdentity?: string;
+    label: string;
+  }>;
 }) {
   const { intl } = useZCodeIntl();
   const { list, listUnassigned, attach, detach } = useCredentialVault();
-  const projectIdentity = workspaceIdentity?.trim() || workspacePath?.trim() || "";
+  const knownProjects = useMemo(() => {
+    const unique = new Map<string, { identity: string; label: string; workspacePath: string }>();
+    for (const project of projects) {
+      const identity = project.workspaceIdentity?.trim() || project.workspacePath.trim();
+      if (!identity) continue;
+      unique.set(identity, {
+        identity,
+        label: project.label,
+        workspacePath: project.workspacePath,
+      });
+    }
+    return [...unique.values()];
+  }, [projects]);
+  const initialProjectIdentity = initialWorkspaceIdentity?.trim() || initialWorkspacePath?.trim();
+  const [selectedProjectIdentity, setSelectedProjectIdentity] = useState<string | null>(
+    initialProjectIdentity || null,
+  );
+  const selectedProject =
+    knownProjects.find((project) => project.identity === selectedProjectIdentity) ?? null;
+  const projectIdentity = selectedProject?.identity ?? "";
   const [projectEntries, setProjectEntries] = useState<CredentialVaultEntry[]>([]);
   const [availableEntries, setAvailableEntries] = useState<CredentialVaultEntry[]>([]);
   const [entriesScope, setEntriesScope] = useState<string | null>(null);
@@ -40,6 +65,18 @@ export function CredentialVaultSection({
   activeProjectIdentity.current = projectIdentity;
 
   const label = useCallback((id: string) => intl.formatMessage({ id }), [intl]);
+  useEffect(() => {
+    if (
+      selectedProjectIdentity &&
+      knownProjects.some((project) => project.identity === selectedProjectIdentity)
+    ) {
+      return;
+    }
+    const initialProject = knownProjects.find(
+      (project) => project.identity === initialProjectIdentity,
+    );
+    setSelectedProjectIdentity(initialProject?.identity ?? knownProjects[0]?.identity ?? null);
+  }, [initialProjectIdentity, knownProjects, selectedProjectIdentity]);
   const refresh = useCallback(async () => {
     const version = ++refreshVersion.current;
     setLoading(true);
@@ -61,6 +98,9 @@ export function CredentialVaultSection({
       if (refreshVersion.current === version) setLoading(false);
     }
   }, [list, listUnassigned, projectIdentity]);
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const refreshLatest = useCallback(() => refreshRef.current(), []);
 
   useEffect(() => {
     void refresh();
@@ -123,24 +163,57 @@ export function CredentialVaultSection({
         </p>
       ) : null}
 
-      {loading ? (
-        <p className="py-6 text-ui-base text-foreground-subtle">
-          {label("settings.credentials.loading")}
-        </p>
-      ) : (
-        <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(12rem,15rem)_minmax(0,1fr)]">
+        <nav aria-label={label("settings.credentials.projectsHeading")} className="min-w-0">
+          <h3 className="mb-2 text-ui-base font-medium text-foreground">
+            {label("settings.credentials.projectsHeading")}
+          </h3>
+          {knownProjects.length === 0 ? (
+            <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+              {label("settings.credentials.projectsEmpty")}
+            </p>
+          ) : (
+            <ul className="divide-y divide-border border-y border-border">
+              {knownProjects.map((project) => (
+                <li key={project.identity}>
+                  <Button
+                    type="button"
+                    variant={project.identity === projectIdentity ? "secondary" : "ghost"}
+                    aria-pressed={project.identity === projectIdentity}
+                    className="h-auto w-full min-w-0 justify-start rounded-none px-2 py-2 text-left"
+                    onClick={() => setSelectedProjectIdentity(project.identity)}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate">{project.label}</span>
+                      <span className="block truncate text-ui-xs text-foreground-subtle">
+                        {project.workspacePath}
+                      </span>
+                    </span>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </nav>
+
+        <div className="min-w-0 space-y-6">
           <section aria-labelledby="credential-project-heading" className="space-y-2">
             <h3
               id="credential-project-heading"
               className="text-ui-base font-medium text-foreground"
             >
-              {label("settings.credentials.projectEntries")}
+              {selectedProject
+                ? intl.formatMessage(
+                    { id: "settings.credentials.projectEntries" },
+                    { project: selectedProject.label },
+                  )
+                : label("settings.credentials.projectEntriesNoSelection")}
             </h3>
-            {!projectIdentity ? (
+            {loading ? (
               <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
-                {label("settings.credentials.noProject")}
+                {label("settings.credentials.loading")}
               </p>
-            ) : visibleProjectEntries.length === 0 ? (
+            ) : !selectedProject || visibleProjectEntries.length === 0 ? (
               <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
                 {label("settings.credentials.projectEmpty")}
               </p>
@@ -171,7 +244,11 @@ export function CredentialVaultSection({
             >
               {label("settings.credentials.availableEntries")}
             </h3>
-            {visibleAvailableEntries.length === 0 ? (
+            {loading ? (
+              <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+                {label("settings.credentials.loading")}
+              </p>
+            ) : visibleAvailableEntries.length === 0 ? (
               <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
                 {label("settings.credentials.availableEmpty")}
               </p>
@@ -184,7 +261,7 @@ export function CredentialVaultSection({
                 onEdit={openEdit}
                 onDelete={openDelete}
                 onAttach={
-                  projectIdentity
+                  selectedProject
                     ? (entry) =>
                         void runAttachment(
                           entry,
@@ -198,12 +275,12 @@ export function CredentialVaultSection({
             )}
           </section>
         </div>
-      )}
+      </div>
 
       <CredentialVaultEntryDialog
         mode={dialogMode}
         onClose={() => setDialogMode(null)}
-        onChanged={refresh}
+        onChanged={refreshLatest}
       />
     </section>
   );

@@ -52,7 +52,7 @@ try {
       async deleteVaultEntry(id:string,workspaceIdentity:string|null){state.calls.push({operation:'delete',workspaceIdentity});const index=entries.findIndex(entry=>entry.id===id&&entry.workspaceIdentity===workspaceIdentity);if(index>=0)entries.splice(index,1);secrets.delete(id)},
       async load(){return null},async save(){},async delete(){},
     };
-    function Fixture(){const [visible,setVisible]=useState(true),[workspace,setWorkspace]=useState({workspacePath:'/project-a',workspaceIdentity:'remote:project-a'});state.setVisible=setVisible;state.setWorkspace=setWorkspace;state.releaseReads=()=>state.pendingReads.splice(0).forEach((release:()=>void)=>release());return <div className='min-h-screen bg-background p-6 text-foreground'><ServiceProvider services={{credentialService:service}}>{visible?<CredentialVaultSection {...workspace}/>:null}</ServiceProvider></div>}
+    function Fixture(){const [visible,setVisible]=useState(true);state.setVisible=setVisible;state.releaseReads=()=>state.pendingReads.splice(0).forEach((release:()=>void)=>release());const projects=[{workspacePath:'/project-a',workspaceIdentity:'remote:project-a',label:'项目 A'},{workspacePath:'/project-b',workspaceIdentity:'remote:project-b',label:'项目 B'}];return <div className='min-h-screen bg-background p-6 text-foreground'><ServiceProvider services={{credentialService:service}}>{visible?<CredentialVaultSection initialWorkspacePath='/project-a' initialWorkspaceIdentity='remote:project-a' projects={projects}/>:null}</ServiceProvider></div>}
     createRoot(document.getElementById('root')!).render(<ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><Fixture/></TooltipProvider></ZCodeIntlProvider>);
   `,
   );
@@ -70,6 +70,8 @@ try {
   page.setDefaultTimeout(30_000);
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/${name}.html`);
+  await page.getByRole("button", { name: /项目 A/ }).waitFor();
+  await page.getByRole("button", { name: /项目 B/ }).waitFor();
   await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
   await page.screenshot({
     path: join(artifacts, "credential-vault-empty.png"),
@@ -112,7 +114,7 @@ try {
     path: join(artifacts, "credential-vault-unassigned.png"),
     animations: "disabled",
   });
-  await page.getByRole("button", { name: "关联到当前项目", exact: true }).click();
+  await page.getByRole("button", { name: "关联到所选项目", exact: true }).click();
   assert.equal(
     (await page.evaluate(() => window.__credentialVault.calls)).at(-1).operation,
     "attach",
@@ -123,42 +125,24 @@ try {
   );
   await page.getByRole("button", { name: "编辑", exact: true }).click();
   const staleEditDialog = page.getByRole("dialog");
-  await staleEditDialog.waitFor();
-  await page.evaluate(() =>
-    window.__credentialVault.setWorkspace({
-      workspacePath: "/project-b",
-      workspaceIdentity: "remote:project-b",
-    }),
-  );
+  await staleEditDialog.getByRole("button", { name: "取消", exact: true }).click();
   await staleEditDialog.waitFor({ state: "detached" });
+  await page.getByRole("button", { name: /项目 B/ }).click();
   await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
   assert.equal(await page.getByText("QA 数据库", { exact: true }).count(), 0);
   await page.evaluate(() => {
     window.__credentialVault.delayScope = "remote:project-a";
-    window.__credentialVault.setWorkspace({
-      workspacePath: "/project-a",
-      workspaceIdentity: "remote:project-a",
-    });
   });
+  await page.getByRole("button", { name: /项目 A/ }).click();
   await page.waitForFunction(() => window.__credentialVault.pendingReads.length === 1);
-  await page.evaluate(() =>
-    window.__credentialVault.setWorkspace({
-      workspacePath: "/project-b",
-      workspaceIdentity: "remote:project-b",
-    }),
-  );
+  await page.getByRole("button", { name: /项目 B/ }).click();
   await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
   await page.evaluate(() => window.__credentialVault.releaseReads());
   assert.equal(await page.getByText("QA 数据库", { exact: true }).count(), 0);
   await page.evaluate(() => {
     window.__credentialVault.delayScope = null;
   });
-  await page.evaluate(() =>
-    window.__credentialVault.setWorkspace({
-      workspacePath: "/project-a",
-      workspaceIdentity: "remote:project-a",
-    }),
-  );
+  await page.getByRole("button", { name: /项目 A/ }).click();
   await page.getByText("QA 数据库", { exact: true }).waitFor();
   await page.screenshot({
     path: join(artifacts, "credential-vault-list.png"),
@@ -186,19 +170,14 @@ try {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: join(artifacts, "credential-vault-mobile.png"), fullPage: true });
 
-  await page.getByRole("button", { name: "从当前项目移除", exact: true }).click();
+  await page.getByRole("button", { name: "从所选项目移除", exact: true }).click();
   await page.getByText("QA 数据库", { exact: true }).waitFor();
   assert.equal(
     (await page.evaluate(() => window.__credentialVault.calls)).at(-1).operation,
     "detach",
   );
-  await page.evaluate(() =>
-    window.__credentialVault.setWorkspace({
-      workspacePath: "/project-b",
-      workspaceIdentity: "remote:project-b",
-    }),
-  );
-  await page.getByRole("button", { name: "关联到当前项目", exact: true }).click();
+  await page.getByRole("button", { name: /项目 B/ }).click();
+  await page.getByRole("button", { name: "关联到所选项目", exact: true }).click();
   await page.getByText("QA 数据库", { exact: true }).waitFor();
 
   await page.getByRole("button", { name: "删除", exact: true }).click();

@@ -2,9 +2,10 @@
 
 ## Behavior
 
-- A credential is created in the Host vault without a project identity. Creating it from project settings does not attach it to that project.
+- Credential management is a system-level settings surface, independent of the currently active workspace. It lists every known project from the shared project-management source (recent projects plus open project tabs), and the user selects a project to inspect and manage its attachments.
+- A credential is created in the Host vault without a project identity. Creating it from system settings does not attach it to the selected project.
 - A project explicitly selects an unassigned credential to attach it. A project can have many credentials; one credential can be attached to at most one project at a time. Detaching returns it to the unassigned pool so another project can select it.
-- A project's list shows only credentials attached to its canonical identity. The unassigned pool is available for explicit selection and is not treated as project data.
+- The selected project's list shows only credentials attached to its canonical identity. The unassigned pool remains visible regardless of project selection and is available for explicit attachment; it is not treated as project data.
 - `workspaceIdentity?.trim() || workspacePath` is the canonical project identity. The environment field is only the credential's target classification (`development`, `test`, `staging`, or `production`).
 - The Host owns vault persistence, encryption, and attachment state. UI receives metadata and `hasSecret`, never secret values.
 
@@ -12,7 +13,7 @@
 
 - `CredentialService` owns credential records and their single-project attachment. It validates project identity for attach, detach, project list, edit, rotation, and delete operations.
 - `CredentialVaultRepository` persists the nullable attachment in the existing `workspace_identity` column; no parallel project store or copy of credential values is introduced.
-- The settings UI creates unassigned records and issues explicit attach/detach commands using the current project's canonical identity.
+- The settings UI owns the selected project as local view state, creates unassigned records, and issues explicit attach/detach commands using the selected project's canonical identity. The project list comes from the existing shared project-management hook.
 
 ## Invariants and failure behavior
 
@@ -20,17 +21,20 @@
 - Attach succeeds only for an active unassigned credential. A credential attached to another project cannot be listed or mutated through this project's scope.
 - Detach succeeds only when the supplied project identity matches the current attachment.
 - Missing identity fails closed for project operations. An unassigned credential can be created and listed without a project identity.
-- A delayed project list response is discarded after the active identity changes.
+- A delayed project list response is discarded after the selected identity changes; a selection change also closes any dialog opened for the previous project.
 - Existing records are unchanged by initialization. Existing non-null identities remain attached to their current project; existing null identities appear in the selectable pool.
 
 ```mermaid
 sequenceDiagram
-    participant UI as Settings UI
+    participant UI as System Settings UI
+    participant Projects as Project Management Source
     participant Host as CredentialService
     participant Repo as CredentialVaultRepository
     UI->>Host: save credential (workspaceIdentity = null)
     Host->>Repo: persist encrypted secret reference and metadata
-    UI->>Host: list available / list project(projectKey)
+    UI->>Projects: list recent + open projects
+    Projects-->>UI: projects with canonical identities
+    UI->>Host: list available / list project(selectedProjectKey)
     Host->>Repo: query unassigned or workspace_identity = projectKey
     Repo-->>Host: metadata only
     UI->>Host: attach or detach(entryId, projectKey)
@@ -48,8 +52,9 @@ sequenceDiagram
 5. After detaching from A, the credential returns to the unassigned pool and can be attached to B.
 6. The target environment remains visible but does not determine project ownership.
 7. Secret values never appear in list responses or rendered UI.
-8. A delayed project A list response is discarded after switching to project B.
-9. Existing non-null attachments and unassigned records retain their current values.
+8. The settings page lists all known projects even when the active workspace changes; selecting project A then B shows each project's own attachments.
+9. A delayed project A list response is discarded after switching to project B.
+10. Existing non-null attachments and unassigned records retain their current values.
 
 ## Migration boundary
 
