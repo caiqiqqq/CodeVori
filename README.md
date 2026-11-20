@@ -27,7 +27,7 @@ CodeVori 是面向日常开发的 AI 编程工作台。你可以在同一个工�
 | 待办与工作树    | 将开发事项保存为任务，结合独立分支和 Git worktree 管理执行、审阅与后续合并。            |
 | 开发工作区      | 在对话旁查看文件、代码差异与终端，使用 Git 工具管理改动，并通过分屏同时处理多个会话。   |
 | 远程开发        | 连接 SSH、WSL 工作区，由目标环境处理文件操作和智能体执行。                              |
-| 跨电脑控制      | 通过 Tailscale 连接其他电脑，调用远端命令与桌面工具，查看连接状态和电脑详情。             |
+| 跨电脑控制      | 通过 Tailscale 连接其他电脑，调用远端命令与桌面工具，查看连接状态和电脑详情。           |
 | 手机远控        | 通过手机浏览器或手机 App 连接桌面窗口，查看项目和会话、发送消息及处理交互。             |
 | MCP、技能与插件 | 按项目和智能体配置工具及技能，扩展任务可使用的能力。                                    |
 
@@ -58,16 +58,16 @@ CodeVori 是面向日常开发的 AI 编程工作台。你可以在同一个工�
   <img src=".github/assets/screenshots/desktop-home.webp" alt="CodeVori 桌面端工作区首页" width="1000" />
 </p>
 
-| 自动化与定时任务 | 待办任务面板 |
-| --- | --- |
+| 自动化与定时任务                                                                                                 | 待办任务面板                                                                                                                  |
+| ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | <img src=".github/assets/screenshots/desktop-automation.webp" alt="CodeVori 自动化与定时任务模板" width="500" /> | <img src=".github/assets/screenshots/desktop-tasks.webp" alt="CodeVori 待办、处理中、等待处理与已完成任务分栏" width="500" /> |
 
 ### 手机端
 
 通过手机浏览器连接电脑上的 CodeVori，查看项目、发送消息和查看工作流结果。以下为 iPhone 模拟器中的手机 Web 实际界面；电脑需要保持运行并开启局域网手机访问。
 
-| 对话首页 | 项目与会话导航 | 工作流结果 |
-| --- | --- | --- |
+| 对话首页                                                                                                | 项目与会话导航                                                                                                            | 工作流结果                                                                                                              |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | <img src=".github/assets/screenshots/mobile-home.webp" alt="手机 Web 对话首页与模型选择" width="260" /> | <img src=".github/assets/screenshots/mobile-projects.webp" alt="手机 Web 项目与会话侧边栏，实际名称已遮盖" width="260" /> | <img src=".github/assets/screenshots/mobile-workflow.webp" alt="手机 Web 查看已完成的工作流及 JSON 结果" width="260" /> |
 
 <details>
@@ -97,7 +97,7 @@ CodeVori 是面向日常开发的 AI 编程工作台。你可以在同一个工�
 
 以下内容面向从源码运行和构建 CodeVori 的开发者。版本以根目录 [package.json](package.json) 为准，独立于上游 ZCode 的版本。
 
-为兼容现有配置和工具链，命令 `zcode`、包作用域 `@zcode/*`、环境变量 `ZCODE_*` 以及 `.zcode` 数据目录仍保留原名；这不影响应用显示名称为 CodeVori。
+内部 Agent CLI 入口、包作用域 `@zcode/*` 和环境变量 `ZCODE_*` 为兼容现有工具链保留原名。CodeVori 的用户数据写入 `.codevori`，独立发行包提供 `codevori` 命令；`.zcode` 仅用于读取旧版数据。
 
 ## 初始化
 
@@ -141,7 +141,7 @@ pnpm dev:desktop:test
 需要独立开发数据目录时，可设置 `ZCODE_DATA_BASE_DIR`。例如在 macOS / Linux 中：
 
 ```bash
-ZCODE_DATA_BASE_DIR="$HOME/.zcode-dev-home" pnpm dev:desktop:test
+ZCODE_DATA_BASE_DIR="$HOME/.codevori-dev-home" pnpm dev:desktop:test
 ```
 
 ### 远程功能（SSH/WSL）
@@ -175,28 +175,28 @@ Agent 源码修改后，执行 `pnpm --filter @zcode/cli... build` 并重启服�
 
 ### CodeVori 命令行版
 
-命令行发行包包含 TUI、Web 和 Agent，统一使用 `zcode` 启动：无参数进入 TUI；第一个参数为 `--web` 时启动 Web；其他参数交给现有 Agent CLI 处理。两种模式都在本机运行，无需 Electron。
+命令行发行包包含 TUI、Web 和 Agent，统一使用 `codevori` 启动：无参数进入 TUI；第一个参数为 `--web` 时启动 Web；其他参数交给现有 Agent CLI 处理。两种模式都在本机运行，无需 Electron。
 
 ```bash
 # 默认进入终端交互界面
-zcode
+codevori
 
 # 启动 Web 界面
-zcode --web
+codevori --web
 
 # 指定项目和端口，不自动打开浏览器
-zcode --web --workspace /path/to/project --port 3030 --no-open
+codevori --web --workspace /path/to/project --port 3030 --no-open
 
 # 查看 CLI 或 Web 参数
-zcode --help
-zcode --web --help
+codevori --help
+codevori --web --help
 ```
 
 Web 模式默认工作目录为当前目录，监听 `127.0.0.1`，默认不启用访问令牌，自动选择空闲端口并打开浏览器。访问终端输出的地址，按 `Ctrl+C` 停止服务。局域网访问可使用 `--host 0.0.0.0`；监听非本机地址时默认生成访问令牌，使用终端输出的带令牌链接。可通过 `--token` 指定令牌或 `--no-token` 关闭令牌认证。
 
 直接启动通用 Web 服务的 HTTP 入口时，通过 `ZCODE_SERVER_AUTH_TOKEN` 配置 API／WebSocket 认证；通过程序接口创建服务时，使用 `authToken` 选项。
 
-构建方式见下方打包章节。`pnpm build:zcode` 只生成发行包，不会替换 `PATH` 中已有的 `zcode`。如果命令仍指向旧安装或其他源码目录，macOS / Linux 可用 `command -v zcode` 检查，Windows 可用 `where.exe zcode` 检查。
+构建方式见下方打包章节。`pnpm build:zcode` 只生成发行包，不会替换 `PATH` 中已有的 `codevori`。如果命令仍指向旧安装或其他源码目录，macOS / Linux 可用 `command -v codevori` 检查，Windows 可用 `where.exe codevori` 检查。
 
 ### CLI 源码开发
 
@@ -208,10 +208,10 @@ pnpm --filter @zcode/cli dev
 
 # 构建 CLI 及其 workspace 依赖
 pnpm --filter @zcode/cli... build
-node apps/zcode-cli/packages/cli/dist/zcode.cjs --help
+node apps/zcode-cli/packages/cli/dist/codevori.cjs --help
 ```
 
-这个入口直接运行 Agent CLI，不经过发行包的 `--web` 分流。开发 Web 用 `pnpm dev:web`；验证统一的 `zcode` 命令，用下方解压后的 `bin/zcode.mjs`。
+这个入口直接运行 Agent CLI，不经过发行包的 `--web` 分流。开发 Web 用 `pnpm dev:web`；验证统一的 `codevori` 命令，用下方解压后的 `bin/codevori.mjs`。
 
 ## 配置
 
@@ -219,7 +219,7 @@ node apps/zcode-cli/packages/cli/dist/zcode.cjs --help
 
 | 配置                                 | 用途                                             |
 | ------------------------------------ | ------------------------------------------------ |
-| `ZCODE_DATA_BASE_DIR`                | 应用数据基目录，数据写入其下的 `.zcode/`         |
+| `ZCODE_DATA_BASE_DIR`                | 应用数据基目录，数据写入其下的 `.codevori/`      |
 | `ZCODE_SERVER_WORKSPACE`             | Web 后端的工作区路径                             |
 | `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` | 本地 Provider 配置文件路径；未设置时使用内置配置 |
 | `ZCODE_DIST_BASE_URL`                | 命令行安装脚本使用的下载根地址                   |
@@ -264,7 +264,7 @@ xattr -d com.apple.quarantine "/Applications/CodeVori.app"
 打包前必须设置下载根地址 `ZCODE_DIST_BASE_URL`（可放在 `.env`、`.env.local` 或环境变量中），也可以通过 `--base-url` 传入。以下地址是占位示例，发布时替换为实际托管地址：
 
 ```bash
-pnpm build:zcode --base-url https://downloads.example.com/zcode/
+pnpm build:zcode --base-url https://downloads.example.com/codevori/
 
 # 已配置 ZCODE_DIST_BASE_URL 时
 pnpm build:zcode
@@ -276,28 +276,28 @@ pnpm build:zcode --skip-build
 pnpm build:zcode --help
 ```
 
-默认版本取根目录 `package.json`，输出目录为 `dist/zcode/`：
+默认版本取根目录 `package.json`，输出目录为 `dist/codevori/`：
 
-- `releases/<version>/zcode-<version>.tar.gz`：运行包。
+- `releases/<version>/codevori-<version>.tar.gz`：运行包。
 - `releases/<version>/sha256.txt`：校验摘要。
 - `latest.json`、`install.sh`：版本索引和安装脚本。
 
-完整目录可上传到配置的下载根地址。安装脚本从该地址下载运行包，默认安装到 `~/.zcode/runtime`，并在 `~/.local/bin` 创建 `zcode` 命令。安装目录可通过 `ZCODE_DIST_HOME` 修改，命令目录可通过 `ZCODE_DIST_BIN_DIR` 修改。
+完整目录可上传到配置的下载根地址。安装脚本从该地址下载运行包，默认安装到 `~/.codevori/runtime`，并在 `~/.local/bin` 创建 `codevori` 命令。安装目录可通过 `ZCODE_DIST_HOME` 修改，命令目录可通过 `ZCODE_DIST_BIN_DIR` 修改。
 
 旧 Lite 用户需要改用上述构建命令、环境变量和新的安装脚本。新安装不会删除旧 Lite 目录，也不会迁移或删除已有会话数据。
 
 本地调试打包产物时，可直接解压运行，无需上传或安装：
 
 ```bash
-zcode_version=$(node -p "require('./dist/zcode/latest.json').version")
-mkdir -p dist/zcode/debug
-tar -xzf "dist/zcode/releases/$zcode_version/zcode-$zcode_version.tar.gz" \
-  -C dist/zcode/debug
+codevori_version=$(node -p "require('./dist/codevori/latest.json').version")
+mkdir -p dist/codevori/debug
+tar -xzf "dist/codevori/releases/$codevori_version/codevori-$codevori_version.tar.gz" \
+  -C dist/codevori/debug
 # 默认启动 TUI
-node dist/zcode/debug/zcode/bin/zcode.mjs
+node dist/codevori/debug/codevori/bin/codevori.mjs
 
 # 启动 Web
-node dist/zcode/debug/zcode/bin/zcode.mjs --web \
+node dist/codevori/debug/codevori/bin/codevori.mjs --web \
   --workspace "$PWD" --port 3030 --no-open
 ```
 
