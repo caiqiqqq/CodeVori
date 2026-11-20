@@ -26,10 +26,13 @@ import {
   Smartphone,
   Network,
   KeyRound,
-  Users,
   Workflow,
 } from "lucide-react";
-import { isSettingsSectionEnabled, type SettingsSectionId } from "@/lib/settingsNavigation.js";
+import {
+  isSettingsSectionEnabled,
+  resolveSettingsSection,
+  type SettingsSectionId,
+} from "@/lib/settingsNavigation.js";
 import type { Theme } from "@/useTheme.js";
 
 export const THEME_MODES: Array<{
@@ -140,8 +143,12 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     titleId: "delegation.settingsTitle",
     groupId: "agentCapabilities",
   },
-  { id: "agentProfiles", icon: Bot, titleId: "agentProfiles.title", groupId: "agentCapabilities" },
-  { id: "squads", icon: Users, titleId: "squads.title", groupId: "agentCapabilities" },
+  {
+    id: "agentProfiles",
+    icon: Bot,
+    titleId: "settings.agentsAndSquads.title",
+    groupId: "agentCapabilities",
+  },
   {
     id: "plugin",
     icon: Blocks,
@@ -279,6 +286,7 @@ export function resolveSettingsSectionForPlatform(
   visibleSections: ReadonlyArray<Pick<SettingsSectionDefinition, "id">>,
   fallbackSection: SettingsSectionId = "general",
 ): SettingsSectionId {
+  section = resolveSettingsSection(section);
   if (visibleSections.some((candidate) => candidate.id === section)) return section;
   if (visibleSections.some((candidate) => candidate.id === fallbackSection)) {
     return fallbackSection;

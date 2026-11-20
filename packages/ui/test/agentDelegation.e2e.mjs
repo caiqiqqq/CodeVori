@@ -104,7 +104,16 @@ try {
         const [settingsSection, setSettingsSection] = useState('delegation');
         const [summaryVariant, setSummaryVariant] = useState('mini');
         const { intl } = useZCodeIntl();
-        const sections = createSettingsPageConfig().settingsSections.filter(section => ['delegation', 'acpAgents'].includes(section.id));
+        const visibleSections = createSettingsPageConfig().settingsSections;
+        const subagentsSection = visibleSections.find(section => section.id === 'subagents')!;
+        const sections = [
+          {
+            ...subagentsSection,
+            id: 'delegation',
+            titleId: 'delegation.settingsTitle',
+          },
+          ...visibleSections.filter(section => section.id === 'acpAgents'),
+        ];
         const currentSection = sections.find(section => section.id === settingsSection)!;
         const openSettings = section => { writeLastSettingsSectionPreference(section); setSettingsSection(section); };
         state.reopenSettings = () => { openSettings(resolveSettingsSectionForPlatform(consumeInitialSettingsSection(), sections)); setSettingsKey(key => key + 1); };

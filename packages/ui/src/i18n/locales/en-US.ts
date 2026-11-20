@@ -4870,6 +4870,7 @@ const enUS: Record<string, string> = {
   "settings.skills.diagnostics.code.skill_too_large": "SKILL.md too large; content truncated",
   "settings.skills.diagnostics.code.skill_not_found": "Skill not found",
   "settings.subagents.title": "Subagents",
+  "settings.agentsAndSquads.title": "Agents & Squads",
   "settings.acpAgents.title": "Agent SDK Management",
   "settings.acpAgents.description": "Manage 15 built-in ACP agents on the target Host.",
   "settings.acpAgents.list": "ACP agents",
@@ -8268,7 +8269,7 @@ const enUS: Record<string, string> = {
   "delegation.unstructured": "Final answer (no structured report)",
   "delegation.closed": "Delegation service is closed. Reopen the project.",
   "delegation.disabled":
-    "Delegation is disabled. Enable it in Settings → Multi-agent collaboration.",
+    "Delegation is disabled. Enable it in Settings → Agents & Squads → Multi-agent collaboration.",
   "delegation.remote-unsupported": "Delegation is not available in remote projects yet.",
   "delegation.target-unsupported": "Choose an ACP agent as the delegation target.",
   "delegation.agent-unavailable": "This agent is not installed or enabled. Check agent settings.",

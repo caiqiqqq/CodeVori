@@ -41,9 +41,11 @@ import { useProviderSettingsView } from "@/hooks/useProviderSettingsView.js";
 import { useUsageEntitlement } from "@/hooks/useUsageEntitlement.js";
 import {
   addPendingSettingsSectionListener,
+  clearPendingAgentSettingsView,
   clearPendingSettingsPluginOrigin,
   clearPendingSettingsPluginScopeKey,
   consumeInitialSettingsSection,
+  consumePendingAgentSettingsView,
   consumePendingSettingsPluginOrigin,
   consumePendingSettingsPluginScopeKey,
   consumePendingSettingsPluginTab,
@@ -53,6 +55,7 @@ import {
   shouldFallbackSettingsUsageTabToApp,
   writeLastSettingsSectionPreference,
   type SettingsModelProviderTarget,
+  type AgentSettingsView,
 } from "@/lib/settingsNavigation.js";
 import { readSidebarUsageCodingPlanSourcePreference } from "@/lib/sidebarUsageCodingPlanProviderPreference.js";
 import {
@@ -70,8 +73,7 @@ import {
 import { buildPersonalCodingPlanUsageSource } from "@/lib/codingPlanUsageSources.js";
 import { SubagentsSection } from "@/settings/SubagentsSection.js";
 import { AcpAgentsSection } from "@/settings/AcpAgentsSection.js";
-import { AgentSquadsSection } from "@/settings/AgentSquadsSection.js";
-import { AgentProfilesSection } from "@/settings/AgentProfilesSection.js";
+import { AgentsAndSquadsSection } from "@/settings/AgentsAndSquadsSection.js";
 import { DesktopLanAccessSection } from "@/settings/DesktopLanAccessSection.js";
 import { isMatchingAcpWorkspaceTab } from "@/settings/acpAgentSettingsCatalog.js";
 import { AutomationsSection } from "@/settings/AutomationsSection.js";
@@ -353,6 +355,9 @@ export function SettingsPage({
     writeLastSettingsSectionPreference(visibleInitialSection);
     return visibleInitialSection;
   });
+  const [agentSettingsView, setAgentSettingsView] = useState<AgentSettingsView>(() =>
+    consumePendingAgentSettingsView(),
+  );
   const [pluginTab, setPluginTab] = useState(() => consumePendingSettingsPluginTab());
   const [pluginNavigationOrigin, setPluginNavigationOrigin] = useState(() =>
     consumePendingSettingsPluginOrigin(),
@@ -787,6 +792,11 @@ export function SettingsPage({
         // 页面不会重新挂载，之前写入的 pending section 无人消费，看起来像点击没反应。
         // 这里订阅同窗口跳转意图，立即切换当前设置分区。
         setActiveSettingsSection(section, activeSection);
+        if (section === "squads") setAgentSettingsView("squads");
+        if (section === "agentProfiles" || section === "agentsAndSquads") {
+          setAgentSettingsView("agents");
+        }
+        clearPendingAgentSettingsView();
         // 设置入口是一级路由边界。即使仍落在同一 section，也必须销毁旧的 New/Edit/Detail 子状态。
         setSettingsSectionNavigationVersion((version) => version + 1);
         if (section === "usage" && detail?.usageTab) {
@@ -807,6 +817,8 @@ export function SettingsPage({
       }),
     [activeSection, setActiveSettingsSection],
   );
+
+  useEffect(() => clearPendingAgentSettingsView(), []);
 
   useEffect(() => {
     services.settingService
@@ -1652,7 +1664,7 @@ export function SettingsPage({
                   <main className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
                     <div
                       className={cn(
-                        activeSection === "quickMessages"
+                        activeSection === "quickMessages" || activeSection === "agentProfiles"
                           ? SETTINGS_WIDE_FRAME_CONTENT_CLASSNAME
                           : SETTINGS_FRAME_CONTENT_CLASSNAME,
                         "flex flex-col gap-8",
@@ -1999,14 +2011,10 @@ export function SettingsPage({
                             remoteTarget={acpWorkspaceTab?.remoteTarget}
                           />
                         ) : activeSection === "agentProfiles" ? (
-                          <AgentProfilesSection
-                            workspacePath={activeWorkspacePath}
-                            workspaceIdentity={activeWorkspaceIdentity}
-                            remoteSessionId={acpWorkspaceTab?.remoteSessionId}
-                            remoteTarget={acpWorkspaceTab?.remoteTarget}
-                          />
-                        ) : activeSection === "squads" ? (
-                          <AgentSquadsSection
+                          <AgentsAndSquadsSection
+                            view={agentSettingsView}
+                            onViewChange={setAgentSettingsView}
+                            onManageModels={handleOpenModelProviderSettings}
                             workspacePath={activeWorkspacePath}
                             workspaceIdentity={activeWorkspaceIdentity}
                             remoteSessionId={acpWorkspaceTab?.remoteSessionId}
