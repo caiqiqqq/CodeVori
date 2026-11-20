@@ -69,8 +69,14 @@ test("workflow configuration and per-item assignments persist and disabled lanes
     },
     removeItem() {},
   };
-  const item = { key: "[workspace,native,session]", kind: "native" } as BoardItem;
+  const item = {
+    key: "[workspace,native,session]",
+    kind: "native",
+    status: "todo",
+    archived: false,
+  } as BoardItem;
   const store = createAgentBoardStore(storage);
+  store.getState().setItemWorkflowAssignee(item, "agent-1");
   store.getState().setItemWorkflowStatus(item, "review");
   const configured = store
     .getState()
@@ -84,6 +90,7 @@ test("workflow configuration and per-item assignments persist and disabled lanes
     "验收",
   );
   assert.equal(restored.getState().workflowAssignments[item.key], "review");
+  assert.equal(restored.getState().workflowAssignees[item.key], null);
   const beforeDisable = writes;
   restored
     .getState()
@@ -92,6 +99,7 @@ test("workflow configuration and per-item assignments persist and disabled lanes
     );
   assert.equal(writes, beforeDisable + 1);
   assert.equal(createAgentBoardStore(storage).getState().workflowAssignments[item.key], "todo");
+  assert.equal(createAgentBoardStore(storage).getState().workflowAssignees[item.key], null);
 });
 
 test("invalid workflow preferences recover without accepting disabled or duplicate statuses", () => {

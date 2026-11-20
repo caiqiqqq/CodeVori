@@ -82,6 +82,7 @@ const enUS: Record<string, string> = {
   "agentBoard.workflow.title": "Workflow statuses",
   "agentBoard.workflow.description":
     "Manage board statuses for conversations and tasks. Runtime status remains owned by each session or task.",
+  "agentBoard.workflow.assigneeOnEntry": "Entering any status clears the board assignee.",
   "agentBoard.workflow.enabled": "Enabled",
   "agentBoard.workflow.moveUp": "Move status up",
   "agentBoard.workflow.moveDown": "Move status down",

@@ -52,6 +52,7 @@ export function AgentBoardWorkflowSettings({
       <DialogContent className="sm:max-w-lg">
         <DialogTitle>{t("title")}</DialogTitle>
         <DialogDescription>{t("description")}</DialogDescription>
+        <p className="text-ui-caption text-foreground-subtle">{t("assigneeOnEntry")}</p>
         <ol className="max-h-[min(60vh,32rem)] space-y-2 overflow-y-auto" aria-label={t("title")}>
           {statuses.map((status, index) => (
             <li

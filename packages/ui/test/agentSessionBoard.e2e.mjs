@@ -394,10 +394,7 @@ try {
   await exerciseAgentBoardSidebar(page, artifacts);
   await exerciseAgentBoardWorkflow(page);
   assert.deepEqual(errors, []);
-  console.log(
-    "PASS: real board/hooks; 24 projects; identity routing; API/ACP automatic completion/archive; six-pin limit; search; desktop themes; mobile drawer; new session; work-task selection, scoped conversation, acceptance failure/retry, archive/read-only; staging drag/buttons/persistence/restart; waiting indicators and resume; unread acknowledgement/CAS/failure/reload; completion-time sorting; favorites removed/legacy migration; sidebar status counts/icons/zero hiding/tracking/live updates/narrow layout. Screenshots: " +
-      artifacts,
-  );
+  console.log("PASS: Agent Board sessions/tasks and workflow interactions.");
 } finally {
   await browser?.close();
   await Promise.all([rm(html, { force: true }), rm(moduleFile, { force: true })]);

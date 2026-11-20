@@ -3,6 +3,7 @@ import { getSafeLocalStorage, type BrowserStorageLike } from "@/lib/browserEnvir
 import {
   defaultBoardTracking,
   canStageBoardItem,
+  defaultWorkflowStatusId,
   isBoardItemStaged,
   boardDisplayStatus,
   boardHasUnreadResult,
@@ -22,6 +23,7 @@ interface Preferences {
   statusOrder: readonly BoardDisplayStatus[];
   workflowStatuses: readonly BoardWorkflowStatus[];
   workflowAssignments: Record<string, string>;
+  workflowAssignees: Record<string, string | null>;
   readWorkTaskResults: Record<string, string>;
   stagedItems: BoardStagedItems;
   project: string | null;
@@ -37,6 +39,7 @@ interface BoardStore extends Preferences {
   setStatusOrder(order: readonly BoardDisplayStatus[]): void;
   setWorkflowStatuses(statuses: readonly BoardWorkflowStatus[]): void;
   setItemWorkflowStatus(item: BoardItem, statusId: string): void;
+  setItemWorkflowAssignee(item: BoardItem, assigneeId: string | null): void;
   pickerOpen: boolean;
   markWorkTaskResultRead(item: BoardItem): void;
   setItemStaged(item: BoardItem, staged: boolean): void;
@@ -60,6 +63,7 @@ const defaults: Preferences = {
   statusOrder: BOARD_DISPLAY_STATUSES,
   workflowStatuses: DEFAULT_BOARD_WORKFLOW_STATUSES,
   workflowAssignments: {},
+  workflowAssignees: {},
   readWorkTaskResults: {},
   stagedItems: {},
   project: null,
@@ -153,6 +157,16 @@ function readWorkflowAssignments(value: unknown, statuses: readonly BoardWorkflo
     ),
   ) as Record<string, string>;
 }
+function readWorkflowAssignees(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key, assigneeId]) =>
+        key.length > 0 &&
+        (assigneeId === null || (typeof assigneeId === "string" && assigneeId.length > 0)),
+    ),
+  ) as Record<string, string | null>;
+}
 export function createAgentBoardStore(storage: BrowserStorageLike | null = getSafeLocalStorage()) {
   let initial = defaults;
   try {
@@ -182,6 +196,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         statusOrder: readStatusOrder(v.statusOrder),
         workflowStatuses,
         workflowAssignments: readWorkflowAssignments(v.workflowAssignments, workflowStatuses),
+        workflowAssignees: readWorkflowAssignees(v.workflowAssignees),
         readWorkTaskResults:
           v.readWorkTaskResults &&
           typeof v.readWorkTaskResults === "object" &&
@@ -224,6 +239,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         statusOrder,
         workflowStatuses,
         workflowAssignments,
+        workflowAssignees,
       } = get();
       try {
         storage?.setItem(
@@ -232,6 +248,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
             statusOrder,
             workflowStatuses,
             workflowAssignments,
+            workflowAssignees,
             stagedItems,
             readWorkTaskResults,
             layoutVersion,
@@ -258,18 +275,28 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
           workflowStatuses.filter((status) => status.enabled).map((status) => status.id),
         );
         const fallback = workflowStatuses.find((status) => status.enabled)!.id;
-        const workflowAssignments = Object.fromEntries(
-          Object.entries(get().workflowAssignments).map(([key, id]) => [
-            key,
-            activeIds.has(id) ? id : fallback,
-          ]),
-        );
-        save({ workflowStatuses, workflowAssignments });
+        const workflowAssignees = { ...get().workflowAssignees };
+        const workflowAssignments = { ...get().workflowAssignments };
+        for (const [key, id] of Object.entries(workflowAssignments)) {
+          if (activeIds.has(id)) continue;
+          workflowAssignments[key] = fallback;
+          workflowAssignees[key] = null;
+        }
+        save({ workflowStatuses, workflowAssignments, workflowAssignees });
       },
       setItemWorkflowStatus: (item, statusId) => {
         if (!get().workflowStatuses.some((status) => status.id === statusId && status.enabled))
           return;
-        save({ workflowAssignments: { ...get().workflowAssignments, [item.key]: statusId } });
+        if ((get().workflowAssignments[item.key] ?? defaultWorkflowStatusId(item)) === statusId)
+          return;
+        save({
+          workflowAssignments: { ...get().workflowAssignments, [item.key]: statusId },
+          workflowAssignees: { ...get().workflowAssignees, [item.key]: null },
+        });
+      },
+      setItemWorkflowAssignee: (item, assigneeId) => {
+        const normalized = assigneeId?.trim() || null;
+        save({ workflowAssignees: { ...get().workflowAssignees, [item.key]: normalized } });
       },
       pickerOpen: false,
       markWorkTaskResultRead: (item) => {

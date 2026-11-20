@@ -19,7 +19,8 @@ export async function exerciseAgentBoardWorkflow(page) {
     const saved = JSON.parse(localStorage.getItem("zcode-agent-board:v1"));
     return (
       saved.workflowAssignments[key] ===
-      saved.workflowStatuses.find((status) => status.label === "发布")?.id
+        saved.workflowStatuses.find((status) => status.label === "发布")?.id &&
+      saved.workflowAssignees[key] === null
     );
   }, itemKey);
   assert.equal(await publishColumn.locator("[data-board-card]").count(), 1);

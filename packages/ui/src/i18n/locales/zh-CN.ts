@@ -81,6 +81,7 @@ const zhCN: Record<string, string> = {
   "agentBoard.workflow.title": "工作流状态",
   "agentBoard.workflow.description":
     "管理看板会话与任务的业务状态。运行状态仍由会话和任务本身决定。",
+  "agentBoard.workflow.assigneeOnEntry": "进入任一状态时，清空看板负责人。",
   "agentBoard.workflow.enabled": "启用",
   "agentBoard.workflow.moveUp": "上移状态",
   "agentBoard.workflow.moveDown": "下移状态",
