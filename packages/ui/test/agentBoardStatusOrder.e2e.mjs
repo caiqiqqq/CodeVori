@@ -43,13 +43,13 @@ try {
       .evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn));
   const tabs = () =>
     page
-      .getByRole("tablist", { name: "会话范围", exact: true })
+      .getByRole("tablist", { name: "任务范围", exact: true })
       .getByRole("tab")
       .allTextContents()
       .then((labels) => labels.map((label) => label.replace(/\s*\d+$/, "").trim()));
   const labels = { running: "进行中", completed: "已完成", staged: "暂存", error: "失败" };
   const expectOrder = async (order) => {
-    await page.getByRole("tablist", { name: "会话范围", exact: true }).waitFor();
+    await page.getByRole("tablist", { name: "任务范围", exact: true }).waitFor();
     assert.deepEqual(await columns(), order);
     assert.deepEqual(await tabs(), ["全部", ...order.map((status) => labels[status]), "归档"]);
   };
@@ -63,12 +63,6 @@ try {
     f.updateAcp(1, { status: "interrupted" });
     f.setSidebar(true);
   });
-  const card = (title) =>
-    page
-      .locator("article")
-      .filter({ has: page.getByRole("heading", { name: title, exact: true }) });
-  await card("Remote ACP 0").getByRole("button", { name: "暂存", exact: true }).click();
-  await card("Remote ACP 0").getByRole("button", { name: "移出暂存", exact: true }).waitFor();
   const countsBefore = await page
     .getByTestId("board-sidebar")
     .getByRole("button", { name: "所有项目", exact: true })

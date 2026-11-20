@@ -49,6 +49,9 @@ for (const kind of ["api", "acp"] as const) {
                     };
                   };
                 };
+                execution: {
+                  [key: string]: unknown;
+                };
               };
             };
           }>;
@@ -71,6 +74,9 @@ for (const kind of ["api", "acp"] as const) {
         for (const value of ["bad\0name.txt", "bad\rname.txt", "bad\nname.txt"]) {
           assert.equal(pattern.test(value), false, name);
           assert.equal(workTaskAttachmentSchema.shape.fileName.safeParse(value).success, false);
+        }
+        if (name === "DelegateTask") {
+          assert.equal(JSON.stringify(tool.inputSchema).includes("modelPreference"), false);
         }
       }
       for (const value of ["", "x".repeat(256)]) {

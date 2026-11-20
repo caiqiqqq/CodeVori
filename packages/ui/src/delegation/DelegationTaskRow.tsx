@@ -32,7 +32,13 @@ export function DelegationTaskRow({
     id: expanded ? "chat.toolCall.collapseDetails" : "chat.toolCall.expandDetails",
   });
   const agentName =
-    task.execution.kind === "acp" ? task.execution.agent : task.execution.modelSelection.modelId;
+    task.squad?.role === "leader"
+      ? task.squad.definition.name
+      : task.squad?.role === "member"
+        ? `${task.squad.squadName} · ${task.squad.name}`
+        : task.execution.kind === "acp"
+          ? task.execution.agent
+          : task.execution.modelSelection.modelId;
   const iconButton = (label: string, action: () => void, icon: React.ReactNode) => (
     <ControlHintTooltip title={label}>
       <Button

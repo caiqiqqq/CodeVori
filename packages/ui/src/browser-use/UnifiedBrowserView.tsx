@@ -1053,8 +1053,13 @@ export function UnifiedBrowserView({
 
   // 把 addressValue 草稿纳入空置态判断后，用户只要开始输入、尚未回车，
   // 就会提前隐藏空置态并裸露 webview。空置态只由已确认导航与加载/错误状态决定。
+  // Main 重绑后可直接恢复导航，此时 hasNavigated 尚未被 UI 命令更新，
+  // 已提交的有效 URL 也必须退出空置态，避免真实页面被隐藏。
   const isEmptyBrowserState =
-    !hasNavigated && !browserState.isLoading && !browserState.errorMessage;
+    !hasNavigated &&
+    browserState.currentUrl === DEFAULT_BROWSER_URL &&
+    !browserState.isLoading &&
+    !browserState.errorMessage;
   const shouldMountWebview =
     !deferEmptyGuest || isResidencyRestore || hasNavigated || hasInitialNavigation;
   const prevShouldMountWebviewRef = useRef(shouldMountWebview);

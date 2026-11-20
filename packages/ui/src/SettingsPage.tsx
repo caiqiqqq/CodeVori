@@ -4,6 +4,8 @@ import { ProjectsSection } from "@/settings/ProjectsSection.js";
 /* oxlint-disable eslint(max-lines) */
 import { ArrowLeft, type LucideIcon } from "lucide-react";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -69,6 +71,8 @@ import { buildPersonalCodingPlanUsageSource } from "@/lib/codingPlanUsageSources
 import { SubagentsSection } from "@/settings/SubagentsSection.js";
 import { AcpAgentsSection } from "@/settings/AcpAgentsSection.js";
 import { DelegationSettingsSection } from "@/settings/DelegationSettingsSection.js";
+import { AgentSquadsSection } from "@/settings/AgentSquadsSection.js";
+import { AgentProfilesSection } from "@/settings/AgentProfilesSection.js";
 import { DesktopLanAccessSection } from "@/settings/DesktopLanAccessSection.js";
 import { isMatchingAcpWorkspaceTab } from "@/settings/acpAgentSettingsCatalog.js";
 import { AutomationsSection } from "@/settings/AutomationsSection.js";
@@ -80,6 +84,7 @@ import { MemorySettingsSection } from "@/settings/MemorySettingsSection.js";
 import { DeviceBridgeSettingsSection } from "@/settings/DeviceBridgeSettingsSection.js";
 import { BrowserSettingsSection } from "@/settings/BrowserSettingsSection.js";
 import { ComputerUseSection } from "@/settings/ComputerUseSection.js";
+import { CredentialVaultSection } from "@/settings/CredentialVaultSection.js";
 import { ShortcutSettingsSection } from "@/settings/ShortcutSettingsSection.js";
 import { QuickMessagesSection } from "@/settings/QuickMessagesSection.js";
 import { WorktreesSection } from "@/settings/WorktreesSection.js";
@@ -281,6 +286,12 @@ function SettingsSidebarButton({
     </ControlHintTooltip>
   );
 }
+
+const TaskWorkflowsSection = lazy(() =>
+  import("@/settings/task-workflows/TaskWorkflowsSection.js").then((module) => ({
+    default: module.TaskWorkflowsSection,
+  })),
+);
 
 export function SettingsPage({
   isDesktop,
@@ -1845,6 +1856,10 @@ export function SettingsPage({
                           </ServiceProvider>
                         ) : activeSection === "remoteSync" ? (
                           <RemoteDataSyncSection isDesktop={Boolean(isDesktop)} />
+                        ) : activeSection === "taskWorkflows" ? (
+                          <Suspense fallback={null}>
+                            <TaskWorkflowsSection />
+                          </Suspense>
                         ) : activeSection === "projects" ? (
                           <ProjectsSection />
                         ) : activeSection === "worktrees" ? (
@@ -1937,6 +1952,11 @@ export function SettingsPage({
                               onBack?.();
                             }}
                           />
+                        ) : activeSection === "credentials" ? (
+                          <CredentialVaultSection
+                            workspacePath={activeWorkspacePath}
+                            workspaceIdentity={activeWorkspaceIdentity}
+                          />
                         ) : activeSection === "skill" ? (
                           <PluginsSection
                             key={`skill:${settingsSectionNavigationVersion}`}
@@ -1974,6 +1994,20 @@ export function SettingsPage({
                           />
                         ) : activeSection === "acpAgents" ? (
                           <AcpAgentsSection
+                            workspacePath={activeWorkspacePath}
+                            workspaceIdentity={activeWorkspaceIdentity}
+                            remoteSessionId={acpWorkspaceTab?.remoteSessionId}
+                            remoteTarget={acpWorkspaceTab?.remoteTarget}
+                          />
+                        ) : activeSection === "agentProfiles" ? (
+                          <AgentProfilesSection
+                            workspacePath={activeWorkspacePath}
+                            workspaceIdentity={activeWorkspaceIdentity}
+                            remoteSessionId={acpWorkspaceTab?.remoteSessionId}
+                            remoteTarget={acpWorkspaceTab?.remoteTarget}
+                          />
+                        ) : activeSection === "squads" ? (
+                          <AgentSquadsSection
                             workspacePath={activeWorkspacePath}
                             workspaceIdentity={activeWorkspaceIdentity}
                             remoteSessionId={acpWorkspaceTab?.remoteSessionId}

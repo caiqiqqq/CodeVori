@@ -4,6 +4,7 @@ import type { WorkTaskExecutionContext } from "../session/contract.js";
 import { executeWorkTaskConversation } from "../work-task/workTaskExecution.js";
 import { prepareWorkTaskWorktree } from "../work-task/workTaskWorktree.js";
 import { readDelegationApiAnswer } from "./delegationApiResult.js";
+import { squadPrompt } from "./squadPrompt.js";
 
 type Dependencies = Parameters<typeof executeWorkTaskConversation>[0];
 export function createDelegationExecution(deps: Dependencies) {
@@ -19,7 +20,12 @@ export function createDelegationExecution(deps: Dependencies) {
       id: task.id,
       title: task.title,
       prompt,
-      runText: prompt,
+      runText:
+        prompt +
+        (task.agentProfile
+          ? `\n智能体：${task.agentProfile.name}\n职责提示词：${task.agentProfile.instructions}`
+          : "") +
+        squadPrompt(task),
       execution: task.execution,
       attachments: task.attachments,
       workspaceFiles: task.workspaceFiles,
@@ -70,8 +76,11 @@ export function createDelegationExecution(deps: Dependencies) {
 
 export function createDelegationDelivery(deps: { acp: IAcpService; agent: Dependencies["agent"] }) {
   return async (task: DelegationTask, commandId: string, text: string) => {
-    if (task.parent.kind === "acp")
-      return deps.acp.notifyResult({ ...task.parent, id: task.parent.sessionId, commandId, text });
+    if (task.parent.kind === "acp") {
+      const { kind: _kind, sessionId, ...workspace } = task.parent;
+      // 修复原因：delegation parent 身份字段不属于 ACP 输入；严格协议会拒绝额外字段。
+      return deps.acp.notifyResult({ ...workspace, id: sessionId, commandId, text });
+    }
     const { createZCodeAgentConnectionScope } =
       await import("../zcode-agent/zcodeAgentConnectionScope.js");
     const connection = createZCodeAgentConnectionScope(deps.agent, {

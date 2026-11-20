@@ -51,7 +51,7 @@ export async function exerciseAgentBoardWaiting(page, artifacts) {
   const native = card("Remote API session"),
     acp = card("Remote ACP 1");
   const ongoing = page.locator('[data-board-column="running"]');
-  const tabs = page.getByRole("tablist", { name: "会话范围", exact: true });
+  const tabs = page.getByRole("tablist", { name: "任务范围", exact: true });
   const count = (n) => tabs.getByRole("tab", { name: new RegExp(`^进行中\\s*${n}$`) }).waitFor();
   await count(6);
   await native.getByText("进行中", { exact: true }).waitFor();

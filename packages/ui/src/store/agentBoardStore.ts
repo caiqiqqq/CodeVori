@@ -12,10 +12,12 @@ import {
   type BoardDisplayStatus,
   type BoardTrackingTarget,
   type BoardItem,
+  type BoardTaskState,
   type BoardStagedItems,
   type BoardTracking,
   type BoardView,
 } from "@/agent-board/agentBoardModel.js";
+export type BoardLayoutMode = "cards" | "compact" | "list";
 interface Preferences {
   statusOrder: readonly BoardDisplayStatus[];
   readWorkTaskResults: Record<string, string>;
@@ -23,30 +25,32 @@ interface Preferences {
   project: string | null;
   pinnedProjects: string[] | null;
   view: BoardView;
+  layoutMode: BoardLayoutMode;
   group: "project" | "status";
   agent: string;
   search: string;
   tracking: BoardTracking;
-  category: "all" | "standalone" | "work-tasks";
+  category: "all" | "standalone";
 }
 interface BoardStore extends Preferences {
   setStatusOrder(order: readonly BoardDisplayStatus[]): void;
   pickerOpen: boolean;
   markWorkTaskResultRead(item: BoardItem): void;
-  setItemStaged(item: BoardItem, staged: boolean): void;
+  setItemStaged(item: BoardTaskState, staged: boolean): void;
   reconcileStagedItems(items: BoardItem[]): void;
   setPickerOpen(open: boolean): void;
   selectProject(key: string | null): void;
   toggleProject(key: string, defaults?: string[], knownKeys?: string[]): void;
   setView(view: BoardView): void;
+  setLayoutMode(mode: BoardLayoutMode): void;
   setGroup(group: Preferences["group"]): void;
   setAgent(agent: string): void;
   setSearch(search: string): void;
   revealItem(item: BoardItem): void;
   setTracking(tracking: BoardTracking): void;
   includeItem(item: BoardTrackingTarget): void;
+  revealCreatedSession(item: BoardTrackingTarget): void;
   selectStandalone(): void;
-  selectWorkTasks(): void;
 }
 const key = "zcode-agent-board:v1";
 const layoutVersion = 2;
@@ -57,6 +61,7 @@ const defaults: Preferences = {
   project: null,
   pinnedProjects: null,
   view: "all",
+  layoutMode: "cards",
   group: "status",
   agent: "all",
   search: "",
@@ -148,12 +153,14 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         project: v.project,
         // 收藏入口已移除，旧偏好仅回到全部，不清除用户的范围和阅读记录。
         view: v.view === "attention" || v.view === "starred" ? "all" : v.view,
+        layoutMode: ["cards", "compact", "list"].includes(v.layoutMode) ? v.layoutMode : "cards",
         // 旧默认项目分组曾遮住三状态列；只迁移布局，不清除用户的跟踪范围。
         group: v.layoutVersion === layoutVersion ? v.group : "status",
         agent: v.agent,
         search: v.search,
         tracking: readTracking(v.tracking),
-        category: v.category === "standalone" || v.category === "work-tasks" ? v.category : "all",
+        // 所有会话共用任务分类；旧待办专属入口迁移为全部，保留其它偏好。
+        category: v.category === "standalone" ? v.category : "all",
         pinnedProjects: v.pinnedProjects
           ? [...new Set<string>(v.pinnedProjects)].slice(0, 6)
           : null,
@@ -168,6 +175,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         project,
         pinnedProjects,
         view,
+        layoutMode,
         group,
         agent,
         search,
@@ -188,6 +196,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
             project,
             pinnedProjects,
             view,
+            layoutMode,
             group,
             agent,
             search,
@@ -198,6 +207,25 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
       } catch {
         /* 受限存储只影响显示偏好，不回写 Host。 */
       }
+    };
+    const revealCreated = (item: BoardTrackingTarget) => {
+      const tracking = get().tracking;
+      // 修复原因：创建回执曾重置顶部项目/分类选择，让用户从当前看板范围跳走。
+      // 只纳入回执中的精确 ID；新实体不属于当前范围时由用户主动切换顶部选择。
+      save({
+        tracking:
+          tracking.mode === "custom"
+            ? {
+                ...tracking,
+                includedItems: [...new Set([...tracking.includedItems, item.key])],
+                excludedItems: tracking.excludedItems.filter((key) => key !== item.key),
+              }
+            : tracking,
+        group: "status",
+        view: "all",
+        agent: "all",
+        search: "",
+      });
     };
     return {
       ...initial,
@@ -238,7 +266,6 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
       setPickerOpen: (pickerOpen) => set({ pickerOpen }),
       selectProject: (project) =>
         save({ project, category: "all", ...(project === null ? { group: "status" } : {}) }),
-      selectWorkTasks: () => save({ project: null, category: "work-tasks" }),
       selectStandalone: () => save({ project: null, category: "standalone" }),
       setTracking: (tracking) => save({ tracking: readTracking(tracking) }),
       includeItem: (item) => {
@@ -253,6 +280,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
           },
         });
       },
+      revealCreatedSession: (item) => revealCreated(item),
       toggleProject: (project, defaultKeys = [], knownKeys) => {
         const saved = get().pinnedProjects ?? defaultKeys;
         const current = knownKeys ? saved.filter((key) => knownKeys.includes(key)) : saved;
@@ -261,6 +289,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         else if (current.length < 6) save({ pinnedProjects: [...current, project] });
       },
       setView: (view) => save({ view }),
+      setLayoutMode: (layoutMode) => save({ layoutMode }),
       setGroup: (group) => save({ group }),
       setAgent: (agent) => save({ agent }),
       setSearch: (search) => save({ search }),

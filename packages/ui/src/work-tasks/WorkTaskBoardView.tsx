@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { GripHorizontal } from "lucide-react";
-import type { WorkTask } from "@zcode/shared";
+import { currentWorkTaskWorkflowStage, type WorkTask } from "@zcode/shared";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
 import { WORK_TASK_COLUMNS, type WorkTaskColumn } from "@/lib/workTaskBoard.js";
 import { workTaskSelectionKey } from "@/store/workTaskNavigationStore.js";
@@ -141,6 +141,14 @@ export function WorkTaskBoardView({
                                       workTaskSelectionKey({ ...tab, id: task.id }) ===
                                       workTaskSelectionKey(task),
                                   )?.label ?? task.workspacePath}
+                                </span>
+                              ) : null}
+                              {task.workflow ? (
+                                <span
+                                  className="max-w-24 truncate text-ui-xs text-foreground-subtle"
+                                  data-testid="work-task-stage"
+                                >
+                                  {currentWorkTaskWorkflowStage(task)?.name}
                                 </span>
                               ) : null}
                               <WorkTaskStatus task={task} />

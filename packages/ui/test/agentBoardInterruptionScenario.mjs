@@ -24,7 +24,7 @@ export async function exerciseAgentBoardInterruption(page, artifacts) {
       excludedItems: [],
     });
   });
-  const tabs = page.getByRole("tablist", { name: "会话范围", exact: true });
+  const tabs = page.getByRole("tablist", { name: "任务范围", exact: true });
   const count = (label, n) =>
     tabs.getByRole("tab", { name: new RegExp(`^${label}\\s*${n}$`) }).waitFor();
   const choose = (label) =>
@@ -34,14 +34,14 @@ export async function exerciseAgentBoardInterruption(page, artifacts) {
   const search = page.getByRole("textbox", { name: "搜索任务、对话或项目…", exact: true });
   await search.fill("Remote ACP 1");
   const candidate = page.getByRole("dialog").locator("label").filter({ hasText: "Remote ACP 1" });
-  await candidate.getByText("Claude · 进行中", { exact: true }).waitFor();
+  await candidate.getByText(/^Claude\s*·\s*进行中$/).waitFor();
   await page.evaluate(() => window.__board.updateAcp(1, { status: "idle" }));
-  await candidate.getByText("Claude · 已完成", { exact: true }).waitFor();
+  await candidate.getByText(/^Claude\s*·\s*已完成$/).waitFor();
   await page.evaluate(() => window.__board.updateAcp(1, { status: "running" }));
-  await candidate.getByText("Claude · 进行中", { exact: true }).waitFor();
+  await candidate.getByText(/^Claude\s*·\s*进行中$/).waitFor();
   // 原始中断事件没有 error：复现侧栏 failed=false 但看板仍显示进行中的缺口。
   await page.evaluate(() => window.__board.updateAcp(1, { status: "interrupted" }));
-  await candidate.getByText("Claude · 失败", { exact: true }).waitFor();
+  await candidate.getByText(/^Claude\s*·\s*失败$/).waitFor();
   await page.getByRole("button", { name: "取消", exact: true }).click();
   await count("进行中", 1);
   await count("失败", 1);

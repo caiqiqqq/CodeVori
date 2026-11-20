@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import { Checkbox } from "@/components/ui/checkbox.js";
+import { useAgentBoardWorkTasks } from "@/hooks/useAgentBoardWorkTasks.js";
+import { workTaskNavigationKey } from "@/store/workTaskNavigationStore.js";
+import { ProjectWorkflowSelect } from "./task-workflows/ProjectWorkflowSelect.js";
 import { useProjectManagement } from "@/hooks/useProjectManagement.js";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -11,6 +14,11 @@ export function ProjectsSection() {
   const t = (key: string, values?: Record<string, number>) =>
     intl.formatMessage({ id: `settings.projects.${key}` }, values);
   const { projects, busy, remove } = useProjectManagement();
+  const workflowTabs = useMemo(
+    () => projects.map((project) => ({ ...project, id: project.key, kind: "workspace" as const })),
+    [projects],
+  );
+  const workflows = useAgentBoardWorkTasks(workflowTabs);
   const confirm = useConfirmDialog();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -67,7 +75,7 @@ export function ProjectsSection() {
       </div>
       <ul className="divide-y divide-border rounded-lg border border-border">
         {filtered.map((entry) => (
-          <li key={entry.key} className="flex items-center gap-3 p-3">
+          <li key={entry.key} className="flex flex-wrap items-center gap-3 p-3">
             <Checkbox
               aria-label={entry.label}
               checked={selected.has(entry.key)}
@@ -81,7 +89,7 @@ export function ProjectsSection() {
                 })
               }
             />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate text-ui-sm font-medium">{entry.label}</p>
               <p
                 className="truncate text-ui-xs text-foreground-subtle"
@@ -90,6 +98,17 @@ export function ProjectsSection() {
                 {entry.workspaceIdentity || entry.workspacePath}
               </p>
             </div>
+            <ProjectWorkflowSelect
+              panel={
+                workflows.projectTabs.some(
+                  (tab) => workTaskNavigationKey(tab) === workTaskNavigationKey(entry),
+                )
+                  ? workflows.forScope(entry)
+                  : null
+              }
+              loading={workflows.projectsLoading}
+              remote={!!(entry.workspaceIdentity || entry.remoteSessionId || entry.remoteTarget)}
+            />
           </li>
         ))}
       </ul>

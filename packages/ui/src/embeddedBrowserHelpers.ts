@@ -21,12 +21,15 @@ export function isRecoverableBrowserGuestExitReason(reason: string): boolean {
 }
 
 // Electron <webview> 标签的同步方法（getURL/canGoBack/loadURL/executeJavaScript 等）在
-// guest 尚未 attach（dom-ready 之前）或 guest frame 已销毁/重附过程中会同步抛出这两类错误。
+// guest 尚未 attach（dom-ready 之前）或 guest frame 已销毁/重附过程中会同步抛出这几类错误。
 // 这些是 webview 生命周期里的预期竞态，不是真正的业务异常。若任由它们经由
 // window.onerror 全局兜底上报，单一来源即会占用海量异常量，必须在调用边界收敛。
 const WEBVIEW_DETACHED_ERROR_FRAGMENTS = [
   "must be attached to the DOM",
   "Render frame was disposed",
+  // Main 先关闭 guest、Renderer 随后卸载节点；期间迟到的 dom-ready /
+  // did-stop-loading 仍会读状态，Electron 对已移除实例抛出此生命周期错误。
+  "Invalid guestInstanceId:",
 ] as const;
 
 function isWebviewDetachedError(error: unknown): boolean {

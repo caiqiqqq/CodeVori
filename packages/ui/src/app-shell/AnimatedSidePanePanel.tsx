@@ -868,6 +868,9 @@ export function AnimatedSidePanePanel({
                             faviconUrl={tab.faviconUrl}
                             workspacePath={workspaceAbsPath}
                             workspaceIdentity={workspaceIdentity}
+                            // 切 workspace 的过渡 render 仍可能包含旧 tab，attach 必须
+                            // 使用创建时冻结的身份，不能把旧 guest 上报给新 workspace。
+                            workspaceKey={tab.workspaceKey ?? workspaceKey}
                             remoteSessionId={tab.remoteSessionId ?? workspaceRemoteSessionId}
                             residencyGeneration={tab.residencyGeneration}
                             sessionId={tab.ownerTaskId ?? "unscoped"}
