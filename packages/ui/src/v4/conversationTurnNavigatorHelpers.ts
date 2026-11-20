@@ -14,6 +14,14 @@ export interface ConversationTurnNavigatorItem {
   isRunning: boolean;
 }
 
+/** 旧历史的有界目录投影；正文行仍由 rows.window 唯一持有。 */
+export interface ConversationTurnNavigatorDirectoryEntry {
+  rowId: number;
+  turnId: string;
+  userText: string;
+  assistantText?: string;
+}
+
 interface BuildConversationTurnNavigatorItemsOptions {
   assistantEmptyPreview: string;
   assistantRunningPreview: string;
@@ -172,6 +180,7 @@ function buildAssistantPreview(
 export function buildConversationTurnNavigatorItems(
   units: readonly ConversationTurnRenderUnit[],
   options: BuildConversationTurnNavigatorItemsOptions,
+  directory: readonly ConversationTurnNavigatorDirectoryEntry[] = [],
 ): ConversationTurnNavigatorItem[] {
   const resolvedOptions: Required<BuildConversationTurnNavigatorItemsOptions> = {
     ...options,
@@ -179,7 +188,7 @@ export function buildConversationTurnNavigatorItems(
     maxPreviewParagraphs: options.maxPreviewParagraphs ?? DEFAULT_MAX_PREVIEW_PARAGRAPHS,
   };
 
-  return units.flatMap((unit, unitIndex) => {
+  const loaded = units.flatMap((unit, unitIndex) => {
     // provider/store 的物理 role=user 还包含 background/goal/mailbox
     // 等系统上下文；目录代表用户主动 query，只能使用投影明确裁决的 realUser。
     const realUserInputs = unit.visibleUserInputs.filter((row) => row.origin === "realUser");
@@ -211,6 +220,31 @@ export function buildConversationTurnNavigatorItems(
       isRunning: unit.isRunning && queryIndex === realUserInputs.length - 1,
     }));
   });
+  const loadedRowIds = new Set(loaded.map((item) => item.rowId));
+  // 修复原因：完整问题目录只需有限预览；未加载项不可伪装成正文虚拟列表的 unit。
+  const older = directory
+    .filter((entry) => !loadedRowIds.has(entry.rowId))
+    .map((entry): ConversationTurnNavigatorItem => ({
+      key: `outline:query:${entry.rowId}`,
+      turnId: entry.turnId,
+      unitIndex: -1,
+      rowId: entry.rowId,
+      userPreview: buildPreviewText({
+        texts: [entry.userText],
+        fallback: resolvedOptions.userFallbackPreview,
+        maxPreviewChars: resolvedOptions.maxPreviewChars,
+        maxPreviewParagraphs: resolvedOptions.maxPreviewParagraphs,
+      }),
+      assistantPreview: buildPreviewText({
+        texts: entry.assistantText ? [entry.assistantText] : [],
+        fallback: resolvedOptions.assistantEmptyPreview,
+        maxPreviewChars: resolvedOptions.maxPreviewChars,
+        maxPreviewParagraphs: resolvedOptions.maxPreviewParagraphs,
+      }),
+      assistantPreviewKind: entry.assistantText ? "text" : "empty",
+      isRunning: false,
+    }));
+  return [...older, ...loaded].sort((left, right) => left.rowId - right.rowId);
 }
 
 function resolveFiniteNonNegative(value: number): number {

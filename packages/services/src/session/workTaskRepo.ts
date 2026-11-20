@@ -29,12 +29,27 @@ import {
   prepareWorkTaskForge,
   completeWorkTaskForge,
 } from "./workTaskForgeState.js";
+import {
+  initializeWorkTaskWorkflowLibrary,
+  readWorkTaskWorkflow,
+  listWorkTaskWorkflows,
+  saveWorkTaskWorkflowDefinition,
+  selectWorkTaskWorkflow,
+  deleteWorkTaskWorkflowDefinition,
+  workTaskWorkflowCatalogRevision,
+} from "./workTaskWorkflowPersistence.js";
+import {
+  attachConversationWorkflow,
+  listConversationWorkflows,
+  transitionConversationWorkflow,
+} from "./workTaskConversationWorkflowPersistence.js";
 import { createWorkTaskDraft } from "./workTaskDraft.js";
 import { admitWorkTaskMerge } from "./workTaskMergeAdmission.js";
 import { isDeepStrictEqual } from "node:util";
 import {
   WORK_TASK_ACTIVE_STATUSES,
   isWorkTaskMerging,
+  workTaskExecutionPath,
   resolveWorkspaceKey,
   uuidv7,
   workTaskSchema,
@@ -49,8 +64,21 @@ import {
   type WorkTaskMerge,
   type WorkTaskChangeRecord,
   type WorkTaskMergeRequest,
+  type WorkTaskAcceptBranch,
+  type WorkTaskWorkflowConfig,
+  type WorkTaskWorkflowDefinitionSave,
+  type WorkTaskWorkflowDefinitionDelete,
+  type WorkTaskWorkflowSave,
+  type WorkTaskWorkflowTransition,
+  type ConversationWorkflowAttach,
+  type ConversationWorkflowRecord,
+  type ConversationWorkflowTransition,
 } from "@zcode/shared";
 import type { WorkTaskConversationEvent, WorkTaskExecutionUpdate } from "./workTask.js";
+import {
+  assertWorkTaskWorkflowFinalStage,
+  buildWorkTaskStagePrompt,
+} from "./workTaskWorkflowState.js";
 
 interface Row {
   data: string;
@@ -69,7 +97,14 @@ export class WorkTaskRepo {
     return this.initialization;
   }
   private async initialize() {
-    this.db = await openWorkTaskDatabase(this.path);
+    const db = await openWorkTaskDatabase(this.path);
+    try {
+      initializeWorkTaskWorkflowLibrary(db);
+      this.db = db;
+    } catch (error) {
+      db.close();
+      throw error;
+    }
   }
   close() {
     this.db?.close();
@@ -113,8 +148,71 @@ export class WorkTaskRepo {
       )
       .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
   }
+  workflow(scope: WorkTaskScope): WorkTaskWorkflowConfig {
+    return readWorkTaskWorkflow(this.database(), scope);
+  }
+  listWorkflows() {
+    return listWorkTaskWorkflows(this.database());
+  }
+  workflowCatalogRevision() {
+    return workTaskWorkflowCatalogRevision(this.database());
+  }
+  conversationWorkflows(scope: Pick<WorkTaskScope, "workspacePath" | "workspaceIdentity">) {
+    return listConversationWorkflows(this.database(), scope);
+  }
+  attachConversationWorkflow(input: ConversationWorkflowAttach): ConversationWorkflowRecord {
+    return this.transaction(() => {
+      if (this.conversationSessionIds(input, input.kind).includes(input.sessionId))
+        throw new Error("work-task.conversation-workflow-already-bound");
+      return attachConversationWorkflow(this.database(), input);
+    });
+  }
+  transitionConversationWorkflow(
+    input: ConversationWorkflowTransition,
+  ): ConversationWorkflowRecord {
+    return this.transaction(() => {
+      if (this.conversationSessionIds(input, input.kind).includes(input.sessionId))
+        throw new Error("work-task.conversation-workflow-already-bound");
+      return transitionConversationWorkflow(this.database(), input);
+    });
+  }
+  saveWorkflowDefinition(input: WorkTaskWorkflowDefinitionSave) {
+    return this.transaction(() => saveWorkTaskWorkflowDefinition(this.database(), input));
+  }
+  deleteWorkflowDefinition(input: WorkTaskWorkflowDefinitionDelete) {
+    return this.transaction(() => deleteWorkTaskWorkflowDefinition(this.database(), input));
+  }
+  saveWorkflow(input: WorkTaskWorkflowSave): WorkTaskWorkflowConfig {
+    return this.transaction(() => selectWorkTaskWorkflow(this.database(), input));
+  }
   conversationTasks(): WorkTask[] {
     return listWorkTaskConversations(this.database());
+  }
+  boundConversation(
+    workspacePath: string,
+    kind: "api" | "acp",
+    sessionId: string,
+  ): WorkTask | null {
+    const rows = this.database()
+      .prepare(
+        `SELECT data FROM work_tasks
+         WHERE json_extract(data, '$.session.id') = ?
+           AND json_extract(data, '$.session.kind') = ?
+           AND (
+             json_extract(data, '$.worktree.path') = ? OR
+             (json_extract(data, '$.worktree.path') IS NULL AND json_extract(data, '$.workspacePath') = ?)
+           )`,
+      )
+      .all(sessionId, kind, workspacePath, workspacePath) as { data: string }[];
+    const matches = rows
+      .map((row) => workTaskSchema.parse(JSON.parse(row.data)))
+      .filter(
+        (task) =>
+          workTaskExecutionPath(task) === workspacePath &&
+          !task.workspaceIdentity &&
+          !task.remoteSessionId,
+      );
+    return matches.length === 1 ? matches[0]! : null;
   }
   conversationSessionIds(scope: WorkTaskScope, kind: "api" | "acp"): string[] {
     return listWorkTaskConversationSessionIds(this.database(), scope, kind);
@@ -153,7 +251,12 @@ export class WorkTaskRepo {
   }
   create(input: WorkTaskCreate): WorkTask {
     return this.transaction(() =>
-      createWorkTaskDraft(this.database(), input, input.source ? this.list(input, true) : []),
+      createWorkTaskDraft(
+        this.database(),
+        input,
+        input.source ? this.list(input, true) : [],
+        this.workflow(input).workflow ?? undefined,
+      ),
     );
   }
   update(input: WorkTaskUpdate): WorkTask {
@@ -169,7 +272,15 @@ export class WorkTaskRepo {
           sourceBranch: input.sourceBranch,
           useWorktree: input.useWorktree,
           promptEditorState: input.promptEditorState,
-          runText: input.prompt,
+          runText: task.workflow
+            ? buildWorkTaskStagePrompt(
+                input.prompt,
+                task.workflow.definition.stages.find(
+                  (stage) => stage.id === task.workflow!.currentStageId,
+                )!,
+                task.workflow.history.at(-1)?.handoffNote,
+              )
+            : input.prompt,
           runUsesPromptAssets: true,
           updatedAt: Date.now(),
         },
@@ -183,6 +294,35 @@ export class WorkTaskRepo {
       if (task.title === input.title) return task;
       // 运行中不能复用草稿 update；从最新记录仅改标题，保留队列、绑定与 owner/lease。
       return this.write({ ...task, title: input.title, updatedAt: Date.now() }, "renamed");
+    });
+  }
+  acceptWorktreeBranch(
+    input: WorkTaskAcceptBranch,
+    observed: NonNullable<WorkTask["worktree"]>,
+  ): WorkTask {
+    return this.transaction(() => {
+      const row = this.row(input, input.id);
+      const task = decode(row);
+      if (
+        row.owner ||
+        task.archived ||
+        task.stopPending ||
+        task.worktreeCleanup?.phase === "running" ||
+        task.status === "queued" ||
+        WORK_TASK_ACTIVE_STATUSES.includes(task.status) ||
+        !task.worktree ||
+        !isDeepStrictEqual(task.worktree, observed)
+      )
+        throw new Error("work-task.branch-confirmation-stale");
+      if (task.worktree.acceptedBranchName === input.currentBranchName) return task;
+      return this.write(
+        {
+          ...task,
+          worktree: { ...task.worktree, acceptedBranchName: input.currentBranchName },
+          updatedAt: Date.now(),
+        },
+        "worktree-branch-accepted",
+      );
     });
   }
   private enqueueInside(scope: WorkTaskScope, id: string, feedback?: string, fresh = false) {
@@ -228,6 +368,7 @@ export class WorkTaskRepo {
       const { id, targetBranch } = input;
       const row = this.row(input, id);
       const task = decode(row);
+      assertWorkTaskWorkflowFinalStage(task);
       if (!admitWorkTaskMerge(task, !!row.owner, targetBranch)) return task;
       appendWorkTaskQueue(this.database(), id);
       const merge: WorkTaskMerge = { id: uuidv7(), projectPath, targetBranch, phase: "queued" };
@@ -340,8 +481,101 @@ export class WorkTaskRepo {
     records?: WorkTaskChangeRecord,
   ): WorkTask {
     return this.transaction(() => {
-      const task = completeWorkTaskForge(this.get(scope, id), forge, records);
+      const current = this.get(scope, id);
+      assertWorkTaskWorkflowFinalStage(current);
+      const task = completeWorkTaskForge(current, forge, records);
       return this.write(task, "accepted");
+    });
+  }
+  transitionWorkflow(input: WorkTaskWorkflowTransition): WorkTask {
+    return this.transaction(() => {
+      const row = this.row(input, input.id);
+      const task = decode(row);
+      const state = task.workflow;
+      const currentStage = state?.definition.stages.find(
+        (stage) => stage.id === state.currentStageId,
+      );
+      const targetStage = state?.definition.stages.find(
+        (stage) => stage.id === input.targetStageId,
+      );
+      const statusWorkflow = !!state?.definition.initialStageId;
+      if (
+        !state ||
+        !currentStage ||
+        !targetStage ||
+        row.owner ||
+        task.runSeq !== input.expectedRunSeq ||
+        state.currentStageId !== input.expectedStageId ||
+        !(statusWorkflow ? ["todo", "review", "failed", "canceled"] : ["review"]).includes(
+          task.status,
+        ) ||
+        targetStage.enabled === false ||
+        task.archived ||
+        task.stopPending ||
+        task.worktreeCleanup?.phase === "running" ||
+        isWorkTaskMerging(task)
+      )
+        throw new Error("work-task.workflow-transition-stale");
+      if (
+        currentStage.id === targetStage.id ||
+        (!statusWorkflow &&
+          currentStage.nextStageId !== targetStage.id &&
+          currentStage.returnStageId !== targetStage.id)
+      )
+        throw new Error("work-task.workflow-transition-invalid");
+
+      assertWorkTaskSourceAvailable(this.list(input, true), task.source, task.id);
+
+      const now = Date.now();
+      const handoff = targetStage.handoff ?? (statusWorkflow ? "none" : "agent");
+      const startsAgent =
+        handoff === "agent" && targetStage.status !== "done" && targetStage.status !== "canceled";
+      // 修复依据：进入状态时的“不交接/成员”只更新业务状态，不能沿用旧实现无条件入队。
+      if (startsAgent) appendWorkTaskQueue(this.database(), task.id);
+      return this.write(
+        {
+          ...task,
+          execution: startsAgent ? (targetStage.execution ?? task.execution) : task.execution,
+          workflow: {
+            ...state,
+            currentStageId: targetStage.id,
+            owner: handoff === "none" ? (state.owner ?? currentStage.owner) : targetStage.owner,
+            history: [
+              ...state.history,
+              {
+                stageId: currentStage.id,
+                stageName: currentStage.name,
+                owner: state.owner ?? currentStage.owner,
+                session: task.session,
+                execution: task.execution,
+                worktree: task.worktree,
+                directBranch: task.directBranch,
+                runSeq: task.runSeq,
+                targetStageId: targetStage.id,
+                handoffNote: input.handoffNote,
+                transitionedAt: now,
+              },
+            ],
+          },
+          status: startsAgent
+            ? "queued"
+            : targetStage.status === "canceled"
+              ? "canceled"
+              : "review",
+          runText: buildWorkTaskStagePrompt(task.prompt, targetStage, input.handoffNote),
+          runUsesPromptAssets: true,
+          session: startsAgent ? undefined : task.session,
+          sessionRequestId: startsAgent ? uuidv7() : task.sessionRequestId,
+          failureReason: undefined,
+          completion: undefined,
+          merge: undefined,
+          finishedAt: startsAgent ? undefined : task.finishedAt,
+          startedAt: startsAgent ? undefined : task.startedAt,
+          stopPending: false,
+          updatedAt: now,
+        },
+        "workflow-stage-transitioned",
+      );
     });
   }
   claimForgeWriteback(scope: WorkTaskScope & { id: string }, owner: string): WorkTask {

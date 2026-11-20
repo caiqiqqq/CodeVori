@@ -12,8 +12,12 @@ export function createWorkTaskReads(
     async list(input) {
       const scope = workTaskListSchema.parse(input);
       await ready();
+      const config = options.repo.workflow(scope);
       return {
         tasks: options.repo.list(scope, scope.includeArchived),
+        conversationWorkflows: options.repo.conversationWorkflows(scope),
+        workflow: config.workflow,
+        workflowRevision: config.revision,
         concurrency: options.repo.concurrency(scope),
       };
     },

@@ -4,6 +4,8 @@ import { resolveWorkspaceKey, type WorkTaskScope } from "@zcode/shared";
 /** 服务持有的派生通知游标；持久事实仍只在 WorkTaskRepo。 */
 export class WorkTaskEvents {
   private readonly events = new Map<string, Emitter<void>>();
+  readonly workflows = new Emitter<void>();
+  private workflowRevision = -1;
   private revisions = new Map<string, number>();
   subscribe(scope: WorkTaskScope): Event<void> {
     const key = resolveWorkspaceKey(scope);
@@ -14,7 +16,11 @@ export class WorkTaskEvents {
     }
     return emitter.event;
   }
-  publish(next: Map<string, number>): boolean {
+  publish(next: Map<string, number>, workflowRevision = 0): boolean {
+    if (this.workflowRevision !== workflowRevision) {
+      this.workflowRevision = workflowRevision;
+      this.workflows.fire();
+    }
     let changed = false;
     for (const [key, revision] of next) {
       if (this.revisions.get(key) !== revision) {
@@ -28,5 +34,6 @@ export class WorkTaskEvents {
   dispose() {
     for (const event of this.events.values()) event.dispose();
     this.events.clear();
+    this.workflows.dispose();
   }
 }

@@ -9,6 +9,7 @@ const name = `__sidebar-focused-${process.pid}`;
 const html = join(root, `${name}.html`);
 const moduleFile = join(root, `${name}.tsx`);
 const output = process.env.ZCODE_E2E_SCREENSHOT_DIR ?? "/tmp/zcode-sidebar-focus";
+const menuOnly = process.env.ZCODE_E2E_MENU_ONLY === "1";
 let browser;
 try {
   await mkdir(output, { recursive: true });
@@ -23,7 +24,7 @@ try {
     import {createRoot} from 'react-dom/client';
     import {WorkspaceSidebar} from '../../../ui/src/WorkspaceSidebar.tsx';
     import {PlatformProvider} from '../../../ui/src/hooks/usePlatform.tsx';
-    import {ServiceProvider} from '../../../ui/test/acpProjectionFixture.tsx';
+    import {ServiceProvider} from '../../../ui/src/hooks/useServices.tsx';
     import {StoreProvider} from '../../../ui/src/store/StoreProvider.tsx';
     import {TabStoreProvider,useTabStoreApi} from '../../../ui/src/store/TabStoreProvider.tsx';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
@@ -36,6 +37,7 @@ try {
     import {restorePersistedRemoteWorkspaceSessions} from '../../../ui/src/root/remoteWorkspaceSessionPersistence.ts';
     import {appSettingsSchema} from '@zcode/shared';
     import {applyTheme} from '../../../ui/src/useTheme.ts';
+    import {useWorktreeSettingsConversation} from '../../../ui/src/hooks/useWorktreeSettingsConversation.ts';
     import '../../../ui/src/styles.css';
     const pathOnly=new URLSearchParams(location.search).has('pathOnly');
     const a=pathOnly?'/Users/caiqi/aicode/zcode':'/fixture/project-a',b=pathOnly?'/Users/caiqi/.code/worktrees/519e/zcode':'/fixture/project-b',tree='/fixture/worktrees/b',tasks='/fixture/tasks';
@@ -44,14 +46,15 @@ try {
     const acp=tabs.map((tab,i)=>({id:ids[i],agent:'codex',title:['主项目会话','跨项目会话','工作树会话','独立任务会话'][i],workspacePath:tab.workspacePath,status:'ready',revision:1,createdAt:now-i*1000,updatedAt:now-i*1000,entries:[{kind:'user',text:'fixture',createdAt:now-i*1000}]}));
     const api={taskId:'b',workspacePath:b,title:'同 ID 的 API 会话',provider:'glm',status:'idle',model:'bigmodel/GLM-5',createdAt:now,updatedAt:now};
     const ordinaryApi={...api,taskId:'a',workspacePath:a,title:'普通项目 API 会话'};
+    const todo={id:'focus-todo',workspacePath:a,title:'待办焦点回归',prompt:'Saved task',execution:{kind:'api',modelSelection:{providerId:'api',modelId:'model'},mode:'build'},status:'todo',archived:false,runSeq:0,runText:'Saved task',commandId:'command',sessionRequestId:crypto.randomUUID(),stopPending:false,createdAt:now,updatedAt:now};
     const state={calls:[],readCalls:[],selections:[],theme:applyTheme};window.__focus=state;
     const noop=()=>{},subscribe=()=>()=>({dispose(){}}),acpListeners=new Set();
     const services={
-      workTaskService:{list:async()=>({tasks:[],concurrency:1}),onDynamicChanged:subscribe},
+      workTaskService:{list:async scope=>({tasks:scope.workspacePath===a?[todo]:[],concurrency:1}),onDynamicChanged:subscribe},
       settingService:{get:async()=>({}),onDynamicChanged:subscribe},
       gitService:{getWorkspaceRepositoryInfo:async({workspacePath})=>({workspacePath,kind:workspacePath===tree?'linked-worktree':'main-tree',repoRoot:workspacePath===tree?b:workspacePath,...(workspacePath===tree?{mainWorktreePath:b}:{})})},
       zcodeTaskService:{onDynamicWorkspaceEvent:subscribe,listTasks:async scope=>[ordinaryApi,api].filter(t=>t.workspacePath===scope.workspacePath),listPinnedTaskIds:async()=>[],listPinnedTasks:async()=>[],listArchivedTasks:async()=>[],listDeletedTaskIds:async()=>[]},
-      acpService:{list:async(scope)=>{state.readCalls.push(scope);return acp.filter(s=>s.workspacePath===scope.workspacePath)},onDynamicSessionChanged:scope=>callback=>{const subscription={scope,callback};acpListeners.add(subscription);return {dispose(){acpListeners.delete(subscription)}}},updateRow:async(input)=>{state.calls.push(input)}},
+      acpService:{listSummaries:async(scope)=>{state.readCalls.push(scope);return acp.filter(s=>s.workspacePath===scope.workspacePath)},onDynamicSessionSummaryChanged:scope=>callback=>{const subscription={scope,callback};acpListeners.add(subscription);return {dispose(){acpListeners.delete(subscription)}}},updateRow:async(input)=>{state.calls.push(input)}},
       windowControllerService:{onDynamicControllerFrame:subscribe,subscribeControllerV4:async()=>({ack:{subscriptionId:crypto.randomUUID()}}),unsubscribeControllerV4:async()=>{},listTaskList:async(query)=>({items:query.kind==='pinned'?[]:[ordinaryApi,api].filter(t=>query.workspaceScopes.some(s=>s.workspacePath===t.workspacePath)),total:2,hasMore:false})},
     };
     connectProviderSettingsSnapshot({getView:async()=>({revision:1,providers:[],providerTemplates:[],providerOrder:[]}),onDidChange:()=>({dispose(){}})});
@@ -76,6 +79,7 @@ try {
         state.selections.push(session.id);
         if(!selectWorkbenchSession(binding,{workspacePath:session.workspacePath,sessionId:session.id,kind:'acp',agent:session.agent})){tabStore.getState().activateTabByPath(session.workspacePath);setPrimary(session)};
       };
+      useWorktreeSettingsConversation({selectApi:noop,selectAcp:select,openWorkTasks:()=>setWorkTasksActive(true)});
       state.split=()=>placeWorkbenchSessionInSplit(binding,{workspacePath:b,sessionId:'b',kind:'acp',agent:'codex'},{mode:'context-menu',side:'right'});
       state.closeMain=()=>{const store=useWorkbenchGroupStore.getState();store.closePane(store.activeGroupId,V4_PRIMARY_PANE_ID)};
       state.groupFocus=id=>{const store=useWorkbenchGroupStore.getState();store.focusPane(store.activeGroupId,id)};
@@ -86,13 +90,13 @@ try {
       state.primaryDraft=()=>usePaneLayoutStore.getState().focusPane(V4_PRIMARY_PANE_ID);
       state.native=()=>usePaneLayoutStore.getState().replacePaneBinding('pane-1',{workspaceScope:{workspacePath:b},sessionId:'b'});
       state.nativeA=()=>usePaneLayoutStore.getState().replacePaneBinding('pane-1',{workspaceScope:{workspacePath:a},sessionId:'a'});
-      state.pin=value=>{acp[1].pinned=value;acp[1].revision++;for(const {scope,callback} of acpListeners)if(scope.workspacePath===b)callback({kind:'updated',session:acp[1]})};
+      state.pin=value=>{acp[1].pinned=value;acp[1].revision++;for(const {scope,callback} of acpListeners)if(scope.workspacePath===b)callback({kind:'upserted',session:acp[1]})};
       state.readonly=()=>usePaneLayoutStore.getState().replacePaneBinding('pane-1',{workspaceScope:{workspacePath:b},sessionId:'b',kind:'acp',agent:'codex',readOnly:true});
       state.unvalidated=()=>usePaneLayoutStore.getState().replacePaneBinding('pane-1',{workspaceScope:{workspacePath:b},sessionId:'b',kind:'acp',agent:'codex',restoredUnvalidated:true});
       state.mode=next=>{setMode(next);persistSidebarTaskPreferences({organizeBy:next==='timeline'?'chronological':'project',sortBy:'updated'})};
       return ready?<main data-testid='sidebar-focus-fixture' className='h-dvh bg-sidebar text-foreground' style={{width:'min(320px,100vw)'}}>
         <WorkspaceSidebar key={mode} workspacePath={primary?.workspacePath??a} activeAcpSessionId={primary?.id??null} theme='zai-dark' isDesktop={false}
-          workTasksActive={workTasksActive} onOpenWorkTasks={()=>setWorkTasksActive(true)}
+          workTasksActive={workTasksActive}
           onSelectAcpSession={select} onSelectTask={(path,id)=>{setWorkTasksActive(false);state.selections.push('native:'+id);selectWorkbenchSession(binding,{workspacePath:path,sessionId:id})}}
           onStartDraftInWorkspace={noop} onCreateTask={state.draft} onCreateConversationTask={state.draft}
           onOpenFolderFromWorkspaceMenu={noop} onOpenCommandCenter={noop} onConnectRemote={noop} onSelectRemoteProject={noop}
@@ -104,14 +108,23 @@ try {
   `,
   );
   browser = await chromium.launch({ headless: true });
-  for (const width of [1280, 375]) {
-    for (const theme of ["zai-light", "zai-dark"]) {
+  for (const width of menuOnly ? [1280] : [1280, 375]) {
+    for (const theme of menuOnly ? ["zai-light"] : ["zai-light", "zai-dark"]) {
       const page = await browser.newPage({
         viewport: { width, height: 900 },
         deviceScaleFactor: 2,
       });
       page.setDefaultTimeout(12000);
       const errors = [];
+      await page.addInitScript(() => {
+        window.__focusRenderErrors = [];
+        addEventListener("error", (event) => {
+          const causes = [];
+          for (let error = event.error; error; error = error.cause)
+            causes.push(error.stack ?? error.message);
+          window.__focusRenderErrors.push(causes);
+        });
+      });
       page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
       // 不相关的重型文件树/账户/同步弹窗不挂载；侧栏、项目父行、列表与状态 owner 保持真实实现。
       for (const [path, symbol] of [
@@ -187,8 +200,21 @@ try {
         .catch((error) => {
           throw new Error(errors.join("\n") || error.message);
         });
+      if (width === 1280 && theme === "zai-light") {
+        await row("a").click({ button: "right" });
+        const menu = page.getByRole("menu");
+        await menu.waitFor();
+        assert.equal(await menu.getByRole("menuitem", { name: "重命名任务" }).count(), 1);
+        assert.equal(await menu.getByRole("menuitem", { name: "反馈问题" }).count(), 0);
+        await page.keyboard.press("Escape");
+      }
+      if (menuOnly) {
+        await page.close();
+        console.log("PASS: ACP sidebar context menu excludes feedback and retains rename.");
+        continue;
+      }
       await selected("a");
-      const workTasks = fixture.getByTestId("work-tasks-sidebar-open");
+      const workTasks = fixture.getByTestId("work-task-sidebar-row");
       const enterWorkTasks = async () => {
         const bindings = await page.evaluate(() =>
           JSON.stringify({
@@ -198,7 +224,11 @@ try {
         );
         await workTasks.click();
         await page.waitForFunction(() =>
-          [...document.querySelectorAll(".sidebar-conversation-row")].every(
+          [
+            ...document.querySelectorAll(
+              '.sidebar-conversation-row:not([data-testid="work-task-sidebar-row"])',
+            ),
+          ].every(
             (row) =>
               row.getAttribute("data-selected") !== "true" &&
               getComputedStyle(row).boxShadow === "none" &&
@@ -332,7 +362,11 @@ try {
         [],
         "Selection must not write Host state",
       );
-      assert.deepEqual(errors, []);
+      assert.deepEqual(
+        errors,
+        [],
+        JSON.stringify(await page.evaluate(() => window.__focusRenderErrors)),
+      );
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         true,

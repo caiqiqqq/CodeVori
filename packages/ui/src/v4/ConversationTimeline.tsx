@@ -51,6 +51,7 @@ import {
   resolveConversationTurnNavigatorActiveQueryRowId,
   resolveConversationTurnNavigatorHydrationRetryDelayMs,
   shouldHydrateConversationTurnNavigatorDirectory,
+  type ConversationTurnNavigatorDirectoryEntry,
   type ConversationTurnNavigatorHydrationResult,
   type ConversationTurnNavigatorQueryPosition,
   type ConversationTurnNavigatorVirtualItem,
@@ -283,8 +284,12 @@ interface ConversationTimelineProps {
   loadingOlder?: boolean;
   /** 拉取更早一窗历史（接近顶部时自动预取）。 */
   onLoadOlder?: () => Promise<void> | void;
-  /** 宽屏问题目录挂载后一次补齐当前有效分支的全部历史。 */
-  onLoadAllOlder?: () => Promise<ConversationTurnNavigatorHydrationResult>;
+  /** 宽屏问题目录只加载旧历史的有限预览。 */
+  onLoadTurnNavigatorDirectory?: () => Promise<ConversationTurnNavigatorHydrationResult>;
+  turnNavigatorDirectory?: readonly ConversationTurnNavigatorDirectoryEntry[];
+  turnNavigatorLoading?: boolean;
+  /** 点击未加载问题时，按既有分页路径把正文补至该行。 */
+  onLoadThroughQuery?: (rowId: number) => Promise<boolean>;
   /**
    * 问题导航目录失效代际（store turnNavigatorDirectoryRevision）。
    * real-user query 增删后终态必须失效重探测；组件 hydration key
@@ -372,7 +377,10 @@ function ConversationTimelineImpl({
   canLoadOlder = false,
   loadingOlder = false,
   onLoadOlder,
-  onLoadAllOlder,
+  onLoadTurnNavigatorDirectory,
+  turnNavigatorDirectory = [],
+  turnNavigatorLoading = false,
+  onLoadThroughQuery,
   turnNavigatorDirectoryRevision = 0,
   bottomDock,
   selectionPanelLayoutContainerRef,
@@ -422,7 +430,7 @@ function ConversationTimelineImpl({
   );
   const hasDelegationFooter = Boolean(
     delegation &&
-    (delegationPlacement.unmatched.length ||
+    (delegationPlacement.footerTasks.length ||
       delegation.controller.editing ||
       delegation.controller.error),
   );
@@ -511,7 +519,9 @@ function ConversationTimelineImpl({
   const userScrollIntentRef = useRef<{
     intent: TimelineUserScrollIntent;
     observedAt: number;
-  }>({ intent: "none", observedAt: 0 });
+    sequence: number;
+  }>({ intent: "none", observedAt: 0, sequence: 0 });
+  const lastHistoryPrefetchIntentSequenceRef = useRef(0);
   const touchClientYRef = useRef<number | null>(null);
   const scrollbarPointerIdRef = useRef<number | null>(null);
   const layoutScrollGuardUntilRef = useRef(0);
@@ -656,8 +666,8 @@ function ConversationTimelineImpl({
       !shouldHydrateConversationTurnNavigatorDirectory({
         canLoadOlder,
         containerWidthPx: turnNavigatorContainerWidthPx,
-        hasLoadHandler: Boolean(onLoadAllOlder),
-        loadingOlder,
+        hasLoadHandler: Boolean(onLoadTurnNavigatorDirectory),
+        loadingOlder: loadingOlder || turnNavigatorLoading,
       })
     ) {
       return;
@@ -676,7 +686,7 @@ function ConversationTimelineImpl({
         status: "idle" as const,
       });
     }
-    if (attempt.status !== "idle" || !onLoadAllOlder) return;
+    if (attempt.status !== "idle" || !onLoadTurnNavigatorDirectory) return;
     attempt.status = "in-flight";
     logger.debug("[v4-turn-navigator] 目录请求补齐完整历史", {
       attempt: attempt.attemptCount + 1,
@@ -684,7 +694,7 @@ function ConversationTimelineImpl({
       sessionKey,
       totalRows: totalCount,
     });
-    void onLoadAllOlder().then((result) => {
+    void onLoadTurnNavigatorDirectory().then((result) => {
       if (attempt.key !== hydrationKey) return;
       if (result.status === "hydrated" || result.status === "not-enough-queries") {
         attempt.status = "terminal";
@@ -713,7 +723,8 @@ function ConversationTimelineImpl({
   }, [
     canLoadOlder,
     loadingOlder,
-    onLoadAllOlder,
+    turnNavigatorLoading,
+    onLoadTurnNavigatorDirectory,
     rowContext.logEpoch,
     rows,
     sessionKey,
@@ -881,7 +892,9 @@ function ConversationTimelineImpl({
   }, []);
 
   const clearUserScrollIntent = useCallback(() => {
-    userScrollIntentRef.current = { intent: "none", observedAt: 0 };
+    const sequence = userScrollIntentRef.current.sequence;
+    userScrollIntentRef.current = { intent: "none", observedAt: 0, sequence };
+    lastHistoryPrefetchIntentSequenceRef.current = sequence;
     touchClientYRef.current = null;
     scrollbarPointerIdRef.current = null;
   }, []);
@@ -903,7 +916,11 @@ function ConversationTimelineImpl({
   const markUserScrollIntent = useCallback(
     (intent: TimelineUserScrollIntent) => {
       if (intent === "none") return;
-      userScrollIntentRef.current = { intent, observedAt: Date.now() };
+      userScrollIntentRef.current = {
+        intent,
+        observedAt: Date.now(),
+        sequence: userScrollIntentRef.current.sequence + 1,
+      };
       const element = scrollRef.current;
       // running -> terminal 会在同一帧迁移 live tail、折叠工作历史并触发
       // virtualizer 测高。向上滚动必须在 scroll 事件之前先拿走滚动权，否则终态
@@ -1326,10 +1343,17 @@ function ConversationTimelineImpl({
     // 视口预取，让桌面和手机 Web 共用的 renderer 在用户抵达边界前完成补页。
     const loadOlder = loadOlderRef.current;
     const triggerPx = historyPrefetchTriggerPx(element.clientHeight);
+    // 修复依据：一次 wheel/touch/key/pointer 输入最多请求一页；前插测高产生的
+    // 后续 scroll 即使仍落在用户意图 TTL 内，也不能把整段历史连续拉入正文。
+    const userInitiated =
+      userScrollIntent !== "none" &&
+      userScrollIntentRef.current.sequence !== lastHistoryPrefetchIntentSequenceRef.current;
     const shouldLoadOlder = shouldTriggerLoadOlder({
       scrollTop: element.scrollTop,
       canLoadOlder: loadOlder.canLoadOlder,
       loadingOlder: loadOlder.loadingOlder,
+      userInitiated,
+      restoringScroll: pendingDetachedScrollRestoreRef.current !== null,
       triggerPx,
     });
     if (
@@ -1356,6 +1380,9 @@ function ConversationTimelineImpl({
       // 恢复请求发起时的旧位置，把已经滑过的距离再次滚回去。
     }
     if (shouldLoadOlder) {
+      if (userInitiated) {
+        lastHistoryPrefetchIntentSequenceRef.current = userScrollIntentRef.current.sequence;
+      }
       logger.debug("[v4-timeline] 接近历史窗口顶部，自动预取更早行", {
         scrollTop: element.scrollTop,
         triggerPx,
@@ -1462,6 +1489,57 @@ function ConversationTimelineImpl({
     },
     [clearUserScrollIntent, commitFollowing, liveUnitIndex, syncTurnNavigatorViewport, virtualizer],
   );
+
+  const pendingDirectoryJumpRef = useRef<{
+    rowId: number;
+    sessionKey: string;
+    behavior: ScrollBehavior;
+  } | null>(null);
+  const renderUnitsRef = useRef(renderUnits);
+  renderUnitsRef.current = renderUnits;
+  const scrollToQueryRef = useRef(scrollToQuery);
+  scrollToQueryRef.current = scrollToQuery;
+  const jumpToQuery = useCallback(
+    (target: { unitIndex: number; rowId: number }, behavior: ScrollBehavior) => {
+      if (target.unitIndex >= 0) {
+        pendingDirectoryJumpRef.current = null;
+        scrollToQuery(target, behavior);
+        return;
+      }
+      if (!onLoadThroughQuery) return;
+      pendingDirectoryJumpRef.current = { rowId: target.rowId, sessionKey, behavior };
+      void onLoadThroughQuery(target.rowId).then((loaded) => {
+        if (pendingDirectoryJumpRef.current?.rowId !== target.rowId) return;
+        if (!loaded) {
+          pendingDirectoryJumpRef.current = null;
+          return;
+        }
+        let attempts = 20;
+        const alignLoadedQuery = () => {
+          const pending = pendingDirectoryJumpRef.current;
+          if (!pending || pending.rowId !== target.rowId || pending.sessionKey !== sessionKey)
+            return;
+          const unitIndex = renderUnitsRef.current.findIndex((unit) =>
+            unit.visibleUserInputs.some((row) => row.rowId === target.rowId),
+          );
+          if (unitIndex >= 0) {
+            pendingDirectoryJumpRef.current = null;
+            scrollToQueryRef.current({ unitIndex, rowId: target.rowId }, behavior);
+            return;
+          }
+          attempts -= 1;
+          if (attempts > 0) window.requestAnimationFrame(alignLoadedQuery);
+          else pendingDirectoryJumpRef.current = null;
+        };
+        window.requestAnimationFrame(alignLoadedQuery);
+      });
+    },
+    [onLoadThroughQuery, scrollToQuery, sessionKey],
+  );
+  useEffect(() => {
+    if (pendingDirectoryJumpRef.current?.sessionKey !== sessionKey)
+      pendingDirectoryJumpRef.current = null;
+  }, [sessionKey]);
 
   useLayoutEffect(() => {
     if (!scrollToQueryActionRef) return;
@@ -1821,14 +1899,15 @@ function ConversationTimelineImpl({
       {hideTurnNavigator ? null : (
         <ConversationTurnNavigator
           renderUnits={renderUnits}
-          isHydratingDirectory={loadingOlder}
+          directory={turnNavigatorDirectory}
+          isHydratingDirectory={turnNavigatorLoading}
           scrollOffsetPx={virtualizer.scrollOffset ?? turnNavigatorViewport.scrollOffsetPx}
           viewportHeightPx={
             virtualizer.scrollRect?.height ?? turnNavigatorViewport.viewportHeightPx
           }
           virtualItems={turnNavigatorVirtualItems}
           activeQueryRowId={turnNavigatorViewport.activeQueryRowId}
-          onJumpToQuery={scrollToQuery}
+          onJumpToQuery={jumpToQuery}
         />
       )}
       <div
@@ -2019,7 +2098,7 @@ function ConversationTimelineImpl({
                       key={`${delegation.parent.workspaceIdentity?.trim() || delegation.parent.workspacePath}:${delegation.parent.kind}:${delegation.parent.sessionId}`}
                       parent={delegation.parent}
                       controller={delegation.controller}
-                      tasks={delegationPlacement.unmatched}
+                      tasks={delegationPlacement.footerTasks}
                     />
                   ) : null}
                 </div>

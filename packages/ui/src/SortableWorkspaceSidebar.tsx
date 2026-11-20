@@ -16,11 +16,10 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   tab,
   workspacePathHint,
   isActiveWorkspace,
-  hasActiveDescendant = false,
   isExpanded,
-  activateTab,
   closeTab,
   toggleWorkspaceExpanded,
+  onOpenProjectAgentBoard,
   onSelectTask,
   onSelectAcpSession,
   activeAcpSessionId,
@@ -29,6 +28,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   taskItems,
   taskListLoading,
   taskListHasMore,
+  taskSortBy,
   taskListHasUnread = false,
   taskListLiveWorkflowCount = 0,
   workspaceKey,
@@ -45,11 +45,10 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   tab: WorkspaceTabState;
   workspacePathHint?: string;
   isActiveWorkspace: boolean;
-  hasActiveDescendant?: boolean;
   isExpanded: boolean;
-  activateTab: (tabId: string) => void;
   closeTab: (tabId: string) => void;
   toggleWorkspaceExpanded: (workspacePath: string) => void;
+  onOpenProjectAgentBoard: () => void;
   onSelectTask: (
     targetWorkspacePath: string,
     taskId: string,
@@ -62,6 +61,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
   taskItems: ZCodeTaskMeta[];
   taskListLoading: boolean;
   taskListHasMore: boolean;
+  taskSortBy?: "created" | "updated";
   taskListHasUnread?: boolean;
   taskListLiveWorkflowCount?: number;
   workspaceKey: string;
@@ -126,11 +126,10 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
       tab={tab}
       workspacePathHint={workspacePathHint}
       isActiveWorkspace={isActiveWorkspace}
-      hasActiveDescendant={hasActiveDescendant}
       isExpanded={isExpanded}
-      activateTab={activateTab}
       closeTab={closeTab}
       toggleWorkspaceExpanded={toggleWorkspaceExpanded}
+      onOpenProjectAgentBoard={onOpenProjectAgentBoard}
       onSelectTask={onSelectTask}
       onSelectAcpSession={onSelectAcpSession}
       activeAcpSessionId={activeAcpSessionId}
@@ -139,6 +138,7 @@ export const SortableWorkspaceSidebarItem = memo(function SortableWorkspaceSideb
       taskItems={taskItems}
       taskListLoading={taskListLoading}
       taskListHasMore={taskListHasMore}
+      taskSortBy={taskSortBy}
       taskListHasUnread={taskListHasUnread}
       taskListLiveWorkflowCount={taskListLiveWorkflowCount}
       onShowMoreTasks={handleShowMoreTasks}

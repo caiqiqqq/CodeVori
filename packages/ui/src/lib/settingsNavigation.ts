@@ -12,6 +12,7 @@ export type SettingsSectionId =
   | "memory"
   | "plugin"
   | "mcp"
+  | "credentials"
   | "skill"
   | "plugins"
   | "usage"
@@ -19,6 +20,8 @@ export type SettingsSectionId =
   | "subagents"
   | "acpAgents"
   | "delegation"
+  | "squads"
+  | "agentProfiles"
   | "commands"
   | "hooks"
   | "workspaceFileSearch"
@@ -26,6 +29,7 @@ export type SettingsSectionId =
   | "automations"
   | "shortcuts"
   | "quickMessages"
+  | "taskWorkflows"
   | "projects"
   | "remoteSync"
   | "worktrees"
@@ -83,6 +87,7 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
     value === "memory" ||
     value === "plugin" ||
     value === "mcp" ||
+    value === "credentials" ||
     value === "skill" ||
     value === "plugins" ||
     value === "usage" ||
@@ -90,6 +95,8 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
     value === "subagents" ||
     value === "acpAgents" ||
     value === "delegation" ||
+    value === "squads" ||
+    value === "agentProfiles" ||
     value === "commands" ||
     value === "hooks" ||
     value === "workspaceFileSearch" ||
@@ -97,6 +104,7 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
     value === "automations" ||
     value === "shortcuts" ||
     value === "quickMessages" ||
+    value === "taskWorkflows" ||
     value === "projects" ||
     value === "remoteSync" ||
     value === "worktrees" ||

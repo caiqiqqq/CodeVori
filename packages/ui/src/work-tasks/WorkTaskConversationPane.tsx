@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { Check, ChevronLeft, GitMerge, Info, MessageSquare, X } from "lucide-react";
 import { isWorkTaskMerging, type WorkTask } from "@zcode/shared";
 import type { WorkTaskPanel } from "@/hooks/useWorkTasks.js";
@@ -14,7 +14,9 @@ import {
 import { workTaskWorkspaceToolTarget } from "@/lib/workTaskWorkspaceTools.js";
 import { WorkTaskActions } from "./WorkTaskActions.js";
 import { WorkTaskPendingConversation } from "./WorkTaskPendingConversation.js";
+import { useWorkTaskWorktreeInspection } from "@/hooks/useWorkTaskWorktreeInspection.js";
 import { WorkTaskSourceLink } from "./WorkTaskSourceLink.js";
+import { WorkTaskWorkflowControls } from "./WorkTaskWorkflowControls.js";
 import {
   WorkTaskError,
   WorkTaskIconButton,
@@ -53,6 +55,7 @@ export function WorkTaskConversationPane({
   onComplete,
   onOpenConversation,
   onOpenNativeSession,
+  showBackButton = true,
   showMergeConversation = false,
   onToggleMergeConversation,
 }: {
@@ -66,10 +69,20 @@ export function WorkTaskConversationPane({
   onComplete(task: WorkTask): void;
   onOpenConversation(task: WorkTask): void;
   onOpenNativeSession?: OpenWorkTaskNativeSession;
+  showBackButton?: boolean;
   showMergeConversation?: boolean;
   onToggleMergeConversation?(): void;
 }) {
   const t = useWorkTaskMessages();
+  const selectionKey = task ? workTaskSelectionKey(task) : null;
+  const [workflowDialogTask, setWorkflowDialogTask] = useState<string | null>(null);
+  const onWorkflowDialogOpenChange = useCallback(
+    (open: boolean) => {
+      setWorkflowDialogTask(open ? selectionKey : null);
+    },
+    [selectionKey],
+  );
+  const { inspection, error: inspectionError } = useWorkTaskWorktreeInspection(task);
   const binding = task ? workTaskConversationBinding(task, showMergeConversation) : null;
   const toolTarget = task ? workTaskWorkspaceToolTarget(task, showMergeConversation) : null;
   const hasReview = Boolean(
@@ -84,14 +97,16 @@ export function WorkTaskConversationPane({
         <>
           <header className="flex min-w-0 shrink-0 flex-wrap items-center gap-1 border-b border-border px-3 py-2">
             <div className="flex min-w-0 flex-1 basis-40 items-center gap-1">
-              <WorkTaskIconButton
-                label={t("backToBoard")}
-                data-testid="work-task-back"
-                className="group-data-[wide=true]/work-task-workbench:hidden"
-                onClick={() => onClose(task.id)}
-              >
-                <ChevronLeft className="size-4" />
-              </WorkTaskIconButton>
+              {showBackButton ? (
+                <WorkTaskIconButton
+                  label={t("backToBoard")}
+                  data-testid="work-task-back"
+                  className="group-data-[wide=true]/work-task-workbench:hidden"
+                  onClick={() => onClose(task.id)}
+                >
+                  <ChevronLeft className="size-4" />
+                </WorkTaskIconButton>
+              ) : null}
               <h2 className="min-w-0 flex-1 truncate text-ui-base font-medium" title={task.title}>
                 {task.title}
               </h2>
@@ -170,6 +185,53 @@ export function WorkTaskConversationPane({
               <WorkTaskError error={task.worktreeCleanup.error} />
             </div>
           ) : null}
+          {task.worktree && !showMergeConversation && inspection?.status !== "ready" ? (
+            <div
+              className="flex min-w-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-ui-sm"
+              data-testid="work-task-branch-warning"
+            >
+              <span className="min-w-0 flex-1 break-all text-foreground-subtle">
+                {inspection?.status === "branch-changed" && inspection.currentBranchName
+                  ? t("branchChanged", {
+                      initial: inspection.initialBranchName,
+                      current: inspection.currentBranchName,
+                    })
+                  : t(
+                      inspectionError || inspection?.status === "invalid-target"
+                        ? "branchCheckFailed"
+                        : inspection?.status === "missing"
+                          ? "branchCheckFailed"
+                          : "branchChecking",
+                    )}
+              </span>
+              {inspection?.status === "branch-changed" &&
+              inspection.currentBranchName &&
+              !task.archived &&
+              !panel.busy &&
+              !["preparing", "running", "awaiting_input", "queued"].includes(task.status) ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    void panel.acceptWorktreeBranch(task.id, inspection.currentBranchName!)
+                  }
+                  data-testid="work-task-accept-branch"
+                >
+                  {t("acceptCurrentBranch")}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          {task.workflow ? (
+            <div className="shrink-0 border-b border-border px-3 py-2">
+              <WorkTaskWorkflowControls
+                key={workTaskSelectionKey(task)}
+                task={task}
+                panel={panel}
+                onDialogOpenChange={onWorkflowDialogOpenChange}
+              />
+            </div>
+          ) : null}
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
             {binding ? (
               <ScopedErrorBoundary
@@ -198,11 +260,17 @@ export function WorkTaskConversationPane({
                     readOnly={
                       task.archived ||
                       task.worktreeCleanup?.phase === "running" ||
+                      (!!task.worktree &&
+                        !showMergeConversation &&
+                        inspection?.status !== "ready") ||
                       (isWorkTaskMerging(task)
                         ? !showMergeConversation || task.merge?.phase === "applying"
                         : showMergeConversation)
                     }
-                    options={options}
+                    options={{
+                      ...options,
+                      focused: options?.focused !== false && workflowDialogTask !== selectionKey,
+                    }}
                     onClose={onClose}
                     onOpenNativeSession={onOpenNativeSession}
                   />

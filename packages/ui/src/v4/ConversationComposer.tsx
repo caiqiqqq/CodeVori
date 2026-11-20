@@ -179,6 +179,7 @@ import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import { useConversationSelectionReferences } from "@/v4/composer/useConversationSelectionReferences.js";
 import { ConversationBackgroundWorkTrigger } from "@/v4/composer/ConversationBackgroundWorkTrigger.js";
 import { V4ComposerCuaEntry } from "@/v4/composer/V4ComposerCuaEntry.js";
+import { ProjectEnvironmentSelector } from "@/v4/composer/ProjectEnvironmentSelector.js";
 import {
   V4ComposerModeSwitch,
   V4ComposerModelControls,
@@ -436,6 +437,7 @@ interface ConversationComposerProps {
   acpTokenUsage?: AcpContextTokenUsage | null;
   acpReady?: boolean;
   acpRunning?: boolean;
+  environmentBusy?: boolean;
   onSendAcpText?: (input: Omit<AcpPromptInput, "commandId">) => Promise<string>;
   acpGoal?: string | null;
   onSetAcpGoal?: (goal: string | null) => Promise<void>;
@@ -567,6 +569,7 @@ function ConversationComposerImpl({
   acpTokenUsage = null,
   acpReady = false,
   acpRunning = false,
+  environmentBusy = false,
   onSendAcpText,
   acpGoal,
   onSetAcpGoal,
@@ -1245,6 +1248,9 @@ function ConversationComposerImpl({
       inputRoutingMode: mode,
     });
   const canStop = acpAgent ? acpRunning : Boolean(snapshot?.control.canStop);
+  const environmentSessionId = acpAgent ? acpSessionId : sessionId;
+  const environmentIsBusy =
+    environmentBusy || (acpAgent ? acpRunning : Boolean(canStop || snapshot?.queue.items.length));
   const modifiedEnterReversesDelivery = modifiedEnterSubmits && canStop;
   const hasText = text.trim().length > 0;
   const hasDraftToSubmit =
@@ -2627,6 +2633,15 @@ function ConversationComposerImpl({
   const leadingActionsNode = useMemo(
     () => (
       <>
+        {!draftMode && environmentSessionId ? (
+          <ProjectEnvironmentSelector
+            workspacePath={workspacePath}
+            workspaceIdentity={workspaceIdentity}
+            sessionId={environmentSessionId}
+            kind={acpAgent ? "acp" : "api"}
+            busy={environmentIsBusy}
+          />
+        ) : null}
         {acpAgent ? (
           <AcpComposerConfigControls
             agent={acpAgent}
@@ -2681,6 +2696,10 @@ function ConversationComposerImpl({
       onSetAcpConfigOption,
       canStop,
       disabled,
+      draftMode,
+      environmentBusy,
+      environmentIsBusy,
+      environmentSessionId,
       draftConfig,
       handleConfigPickerOpenChange,
       backgroundWorkOpenTarget,
@@ -2690,6 +2709,7 @@ function ConversationComposerImpl({
       remoteSessionId,
       runningSubagentCount,
       snapshot?.backgroundWorks,
+      snapshot?.queue.items.length,
       workspaceIdentity,
       workspacePath,
     ],

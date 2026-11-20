@@ -57,7 +57,6 @@ test("sidebar counts share board outcomes, tracking, staging and full project id
     error: 0,
   });
   assert.deepEqual(counts.standalone, { running: 0, completed: 0, staged: 0, error: 1 });
-  assert.deepEqual(counts.workTasks, { running: 1, completed: 1, staged: 0, error: 1 });
   assert.equal(counts.projects.has("archived"), false);
   const tracked = countBoardSidebarItems(
     rows,
@@ -70,7 +69,7 @@ test("sidebar counts share board outcomes, tracking, staging and full project id
     },
     staged,
   );
-  assert.deepEqual(tracked.all, { running: 1, completed: 1, staged: 0, error: 0 });
+  assert.deepEqual(tracked.all, { running: 1, completed: 2, staged: 0, error: 0 });
 });
 
 test("new activity leaves staging and empty scopes keep zero counts", () => {

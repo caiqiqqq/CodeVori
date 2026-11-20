@@ -222,6 +222,7 @@ export const acpCodexConfigSchema = z.object({
   apiUrl: z.string(),
   apiKey: z.string(),
   model: z.string(),
+  defaultModeRequestUserInput: z.boolean().default(false),
 });
 export type AcpCodexConfig = z.infer<typeof acpCodexConfigSchema>;
 
@@ -233,6 +234,7 @@ export const acpCodexConfigUpdateSchema = acpCodexConfigSchema
   })
   .extend({
     expectedVersion: z.string().min(1),
+    defaultModeRequestUserInput: z.boolean().optional(),
     // 省略保留原生凭据；显式空字符串才表示清除。
     apiKey: z.string().optional(),
   })

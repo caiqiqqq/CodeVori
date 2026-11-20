@@ -3,14 +3,20 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import {
   delegationTaskSchema,
+  agentSquadDefinitionSchema,
+  agentProfileSchema,
   delegationSettingsSchema,
   resolveWorkspaceKey,
   type DelegationParent,
   type DelegationTask,
   type DelegationSettings,
   type WorkTaskScope,
+  type AgentSquad,
+  type AgentSquadDefinition,
+  type AgentProfile,
 } from "@zcode/shared";
 import { DelegationResultCache } from "./delegationResultCache.js";
+import { migrateAgentProfiles, resolveAgentSquad } from "./agentProfileStorage.js";
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
@@ -39,7 +45,15 @@ export class DelegationRepository {
           kind TEXT NOT NULL, session_id TEXT NOT NULL, task_id TEXT NOT NULL,
           PRIMARY KEY(workspace_key,workspace_path,kind,session_id));
         CREATE TABLE IF NOT EXISTS delegation_parents(key TEXT PRIMARY KEY, generation INTEGER NOT NULL, suspended INTEGER NOT NULL);
-        CREATE TABLE IF NOT EXISTS delegation_settings(key TEXT PRIMARY KEY, data TEXT NOT NULL);`);
+        CREATE TABLE IF NOT EXISTS delegation_settings(key TEXT PRIMARY KEY, data TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS delegation_squads(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS delegation_agent_profiles(id TEXT PRIMARY KEY, data TEXT NOT NULL);`);
+      try {
+        migrateAgentProfiles(db);
+      } catch (error) {
+        db.close();
+        throw error;
+      }
       this.database = db;
       // 修复原因：旧任务只保存当前 session；启动时把尚可恢复的绑定补进追加式归属表。
       for (const row of db.prepare("SELECT data FROM delegations").all() as { data: string }[]) {
@@ -160,6 +174,43 @@ export class DelegationRepository {
       )
       .run(resolveWorkspaceKey(scope), JSON.stringify(delegationSettingsSchema.parse(settings)));
     this.cache.clear();
+  }
+  squads(): AgentSquad[] {
+    const profiles = this.profiles();
+    return (
+      this.db().prepare("SELECT data FROM delegation_squads ORDER BY rowid").all() as {
+        data: string;
+      }[]
+    ).map((row) =>
+      resolveAgentSquad(agentSquadDefinitionSchema.parse(JSON.parse(row.data)), profiles),
+    );
+  }
+  putSquad(squad: AgentSquadDefinition) {
+    this.db()
+      .prepare(
+        "INSERT INTO delegation_squads(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+      )
+      .run(squad.id, JSON.stringify(agentSquadDefinitionSchema.parse(squad)));
+  }
+  deleteSquad(id: string) {
+    this.db().prepare("DELETE FROM delegation_squads WHERE id=?").run(id);
+  }
+  profiles(): AgentProfile[] {
+    return (
+      this.db().prepare("SELECT data FROM delegation_agent_profiles ORDER BY rowid").all() as {
+        data: string;
+      }[]
+    ).map((row) => agentProfileSchema.parse(JSON.parse(row.data)));
+  }
+  putProfile(profile: AgentProfile) {
+    this.db()
+      .prepare(
+        "INSERT INTO delegation_agent_profiles(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+      )
+      .run(profile.id, JSON.stringify(agentProfileSchema.parse(profile)));
+  }
+  deleteProfile(id: string) {
+    this.db().prepare("DELETE FROM delegation_agent_profiles WHERE id=?").run(id);
   }
   close() {
     this.cache.clear();

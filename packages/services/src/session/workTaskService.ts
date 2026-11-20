@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- 待办 Host 服务统一持有命令准入、会话观察与清理租约。 */
 import { WorkTaskEvents } from "./workTaskEvents.js";
 import { randomUUID } from "node:crypto";
 import { type Event, type IDisposable } from "@zcode/rpc";
@@ -6,6 +7,7 @@ import {
   workTaskMergeRequestSchema,
   isWorkTaskMerging,
   workTaskArchiveSchema,
+  workTaskAcceptBranchSchema,
   workTaskConcurrencySchema,
   workTaskCreateSchema,
   workTaskScopeSchema,
@@ -17,6 +19,14 @@ import {
   workTaskAttachmentBeginSchema,
   workTaskAttachmentChunkSchema,
   workTaskAttachmentTargetSchema,
+  workTaskWorkflowDefinitionSaveSchema,
+  workTaskWorkflowDefinitionDeleteSchema,
+  type WorkTaskWorkflowDefinitionSave,
+  type WorkTaskWorkflowDefinitionDelete,
+  workTaskWorkflowSaveSchema,
+  workTaskWorkflowTransitionSchema,
+  conversationWorkflowAttachSchema,
+  conversationWorkflowTransitionSchema,
   type WorkTaskAttachment,
   type WorkTaskAttachmentImport,
   type WorkTaskAttachmentBegin,
@@ -31,6 +41,11 @@ import {
   type WorkTaskRename,
   type WorkTaskMergeRequest,
   type WorkTaskArchive,
+  type WorkTaskAcceptBranch,
+  type WorkTaskWorkflowSave,
+  type WorkTaskWorkflowTransition,
+  type ConversationWorkflowAttach,
+  type ConversationWorkflowTransition,
 } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { assertWorkTaskLocal } from "./workTask.js";
@@ -98,7 +113,13 @@ export class WorkTaskService implements IWorkTaskService {
       throw new Error("work-task.cleanup-in-progress");
   }
   private publish() {
-    if (this.events.publish(this.options.repo.revisions())) this.syncObservations();
+    if (
+      this.events.publish(
+        this.options.repo.revisions(),
+        this.options.repo.workflowCatalogRevision(),
+      )
+    )
+      this.syncObservations();
   }
 
   private syncObservations() {
@@ -255,6 +276,61 @@ export class WorkTaskService implements IWorkTaskService {
     this.publish();
     return task;
   }
+  async listWorkflows() {
+    await this.ready();
+    return this.options.repo.listWorkflows();
+  }
+  onDynamicWorkflowsChanged(): Event<void> {
+    return this.events.workflows.event;
+  }
+  async saveWorkflowDefinition(input: WorkTaskWorkflowDefinitionSave) {
+    assertWorkTaskLocal({ workspacePath: "" }, this.options.allowExecution);
+    const parsed = workTaskWorkflowDefinitionSaveSchema.parse(input);
+    await this.ready();
+    const result = this.options.repo.saveWorkflowDefinition(parsed);
+    this.publish();
+    return result;
+  }
+  async deleteWorkflowDefinition(input: WorkTaskWorkflowDefinitionDelete) {
+    assertWorkTaskLocal({ workspacePath: "" }, this.options.allowExecution);
+    const parsed = workTaskWorkflowDefinitionDeleteSchema.parse(input);
+    await this.ready();
+    this.options.repo.deleteWorkflowDefinition(parsed);
+    this.publish();
+  }
+  async saveWorkflow(input: WorkTaskWorkflowSave) {
+    const parsed = workTaskWorkflowSaveSchema.parse(input);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
+    await this.ready();
+    const workflow = this.options.repo.saveWorkflow(parsed);
+    this.publish();
+    return workflow;
+  }
+  async transitionWorkflow(input: WorkTaskWorkflowTransition) {
+    const parsed = workTaskWorkflowTransitionSchema.parse(input);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
+    await this.ready();
+    const task = this.options.repo.transitionWorkflow(parsed);
+    this.publish();
+    this.wake();
+    return task;
+  }
+  async attachConversationWorkflow(input: ConversationWorkflowAttach) {
+    const parsed = conversationWorkflowAttachSchema.parse(input);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
+    await this.ready();
+    const record = this.options.repo.attachConversationWorkflow(parsed);
+    this.publish();
+    return record;
+  }
+  async transitionConversationWorkflow(input: ConversationWorkflowTransition) {
+    const parsed = conversationWorkflowTransitionSchema.parse(input);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
+    await this.ready();
+    const record = this.options.repo.transitionConversationWorkflow(parsed);
+    this.publish();
+    return record;
+  }
   async update(input: WorkTaskUpdate) {
     const parsed = workTaskUpdateSchema.parse(input);
     await this.ready();
@@ -345,6 +421,19 @@ export class WorkTaskService implements IWorkTaskService {
     const parsed = workTaskArchiveSchema.parse(input);
     if (parsed.removeWorktree) assertWorkTaskLocal(parsed, this.options.allowExecution);
     await this.ready();
+    if (parsed.confirmedBranchName) {
+      const inspection = await this.inspectWorktree({
+        workspacePath: parsed.workspacePath,
+        workspaceIdentity: parsed.workspaceIdentity,
+        remoteSessionId: parsed.remoteSessionId,
+        id: parsed.id,
+      });
+      if (
+        !["ready", "branch-changed"].includes(inspection.status) ||
+        inspection.currentBranchName !== parsed.confirmedBranchName
+      )
+        throw new Error("work-task.branch-confirmation-stale");
+    }
     const task = archiveWorkTask(this.options.repo, parsed, {
       active: this.cleaning,
       owner: this.owner,
@@ -360,6 +449,30 @@ export class WorkTaskService implements IWorkTaskService {
         logger.error(undefined, "Worktree cleanup persistence failed", { error: String(error) }),
       );
     return task;
+  }
+  async inspectWorktree(input: WorkTaskTarget) {
+    const parsed = workTaskTargetSchema.parse(input);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
+    await this.ready();
+    if (!this.options.inspectWorktree) throw new Error("work-task.worktree-inspection-unsupported");
+    return this.options.inspectWorktree(this.options.repo.get(parsed, parsed.id));
+  }
+  async acceptWorktreeBranch(input: WorkTaskAcceptBranch) {
+    const parsed = workTaskAcceptBranchSchema.parse(input);
+    assertWorkTaskLocal(parsed, this.options.allowExecution);
+    await this.ready();
+    const task = this.options.repo.get(parsed, parsed.id);
+    if (!task.worktree || !this.options.inspectWorktree)
+      throw new Error("work-task.worktree-inspection-unsupported");
+    const inspection = await this.options.inspectWorktree(task);
+    if (
+      !["ready", "branch-changed"].includes(inspection.status) ||
+      inspection.currentBranchName !== parsed.currentBranchName
+    )
+      throw new Error("work-task.branch-confirmation-stale");
+    const updated = this.options.repo.acceptWorktreeBranch(parsed, task.worktree);
+    this.publish();
+    return updated;
   }
   async setConcurrency(input: WorkTaskScope & { concurrency: number }) {
     const parsed = workTaskConcurrencySchema.parse(input);

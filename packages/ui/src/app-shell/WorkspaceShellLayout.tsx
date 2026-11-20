@@ -467,7 +467,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   const [fileTreeOpenRequest, setFileTreeOpenRequest] = useState<SidebarFileTreeOpenRequest | null>(
     null,
   );
-  const [isSidebarFileTreeOpen, setIsSidebarFileTreeOpen] = useState(false);
   const workspaceKey = workspaceIdentity?.trim() || workspaceAbsPath;
   const followingDesktopWindow = useDesktopWindowView((state) => state.following);
   const handlePrimaryAcpSessionChange = useCallback(
@@ -603,9 +602,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   });
   const workspaceSessionActionDisabled =
     Boolean(workspaceReadOnlyReason) || reloadSessionDisabled || reloadSessionPending;
-  // 文件树打开时任务列表整屏滑出，侧栏里的 New Task 入口也随之不可见。
-  // 顶部浮层需要临时露出 New Task，关闭文件树后继续沿用侧栏收起态规则。
-  const showTopOverlayNewTaskButton = !isSidebarVisible || isSidebarFileTreeOpen;
+  // 快捷栏独立于文件树和任务列表的滑动区域；仅侧栏收起时补充顶部新建入口，避免重复。
+  const showTopOverlayNewTaskButton = !isSidebarVisible;
   const workspaceSidebarResizeLabel = intl.formatMessage({
     id: "workspaceSidebar.resizeSidebar",
   });
@@ -1340,6 +1338,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       targetWorkspaceIdentity?: string,
       targetWorkspacePurpose?: import("@zcode/shared").WorkspacePurpose,
       createSource?: import("@zcode/shared").SessionCreateSource,
+      resetComposerDraft?: boolean,
     ) => {
       setAcpOpenRequest(null);
       showChatMainView();
@@ -1348,6 +1347,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
         targetWorkspaceIdentity,
         targetWorkspacePurpose,
         createSource,
+        resetComposerDraft,
       );
     },
     [handleStartDraftInWorkspace, showChatMainView],
@@ -1456,7 +1456,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   );
   const handleCreateProjectDraft = useCallback(
     (path: string, identity?: string) =>
-      handleStartDraftInWorkspaceInChat(path, identity, undefined, "project"),
+      handleStartDraftInWorkspaceInChat(path, identity, undefined, "project", true),
     [handleStartDraftInWorkspaceInChat],
   );
   const handleSelectAcpSession = useCallback(
@@ -2070,6 +2070,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
           id="sidebar"
           className={cn(
             "w-[var(--workspace-sidebar-panel-width)] max-w-[50%] flex-none overflow-hidden duration-200 ease-out transition-[width,opacity] data-[workspace-sidebar-resizing=true]:transition-opacity",
+            // 独立快捷栏占用 48px，手机沿用半屏上限会截断列表；保留外侧关闭区域即可。
+            !isDesktop && "@max-[768px]/workspace-shell:max-w-[calc(100%_-_3rem)]",
             // 拖动侧栏宽度时如果继续过渡 width，会让指针移动和实际宽度之间产生滞后。
             // 拖拽 active 通过 DOM 标记切 transition，避免 pointerdown/up 为了切 class 重渲染整棵 workspace。
             isSidebarPanelVisible ? "opacity-100" : "pointer-events-none opacity-0",
@@ -2140,11 +2142,9 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                     onOpenRepository={() => handleOpenRepository()}
                     repositoryActive={workspaceMainView === "repository"}
                     // 原因：按钮会传入点击事件；只有通知解析才能提供看板目标 workspace。
-                    onOpenAgentBoard={() => handleOpenAgentBoard?.()}
+                    onOpenAgentBoard={(target) => handleOpenAgentBoard?.(target)}
                     agentBoardActive={workspaceMainView === "agent-board"}
-                    onOpenWorkTasks={() => handleOpenWorkTasks()}
                     workTasksActive={workspaceMainView === "work-tasks"}
-                    onFileTreeOpenChange={setIsSidebarFileTreeOpen}
                   />
                 </WorkflowRunOpenProvider>
               </V4SplitPaneEntryProvider>
@@ -2437,12 +2437,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                                         }
                                       : undefined
                                   }
-                                  onCreateSession={(tab) =>
-                                    handleCreateProjectDraft(
-                                      tab.workspacePath,
-                                      tab.workspaceIdentity,
-                                    )
-                                  }
                                   onOpenSession={(item) => {
                                     if (item.kind === "work-task")
                                       handleOpenWorkTaskConversation(item.workTask);
@@ -2480,91 +2474,87 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                         </main>
                       ) : workspaceMainView === "work-tasks" ? (
                         <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
-                          <AutomationsMainBreadcrumbFrame
-                            isDesktop={Boolean(isDesktop)}
-                            sectionLabel={intl.formatMessage({ id: "workTasks.title" })}
-                            ariaLabel={intl.formatMessage({ id: "workTasks.title" })}
+                          <ScopedErrorBoundary
+                            scope="work-tasks-main"
+                            resetKeys={workspaceOnlyResetKeys}
+                            variant="panel"
+                            className="h-full min-h-0"
                           >
-                            <ScopedErrorBoundary
-                              scope="work-tasks-main"
-                              resetKeys={workspaceOnlyResetKeys}
-                              variant="panel"
-                              className="h-full min-h-0"
+                            <Suspense
+                              fallback={
+                                <div
+                                  role="status"
+                                  className="p-6 text-ui-sm text-foreground-subtle"
+                                >
+                                  {intl.formatMessage({ id: "workTasks.loading" })}
+                                </div>
+                              }
                             >
-                              <Suspense
-                                fallback={
-                                  <div
-                                    role="status"
-                                    className="p-6 text-ui-sm text-foreground-subtle"
-                                  >
-                                    {intl.formatMessage({ id: "workTasks.loading" })}
-                                  </div>
+                              <WorkTasksPanel
+                                conversationOnly
+                                onCloseConversation={showChatMainView}
+                                workspacePath={workspaceAbsPath}
+                                workspaceIdentity={workspaceIdentity}
+                                remoteSessionId={workspaceRemoteSessionId}
+                                workspaceTabs={workspaceTabs}
+                                onWorkspaceToolTargetChange={workTaskTools?.onTargetChange}
+                                reviewContainer={workTaskReviewContainer}
+                                workspaceTools={{
+                                  isDesktop,
+                                  readOnlyReason: panelReadOnlyReason,
+                                  remoteTarget: workspaceTabs.find(
+                                    (tab) =>
+                                      (tab.workspaceIdentity?.trim() || tab.workspacePath) ===
+                                      panelWorkspaceKey,
+                                  )?.remoteTarget,
+                                  isTerminalOpen,
+                                  isSidePaneOpen: hasWorkspaceToolsView && isSidePaneOpen,
+                                  onToggleTerminal: handleToggleTerminal,
+                                  onToggleSidePane: handleToggleSidePane,
+                                  onOpenReview: handleOpenGitReview,
+                                  toggleSidePaneShortcutLabel,
+                                }}
+                                onOpenConversation={handleOpenWorkTaskConversation}
+                                onOpenNativeSession={({ workspacePath, sessionId }) =>
+                                  handleSelectTaskInChat(workspacePath, sessionId)
                                 }
-                              >
-                                <WorkTasksPanel
-                                  workspacePath={workspaceAbsPath}
-                                  workspaceIdentity={workspaceIdentity}
-                                  remoteSessionId={workspaceRemoteSessionId}
-                                  workspaceTabs={workspaceTabs}
-                                  onWorkspaceToolTargetChange={workTaskTools?.onTargetChange}
-                                  reviewContainer={workTaskReviewContainer}
-                                  workspaceTools={{
-                                    isDesktop,
-                                    readOnlyReason: panelReadOnlyReason,
-                                    remoteTarget: workspaceTabs.find(
-                                      (tab) =>
-                                        (tab.workspaceIdentity?.trim() || tab.workspacePath) ===
-                                        panelWorkspaceKey,
-                                    )?.remoteTarget,
-                                    isTerminalOpen,
-                                    isSidePaneOpen: hasWorkspaceToolsView && isSidePaneOpen,
-                                    onToggleTerminal: handleToggleTerminal,
-                                    onToggleSidePane: handleToggleSidePane,
-                                    onOpenReview: handleOpenGitReview,
-                                    toggleSidePaneShortcutLabel,
-                                  }}
-                                  onOpenConversation={handleOpenWorkTaskConversation}
-                                  onOpenNativeSession={({ workspacePath, sessionId }) =>
-                                    handleSelectTaskInChat(workspacePath, sessionId)
-                                  }
-                                  conversationOptions={{
-                                    statusPanel: {
-                                      workspaceKey: gitState.workspaceKey,
-                                      gitSummary: gitState.summary,
-                                      gitLoading: gitState.loading,
-                                      gitDirtyFileCount,
-                                      gitWorktreeReviewSourceId,
-                                      gitWorktreeChangeSummary,
-                                      summaryPanelVariantOverride,
-                                      onSummaryPanelVariantOverrideChange,
-                                      onRefreshGit: handleRefreshGit,
-                                      onOpenGitReview: handleOpenGitReview,
-                                      onOpenWorkspacePath,
-                                    },
-                                    isDesktop: isDesktop === true,
-                                    focused: isWorkspaceVisible,
-                                    telemetryVisible: isWorkspaceVisible,
-                                    onOpenBrowserUrl: handleOpenBrowserUrl,
-                                    onOpenCodeViewer: handleOpenCodeViewer,
-                                    onAutoOpenAssistantPptx: isDesktop
-                                      ? handleAutoOpenAssistantPptx
-                                      : undefined,
-                                    onOpenBackgroundBash: handleOpenBackgroundBash,
-                                    onOpenSubagentSession: handleOpenSubagentSession,
-                                    onOpenSubagentDirectory: handleOpenSubagentDirectory,
-                                    onSyncSubagentSessionTabs: handleSyncSubagentSessionTabs,
-                                    onOpenSelectionSideChat: handleOpenSelectionSideChat,
-                                    onOpenPlanDetail: handleOpenPlanDetail,
-                                    onOpenWorkflowRun: handleOpenWorkflowRun,
-                                    onOpenWorkflowArtifact: handleOpenWorkflowArtifact,
-                                    onOpenWorkflowRunDirectory: handleOpenWorkflowRunDirectory,
-                                    onOpenWorkflowActorSession: handleOpenWorkflowActorSession,
-                                    onOpenWorkflowWorkspace: handleOpenWorkflowWorkspace,
-                                  }}
-                                />
-                              </Suspense>
-                            </ScopedErrorBoundary>
-                          </AutomationsMainBreadcrumbFrame>
+                                conversationOptions={{
+                                  statusPanel: {
+                                    workspaceKey: gitState.workspaceKey,
+                                    gitSummary: gitState.summary,
+                                    gitLoading: gitState.loading,
+                                    gitDirtyFileCount,
+                                    gitWorktreeReviewSourceId,
+                                    gitWorktreeChangeSummary,
+                                    summaryPanelVariantOverride,
+                                    onSummaryPanelVariantOverrideChange,
+                                    onRefreshGit: handleRefreshGit,
+                                    onOpenGitReview: handleOpenGitReview,
+                                    onOpenWorkspacePath,
+                                  },
+                                  isDesktop: isDesktop === true,
+                                  focused: isWorkspaceVisible,
+                                  telemetryVisible: isWorkspaceVisible,
+                                  onOpenBrowserUrl: handleOpenBrowserUrl,
+                                  onOpenCodeViewer: handleOpenCodeViewer,
+                                  onAutoOpenAssistantPptx: isDesktop
+                                    ? handleAutoOpenAssistantPptx
+                                    : undefined,
+                                  onOpenBackgroundBash: handleOpenBackgroundBash,
+                                  onOpenSubagentSession: handleOpenSubagentSession,
+                                  onOpenSubagentDirectory: handleOpenSubagentDirectory,
+                                  onSyncSubagentSessionTabs: handleSyncSubagentSessionTabs,
+                                  onOpenSelectionSideChat: handleOpenSelectionSideChat,
+                                  onOpenPlanDetail: handleOpenPlanDetail,
+                                  onOpenWorkflowRun: handleOpenWorkflowRun,
+                                  onOpenWorkflowArtifact: handleOpenWorkflowArtifact,
+                                  onOpenWorkflowRunDirectory: handleOpenWorkflowRunDirectory,
+                                  onOpenWorkflowActorSession: handleOpenWorkflowActorSession,
+                                  onOpenWorkflowWorkspace: handleOpenWorkflowWorkspace,
+                                }}
+                              />
+                            </Suspense>
+                          </ScopedErrorBoundary>
                         </main>
                       ) : workspaceMainView === "repository" ? (
                         <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
