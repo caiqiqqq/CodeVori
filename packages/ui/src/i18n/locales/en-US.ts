@@ -8150,6 +8150,15 @@ const enUS: Record<string, string> = {
   "agentProfiles.deleteHint":
     "Accepted tasks keep their configuration. Remove this agent from its squads before deleting it.",
   "agentProfiles.configuration": "Agent configuration",
+  "agentProfiles.editorHint":
+    "Define the agent’s identity, responsibilities and execution settings.",
+  "agentProfiles.identity": "Identity",
+  "agentProfiles.behavior": "Behavior & capabilities",
+  "agentProfiles.execution": "Execution settings",
+  "agentProfiles.executionHint": "Unspecified model options use the runtime defaults.",
+  "agentProfiles.namePlaceholder": "For example: Code review agent",
+  "agentProfiles.descriptionPlaceholder": "What does this agent do?",
+  "agentProfiles.instructionsPlaceholder": "Describe the agent’s work, priorities and boundaries…",
   "agentProfiles.runtimeDefault": "Runtime default",
   "agentProfiles.refreshConfig": "Refresh model options",
   "agentProfiles.configFailed":
