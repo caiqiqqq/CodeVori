@@ -4,6 +4,8 @@ import { ProjectsSection } from "@/settings/ProjectsSection.js";
 /* oxlint-disable eslint(max-lines) */
 import { ArrowLeft, type LucideIcon } from "lucide-react";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -39,9 +41,11 @@ import { useProviderSettingsView } from "@/hooks/useProviderSettingsView.js";
 import { useUsageEntitlement } from "@/hooks/useUsageEntitlement.js";
 import {
   addPendingSettingsSectionListener,
+  clearPendingAgentSettingsView,
   clearPendingSettingsPluginOrigin,
   clearPendingSettingsPluginScopeKey,
   consumeInitialSettingsSection,
+  consumePendingAgentSettingsView,
   consumePendingSettingsPluginOrigin,
   consumePendingSettingsPluginScopeKey,
   consumePendingSettingsPluginTab,
@@ -51,6 +55,7 @@ import {
   shouldFallbackSettingsUsageTabToApp,
   writeLastSettingsSectionPreference,
   type SettingsModelProviderTarget,
+  type AgentSettingsView,
 } from "@/lib/settingsNavigation.js";
 import { readSidebarUsageCodingPlanSourcePreference } from "@/lib/sidebarUsageCodingPlanProviderPreference.js";
 import {
@@ -68,7 +73,7 @@ import {
 import { buildPersonalCodingPlanUsageSource } from "@/lib/codingPlanUsageSources.js";
 import { SubagentsSection } from "@/settings/SubagentsSection.js";
 import { AcpAgentsSection } from "@/settings/AcpAgentsSection.js";
-import { DelegationSettingsSection } from "@/settings/DelegationSettingsSection.js";
+import { AgentsAndSquadsSection } from "@/settings/AgentsAndSquadsSection.js";
 import { DesktopLanAccessSection } from "@/settings/DesktopLanAccessSection.js";
 import { isMatchingAcpWorkspaceTab } from "@/settings/acpAgentSettingsCatalog.js";
 import { AutomationsSection } from "@/settings/AutomationsSection.js";
@@ -80,6 +85,8 @@ import { MemorySettingsSection } from "@/settings/MemorySettingsSection.js";
 import { DeviceBridgeSettingsSection } from "@/settings/DeviceBridgeSettingsSection.js";
 import { BrowserSettingsSection } from "@/settings/BrowserSettingsSection.js";
 import { ComputerUseSection } from "@/settings/ComputerUseSection.js";
+import { CredentialVaultSection } from "@/settings/CredentialVaultSection.js";
+import { useProjectManagement } from "@/hooks/useProjectManagement.js";
 import { ShortcutSettingsSection } from "@/settings/ShortcutSettingsSection.js";
 import { QuickMessagesSection } from "@/settings/QuickMessagesSection.js";
 import { WorktreesSection } from "@/settings/WorktreesSection.js";
@@ -282,6 +289,12 @@ function SettingsSidebarButton({
   );
 }
 
+const TaskWorkflowsSection = lazy(() =>
+  import("@/settings/task-workflows/TaskWorkflowsSection.js").then((module) => ({
+    default: module.TaskWorkflowsSection,
+  })),
+);
+
 export function SettingsPage({
   isDesktop,
   isWindowsDesktop,
@@ -343,6 +356,9 @@ export function SettingsPage({
     writeLastSettingsSectionPreference(visibleInitialSection);
     return visibleInitialSection;
   });
+  const [agentSettingsView, setAgentSettingsView] = useState<AgentSettingsView>(() =>
+    consumePendingAgentSettingsView(),
+  );
   const [pluginTab, setPluginTab] = useState(() => consumePendingSettingsPluginTab());
   const [pluginNavigationOrigin, setPluginNavigationOrigin] = useState(() =>
     consumePendingSettingsPluginOrigin(),
@@ -693,6 +709,7 @@ export function SettingsPage({
   const services = useServices();
   const onboardingRecordService = services.onboardingRecordService;
   const localHostServices = useBaseWorkspaceServices();
+  const { projects: managedProjects } = useProjectManagement();
   const { settings: sharedSettings, update: updateSharedSettings } = useSettings();
   const memoryWorkspaceDisplayNames = useMemo(() => {
     const names = new Set<string>();
@@ -777,6 +794,11 @@ export function SettingsPage({
         // 页面不会重新挂载，之前写入的 pending section 无人消费，看起来像点击没反应。
         // 这里订阅同窗口跳转意图，立即切换当前设置分区。
         setActiveSettingsSection(section, activeSection);
+        if (section === "squads") setAgentSettingsView("squads");
+        if (section === "agentProfiles" || section === "agentsAndSquads") {
+          setAgentSettingsView("agents");
+        }
+        clearPendingAgentSettingsView();
         // 设置入口是一级路由边界。即使仍落在同一 section，也必须销毁旧的 New/Edit/Detail 子状态。
         setSettingsSectionNavigationVersion((version) => version + 1);
         if (section === "usage" && detail?.usageTab) {
@@ -797,6 +819,8 @@ export function SettingsPage({
       }),
     [activeSection, setActiveSettingsSection],
   );
+
+  useEffect(() => clearPendingAgentSettingsView(), []);
 
   useEffect(() => {
     services.settingService
@@ -1645,7 +1669,7 @@ export function SettingsPage({
                   <main className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
                     <div
                       className={cn(
-                        activeSection === "quickMessages"
+                        activeSection === "quickMessages" || activeSection === "agentProfiles"
                           ? SETTINGS_WIDE_FRAME_CONTENT_CLASSNAME
                           : SETTINGS_FRAME_CONTENT_CLASSNAME,
                         "flex flex-col gap-8",
@@ -1875,6 +1899,10 @@ export function SettingsPage({
                           </ServiceProvider>
                         ) : activeSection === "remoteSync" ? (
                           <RemoteDataSyncSection isDesktop={Boolean(isDesktop)} />
+                        ) : activeSection === "taskWorkflows" ? (
+                          <Suspense fallback={null}>
+                            <TaskWorkflowsSection />
+                          </Suspense>
                         ) : activeSection === "projects" ? (
                           <ProjectsSection />
                         ) : activeSection === "worktrees" ? (
@@ -1967,6 +1995,12 @@ export function SettingsPage({
                               onBack?.();
                             }}
                           />
+                        ) : activeSection === "credentials" ? (
+                          <CredentialVaultSection
+                            initialWorkspacePath={activeWorkspacePath}
+                            initialWorkspaceIdentity={activeWorkspaceIdentity}
+                            projects={managedProjects}
+                          />
                         ) : activeSection === "skill" ? (
                           <PluginsSection
                             key={`skill:${settingsSectionNavigationVersion}`}
@@ -2009,8 +2043,10 @@ export function SettingsPage({
                             remoteSessionId={acpWorkspaceTab?.remoteSessionId}
                             remoteTarget={acpWorkspaceTab?.remoteTarget}
                           />
-                        ) : activeSection === "delegation" ? (
-                          <DelegationSettingsSection
+                        ) : activeSection === "agentProfiles" ? (
+                          <AgentsAndSquadsSection
+                            view={agentSettingsView}
+                            onViewChange={setAgentSettingsView}
                             workspacePath={activeWorkspacePath}
                             workspaceIdentity={activeWorkspaceIdentity}
                             remoteSessionId={acpWorkspaceTab?.remoteSessionId}

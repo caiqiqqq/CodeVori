@@ -1,4 +1,4 @@
-/* eslint-disable max-lines -- 看板筛选、分组、拖动和详情共用同一份会话投影与选择状态。 */
+/* eslint-disable max-lines -- 看板筛选、分组和详情共用同一份会话投影与选择状态。 */
 import { BoardViewTab, boardViews } from "./AgentBoardViewTab.js";
 import { AgentBoardStatusOrder } from "./AgentBoardStatusOrder.js";
 import {
@@ -11,12 +11,23 @@ import {
 } from "@dnd-kit/core";
 import { AgentBoardGroups } from "./AgentBoardGroups.js";
 import { AgentBoardTrackingDialog } from "./AgentBoardTrackingDialog.js";
+import { AgentBoardWorkflowSettings } from "./AgentBoardWorkflowSettings.js";
 import { AgentBoardSourcePicker } from "./AgentBoardSourcePicker.js";
 import { AgentBoardDetails } from "./AgentBoardDetails.js";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useStore } from "zustand";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { ChevronDown, Folder, LayoutGrid, Plus, Search, ListFilter } from "lucide-react";
+import {
+  ChevronDown,
+  Folder,
+  Grid2X2,
+  LayoutGrid,
+  List,
+  Plus,
+  Search,
+  ListFilter,
+  Settings2,
+} from "lucide-react";
 import { toast } from "@/components/ui/toast.js";
 import { Button } from "@/components/ui/button.js";
 import { agentBoardStore } from "@/store/agentBoardStore.js";
@@ -26,8 +37,11 @@ import type { WorkspaceTabState } from "@/store/tabStore.js";
 import { logger } from "@/logger.js";
 import {
   boardAgentLabel,
+  boardEntityKey,
   boardDisplayStatus,
+  defaultWorkflowStatusId,
   boardHasUnreadResult,
+  DEFAULT_BOARD_WORKFLOW_STATUSES,
   canStageBoardItem,
   isBoardItemStaged,
   matchesBoardView,
@@ -38,12 +52,17 @@ import type { BoardConversationOptions } from "./AgentBoardConversation.js";
 
 import type { AgentBoardWorkspaceTools } from "./AgentBoardTools.js";
 
+const AgentBoardSessionEditor = lazy(() =>
+  import("./AgentBoardSessionEditor.js").then((module) => ({
+    default: module.AgentBoardSessionEditor,
+  })),
+);
+
 type Props = {
   workspaceTabs: readonly Omit<WorkspaceTabState, "id" | "kind">[];
   conversationOptions?: BoardConversationOptions;
   workspaceTools?: AgentBoardWorkspaceTools;
   onOpenSession(item: BoardItem): void;
-  onCreateSession(tab: WorkspaceTabState): void;
   notificationItemKey?: string;
   onNotificationItemOpened?: () => void;
   onNotificationItemMissing?: () => void;
@@ -65,12 +84,13 @@ export function AgentBoardView({
   projects,
   items: rawItems,
   mutate,
+  rename,
+  markUnread,
   acknowledgeRead,
   refresh,
   loading,
   error,
   onOpenSession,
-  onCreateSession,
   conversationOptions,
   workspaceTools,
   canCreateSession,
@@ -98,11 +118,6 @@ export function AgentBoardView({
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const dragging = items.find((item) => item.key === draggingKey);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
-  const toggleStaged = (item: BoardItem) => {
-    const current = rawItems.find((row) => row.key === item.key);
-    if (current)
-      preferences.setItemStaged(current, !isBoardItemStaged(current, preferences.stagedItems));
-  };
   const [detailContainer, setDetailContainer] = useState<HTMLElement | null>(null);
   const [selectedKey, setSelectedKey] = useAgentBoardNotificationSelection({
     rawItems,
@@ -114,29 +129,25 @@ export function AgentBoardView({
     onNotificationItemMissing,
   });
   const [busy, setBusy] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
   const [managing, setManaging] = useState(false);
+  const [workflowSettingsOpen, setWorkflowSettingsOpen] = useState(false);
   const realProjects = projects.filter((p) => p.tabs[0]?.workspacePurpose !== "conversation");
+  const hasSessionProject = projects.some((p) => p.tabs.some(canCreateSession));
   const trackedItems = useMemo(
     () => items.filter((item) => matchesBoardTracking(item, preferences.tracking)),
     [items, preferences.tracking],
   );
   const scopeItems = useMemo(
     () =>
-      trackedItems.filter((item) =>
-        preferences.category === "work-tasks"
-          ? item.kind === "work-task"
-          : preferences.category !== "standalone" ||
-            (item.kind !== "work-task" && item.workspacePurpose === "conversation"),
+      trackedItems.filter(
+        (item) => preferences.category !== "standalone" || item.workspacePurpose === "conversation",
       ),
     [trackedItems, preferences.category],
   );
   const groupedProjects = realProjects.filter((p) =>
     scopeItems.some(
-      (item) =>
-        item.kind !== "work-task" &&
-        item.workspacePurpose !== "conversation" &&
-        item.projectKey === p.key,
+      (item) => item.workspacePurpose !== "conversation" && item.projectKey === p.key,
     ),
   );
   const selected = items.find((item) => item.key === selectedKey);
@@ -157,55 +168,78 @@ export function AgentBoardView({
       ),
     [scopeItems, preferences.view, preferences.agent, preferences.search, project, projects],
   );
+  const workflowGrouping = preferences.group === "workflow";
   const byStatus =
     preferences.group === "status" ||
+    workflowGrouping ||
     preferences.view === "staged" ||
     Boolean(project) ||
     preferences.category !== "all" ||
     groupedProjects.length > 6;
-  const columns = byStatus
-    ? preferences.statusOrder
-        .filter((status) =>
-          ["active", "completed", "failed", "attention", "staged"].includes(preferences.view)
-            ? (status === "staged" && (preferences.view === "staged" || Boolean(dragging))) ||
-              filtered.some((item) => boardDisplayStatus(item) === status)
-            : true,
-        )
-        .map((status) => ({
-          key: status,
-          label: t(`status.${status}`),
-          items: filtered.filter((item) => boardDisplayStatus(item) === status),
-        }))
-    : [
-        ...(scopeItems.some((item) => item.kind === "work-task")
-          ? [
-              {
-                key: "work-tasks",
-                label: t("workTasks"),
-                items: filtered.filter((item) => item.kind === "work-task"),
-              },
-            ]
-          : []),
-        ...(scopeItems.some((item) => item.workspacePurpose === "conversation")
-          ? [
-              {
-                key: "standalone",
-                label: t("standalone"),
-                items: filtered.filter((item) => item.workspacePurpose === "conversation"),
-              },
-            ]
-          : []),
-        ...groupedProjects.map((p) => ({
-          key: p.key,
-          label: p.label,
-          items: filtered.filter(
-            (item) =>
-              item.kind !== "work-task" &&
-              item.workspacePurpose !== "conversation" &&
-              item.projectKey === p.key,
-          ),
-        })),
-      ];
+  const enabledWorkflowStatuses = preferences.workflowStatuses.filter((status) => status.enabled);
+  const workflowFallbackId = enabledWorkflowStatuses[0]?.id;
+  const workflowStatusLabel = (status: (typeof preferences.workflowStatuses)[number]) => {
+    const initial = DEFAULT_BOARD_WORKFLOW_STATUSES.find((entry) => entry.id === status.id);
+    return initial?.label === status.label ? t(`workflow.status.${status.id}`) : status.label;
+  };
+  const workflowStatusForItem = (item: BoardItem) => {
+    const assigned = preferences.workflowAssignments[item.key];
+    if (enabledWorkflowStatuses.some((status) => status.id === assigned)) return assigned;
+    const inferred = defaultWorkflowStatusId(item);
+    return enabledWorkflowStatuses.some((status) => status.id === inferred)
+      ? inferred
+      : workflowFallbackId;
+  };
+  const columns = workflowGrouping
+    ? enabledWorkflowStatuses.map((status) => ({
+        key: `workflow:${status.id}`,
+        workflowStatusId: status.id,
+        label: workflowStatusLabel(status),
+        items: filtered.filter((item) => workflowStatusForItem(item) === status.id),
+      }))
+    : byStatus
+      ? preferences.statusOrder
+          .filter((status) =>
+            ["active", "completed", "failed", "attention", "staged"].includes(preferences.view)
+              ? (status === "staged" && (preferences.view === "staged" || Boolean(dragging))) ||
+                filtered.some((item) => boardDisplayStatus(item) === status)
+              : true,
+          )
+          .map((status) => ({
+            key: status,
+            label: t(`status.${status}`),
+            items: filtered.filter((item) => boardDisplayStatus(item) === status),
+          }))
+      : [
+          ...(scopeItems.some((item) => item.kind === "work-task")
+            ? [
+                {
+                  key: "work-tasks",
+                  label: t("workTasks"),
+                  items: filtered.filter((item) => item.kind === "work-task"),
+                },
+              ]
+            : []),
+          ...(scopeItems.some((item) => item.workspacePurpose === "conversation")
+            ? [
+                {
+                  key: "standalone",
+                  label: t("standalone"),
+                  items: filtered.filter((item) => item.workspacePurpose === "conversation"),
+                },
+              ]
+            : []),
+          ...groupedProjects.map((p) => ({
+            key: p.key,
+            label: p.label,
+            items: filtered.filter(
+              (item) =>
+                item.kind !== "work-task" &&
+                item.workspacePurpose !== "conversation" &&
+                item.projectKey === p.key,
+            ),
+          })),
+        ];
   const run = async (item: BoardItem, action: Parameters<typeof mutate>[1]) => {
     setBusy(true);
     try {
@@ -217,6 +251,34 @@ export function AgentBoardView({
       setBusy(false);
     }
   };
+  const runRename = async (item: BoardItem, title: string) => {
+    const current = rawItems.find((row) => row.key === item.key);
+    if (!current) throw new Error("Session is no longer available");
+    setBusy(true);
+    try {
+      await rename(current, title);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const runMarkUnread = async (item: BoardItem) => {
+    const current = rawItems.find((row) => row.key === item.key);
+    if (!current) return;
+    setBusy(true);
+    try {
+      await markUnread(current);
+    } catch (error) {
+      logger.warn("[agent-board] 标记会话未读失败", { error });
+      toast(intl.formatMessage({ id: "taskList.markAsUnreadFailed" }));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const toggleStaged = (item: BoardItem) => {
+    const current = rawItems.find((row) => row.key === item.key);
+    if (current)
+      preferences.setItemStaged(current, !isBoardItemStaged(current, preferences.stagedItems));
+  };
   return (
     <DndContext
       sensors={sensors}
@@ -226,6 +288,12 @@ export function AgentBoardView({
       onDragCancel={() => setDraggingKey(null)}
       onDragEnd={({ active, over }) => {
         setDraggingKey(null);
+        const workflowStatusId = over?.data.current?.boardWorkflowStatusId;
+        if (workflowGrouping && typeof workflowStatusId === "string") {
+          const item = rawItems.find((row) => row.key === active.id);
+          if (item) preferences.setItemWorkflowStatus(item, workflowStatusId);
+          return;
+        }
         if (!over?.data.current?.boardStaging) return;
         // 拖动期间会话可能重新运行，必须用最新 Host 投影验证，不能使用起拖时的卡片。
         const item = rawItems.find((row) => row.key === active.id);
@@ -249,19 +317,58 @@ export function AgentBoardView({
             <p className="mt-1 text-ui-caption text-foreground-subtle">{t("description")}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <div
+              role="group"
+              aria-label={t("layoutMode")}
+              className="inline-flex items-center rounded-lg border border-border bg-input p-0.5"
+            >
+              {(["cards", "compact", "list"] as const).map((mode) => (
+                <Button
+                  key={mode}
+                  variant="ghost"
+                  size="sm"
+                  aria-pressed={preferences.layoutMode === mode}
+                  title={t("layoutMode." + mode)}
+                  className={
+                    preferences.layoutMode === mode
+                      ? "border border-brand bg-brand font-semibold text-foreground-inverse shadow-sm hover:bg-brand hover:text-foreground-inverse"
+                      : "text-foreground-subtle"
+                  }
+                  onClick={() => preferences.setLayoutMode(mode)}
+                >
+                  {mode === "list" ? (
+                    <List className="size-4" />
+                  ) : mode === "compact" ? (
+                    <Grid2X2 className="size-4" />
+                  ) : (
+                    <LayoutGrid className="size-4" />
+                  )}
+                  <span>{t("layoutMode." + mode)}</span>
+                </Button>
+              ))}
+            </div>
             <AgentBoardStatusOrder />
+            <Button
+              variant="outline"
+              onClick={() => {
+                preferences.setGroup("workflow");
+                setWorkflowSettingsOpen(true);
+              }}
+            >
+              <Settings2 className="size-4" />
+              {t("workflow.manage")}
+            </Button>
             <Button variant="outline" onClick={() => setManaging(true)}>
               <ListFilter className="size-4" />
               {t("manageTracking")}
             </Button>
             <Button
-              onClick={() => {
-                setCreating(true);
-                preferences.setPickerOpen(true);
-              }}
+              disabled={!hasSessionProject}
+              onClick={() => setCreatingSession(true)}
+              data-testid="agent-board-new-session"
             >
               <Plus className="size-4" />
-              {t("newSession")}
+              {t("newTask")}
             </Button>
           </div>
         </header>
@@ -269,11 +376,9 @@ export function AgentBoardView({
           <Button variant="outline" onClick={() => preferences.setPickerOpen(true)}>
             <Folder className="size-4" />
             <span className="max-w-40 truncate">
-              {preferences.category === "work-tasks"
-                ? t("workTasks")
-                : preferences.category === "standalone"
-                  ? t("standalone")
-                  : (project?.label ?? t("allProjects"))}
+              {preferences.category === "standalone"
+                ? t("standalone")
+                : (project?.label ?? t("allProjects"))}
             </span>
             <ChevronDown className="size-3" />
           </Button>
@@ -305,12 +410,13 @@ export function AgentBoardView({
             disabled={
               Boolean(project) || preferences.category !== "all" || groupedProjects.length > 6
             }
-            value={byStatus ? "status" : "project"}
-            onChange={(e) => preferences.setGroup(e.target.value as "project" | "status")}
+            value={workflowGrouping ? "workflow" : byStatus ? "status" : "project"}
+            onChange={(e) => preferences.setGroup(e.target.value as typeof preferences.group)}
             className="h-9 rounded-lg border border-border bg-input px-2 text-ui-base disabled:opacity-60"
           >
             <option value="project">{t("groupProject")}</option>
             <option value="status">{t("groupStatus")}</option>
+            <option value="workflow">{t("groupWorkflow")}</option>
           </select>
         </div>
         <div
@@ -361,8 +467,10 @@ export function AgentBoardView({
         ) : null}
         <AgentBoardGroups
           columns={columns}
+          layoutMode={preferences.layoutMode}
           byStatus={byStatus}
           projects={projects}
+          busy={busy}
           onOpen={(item) => {
             setSelectedKey(item.key);
             if (item.kind === "work-task") preferences.markWorkTaskResultRead(item);
@@ -372,19 +480,44 @@ export function AgentBoardView({
                 toast(t("actionFailed"));
               });
           }}
+          onOpenSession={onOpenSession}
+          onArchive={(item) => void run(item, "archive")}
           onStage={toggleStaged}
+          workflowStatuses={workflowGrouping}
+          onRename={runRename}
+          onMarkUnread={(item) => void runMarkUnread(item)}
         />
         {preferences.pickerOpen ? (
           <AgentBoardSourcePicker
             projects={projects}
-            creating={creating}
-            canCreateSession={canCreateSession}
-            onCreateSession={onCreateSession}
             onClose={() => {
               preferences.setPickerOpen(false);
-              setCreating(false);
             }}
           />
+        ) : null}
+        {creatingSession ? (
+          <Suspense fallback={null}>
+            <AgentBoardSessionEditor
+              projects={projects}
+              initialProjectKey={preferences.project}
+              workTasks={workTasks}
+              canCreateSession={canCreateSession}
+              options={conversationOptions}
+              onClose={() => setCreatingSession(false)}
+              onAccepted={(kind, id, target) => {
+                preferences.revealCreatedSession({
+                  kind,
+                  key: boardEntityKey(target.tab, kind, id),
+                  projectKey: target.project.key,
+                  workspacePurpose: target.tab.workspacePurpose,
+                });
+                setCreatingSession(false);
+                void refresh().catch((error: unknown) =>
+                  logger.warn("[agent-board] 新会话列表刷新失败", { error }),
+                );
+              }}
+            />
+          </Suspense>
         ) : null}
         {managing ? (
           <AgentBoardTrackingDialog
@@ -395,17 +528,27 @@ export function AgentBoardView({
             onClose={() => setManaging(false)}
           />
         ) : null}
+        <AgentBoardWorkflowSettings
+          open={workflowSettingsOpen}
+          onOpenChange={setWorkflowSettingsOpen}
+        />
         <AgentBoardDetails
           selected={selected}
           workTasks={workTasks}
           projects={projects}
           busy={busy}
           run={run}
-          options={conversationOptions}
+          options={{
+            ...conversationOptions,
+            focused: conversationOptions?.focused !== false && !creatingSession,
+          }}
           workspaceTools={workspaceTools}
           container={detailContainer}
           onClose={() => setSelectedKey(null)}
           onOpenSession={onOpenSession}
+          onStage={toggleStaged}
+          onRename={runRename}
+          onMarkUnread={(item) => void runMarkUnread(item)}
         />
       </section>
       <DragOverlay>

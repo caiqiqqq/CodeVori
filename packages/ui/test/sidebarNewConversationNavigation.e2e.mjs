@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright-core";
+import { assertSidebarActionRail } from "./sidebarActionRailAssertions.mjs";
 
 const desktop = resolve(import.meta.dirname, "../../desktop");
 const requireDesktop = createRequire(join(desktop, "package.json"));
@@ -33,6 +34,7 @@ try {
     import {StoreProvider} from '../../../ui/src/store/StoreProvider.tsx';
     import {TabStoreProvider,useTabStore,useTabStoreApi} from '../../../ui/src/store/TabStoreProvider.tsx';
     import {useZCodeSessionStore} from '../../../ui/src/store/zcodeSessionStore.ts';
+    import {agentBoardStore} from '../../../ui/src/store/agentBoardStore.ts';
     import {ZCodeIntlProvider} from '../../../ui/src/i18n/IntlProvider.tsx';
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
     import {persistSidebarTaskPreferences} from '../../../ui/src/lib/sidebarTaskPreferences.ts';
@@ -66,7 +68,7 @@ try {
         setView(view);setDesktop(desktop);setLocale(locale);setCallback(callback);setReadOnly(readOnly);
         Object.assign(state,{ensured:0,fallback:0,error:null,defer,fail});
       };
-      state.tabs=tabStore;state.sessions=useZCodeSessionStore;state.theme=applyTheme;
+      state.tabs=tabStore;state.sessions=useZCodeSessionStore;state.board=agentBoardStore;state.theme=applyTheme;
       useEffect(()=>{tabStore.getState().addTab(conversation,{workspacePurpose:'conversation'});useZCodeSessionStore.getState().setActiveTaskId(conversation,'old-session')},[]);
       return <ZCodeIntlProvider initialLocale={locale} key={locale}><TooltipProvider><div className='h-dvh' data-testid='navigation' data-view={view}>
         <WorkspaceShellLayout services={services} platform={{isWeb:true}} workspaceAbsPath={path} workspaceMainView={view} onWorkspaceMainViewChange={setView}
@@ -79,7 +81,8 @@ try {
           reconnectingRemoteWorkspaceKeys={[]} remoteWorkspaceErrorByWorkspaceKey={{}}
           onCreateTask={()=>{state.fallback++;useZCodeSessionStore.getState().startDraft(path)}} onCreateConversationTask={callback?actions.handleCreateConversationTask:undefined}
           onConnectRemote={noop} onSelectRemoteProject={noop} onCancelRemoteProject={noop} onReconnectRemoteWorkspace={noop} handleSelectTask={noop} handleStartDraftInWorkspace={noop}
-          handleTaskNavBack={noop} handleTaskNavForward={noop} handleOpenAutomations={noop} handleOpenPluginStore={noop} handleOpenRepository={noop} handleOpenAgentBoard={nav.handleOpenAgentBoard} handleOpenWorkTasks={noop}
+          handleTaskNavBack={noop} handleTaskNavForward={noop} handleOpenAutomations={()=>setView('automations')} handleOpenPluginStore={()=>setView('plugin-store')} handleOpenRepository={noop} handleOpenAgentBoard={nav.handleOpenAgentBoard} handleOpenWorkTasks={noop}
+          handleOpenCommandCenter={()=>state.searches=(state.searches??0)+1}
           updateReadyVersion={null} updateState={null} desktopWindowChromeState={null} macWindowControlsLeftPaddingPx={0} sidebarContainerRef={ref} taskFindDialogProps={{}}
           taskNativeSessionLogFile={{path:null,provider:null,exists:false,loading:false}} taskSessionFile={{path:null}}/>
       </div></TooltipProvider></ZCodeIntlProvider>;
@@ -112,9 +115,7 @@ try {
   // Only unrelated content/read projections are replaced; the real sidebar owns the clicked button.
   for (const [path, symbol] of [
     ["WorkspaceHeader.tsx", "WorkspaceHeader"],
-    ["DesktopTopOverlay.tsx", "DesktopTopOverlay"],
     ["WorkspaceSidebarFooter.tsx", "WorkspaceSidebarFooter"],
-    ["WorkspacePinnedTasksSection.tsx", "WorkspacePinnedTasksSection"],
     ["command-center/CommandCenterDialog.tsx", "CommandCenterDialog"],
     ["quickpick/TaskFindDialog.tsx", "TaskFindDialog"],
     ["work-tasks/WorkTasksPanel.tsx", "WorkTasksPanel"],
@@ -123,6 +124,22 @@ try {
     ["agent-board/AgentBoardPanel.tsx", "AgentBoardPanel"],
   ])
     await stub(path, `export function ${symbol}(){return null}`);
+  await stub(
+    "DesktopTopOverlay.tsx",
+    `export function DesktopTopOverlay(p){return window.__React.createElement('output',{'data-testid':'top-new-task-state','data-visible':p.showNewTaskButton})}`,
+  );
+  await stub(
+    "WorkspacePinnedTasksSection.tsx",
+    `export function WorkspacePinnedTasksSection(p){return window.__React.createElement('button',{'data-testid':'fixture-open-files',onClick:()=>p.onOpenFileTree({workspacePath:'/synthetic/project',workspaceName:'Synthetic project'})},'Show files')}`,
+  );
+  await stub(
+    "WorkspaceFileTree.tsx",
+    `export function WorkspaceFileTree(p){return window.__React.createElement('div',{'data-testid':'fixture-files'},'Synthetic file tree',window.__React.createElement('button',{onClick:p.onClose},'Back to tasks'))}`,
+  );
+  await stub(
+    "WorkspaceGroupedTasksSection.tsx",
+    `export function WorkspaceGroupedTasksSection(p){window.__React.useEffect(()=>{p.onCreateDraftTaskActionChange(()=>{window.__newTask.grouped=(window.__newTask.grouped??0)+1});return ()=>p.onCreateDraftTaskActionChange(null)},[p.onCreateDraftTaskActionChange]);return window.__React.createElement('div',{'data-testid':'fixture-grouped'},'Synthetic task group')}`,
+  );
   await stub(
     "WorkspaceTimelineTasksSection.tsx",
     `export function WorkspaceTimelineTasksSection(p){return window.__React.createElement('button',{'data-testid':'old-acp',onClick:()=>p.onSelectAcpSession({id:'old-acp',agent:'codex',workspacePath:'/synthetic/tasks'})},'Old ACP')}`,
@@ -135,7 +152,9 @@ try {
     "v4/V4WorkspaceChatArea.tsx",
     `export function V4WorkspaceChatArea(p){return window.__React.createElement('textarea',{'data-testid':'new-task-draft','data-workspace':p.workspacePath,'data-session':p.sessionId??'','data-acp-request':p.acpOpenRequest?.session.id??'',placeholder:'Independent task draft'})}`,
   );
-  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/${name}.html`);
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/${name}.html`, {
+    timeout: 60000,
+  });
   const button = page.getByTestId("conversation-new-task");
   await button.waitFor().catch((error) => {
     throw Error(errors.join("\n") || error.message);
@@ -236,6 +255,67 @@ try {
     await page.getByTestId("agent-board-sidebar-open").getAttribute("aria-pressed"),
     "true",
   );
+  await prepare({ source: "/synthetic/project", view: "chat" });
+  await page.evaluate(() => {
+    const tabs = window.__newTask.tabs.getState();
+    tabs.activateTabByPath("/synthetic/tasks");
+    tabs.toggleWorkspaceExpanded("/synthetic/project");
+  });
+  const projectFolder = page.getByTestId("workspace-item-/synthetic/project");
+  const projectName = page.getByTestId("workspace-name-/synthetic/project");
+  await projectFolder.waitFor();
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="workspace-item-/synthetic/project"]')
+        ?.getAttribute("aria-expanded") === "false",
+  );
+  const activeWorkspaceBeforeExpand = await page.evaluate(
+    () => window.__newTask.tabs.getState().activeWorkspacePath,
+  );
+  await projectFolder.click();
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="workspace-item-/synthetic/project"]')
+        ?.getAttribute("aria-expanded") === "true",
+  );
+  assert.equal(
+    await page.evaluate(() => window.__newTask.tabs.getState().activeWorkspacePath),
+    activeWorkspaceBeforeExpand,
+    "folder expansion does not activate another workspace",
+  );
+  assert.equal(await page.getByTestId("navigation").getAttribute("data-view"), "chat");
+  await projectFolder.focus();
+  await page.keyboard.press("Space");
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="workspace-item-/synthetic/project"]')
+        ?.getAttribute("aria-expanded") === "false",
+  );
+  await projectName.click();
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="navigation"]')?.dataset.view === "agent-board",
+  );
+  assert.equal(
+    await page.evaluate(() => window.__newTask.board.getState().project),
+    "/synthetic/project",
+    "project name opens the board filtered to that project",
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      window.__newTask.tabs.getState().expandedWorkspacePaths.has("/synthetic/project"),
+    ),
+    true,
+    "opening a project board activates and reveals its workspace through tab navigation",
+  );
+  await page.evaluate(() => {
+    window.__newTask.board.getState().selectProject(null);
+    window.__newTask.tabs.getState().activateTabByPath("/synthetic/tasks");
+  });
+  await prepare({ source: "/synthetic/tasks", view: "chat" });
+  await assertSidebarActionRail({ page, prepare, artifacts });
   assert.deepEqual(await page.evaluate(() => window.__newTask.writes), []);
   assert.deepEqual(errors, []);
   console.log(

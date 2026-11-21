@@ -33,6 +33,7 @@ import {
   persistV4ComposerDraft,
   readV4ComposerDraft,
   V4_DRAFT_SCOPE_ROOT,
+  V4_PRIMARY_PANE_ACP_DRAFT_SCOPE_PREFIX,
   type V4ComposerDraft,
 } from "@/v4/composer/composerDraftStore.js";
 import { resolveAppFollowupMode } from "@/v4/composer/followupModeSettings.js";
@@ -106,6 +107,8 @@ export function useDraftConfigControl(params: {
   provider?: ZCodeProvider;
   /** 会话切换读取对应 scope；已有空选择也必须保留。 */
   sessionId: string | null;
+  /** 显式新建会话时让可复用 composer scope 重新读取已清理的持久化正文。 */
+  composerDraftResetVersion?: number;
   /** 本地草稿身份与原生协议身份分开；ACP 使用带类型前缀的 Host 会话 scope。 */
   composerScopeId?: string;
   /** 仅新连接可接管同 pane/Agent 的临时草稿；历史打开不会传此来源。 */
@@ -123,6 +126,7 @@ export function useDraftConfigControl(params: {
     workspaceIdentity,
     provider,
     sessionId,
+    composerDraftResetVersion = 0,
     composerScopeId,
     composerDraftSourceScopeId,
     sessionConfig,
@@ -137,7 +141,11 @@ export function useDraftConfigControl(params: {
   const { settings: sharedSettings } = useSettings();
   const appFollowupMode = resolveAppFollowupMode(sharedSettings);
   const scopeId = composerScopeId ?? sessionId ?? V4_DRAFT_SCOPE_ROOT;
-  const scopeKey = JSON.stringify([workspaceKey, scopeId]);
+  const resetVersion =
+    scopeId === V4_DRAFT_SCOPE_ROOT || scopeId.startsWith(V4_PRIMARY_PANE_ACP_DRAFT_SCOPE_PREFIX)
+      ? composerDraftResetVersion
+      : 0;
+  const scopeKey = JSON.stringify([workspaceKey, scopeId, resetVersion]);
   const loadedScope = useMemo(() => {
     const existing = readV4ComposerDraft(workspacePath, workspaceIdentity, scopeId);
     const source = composerDraftSourceScopeId

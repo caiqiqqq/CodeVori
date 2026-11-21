@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { exerciseAgentBoardLayoutModes } from "./agentBoardLayoutModesScenario.mjs";
 
 export async function exerciseAgentBoardLayout(page, artifacts) {
+  await exerciseAgentBoardLayoutModes(page, artifacts);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.evaluate(() => {
     const { store, workRows, notifyWork } = window.__board;
@@ -33,10 +35,10 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   assert.equal(
     await groups.count(),
     2,
-    "work task project must not add an empty conversation group",
+    "tasks and conversations are grouped by their actual projects",
   );
-  assert.equal(await page.locator('[data-board-column="/fixture/project-3"]').count(), 0);
-  const cards = page.locator('[data-board-column="work-tasks"] article');
+  assert.equal(await page.locator('[data-board-column="work-tasks"]').count(), 0);
+  const cards = page.locator('[data-board-column="/fixture/project-3"] article');
   const a = await cards.nth(0).boundingBox(),
     b = await cards.nth(1).boundingBox();
   assert.ok(
@@ -61,9 +63,9 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
       animations: "disabled",
     });
   }
-  await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("Implement project 23");
+  await page.getByRole("textbox", { name: "搜索任务…", exact: true }).fill("Implement project 23");
   assert.equal(await groups.count(), 1, "search removes empty sections");
-  await page.getByRole("textbox", { name: "搜索会话…", exact: true }).fill("");
+  await page.getByRole("textbox", { name: "搜索任务…", exact: true }).fill("");
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileA = await cards.nth(0).boundingBox(),
     mobileB = await cards.nth(1).boundingBox();
@@ -115,7 +117,7 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
       excludedItems: [],
     });
   });
-  const statusTabs = page.getByRole("tablist", { name: "会话范围", exact: true });
+  const statusTabs = page.getByRole("tablist", { name: "任务范围", exact: true });
   const choose = (label) =>
     statusTabs.getByRole("tab", { name: new RegExp("^" + label + "\\s*\\d+$") }).click();
   await statusTabs.getByRole("tab", { name: /^失败\s*2$/ }).waitFor();
@@ -130,8 +132,8 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   await choose("已完成");
   assert.equal(
     await page.locator("[data-board-card]").count(),
-    1,
-    "review stays visible, while formally completed work tasks are excluded",
+    3,
+    "review and formally completed tasks remain in the completed column",
   );
   assert.equal(await groups.count(), 1, "completion view starts with its own column");
   await choose("失败");
@@ -224,7 +226,11 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
     await page.evaluate(() => JSON.parse(localStorage.getItem("zcode-agent-board:v1")).view),
     "completed",
   );
-  assert.equal(await page.locator("[data-board-card]").count(), 1);
+  assert.equal(
+    await page.locator("[data-board-card]").count(),
+    3,
+    "mobile and desktop retain the same completed tasks",
+  );
 
   // 复现升级前少量项目且保留 project 偏好的真实入口，不能靠项目过多的分支通过。
   const legacyWorkRows = await page.evaluate(() => {
@@ -265,22 +271,17 @@ export async function exerciseAgentBoardLayout(page, artifacts) {
   await page.waitForFunction(() => document.querySelectorAll("[data-board-card]").length === 3);
   assert.equal(
     await page.getByRole("combobox", { name: "分组方式", exact: true }).inputValue(),
-    "status",
+    "workflow",
   );
-  assert.deepEqual(
-    await groups.evaluateAll((nodes) => nodes.map((node) => node.dataset.boardColumn)),
-    ["running", "completed", "staged", "error"],
-  );
-  assert.equal(await page.locator('[data-board-column="running"] article').count(), 2);
-  assert.equal(await page.locator('[data-board-column="completed"] article').count(), 1);
-  assert.equal(await page.locator('[data-board-column="error"] article').count(), 0);
-  // 用户可主动选项目分组，但从选择器回到所有项目后恢复四列。
+  assert.equal(await groups.count(), 6);
+  assert.equal(await page.locator("[data-board-column] [data-board-card]").count(), 3);
+  // 用户可主动选项目分组，但从选择器回到所有项目后恢复工作流列。
   await page.getByRole("combobox", { name: "分组方式", exact: true }).selectOption("project");
   assert.equal(await groups.count(), 2);
   await page.getByRole("button", { name: "所有项目", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "所有项目", exact: true }).click();
-  assert.equal(await groups.count(), 4);
-  assert.equal(await page.evaluate(() => window.__board.store.getState().group), "status");
+  assert.equal(await groups.count(), 6);
+  assert.equal(await page.evaluate(() => window.__board.store.getState().group), "workflow");
   await page.setViewportSize({ width: 1600, height: 1000 });
   for (const theme of ["theme-zai-light", "dark theme-zai-dark"]) {
     await page.evaluate((value) => (document.documentElement.className = value), theme);

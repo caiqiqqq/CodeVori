@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isSettingsSectionEnabled, resolveSettingsSection } from "../src/lib/settingsNavigation.js";
+import {
+  consumeInitialSettingsSection,
+  consumePendingAgentSettingsView,
+  isSettingsSectionEnabled,
+  resolveSettingsSection,
+  setPendingSettingsSectionIntent,
+} from "../src/lib/settingsNavigation.js";
 import {
   createSettingsPageConfig,
   resolveSettingsSectionForPlatform,
@@ -28,27 +34,63 @@ test("model providers and ACP share one settings sidebar entry on desktop and we
       settingsSections.some((section) => section.id === "acpAgents"),
       true,
     );
-    const entries = settingsSections.filter((section) => section.id === "delegation");
-    assert.equal(entries.length, 1);
-    assert.equal(entries[0].titleId, "delegation.settingsTitle");
-    assert.ok(
+    assert.equal(
+      settingsSections.some((section) => section.id === "delegation"),
+      false,
+    );
+    assert.equal(
       settingsSectionGroups
         .find((group) => group.id === "agentCapabilities")
         ?.sections.some((section) => section.id === "delegation"),
+      false,
     );
-    assert.equal(resolveSettingsSectionForPlatform("delegation", settingsSections), "delegation");
+    assert.equal(resolveSettingsSectionForPlatform("delegation", settingsSections), "general");
     assert.equal(resolveSettingsSectionForPlatform("acpAgents", settingsSections), "acpAgents");
   }
-  assert.equal(SETTINGS_SECTIONS.filter((section) => section.id === "delegation").length, 1);
-  assert.equal(isSettingsSectionEnabled("delegation"), true);
-  assert.equal(resolveSettingsSection("delegation"), "delegation");
+  assert.equal(
+    SETTINGS_SECTIONS.some((section) => section.id === "delegation"),
+    false,
+  );
+  assert.equal(isSettingsSectionEnabled("delegation"), false);
+  assert.equal(resolveSettingsSection("delegation"), "general");
+  assert.equal(resolveSettingsSection("delegation", "acpAgents"), "acpAgents");
 });
 
-test("collaboration labels and disabled guidance point to the collaboration settings entry", () => {
+test("collaboration settings title remains localized while the section is hidden", () => {
   assert.equal(zhCN["delegation.settingsTitle"], "多智能体协同");
-  assert.match(zhCN["delegation.disabled"], /设置.*多智能体协同/);
-  assert.doesNotMatch(zhCN["delegation.disabled"], /SDK/);
   assert.equal(enUS["delegation.settingsTitle"], "Multi-agent collaboration");
-  assert.match(enUS["delegation.disabled"], /Settings.*Multi-agent collaboration/);
-  assert.doesNotMatch(enUS["delegation.disabled"], /SDK/);
+});
+
+test("agent profiles and squads share one settings entry with legacy squad routing", () => {
+  const { settingsSections } = createSettingsPageConfig();
+  assert.equal(settingsSections.filter((section) => section.id === "agentProfiles").length, 1);
+  assert.equal(settingsSections.some((section) => section.id === "squads"), false);
+  assert.equal(settingsSections.some((section) => section.id === "subagents"), true);
+  assert.equal(resolveSettingsSection("squads"), "agentProfiles");
+  assert.equal(resolveSettingsSectionForPlatform("squads", settingsSections), "agentProfiles");
+
+  const storage = () => {
+    const data = new Map<string, string>();
+    return {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => data.set(key, value),
+      removeItem: (key: string) => data.delete(key),
+    };
+  };
+  const previous = globalThis.window;
+  globalThis.window = Object.assign(new EventTarget(), {
+    localStorage: storage(),
+    sessionStorage: storage(),
+  }) as never;
+  try {
+    setPendingSettingsSectionIntent("squads");
+    assert.equal(consumeInitialSettingsSection(), "agentProfiles");
+    assert.equal(consumePendingAgentSettingsView(), "squads");
+    setPendingSettingsSectionIntent("agentProfiles");
+    assert.equal(consumeInitialSettingsSection(), "agentProfiles");
+    assert.equal(consumePendingAgentSettingsView(), "agents");
+    assert.equal(resolveSettingsSection("delegation"), "general");
+  } finally {
+    globalThis.window = previous;
+  }
 });

@@ -1,3 +1,5 @@
+import { useWorkTaskSidebar } from "@/work-tasks/WorkTaskSidebarContext.js";
+import { sidebarConversationKey } from "@/lib/sidebarConversationRows.js";
 /* eslint-disable max-lines -- pinned 列表现在同时承载本地查询、远端主动注入结果和任务操作分发，先集中保持交互一致。 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -107,13 +109,19 @@ export function WorkspacePinnedTasksSection({
       workspaceTabs,
     ],
   );
+  const { boundKeys } = useWorkTaskSidebar();
   const acpSessions = useAcpSidebarSessions(workspaceTabs, acpServiceLookup);
   const pinnedAcpSessions = useMemo(
     () =>
       acpSessions
-        .filter((session) => session.pinned && !session.archived)
+        .filter(
+          (session) =>
+            session.pinned &&
+            !session.archived &&
+            !boundKeys.has(sidebarConversationKey({ ...session, kind: "acp" })),
+        )
         .sort((left, right) => right.updatedAt - left.updatedAt),
-    [acpSessions],
+    [acpSessions, boundKeys],
   );
   const removeTaskState = useZCodeSessionStore((state) => state.removeTaskState);
   const upsertOptimisticTaskListItem = useZCodeSessionStore(
@@ -172,10 +180,13 @@ export function WorkspacePinnedTasksSection({
     );
   }, [remotePinnedItemsByWorkspaceKey, workspaceTabs]);
   const sortedItems = useMemo(() => {
-    return [...localItems, ...remoteItems].sort((left, right) =>
-      compareZCodeTaskListItems(left, right, taskSortBy),
-    );
-  }, [localItems, remoteItems, taskSortBy]);
+    return [...localItems, ...remoteItems]
+      .filter(
+        (item) =>
+          !boundKeys.has(sidebarConversationKey({ ...item, kind: "native", id: item.taskId })),
+      )
+      .sort((left, right) => compareZCodeTaskListItems(left, right, taskSortBy));
+  }, [localItems, remoteItems, taskSortBy, boundKeys]);
   const items = showAllTasks ? sortedItems : sortedItems.slice(0, collapsedLimit);
   const total = sortedItems.length;
   const syncingRemoteWorkspaces = workspaceTabs.some((tab) => {

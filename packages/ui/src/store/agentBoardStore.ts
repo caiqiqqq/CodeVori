@@ -3,61 +3,78 @@ import { getSafeLocalStorage, type BrowserStorageLike } from "@/lib/browserEnvir
 import {
   defaultBoardTracking,
   canStageBoardItem,
+  defaultWorkflowStatusId,
   isBoardItemStaged,
   boardDisplayStatus,
   boardHasUnreadResult,
   workTaskResultToken,
   matchesBoardTracking,
   BOARD_DISPLAY_STATUSES,
+  DEFAULT_BOARD_WORKFLOW_STATUSES,
   type BoardDisplayStatus,
+  type BoardWorkflowStatus,
   type BoardTrackingTarget,
   type BoardItem,
+  type BoardTaskState,
   type BoardStagedItems,
   type BoardTracking,
   type BoardView,
 } from "@/agent-board/agentBoardModel.js";
+export type BoardLayoutMode = "cards" | "compact" | "list";
 interface Preferences {
   statusOrder: readonly BoardDisplayStatus[];
+  workflowStatuses: readonly BoardWorkflowStatus[];
+  workflowAssignments: Record<string, string>;
+  workflowAssignees: Record<string, string | null>;
   readWorkTaskResults: Record<string, string>;
   stagedItems: BoardStagedItems;
   project: string | null;
   pinnedProjects: string[] | null;
   view: BoardView;
-  group: "project" | "status";
+  group: "project" | "status" | "workflow";
+  layoutMode: BoardLayoutMode;
   agent: string;
   search: string;
   tracking: BoardTracking;
-  category: "all" | "standalone" | "work-tasks";
+  category: "all" | "standalone";
 }
 interface BoardStore extends Preferences {
   setStatusOrder(order: readonly BoardDisplayStatus[]): void;
+  setWorkflowStatuses(statuses: readonly BoardWorkflowStatus[]): void;
+  setItemWorkflowStatus(item: BoardItem, statusId: string): void;
+  setItemWorkflowAssignee(item: BoardItem, assigneeId: string | null): void;
   pickerOpen: boolean;
   markWorkTaskResultRead(item: BoardItem): void;
-  setItemStaged(item: BoardItem, staged: boolean): void;
+  setItemStaged(item: BoardTaskState, staged: boolean): void;
   reconcileStagedItems(items: BoardItem[]): void;
   setPickerOpen(open: boolean): void;
   selectProject(key: string | null): void;
   toggleProject(key: string, defaults?: string[], knownKeys?: string[]): void;
   setView(view: BoardView): void;
+  setLayoutMode(mode: BoardLayoutMode): void;
   setGroup(group: Preferences["group"]): void;
   setAgent(agent: string): void;
   setSearch(search: string): void;
   revealItem(item: BoardItem): void;
   setTracking(tracking: BoardTracking): void;
   includeItem(item: BoardTrackingTarget): void;
+  revealCreatedSession(item: BoardTrackingTarget): void;
   selectStandalone(): void;
-  selectWorkTasks(): void;
 }
 const key = "zcode-agent-board:v1";
-const layoutVersion = 2;
+const layoutVersion = 3;
 const defaults: Preferences = {
   statusOrder: BOARD_DISPLAY_STATUSES,
+  workflowStatuses: DEFAULT_BOARD_WORKFLOW_STATUSES,
+  workflowAssignments: {},
+  workflowAssignees: {},
   readWorkTaskResults: {},
   stagedItems: {},
   project: null,
   pinnedProjects: null,
   view: "all",
-  group: "status",
+  group: "workflow",
+  layoutMode: "cards",
   agent: "all",
   search: "",
   tracking: defaultBoardTracking,
@@ -111,6 +128,50 @@ function readStagedItems(value: unknown): BoardStagedItems {
     entries.map(([key, marker]) => [key, { updatedAt: marker.updatedAt, outcome: marker.outcome }]),
   );
 }
+function readWorkflowStatuses(value: unknown): readonly BoardWorkflowStatus[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 32) {
+    return DEFAULT_BOARD_WORKFLOW_STATUSES;
+  }
+  const seen = new Set<string>();
+  const statuses = value.filter((entry): entry is BoardWorkflowStatus => {
+    if (
+      !entry ||
+      typeof entry !== "object" ||
+      typeof entry.id !== "string" ||
+      !/^[a-z0-9][a-z0-9-]{0,39}$/.test(entry.id) ||
+      seen.has(entry.id) ||
+      typeof entry.label !== "string" ||
+      !entry.label.trim() ||
+      entry.label.length > 40 ||
+      typeof entry.enabled !== "boolean"
+    )
+      return false;
+    seen.add(entry.id);
+    return true;
+  });
+  return statuses.length === value.length && statuses.some((status) => status.enabled)
+    ? statuses.map((status) => ({ ...status, label: status.label.trim() }))
+    : DEFAULT_BOARD_WORKFLOW_STATUSES;
+}
+function readWorkflowAssignments(value: unknown, statuses: readonly BoardWorkflowStatus[]) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const activeIds = new Set(statuses.filter((status) => status.enabled).map((status) => status.id));
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key, id]) => key.length > 0 && typeof id === "string" && activeIds.has(id),
+    ),
+  ) as Record<string, string>;
+}
+function readWorkflowAssignees(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key, assigneeId]) =>
+        key.length > 0 &&
+        (assigneeId === null || (typeof assigneeId === "string" && assigneeId.length > 0)),
+    ),
+  ) as Record<string, string | null>;
+}
 export function createAgentBoardStore(storage: BrowserStorageLike | null = getSafeLocalStorage()) {
   let initial = defaults;
   try {
@@ -127,16 +188,20 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         "starred",
         "archived",
       ].includes(v.view) &&
-      ["project", "status"].includes(v.group) &&
+      ["project", "status", "workflow"].includes(v.group) &&
       (v.project === null || typeof v.project === "string") &&
       (v.pinnedProjects === null ||
         (Array.isArray(v.pinnedProjects) &&
           v.pinnedProjects.every((p: unknown) => typeof p === "string"))) &&
       typeof v.agent === "string" &&
       typeof v.search === "string"
-    )
+    ) {
+      const workflowStatuses = readWorkflowStatuses(v.workflowStatuses);
       initial = {
         statusOrder: readStatusOrder(v.statusOrder),
+        workflowStatuses,
+        workflowAssignments: readWorkflowAssignments(v.workflowAssignments, workflowStatuses),
+        workflowAssignees: readWorkflowAssignees(v.workflowAssignees),
         readWorkTaskResults:
           v.readWorkTaskResults &&
           typeof v.readWorkTaskResults === "object" &&
@@ -148,16 +213,19 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         project: v.project,
         // 收藏入口已移除，旧偏好仅回到全部，不清除用户的范围和阅读记录。
         view: v.view === "attention" || v.view === "starred" ? "all" : v.view,
-        // 旧默认项目分组曾遮住三状态列；只迁移布局，不清除用户的跟踪范围。
-        group: v.layoutVersion === layoutVersion ? v.group : "status",
+        // 首次升级到工作流分组，同时保留旧版已显式选择的状态分组。
+        group: v.layoutVersion === layoutVersion || v.group === "status" ? v.group : "workflow",
+        layoutMode: ["cards", "compact", "list"].includes(v.layoutMode) ? v.layoutMode : "cards",
         agent: v.agent,
         search: v.search,
         tracking: readTracking(v.tracking),
-        category: v.category === "standalone" || v.category === "work-tasks" ? v.category : "all",
+        // 所有会话共用任务分类；旧待办专属入口迁移为全部，保留其它偏好。
+        category: v.category === "standalone" ? v.category : "all",
         pinnedProjects: v.pinnedProjects
           ? [...new Set<string>(v.pinnedProjects)].slice(0, 6)
           : null,
       };
+    }
   } catch {
     /* 本地显示偏好损坏不能影响 Host 会话。 */
   }
@@ -168,6 +236,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         project,
         pinnedProjects,
         view,
+        layoutMode,
         group,
         agent,
         search,
@@ -176,18 +245,25 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         stagedItems,
         readWorkTaskResults,
         statusOrder,
+        workflowStatuses,
+        workflowAssignments,
+        workflowAssignees,
       } = get();
       try {
         storage?.setItem(
           key,
           JSON.stringify({
             statusOrder,
+            workflowStatuses,
+            workflowAssignments,
+            workflowAssignees,
             stagedItems,
             readWorkTaskResults,
             layoutVersion,
             project,
             pinnedProjects,
             view,
+            layoutMode,
             group,
             agent,
             search,
@@ -199,9 +275,57 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         /* 受限存储只影响显示偏好，不回写 Host。 */
       }
     };
+    const revealCreated = (item: BoardTrackingTarget) => {
+      const tracking = get().tracking;
+      // 修复原因：创建回执曾重置顶部项目/分类选择，让用户从当前看板范围跳走。
+      // 只纳入回执中的精确 ID；新实体不属于当前范围时由用户主动切换顶部选择。
+      save({
+        tracking:
+          tracking.mode === "custom"
+            ? {
+                ...tracking,
+                includedItems: [...new Set([...tracking.includedItems, item.key])],
+                excludedItems: tracking.excludedItems.filter((key) => key !== item.key),
+              }
+            : tracking,
+        group: "status",
+        view: "all",
+        agent: "all",
+        search: "",
+      });
+    };
     return {
       ...initial,
       setStatusOrder: (order) => save({ statusOrder: readStatusOrder(order) }),
+      setWorkflowStatuses: (value) => {
+        const workflowStatuses = readWorkflowStatuses(value);
+        const activeIds = new Set(
+          workflowStatuses.filter((status) => status.enabled).map((status) => status.id),
+        );
+        const fallback = workflowStatuses.find((status) => status.enabled)!.id;
+        const workflowAssignees = { ...get().workflowAssignees };
+        const workflowAssignments = { ...get().workflowAssignments };
+        for (const [key, id] of Object.entries(workflowAssignments)) {
+          if (activeIds.has(id)) continue;
+          workflowAssignments[key] = fallback;
+          workflowAssignees[key] = null;
+        }
+        save({ workflowStatuses, workflowAssignments, workflowAssignees });
+      },
+      setItemWorkflowStatus: (item, statusId) => {
+        if (!get().workflowStatuses.some((status) => status.id === statusId && status.enabled))
+          return;
+        if ((get().workflowAssignments[item.key] ?? defaultWorkflowStatusId(item)) === statusId)
+          return;
+        save({
+          workflowAssignments: { ...get().workflowAssignments, [item.key]: statusId },
+          workflowAssignees: { ...get().workflowAssignees, [item.key]: null },
+        });
+      },
+      setItemWorkflowAssignee: (item, assigneeId) => {
+        const normalized = assigneeId?.trim() || null;
+        save({ workflowAssignees: { ...get().workflowAssignees, [item.key]: normalized } });
+      },
       pickerOpen: false,
       markWorkTaskResultRead: (item) => {
         if (item.kind !== "work-task" || !boardHasUnreadResult(item, get().readWorkTaskResults))
@@ -237,8 +361,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
       },
       setPickerOpen: (pickerOpen) => set({ pickerOpen }),
       selectProject: (project) =>
-        save({ project, category: "all", ...(project === null ? { group: "status" } : {}) }),
-      selectWorkTasks: () => save({ project: null, category: "work-tasks" }),
+        save({ project, category: "all", ...(project === null ? { group: "workflow" } : {}) }),
       selectStandalone: () => save({ project: null, category: "standalone" }),
       setTracking: (tracking) => save({ tracking: readTracking(tracking) }),
       includeItem: (item) => {
@@ -253,6 +376,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
           },
         });
       },
+      revealCreatedSession: (item) => revealCreated(item),
       toggleProject: (project, defaultKeys = [], knownKeys) => {
         const saved = get().pinnedProjects ?? defaultKeys;
         const current = knownKeys ? saved.filter((key) => knownKeys.includes(key)) : saved;
@@ -261,6 +385,7 @@ export function createAgentBoardStore(storage: BrowserStorageLike | null = getSa
         else if (current.length < 6) save({ pinnedProjects: [...current, project] });
       },
       setView: (view) => save({ view }),
+      setLayoutMode: (layoutMode) => save({ layoutMode }),
       setGroup: (group) => save({ group }),
       setAgent: (agent) => save({ agent }),
       setSearch: (search) => save({ search }),

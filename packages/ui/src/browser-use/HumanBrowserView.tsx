@@ -29,6 +29,13 @@ function clonePreference(
 export function HumanBrowserView(props: HumanBrowserViewProps): React.JSX.Element {
   const { agentOpened, ...unifiedProps } = props;
   const { loading, settings, update } = useSettings();
+  // human tab 的 scope 在创建时冻结。工作区切换的过渡 render 会带来新 ambient
+  // remoteSessionId；即使旧标签仍挂载，也不能把它重新绑定到另一个 Host attachment。
+  const ownerScopeRef = useRef({
+    workspaceKey: props.workspaceKey ?? (props.workspaceIdentity?.trim() || props.workspacePath),
+    remoteSessionId: props.remoteSessionId,
+    sessionId: props.sessionId,
+  });
   const initialPreferenceRef = useRef<EmbeddedBrowserViewportPreference | null>(null);
   const pendingPreferenceRef = useRef<EmbeddedBrowserViewportPreference | null>(null);
   const writeTimerRef = useRef<number | null>(null);
@@ -114,6 +121,7 @@ export function HumanBrowserView(props: HumanBrowserViewProps): React.JSX.Elemen
   return (
     <UnifiedBrowserView
       {...unifiedProps}
+      {...ownerScopeRef.current}
       initialHumanViewportPreference={initialPreference}
       onHumanViewportPreferenceChange={agentOpened ? undefined : handlePreferenceChange}
     />

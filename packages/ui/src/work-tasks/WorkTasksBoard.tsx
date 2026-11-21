@@ -50,6 +50,8 @@ export function WorkTasksBoard({
   workspaceTools,
   onWorkspaceToolTargetChange,
   reviewContainer,
+  conversationOnly = false,
+  onCloseConversation,
 }: {
   scope: WorkTaskScope;
   hasProject: boolean;
@@ -62,6 +64,8 @@ export function WorkTasksBoard({
   workspaceTools?: WorkTaskConversationTools;
   onWorkspaceToolTargetChange?: (target: WorkTaskWorkspaceToolTarget | null) => void;
   reviewContainer?: HTMLElement | null;
+  conversationOnly?: boolean;
+  onCloseConversation?(): void;
 }) {
   const t = useWorkTaskMessages();
   const [editor, setEditor] = useState<{ task: WorkTask | null } | null>(null);
@@ -79,8 +83,17 @@ export function WorkTasksBoard({
     mergeId: string;
     merge: boolean;
   } | null>(null);
-  const panel = useWorkTasks(scope, false, hasProject, allProjects ? projects : undefined);
-  const tasks = useMemo(() => filterWorkTasks(panel.board?.tasks ?? [], {}), [panel.board?.tasks]);
+  // 统一入口与侧栏复用包含归档绑定的读模型；可见任务仍由下方既有过滤规则决定。
+  const panel = useWorkTasks(
+    scope,
+    conversationOnly,
+    hasProject,
+    allProjects ? projects : undefined,
+  );
+  const tasks = useMemo(
+    () => filterWorkTasks(panel.board?.tasks ?? [], { showCanceled: conversationOnly }),
+    [panel.board?.tasks, conversationOnly],
+  );
   const selected = tasks.find((task) => taskKey(task) === selection);
   const completionTask = tasks.find((task) => taskKey(task) === completionId);
   if (completionId && (!completionTask || !canReviewWorkTaskCompletion(completionTask)))
@@ -126,15 +139,44 @@ export function WorkTasksBoard({
   );
   const closeSelection = useCallback(
     (id: string) => {
-      if (selected?.id === id)
+      if (selected?.id === id) {
         workTaskNavigationStore.getState().clearTask(navigationScope, taskKey(selected));
+        if (conversationOnly) onCloseConversation?.();
+      }
     },
-    [navigationScope, selected],
+    [navigationScope, selected, conversationOnly, onCloseConversation],
   );
   const edit = (task: WorkTask) => {
     setDetailsId(null);
     setEditor({ task });
   };
+  const conversation = (
+    <WorkTaskConversationPane
+      task={selected ?? null}
+      showBackButton={!conversationOnly}
+      showMergeConversation={showMergeConversation}
+      onToggleMergeConversation={() => {
+        if (selected?.merge)
+          setConversationView({
+            taskId: taskKey(selected),
+            mergeId: selected.merge.id,
+            merge: !showMergeConversation,
+          });
+      }}
+      panel={selected ? panel.forScope(selected) : panel}
+      options={{
+        ...conversationOptions,
+        focused: conversationOptions?.focused !== false && !editor && !details && !completionTask,
+      }}
+      workspaceTools={workspaceTools}
+      onClose={closeSelection}
+      onDetails={(task) => setDetailsId(taskKey(task))}
+      onEdit={edit}
+      onComplete={requestCompletion}
+      onOpenConversation={onOpenConversation}
+      onOpenNativeSession={onOpenNativeSession}
+    />
+  );
   return (
     <>
       {selected &&
@@ -147,108 +189,96 @@ export function WorkTasksBoard({
           container={reviewContainer ?? null}
         />
       ) : null}
-      <WorkTasksSplitLayout
-        hasSelection={Boolean(selected)}
-        sidebar={
-          <div className="flex h-full min-h-0 min-w-0 flex-col">
-            {header}
-            <div
-              className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-border px-4 py-2"
-              data-testid="work-task-actions"
-            >
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={
-                  panel.loading ||
-                  panel.busy ||
-                  !panel.executable ||
-                  !panel.board?.tasks.some(
-                    (task) =>
-                      !task.archived && task.status === "todo" && panel.forScope(task).executable,
-                  )
-                }
-                onClick={() => {
-                  void panel.startAll();
-                }}
-                data-testid="work-task-start-all"
+      {conversationOnly ? (
+        <div className="h-full min-h-0 min-w-0" data-testid="work-task-conversation-main">
+          {panel.error ? <WorkTaskError error={panel.error} /> : null}
+          {panel.loading ? (
+            <p role="status" className="p-4 text-ui-sm text-foreground-subtle">
+              {t("loading")}
+            </p>
+          ) : (
+            conversation
+          )}
+        </div>
+      ) : (
+        <WorkTasksSplitLayout
+          hasSelection={Boolean(selected)}
+          sidebar={
+            <div className="flex h-full min-h-0 min-w-0 flex-col">
+              {header}
+              <div
+                className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-border px-4 py-2"
+                data-testid="work-task-actions"
               >
-                <Play className="size-4" />
-                {t("startAll")}
-              </Button>
-              <Button
-                size="sm"
-                disabled={panel.busy || panel.loading || !panel.board || !hasProject}
-                onClick={() => {
-                  setDetailsId(null);
-                  setEditor({ task: null });
-                }}
-                data-testid="work-task-new"
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    panel.loading ||
+                    panel.busy ||
+                    !panel.executable ||
+                    !panel.board?.tasks.some(
+                      (task) =>
+                        !task.archived && task.status === "todo" && panel.forScope(task).executable,
+                    )
+                  }
+                  onClick={() => {
+                    void panel.startAll();
+                  }}
+                  data-testid="work-task-start-all"
+                >
+                  <Play className="size-4" />
+                  {t("startAll")}
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={panel.busy || panel.loading || !panel.board || !hasProject}
+                  onClick={() => {
+                    setDetailsId(null);
+                    setEditor({ task: null });
+                  }}
+                  data-testid="work-task-new"
+                >
+                  <Plus className="size-4" />
+                  {t("create")}
+                </Button>
+              </div>
+              <div
+                className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
+                aria-busy={panel.loading}
+                data-testid="work-task-board-scroll"
               >
-                <Plus className="size-4" />
-                {t("create")}
-              </Button>
+                {panel.error ? (
+                  <div className="px-4 py-3">
+                    <WorkTaskError error={panel.error} />
+                  </div>
+                ) : null}
+                {panel.loading ? (
+                  <p role="status" className="px-4 py-3 text-ui-sm text-foreground-subtle">
+                    {t("loading")}
+                  </p>
+                ) : (
+                  <WorkTaskBoardView
+                    columns={columns}
+                    panel={panel}
+                    panelForTask={panel.forScope}
+                    taskKey={taskKey}
+                    projectOptions={allProjects ? workTaskProjectOptions(projects) : undefined}
+                    onSelect={selectTask}
+                    onEdit={edit}
+                    onOpenConversation={openInline}
+                    onDetails={(task) => setDetailsId(taskKey(task))}
+                    onComplete={requestCompletion}
+                    selectedId={selected ? taskKey(selected) : undefined}
+                  />
+                )}
+              </div>
             </div>
-            <div
-              className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
-              aria-busy={panel.loading}
-              data-testid="work-task-board-scroll"
-            >
-              {panel.error ? (
-                <div className="px-4 py-3">
-                  <WorkTaskError error={panel.error} />
-                </div>
-              ) : null}
-              {panel.loading ? (
-                <p role="status" className="px-4 py-3 text-ui-sm text-foreground-subtle">
-                  {t("loading")}
-                </p>
-              ) : (
-                <WorkTaskBoardView
-                  columns={columns}
-                  panel={panel}
-                  panelForTask={panel.forScope}
-                  taskKey={taskKey}
-                  projectOptions={allProjects ? workTaskProjectOptions(projects) : undefined}
-                  onSelect={selectTask}
-                  onEdit={edit}
-                  onOpenConversation={openInline}
-                  onDetails={(task) => setDetailsId(taskKey(task))}
-                  onComplete={requestCompletion}
-                  selectedId={selected ? taskKey(selected) : undefined}
-                />
-              )}
-            </div>
-          </div>
-        }
-        conversation={
-          <WorkTaskConversationPane
-            task={selected ?? null}
-            showMergeConversation={showMergeConversation}
-            onToggleMergeConversation={() => {
-              if (selected?.merge)
-                setConversationView({
-                  taskId: taskKey(selected),
-                  mergeId: selected.merge.id,
-                  merge: !showMergeConversation,
-                });
-            }}
-            panel={selected ? panel.forScope(selected) : panel}
-            options={{
-              ...conversationOptions,
-              focused:
-                conversationOptions?.focused !== false && !editor && !details && !completionTask,
-            }}
-            workspaceTools={workspaceTools}
-            onClose={closeSelection}
-            onDetails={(task) => setDetailsId(taskKey(task))}
-            onEdit={edit}
-            onComplete={requestCompletion}
-            onOpenConversation={onOpenConversation}
-            onOpenNativeSession={onOpenNativeSession}
-          />
-        }
-      />
+          }
+          conversation={conversation}
+        />
+      )}
+
       {completionTask && canReviewWorkTaskCompletion(completionTask) ? (
         <WorkTaskCompletionDialog
           key={`${workTaskSelectionKey(completionTask)}:${completionTask.runSeq}`}

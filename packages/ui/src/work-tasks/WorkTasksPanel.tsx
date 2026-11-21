@@ -34,6 +34,8 @@ export interface WorkTasksPanelProps extends WorkTaskScope {
   workspaceTools?: WorkTaskConversationTools;
   onWorkspaceToolTargetChange?: (target: WorkTaskWorkspaceToolTarget | null) => void;
   reviewContainer?: HTMLElement | null;
+  conversationOnly?: boolean;
+  onCloseConversation?(): void;
 }
 
 export function WorkTasksPanel(props: WorkTasksPanelProps) {
@@ -165,6 +167,8 @@ export function WorkTasksPanel(props: WorkTasksPanelProps) {
           workspaceTools={props.workspaceTools}
           onWorkspaceToolTargetChange={props.onWorkspaceToolTargetChange}
           reviewContainer={props.reviewContainer}
+          conversationOnly={props.conversationOnly}
+          onCloseConversation={props.onCloseConversation}
         />
       )}
     </div>

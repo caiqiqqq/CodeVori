@@ -20,8 +20,6 @@ import { TaskRenameDialog } from "@/TaskRenameDialog.js";
 import { isWorkspaceReadOnly } from "@/store/tabStore.js";
 import { useOptionalTabStore } from "@/store/TabStoreProvider.js";
 import { useWorkspaceFileManagerAction } from "@/useTaskListItemContextActions.js";
-import { useFeedbackStore } from "@/feedback/feedbackStore.js";
-import { buildTaskFeedbackDescription } from "@/lib/taskFeedbackDraft.js";
 import { useV4SplitPaneEntry } from "@/v4/splitPaneEntryContext.js";
 import { useModelTrajectoryStore } from "@/store/modelTrajectoryStore.js";
 import { useTaskRowArchiveConfirmation } from "@/hooks/useTaskRowArchiveConfirmation.js";
@@ -57,7 +55,6 @@ export function WorkspaceAcpTaskItem({
   );
   const itemRef = useRef<HTMLLIElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
-  const openFeedbackSubmit = useFeedbackStore((state) => state.openSubmit);
   const splitPaneEntry = useV4SplitPaneEntry();
   const { fileManagerLabel, openWorkspaceInFileManager, canOpenInFileManager } =
     useWorkspaceFileManagerAction({
@@ -352,35 +349,6 @@ export function WorkspaceAcpTaskItem({
             }
           >
             {intl.formatMessage({ id: "taskList.viewModelTrajectory" })}
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem
-            onSelect={() => {
-              // 修复原因：ACP 反馈复用同一个反馈表单，但 ID 是 Host ACP 快照 ID；
-              // 不提供不存在的原生 CLI 日志路径或调用轨迹。
-              openFeedbackSubmit({
-                title: intl
-                  .formatMessage(
-                    { id: "feedback.submit.template.section.taskFeedbackTitle" },
-                    { title: session.title },
-                  )
-                  .slice(0, 80),
-                type: "bug",
-                module: "Agent任务执行失败",
-                severity: "P2-中",
-                includeLogs: false,
-                description: buildTaskFeedbackDescription({
-                  taskTitle: `${acpAgentDefinition(session.agent).name} ACP: ${session.title}`,
-                  taskId: session.id,
-                  workspacePath: session.workspacePath,
-                  formatMessage: (id, values) => intl.formatMessage({ id }, values),
-                }),
-                screenshots: [],
-              });
-              toast(intl.formatMessage({ id: "taskList.feedbackOpened" }));
-            }}
-          >
-            {intl.formatMessage({ id: "taskList.feedback" })}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>

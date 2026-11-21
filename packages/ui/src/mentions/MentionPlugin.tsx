@@ -21,6 +21,9 @@ import { useZCodeIntl } from "../i18n/IntlProvider.js";
 import { acpAgentDefinition, getDelegationAgentReference } from "@zcode/shared";
 import { buildDelegationMentionMarkdown } from "@/mentions/mentionMarkdown.js";
 import { useDelegationTargets } from "@/hooks/useAgentDelegation.js";
+import { useAgentSquads } from "@/hooks/useAgentSquads.js";
+import { mapSquadsToMentionItems } from "./providers/squadsMentionProvider.js";
+import { mapAgentProfilesToMentionItems } from "./providers/agentProfilesMentionProvider.js";
 import {
   extractActivePromptInputTrigger,
   getActivePromptInputTokenTailLength,
@@ -36,6 +39,8 @@ import {
 } from "./components/MentionPanel.js";
 import {
   buildVisibleMentionGroups,
+  filterMentionItemsWithOptions,
+  getMentionGroupLimitForQuery,
   hasMentionQuery,
   MENTION_DEFAULT_GROUP_PREVIEW_LIMIT,
   MENTION_FILES_ONLY_DEFAULT_PREVIEW_LIMIT,
@@ -236,6 +241,20 @@ export function MentionPlugin({
     workspaceIdentity,
     isOpen && isContextTrigger && !filesOnly,
   );
+  const squadResult = useAgentSquads(
+    workspacePath,
+    workspaceIdentity,
+    isOpen && isContextTrigger && !filesOnly,
+  );
+  const squadItems = useMemo(
+    () =>
+      filterMentionItemsWithOptions(
+        mapSquadsToMentionItems(squadResult.squads),
+        deferredActiveQuery,
+        { limit: getMentionGroupLimitForQuery(deferredActiveQuery) },
+      ),
+    [squadResult.squads, deferredActiveQuery],
+  );
   const delegationItems = useMemo<MentionItem[]>(
     () =>
       delegationTargets.map((item) => {
@@ -272,12 +291,24 @@ export function MentionPlugin({
 
   const panelGroups = useMemo<MentionResultGroup<MentionItem>[]>(() => {
     const groupsById = {
+      squads: {
+        id: "squads",
+        title: intl.formatMessage({ id: "squads.title" }),
+        items: squadItems,
+        loading: squadResult.loading,
+        errorText: squadResult.error,
+        emptyText: intl.formatMessage({ id: "squads.empty" }),
+      },
       delegation: {
         id: "delegation",
         title: intl.formatMessage({ id: "delegation.agents" }),
-        items: delegationItems,
-        loading: false,
-        errorText: null,
+        items: filterMentionItemsWithOptions(
+          [...mapAgentProfilesToMentionItems(squadResult.profiles), ...delegationItems],
+          deferredActiveQuery,
+          { limit: getMentionGroupLimitForQuery(deferredActiveQuery) },
+        ),
+        loading: squadResult.loading,
+        errorText: squadResult.error,
         emptyText: intl.formatMessage({ id: "delegation.noAgents" }),
       },
       files: {
@@ -322,17 +353,22 @@ export function MentionPlugin({
       },
     } satisfies Record<MentionPanelGroupId, MentionResultGroup<MentionItem>>;
 
-    // 产品约束：@ 固定为 Plugin → 文件 → 对话 → 画板；旧 # / $ 面板继续走
+    // @ 先发现小队和智能体，再展示上下文；旧 # / $ 面板继续走
     // 原单分组 provider。这里仅重排发现入口，候选自身的 canonical markdown 不变。
     return buildVisibleMentionGroups(
       (filesOnly
         ? (["files"] as const)
         : skillsOnly && isContextTrigger
-          ? (["delegation", "plugins"] as const)
+          ? (["squads", "delegation", "plugins"] as const)
           : getMentionPanelGroupOrder(activeTrigger?.trigger)
       ).map((groupId) => groupsById[groupId]),
     );
   }, [
+    squadItems,
+    squadResult.loading,
+    squadResult.error,
+    squadResult.profiles,
+    deferredActiveQuery,
     delegationItems,
     intl,
     fileResult.emptyText,

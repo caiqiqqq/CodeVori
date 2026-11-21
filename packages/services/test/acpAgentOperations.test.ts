@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -141,7 +141,10 @@ test(
         `#!${process.execPath}
 const fs=require('node:fs'), path=require('node:path');
 if(process.argv.includes('--version')) { console.log('11.0.0'); process.exit(0); }
-fs.writeFileSync(process.env.TEST_RECORD, JSON.stringify({proxy:process.env.https_proxy,args:process.argv}));
+const cache=process.env.npm_config_cache;
+fs.mkdirSync(path.join(cache,'_cacache'),{recursive:true});
+fs.writeFileSync(path.join(cache,'_cacache/reused'),'cache survives cancellation');
+fs.writeFileSync(process.env.TEST_RECORD, JSON.stringify({proxy:process.env.https_proxy,args:process.argv,cache}));
 if(fs.readFileSync(process.env.TEST_MODE,'utf8')==='hang') { console.log('waiting for Python'); setInterval(()=>{},1000); }
 else { const dir=path.join(process.env.npm_config_prefix,'lib/node_modules/@google/gemini-cli'); fs.mkdirSync(path.join(dir,'bin'),{recursive:true});fs.writeFileSync(path.join(dir,'package.json'),JSON.stringify({name:'@google/gemini-cli',version:'0.59.0',bin:{gemini:'bin/gemini.js'}}));fs.writeFileSync(path.join(dir,'bin/gemini.js'),'// previous package'); }
 `,
@@ -177,6 +180,13 @@ else { const dir=path.join(process.env.npm_config_prefix,'lib/node_modules/@goog
       assert.equal((await client.readAgentManagement()).operation?.status, "failed");
       assert.equal(JSON.parse(await readFile(record, "utf8")).proxy, proxy);
       assert.ok(JSON.parse(await readFile(record, "utf8")).args.includes("--foreground-scripts"));
+      const cache = join(root, "agents/npm-cache");
+      assert.equal(JSON.parse(await readFile(record, "utf8")).cache, cache);
+      assert.equal(
+        await readFile(join(cache, "_cacache/reused"), "utf8"),
+        "cache survives cancellation",
+      );
+      assert.deepEqual(await readdir(join(root, "agents/gemini")), ["npm"]);
       assert.equal(
         await readFile(
           join(root, "agents/gemini/npm/lib/node_modules/@google/gemini-cli/bin/gemini.js"),
