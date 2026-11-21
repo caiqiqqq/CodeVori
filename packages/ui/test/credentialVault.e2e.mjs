@@ -36,6 +36,7 @@ try {
     import '../../../ui/src/styles.css';
     const state:any={calls:[],pendingReads:[],delayScope:null,setTheme:applyTheme};window.__credentialVault=state;
     const entries:any[]=[];const secrets=new Map<string,string>();
+    const gitService:any={async getWorkspaceRepositoryInfo({workspacePath}:any){return {workspacePath,isGitAvailable:true,repoRoot:workspacePath,kind:workspacePath.startsWith('/worktrees/')?'linked-worktree':'main-tree',...(workspacePath.startsWith('/worktrees/')?{mainWorktreePath:'/projects/sample',branchName:workspacePath.includes('/one/')?'feature/one':'feature/two'}:{})}}};
     const service:any={
       async listVaultEntries(workspaceIdentity:string){const snapshot=entries.filter(entry=>entry.scope==='project'&&entry.projectIdentities?.includes(workspaceIdentity)).map(entry=>({...entry,workspaceIdentity}));if(state.delayScope===workspaceIdentity)return new Promise(resolve=>state.pendingReads.push(()=>resolve(snapshot)));return snapshot},
       async listGlobalVaultEntries(){return entries.filter(entry=>entry.scope==='global').map(entry=>({...entry}))},
@@ -58,7 +59,7 @@ try {
       async load(){return null},async save(){},async delete(){},
     };
     state.seedLayout=()=>{entries.push(...['project','global','unassigned'].map((scope,index)=>({id:'layout-'+index,name:['项目数据库','共享服务器','待关联数据库'][index],kind:index===1?'server':'database',environment:index===1?'production':'test',host:'service.example.invalid',port:index===1?22:5432,username:'demo_reader',scope,workspaceIdentity:null,projectIdentities:scope==='project'?['remote:project-a']:[],hasSecret:true,createdAt:0,updatedAt:0})))};
-    function Fixture(){const [visible,setVisible]=useState(true);state.setVisible=setVisible;state.releaseReads=()=>state.pendingReads.splice(0).forEach((release:()=>void)=>release());const projects=[{workspacePath:'/project-a',workspaceIdentity:'remote:project-a',label:'项目 A'},{workspacePath:'/project-b',workspaceIdentity:'remote:project-b',label:'项目 B'},...Array.from({length:12},(_,index)=>({workspacePath:'/projects/'+('long-project-path/').repeat(8)+index,label:'示例项目 '+(index+1)}))];return <div className='min-h-screen bg-background px-4 py-8 text-foreground'><div className='mx-auto max-w-4xl lg:px-8'><h1 className='mb-8 text-ui-xl font-semibold'>凭证</h1><ServiceProvider services={{credentialService:service}}>{visible?<CredentialVaultSection initialWorkspacePath='/project-a' initialWorkspaceIdentity='remote:project-a' projects={projects}/>:null}</ServiceProvider></div></div>}
+    function Fixture(){const [visible,setVisible]=useState(true);state.setVisible=setVisible;state.releaseReads=()=>state.pendingReads.splice(0).forEach((release:()=>void)=>release());const projects=[{workspacePath:'/projects/sample',label:'示例仓库'},{workspacePath:'/worktrees/one/sample',label:'示例仓库'},{workspacePath:'/worktrees/two/sample',label:'示例仓库'},{workspacePath:'/project-a',workspaceIdentity:'remote:project-a',label:'项目 A'},{workspacePath:'/project-a',workspaceIdentity:'remote:project-a',label:'项目 A'},{workspacePath:'/project-b',workspaceIdentity:'remote:project-b',label:'项目 B'},...Array.from({length:12},(_,index)=>({workspacePath:'/projects/'+('long-project-path/').repeat(8)+index,label:'示例项目 '+(index+1)}))];return <div className='min-h-screen bg-background px-4 py-8 text-foreground'><div className='mx-auto max-w-4xl lg:px-8'><h1 className='mb-8 text-ui-xl font-semibold'>凭证</h1><ServiceProvider services={{credentialService:service,gitService}}>{visible?<CredentialVaultSection initialWorkspacePath='/project-a' initialWorkspaceIdentity='remote:project-a' projects={projects}/>:null}</ServiceProvider></div></div>}
     createRoot(document.getElementById('root')!).render(<ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><Fixture/></TooltipProvider></ZCodeIntlProvider>);
   `,
   );
@@ -82,6 +83,11 @@ try {
     await page.getByRole("button", { name: /项目 A/ }).getAttribute("aria-pressed"),
     "true",
   );
+  await page.getByRole("button", { name: /feature\/one/ }).waitFor();
+  const projectNavigation = page.getByRole("navigation", { name: "项目", exact: true });
+  assert.equal(await projectNavigation.getByText("示例仓库", { exact: true }).count(), 1);
+  assert.equal(await projectNavigation.getByText("项目 A", { exact: true }).count(), 1);
+  assert.equal(await projectNavigation.locator("ul ul button").count(), 2);
   await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
   await page
     .getByText("全局凭证", { exact: true })
@@ -141,6 +147,18 @@ try {
     (await page.evaluate(() => window.__credentialVault.calls)).at(-1).workspaceIdentity,
     "remote:project-a",
   );
+  await page.getByRole("button", { name: /feature\/one/ }).click();
+  await page.getByRole("button", { name: "关联到所选项目", exact: true }).click();
+  assert.equal(
+    (await page.evaluate(() => window.__credentialVault.calls)).at(-1).workspaceIdentity,
+    "/worktrees/one/sample",
+  );
+  await page.getByRole("button", { name: /示例仓库/ }).click();
+  await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
+  await page.getByRole("button", { name: /feature\/two/ }).click();
+  await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
+  await page.getByRole("button", { name: /feature\/one/ }).click();
+  await page.getByRole("button", { name: "从所选项目移除", exact: true }).click();
   await page.getByRole("button", { name: /项目 B/ }).click();
   await page.getByText("QA 数据库", { exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "关联到所选项目", exact: true }).count(), 1);
