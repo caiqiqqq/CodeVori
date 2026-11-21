@@ -29,11 +29,7 @@ export function CredentialVaultSection({
 }: {
   initialWorkspacePath: string | null;
   initialWorkspaceIdentity?: string | null;
-  projects: Array<{
-    workspacePath: string;
-    workspaceIdentity?: string;
-    label: string;
-  }>;
+  projects: Array<Omit<CredentialScopeProject, "identity">>;
 }) {
   const { intl } = useZCodeIntl();
   const {
@@ -52,7 +48,9 @@ export function CredentialVaultSection({
       const identity = project.workspaceIdentity?.trim() || project.workspacePath.trim();
       if (!identity) continue;
       unique.set(identity, {
+        ...project,
         identity,
+        workspaceIdentity: project.workspaceIdentity?.trim() || undefined,
         label: project.label,
         workspacePath: project.workspacePath,
       });

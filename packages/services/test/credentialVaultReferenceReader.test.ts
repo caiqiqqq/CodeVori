@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { buildRemoteWorkspaceIdentity } from "@zcode/shared";
 import { createCredentialServiceWithReferenceReader } from "../src/credential/credentialService.js";
 import { CredentialVaultRepository } from "../src/credential/credentialVaultRepository.js";
 import { getDataBaseDir, setDataBaseDir } from "../src/paths.js";
@@ -188,4 +189,111 @@ test("credential reference reader returns all workspace metadata without decrypt
     /unavailable/,
   );
   assert.equal(decryptCalls, 2);
+
+  // 回归依据：跨项目候选只供系统设置关联，不能让未关联项目凭引用 ID 解密。
+  assert.ok(
+    (await host.service.listAttachableVaultEntries!("workspace:two")).some(
+      (entry) => entry.id === workspaceServer!.id,
+    ),
+  );
+  await host.service.attachVaultEntry!(workspaceServer!.id, "workspace:two");
+  await host.service.attachVaultEntry!(workspaceServer!.id, "workspace:two");
+  assert.equal(
+    (await host.credentialVaultReferenceReader.listReferences("workspace:two")).filter(
+      (entry) => entry.id === workspaceServer!.id,
+    ).length,
+    1,
+  );
+  for (const identity of ["workspace:one", "workspace:two"]) {
+    assert.equal(
+      (
+        await host.credentialVaultReferenceReader.readSecret(
+          identity,
+          workspaceServer!,
+          noCancellation,
+        )
+      ).secret,
+      "private-password-one",
+    );
+  }
+  const beforeDeniedReads = decryptCalls;
+  assert.equal(
+    (await host.listVaultMetadata("workspace:three")).some(
+      (entry) => entry.id === workspaceServer!.id,
+    ),
+    false,
+  );
+  await assert.rejects(
+    host.credentialVaultReferenceReader.readSecret(
+      "workspace:three",
+      workspaceServer!,
+      noCancellation,
+    ),
+    /unavailable/,
+  );
+  await host.service.detachVaultEntry!(workspaceServer!.id, "workspace:one");
+  assert.equal(
+    (await host.credentialVaultReferenceReader.listReferences("workspace:one")).some(
+      (entry) => entry.id === workspaceServer!.id,
+    ),
+    false,
+  );
+  await assert.rejects(
+    host.credentialVaultReferenceReader.readSecret(
+      "workspace:one",
+      workspaceServer!,
+      noCancellation,
+    ),
+    /unavailable/,
+  );
+  assert.equal(decryptCalls, beforeDeniedReads, "unassociated/revoked reads never decrypt");
+  assert.equal(
+    (
+      await host.credentialVaultReferenceReader.readSecret(
+        "workspace:two",
+        workspaceServer!,
+        noCancellation,
+      )
+    ).secret,
+    "private-password-one",
+  );
+  await host.service.detachVaultEntry!(workspaceServer!.id, "workspace:two");
+  await assert.rejects(
+    host.credentialVaultReferenceReader.readSecret(
+      "workspace:two",
+      workspaceServer!,
+      noCancellation,
+    ),
+    /unavailable/,
+  );
+  const remoteOne = buildRemoteWorkspaceIdentity("/projects/shared", {
+    kind: "ssh",
+    host: "host-one.example.invalid",
+    port: 22,
+    username: "tester",
+  });
+  const remoteTwo = buildRemoteWorkspaceIdentity("/projects/shared", {
+    kind: "ssh",
+    host: "host-two.example.invalid",
+    port: 22,
+    username: "tester",
+  });
+  await host.service.attachVaultEntry!(workspaceServer!.id, remoteOne);
+  assert.ok(
+    (await host.listVaultMetadata(remoteOne)).some((entry) => entry.id === workspaceServer!.id),
+  );
+  assert.equal(
+    (await host.listVaultMetadata(remoteTwo)).some((entry) => entry.id === workspaceServer!.id),
+    false,
+  );
+  const beforeRemoteRead = decryptCalls;
+  await assert.rejects(
+    host.credentialVaultReferenceReader.readSecret(remoteTwo, workspaceServer!, noCancellation),
+    /unavailable/,
+  );
+  assert.equal(
+    decryptCalls,
+    beforeRemoteRead,
+    "same path on another remote identity never decrypts",
+  );
 });
