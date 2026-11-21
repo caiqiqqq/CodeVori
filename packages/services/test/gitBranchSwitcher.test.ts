@@ -7,8 +7,48 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { createGitCliRepo } from "../src/git/repo/gitCliRepo.js";
 import { parseGitBranchMutationIssues } from "../src/git/repo/gitCliHelpers.js";
+import { createGitCommandProvider } from "../src/git/providers/gitCommandProvider.js";
 
 const exec = promisify(execFile);
+
+test("branch reads do not depend on working-tree status or diffs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "zcode-branch-list-"));
+  const provider = createGitCommandProvider();
+  const repo = createGitCliRepo({
+    commandProvider: {
+      ...provider,
+      async run(options) {
+        if (["status", "diff"].includes(options.args[0] ?? ""))
+          throw new Error("Branch listing scanned the working tree");
+        return await provider.run(options);
+      },
+    },
+  });
+  try {
+    await exec("git", ["init", "-q", "-b", "main", root]);
+    const unborn = await repo.listLocalBranches(root);
+    assert.equal(unborn.currentBranchName, "main");
+    assert.equal(unborn.headRefType, "branch");
+    assert.deepEqual(unborn.branches, []);
+
+    await exec("git", ["-C", root, "config", "user.name", "ZCode Test"]);
+    await exec("git", ["-C", root, "config", "user.email", "zcode@example.invalid"]);
+    await writeFile(join(root, "README.md"), "initial\n");
+    await exec("git", ["-C", root, "add", "README.md"]);
+    await exec("git", ["-C", root, "commit", "-qm", "initial"]);
+    const attached = await repo.listLocalBranches(root);
+    assert.equal(attached.currentBranchName, "main");
+    assert.equal(attached.branches[0]?.isCurrent, true);
+
+    await exec("git", ["-C", root, "checkout", "--detach", "-q"]);
+    const detached = await repo.listLocalBranches(root);
+    assert.equal(detached.headRefType, "detached");
+    assert.equal(detached.currentBranchName, null);
+    assert.equal(detached.branches[0]?.isCurrent, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 for (const wording of ["is already checked out at", "is already used by worktree at"]) {
   test(`branch occupancy normalizes Git's '${wording}' wording`, () => {

@@ -20,6 +20,11 @@ import {
   type DelegationParent,
   type WorkTaskScope,
 } from "@zcode/shared";
+import { createProjectEnvironmentService } from "./credential/projectEnvironmentService.js";
+import {
+  createProjectEnvironmentMcp,
+  projectEnvironmentProtocolServer,
+} from "./credential/projectEnvironmentMcp.js";
 
 export {
   materializeZCodeBuiltinProviderConfig,
@@ -322,8 +327,14 @@ import {
   createDelegationExecution,
   createDelegationDelivery,
 } from "./delegation/delegationExecution.js";
+import {
+  readDelegationAcpModelSelection,
+  resolveDelegationAcpExecution,
+} from "./delegation/delegationModelInheritance.js";
 import { WorkTaskAttachmentStore } from "./session/workTaskAttachmentStore.js";
 import { createWorkTaskExecution } from "./work-task/workTaskExecution.js";
+import { inspectWorkTaskWorktree } from "./work-task/workTaskWorktree.js";
+import { createWorkTaskConversationBranchGuard } from "./work-task/workTaskConversationBranch.js";
 import { createWorkTaskMerge } from "./work-task/workTaskMerge.js";
 import { createWorkTaskResult } from "./work-task/workTaskResult.js";
 import { createWorkTaskConversation } from "./work-task/workTaskConversation.js";
@@ -376,10 +387,7 @@ import { createSettingServiceWithMigrations } from "./setting/settingService.js"
 import { createOnboardingRecordService } from "./onboarding/onboardingRecordService.js";
 import { createLegacyTeamOrganizationResolver } from "./model-provider/legacyTeamOrganizationResolver.js";
 import { createObservableSettingService } from "./setting/observableSettingService.js";
-import {
-  createCredentialReferenceReader,
-  createCredentialService,
-} from "./credential/credentialService.js";
+import { createCredentialServiceWithReferenceReader } from "./credential/credentialService.js";
 import { createBroadcastService } from "./broadcast/broadcastService.js";
 import {
   createZCodeAgentService,
@@ -697,6 +705,7 @@ const providerProvisioningTriggerDisposers = new WeakMap<
 // （stdioDesktopPresentationSurface 单测稳定复现），Linux 的 unlink-while-open 语义掩盖了泄漏。
 // 与其它侧表一样按 ServiceCollection 登记并在 dispose 时统一 close。
 const sharedSqliteRepos = new WeakMap<ServiceCollection, ReadonlyArray<{ close(): void }>>();
+const projectEnvironmentDisposers = new WeakMap<ServiceCollection, () => void>();
 const accountRequestAuthServices = new WeakMap<ServiceCollection, IAccountRequestAuthService>();
 export type OffPeakRequestAuthBuilder = (
   ticketId: string,
@@ -1450,14 +1459,58 @@ export function createLocalServices(options: {
       overrideOrigin: (await settingService.get()).zcodeEndpointOrigin,
     });
   const provisioningOAuthKeys = new Set<string>(PROVIDER_PROVISIONING_OAUTH_CREDENTIAL_KEYS);
-  const credentialService = createCredentialService({
+  const credentialHost = createCredentialServiceWithReferenceReader({
     onDidMutate: ({ key }) => {
       if (provisioningOAuthKeys.has(key) || isProviderProvisioningAccountCredentialKey(key)) {
         options.onProviderProvisioningSourceChanged?.("credential");
       }
     },
   });
-  const credentialReferenceReader = createCredentialReferenceReader();
+  const credentialService = credentialHost.service;
+  let agentServiceForEnvironment:
+    | import("./zcode-agent/zcodeAgent.js").IZCodeAgentService
+    | undefined;
+  let acpServiceForEnvironment: import("./acp/acpService.js").IAcpService | undefined;
+  const projectEnvironmentService = createProjectEnvironmentService({
+    databasePath: join(resolveAppConfigDir(), "credential-vault.sqlite"),
+    listCredentials: (workspaceIdentity) => credentialHost.listVaultMetadata(workspaceIdentity),
+    assertSessionIdle: async (scope) => {
+      if (scope.kind === "api") {
+        if (!agentServiceForEnvironment) throw new Error("environment.session-unavailable");
+        try {
+          const snapshot = await agentServiceForEnvironment.readSession({
+            workspacePath: scope.workspacePath,
+            ...(scope.workspaceIdentity ? { workspaceIdentity: scope.workspaceIdentity } : {}),
+            sessionId: scope.sessionId,
+            runtimePolicy: "existing-only",
+          });
+          if (
+            snapshot.runtime.activeTurnId ||
+            snapshot.runtime.pendingRequestIds.length ||
+            ["running", "waiting"].includes(snapshot.projection.status)
+          )
+            throw new Error("environment.session-busy");
+        } catch (error) {
+          if (error instanceof Error && error.message === "environment.session-busy") throw error;
+          throw new Error("environment.session-unavailable", { cause: error });
+        }
+        return;
+      }
+      if (!acpServiceForEnvironment) throw new Error("environment.session-unavailable");
+      const session = await acpServiceForEnvironment.read({
+        workspacePath: scope.workspacePath,
+        id: scope.sessionId,
+        ...(scope.workspaceIdentity ? { workspaceIdentity: scope.workspaceIdentity } : {}),
+      });
+      if (session.status === "running" || session.queue.items.length)
+        throw new Error("environment.session-busy");
+    },
+  });
+  Object.assign(credentialService, projectEnvironmentService);
+  const projectEnvironmentMcp = createProjectEnvironmentMcp(
+    join(getZCodeDataRootDir(), "project-environments-mcp"),
+    projectEnvironmentService,
+  );
   const accountProviderCredentialStore = createAccountProviderCredentialStore({
     credentialService,
   });
@@ -2171,7 +2224,24 @@ export function createLocalServices(options: {
   const liveDelegationParents = new Map<string, string>();
   const liveParentKey = (workspace: WorkTaskScope, sessionId: string) =>
     JSON.stringify([resolveWorkspaceKey(workspace), sessionId]);
+  const assertWorkTaskConversationBranch = createWorkTaskConversationBranchGuard(
+    workTaskRepo,
+    (task) => inspectWorkTaskWorktree(gitService, task),
+  );
   const zcodeAgentService = createZCodeAgentService({
+    beforeConversationInput: (workspace, sessionId) =>
+      assertWorkTaskConversationBranch({ ...workspace, kind: "api", sessionId }),
+    resolveEnvironmentMcp: async (workspace, sessionId) => {
+      const scope = { ...workspace, kind: "api" as const, sessionId };
+      const registration = await projectEnvironmentMcp.register(scope);
+      return registration ? [projectEnvironmentProtocolServer(registration.record)] : [];
+    },
+    beginEnvironmentInput: (workspace, sessionId) =>
+      projectEnvironmentService.beginInput({
+        ...workspace,
+        kind: "api",
+        sessionId,
+      }),
     resolveIssuesMcp: async (workspace, sessionId) => {
       if (isDesktopAttachedRemote) return [];
       const registration = await issuesMcp?.register({ ...workspace, kind: "api", sessionId });
@@ -2187,17 +2257,20 @@ export function createLocalServices(options: {
         workspace.remoteSessionId ||
         isDesktopAttachedRemote
       )
-        return [];
+        return { servers: [], canDelegate: false };
       const registration = await delegationMcp.register(
         { ...workspace, kind: "api", sessionId },
         createRequestId,
       );
-      if (!registration) return [];
+      if (!registration) return { servers: [], canDelegate: false };
       liveDelegationParents.set(
         liveParentKey(workspace, sessionId),
         resolveWorkspaceKey(workspace),
       );
-      return [delegationProtocolServer(registration.record)];
+      return {
+        servers: [delegationProtocolServer(registration.record)],
+        canDelegate: registration.canDelegate,
+      };
     },
     onDelegationConversationCommand: async (workspace, envelope) => {
       if (envelope.sessionId)
@@ -2401,6 +2474,7 @@ export function createLocalServices(options: {
           },
         }),
   });
+  agentServiceForEnvironment = zcodeAgentService;
   providerConnectivityAgentService = zcodeAgentService;
   // Helper health probe 短暂超时不应在 Computer Use turn 中途回收 Agent。resolver 会把 restart
   // 推迟到下一个 request/turn 边界；若 broker 确实已失效，当前 turn 会自然失败并由下一次请求恢复。
@@ -2475,18 +2549,44 @@ export function createLocalServices(options: {
           : (issuesMcp?.register({ ...session, kind: "acp", sessionId: session.id }) ??
             Promise.resolve(undefined)),
     },
+    projectEnvironments: {
+      register: (session) =>
+        projectEnvironmentMcp.register({
+          workspacePath: session.workspacePath,
+          ...(session.workspaceIdentity ? { workspaceIdentity: session.workspaceIdentity } : {}),
+          kind: "acp",
+          sessionId: session.id,
+        }),
+    },
+    beginEnvironmentInput: (workspace, sessionId) =>
+      projectEnvironmentService.beginInput({
+        ...workspace,
+        kind: "acp",
+        sessionId,
+      }),
     resolveDynamicWorkflowClientConfig: () =>
       codingPlanSubscriptionService.getDynamicWorkflowClientConfig(),
     hiddenSessionIds: (scope) => hiddenConversationSessionIds(scope, "acp"),
+    beforeConversationInput: (session) =>
+      assertWorkTaskConversationBranch({
+        workspacePath: session.workspacePath,
+        workspaceIdentity: session.workspaceIdentity,
+        remoteSessionId: session.remoteSessionId,
+        kind: "acp",
+        sessionId: session.id,
+      }),
     memoryContext: createProjectMemoryContext({
       cliStorageRoot: join(getZCodeDataRootDir(), "cli"),
       isEnabled: async () => (await settingService.get()).memoryEnabled === true,
     }),
-    credentialReferenceReader,
+    credentialVaultReferenceReader: credentialHost.credentialVaultReferenceReader,
     delegation: {
       register: (session) =>
-        delegationMcp?.register(acpDelegationParent(session), session.createRequestId) ??
-        Promise.resolve(undefined),
+        delegationMcp?.register(
+          acpDelegationParent(session),
+          session.createRequestId,
+          readDelegationAcpModelSelection(session),
+        ) ?? Promise.resolve(undefined),
       onInput: async (session) => {
         await agentDelegationService?.armParent(acpDelegationParent(session));
       },
@@ -2510,6 +2610,7 @@ export function createLocalServices(options: {
       getAcpPluginCapabilities: (params) => getHostAcpPluginCapabilities(zcodeAgentService, params),
     },
   });
+  acpServiceForEnvironment = acpService;
   const gitCommitMessageGenerator = new GitCommitMessageGenerator({
     currentModelProvider: {
       async readCurrentModel() {
@@ -2732,11 +2833,30 @@ export function createLocalServices(options: {
   delegationMcp = createDelegationMcp(
     join(getZCodeDataRootDir(), "delegation-mcp"),
     agentDelegationService,
+    {
+      resolveAcpExecution: async (parent, execution, parentModel) => {
+        const scope = {
+          workspacePath: parent.workspacePath,
+          ...(parent.workspaceIdentity ? { workspaceIdentity: parent.workspaceIdentity } : {}),
+        };
+        const [configs, preference] = await Promise.all([
+          acpService.listAgentConfigs(scope),
+          composerPreferenceService.get(scope),
+        ]);
+        return resolveDelegationAcpExecution(
+          execution,
+          parentModel,
+          preference.acpModels[execution.agent],
+          configs.find((config) => config.agent === execution.agent),
+        );
+      },
+    },
   );
   const delegationLifecycle = zcodeAgentService.onAgentRuntimeLifecycle?.((event) => {
     if (event.state === "unavailable") {
       delegationMcp?.revokeWorkspace(event.workspaceKey);
       issuesMcp?.revokeWorkspace(event.workspaceKey);
+      projectEnvironmentMcp.revokeWorkspace(event.workspaceKey, "api");
       for (const [key, workspaceKey] of liveDelegationParents)
         if (workspaceKey === event.workspaceKey) liveDelegationParents.delete(key);
     }
@@ -2761,14 +2881,15 @@ export function createLocalServices(options: {
     execute: (task, context) => workTaskExecution.execute(task, context),
     merge: createWorkTaskMerge(workTaskExecutionDependencies),
     conversation: createWorkTaskConversation({ acp: acpService, agent: zcodeAgentService }),
-    removeWorktree: async (task) => {
+    inspectWorktree: (task) => inspectWorkTaskWorktree(gitService, task),
+    removeWorktree: async (task, confirmedBranchName) => {
       const allocation = task.worktree;
       if (!allocation) throw new Error("work-task.not-cleanable");
       const result = await gitService.removeManagedWorktree({
         worktreeRootPath: allocation.rootPath,
         worktreePath: allocation.path,
         projectPath: allocation.projectPath,
-        expectedBranchName: allocation.branchName,
+        expectedBranchName: confirmedBranchName ?? allocation.branchName,
         allowMissing: true,
       });
       if (!result.ok) throw new Error(`work-task.worktree-remove-${result.issue}`);
@@ -3003,6 +3124,10 @@ export function createLocalServices(options: {
   // 见 sharedSqliteRepos 声明处注释：登记全部 tasks-index sqlite 句柄，dispose 链统一关闭
   sqliteReposToClose.push(taskIndexRepo);
   sharedSqliteRepos.set(services, sqliteReposToClose);
+  projectEnvironmentDisposers.set(services, () => {
+    projectEnvironmentMcp.dispose();
+    projectEnvironmentService.dispose();
+  });
   return services;
 }
 
@@ -3112,6 +3237,8 @@ export function disposeServiceResources(services: ServiceCollection): void {
   if (managedCuaHelperHost) {
     void managedCuaHelperHost.stop().catch(() => {});
   }
+  projectEnvironmentDisposers.get(services)?.();
+  projectEnvironmentDisposers.delete(services);
   // 关闭共享 tasks-index sqlite 句柄（Windows 上悬着句柄会让后续目录清理撞 EBUSY）
   for (const repo of sharedSqliteRepos.get(services) ?? []) repo.close();
   sharedSqliteRepos.delete(services);
@@ -3152,6 +3279,8 @@ export async function disposeServiceResourcesAndWait(services: ServiceCollection
   if (managedCuaHelperHost) {
     await managedCuaHelperHost.stop().catch(() => {});
   }
+  projectEnvironmentDisposers.get(services)?.();
+  projectEnvironmentDisposers.delete(services);
   // 关闭共享 tasks-index sqlite 句柄（同 disposeServiceResources，异步收口路径也要释放）
   for (const repo of sharedSqliteRepos.get(services) ?? []) repo.close();
   sharedSqliteRepos.delete(services);

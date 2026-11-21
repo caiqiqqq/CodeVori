@@ -3,7 +3,10 @@
 // 有 pane 引用 → 订阅；归零 → 延迟退订（keep-warm，防拖拽/切 pane 抖动）。
 // 一个实例对应一条 host 连接；跨 workspace 分屏在 shell 层做
 // Map<workspaceKey, SessionDataLayer>，本层不感知 workspace。
-import { ConversationProjectionStore } from "@/v4/conversationProjectionStore.js";
+import {
+  ConversationProjectionStore,
+  type ConversationProjectionTransportKind,
+} from "@/v4/conversationProjectionStore.js";
 import { ConversationRowPool } from "@/v4/conversationRowPool.js";
 import { shouldExposeE2EStoreBridge } from "@/lib/e2eStoreBridge.js";
 import type { SessionOpenKind } from "@/lib/sessionOpenArmsTelemetry.js";
@@ -29,6 +32,7 @@ export interface SessionLease {
 interface SessionDataLayerOptions {
   transport: ConversationProjectionTransport &
     Partial<Pick<ConversationTransport, "queryCommands">>;
+  transportKind?: ConversationProjectionTransportKind;
   /** 引用归零后延迟退订窗口（ms），默认 30s。 */
   keepWarmMs?: number;
   /** Final warm lease expired; adapters may dispose their connection-level listeners. */
@@ -58,6 +62,7 @@ function monotonicNow(): number {
 
 export class SessionDataLayer {
   private readonly transport: SessionDataLayerOptions["transport"];
+  private readonly transportKind: ConversationProjectionTransportKind;
   private readonly keepWarmMs: number;
   private readonly onEmpty: SessionDataLayerOptions["onEmpty"];
   private readonly entries = new Map<string, SessionEntry>();
@@ -67,6 +72,7 @@ export class SessionDataLayer {
 
   constructor(options: SessionDataLayerOptions) {
     this.transport = options.transport;
+    this.transportKind = options.transportKind ?? "unknown";
     this.keepWarmMs = options.keepWarmMs ?? resolveSessionDataLayerKeepWarmMs();
     this.onEmpty = options.onEmpty;
     // 连接级单监听：按 topic 扇入到各 store（pane 间共享的正是这一条连接）。
@@ -96,7 +102,12 @@ export class SessionDataLayer {
         entry.keepWarmTimer = null;
       }
     } else {
-      const store = new ConversationProjectionStore(topic, this.transport, this.rowPool);
+      const store = new ConversationProjectionStore(
+        topic,
+        this.transport,
+        this.rowPool,
+        this.transportKind,
+      );
       entry = { store, refCount: 1, keepWarmTimer: null };
       this.entries.set(topic, entry);
       openKind = "cold";

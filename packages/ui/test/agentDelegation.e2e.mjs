@@ -104,7 +104,16 @@ try {
         const [settingsSection, setSettingsSection] = useState('delegation');
         const [summaryVariant, setSummaryVariant] = useState('mini');
         const { intl } = useZCodeIntl();
-        const sections = createSettingsPageConfig().settingsSections.filter(section => ['delegation', 'acpAgents'].includes(section.id));
+        const visibleSections = createSettingsPageConfig().settingsSections;
+        const subagentsSection = visibleSections.find(section => section.id === 'subagents')!;
+        const sections = [
+          {
+            ...subagentsSection,
+            id: 'delegation',
+            titleId: 'delegation.settingsTitle',
+          },
+          ...visibleSections.filter(section => section.id === 'acpAgents'),
+        ];
         const currentSection = sections.find(section => section.id === settingsSection)!;
         const openSettings = section => { writeLastSettingsSectionPreference(section); setSettingsSection(section); };
         state.reopenSettings = () => { openSettings(resolveSettingsSectionForPlatform(consumeInitialSettingsSection(), sections)); setSettingsKey(key => key + 1); };
@@ -240,9 +249,8 @@ try {
       dialog = await openDelegation();
       assert.equal((await dialog.getByTestId("work-task-prompt").innerText()).trim(), "");
       await dialog.getByTestId("work-task-prompt").fill("不能留到下一会话");
-      assert.equal(
+      assert.ok(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-        true,
         `dialog overflow at ${width}px`,
       );
       await page.screenshot({ path: join(shots, `empty-${kind}-${width}.png`), fullPage: true });
@@ -347,14 +355,9 @@ try {
       .filter({ hasText: "Claude" });
     await target.waitFor();
     assert.equal(await target.locator('[data-acp-agent-icon="claude"]').count(), 1);
-    assert.equal(
-      await page.locator('[data-section-id="delegation"] [data-acp-agent-icon="codex"]').count(),
-      1,
-    );
-    assert.equal(
-      await page.locator('[data-section-id="delegation"]').filter({ hasText: "Qoder" }).count(),
-      0,
-    );
+    const mentionOptions = page.locator('[data-section-id="delegation"]');
+    assert.equal(await mentionOptions.locator('[data-acp-agent-icon="codex"]').count(), 1);
+    assert.equal(await mentionOptions.filter({ hasText: "Qoder" }).count(), 0);
     await target.click();
     const acpChip = main.locator('[data-mention-category="subagents"]');
     assert.equal(await acpChip.innerText(), "Claude ACP");
@@ -388,11 +391,7 @@ try {
     assert.ok(!(await panel.textContent()).includes("ACP 子任务"));
     await assertApiChildNavigation(page, panel);
     await assertDelegationStatusPanel(page, shots, width);
-    assert.equal(
-      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-      true,
-      `horizontal overflow at ${width}px`,
-    );
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.screenshot({ path: join(shots, `api-${width}.png`), fullPage: true });
     assert.deepEqual(errors, [], `browser errors at ${width}px`);
     await page.close();

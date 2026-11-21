@@ -13,7 +13,12 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { getTaskTimelineGroupMessage, groupTaskTimelineItems } from "@/lib/taskTimelineGroups.js";
 import { buildTaskWorkspaceKey } from "@/lib/taskQueryCache.js";
 import { compareZCodeTaskListItems } from "@/lib/taskListOrdering.js";
-import { isTaskListRowActive } from "@/v4/taskListRowActivity.js";
+import {
+  buildSidebarConversationRows,
+  sidebarWorkTasksForScopes,
+} from "@/lib/sidebarConversationRows.js";
+import { useWorkTaskSidebar } from "@/work-tasks/WorkTaskSidebarContext.js";
+import { WorkTaskSidebarItem } from "@/work-tasks/WorkTaskSidebarItem.js";
 import { buildWorkspaceServiceLookup } from "@/lib/workspaceServiceResolver.js";
 import { logger } from "@/logger.js";
 import { MemoTaskItem, TaskListItemContextMenuContent } from "@/TaskListItem.js";
@@ -79,6 +84,11 @@ export function WorkspaceTimelineTasksSection({
   onSelectAcpSession?: (session: AcpSidebarSession) => void;
 }) {
   const { intl, locale } = useZCodeIntl();
+  const { tasks: workTasks, boundKeys } = useWorkTaskSidebar();
+  const visibleWorkTasks = useMemo(
+    () => (unreadOnly ? [] : sidebarWorkTasksForScopes(workTasks, workspaceTabs)),
+    [workTasks, workspaceTabs, unreadOnly],
+  );
   const baseServices = useBaseWorkspaceServices();
   const scopedWorkspaceTabs = useLocalWorkspaceScopes({
     workspaceTabs,
@@ -194,50 +204,32 @@ export function WorkspaceTimelineTasksSection({
       .filter((item) => !unreadOnly || typeof item.unreadAt === "number")
       .sort((left, right) => compareZCodeTaskListItems(left, right, taskSortBy));
   }, [localItems, remoteItems, taskSortBy, unreadOnly]);
-  const items = sortedItems.slice(0, visibleTaskLimit);
-  const displayItems = useMemo(() => {
-    const combined = [
-      ...sortedItems.map((item) => ({
-        kind: "native" as const,
-        item,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-      })),
-      ...acpSessions
-        .filter(
+  const allDisplayItems = useMemo(
+    () =>
+      buildSidebarConversationRows({
+        native: sortedItems,
+        acp: acpSessions.filter(
           (item) =>
             !item.archived && (unreadOnly ? typeof item.unreadAt === "number" : !item.pinned),
-        )
-        .map((item) => ({
-          kind: "acp" as const,
-          item,
-          createdAt: item.createdAt,
-          updatedAt: item.updatedAt,
-        })),
-    ];
-    // 原生任务的运行层语义保留；ACP 只用 Host 状态和行时间参与同一列表排序。
-    return combined
-      .sort((left, right) => {
-        const leftRunning =
-          left.kind === "acp" ? left.item.status === "running" : isTaskListRowActive(left.item);
-        const rightRunning =
-          right.kind === "acp" ? right.item.status === "running" : isTaskListRowActive(right.item);
-        if (leftRunning !== rightRunning) return leftRunning ? -1 : 1;
-        const field = leftRunning || taskSortBy === "created" ? "createdAt" : "updatedAt";
-        return right[field] - left[field] || right.createdAt - left.createdAt;
-      })
-      .slice(0, visibleTaskLimit);
-  }, [acpSessions, sortedItems, taskSortBy, visibleTaskLimit, unreadOnly]);
+        ),
+        workTasks: visibleWorkTasks,
+        boundKeys,
+        sortBy: taskSortBy,
+      }),
+    [acpSessions, sortedItems, taskSortBy, visibleWorkTasks, boundKeys, unreadOnly],
+  );
+  const displayItems = allDisplayItems.slice(0, visibleTaskLimit);
   const itemByKey = useMemo(() => {
     const nextItemByKey = new Map<string, ZCodeTaskMeta>();
-    for (const item of items) {
+    // 展示去重后，首屏可能包含原始 limit 以后的行；操作查找必须覆盖全部已加载结果。
+    for (const item of sortedItems) {
       nextItemByKey.set(
         buildTimelineItemKey(item.workspacePath, item.taskId, item.workspaceIdentity),
         item,
       );
     }
     return nextItemByKey;
-  }, [items]);
+  }, [sortedItems]);
   const itemByKeyRef = useRef(itemByKey);
   const workspaceServiceLookupRef = useRef(workspaceServiceLookup);
   itemByKeyRef.current = itemByKey;
@@ -277,7 +269,10 @@ export function WorkspaceTimelineTasksSection({
   const visibleAcpCount = acpSessions.filter(
     (item) => !item.archived && (unreadOnly ? typeof item.unreadAt === "number" : !item.pinned),
   ).length;
-  const total = localTotal + remoteTotal + visibleAcpCount;
+  const hiddenSessionCount =
+    sortedItems.length + visibleAcpCount + visibleWorkTasks.length - allDisplayItems.length;
+  const total =
+    localTotal + remoteTotal + visibleAcpCount + visibleWorkTasks.length - hiddenSessionCount;
   const remoteHasMore =
     !unreadOnly &&
     remoteWorkspaceKeys.some((workspaceKey) => remoteTimelineHasMoreByWorkspaceKey[workspaceKey]);
@@ -295,7 +290,9 @@ export function WorkspaceTimelineTasksSection({
     });
   const loading = localLoading || syncingRemoteWorkspaces;
   const hasKnownMore = localHasMore || remoteHasMore || total > displayItems.length;
-  const currentLimitFilled = sortedItems.length + visibleAcpCount >= visibleTaskLimit;
+  // 绑定会话被隐藏不表示原生分页已到底，仍允许继续读取后续普通会话。
+  const currentLimitFilled =
+    allDisplayItems.length >= visibleTaskLimit || sortedItems.length >= visibleTaskLimit;
   // 远端/本地 hasMore 偶尔会在下一轮请求完成前保持旧值。
   // 如果当前已加载数量没有填满 limit，说明这轮已经到底了，不能继续显示 show more。
   const canLoadMore = loading ? hasKnownMore : currentLimitFilled && hasKnownMore;
@@ -748,7 +745,9 @@ export function WorkspaceTimelineTasksSection({
                     </div>
                   ) : null}
                   <ul className="space-y-0.5">
-                    {group.items.map(({ kind, item }) => {
+                    {group.items.map(({ kind, item, key }) => {
+                      if (kind === "work-task")
+                        return <WorkTaskSidebarItem key={key} task={item} />;
                       if (kind === "acp") {
                         const acpServices = workspaceServiceLookup.get(
                           buildTaskWorkspaceKey(item.workspacePath, item.workspaceIdentity),

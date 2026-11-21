@@ -45,7 +45,18 @@ export function isWorkTaskNotificationSession(
         workTaskExecutionPath(task) === workspacePath) ||
       (task.merge?.session?.kind === kind &&
         task.merge.session.id === id &&
-        task.merge.worktree?.path === workspacePath),
+        task.merge.worktree?.path === workspacePath) ||
+      // 阶段交接不解除旧会话归属，避免迟到事件再次按普通会话通知。
+      (task.workflow?.history ?? []).some(
+        (entry) =>
+          entry.session?.kind === kind &&
+          entry.session.id === id &&
+          workTaskExecutionPath({
+            ...task,
+            worktree: entry.worktree,
+            directBranch: entry.directBranch,
+          }) === workspacePath,
+      ),
   );
 }
 

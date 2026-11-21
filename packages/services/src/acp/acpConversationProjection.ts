@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createServiceLogger } from "../logger/serviceLogger.js";
 import { buildAcpConversationRows, projectAcpStatusPanel, type AcpSession } from "@zcode/shared";
 import {
   coalesceConversationDeltas,
@@ -13,16 +14,22 @@ import {
   type TopicFrameDeliveryKind,
 } from "@zcode/shared/zcode-protocol-v4";
 
+const logger = createServiceLogger("acp-conversation-projection");
+const PROJECTION_SIZE_LOG_INTERVAL_ROWS = 5_000;
+
 /** 只投影已保存快照；无 admission、Agent 或文件写入能力。 */
 export class AcpConversationProjection {
   private snapshot: ConversationSnapshot;
   private lastUserIndex: number;
   private logicalOrdinal = 0;
+  private lastReportedRowCount = 0;
 
   constructor(session: AcpSession, epoch: string) {
     this.lastUserIndex = session.entries.findLastIndex((entry) => entry.kind === "user");
     this.snapshot = createInitialConversationSnapshot(session.id, `${epoch}:${session.id}`);
-    this.replace(session, buildAcpConversationRows(session));
+    const rows = buildAcpConversationRows(session);
+    this.replace(session, rows);
+    this.reportProjectionSize(session, rows, "initialized");
   }
 
   private replace(session: AcpSession, rows: ConversationRow[]): void {
@@ -72,6 +79,7 @@ export class AcpConversationProjection {
     const oldSnapshot = this.snapshot;
     this.lastUserIndex = session.entries.findLastIndex((entry) => entry.kind === "user");
     this.replace(session, [...prefix, ...suffix]);
+    this.reportProjectionSize(session, this.snapshot.rows.window, "growth");
     deltas.push({
       op: "state.updated",
       patch: {
@@ -89,6 +97,29 @@ export class AcpConversationProjection {
     return coalesceConversationDeltas(deltas);
   }
 
+  private reportProjectionSize(
+    session: AcpSession,
+    rows: readonly ConversationRow[],
+    reason: "initialized" | "growth",
+  ): void {
+    if (
+      reason !== "initialized" &&
+      rows.length - this.lastReportedRowCount < PROJECTION_SIZE_LOG_INTERVAL_ROWS
+    )
+      return;
+    this.lastReportedRowCount = rows.length;
+    const memory = process.memoryUsage();
+    logger.info(undefined, "ACP conversation projection size", {
+      event: "acp.conversation_projection.size",
+      reason,
+      sessionId: session.id,
+      entryCount: session.entries.length,
+      projectedRowCount: rows.length,
+      heapUsedBytes: memory.heapUsed,
+      rssBytes: memory.rss,
+    });
+  }
+
   tail(): ConversationSnapshot {
     return {
       ...this.snapshot,
@@ -99,17 +130,48 @@ export class AcpConversationProjection {
     };
   }
 
-  rowsRange(beforeRowId: number | undefined, limit: number) {
-    const candidates = this.snapshot.rows.window.filter(
-      (row) => beforeRowId === undefined || row.rowId < beforeRowId,
-    );
-    const rows = candidates.slice(-Math.min(limit, PROTOCOL_V4_LIMITS.rowsRangeMaxLimit));
+  rowsRange(beforeRowId: number | undefined, limit: number, navigationOnly = false) {
+    // 修复原因：导航只需身份与短预览，不能经 IPC/relay 重传全部历史工具输出。
+    // 倒序扫描到一页+1 即停止，避免每页 filter 整份历史产生临时数组。
+    const rows: ConversationRow[] = [];
+    const count = Math.min(limit, PROTOCOL_V4_LIMITS.rowsRangeMaxLimit);
+    let hasMore = false;
+    for (let index = this.snapshot.rows.window.length - 1; index >= 0; index--) {
+      const row = this.snapshot.rows.window[index]!;
+      if (beforeRowId !== undefined && row.rowId >= beforeRowId) continue;
+      if (
+        navigationOnly &&
+        row.kind !== "assistantText" &&
+        !(row.kind === "userInput" && row.origin === "realUser")
+      )
+        continue;
+      if (rows.length === count) {
+        hasMore = true;
+        break;
+      }
+      if (navigationOnly && (row.kind === "assistantText" || row.kind === "userInput")) {
+        const base = {
+          rowId: row.rowId,
+          turnId: row.turnId,
+          createdAt: row.createdAt,
+          createdAtSeq: row.createdAtSeq,
+          productTurnId: row.productTurnId,
+          text: row.text.slice(0, 220),
+        };
+        rows.push(
+          row.kind === "userInput"
+            ? { ...base, kind: "userInput", origin: row.origin }
+            : { ...base, kind: "assistantText", state: row.state },
+        );
+      } else rows.push(row);
+    }
+    rows.reverse();
     return {
       rows,
       atSeq: this.snapshot.seq,
       atRevision: this.snapshot.revision,
       atLogEpoch: this.snapshot.logEpoch,
-      hasMore: candidates.length > rows.length,
+      hasMore,
     };
   }
 

@@ -1,13 +1,18 @@
 import {
   isWorkTaskForgePending,
   isWorkTaskMerging,
+  isWorkTaskWorkflowFinalStage,
   type WorkTask,
   type WorkTaskStatus,
 } from "@zcode/shared";
 
 export function canCompleteWorkTask(task: WorkTask): boolean {
   return (
-    task.status === "review" && !task.archived && !task.stopPending && !isWorkTaskMerging(task)
+    task.status === "review" &&
+    !task.archived &&
+    !task.stopPending &&
+    !isWorkTaskMerging(task) &&
+    isWorkTaskWorkflowFinalStage(task)
   );
 }
 

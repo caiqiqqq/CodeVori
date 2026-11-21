@@ -7,7 +7,6 @@ import { isCronTask, isOffPeakTask, type ZCodeTaskMeta } from "@zcode/shared";
 import { ArrowUpToLine, Clock, Cloud, Folder, ListTree, Moon, X } from "lucide-react";
 import { cn } from "@/components/lib/utils.js";
 import { Badge } from "@/components/ui/badge.js";
-import { toast } from "@/components/ui/toast.js";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu.js";
 import {
   Tooltip,
@@ -19,9 +18,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { deriveTaskLeadingIndicator } from "@/lib/taskListItemPresentation.js";
 import { getTaskChangeSummary } from "@/lib/taskChangeSummary.js";
 import { buildTaskWorkspaceKey } from "@/lib/taskQueryCache.js";
-import { buildTaskFeedbackDescription } from "@/lib/taskFeedbackDraft.js";
 import { useTaskListItemContextActions } from "@/useTaskListItemContextActions.js";
-import { useFeedbackStore } from "@/feedback/feedbackStore.js";
 import { getTaskListAttention, getTaskListRowActivity } from "@/v4/taskListRowActivity.js";
 import { GroupedTaskContextMenuContent } from "@/workspace-grouped-tasks/task-context-menu-content.js";
 import { TaskRowActionButton } from "@/workspace-grouped-tasks/task-row-action-button.js";
@@ -38,6 +35,7 @@ import { useOptionalTabStore } from "@/store/TabStoreProvider.js";
 import { isWorkspaceReadOnly } from "@/store/tabStore.js";
 import { TaskTitleOverflowText } from "@/components/TaskTitleOverflowText.js";
 import { TaskAgentIcon } from "@/components/TaskAgentIcon.js";
+import { ConversationTaskStatus } from "@/components/ConversationTaskStatus.js";
 
 function GroupedTaskRowComponent({
   task,
@@ -177,6 +175,7 @@ function GroupedTaskRowComponent({
           {taskTitle}
         </TaskTitleOverflowText>
         <span className="ml-auto flex shrink-0 items-center gap-1.5 text-ui-sm text-foreground-subtle">
+          <ConversationTaskStatus source={{ kind: "native", item: task }} />
           {task.pendingInteraction ? (
             <TaskInteractionBadge
               interaction={task.pendingInteraction}
@@ -231,7 +230,6 @@ function GroupedTaskRowComponent({
       typeof window.matchMedia === "function" &&
       window.matchMedia("(hover: none)").matches,
   );
-  const openFeedbackSubmit = useFeedbackStore((state) => state.openSubmit);
   const {
     taskSessionFile,
     taskNativeSessionLogFile,
@@ -273,31 +271,6 @@ function GroupedTaskRowComponent({
       return;
     }
     onMoveTaskToTop(task);
-  };
-  const handleOpenTaskFeedback = async () => {
-    openFeedbackSubmit({
-      title: intl
-        .formatMessage(
-          { id: "feedback.submit.template.section.taskFeedbackTitle" },
-          { title: taskTitle },
-        )
-        .slice(0, 80),
-      type: "bug",
-      module: "Agent任务执行失败",
-      severity: "P2-中",
-      includeLogs: false,
-      description: buildTaskFeedbackDescription({
-        taskTitle,
-        taskId: task.taskId,
-        workspacePath: task.workspacePath,
-        taskSessionPath: taskSessionFile.path,
-        taskLogPath: taskNativeSessionLogFile.path,
-        formatMessage: (id: string, values?: Record<string, string>) =>
-          intl.formatMessage({ id }, values),
-      }),
-      screenshots: [],
-    });
-    toast(intl.formatMessage({ id: "taskList.feedbackOpened" }));
   };
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) {
@@ -373,6 +346,7 @@ function GroupedTaskRowComponent({
           {taskTitle}
         </TaskTitleOverflowText>
         <span className="ml-auto flex shrink-0 items-center gap-1.5 text-ui-sm text-foreground-subtle">
+          <ConversationTaskStatus source={{ kind: "native", item: task }} />
           {task.pendingInteraction ? (
             <TaskInteractionBadge
               interaction={task.pendingInteraction}
@@ -494,7 +468,6 @@ function GroupedTaskRowComponent({
           onMarkTaskAsUnread={onMarkTaskAsUnread}
           onOpenTaskPathInFileManager={() => void handleOpenTaskPathInFileManager()}
           onCopyText={(label, text) => void handleCopyText(label, text)}
-          onOpenTaskFeedback={() => void handleOpenTaskFeedback()}
           disabledReason={workspaceActionsDisabledReason}
         />
       ) : null}
