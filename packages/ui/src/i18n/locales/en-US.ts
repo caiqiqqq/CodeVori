@@ -368,7 +368,12 @@ const enUS: Record<string, string> = {
     "Create status and handoff rules, then choose a workflow for your projects.",
   "workTasks.workflow.chooseForProject": "Choose workflows for projects",
   "workTasks.workflow.projectSelection": "Project workflow",
-  "workTasks.workflow.default": "Default (existing behavior)",
+  "workTasks.workflow.default": "Default workflow",
+  "workTasks.workflow.defaultDescription":
+    "Projects without a custom workflow use the built-in task lifecycle.",
+  "workTasks.workflow.defaultReadOnly":
+    "The built-in default workflow is read-only. Create a custom workflow to configure stages and handoffs, then select it for a project.",
+  "workTasks.workflow.defaultUsage": "Projects without a custom workflow",
   "workTasks.workflow.mainProject": "Uses the main project workflow",
   "workTasks.workflow.changeStatus": "Change workflow status",
   "workTasks.workflow.useProjectWorkflow": "Use project workflow",

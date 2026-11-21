@@ -1,5 +1,17 @@
 import { uuidv7, type WorkTaskWorkflow, type WorkTaskWorkflowStage } from "@zcode/shared";
 
+// 默认项只是内置生命周期的展示身份；项目选择仍通过 null 交给 Host，不能保存为自定义定义。
+export const BUILTIN_TASK_WORKFLOW_ID = "00000000-0000-4000-8000-000000000001";
+
+export function builtinTaskWorkflow(label: (key: string) => string): WorkTaskWorkflow {
+  return {
+    ...newTaskWorkflow(label),
+    id: BUILTIN_TASK_WORKFLOW_ID,
+    name: label("default"),
+    description: label("defaultDescription"),
+  };
+}
+
 export function orderWorkflowSteps(stages: WorkTaskWorkflowStage[]): WorkTaskWorkflowStage[] {
   return stages.map((stage, index) => ({
     ...stage,

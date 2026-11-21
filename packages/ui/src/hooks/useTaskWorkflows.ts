@@ -4,6 +4,8 @@ import type { WorkTaskWorkflow, WorkTaskWorkflowDefinition } from "@zcode/shared
 import { useBaseWorkspaceServices } from "./useWorkspaceServices.js";
 import { createSharedServiceRead } from "./sharedServiceRead.js";
 import { workTaskErrorMessage } from "@/lib/workTaskBoard.js";
+import { builtinTaskWorkflow } from "@/lib/taskWorkflowDraft.js";
+import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 
 const resources = new WeakMap<
   IWorkTaskService,
@@ -31,6 +33,11 @@ function getResource(service: IWorkTaskService | undefined) {
 }
 /** 设置页和项目选择器只共享 Host 目录的读投影；保存仍只有 Service 命令路径。 */
 export function useTaskWorkflows() {
+  const { intl } = useZCodeIntl();
+  const builtin = useMemo(
+    () => builtinTaskWorkflow((key) => intl.formatMessage({ id: `workTasks.workflow.${key}` })),
+    [intl],
+  );
   const { workTaskService: service } = useBaseWorkspaceServices();
   const resource = useMemo(() => getResource(service), [service]);
   const read = useSyncExternalStore(resource.subscribe, resource.getSnapshot, resource.getSnapshot);
@@ -62,7 +69,11 @@ export function useTaskWorkflows() {
     }
   };
   return {
-    definitions: read.data ?? [],
+    builtinWorkflow: builtin,
+    // 只在成功读取目录后投影默认项；读取失败不能用内置数据伪装成成功。
+    definitions: read.data
+      ? [{ workflow: builtin, revision: 0, projectKeys: [] }, ...read.data]
+      : [],
     loading: read.loading,
     error: mutation.resource === resource && mutation.error ? mutation.error : read.error,
     busy: mutation.resource === resource && mutation.busy,
