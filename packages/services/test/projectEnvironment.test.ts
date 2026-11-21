@@ -27,9 +27,13 @@ async function fixture(t: test.TestContext) {
     },
   ];
   let busy = false;
+  const credentialListScopes: string[] = [];
   const options = {
     databasePath: join(directory, "credential-vault.sqlite"),
-    listCredentials: async () => structuredClone(entries),
+    listCredentials: async (workspaceIdentity: string) => {
+      credentialListScopes.push(workspaceIdentity);
+      return structuredClone(entries);
+    },
     assertSessionIdle: async () => {
       if (busy) throw new Error("environment.session-busy");
     },
@@ -62,6 +66,7 @@ async function fixture(t: test.TestContext) {
     service,
     options,
     entries,
+    credentialListScopes,
     projectScope,
     scope,
     input,
@@ -72,8 +77,9 @@ async function fixture(t: test.TestContext) {
 }
 
 test("environment profiles persist and reject stale edits/deletes", async (t) => {
-  const { service, options, input } = await fixture(t);
+  const { service, options, input, credentialListScopes } = await fixture(t);
   const saved = await service.saveProjectEnvironment(input);
+  assert.deepEqual(credentialListScopes, ["remote:one"]);
   assert.equal(saved.revision, 1);
   const changed = await service.saveProjectEnvironment({
     ...input,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Globe2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import type {
   CredentialVaultEntry,
   CredentialVaultEnvironment,
@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useCredentialVault } from "@/hooks/useCredentialVault.js";
 import { CredentialEntryList } from "./CredentialEntryList.js";
+import {
+  CredentialScopeNavigator,
+  type CredentialScopeProject,
+} from "./CredentialScopeNavigator.js";
 import {
   CredentialVaultEntryDialog,
   type CredentialVaultDialogMode,
@@ -32,10 +36,18 @@ export function CredentialVaultSection({
   }>;
 }) {
   const { intl } = useZCodeIntl();
-  const { list, listGlobal, listUnassigned, attach, attachGlobal, detach, detachGlobal } =
-    useCredentialVault();
+  const {
+    list,
+    listGlobal,
+    listUnassigned,
+    listAttachable,
+    attach,
+    attachGlobal,
+    detach,
+    detachGlobal,
+  } = useCredentialVault();
   const knownProjects = useMemo(() => {
-    const unique = new Map<string, { identity: string; label: string; workspacePath: string }>();
+    const unique = new Map<string, CredentialScopeProject>();
     for (const project of projects) {
       const identity = project.workspaceIdentity?.trim() || project.workspacePath.trim();
       if (!identity) continue;
@@ -99,7 +111,7 @@ export function CredentialVaultSection({
     try {
       const [scoped, available] = await Promise.all([
         selectedProject ? list(projectIdentity) : listGlobal(),
-        listUnassigned(),
+        selectedProject ? listAttachable(projectIdentity) : listUnassigned(),
       ]);
       // 切换项目或 Global 后，旧读取结果不能覆盖当前凭据列表。
       if (refreshVersion.current === version) {
@@ -113,7 +125,15 @@ export function CredentialVaultSection({
     } finally {
       if (refreshVersion.current === version) setLoading(false);
     }
-  }, [list, listGlobal, listUnassigned, projectIdentity, selectedProject, selectionKey]);
+  }, [
+    list,
+    listAttachable,
+    listGlobal,
+    listUnassigned,
+    projectIdentity,
+    selectedProject,
+    selectionKey,
+  ]);
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   const refreshLatest = useCallback(() => refreshRef.current(), []);
@@ -134,6 +154,12 @@ export function CredentialVaultSection({
   const visibleProjectEntries = entriesScope === selectionKey ? projectEntries : [];
   const visibleGlobalEntries = entriesScope === selectionKey ? globalEntries : [];
   const visibleAvailableEntries = entriesScope === selectionKey ? availableEntries : [];
+  const visibleUnassignedEntries = visibleAvailableEntries.filter(
+    (entry) => entry.scope === "unassigned",
+  );
+  const visibleShareableEntries = visibleAvailableEntries.filter(
+    (entry) => entry.scope === "project",
+  );
   const runAttachment = async (
     entry: CredentialVaultEntry,
     operation: () => Promise<void>,
@@ -153,17 +179,12 @@ export function CredentialVaultSection({
   };
 
   return (
-    <section className="space-y-5" aria-labelledby="credential-vault-heading">
+    <section className="space-y-4" aria-label={label("settings.credentials.title")}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 id="credential-vault-heading" className="text-ui-lg font-semibold text-foreground">
-            {label("settings.credentials.title")}
-          </h2>
-          <p className="mt-1 max-w-2xl text-ui-base leading-6 text-foreground-subtle">
-            {label("settings.credentials.description")}
-          </p>
-        </div>
-        <Button type="button" size="sm" onClick={openCreate}>
+        <p className="min-w-0 flex-1 text-ui-base leading-6 text-foreground-subtle">
+          {label("settings.credentials.description")}
+        </p>
+        <Button type="button" size="sm" className="shrink-0" onClick={openCreate}>
           <Plus aria-hidden="true" />
           {label("settings.credentials.add")}
         </Button>
@@ -180,65 +201,31 @@ export function CredentialVaultSection({
         </p>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(12rem,15rem)_minmax(0,1fr)]">
-        <nav aria-label={label("settings.credentials.projectsHeading")} className="min-w-0">
-          <h3 className="mb-2 text-ui-base font-medium text-foreground">
-            {label("settings.credentials.projectsHeading")}
-          </h3>
-          <ul className="divide-y divide-border border-y border-border">
-            <li>
-              <Button
-                type="button"
-                variant={isGlobalSelected ? "secondary" : "ghost"}
-                aria-pressed={isGlobalSelected}
-                className="h-auto w-full min-w-0 justify-start rounded-none px-2 py-2 text-left"
-                onClick={() => setSelectedScope({ kind: "global" })}
-              >
-                <Globe2 aria-hidden="true" />
-                <span>{label("settings.credentials.globalScope")}</span>
-              </Button>
-            </li>
-            {knownProjects.map((project) => (
-              <li key={project.identity}>
-                <Button
-                  type="button"
-                  variant={project.identity === projectIdentity ? "secondary" : "ghost"}
-                  aria-pressed={project.identity === projectIdentity}
-                  className="h-auto w-full min-w-0 justify-start rounded-none px-2 py-2 text-left"
-                  onClick={() => setSelectedScope({ kind: "project", identity: project.identity })}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate">{project.label}</span>
-                    <span className="block truncate text-ui-xs text-foreground-subtle">
-                      {project.workspacePath}
-                    </span>
-                  </span>
-                </Button>
-              </li>
-            ))}
-          </ul>
-          {knownProjects.length === 0 ? (
-            <p className="pt-2 text-ui-sm text-foreground-subtle">
-              {label("settings.credentials.projectsEmpty")}
-            </p>
-          ) : null}
-        </nav>
+      <div className="grid items-start gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
+        <CredentialScopeNavigator
+          projects={knownProjects}
+          selectedProjectIdentity={projectIdentity}
+          isGlobalSelected={isGlobalSelected}
+          label={label}
+          onGlobalSelect={() => setSelectedScope({ kind: "global" })}
+          onProjectSelect={(identity) => setSelectedScope({ kind: "project", identity })}
+        />
 
         <div className="min-w-0 space-y-6">
           {isGlobalSelected ? (
             <section aria-labelledby="credential-global-heading" className="space-y-2">
               <h3
                 id="credential-global-heading"
-                className="text-ui-base font-medium text-foreground"
+                className="px-1 text-ui-base font-semibold text-foreground"
               >
                 {label("settings.credentials.globalEntries")}
               </h3>
               {loading ? (
-                <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+                <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                   {label("settings.credentials.loading")}
                 </p>
               ) : visibleGlobalEntries.length === 0 ? (
-                <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+                <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                   {label("settings.credentials.globalEmpty")}
                 </p>
               ) : (
@@ -248,7 +235,6 @@ export function CredentialVaultSection({
                   kindLabel={kindLabel}
                   environmentLabel={(environment) => environmentLabel(environment, label)}
                   onEdit={openEdit}
-                  onDelete={openDelete}
                   onDetach={(entry) =>
                     void runAttachment(
                       entry,
@@ -265,7 +251,7 @@ export function CredentialVaultSection({
             <section aria-labelledby="credential-project-heading" className="space-y-2">
               <h3
                 id="credential-project-heading"
-                className="text-ui-base font-medium text-foreground"
+                className="px-1 text-ui-base font-semibold text-foreground"
               >
                 {intl.formatMessage(
                   { id: "settings.credentials.projectEntries" },
@@ -273,11 +259,11 @@ export function CredentialVaultSection({
                 )}
               </h3>
               {loading ? (
-                <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+                <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                   {label("settings.credentials.loading")}
                 </p>
               ) : !selectedProject || visibleProjectEntries.length === 0 ? (
-                <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+                <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                   {label("settings.credentials.projectEmpty")}
                 </p>
               ) : (
@@ -287,7 +273,6 @@ export function CredentialVaultSection({
                   kindLabel={kindLabel}
                   environmentLabel={(environment) => environmentLabel(environment, label)}
                   onEdit={openEdit}
-                  onDelete={openDelete}
                   onDetach={(entry) =>
                     void runAttachment(
                       entry,
@@ -302,53 +287,24 @@ export function CredentialVaultSection({
             </section>
           )}
 
-          {selectedProject ? (
-            <section aria-labelledby="credential-inherited-heading" className="space-y-2">
-              <h3
-                id="credential-inherited-heading"
-                className="text-ui-base font-medium text-foreground"
-              >
-                {label("settings.credentials.inheritedGlobalEntries")}
-              </h3>
-              {loading ? (
-                <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
-                  {label("settings.credentials.loading")}
-                </p>
-              ) : visibleGlobalEntries.length === 0 ? (
-                <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
-                  {label("settings.credentials.globalEmpty")}
-                </p>
-              ) : (
-                <CredentialEntryList
-                  entries={visibleGlobalEntries}
-                  label={label}
-                  kindLabel={kindLabel}
-                  environmentLabel={(environment) => environmentLabel(environment, label)}
-                  readOnlyLabel={label("settings.credentials.inheritedReadOnly")}
-                  mutatingId={mutatingId}
-                />
-              )}
-            </section>
-          ) : null}
-
           <section aria-labelledby="credential-available-heading" className="space-y-2">
             <h3
               id="credential-available-heading"
-              className="text-ui-base font-medium text-foreground"
+              className="px-1 text-ui-base font-semibold text-foreground"
             >
               {label("settings.credentials.availableEntries")}
             </h3>
             {loading ? (
-              <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+              <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                 {label("settings.credentials.loading")}
               </p>
-            ) : visibleAvailableEntries.length === 0 ? (
-              <p className="border-y border-border py-4 text-ui-sm text-foreground-subtle">
+            ) : visibleUnassignedEntries.length === 0 ? (
+              <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
                 {label("settings.credentials.availableEmpty")}
               </p>
             ) : (
               <CredentialEntryList
-                entries={visibleAvailableEntries}
+                entries={visibleUnassignedEntries}
                 label={label}
                 kindLabel={kindLabel}
                 environmentLabel={(environment) => environmentLabel(environment, label)}
@@ -378,6 +334,43 @@ export function CredentialVaultSection({
               />
             )}
           </section>
+
+          {selectedProject ? (
+            <section aria-labelledby="credential-shareable-heading" className="space-y-2">
+              <h3
+                id="credential-shareable-heading"
+                className="px-1 text-ui-base font-semibold text-foreground"
+              >
+                {label("settings.credentials.shareableEntries")}
+              </h3>
+              {loading ? (
+                <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
+                  {label("settings.credentials.loading")}
+                </p>
+              ) : visibleShareableEntries.length === 0 ? (
+                <p className="rounded-xl bg-surface px-4 py-5 text-ui-sm leading-6 text-foreground-subtle">
+                  {label("settings.credentials.shareableEmpty")}
+                </p>
+              ) : (
+                <CredentialEntryList
+                  entries={visibleShareableEntries}
+                  label={label}
+                  kindLabel={kindLabel}
+                  environmentLabel={(environment) => environmentLabel(environment, label)}
+                  readOnlyLabel={label("settings.credentials.sharedElsewhere")}
+                  onAttach={(entry) =>
+                    void runAttachment(
+                      entry,
+                      () => attach(entry.id, projectIdentity),
+                      "settings.credentials.error.attach",
+                    )
+                  }
+                  attachLabel={label("settings.credentials.attach")}
+                  mutatingId={mutatingId}
+                />
+              )}
+            </section>
+          ) : null}
         </div>
       </div>
 

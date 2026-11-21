@@ -3846,7 +3846,7 @@ const enUS: Record<string, string> = {
   "settings.mcpTitle": "MCP Servers",
   "settings.credentials.title": "Credentials",
   "settings.credentials.description":
-    "Credential metadata uses built-in SQLite; secrets stay in the Host credential store. No separate database is needed for this vault.",
+    "Manage server and database credentials. Link them to a project or make them available globally to all projects.",
   "settings.credentials.add": "Add credential",
   "settings.credentials.loading": "Loading credentials…",
   "settings.credentials.empty": "No saved credentials",
@@ -3857,13 +3857,15 @@ const enUS: Record<string, string> = {
   "settings.credentials.globalEntries": "Global credentials",
   "settings.credentials.globalEmpty":
     "No global credentials. Assign one from the unassigned list to share it.",
-  "settings.credentials.inheritedGlobalEntries": "Global credentials available to all projects",
-  "settings.credentials.inheritedReadOnly": "Shared globally · manage in Global",
+  "settings.credentials.shareableEntries": "Credentials from other projects",
+  "settings.credentials.shareableEmpty":
+    "No credentials from other projects are available to link.",
+  "settings.credentials.sharedElsewhere": "Linked to another project",
   "settings.credentials.projectEntries": "Attached to {project}",
   "settings.credentials.projectEntriesNoSelection": "Select a project to view its credentials",
   "settings.credentials.projectEmpty": "No credentials are attached to this project.",
   "settings.credentials.availableEntries": "Unassigned credentials",
-  "settings.credentials.availableEmpty": "No credentials are available to attach.",
+  "settings.credentials.availableEmpty": "No unassigned credentials.",
   "settings.credentials.attach": "Attach to selected project",
   "settings.credentials.detach": "Remove from selected project",
   "settings.credentials.attachGlobal": "Make global",

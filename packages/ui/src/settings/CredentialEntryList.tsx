@@ -1,4 +1,4 @@
-import { Database, Link2, Pencil, Server, Trash2, Unlink } from "lucide-react";
+import { Database, Link2, LockKeyhole, Pencil, Server, Trash2, Unlink } from "lucide-react";
 import type {
   CredentialVaultEntry,
   CredentialVaultEnvironment,
@@ -34,48 +34,55 @@ export function CredentialEntryList({
   mutatingId: string | null;
 }) {
   return (
-    <ul className="divide-y divide-border border-y border-border">
+    <ul className="overflow-hidden rounded-xl bg-surface">
       {entries.map((entry) => (
         <li
           key={entry.id}
-          className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3"
+          className="flex min-w-0 flex-col gap-2 border-b border-border px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:gap-3"
         >
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="truncate text-ui-base font-medium text-foreground">
-                {entry.name}
-              </span>
-              <span className="text-ui-xs text-foreground-subtle">
-                {environmentLabel(entry.environment)}
-              </span>
-              <span className="text-ui-xs text-foreground-subtle">
-                {entry.hasSecret ? label("settings.credentials.saved") : ""}
-              </span>
-              {readOnlyLabel ? (
-                <span className="text-ui-xs text-foreground-subtle">{readOnlyLabel}</span>
-              ) : null}
-            </div>
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 text-ui-sm text-foreground-subtle">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background text-foreground-subtle">
               {entry.kind === "database" ? (
-                <Database className="size-3.5" aria-hidden="true" />
+                <Database className="size-4" aria-hidden="true" />
               ) : (
-                <Server className="size-3.5" aria-hidden="true" />
+                <Server className="size-4" aria-hidden="true" />
               )}
-              <span>{kindLabel(entry.kind)}</span>
-              <span aria-hidden="true">·</span>
-              <span className="break-all">
-                {entry.host}
-                {entry.port === null ? "" : `:${entry.port}`}
-              </span>
-              {entry.username ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="break-all">{entry.username}</span>
-                </>
-              ) : null}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="break-all text-ui-base font-medium text-foreground">
+                  {entry.name}
+                </span>
+                <span className="rounded-md border border-border px-1.5 text-ui-xs text-foreground-subtle">
+                  {environmentLabel(entry.environment)}
+                </span>
+              </div>
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-ui-sm text-foreground-subtle">
+                <span>{kindLabel(entry.kind)}</span>
+                <span aria-hidden="true">·</span>
+                <span className="break-all font-mono">
+                  {entry.host}
+                  {entry.port === null ? "" : `:${entry.port}`}
+                </span>
+                {entry.username ? (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="break-all">{entry.username}</span>
+                  </>
+                ) : null}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-ui-xs text-foreground-subtlest">
+                {entry.hasSecret ? (
+                  <span className="inline-flex items-center gap-1">
+                    <LockKeyhole className="size-3" aria-hidden="true" />
+                    {label("settings.credentials.saved")}
+                  </span>
+                ) : null}
+                {readOnlyLabel ? <span>{readOnlyLabel}</span> : null}
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center justify-end gap-1 text-foreground-subtle">
             {onAttach ? (
               <Button
                 type="button"
