@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import { Checkbox } from "@/components/ui/checkbox.js";
 import { useAgentBoardWorkTasks } from "@/hooks/useAgentBoardWorkTasks.js";
-import { useWorktreeProjectGroups } from "@/hooks/useWorktreeProjectGroups.js";
+import { useWorktreeProjectGroupsResolution } from "@/hooks/useWorktreeProjectGroups.js";
 import { workTaskNavigationKey } from "@/store/workTaskNavigationStore.js";
 import { ProjectWorkflowSelect } from "./task-workflows/ProjectWorkflowSelect.js";
 import { useProjectManagement } from "@/hooks/useProjectManagement.js";
@@ -19,39 +19,26 @@ export function ProjectsSection() {
     () => projects.map((project) => ({ ...project, id: project.key, kind: "workspace" as const })),
     [projects],
   );
-  const projectGroups = useWorktreeProjectGroups(workflowTabs);
+  const { resolvedGroups: projectGroups, loading: projectGroupsLoading } =
+    useWorktreeProjectGroupsResolution(workflowTabs);
   const workflows = useAgentBoardWorkTasks(workflowTabs);
   const confirm = useConfirmDialog();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [result, setResult] = useState("");
   const query = search.toLocaleLowerCase().trim();
-  const linkedByMain = new Map<string, string[]>();
-  for (const group of projectGroups) {
-    const parent = group.tab.workspacePath;
-    const children = group.worktrees
-      .map(({ tab }) => tab.workspacePath)
-      .filter((path) => projects.some((project) => project.key === path));
-    if (children.length) linkedByMain.set(parent, children);
-  }
-  const linkedKeys = new Set([...linkedByMain.values()].flat());
-  const visibleGroups = projects
-    .filter((entry) => !linkedKeys.has(entry.key))
-    .map((entry) => {
-      const children = (linkedByMain.get(entry.key) ?? [])
-        .map((key) => projects.find((project) => project.key === key)!)
-        .filter((child) =>
-          `${child.label} ${child.workspacePath} ${child.workspaceIdentity ?? ""}`
-            .toLocaleLowerCase()
-            .includes(query),
-        );
-      const matches = `${entry.label} ${entry.workspacePath} ${entry.workspaceIdentity ?? ""}`
+  const mainProjectKeys = new Set(
+    projectGroups
+      .filter((group) => !group.isLinkedWorktree)
+      .map((group) => group.tab.workspacePath),
+  );
+  const visibleEntries = projects.filter(
+    (entry) =>
+      mainProjectKeys.has(entry.key) &&
+      `${entry.label} ${entry.workspacePath} ${entry.workspaceIdentity ?? ""}`
         .toLocaleLowerCase()
-        .includes(query);
-      return { entry, children, matches };
-    })
-    .filter(({ matches, children }) => !query || matches || children.length > 0);
-  const visibleEntries = visibleGroups.flatMap(({ entry, children }) => [entry, ...children]);
+        .includes(query),
+  );
   return (
     <section className="space-y-4" data-testid="settings-projects">
       <p className="text-ui-sm text-foreground-subtle">{t("description")}</p>
@@ -98,7 +85,7 @@ export function ProjectsSection() {
         </Button>
       </div>
       <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-        {visibleGroups.map(({ entry, children }) => (
+        {visibleEntries.map((entry) => (
           <li key={entry.key} data-testid="project-group">
             <ProjectRow
               entry={entry}
@@ -125,32 +112,12 @@ export function ProjectsSection() {
                 remote={!!(entry.workspaceIdentity || entry.remoteSessionId || entry.remoteTarget)}
               />
             </ProjectRow>
-            {children.length ? (
-              <ul className="border-t border-border/60 bg-surface/40">
-                {children.map((child) => (
-                  <li key={child.key} data-testid="project-worktree-row">
-                    <ProjectRow
-                      entry={child}
-                      selected={selected.has(child.key)}
-                      busy={busy}
-                      nested
-                      onSelect={(checked) =>
-                        setSelected((current) => {
-                          const next = new Set(current);
-                          if (checked) next.add(child.key);
-                          else next.delete(child.key);
-                          return next;
-                        })
-                      }
-                    />
-                  </li>
-                ))}
-              </ul>
-            ) : null}
           </li>
         ))}
       </ul>
-      {!visibleGroups.length && <p className="text-ui-sm text-foreground-subtle">{t("empty")}</p>}
+      {!projectGroupsLoading && !visibleEntries.length && (
+        <p className="text-ui-sm text-foreground-subtle">{t("empty")}</p>
+      )}
       {result && (
         <p role="status" className="whitespace-pre-wrap text-ui-sm">
           {result}
@@ -164,19 +131,17 @@ function ProjectRow({
   entry,
   selected,
   busy,
-  nested = false,
   onSelect,
   children,
 }: {
   entry: ReturnType<typeof useProjectManagement>["projects"][number];
   selected: boolean;
   busy: boolean;
-  nested?: boolean;
   onSelect(checked: boolean): void;
   children?: React.ReactNode;
 }) {
   return (
-    <div className={`flex min-w-0 flex-wrap items-center gap-3 p-3 ${nested ? "ps-10" : ""}`}>
+    <div className="flex min-w-0 flex-wrap items-center gap-3 p-3">
       <Checkbox
         aria-label={entry.label}
         checked={selected}
