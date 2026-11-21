@@ -165,18 +165,21 @@ try {
   const projectGroup = projects
     .getByTestId("project-group")
     .filter({ hasText: "/fixture/project-3" });
-  const worktreeRow = projectGroup.getByTestId("project-worktree-row");
-  assert.equal(await worktreeRow.count(), 1);
-  assert.equal(await worktreeRow.getByText("/fixture/project-linked", { exact: true }).count(), 1);
+  await projectGroup.waitFor();
+  assert.equal(await projects.getByTestId("project-group").count(), 2);
+  assert.equal(await projects.getByTestId("project-worktree-row").count(), 0);
+  assert.equal(await projects.getByText("/fixture/project-linked", { exact: true }).count(), 0);
   assert.equal(
     await projectGroup.getByRole("combobox", { name: "项目工作流", exact: true }).count(),
     1,
   );
-  assert.equal(await worktreeRow.getByRole("combobox", { name: "项目工作流" }).count(), 0);
   await projects.getByRole("textbox", { name: "搜索项目", exact: true }).fill("project-linked");
-  assert.equal(await projects.getByTestId("project-group").count(), 1);
-  assert.equal(await projects.getByTestId("project-worktree-row").count(), 1);
+  assert.equal(await projects.getByTestId("project-group").count(), 0);
+  await projects.getByText("没有匹配的项目", { exact: true }).waitFor();
+  assert.equal(await projects.getByRole("button", { name: "选择搜索结果" }).isDisabled(), true);
   await projects.getByRole("textbox", { name: "搜索项目", exact: true }).fill("");
+  await projects.getByRole("button", { name: "选择搜索结果" }).click();
+  await projects.getByRole("button", { name: "移除所选（2）" }).waitFor();
   const project = projects.getByText("/fixture/project-3", { exact: true }).locator("../..");
   await project.getByRole("combobox", { name: "项目工作流", exact: true }).click();
   await page.getByRole("option", { name: "研发流程", exact: true }).click();
