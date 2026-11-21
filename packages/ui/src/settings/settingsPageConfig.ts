@@ -273,9 +273,11 @@ export function createSettingsPageConfig({
       return false;
     return isSettingsSectionEnabled(section.id);
   });
+  // ACP 保留 section metadata 供旧导航意图解析，但与模型设置共用同一个侧栏入口。
+  const sidebarSections = settingsSections.filter((section) => section.id !== "acpAgents");
   const settingsSectionGroups = BASE_SETTINGS_SECTION_GROUPS.map((group) => ({
     ...group,
-    sections: settingsSections.filter((section) => section.groupId === group.id),
+    sections: sidebarSections.filter((section) => section.groupId === group.id),
   })).filter((group) => group.sections.length > 0);
 
   return { settingsSectionGroups, settingsSections };

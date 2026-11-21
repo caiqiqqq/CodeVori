@@ -15,7 +15,7 @@ import {
 import zhCN from "../src/i18n/locales/zh-CN.js";
 import enUS from "../src/i18n/locales/en-US.js";
 
-test("collaboration settings are hidden and legacy navigation falls back safely", () => {
+test("model providers and ACP share one settings sidebar entry on desktop and web", () => {
   for (const options of [
     {},
     { isDesktop: true },
@@ -23,6 +23,17 @@ test("collaboration settings are hidden and legacy navigation falls back safely"
     { isWindowsDesktop: true },
   ]) {
     const { settingsSections, settingsSectionGroups } = createSettingsPageConfig(options);
+    const modelSettingsSidebarEntries = settingsSectionGroups
+      .flatMap((group) => group.sections)
+      .filter((section) => section.id === "modelProvider" || section.id === "acpAgents");
+    assert.deepEqual(
+      modelSettingsSidebarEntries.map((section) => section.id),
+      ["modelProvider"],
+    );
+    assert.equal(
+      settingsSections.some((section) => section.id === "acpAgents"),
+      true,
+    );
     assert.equal(
       settingsSections.some((section) => section.id === "delegation"),
       false,
