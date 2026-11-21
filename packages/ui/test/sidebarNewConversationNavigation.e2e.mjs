@@ -115,7 +115,8 @@ try {
   // Only unrelated content/read projections are replaced; the real sidebar owns the clicked button.
   for (const [path, symbol] of [
     ["WorkspaceHeader.tsx", "WorkspaceHeader"],
-    ["WorkspaceSidebarFooter.tsx", "WorkspaceSidebarFooter"],
+    ["DesktopTopOverlay.tsx", "DesktopTopOverlay"],
+    ["WorkspacePinnedTasksSection.tsx", "WorkspacePinnedTasksSection"],
     ["command-center/CommandCenterDialog.tsx", "CommandCenterDialog"],
     ["quickpick/TaskFindDialog.tsx", "TaskFindDialog"],
     ["work-tasks/WorkTasksPanel.tsx", "WorkTasksPanel"],
@@ -159,6 +160,7 @@ try {
   await button.waitFor().catch((error) => {
     throw Error(errors.join("\n") || error.message);
   });
+  assert.equal(await page.getByRole("button", { name: "移动端远程控制" }).count(), 0);
   const prepare = async (options) => {
     await page.evaluate((options) => window.__newTask.prepare(options), options);
     await page.waitForFunction(
