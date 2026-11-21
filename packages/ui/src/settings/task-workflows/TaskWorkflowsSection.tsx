@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button.js";
 import { WorkTaskError, useWorkTaskMessages } from "@/work-tasks/WorkTaskParts.js";
 import { TaskWorkflowEditor } from "./TaskWorkflowEditor.js";
 import { WorkflowStatusIcon } from "./WorkflowStepList.js";
+import { BUILTIN_TASK_WORKFLOW_ID } from "@/lib/taskWorkflowDraft.js";
+import { BuiltinTaskWorkflowDetails } from "./BuiltinTaskWorkflowDetails.js";
 
 export function TaskWorkflowsSection() {
   const catalog = useTaskWorkflows();
@@ -27,6 +29,13 @@ export function TaskWorkflowsSection() {
     ),
   );
   const onProjects = () => setPendingSettingsSection("projects");
+  if (editor?.definition?.workflow.id === BUILTIN_TASK_WORKFLOW_ID)
+    return (
+      <BuiltinTaskWorkflowDetails
+        workflow={catalog.builtinWorkflow}
+        onBack={() => setEditor(null)}
+      />
+    );
   if (editor)
     return (
       <TaskWorkflowEditor
@@ -82,11 +91,13 @@ export function TaskWorkflowsSection() {
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="text-ui-base font-medium">{definition.workflow.name}</span>
                   <span className="text-ui-xs text-foreground-subtlest">
-                    {t("workflow.summary", {
-                      steps: definition.workflow.stages.filter((item) => item.enabled !== false)
-                        .length,
-                      projects: definition.projectKeys.length,
-                    })}
+                    {definition.workflow.id === BUILTIN_TASK_WORKFLOW_ID
+                      ? t("workflow.defaultUsage")
+                      : t("workflow.summary", {
+                          steps: definition.workflow.stages.filter((item) => item.enabled !== false)
+                            .length,
+                          projects: definition.projectKeys.length,
+                        })}
                   </span>
                 </span>
                 {definition.workflow.description ? (
@@ -118,25 +129,27 @@ export function TaskWorkflowsSection() {
                 </ol>
               </span>
             </button>
-            <Button
-              variant="ghost"
-              size="icon"
-              disabled={catalog.busy || definition.projectKeys.length > 0}
-              title={definition.projectKeys.length ? t("workflow.inUse") : undefined}
-              aria-label={t("workflow.delete", { name: definition.workflow.name })}
-              onClick={async () => {
-                if (
-                  await confirm({
-                    title: t("workflow.delete", { name: definition.workflow.name }),
-                    description: t("workflow.deleteHelp"),
-                    confirmVariant: "destructive",
-                  })
-                )
-                  await catalog.remove(definition.workflow.id, definition.revision);
-              }}
-            >
-              <Trash2 className="size-4" />
-            </Button>
+            {definition.workflow.id !== BUILTIN_TASK_WORKFLOW_ID ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={catalog.busy || definition.projectKeys.length > 0}
+                title={definition.projectKeys.length ? t("workflow.inUse") : undefined}
+                aria-label={t("workflow.delete", { name: definition.workflow.name })}
+                onClick={async () => {
+                  if (
+                    await confirm({
+                      title: t("workflow.delete", { name: definition.workflow.name }),
+                      description: t("workflow.deleteHelp"),
+                      confirmVariant: "destructive",
+                    })
+                  )
+                    await catalog.remove(definition.workflow.id, definition.revision);
+                }}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            ) : null}
           </li>
         ))}
       </ul>

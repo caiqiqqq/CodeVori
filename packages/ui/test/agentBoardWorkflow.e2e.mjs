@@ -7,6 +7,10 @@ import { join, resolve } from "node:path";
 import { chromium } from "playwright-core";
 import { agentBoardFixture } from "./agentBoardFixture.mjs";
 import { agentBoardWorkflowFixture } from "./agentBoardWorkflowFixture.mjs";
+import {
+  assertBuiltinWorkflow,
+  assertDefaultProjectSelection,
+} from "./taskWorkflowDefaults.e2e-helpers.mjs";
 
 const desktop = resolve(import.meta.dirname, "../../desktop");
 const requireDesktop = createRequire(join(desktop, "package.json"));
@@ -64,6 +68,7 @@ try {
   await page.getByRole("button", { name: "工作流", exact: true }).click();
   await page.getByTestId("task-workflows-settings").waitFor();
   await page.getByText("任务与工作流", { exact: true }).waitFor();
+  const defaultRow = await assertBuiltinWorkflow(page, artifacts);
   await page.evaluate(() => window.__board.setTheme("zai-light"));
   await page.getByTestId("workflow-new").click();
   await page.getByTestId("workflow-step").first().waitFor();
@@ -187,10 +192,11 @@ try {
     .getByRole("combobox", { name: "项目工作流", exact: true })
     .getByText("研发流程", { exact: true })
     .waitFor();
+  await assertDefaultProjectSelection(page, project);
   await page.getByRole("button", { name: "工作流", exact: true }).click();
-  await page.getByTestId("workflow-stage-preview").waitFor();
+  await page.getByRole("list", { name: "研发流程", exact: true }).waitFor();
   assert.deepEqual(
-    await page.getByTestId("workflow-stage-preview").first().locator("li").allTextContents(),
+    await page.getByRole("list", { name: "研发流程", exact: true }).locator("li").allTextContents(),
     ["待办", "进行中", "审核中", "已阻塞", "已完成", "已取消"],
   );
   await page.getByRole("button", { name: "删除「研发流程」", exact: true }).waitFor();
@@ -360,11 +366,13 @@ try {
   await page.getByTestId("task-workflows-settings").waitFor();
   await page.getByRole("button", { name: "为项目选择工作流", exact: true }).click();
   await project.getByRole("combobox", { name: "项目工作流", exact: true }).click();
-  await page.getByRole("option", { name: "默认（保持现有行为）", exact: true }).click();
+  await page.getByRole("option", { name: "默认工作流", exact: true }).click();
   await page.getByRole("button", { name: "工作流", exact: true }).click();
   await page.getByRole("button", { name: "删除「研发流程」", exact: true }).click();
   await page.getByTestId("confirm-dialog-confirm").click();
-  await page.getByText("尚未创建工作流", { exact: true }).waitFor();
+  await defaultRow.waitFor();
+  assert.equal(await page.getByTestId("workflow-stage-preview").count(), 1);
+  assert.equal(await page.getByText("尚未创建工作流", { exact: true }).count(), 0);
   assert.equal(
     await page.evaluate(() => window.__board.workRows[0].workflow.definition.name),
     "研发流程",

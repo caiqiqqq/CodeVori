@@ -351,7 +351,11 @@ const zhCN: Record<string, string> = {
   "workTasks.workflow.emptyHelp": "创建一套状态和交接规则，再由项目选择使用。",
   "workTasks.workflow.chooseForProject": "为项目选择工作流",
   "workTasks.workflow.projectSelection": "项目工作流",
-  "workTasks.workflow.default": "默认（保持现有行为）",
+  "workTasks.workflow.default": "默认工作流",
+  "workTasks.workflow.defaultDescription": "项目未选择自定义工作流时使用内置任务生命周期。",
+  "workTasks.workflow.defaultReadOnly":
+    "内置默认工作流仅供查看。如需自定义状态与交接规则，请新建工作流并在项目中选择使用。",
+  "workTasks.workflow.defaultUsage": "未选择自定义工作流的项目",
   "workTasks.workflow.mainProject": "跟随主项目的工作流",
   "workTasks.workflow.changeStatus": "更改工作流状态",
   "workTasks.workflow.useProjectWorkflow": "采用项目工作流",

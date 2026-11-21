@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select.js";
 import { WorkTaskError, useWorkTaskMessages } from "@/work-tasks/WorkTaskParts.js";
+import { BUILTIN_TASK_WORKFLOW_ID } from "@/lib/taskWorkflowDraft.js";
 
 export function ProjectWorkflowSelect({
   panel,
@@ -53,11 +54,13 @@ export function ProjectWorkflowSelect({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="none">{t("workflow.default")}</SelectItem>
-          {catalog.definitions.map((item) => (
-            <SelectItem key={item.workflow.id} value={item.workflow.id}>
-              {item.workflow.name}
-            </SelectItem>
-          ))}
+          {catalog.definitions
+            .filter((item) => item.workflow.id !== BUILTIN_TASK_WORKFLOW_ID)
+            .map((item) => (
+              <SelectItem key={item.workflow.id} value={item.workflow.id}>
+                {item.workflow.name}
+              </SelectItem>
+            ))}
         </SelectContent>
       </Select>
       <WorkTaskError error={panel.error ?? catalog.error} />
