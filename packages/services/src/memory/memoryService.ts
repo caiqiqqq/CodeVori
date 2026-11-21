@@ -12,7 +12,7 @@ import {
 } from "@zcode/shared/node";
 import { createProjectMemoryCatalogChanges } from "./projectMemoryCatalogChanges.js";
 import { readProjectMemoryFileFromStableHandle } from "#src/memory/projectMemoryStableRead.js";
-import { getZCodeDataRootDir } from "#src/paths.js";
+import { getDataBaseDir, getZCodeDataRootDir } from "#src/paths.js";
 
 const PROJECT_MEMORY_INDEX_FILE_NAME = "MEMORY.md";
 const PROJECT_MEMORY_DIRECTORY_NAME = "memory";
@@ -128,8 +128,10 @@ async function isMigratedLegacyMemory(projectsRoot: string, memoryRoot: string):
     if (isNotFoundError(error)) return false;
     throw error;
   }
+  const destinationProjectsRoot = dirname(dirname(destination));
+  const legacyProjectsRoot = join(getDataBaseDir(), ".zcode", "cli", "memories", "projects");
   if (
-    dirname(dirname(destination)) !== projectsRoot ||
+    (destinationProjectsRoot !== projectsRoot && destinationProjectsRoot !== legacyProjectsRoot) ||
     basename(destination) !== PROJECT_MEMORY_DIRECTORY_NAME ||
     destination === memoryRoot
   ) {
@@ -239,7 +241,7 @@ export function createMemoryService(): IMemoryService {
         continue;
       }
 
-      // 修复原因：旧目录只在已迁移目标仍存在时从列表隐藏，避免目标丢失后无法找回原件。
+      // 修复原因：产品目录从 .zcode 改为 .codevori 后，旧迁移标记仍指向旧根；仅在目标有效时隐藏，保留可恢复原件。
       if (await isMigratedLegacyMemory(projectsRoot, memoryRoot)) continue;
 
       let memoryEntries;

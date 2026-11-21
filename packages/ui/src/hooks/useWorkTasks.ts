@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { IWorkTaskService } from "@zcode/services";
 import type {
+  WorkTask,
   WorkTaskCreate,
   WorkTaskScope,
   WorkTaskUpdate,
@@ -30,8 +31,19 @@ function scopeOnly(input: WorkTaskScope): WorkTaskScope {
 function commands(scope: WorkTaskScope, run: Run) {
   return {
     scope,
-    create: (draft: Omit<WorkTaskCreate, keyof WorkTaskScope>) =>
-      run(scope, (target) => target.create({ ...scope, ...draft })),
+    create: async (
+      draft: Omit<WorkTaskCreate, keyof WorkTaskScope>,
+      onCreated?: (task: WorkTask) => void,
+    ) => {
+      let created: WorkTask | null = null;
+      const saved = await run(scope, async (target) => {
+        created = await target.create({ ...scope, ...draft });
+      });
+      // 修复原因：看板需要精确纳入新任务。仅在 Host 成功回执后传递 ID，
+      // 不能从可能并发刷新的列表按标题或时间猜测，也不创建第二条写入路径。
+      if (saved && created) onCreated?.(created);
+      return saved;
+    },
     rename: (id: string, title: string, onError?: (error: string) => void) =>
       run(scope, (target) => target.rename({ ...scope, id, title }), onError),
     update: (draft: Omit<WorkTaskUpdate, keyof WorkTaskScope>, startAfterSave = false) =>
@@ -42,6 +54,46 @@ function commands(scope: WorkTaskScope, run: Run) {
       }),
     start: (id: string, feedback?: string) =>
       run(scope, (target) => target.start({ ...scope, id, ...(feedback ? { feedback } : {}) })),
+    saveWorkflow: (workflowId: string | null, expectedRevision: number) =>
+      run(scope, (target) => target.saveWorkflow({ ...scope, workflowId, expectedRevision })),
+    transitionWorkflow: (
+      id: string,
+      expectedRunSeq: number,
+      expectedStageId: string,
+      targetStageId: string,
+      handoffNote?: string,
+    ) =>
+      run(scope, (target) =>
+        target.transitionWorkflow({
+          ...scope,
+          id,
+          expectedRunSeq,
+          expectedStageId,
+          targetStageId,
+          ...(handoffNote ? { handoffNote } : {}),
+        }),
+      ),
+    attachConversationWorkflow: (kind: "api" | "acp", sessionId: string) =>
+      run(scope, (target) => target.attachConversationWorkflow({ ...scope, kind, sessionId })),
+    transitionConversationWorkflow: (
+      kind: "api" | "acp",
+      sessionId: string,
+      expectedRevision: number,
+      expectedStageId: string,
+      targetStageId: string,
+      handoffNote?: string,
+    ) =>
+      run(scope, (target) =>
+        target.transitionConversationWorkflow({
+          ...scope,
+          kind,
+          sessionId,
+          expectedRevision,
+          expectedStageId,
+          targetStageId,
+          ...(handoffNote ? { handoffNote } : {}),
+        }),
+      ),
     restartWithNewSession: (id: string) =>
       run(scope, (target) => target.start({ ...scope, id, newSession: true })),
     startAll: () => run(scope, (target) => target.startAll(scope)),
@@ -61,12 +113,25 @@ function commands(scope: WorkTaskScope, run: Run) {
       ),
     archive: (id: string, archived: boolean) =>
       run(scope, (target) => target.archive({ ...scope, id, archived })),
-    archiveAndRemoveWorktree: (id: string, onError: (error: string) => void) =>
+    archiveAndRemoveWorktree: (
+      id: string,
+      confirmedBranchName: string,
+      onError: (error: string) => void,
+    ) =>
       run(
         scope,
-        (target) => target.archive({ ...scope, id, archived: true, removeWorktree: true }),
+        (target) =>
+          target.archive({
+            ...scope,
+            id,
+            archived: true,
+            removeWorktree: true,
+            confirmedBranchName,
+          }),
         onError,
       ),
+    acceptWorktreeBranch: (id: string, currentBranchName: string) =>
+      run(scope, (target) => target.acceptWorktreeBranch({ ...scope, id, currentBranchName })),
     setConcurrency: (concurrency: number) =>
       run(scope, (target) => target.setConcurrency({ ...scope, concurrency })),
   };
@@ -153,22 +218,32 @@ export function useWorkTasks(
     },
     [owner, sources],
   );
-  const forScope = (target: WorkTaskScope): WorkTaskPanel => ({
-    ...commands(scopeOnly(target), run),
+  const forScope = (target: WorkTaskScope): WorkTaskPanel => {
+    const selectedSources = sources.filter(
+      (source) => workTaskNavigationKey(source.scope) === workTaskNavigationKey(target),
+    );
+    // 修复原因：汇总面板没有单项目工作流；必须从已有的精确 scope 读投影取配置和 CAS 版本。
+    const selectedResource = combineWorkTaskReads(selectedSources);
+    const selectedRead = selectedResource.getSnapshot();
+    return {
+      ...commands(scopeOnly(target), run),
+      board: selectedRead.data,
+      loading: selectedRead.loading,
+      settled: selectedRead.settled,
+      error: mutation.owner === owner && mutation.error ? mutation.error : selectedRead.error,
+      busy: mutation.owner === owner && mutation.busy,
+      executable: selectedSources.some((source) => source.executable),
+      refresh: selectedResource.refresh,
+    };
+  };
+  const panel = forScope(scope);
+  return {
+    ...panel,
     board: read.data,
     loading: read.loading,
     settled: read.settled,
     error: mutation.owner === owner && mutation.error ? mutation.error : read.error,
-    busy: mutation.owner === owner && mutation.busy,
-    executable: sources.some(
-      (item) =>
-        workTaskNavigationKey(item.scope) === workTaskNavigationKey(target) && item.executable,
-    ),
     refresh: resource.refresh,
-  });
-  const panel = forScope(scope);
-  return {
-    ...panel,
     forScope,
     executable: sources.some((source) => source.executable),
     startAll: async () => {

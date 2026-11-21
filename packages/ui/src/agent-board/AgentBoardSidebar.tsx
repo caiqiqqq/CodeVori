@@ -1,7 +1,7 @@
 import { useStore } from "zustand";
 import { useMemo } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { Folder, Search, LayoutGrid, MessageSquare, ListTodo } from "lucide-react";
+import { Folder, Search, LayoutGrid, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { agentBoardStore } from "@/store/agentBoardStore.js";
 import { useAgentBoardData } from "@/hooks/useAgentBoardData.js";
@@ -41,15 +41,6 @@ export function AgentBoardSidebar({ workspaceTabs }: { workspaceTabs: WorkspaceT
         counts={counts.standalone}
         aria-pressed={preferences.category === "standalone"}
         onClick={preferences.selectStandalone}
-      />
-      <AgentBoardSidebarRow
-        icon={ListTodo}
-        label={intl.formatMessage({ id: "agentBoard.workTasks" })}
-        counts={counts.workTasks}
-        aria-pressed={preferences.category === "work-tasks"}
-        onClick={() => {
-          preferences.selectWorkTasks();
-        }}
       />
       <p className="px-3 pt-5 pb-1 text-ui-caption text-foreground-subtle">
         {intl.formatMessage({ id: "agentBoard.pinnedProjects" })}

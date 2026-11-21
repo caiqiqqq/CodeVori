@@ -1,5 +1,6 @@
 /* oxlint-disable eslint(max-lines) -- ACP Host owner keeps admission, persistence, permission and process-generation checks in one state machine. */
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import {
   appendAcpConversationEntry,
   finishAcpThoughts,
@@ -21,6 +22,7 @@ import { Emitter } from "@zcode/rpc";
 import { AcpStreamDiagnostics } from "./acpStreamDiagnostics.js";
 import { AcpConversationProjection } from "./acpConversationProjection.js";
 import { AcpSessionStore } from "./acpSessionStore.js";
+import { createAcpCacheLease } from "./acpCacheLease.js";
 import { AcpCompactionTiming } from "./acpCompactionTiming.js";
 import {
   projectMemoryTools,
@@ -35,6 +37,7 @@ import {
   summarizeAcpSession,
   acpSessionActivity,
   resolveDynamicWorkflowClientConfig,
+  DELEGATION_MAIN_AGENT_INSTRUCTION,
   type DynamicWorkflowClientConfig,
   type AcpSessionSummary,
 } from "@zcode/shared";
@@ -101,10 +104,8 @@ import type { IAcpService } from "./acpService.js";
 import { AcpSessionLoadError, connectAcpAgent } from "./acpStdioConnection.js";
 import { buildAcpPromptBlocks } from "./acpPromptBlocks.js";
 import type { ProjectMemoryContext } from "../memory/projectMemoryContext.js";
-import {
-  credentialReferencePromptContext,
-  type CredentialReferenceReader,
-} from "../credential/credentialReferences.js";
+import { credentialPromptContext } from "../credential/credentialContext.js";
+import type { CredentialVaultReferenceReader } from "../credential/credentialVaultReferenceReader.js";
 import { AcpQueueGate } from "./acpQueueGate.js";
 import { AcpAttachmentStore } from "./acpAttachmentStore.js";
 import {
@@ -126,6 +127,7 @@ import {
   AcpPermissionPreferences,
   isAcpPermissionOption,
   restoreAcpPermission,
+  sessionHasFullAccess,
   sessionPermissionSelection,
 } from "./acpPermissionPreferences.js";
 import {
@@ -219,6 +221,7 @@ export type AcpConnectionFactory = (input: {
     request: AcpElicitation,
     signal?: AbortSignal,
   ) => Promise<AcpElicitationResponse>;
+  onElicitationApproval?: (request: AcpPermission, signal?: AbortSignal) => Promise<string | null>;
   onExit: (reason: string) => void;
 }) => Promise<AcpConnectionPort>;
 
@@ -254,11 +257,12 @@ export function createAcpService(
     resolveDynamicWorkflowClientConfig?: () => Promise<DynamicWorkflowClientConfig>;
     /** 普通投影排除待办/委派绑定；精确读取与内部执行仍可访问原会话。 */
     hiddenSessionIds?: (scope: AcpWorkspace) => Promise<string[]>;
+    beforeConversationInput?: (session: AcpSession) => Promise<void>;
     connect?: AcpConnectionFactory;
     savedWorkflows?: import("./acpSavedWorkflows.js").AcpSavedWorkflowService;
     agentManager?: AcpAgentManager;
     memoryContext?: ProjectMemoryContext;
-    credentialReferenceReader?: CredentialReferenceReader;
+    credentialVaultReferenceReader?: CredentialVaultReferenceReader;
     /** Auxiliary text seam for isolated ACP memory extraction tests. */
     memoryGenerateText?: (
       input: import("@zcode/shared").AcpGenerateText,
@@ -285,6 +289,12 @@ export function createAcpService(
         session: AcpSession,
       ): Promise<{ record: NativeMcpServerRecord; revoke(): void } | undefined>;
     };
+    projectEnvironments?: {
+      register(
+        session: AcpSession,
+      ): Promise<{ record: NativeMcpServerRecord; revoke(): void } | undefined>;
+    };
+    beginEnvironmentInput?: (workspace: AcpWorkspace, sessionId: string) => () => void;
   } = {},
 ): IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } {
   const directory = options.directory ?? join(getZCodeDataRootDir(), "acp-sessions");
@@ -367,6 +377,7 @@ export function createAcpService(
   const workflowMcp = createAcpWorkflowMcp(directory);
   const workflowRegistrations = new Map<string, { revoke(): void }>();
   const issuesRegistrations = new Map<string, { revoke(): void }>();
+  const environmentRegistrations = new Map<string, { revoke(): void }>();
   const memoryRegistrations = new Map<string, { revoke(): void }>();
   const credentialReferenceRegistrations = new Map<string, { revoke(): void }>();
   const directMemorySaves = new Map<string, string>();
@@ -468,6 +479,53 @@ export function createAcpService(
   const sessionStore = new AcpSessionStore(file, (error) =>
     logger.warn(undefined, "ACP checkpoint maintenance failed", { error: failureMessage(error) }),
   );
+  const cacheLease = createAcpCacheLease(() => releaseIdleSessions());
+  const releaseIdleSessions = () => {
+    if (creating.size || notificationTasks.size) return;
+    for (const [id, session] of sessions) {
+      if (
+        !cacheLease.idle(id) ||
+        (projections.get(id)?.users ?? 0) > 0 ||
+        session.provisional ||
+        session.deletionState ||
+        session.status === "running" ||
+        session.pendingPermission ||
+        session.pendingElicitation ||
+        session.queue.items.length ||
+        session.terminals.some((terminal) => terminal.status === "running") ||
+        connections.has(id) ||
+        connecting.has(id) ||
+        generations.has(id) ||
+        loading.has(id) ||
+        recovering.has(id) ||
+        active.has(id) ||
+        activeTokens.has(id) ||
+        writes.has(id) ||
+        streamingWrites.has(id) ||
+        attachmentWrites.has(id) ||
+        queueGate.has(id) ||
+        queueTasks.has(id) ||
+        wirePrompts.has(id) ||
+        [...promptTasks.keys()].some((key) => key.startsWith(`${id}:`)) ||
+        [...promptAdmissions.values()].some((admission) => admission.sessionId === id) ||
+        pending.has(id) ||
+        interactionQueues.has(id) ||
+        configuring.has(id) ||
+        stopping.has(id) ||
+        workflowHost.ownsLive(id) ||
+        workflowNotifying.has(id) ||
+        workflowNotifications.get(id)?.length ||
+        sessionStore.current(id)?.revision !== session.revision
+      )
+        continue;
+      // 修复原因：无订阅、连接、在途操作且全部事实已提交时才释放正文；
+      // 不断开 Agent、不删除磁盘历史，重开仍由同一 load gate 恢复唯一 owner。
+      projections.delete(id);
+      sessions.delete(id);
+      scheduledSnapshotRevisions.delete(id);
+      sessionStore.release(id);
+    }
+  };
   const commandReceipt = (id: string, commandId: string): AcpCommandReceipt | null => {
     // 修复原因：owner 可能已变更但尚未落盘；ACK/断线对账只读取成功提交的事实。
     const snapshot = sessionStore.current(id);
@@ -660,7 +718,12 @@ export function createAcpService(
       });
     writes.set(session.id, next);
     scheduledSnapshotRevisions.set(session.id, snapshot.revision);
-    await next;
+    try {
+      await next;
+    } finally {
+      if (writes.get(session.id) === next) writes.delete(session.id);
+      releaseIdleSessions();
+    }
   };
   const saveStreaming = (session: AcpSession): Promise<void> => {
     const scheduled = streamingWrites.get(session.id);
@@ -797,7 +860,11 @@ export function createAcpService(
     if (cached?.projection && cached.session)
       return { projection: cached.projection, session: cached.session };
     // 修复依据：owner 在等待 IO 时仍可接收分片，首次读取只能以原子保存事实建立水位。
-    const snapshot = owner.provisional ? structuredClone(owner) : await sessionStore.read(owner.id);
+    // 修复原因：投影只读已提交事实，可共享冻结快照，避免再克隆整份历史工具输出。
+    const snapshot = owner.provisional
+      ? sessionStore.capture(owner)
+      : sessionStore.current(owner.id);
+    if (!snapshot) throw new Error("ACP committed snapshot unavailable");
     if (removed.has(owner.id) || disposed) throw new Error("ACP session closed");
     return project(snapshot);
   };
@@ -1079,6 +1146,8 @@ export function createAcpService(
     delegationRegistrations.delete(id);
     issuesRegistrations.get(id)?.revoke();
     issuesRegistrations.delete(id);
+    environmentRegistrations.get(id)?.revoke();
+    environmentRegistrations.delete(id);
     memoryRegistrations.get(id)?.revoke();
     memoryRegistrations.delete(id);
     credentialReferenceRegistrations.get(id)?.revoke();
@@ -1111,6 +1180,7 @@ export function createAcpService(
     let receivedContextUsage = false;
     let updatedModeId: string | undefined;
     let issuesRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
+    let environmentRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
     let attachmentRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
     let memoryRegistration: { record: NativeMcpServerRecord; revoke(): void } | undefined;
     let credentialReferenceRegistration:
@@ -1155,13 +1225,18 @@ export function createAcpService(
       );
       if (delegationRegistration) delegationRegistrations.set(session.id, delegationRegistration);
       issuesRegistration = await options.issuesMcp?.register(session);
+      environmentRegistration = await options.projectEnvironments?.register(session);
       // 注册期间可能已 detach；迟到的 capability 不能挂到下一代连接或继续启动 Agent。
       if (disposed || generations.get(session.id) !== generation || removed.has(session.id)) {
         issuesRegistration?.revoke();
         issuesRegistration = undefined;
+        environmentRegistration?.revoke();
+        environmentRegistration = undefined;
         throw new Error("ACP session closed while registering issues MCP");
       }
       if (issuesRegistration) issuesRegistrations.set(session.id, issuesRegistration);
+      if (environmentRegistration)
+        environmentRegistrations.set(session.id, environmentRegistration);
       // 首次握手就提供恢复工具；同一轮内部压缩后不依赖 Host 再次发送提示。
       attachmentRegistration = await workflowMcp.register(
         ACP_ATTACHMENTS_MCP_NAME,
@@ -1248,34 +1323,134 @@ export function createAcpService(
         }
         memoryRegistrations.set(session.id, memoryRegistration);
       }
-      const credentialReferenceReader = options.credentialReferenceReader;
-      if (credentialReferenceReader) {
-        credentialReferenceRegistration = await workflowMcp.register("zcode-credentials", {
-          names: ["ListCredentialReferences"],
-          tools: [
-            {
-              name: "ListCredentialReferences",
-              description:
-                "List non-secret aliases, purposes, and counts for credentials stored by this Host. Never returns credential values or storage keys.",
-              inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      const credentialVaultReferenceReader = options.credentialVaultReferenceReader;
+      const credentialWorkspace = {
+        workspacePath: session.workspacePath,
+        workspaceIdentity: session.workspaceIdentity,
+        remoteSessionId: session.remoteSessionId,
+      };
+      const assertCredentialConnection = () => {
+        if (
+          disposed ||
+          generations.get(session.id) !== generation ||
+          removed.has(session.id) ||
+          workspaceKey(session) !== workspaceKey(credentialWorkspace) ||
+          session.workspacePath !== credentialWorkspace.workspacePath ||
+          session.remoteSessionId !== credentialWorkspace.remoteSessionId
+        )
+          throw new Error("ACP credential connection is no longer active");
+      };
+      const credentialTools: Array<{
+        name: string;
+        description: string;
+        inputSchema: Record<string, unknown>;
+      }> = [];
+      if (credentialVaultReferenceReader) {
+        credentialTools.push({
+          name: "ListCredentialReferences",
+          description:
+            "List active credential metadata saved for the current workspace, including shared credentials and every credential type. Returns metadata only and never returns secret values.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        });
+        credentialTools.push({
+          name: "ReadCredentialSecret",
+          description:
+            "Read the saved password, token or key for one credential id from ListCredentialReferences. The Host follows the current session permission mode: full access skips confirmation; other modes require approval for each read. Use only for the user's requested authentication; do not repeat secret values in replies, logs or configuration.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              credentialId: { type: "string", format: "uuid" },
+              purpose: { type: "string", minLength: 1, maxLength: 500 },
             },
-          ],
-          async call(name) {
-            if (name !== "ListCredentialReferences")
-              throw new Error("Unknown credential reference tool");
-            if (disposed || generations.get(session.id) !== generation || removed.has(session.id))
-              throw new Error("ACP credential reference connection is no longer active");
-            try {
-              return await credentialReferenceReader.list();
-            } catch {
-              throw new Error("Host credential metadata is unavailable");
+            required: ["credentialId", "purpose"],
+            additionalProperties: false,
+          },
+        });
+      }
+      if (credentialTools.length) {
+        credentialReferenceRegistration = await workflowMcp.register("zcode-credentials", {
+          names: credentialTools.map(({ name }) => name),
+          tools: credentialTools,
+          async call(name, args) {
+            assertCredentialConnection();
+            if (name === "ListCredentialReferences") {
+              if (!credentialVaultReferenceReader)
+                throw new Error("Saved credential metadata unavailable");
+              z.object({}).strict().parse(args);
+              try {
+                return await credentialVaultReferenceReader.listReferences(
+                  session.workspaceIdentity?.trim() || session.workspacePath,
+                );
+              } catch {
+                throw new Error("Saved credential metadata is unavailable");
+              }
             }
+            if (name === "ReadCredentialSecret") {
+              const { credentialId, purpose } = z
+                .object({
+                  credentialId: z.string().uuid(),
+                  purpose: z.string().trim().min(1).max(500),
+                })
+                .strict()
+                .parse(args);
+              const commandId = active.get(session.id);
+              const commandToken = activeTokens.get(session.id);
+              let requiresFullAccess = false;
+              const assertCurrent = () => {
+                assertCredentialConnection();
+                // 中文依据：密码读取属于本轮授权，停止、重连或新回合都不能继承旧请求。
+                if (
+                  !commandId ||
+                  !commandToken ||
+                  active.get(session.id) !== commandId ||
+                  activeTokens.get(session.id) !== commandToken ||
+                  stopping.has(session.id) ||
+                  (requiresFullAccess && !sessionHasFullAccess(session))
+                )
+                  throw new Error("ACP credential request is no longer active");
+              };
+              assertCurrent();
+              const identity =
+                credentialWorkspace.workspaceIdentity?.trim() || credentialWorkspace.workspacePath;
+              const reference = (
+                await credentialVaultReferenceReader!.listReferences(identity)
+              ).find((entry) => entry.id === credentialId);
+              assertCurrent();
+              if (!reference) throw new Error("Saved credential is unavailable");
+              // 修复原因：完全访问已由用户在会话中确认，凭证读取不能再强制询问；其余模式仍逐次授权。
+              requiresFullAccess = sessionHasFullAccess(session);
+              if (!requiresFullAccess) {
+                const decision = await requestPermission(session, {
+                  requestId: randomUUID(),
+                  title: `向当前智能体提供凭证 ${JSON.stringify(reference.name)} 的密码/密钥（${reference.host}，${reference.environment}）。用途：${purpose}`,
+                  options: [
+                    { optionId: "allow", name: "允许本次读取", kind: "allow_once" },
+                    { optionId: "reject", name: "拒绝", kind: "reject_once" },
+                  ],
+                });
+                if (decision !== "allow") throw new Error("Credential secret access denied");
+              }
+              assertCurrent();
+              try {
+                const credential = await credentialVaultReferenceReader!.readSecret(
+                  identity,
+                  reference,
+                  assertCurrent,
+                );
+                assertCurrent();
+                return credential;
+              } catch {
+                // 解密器的异常可能带私有实现信息，不能透传到 MCP 工具结果或日志。
+                throw new Error("Saved credential secret is unavailable or the request expired");
+              }
+            }
+            throw new Error("Unknown credential tool");
           },
         });
         if (disposed || generations.get(session.id) !== generation || removed.has(session.id)) {
           credentialReferenceRegistration.revoke();
           credentialReferenceRegistration = undefined;
-          throw new Error("ACP session closed while registering credential references MCP");
+          throw new Error("ACP session closed while registering credential MCP");
         }
         credentialReferenceRegistrations.set(session.id, credentialReferenceRegistration);
       }
@@ -1288,6 +1463,7 @@ export function createAcpService(
           ...(workflowRegistration ? [workflowRegistration.record] : []),
           ...(delegationRegistration ? [delegationRegistration.record] : []),
           ...(issuesRegistration ? [issuesRegistration.record] : []),
+          ...(environmentRegistration ? [environmentRegistration.record] : []),
           attachmentRegistration.record,
           ...(memoryRegistration ? [memoryRegistration.record] : []),
           ...(credentialReferenceRegistration ? [credentialReferenceRegistration.record] : []),
@@ -1464,6 +1640,32 @@ export function createAcpService(
         onPermission: async (request) => {
           if (!active.has(session.id) || generations.get(session.id) !== generation) return null;
           return requestPermission(session, request);
+        },
+        onElicitationApproval: async (request, signal) => {
+          if (
+            disposed ||
+            signal?.aborted ||
+            !active.has(session.id) ||
+            stopping.has(session.id) ||
+            generations.get(session.id) !== generation
+          )
+            return null;
+          const result = requestPermission(session, request);
+          const cancel = () => {
+            void cancelInteractions(
+              session,
+              (item) => item.request.requestId === request.requestId,
+            ).catch(() => {
+              settleInteractions(session.id);
+            });
+          };
+          signal?.addEventListener("abort", cancel, { once: true });
+          try {
+            const response = await result;
+            return typeof response === "string" ? response : null;
+          } finally {
+            signal?.removeEventListener("abort", cancel);
+          }
         },
         onElicitation: async (request, signal) => {
           if (
@@ -2121,7 +2323,7 @@ export function createAcpService(
       const delegationInstruction =
         port.provisionedMcpNames?.has("zcode-delegation") &&
         delegationRegistrations.get(session.id)?.canDelegate !== false
-          ? "用户提到委派或 @智能体时，使用 zcode-delegation 的 ListDelegationAgents / DelegateTask；保持当前主智能体，显式传递必要上下文，不复制全部历史。子任务完成只汇总，不自动继续修改、合并或推送。"
+          ? DELEGATION_MAIN_AGENT_INSTRUCTION
           : undefined;
       const workflowInstruction = /^\/workflow(?:\s|$)/i.test(prompt.text.trimStart())
         ? workflowRegistrations.has(session.id)
@@ -2169,14 +2371,19 @@ export function createAcpService(
       });
       timing?.phase("credential_context");
       let credentialContext: string | undefined;
-      try {
-        const credentialReferences = await options.credentialReferenceReader?.list();
-        if (credentialReferences)
-          credentialContext = credentialReferencePromptContext(credentialReferences);
-      } catch {
-        // 凭据元数据不可读时仍允许普通 ACP 请求继续；不记录凭据文件错误细节。
-        logger.warn(undefined, "ACP credential reference summary unavailable");
-      }
+      const credentialWorkspaceIdentity =
+        session.workspaceIdentity?.trim() || session.workspacePath;
+      const [credentialReferencesResult] = await Promise.allSettled([
+        options.credentialVaultReferenceReader?.listReferences(credentialWorkspaceIdentity),
+      ]);
+      const credentialReferences =
+        credentialReferencesResult.status === "fulfilled"
+          ? credentialReferencesResult.value
+          : undefined;
+      if (credentialReferencesResult.status === "rejected")
+        logger.warn(undefined, "ACP saved credential summary unavailable");
+      if (credentialReferences?.length)
+        credentialContext = credentialPromptContext(credentialReferences);
       timing?.phase("prompt_blocks");
       const blocks = await buildAcpPromptBlocks({
         text: buildAcpPluginPrompt(
@@ -2319,6 +2526,8 @@ export function createAcpService(
       // admission 已接受本轮附件后再派生清单；不改用户历史，也不反复发送历史图片字节。
       const attachmentContext = acpAttachmentPromptContext(session);
       if (attachmentContext) blocks.push({ type: "text", text: attachmentContext });
+      // 排队后分支仍可能变化；Agent 真正执行前重新校验，不能只依赖输入受理时的状态。
+      await options.beforeConversationInput?.(session);
       const wirePrompt = { port, result: port.prompt(prompt.text, blocks) };
       wirePrompts.set(session.id, wirePrompt);
       let usage: AcpUsageReport | null | void;
@@ -2524,7 +2733,7 @@ export function createAcpService(
   };
 
   // 命令回执与 legacy prompt 只选择等待边界，共用校验、幂等、串行 admission 和 Agent 执行路径。
-  const dispatchPrompt = async (
+  const dispatchPromptInternal = async (
     input: AcpWorkspace & { id: string } & AcpPromptInput,
     observeAdmission?: (admission: Promise<AcpCommandReceipt>) => void,
     timing?: PhaseTimer,
@@ -2568,6 +2777,7 @@ export function createAcpService(
       )
         throw new Error("ACP session is running");
       if (active.has(session.id) || session.status === "running" || session.queue.items.length) {
+        await options.beforeConversationInput?.(session);
         const key = `${session.id}:${prompt.commandId}`;
         const admission = beginAdmission(session, prompt.commandId);
         observeAdmission?.(admission.promise);
@@ -2584,6 +2794,7 @@ export function createAcpService(
           promptAdmissions.delete(key);
         }
       }
+      await options.beforeConversationInput?.(session);
       active.set(session.id, prompt.commandId);
       activeTokens.set(session.id, {});
       const key = `${session.id}:${prompt.commandId}`;
@@ -2603,6 +2814,19 @@ export function createAcpService(
     });
     scheduleQueueDrain(session);
     return receipt;
+  };
+
+  const dispatchPrompt = async (
+    input: AcpWorkspace & { id: string } & AcpPromptInput,
+    observeAdmission?: (admission: Promise<AcpCommandReceipt>) => void,
+    timing?: PhaseTimer,
+  ) => {
+    const releaseEnvironmentInput = options.beginEnvironmentInput?.(input, input.id);
+    try {
+      return await dispatchPromptInternal(input, observeAdmission, timing);
+    } finally {
+      releaseEnvironmentInput?.();
+    }
   };
 
   const removeSession = async (
@@ -2699,7 +2923,10 @@ export function createAcpService(
     return session;
   };
 
-  const service: IAcpService & { disposeAll(): void; disposeAllAndWait(): Promise<void> } = {
+  const serviceImplementation: IAcpService & {
+    disposeAll(): void;
+    disposeAllAndWait(): Promise<void>;
+  } = {
     generateText: (input) => textGeneration.generate(input),
     cancelGenerateText: (input) => textGeneration.cancel(input),
     async listPlugins(input): Promise<AcpPlugin[]> {
@@ -2837,7 +3064,11 @@ export function createAcpService(
     },
     async conversationRowsRange(input) {
       const params = acpConversationRowsRangeSchema.parse(input);
-      return (await readProjection(params)).projection.rowsRange(params.beforeRowId, params.limit);
+      return (await readProjection(params)).projection.rowsRange(
+        params.beforeRowId,
+        params.limit,
+        params.navigationOnly,
+      );
     },
     onDynamicConversationChanged(input) {
       const params = acpConversationTargetSchema.parse(input);
@@ -2863,6 +3094,7 @@ export function createAcpService(
             subscription.dispose();
             if (--cached.users === 0 && projections.get(params.id) === cached)
               projections.delete(params.id);
+            releaseIdleSessions();
           },
         };
       };
@@ -2929,7 +3161,9 @@ export function createAcpService(
               })),
           });
         } catch (error) {
-          logger.warn(undefined, "ACP usage session unreadable", { error: failureMessage(error) });
+          logger.warn(undefined, "ACP usage session unreadable", {
+            error: failureMessage(error),
+          });
         }
       }
       // 修复原因：统计页从未接入 Codex 原生请求，因而全是未知轮次；只读回溯
@@ -3786,6 +4020,7 @@ export function createAcpService(
       await Promise.allSettled([...attachmentWrites.values()].flatMap((tasks) => [...tasks]));
     },
   };
+  const service = cacheLease.wrap(serviceImplementation);
   return service;
 }
 

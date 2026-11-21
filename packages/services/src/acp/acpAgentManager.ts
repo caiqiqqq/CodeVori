@@ -311,6 +311,7 @@ async function managedPackage(
 
 async function npmInstallAttempt(
   prefix: string,
+  cache: string,
   agent: AcpAgent,
   env: NodeJS.ProcessEnv,
   targetVersion: string,
@@ -327,13 +328,19 @@ async function npmInstallAttempt(
   const staging = `${prefix}.${randomUUID()}.tmp`;
   const backup = `${prefix}.${randomUUID()}.backup`;
   const installEnv = { ...env };
-  // npm 在不同平台会读取大小写变体，旧环境不能悄悄覆盖本软件的镜像和 staging。
+  // npm 会读取大小写变体；全局缓存可能归 root 所有，须使用 staging 外的独立托管缓存。
   for (const key of Object.keys(installEnv)) {
     if (
-      ["npm_config_registry", "npm_config_prefix", "npm_config_disturl"].includes(key.toLowerCase())
+      [
+        "npm_config_registry",
+        "npm_config_prefix",
+        "npm_config_disturl",
+        "npm_config_cache",
+      ].includes(key.toLowerCase())
     )
       delete installEnv[key];
   }
+  await mkdir(cache, { recursive: true });
   await mkdir(staging, { recursive: true });
   let cleanupFailed = false;
   try {
@@ -353,6 +360,7 @@ async function npmInstallAttempt(
       env: {
         ...installEnv,
         npm_config_prefix: staging,
+        npm_config_cache: cache,
         npm_config_registry: ACP_NPM_REGISTRY,
         npm_config_disturl: "https://npmmirror.com/mirrors/node",
       },
@@ -787,12 +795,20 @@ export function createAcpAgentManager(
               : operationEnv;
             operations.setCancellable(true);
             try {
-              await npmInstallAttempt(prefix(agent), agent, installEnv, target.version, runtime, {
-                signal,
-                onProcessDone: () => operations.setCancellable(false),
-                onLog: (message) => emit("log", message),
-                timeoutMs: options.installTimeoutMs,
-              });
+              await npmInstallAttempt(
+                prefix(agent),
+                join(directory, "npm-cache"),
+                agent,
+                installEnv,
+                target.version,
+                runtime,
+                {
+                  signal,
+                  onProcessDone: () => operations.setCancellable(false),
+                  onLog: (message) => emit("log", message),
+                  timeoutMs: options.installTimeoutMs,
+                },
+              );
             } finally {
               operations.setCancellable(false);
             }
