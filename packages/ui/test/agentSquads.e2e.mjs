@@ -93,7 +93,7 @@ try {
       state.switchKind = setKind;
       return <main data-kind={kind} className="min-h-screen space-y-4 bg-background p-4 text-foreground">
         <nav>{createSettingsPageConfig().settingsSections.filter(item => ['general','agentProfiles'].includes(item.id)).map(item => <button key={item.id} onClick={() => setSection(item.id)} className="p-2 text-ui-base">{intl.formatMessage({ id: item.titleId })}</button>)}</nav>
-        {section === 'agentProfiles' ? <AgentsAndSquadsSection view={view} onViewChange={setView} onManageModels={() => {}} workspacePath="/synthetic/project" remoteTarget={remote ? { kind: 'ssh' } : undefined} /> : null}
+        {section === 'agentProfiles' ? <AgentsAndSquadsSection view={view} onViewChange={setView} workspacePath="/synthetic/project" remoteTarget={remote ? { kind: 'ssh' } : undefined} /> : null}
         <ChatPromptEditor key={kind} workspacePath="/synthetic/project" taskId={kind === 'api' ? 'api-parent' : null} acpMode={kind === 'acp'} acpAgent={kind === 'acp' ? 'codex' : null} acpSessionId={kind === 'acp' ? 'acp-parent' : null}
           showMentionButton enableMentionPanel inputTestId="main-input" submitLabel="发送主消息" onSubmit={value => { state.sent.push(value); setSent(value); return true; }} />
         <div data-testid="sent-user-message"><ConversationUserInputContent text={sent} /></div>
@@ -110,14 +110,23 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 1000 } });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
-    const captureLayout = async (name) => {
-      const view = page.getByTestId("agents-and-squads-view");
+    const captureLayout = async (name, view = page.getByTestId("agents-and-squads-view")) => {
+      const viewport = page.viewportSize();
+      // 完整表单比手机视口高；保持手机宽度，仅扩高截图视口，避免元素截图裁掉顶部。
+      await page.setViewportSize({
+        width,
+        height: Math.ceil((await view.boundingBox()).height) + 100,
+      });
       for (const theme of ["zai-light", "zai-dark"]) {
         await page.evaluate((value) => {
           document.documentElement.className = `theme-${value}${value === "zai-dark" ? " dark" : ""}`;
         }, theme);
-        await view.screenshot({ path: join(screenshotDir, `${width}-${name}-${theme}.png`) });
+        await view.screenshot({
+          path: join(screenshotDir, `${width}-${name}-${theme}.png`),
+          animations: "disabled",
+        });
       }
+      await page.setViewportSize(viewport);
       await page.evaluate(() => {
         document.documentElement.className = "";
       });
@@ -128,10 +137,34 @@ try {
     const settings = page.getByTestId("squads-settings");
     await settings.getByText("还没有小队", { exact: true }).waitFor();
     assert.equal(await settings.getByRole("button", { name: "新建小队" }).isDisabled(), true);
-    await settings.getByRole("button", { name: "新建智能体", exact: true }).click();
+    await page.getByRole("button", { name: "全部智能体", exact: true }).click();
+    await page.getByRole("button", { name: "新建智能体", exact: true }).click();
     let profileEditor = page.getByTestId("agent-profile-editor");
+    for (const name of ["身份", "行为与能力", "执行配置"]) {
+      await profileEditor.getByRole("region", { name, exact: true }).waitFor();
+    }
+    assert.equal(
+      await profileEditor.getByRole("button", { name: "保存", exact: true }).isDisabled(),
+      true,
+    );
+    await profileEditor.getByLabel("智能体名称", { exact: true }).fill("未保存草稿");
+    await profileEditor.getByRole("button", { name: "取消", exact: true }).click();
+    assert.equal(await page.evaluate(() => window.__squads.profiles.length), 0);
+    await page.getByRole("button", { name: "新建智能体", exact: true }).click();
+    assert.equal(await profileEditor.getByLabel("智能体名称", { exact: true }).inputValue(), "");
     await profileEditor.getByLabel("智能体名称", { exact: true }).fill("协调者");
+    await profileEditor
+      .getByLabel("说明", { exact: true })
+      .fill("拆解需求、协调执行并整理交付结果");
+    assert.equal(
+      await profileEditor.getByRole("button", { name: "保存", exact: true }).isDisabled(),
+      true,
+    );
     await profileEditor.getByLabel("职责提示词", { exact: true }).fill("拆解任务并汇总结果");
+    assert.ok(
+      (await profileEditor.getByLabel("职责提示词", { exact: true }).boundingBox()).height >= 176,
+    );
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await profileEditor.getByTestId("acp-config-trigger-model").waitFor();
     assert.match(
       await profileEditor.getByTestId("acp-config-trigger-model").getAttribute("aria-label"),
@@ -146,11 +179,17 @@ try {
     );
     await profileEditor.getByTestId("acp-config-trigger-thought").click();
     await page.getByTestId("acp-config-choice-thought-low").click();
+    await captureLayout("create-agent-acp");
     await profileEditor.getByRole("button", { name: "保存", exact: true }).click();
     assert.deepEqual(await page.evaluate(() => window.__squads.profiles[0].execution.config), [
       { configId: "model", value: "profile-model" },
       { configId: "thought", value: "low" },
     ]);
+    assert.equal(
+      await page.evaluate(() => window.__squads.profiles[0].description),
+      "拆解需求、协调执行并整理交付结果",
+    );
+    await page.getByRole("button", { name: "小队", exact: true }).click();
     await settings.getByRole("button", { name: "新建小队" }).click();
     let editor = page.getByTestId("squad-editor");
     await editor.getByLabel("小队名称", { exact: true }).fill("研发[小队]");
@@ -165,6 +204,7 @@ try {
     await profileEditor.getByLabel("思考强度", { exact: true }).click();
     await page.getByRole("option", { name: "low", exact: true }).click();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await captureLayout("create-agent-api", profileEditor);
     await page.screenshot({ path: join(shots, `${width}-profile-editor.png`), fullPage: true });
     await profileEditor.getByRole("button", { name: "保存", exact: true }).click();
     await profileEditor.waitFor({ state: "detached" });

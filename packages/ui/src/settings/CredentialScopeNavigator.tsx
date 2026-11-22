@@ -1,13 +1,9 @@
 import { Folder, Globe2 } from "lucide-react";
-
-export interface CredentialScopeProject {
-  identity: string;
-  label: string;
-  workspacePath: string;
-}
+import type { CredentialScopeProject } from "@/hooks/useCredentialScope.js";
 
 export function CredentialScopeNavigator({
   projects,
+  loading,
   selectedProjectIdentity,
   isGlobalSelected,
   label,
@@ -15,6 +11,7 @@ export function CredentialScopeNavigator({
   onProjectSelect,
 }: {
   projects: CredentialScopeProject[];
+  loading: boolean;
   selectedProjectIdentity: string;
   isGlobalSelected: boolean;
   label: (id: string) => string;
@@ -64,7 +61,12 @@ export function CredentialScopeNavigator({
           </li>
         ))}
       </ul>
-      {projects.length === 0 ? (
+      {loading ? (
+        <p role="status" className="px-2 py-2 text-ui-sm text-foreground-subtle">
+          {label("settings.credentials.loading")}
+        </p>
+      ) : null}
+      {!loading && projects.length === 0 ? (
         <p className="px-2 py-2 text-ui-sm text-foreground-subtle">
           {label("settings.credentials.projectsEmpty")}
         </p>

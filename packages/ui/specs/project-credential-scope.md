@@ -2,7 +2,7 @@
 
 ## Behavior
 
-- Credential management is a system-level settings surface, independent of the currently active workspace. It lists every known project from the shared project-management source (recent projects plus open project tabs), and the user selects a project to inspect and manage its attachments.
+- Credential management is a system-level settings surface, independent of the currently active workspace. It lists known main projects from the shared project-management source (recent projects plus open project tabs), and the user selects a project to inspect and manage its attachments.
 - The scope list also contains a Global entry. Global credentials are listed and managed only in Global settings. Runtime credential resolution may still use global credentials for any project.
 - Credentials are created in the Host vault as unassigned. Creating one does not attach it to the selected project or Global.
 - A project explicitly selects an unassigned or already project-assigned credential to attach it. A project can have many credentials and one project-scoped credential can be attached to many projects. Detaching removes only the selected project's association; when the last project association is removed the credential returns to the unassigned pool.
@@ -18,6 +18,9 @@
 - `CredentialService` owns credential records and their unassigned/global/project scope. It validates scope and project identity for attach, detach, project list, edit, rotation, and delete operations.
 - `CredentialVaultRepository` persists credential scope and project associations separately. A normalized association table maps one project-scoped credential to many canonical workspace identities.
 - The settings UI owns the selected project or Global view as local state, creates unassigned records, and issues explicit scope commands. The project list comes from the existing shared project-management hook.
+- The credential scope hook reuses `useWorktreeProjectGroupsResolution` to resolve local Git relationships through the base Git service. A main repository appears once; linked worktrees and branch subprojects have no navigation entries, including linked worktrees whose main project is not in the known list. Repeated canonical identities are deduplicated; unrelated same-name repositories and remote identities remain separate. Git lookup failures never infer relationships from names or paths.
+- The scope hook owns selection and the visible project projection together. Opening settings from a worktree selects its known main project after Git resolution; an absent main project falls back to Global. While a local selection is unresolved no credential request is sent for it. Queries and mutations use exactly the visible selected project identity. Hiding worktrees does not migrate associations or grant runtime credential access to worktrees or siblings.
+- Settings is the vault management surface: its attachable pool can show metadata from other projects for explicit association. Runtime metadata and secret access are restricted to Global plus the requesting project's explicit associations; seeing a management candidate does not grant runtime access.
 
 ## Invariants and failure behavior
 
@@ -34,12 +37,15 @@
 sequenceDiagram
     participant UI as System Settings UI
     participant Projects as Project Management Source
+    participant Git as Base Git Service
     participant Host as CredentialService
     participant Repo as CredentialVaultRepository
     UI->>Host: save credential (scope = unassigned)
     Host->>Repo: persist encrypted secret reference and metadata
     UI->>Projects: list recent + open projects
     Projects-->>UI: projects with canonical identities
+    UI->>Git: resolve local Git worktree relationships (shared hook)
+    Git-->>UI: main-project navigation projection (worktrees hidden)
     UI->>Host: list attachable / global / project(selectedProjectKey)
     Host->>Repo: query scope and project association table
     Repo-->>Host: metadata only
@@ -54,17 +60,19 @@ sequenceDiagram
 1. A credential can be created without an active project and appears in the unassigned pool.
 2. Creating a credential while viewing project A leaves it unassigned until the user explicitly selects it for A.
 3. Project A can attach an unassigned credential and then list, edit, rotate, detach, or delete it.
-4. Project B cannot list, attach, detach, edit, rotate, or delete a credential attached to A.
+4. Before explicit association to B, B's runtime cannot list metadata or read A's credential, even with A's exact reference ID. B cannot edit, rotate, detach, or delete through B's scope. The system settings user may explicitly associate the existing credential to B.
 5. After detaching from A, the credential returns to the unassigned pool and can be attached to B.
 6. The target environment remains visible but does not determine project ownership.
 7. Secret values never appear in list responses or rendered UI.
-8. The settings page lists all known projects and a Global scope even when the active workspace changes.
+8. The settings page lists all known main projects and a Global scope even when the active workspace changes.
 9. Attaching a credential to Global makes it visible only in Global settings, while project runtime lookup can still resolve it.
 10. A project cannot list or mutate a global credential through project settings; global edits and removal are available in Global.
 11. A delayed project A list response is discarded after switching to project B or Global.
 12. A project-scoped credential can be associated with A and B; detaching from A leaves it available to B, and detaching from B returns it to the unassigned pool.
 13. Existing project attachments remain attached to their prior project and existing null-identity records remain unassigned after migration.
 14. The scope navigator and credential groups use the shared settings card, border, selection, and typography tokens, and remain readable at narrow mobile widths.
+15. A main repository with two linked worktrees has exactly one project button and no branch-labelled or nested scope buttons. Opening settings from a worktree selects and queries only its main project, after Git resolution. An orphan linked worktree is hidden and defaults to Global. Duplicates of the same identity appear once; unrelated same-name and remote projects stay separate. Existing worktree associations are not reassigned and runtime isolation is unchanged.
+16. A credential associated with A and B is unreadable by C (including the same path on a different remote identity). Revoking A immediately removes A's runtime metadata and blocks reads using a cached reference without decrypting; B retains access. Revoking B also removes its access. Global credentials remain readable by all project runtimes.
 
 ## Migration boundary
 

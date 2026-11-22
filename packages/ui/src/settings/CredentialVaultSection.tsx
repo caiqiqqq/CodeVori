@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import type {
   CredentialVaultEntry,
@@ -9,10 +9,8 @@ import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useCredentialVault } from "@/hooks/useCredentialVault.js";
 import { CredentialEntryList } from "./CredentialEntryList.js";
-import {
-  CredentialScopeNavigator,
-  type CredentialScopeProject,
-} from "./CredentialScopeNavigator.js";
+import { CredentialScopeNavigator } from "./CredentialScopeNavigator.js";
+import { useCredentialScope, type CredentialScopeProject } from "@/hooks/useCredentialScope.js";
 import {
   CredentialVaultEntryDialog,
   type CredentialVaultDialogMode,
@@ -29,11 +27,7 @@ export function CredentialVaultSection({
 }: {
   initialWorkspacePath: string | null;
   initialWorkspaceIdentity?: string | null;
-  projects: Array<{
-    workspacePath: string;
-    workspaceIdentity?: string;
-    label: string;
-  }>;
+  projects: Array<Omit<CredentialScopeProject, "identity">>;
 }) {
   const { intl } = useZCodeIntl();
   const {
@@ -46,32 +40,15 @@ export function CredentialVaultSection({
     detach,
     detachGlobal,
   } = useCredentialVault();
-  const knownProjects = useMemo(() => {
-    const unique = new Map<string, CredentialScopeProject>();
-    for (const project of projects) {
-      const identity = project.workspaceIdentity?.trim() || project.workspacePath.trim();
-      if (!identity) continue;
-      unique.set(identity, {
-        identity,
-        label: project.label,
-        workspacePath: project.workspacePath,
-      });
-    }
-    return [...unique.values()];
-  }, [projects]);
-  const initialProjectIdentity = initialWorkspaceIdentity?.trim() || initialWorkspacePath?.trim();
-  const [selectedScope, setSelectedScope] = useState<
-    { kind: "global" } | { kind: "project"; identity: string }
-  >(() =>
-    initialProjectIdentity
-      ? { kind: "project", identity: initialProjectIdentity }
-      : { kind: "global" },
-  );
-  const selectedProject =
-    selectedScope.kind === "project"
-      ? (knownProjects.find((project) => project.identity === selectedScope.identity) ?? null)
-      : null;
-  const isGlobalSelected = selectedScope.kind === "global";
+  const {
+    projects: visibleProjects,
+    selectedProject,
+    setSelectedScope,
+    isGlobalSelected,
+    selectionKey,
+    pending,
+    loading: projectsLoading,
+  } = useCredentialScope({ projects, initialWorkspacePath, initialWorkspaceIdentity });
   const projectIdentity = selectedProject?.identity ?? "";
   const [projectEntries, setProjectEntries] = useState<CredentialVaultEntry[]>([]);
   const [globalEntries, setGlobalEntries] = useState<CredentialVaultEntry[]>([]);
@@ -83,31 +60,15 @@ export function CredentialVaultSection({
   const [mutatingId, setMutatingId] = useState<string | null>(null);
   const [dialogMode, setDialogMode] = useState<CredentialVaultDialogMode | null>(null);
   const refreshVersion = useRef(0);
-  const selectionKey =
-    selectedScope.kind === "global" ? "global" : `project:${selectedScope.identity}`;
   const activeSelectionKey = useRef(selectionKey);
   activeSelectionKey.current = selectionKey;
 
   const label = useCallback((id: string) => intl.formatMessage({ id }), [intl]);
-  useEffect(() => {
-    if (
-      selectedScope.kind === "global" ||
-      knownProjects.some((project) => project.identity === selectedScope.identity)
-    ) {
-      return;
-    }
-    const initialProject = knownProjects.find(
-      (project) => project.identity === initialProjectIdentity,
-    );
-    const fallbackProject = initialProject?.identity ?? knownProjects[0]?.identity;
-    setSelectedScope(
-      fallbackProject ? { kind: "project", identity: fallbackProject } : { kind: "global" },
-    );
-  }, [initialProjectIdentity, knownProjects, selectedScope]);
   const refresh = useCallback(async () => {
     const version = ++refreshVersion.current;
     setLoading(true);
     setErrorId(null);
+    if (pending) return;
     try {
       const [scoped, available] = await Promise.all([
         selectedProject ? list(projectIdentity) : listGlobal(),
@@ -131,6 +92,7 @@ export function CredentialVaultSection({
     listGlobal,
     listUnassigned,
     projectIdentity,
+    pending,
     selectedProject,
     selectionKey,
   ]);
@@ -203,7 +165,8 @@ export function CredentialVaultSection({
 
       <div className="grid items-start gap-4 md:grid-cols-[12rem_minmax(0,1fr)]">
         <CredentialScopeNavigator
-          projects={knownProjects}
+          projects={visibleProjects}
+          loading={projectsLoading}
           selectedProjectIdentity={projectIdentity}
           isGlobalSelected={isGlobalSelected}
           label={label}
