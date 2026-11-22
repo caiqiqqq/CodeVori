@@ -80,10 +80,10 @@ const zhCN: Record<string, string> = {
   "agentBoard.groupStatus": "按状态分组",
   "agentBoard.groupWorkflow": "按工作流分组",
   "agentBoard.workflow.manage": "配置工作流",
-  "agentBoard.workflow.title": "工作流状态",
+  "agentBoard.workflow.title": "看板状态库",
   "agentBoard.workflow.description":
-    "管理看板会话与任务的业务状态。运行状态仍由会话和任务本身决定。",
-  "agentBoard.workflow.assigneeOnEntry": "进入任一状态时，清空看板负责人。",
+    "这里定义看板会话与任务可归入的状态列；启用项会显示为列，顺序就是列顺序。它不代表会话或任务是否正在运行。",
+  "agentBoard.workflow.assigneeOnEntry": "卡片切换到其他状态后，会清空该卡片的看板负责人。",
   "agentBoard.workflow.enabled": "启用",
   "agentBoard.workflow.moveUp": "上移状态",
   "agentBoard.workflow.moveDown": "下移状态",

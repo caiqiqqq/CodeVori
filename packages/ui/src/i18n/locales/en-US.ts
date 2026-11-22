@@ -80,10 +80,11 @@ const enUS: Record<string, string> = {
   "agentBoard.groupStatus": "By status",
   "agentBoard.groupWorkflow": "By workflow",
   "agentBoard.workflow.manage": "Configure workflow",
-  "agentBoard.workflow.title": "Workflow statuses",
+  "agentBoard.workflow.title": "Board status library",
   "agentBoard.workflow.description":
-    "Manage board statuses for conversations and tasks. Runtime status remains owned by each session or task.",
-  "agentBoard.workflow.assigneeOnEntry": "Entering any status clears the board assignee.",
+    "Define the status columns for board conversations and tasks. Enabled statuses appear as columns in this order; they do not indicate whether a conversation or task is running.",
+  "agentBoard.workflow.assigneeOnEntry":
+    "Moving a card to another status clears that card's board assignee.",
   "agentBoard.workflow.enabled": "Enabled",
   "agentBoard.workflow.moveUp": "Move status up",
   "agentBoard.workflow.moveDown": "Move status down",
