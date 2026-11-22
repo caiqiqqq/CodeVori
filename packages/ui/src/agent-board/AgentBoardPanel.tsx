@@ -37,6 +37,7 @@ import type { WorkspaceTabState } from "@/store/tabStore.js";
 import { logger } from "@/logger.js";
 import {
   boardAgentLabel,
+  BOARD_WORKFLOW_STATUS_CATEGORIES,
   boardEntityKey,
   boardDisplayStatus,
   defaultWorkflowStatusId,
@@ -176,7 +177,9 @@ export function AgentBoardView({
     Boolean(project) ||
     preferences.category !== "all" ||
     groupedProjects.length > 6;
-  const enabledWorkflowStatuses = preferences.workflowStatuses.filter((status) => status.enabled);
+  const enabledWorkflowStatuses = BOARD_WORKFLOW_STATUS_CATEGORIES.flatMap((category) =>
+    preferences.workflowStatuses.filter((status) => status.enabled && status.category === category),
+  );
   const workflowFallbackId = enabledWorkflowStatuses[0]?.id;
   const workflowStatusLabel = (status: (typeof preferences.workflowStatuses)[number]) => {
     const initial = DEFAULT_BOARD_WORKFLOW_STATUSES.find((entry) => entry.id === status.id);

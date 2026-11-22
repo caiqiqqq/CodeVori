@@ -21,15 +21,34 @@ export const BOARD_STATUSES = [
 export type BoardStatus = (typeof BOARD_STATUSES)[number];
 export const BOARD_DISPLAY_STATUSES = ["running", "completed", "staged", "error"] as const;
 export type BoardDisplayStatus = (typeof BOARD_DISPLAY_STATUSES)[number];
-export type BoardWorkflowStatus = { id: string; label: string; enabled: boolean };
+export const BOARD_WORKFLOW_STATUS_CATEGORIES = ["unstarted", "started", "done", "closed"] as const;
+export type BoardWorkflowStatusCategory = (typeof BOARD_WORKFLOW_STATUS_CATEGORIES)[number];
+export type BoardWorkflowStatus = {
+  id: string;
+  label: string;
+  enabled: boolean;
+  category: BoardWorkflowStatusCategory;
+};
 export const DEFAULT_BOARD_WORKFLOW_STATUSES: readonly BoardWorkflowStatus[] = [
-  { id: "todo", label: "待办", enabled: true },
-  { id: "in-progress", label: "进行中", enabled: true },
-  { id: "review", label: "审核中", enabled: true },
-  { id: "blocked", label: "已阻塞", enabled: true },
-  { id: "completed", label: "已完成", enabled: true },
-  { id: "canceled", label: "已取消", enabled: true },
+  { id: "todo", label: "待办", enabled: true, category: "unstarted" },
+  { id: "in-progress", label: "进行中", enabled: true, category: "started" },
+  { id: "review", label: "审核中", enabled: true, category: "started" },
+  { id: "blocked", label: "已阻塞", enabled: true, category: "started" },
+  { id: "completed", label: "已完成", enabled: true, category: "done" },
+  { id: "canceled", label: "已取消", enabled: true, category: "closed" },
 ];
+export function resolveBoardWorkflowStatusCategory(
+  id: string,
+  category: unknown,
+): BoardWorkflowStatusCategory | undefined {
+  if (category === undefined)
+    return (
+      DEFAULT_BOARD_WORKFLOW_STATUSES.find((status) => status.id === id)?.category ?? "started"
+    );
+  return BOARD_WORKFLOW_STATUS_CATEGORIES.includes(category as BoardWorkflowStatusCategory)
+    ? (category as BoardWorkflowStatusCategory)
+    : undefined;
+}
 export type BoardView =
   | "all"
   | "active"

@@ -125,6 +125,41 @@ test("invalid workflow preferences recover without accepting disabled or duplica
   assert.deepEqual(state.workflowAssignments, {});
 });
 
+test("legacy workflow statuses migrate to lifecycle groups and custom groups persist", () => {
+  let raw: string | null = JSON.stringify({
+    view: "all",
+    group: "workflow",
+    project: null,
+    pinnedProjects: null,
+    agent: "all",
+    search: "",
+    workflowStatuses: [
+      { id: "todo", label: "待办", enabled: true },
+      { id: "custom-review", label: "待检查", enabled: true },
+    ],
+  });
+  const storage = {
+    getItem: () => raw,
+    setItem: (_: string, value: string) => {
+      raw = value;
+    },
+    removeItem() {},
+  };
+  const restored = createAgentBoardStore(storage);
+  assert.equal(restored.getState().workflowStatuses[0]?.category, "unstarted");
+  assert.equal(restored.getState().workflowStatuses[1]?.category, "started");
+  restored
+    .getState()
+    .setWorkflowStatuses(
+      restored
+        .getState()
+        .workflowStatuses.map((status) =>
+          status.id === "custom-review" ? { ...status, category: "done" } : status,
+        ),
+    );
+  assert.equal(createAgentBoardStore(storage).getState().workflowStatuses[1]?.category, "done");
+});
+
 test("status views separate ongoing, completed, failed and archived work", () => {
   for (const status of BOARD_STATUSES) {
     const item = { status, archived: false } as BoardItem;
