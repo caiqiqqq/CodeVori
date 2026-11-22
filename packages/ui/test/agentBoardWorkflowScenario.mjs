@@ -2,6 +2,15 @@ import assert from "node:assert/strict";
 
 export async function exerciseAgentBoardWorkflow(page) {
   await page.getByRole("button", { name: "配置工作流", exact: true }).click();
+  await page
+    .getByText(
+      "这里定义看板会话与任务可归入的状态列；启用项会显示为列，顺序就是列顺序。它不代表会话或任务是否正在运行。",
+      { exact: true },
+    )
+    .waitFor();
+  await page
+    .getByText("卡片切换到其他状态后，会清空该卡片的看板负责人。", { exact: true })
+    .waitFor();
   assert.equal(await page.locator("[data-board-column]").count(), 6);
   await page.getByRole("textbox", { name: "新状态名称", exact: true }).fill("发布");
   await page.getByRole("button", { name: "添加", exact: true }).click();
