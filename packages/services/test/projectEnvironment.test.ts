@@ -19,6 +19,7 @@ async function fixture(t: test.TestContext) {
       host: "app.example.invalid",
       port: 22,
       username: "observer",
+      scope: "global",
       workspaceIdentity: null,
       hasSecret: true,
       createdAt: 1,
@@ -26,9 +27,13 @@ async function fixture(t: test.TestContext) {
     },
   ];
   let busy = false;
+  const credentialListScopes: string[] = [];
   const options = {
     databasePath: join(directory, "credential-vault.sqlite"),
-    listCredentials: async () => structuredClone(entries),
+    listCredentials: async (workspaceIdentity: string) => {
+      credentialListScopes.push(workspaceIdentity);
+      return structuredClone(entries);
+    },
     assertSessionIdle: async () => {
       if (busy) throw new Error("environment.session-busy");
     },
@@ -61,6 +66,7 @@ async function fixture(t: test.TestContext) {
     service,
     options,
     entries,
+    credentialListScopes,
     projectScope,
     scope,
     input,
@@ -71,8 +77,9 @@ async function fixture(t: test.TestContext) {
 }
 
 test("environment profiles persist and reject stale edits/deletes", async (t) => {
-  const { service, options, input } = await fixture(t);
+  const { service, options, input, credentialListScopes } = await fixture(t);
   const saved = await service.saveProjectEnvironment(input);
+  assert.deepEqual(credentialListScopes, ["remote:one"]);
   assert.equal(saved.revision, 1);
   const changed = await service.saveProjectEnvironment({
     ...input,
@@ -125,6 +132,7 @@ test("environment profiles persist and reject stale edits/deletes", async (t) =>
 
 test("environment reads and credential bindings enforce exact workspace identity", async (t) => {
   const { service, input, entries, projectScope, scope } = await fixture(t);
+  entries[0]!.scope = "project";
   entries[0]!.workspaceIdentity = scope.workspaceIdentity;
   const saved = await service.saveProjectEnvironment(input);
   const other = { ...projectScope, workspaceIdentity: "remote:two" };
@@ -151,6 +159,8 @@ test("environment reads and credential bindings enforce exact workspace identity
 
 test("environment resources resolve current metadata and retain unavailable references", async (t) => {
   const { service, entries, input, projectScope } = await fixture(t);
+  entries[0]!.scope = "project";
+  entries[0]!.workspaceIdentity = projectScope.workspaceIdentity;
   const saved = await service.saveProjectEnvironment(input);
   entries[0]!.host = "updated.example.invalid";
   const read = await service.readProjectEnvironment({ ...projectScope, id: saved.id });

@@ -86,6 +86,7 @@ import { DeviceBridgeSettingsSection } from "@/settings/DeviceBridgeSettingsSect
 import { BrowserSettingsSection } from "@/settings/BrowserSettingsSection.js";
 import { ComputerUseSection } from "@/settings/ComputerUseSection.js";
 import { CredentialVaultSection } from "@/settings/CredentialVaultSection.js";
+import { useProjectManagement } from "@/hooks/useProjectManagement.js";
 import { ShortcutSettingsSection } from "@/settings/ShortcutSettingsSection.js";
 import { QuickMessagesSection } from "@/settings/QuickMessagesSection.js";
 import { WorktreesSection } from "@/settings/WorktreesSection.js";
@@ -708,6 +709,7 @@ export function SettingsPage({
   const services = useServices();
   const onboardingRecordService = services.onboardingRecordService;
   const localHostServices = useBaseWorkspaceServices();
+  const { projects: managedProjects } = useProjectManagement();
   const { settings: sharedSettings, update: updateSharedSettings } = useSettings();
   const memoryWorkspaceDisplayNames = useMemo(() => {
     const names = new Set<string>();
@@ -1407,6 +1409,7 @@ export function SettingsPage({
     [setCodePreviewSettings],
   );
   const activeSectionMeta = settingsSections.find((section) => section.id === activeSection);
+  const isModelSettingsSection = activeSection === "modelProvider" || activeSection === "acpAgents";
   // 灰度裁决异步到达：sections 列表可能在挂载后变化（如 computerUse 区被灰度移除）。
   // 若用户正停留在被移除的 section，回落到第一个可见区，避免整页 return null。
   useEffect(() => {
@@ -1542,7 +1545,9 @@ export function SettingsPage({
                           {groupLabel}
                         </div>
                         {group.sections.map(({ id, icon: Icon, titleId }) => {
-                          const isActive = activeSection === id;
+                          const isActive =
+                            activeSection === id ||
+                            (id === "modelProvider" && isModelSettingsSection);
                           const label = intl.formatMessage({ id: titleId });
 
                           return (
@@ -1677,7 +1682,9 @@ export function SettingsPage({
                           <div className="flex min-w-0 flex-wrap items-center gap-3">
                             {showActiveSectionTitle ? (
                               <h2 className="text-2xl font-semibold tracking-tight text-foreground lg:text-3xl">
-                                {activeSectionLabel}
+                                {isModelSettingsSection
+                                  ? intl.formatMessage({ id: "settings.modelProviderTitle" })
+                                  : activeSectionLabel}
                               </h2>
                             ) : null}
                             {!hasVisibleSettingsBreadcrumb && activeSectionMeta.titleBadgeId ? (
@@ -1693,6 +1700,31 @@ export function SettingsPage({
                                 codingPlanSources={usageCodingPlanSources}
                                 onTabChange={handleUsageTabSelect}
                               />
+                            ) : null}
+                            {isModelSettingsSection ? (
+                              <div
+                                role="group"
+                                aria-label={intl.formatMessage({
+                                  id: "settings.modelProviderTitle",
+                                })}
+                                data-testid="settings-model-tabs"
+                                className="flex flex-wrap items-center gap-1 rounded-lg bg-surface p-1"
+                              >
+                                <SegmentPill
+                                  active={activeSection === "modelProvider"}
+                                  label={intl.formatMessage({
+                                    id: "settingsSync.category.providers",
+                                  })}
+                                  testId="settings-model-tab-providers"
+                                  onClick={() => setActiveSettingsSection("modelProvider")}
+                                />
+                                <SegmentPill
+                                  active={activeSection === "acpAgents"}
+                                  label={intl.formatMessage({ id: "settings.acpAgents.title" })}
+                                  testId="settings-model-tab-agent-sdk"
+                                  onClick={() => setActiveSettingsSection("acpAgents")}
+                                />
+                              </div>
                             ) : null}
                           </div>
                         </div>
@@ -1965,8 +1997,9 @@ export function SettingsPage({
                           />
                         ) : activeSection === "credentials" ? (
                           <CredentialVaultSection
-                            workspacePath={activeWorkspacePath}
-                            workspaceIdentity={activeWorkspaceIdentity}
+                            initialWorkspacePath={activeWorkspacePath}
+                            initialWorkspaceIdentity={activeWorkspaceIdentity}
+                            projects={managedProjects}
                           />
                         ) : activeSection === "skill" ? (
                           <PluginsSection
@@ -2014,7 +2047,6 @@ export function SettingsPage({
                           <AgentsAndSquadsSection
                             view={agentSettingsView}
                             onViewChange={setAgentSettingsView}
-                            onManageModels={handleOpenModelProviderSettings}
                             workspacePath={activeWorkspacePath}
                             workspaceIdentity={activeWorkspaceIdentity}
                             remoteSessionId={acpWorkspaceTab?.remoteSessionId}

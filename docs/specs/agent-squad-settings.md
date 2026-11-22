@@ -2,16 +2,18 @@
 
 ## 产品规则
 
-- 将智能体档案（`agentProfiles`）和小队（`squads`）合并为一个“智能体与小队”设置入口，内部使用“智能体”和“小队”两个分段。
+- 将智能体档案（`agentProfiles`）和小队（`squads`）合并为一个“智能体与小队”设置入口；入口内采用参考 Multica 团队页的分组导航和主内容列表，不使用页顶横向 tabs。
+- 内部侧栏分为“智能体”和“小队与成员”两个分组，分别导航到智能体档案和小队列表；计数仅显示当前数据源真实记录数。
 - `SubagentsSection` 不属于本次合并；`delegation` 继续遵循主分支的独立导航和隐藏策略，不映射到合并页。
 - 复用 `AgentProfilesSection`、`AgentSquadsSection` 及其 hooks、服务和持久化，不新增业务写入路径。切换分段只改变局部 UI 选择。
 - `agentProfiles` 是合并入口的规范 ID；旧 `squads` 意图进入同一入口并选中“小队”。显式 `agentProfiles` 意图选中“智能体”。冷启动与已打开页面都遵守同一规则。
 - 普通打开合并页默认显示“智能体”；上次保存的旧 `squads` 位置仍可恢复到“小队”。导航意图消费后不应影响后续打开。
-- 使用主题语义色、`text-ui-*` 字级、现有分段组件和宽内容容器，兼容桌面及窄屏 Web、中英文。
+- 主列表保留创建、编辑、删除及错误/加载/空态；不展示当前服务数据不支持的在线状态、运行时长或运行次数。
+- 使用主题语义色、`text-ui-*` 字级、宽内容容器，兼容桌面及窄屏 Web、中英文。
 
 ## 状态所有者与接口
 
-- `SettingsPage` 是一级设置 section 和内部 `AgentSettingsView` 的唯一状态所有者；`AgentsAndSquadsSection` 是受控展示组件。
+- `SettingsPage` 是一级设置 section 和内部 `AgentSettingsView` 的唯一状态所有者；`AgentsAndSquadsSection` 是受控展示组件，持有该页当前的二级导航选择。
 - `settingsNavigation` 保留旧 `SettingsSectionId` 输入，通过 `resolveSettingsSection` 将 `squads` 映射为 `agentProfiles`；原始意图用于选中分段。
 - `AgentProfilesSection` 和 `AgentSquadsSection` 仍通过原有 hooks 读写服务端配置；局部选择不写入服务端、不复制配置。
 - 存储不可用时沿用现有安全回退，不影响通过同窗口事件导航；本次不改变远程 workspace 身份、同步或委派语义。
@@ -20,7 +22,7 @@
 sequenceDiagram
     participant Nav as 导航意图
     participant Page as SettingsPage（唯一 UI 状态所有者）
-    participant View as AgentsAndSquadsSection
+    participant View as 分组导航与列表
     participant Config as 原有配置组件与 hooks
     Nav->>Page: agentProfiles / squads
     Page->>Page: squads 归一为 agentProfiles，并选中 squads 分段

@@ -185,14 +185,29 @@ export async function assertDelegationSettings(page, shots, width) {
 
   const navigation = page.getByTestId("delegation-settings-navigation");
   assert.equal(await navigation.getByRole("button", { name: "多智能体协同" }).count(), 1);
-  await navigation.getByRole("button", { name: "Agent SDK 管理", exact: true }).click();
+  const modelEntry = navigation.getByRole("button", { name: "模型设置", exact: true });
+  assert.equal(await modelEntry.count(), 1);
+  assert.equal(
+    await navigation.getByRole("button", { name: "Agent SDK 管理", exact: true }).count(),
+    0,
+  );
+  await modelEntry.click();
+  const modelTabs = page.getByTestId("settings-model-tabs");
+  await modelTabs.getByRole("button", { name: "Agent SDK 管理", exact: true }).click();
   await page.getByTestId("settings-acp-agents").waitFor();
+  assert.equal(await modelTabs.isVisible(), true);
+  assert.equal(
+    await modelTabs.getByRole("button", { name: "Agent SDK 管理" }).getAttribute("aria-pressed"),
+    "true",
+  );
+  assert.equal(await modelEntry.getAttribute("aria-current"), "page");
   assert.equal(await section.count(), 0, "SDK management no longer mounts collaboration settings");
   assert.equal(await page.getByLabel("最大委托深度").count(), 0);
+  await modelTabs.getByRole("button", { name: "模型供应商", exact: true }).click();
+  assert.equal(await page.getByTestId("settings-acp-agents").count(), 0);
   await navigation.getByRole("button", { name: "多智能体协同", exact: true }).click();
   await section.waitFor();
   await wait(expected);
-  assert.equal(await page.getByTestId("settings-acp-agents").count(), 0);
   assert.equal(await page.getByRole("heading", { name: "多智能体协同", exact: true }).count(), 1);
   await page.evaluate(() => window.__delegation.reopenSettings());
   await wait(expected);
@@ -206,6 +221,15 @@ export async function assertDelegationSettings(page, shots, width) {
   assert.equal(
     await page.evaluate(() => sessionStorage.getItem("zcode-settings-section-intent")),
     null,
+  );
+  await page.evaluate(() => window.__delegation.openSettingsIntent("modelProvider"));
+  assert.equal(await page.getByTestId("settings-model-providers").count(), 1);
+  assert.equal(
+    await page
+      .getByTestId("settings-model-tabs")
+      .getByRole("button", { name: "模型供应商", exact: true })
+      .getAttribute("aria-pressed"),
+    "true",
   );
   await navigation.getByRole("button", { name: "多智能体协同", exact: true }).click();
   await page.evaluate(() => window.__delegation.reopenSettings());

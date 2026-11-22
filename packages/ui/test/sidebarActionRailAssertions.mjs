@@ -15,7 +15,7 @@ export async function assertSidebarActionRail({ page, prepare, artifacts }) {
     const rail = page.getByTestId("workspace-sidebar-action-rail");
     await rail.waitFor();
     const buttons = rail.getByRole("button");
-    assert.equal(await buttons.count(), 4);
+    assert.equal(await buttons.count(), 5);
     const bounds = await rail.boundingBox();
     assert.equal(bounds.width, 48);
     for (const button of await buttons.all()) {

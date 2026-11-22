@@ -3,88 +3,31 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import type {
   CredentialVaultEntry,
-  CredentialVaultEnvironment,
-  CredentialVaultKind,
+  CredentialVaultScope,
   SaveCredentialVaultEntryInput,
 } from "./credential.js";
+import { initializeCredentialVaultSchema } from "./credentialVaultSchema.js";
+import {
+  mapCredentialVaultMutation,
+  projectCredentialVaultRow,
+  type CredentialVaultMutation,
+  type CredentialVaultRow,
+} from "./credentialVaultRows.js";
+import {
+  attachProjectEntry,
+  credentialIsInScope,
+  detachProjectEntry,
+  findActiveSecret,
+  listAttachableEntries,
+  listEntriesByScope,
+  listProjectEntries,
+  listRuntimeAccessibleEntries,
+  scopedPredicate,
+} from "./credentialVaultProjectAttachments.js";
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
 type CredentialVaultDatabase = InstanceType<typeof DatabaseSync>;
-
-const DATABASE_BUSY_TIMEOUT_MS = 5_000;
-const CREDENTIAL_VAULT_COLUMNS = `(
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  environment TEXT NOT NULL CHECK (environment IN ('development', 'test', 'staging', 'production')),
-  host TEXT NOT NULL,
-  port INTEGER,
-  username TEXT,
-  workspace_identity TEXT,
-  secret_key TEXT NOT NULL,
-  previous_secret_key TEXT,
-  status TEXT NOT NULL CHECK (status IN ('creating', 'active', 'rotating', 'deleting')),
-  operation_owner_pid INTEGER,
-  operation_owner_started_at INTEGER,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-)`;
-
-interface CredentialVaultRow {
-  id: string;
-  name: string;
-  kind: CredentialVaultKind;
-  environment: CredentialVaultEnvironment;
-  host: string;
-  port: number | null;
-  username: string | null;
-  workspace_identity: string | null;
-  secret_key: string;
-  previous_secret_key: string | null;
-  status: "creating" | "active" | "rotating" | "deleting";
-  operation_owner_pid: number | null;
-  operation_owner_started_at: number | null;
-  created_at: number;
-  updated_at: number;
-}
-
-export interface CredentialVaultMutation {
-  id: string;
-  status: Exclude<CredentialVaultRow["status"], "active">;
-  secretKey: string;
-  previousSecretKey: string | null;
-  operationOwnerPid: number | null;
-  operationOwnerStartedAt: number | null;
-}
-
-function projectEntry(row: CredentialVaultRow): CredentialVaultEntry {
-  return {
-    id: row.id,
-    name: row.name,
-    kind: row.kind,
-    environment: row.environment,
-    host: row.host,
-    port: row.port,
-    username: row.username,
-    workspaceIdentity: row.workspace_identity,
-    hasSecret: true,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-function mapMutation(row: CredentialVaultRow): CredentialVaultMutation | null {
-  if (row.status === "active") return null;
-  return {
-    id: row.id,
-    status: row.status,
-    secretKey: row.secret_key,
-    previousSecretKey: row.previous_secret_key,
-    operationOwnerPid: row.operation_owner_pid,
-    operationOwnerStartedAt: row.operation_owner_started_at,
-  };
-}
 
 export class CredentialVaultRepository {
   private database: CredentialVaultDatabase | null = null;
@@ -92,48 +35,89 @@ export class CredentialVaultRepository {
 
   constructor(private readonly databasePath: string) {}
 
-  async listActive(): Promise<CredentialVaultEntry[]> {
-    const database = await this.getDatabase();
-    const rows = database
-      .prepare(
-        `SELECT id, name, kind, environment, host, port, username, workspace_identity,
-                secret_key, previous_secret_key, status, operation_owner_pid,
-                operation_owner_started_at, created_at, updated_at
-         FROM credential_vault_entries WHERE status = 'active' ORDER BY updated_at DESC, id`,
-      )
-      .all() as unknown as CredentialVaultRow[];
-    return rows.map(projectEntry);
+  async listActive(workspaceIdentity: string): Promise<CredentialVaultEntry[]> {
+    return listProjectEntries(await this.getDatabase(), workspaceIdentity);
   }
 
-  async find(id: string): Promise<CredentialVaultMutation | CredentialVaultEntry | null> {
-    const database = await this.getDatabase();
-    const row = database
-      .prepare(
-        `SELECT id, name, kind, environment, host, port, username, workspace_identity,
-                secret_key, previous_secret_key, status, operation_owner_pid,
-                operation_owner_started_at, created_at, updated_at
-         FROM credential_vault_entries WHERE id = ?`,
-      )
-      .get(id) as CredentialVaultRow | undefined;
-    if (!row) return null;
-    return mapMutation(row) ?? projectEntry(row);
+  async listAttachable(workspaceIdentity: string): Promise<CredentialVaultEntry[]> {
+    return listAttachableEntries(await this.getDatabase(), workspaceIdentity);
+  }
+
+  async listRuntimeAccessible(workspaceIdentity: string): Promise<CredentialVaultEntry[]> {
+    return listRuntimeAccessibleEntries(await this.getDatabase(), workspaceIdentity);
+  }
+
+  async listUnassigned(): Promise<CredentialVaultEntry[]> {
+    return listEntriesByScope(await this.getDatabase(), "unassigned");
+  }
+
+  async listGlobal(): Promise<CredentialVaultEntry[]> {
+    return listEntriesByScope(await this.getDatabase(), "global");
+  }
+
+  async listAllActive(): Promise<CredentialVaultEntry[]> {
+    return listEntriesByScope(await this.getDatabase(), null);
   }
 
   async findActiveSecret(
     id: string,
     workspaceIdentity: string,
   ): Promise<{ entry: CredentialVaultEntry; secretKey: string } | null> {
+    return findActiveSecret(await this.getDatabase(), id, workspaceIdentity);
+  }
+
+  async attach(id: string, workspaceIdentity: string): Promise<void> {
+    attachProjectEntry(await this.getDatabase(), id, workspaceIdentity);
+  }
+
+  async attachGlobal(id: string): Promise<void> {
+    const database = await this.getDatabase();
+    const result = database
+      .prepare(
+        `UPDATE credential_vault_entries
+         SET scope = 'global', workspace_identity = NULL
+         WHERE id = ? AND status = 'active' AND scope = 'unassigned'`,
+      )
+      .run(id);
+    if (result.changes !== 1) throw new Error("Credential entry is missing or already assigned");
+  }
+
+  async detach(id: string, workspaceIdentity: string): Promise<void> {
+    detachProjectEntry(await this.getDatabase(), id, workspaceIdentity);
+  }
+
+  async detachGlobal(id: string): Promise<void> {
+    const database = await this.getDatabase();
+    const result = database
+      .prepare(
+        `UPDATE credential_vault_entries
+         SET scope = 'unassigned'
+         WHERE id = ? AND status = 'active' AND scope = 'global'`,
+      )
+      .run(id);
+    if (result.changes !== 1) throw new Error("Credential entry was not found in Global scope");
+  }
+
+  async find(id: string): Promise<CredentialVaultMutation | CredentialVaultEntry | null> {
     const database = await this.getDatabase();
     const row = database
       .prepare(
-        `SELECT id, name, kind, environment, host, port, username, workspace_identity,
-                secret_key, created_at, updated_at
-         FROM credential_vault_entries
-         WHERE id = ? AND status = 'active'
-           AND (workspace_identity IS NULL OR workspace_identity = ?)`,
+        `SELECT id, name, kind, environment, host, port, username, scope, workspace_identity,
+                secret_key, previous_secret_key, status, operation_owner_pid,
+                operation_owner_started_at, created_at, updated_at
+         FROM credential_vault_entries WHERE id = ?`,
       )
-      .get(id, workspaceIdentity) as CredentialVaultRow | undefined;
-    return row ? { entry: projectEntry(row), secretKey: row.secret_key } : null;
+      .get(id) as CredentialVaultRow | undefined;
+    if (!row) return null;
+    return mapCredentialVaultMutation(row) ?? projectCredentialVaultRow(row);
+  }
+
+  async isInScope(
+    id: string,
+    scope: CredentialVaultScope,
+    workspaceIdentity: string | null,
+  ): Promise<boolean> {
+    return credentialIsInScope(await this.getDatabase(), id, scope, workspaceIdentity);
   }
 
   async reserveCreate(
@@ -145,29 +129,38 @@ export class CredentialVaultRepository {
     now: number,
   ): Promise<void> {
     const database = await this.getDatabase();
-    database
-      .prepare(
-        `INSERT INTO credential_vault_entries
-          (id, name, kind, environment, host, port, username, workspace_identity, secret_key,
-           previous_secret_key, status, operation_owner_pid, operation_owner_started_at,
-           created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'creating', ?, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        input.name,
-        input.kind,
-        input.environment,
-        input.host,
-        input.port,
-        input.username,
-        input.workspaceIdentity,
-        secretKey,
-        operationOwnerPid,
-        operationOwnerStartedAt,
-        now,
-        now,
-      );
+    this.transaction(database, () => {
+      database
+        .prepare(
+          `INSERT INTO credential_vault_entries
+            (id, name, kind, environment, host, port, username, scope, workspace_identity, secret_key,
+             previous_secret_key, status, operation_owner_pid, operation_owner_started_at,
+             created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, 'creating', ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          input.name,
+          input.kind,
+          input.environment,
+          input.host,
+          input.port,
+          input.username,
+          input.scope,
+          secretKey,
+          operationOwnerPid,
+          operationOwnerStartedAt,
+          now,
+          now,
+        );
+      if (input.scope === "project" && input.workspaceIdentity) {
+        database
+          .prepare(
+            "INSERT INTO credential_vault_project_attachments (credential_id, workspace_identity, created_at) VALUES (?, ?, ?)",
+          )
+          .run(id, input.workspaceIdentity, now);
+      }
+    });
   }
 
   async activateCreate(id: string, now: number): Promise<void> {
@@ -184,27 +177,31 @@ export class CredentialVaultRepository {
 
   async beginRotate(
     id: string,
+    scope: CredentialVaultScope,
+    workspaceIdentity: string | null,
     secretKey: string,
     operationOwnerPid: number,
     operationOwnerStartedAt: number,
     now: number,
   ): Promise<string> {
     const database = await this.getDatabase();
+    const predicate = scopedPredicate(scope, workspaceIdentity);
     return this.transaction(database, () => {
       const row = database
         .prepare(
-          `SELECT secret_key FROM credential_vault_entries WHERE id = ? AND status = 'active'`,
+          `SELECT secret_key FROM credential_vault_entries
+           WHERE id = ? AND status = 'active' AND ${predicate.sql}`,
         )
-        .get(id) as { secret_key: string } | undefined;
+        .get(id, ...predicate.params) as { secret_key: string } | undefined;
       if (!row) throw new Error("Credential entry is missing or busy");
       database
         .prepare(
           `UPDATE credential_vault_entries
            SET previous_secret_key = secret_key, secret_key = ?, status = 'rotating',
                operation_owner_pid = ?, operation_owner_started_at = ?, updated_at = ?
-           WHERE id = ? AND status = 'active'`,
+           WHERE id = ? AND status = 'active' AND ${predicate.sql}`,
         )
-        .run(secretKey, operationOwnerPid, operationOwnerStartedAt, now, id);
+        .run(secretKey, operationOwnerPid, operationOwnerStartedAt, now, id, ...predicate.params);
       return row.secret_key;
     });
   }
@@ -238,12 +235,13 @@ export class CredentialVaultRepository {
     now: number,
   ): Promise<void> {
     const database = await this.getDatabase();
+    const predicate = scopedPredicate(input.scope, input.workspaceIdentity);
     const result = database
       .prepare(
         `UPDATE credential_vault_entries
          SET name = ?, kind = ?, environment = ?, host = ?, port = ?, username = ?,
-             workspace_identity = ?, updated_at = ?
-         WHERE id = ? AND status = 'active'`,
+             scope = ?, workspace_identity = NULL, updated_at = ?
+         WHERE id = ? AND status = 'active' AND ${predicate.sql}`,
       )
       .run(
         input.name,
@@ -252,23 +250,32 @@ export class CredentialVaultRepository {
         input.host,
         input.port,
         input.username,
-        input.workspaceIdentity,
+        input.scope,
         now,
         input.id,
+        ...predicate.params,
       );
     if (result.changes !== 1) throw new Error("Credential entry is missing or busy");
   }
 
   async beginDelete(
     id: string,
+    scope: CredentialVaultScope,
+    workspaceIdentity: string | null,
     operationOwnerPid: number,
     operationOwnerStartedAt: number,
   ): Promise<string | null> {
     const database = await this.getDatabase();
+    const predicate = scopedPredicate(scope, workspaceIdentity);
     return this.transaction(database, () => {
       const row = database
-        .prepare(`SELECT secret_key, status FROM credential_vault_entries WHERE id = ?`)
-        .get(id) as { secret_key: string; status: CredentialVaultRow["status"] } | undefined;
+        .prepare(
+          `SELECT secret_key, status FROM credential_vault_entries
+           WHERE id = ? AND ${predicate.sql}`,
+        )
+        .get(id, ...predicate.params) as
+        | { secret_key: string; status: CredentialVaultRow["status"] }
+        | undefined;
       if (!row) return null;
       if (row.status === "deleting") return row.secret_key;
       if (row.status !== "active") throw new Error("Credential entry is busy");
@@ -276,9 +283,9 @@ export class CredentialVaultRepository {
         .prepare(
           `UPDATE credential_vault_entries
            SET status = 'deleting', operation_owner_pid = ?, operation_owner_started_at = ?
-           WHERE id = ? AND status = 'active'`,
+           WHERE id = ? AND status = 'active' AND ${predicate.sql}`,
         )
-        .run(operationOwnerPid, operationOwnerStartedAt, id);
+        .run(operationOwnerPid, operationOwnerStartedAt, id, ...predicate.params);
       return row.secret_key;
     });
   }
@@ -323,13 +330,15 @@ export class CredentialVaultRepository {
     const database = await this.getDatabase();
     const rows = database
       .prepare(
-        `SELECT id, name, kind, environment, host, port, username, workspace_identity,
+        `SELECT id, name, kind, environment, host, port, username, scope, workspace_identity,
                 secret_key, previous_secret_key, status, operation_owner_pid,
                 operation_owner_started_at, created_at, updated_at
          FROM credential_vault_entries WHERE status != 'active'`,
       )
       .all() as unknown as CredentialVaultRow[];
-    return rows.map(mapMutation).filter((row): row is CredentialVaultMutation => row !== null);
+    return rows
+      .map(mapCredentialVaultMutation)
+      .filter((row): row is CredentialVaultMutation => row !== null);
   }
 
   close(): void {
@@ -354,37 +363,7 @@ export class CredentialVaultRepository {
     const database = new DatabaseSync(this.databasePath);
     this.database = database;
     try {
-      database.exec(`PRAGMA busy_timeout = ${DATABASE_BUSY_TIMEOUT_MS}`);
-      database.exec("PRAGMA foreign_keys = ON");
-      database.exec("PRAGMA journal_mode = WAL");
-      database.exec("PRAGMA synchronous = NORMAL");
-      this.transaction(database, () => {
-        const { user_version: version } = database.prepare("PRAGMA user_version").get() as {
-          user_version: number;
-        };
-        const tableExists = database
-          .prepare(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'credential_vault_entries'",
-          )
-          .get();
-        database.exec(
-          `CREATE TABLE IF NOT EXISTS credential_vault_entries ${CREDENTIAL_VAULT_COLUMNS}`,
-        );
-        if (tableExists && version === 0) {
-          // 旧表的 kind CHECK 不能直接删除；事务中重建以保留所有状态和秘密引用。
-          database.exec(`
-            CREATE TABLE credential_vault_entries_new ${CREDENTIAL_VAULT_COLUMNS};
-            INSERT INTO credential_vault_entries_new SELECT * FROM credential_vault_entries;
-            DROP TABLE credential_vault_entries;
-            ALTER TABLE credential_vault_entries_new RENAME TO credential_vault_entries;
-          `);
-        }
-        database.exec(`
-          CREATE INDEX IF NOT EXISTS credential_vault_entries_status_updated
-            ON credential_vault_entries(status, updated_at DESC);
-        `);
-        if (version === 0) database.exec("PRAGMA user_version = 1");
-      });
+      initializeCredentialVaultSchema(database);
     } catch (error) {
       database.close();
       this.database = null;
