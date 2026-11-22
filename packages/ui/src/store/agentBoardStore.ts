@@ -11,6 +11,7 @@ import {
   matchesBoardTracking,
   BOARD_DISPLAY_STATUSES,
   DEFAULT_BOARD_WORKFLOW_STATUSES,
+  resolveBoardWorkflowStatusCategory,
   type BoardDisplayStatus,
   type BoardWorkflowStatus,
   type BoardTrackingTarget,
@@ -134,19 +135,24 @@ function readWorkflowStatuses(value: unknown): readonly BoardWorkflowStatus[] {
   }
   const seen = new Set<string>();
   const statuses = value.filter((entry): entry is BoardWorkflowStatus => {
+    if (!entry || typeof entry !== "object") return false;
+    const category = resolveBoardWorkflowStatusCategory(
+      typeof entry.id === "string" ? entry.id : "",
+      "category" in entry ? entry.category : undefined,
+    );
     if (
-      !entry ||
-      typeof entry !== "object" ||
       typeof entry.id !== "string" ||
       !/^[a-z0-9][a-z0-9-]{0,39}$/.test(entry.id) ||
       seen.has(entry.id) ||
       typeof entry.label !== "string" ||
       !entry.label.trim() ||
       entry.label.length > 40 ||
-      typeof entry.enabled !== "boolean"
+      typeof entry.enabled !== "boolean" ||
+      category === undefined
     )
       return false;
     seen.add(entry.id);
+    entry.category = category;
     return true;
   });
   return statuses.length === value.length && statuses.some((status) => status.enabled)
