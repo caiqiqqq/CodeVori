@@ -34,11 +34,11 @@ try {
     import {TooltipProvider} from '../../../ui/src/components/ui/tooltip.tsx';
     import {applyTheme} from '../../../ui/src/useTheme.ts';
     import '../../../ui/src/styles.css';
-    const state:any={calls:[],pendingReads:[],delayScope:null,setTheme:applyTheme};window.__credentialVault=state;
+    const state:any={calls:[],reads:[],pendingGit:[],delayGit:true,pendingReads:[],delayScope:null,setTheme:applyTheme};window.__credentialVault=state;
     const entries:any[]=[];const secrets=new Map<string,string>();
-    const gitService:any={async getWorkspaceRepositoryInfo({workspacePath}:any){return {workspacePath,isGitAvailable:true,repoRoot:workspacePath,kind:workspacePath.startsWith('/worktrees/')?'linked-worktree':'main-tree',...(workspacePath.startsWith('/worktrees/')?{mainWorktreePath:'/projects/sample',branchName:workspacePath.includes('/one/')?'feature/one':'feature/two'}:{})}}};
+    const gitService:any={async getWorkspaceRepositoryInfo({workspacePath}:any){if(state.delayGit)await new Promise(resolve=>state.pendingGit.push(resolve));return {workspacePath,isGitAvailable:true,repoRoot:workspacePath,kind:workspacePath.startsWith('/worktrees/')||workspacePath.startsWith('/orphan/')?'linked-worktree':'main-tree',...(workspacePath.startsWith('/worktrees/')?{mainWorktreePath:'/projects/sample',branchName:workspacePath.includes('/one/')?'feature/one':'feature/two'}:{})}}};
     const service:any={
-      async listVaultEntries(workspaceIdentity:string){const snapshot=entries.filter(entry=>entry.scope==='project'&&entry.projectIdentities?.includes(workspaceIdentity)).map(entry=>({...entry,workspaceIdentity}));if(state.delayScope===workspaceIdentity)return new Promise(resolve=>state.pendingReads.push(()=>resolve(snapshot)));return snapshot},
+      async listVaultEntries(workspaceIdentity:string){state.reads.push(workspaceIdentity);const snapshot=entries.filter(entry=>entry.scope==='project'&&entry.projectIdentities?.includes(workspaceIdentity)).map(entry=>({...entry,workspaceIdentity}));if(state.delayScope===workspaceIdentity)return new Promise(resolve=>state.pendingReads.push(()=>resolve(snapshot)));return snapshot},
       async listGlobalVaultEntries(){return entries.filter(entry=>entry.scope==='global').map(entry=>({...entry}))},
       async listUnassignedVaultEntries(){return entries.filter(entry=>entry.scope==='unassigned').map(entry=>({...entry}))},
       async listAttachableVaultEntries(workspaceIdentity:string){return entries.filter(entry=>['unassigned','project'].includes(entry.scope)&&!entry.projectIdentities?.includes(workspaceIdentity)).map(entry=>({...entry,workspaceIdentity:null}))},
@@ -59,7 +59,7 @@ try {
       async load(){return null},async save(){},async delete(){},
     };
     state.seedLayout=()=>{entries.push(...['project','global','unassigned'].map((scope,index)=>({id:'layout-'+index,name:['项目数据库','共享服务器','待关联数据库'][index],kind:index===1?'server':'database',environment:index===1?'production':'test',host:'service.example.invalid',port:index===1?22:5432,username:'demo_reader',scope,workspaceIdentity:null,projectIdentities:scope==='project'?['remote:project-a']:[],hasSecret:true,createdAt:0,updatedAt:0})))};
-    function Fixture(){const [visible,setVisible]=useState(true);state.setVisible=setVisible;state.releaseReads=()=>state.pendingReads.splice(0).forEach((release:()=>void)=>release());const projects=[{workspacePath:'/projects/sample',label:'示例仓库'},{workspacePath:'/worktrees/one/sample',label:'示例仓库'},{workspacePath:'/worktrees/two/sample',label:'示例仓库'},{workspacePath:'/project-a',workspaceIdentity:'remote:project-a',label:'项目 A'},{workspacePath:'/project-a',workspaceIdentity:'remote:project-a',label:'项目 A'},{workspacePath:'/project-b',workspaceIdentity:'remote:project-b',label:'项目 B'},...Array.from({length:12},(_,index)=>({workspacePath:'/projects/'+('long-project-path/').repeat(8)+index,label:'示例项目 '+(index+1)}))];return <div className='min-h-screen bg-background px-4 py-8 text-foreground'><div className='mx-auto max-w-4xl lg:px-8'><h1 className='mb-8 text-ui-xl font-semibold'>凭证</h1><ServiceProvider services={{credentialService:service,gitService}}>{visible?<CredentialVaultSection initialWorkspacePath='/project-a' initialWorkspaceIdentity='remote:project-a' projects={projects}/>:null}</ServiceProvider></div></div>}
+    function Fixture(){const [visible,setVisible]=useState(true);state.setVisible=setVisible;const [initial,setInitial]=useState('/worktrees/one/sample');state.setInitial=setInitial;state.releaseReads=()=>state.pendingReads.splice(0).forEach((release:()=>void)=>release());const projects=[{workspacePath:'/projects/sample',label:'示例仓库'},{workspacePath:'/worktrees/one/sample',label:'示例仓库'},{workspacePath:'/worktrees/two/sample',label:'示例仓库'},{workspacePath:'/orphan/sample',label:'孤立工作树'},{workspacePath:'/project-a',workspaceIdentity:'remote:project-a',label:'项目 A'},{workspacePath:'/project-a',workspaceIdentity:'remote:project-a',label:'项目 A'},{workspacePath:'/project-b',workspaceIdentity:'remote:project-b',label:'项目 B'},...Array.from({length:12},(_,index)=>({workspacePath:'/projects/'+('long-project-path/').repeat(8)+index,label:'示例项目 '+(index+1)}))];return <div className='min-h-screen bg-background px-4 py-8 text-foreground'><div className='mx-auto max-w-4xl lg:px-8'><h1 className='mb-8 text-ui-xl font-semibold'>凭证</h1><ServiceProvider services={{credentialService:service,gitService}}>{visible?<CredentialVaultSection initialWorkspacePath={initial} initialWorkspaceIdentity={initial==='/project-a'?'remote:project-a':undefined} projects={projects}/>:null}</ServiceProvider></div></div>}
     createRoot(document.getElementById('root')!).render(<ZCodeIntlProvider initialLocale='zh-CN'><TooltipProvider><Fixture/></TooltipProvider></ZCodeIntlProvider>);
   `,
   );
@@ -79,15 +79,45 @@ try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/${name}.html`);
   await page.getByRole("button", { name: /项目 A/ }).waitFor();
   await page.getByRole("button", { name: /项目 B/ }).waitFor();
+  assert.deepEqual(await page.evaluate(() => window.__credentialVault.reads), []);
+  await page.evaluate(() => {
+    window.__credentialVault.delayGit = false;
+    window.__credentialVault.pendingGit.splice(0).forEach((resolve) => resolve());
+  });
+  await page.getByRole("button", { name: /示例仓库/ }).waitFor();
   assert.equal(
-    await page.getByRole("button", { name: /项目 A/ }).getAttribute("aria-pressed"),
+    await page.getByRole("button", { name: /示例仓库/ }).getAttribute("aria-pressed"),
     "true",
   );
-  await page.getByRole("button", { name: /feature\/one/ }).waitFor();
+  await page.waitForFunction(() => window.__credentialVault.reads.length > 0);
+  assert.deepEqual(await page.evaluate(() => window.__credentialVault.reads), ["/projects/sample"]);
   const projectNavigation = page.getByRole("navigation", { name: "项目", exact: true });
   assert.equal(await projectNavigation.getByText("示例仓库", { exact: true }).count(), 1);
   assert.equal(await projectNavigation.getByText("项目 A", { exact: true }).count(), 1);
-  assert.equal(await projectNavigation.locator("ul ul button").count(), 2);
+  assert.equal(await projectNavigation.locator("ul ul button").count(), 0);
+  assert.equal(await projectNavigation.getByText(/feature\/|worktrees\/|孤立工作树/).count(), 0);
+  for (const initial of ["/worktrees/one/sample", "/orphan/sample"]) {
+    await page.evaluate(() => window.__credentialVault.setVisible(false));
+    await projectNavigation.waitFor({ state: "detached" });
+    await page.evaluate((initial) => {
+      window.__credentialVault.setInitial(initial);
+      window.__credentialVault.reads = [];
+      window.__credentialVault.setVisible(true);
+    }, initial);
+    const expected = initial.startsWith("/worktrees/") ? /示例仓库/ : /^全局$/;
+    await page.waitForFunction(
+      () =>
+        window.__credentialVault.reads.length > 0 ||
+        document.querySelector('button[aria-pressed="true"]')?.textContent === "全局",
+    );
+    assert.equal(
+      await projectNavigation.getByRole("button", { name: expected }).getAttribute("aria-pressed"),
+      "true",
+    );
+    const reads = await page.evaluate(() => window.__credentialVault.reads);
+    assert.deepEqual(reads, initial.startsWith("/worktrees/") ? ["/projects/sample"] : []);
+  }
+  await page.getByRole("button", { name: /项目 A/ }).click();
   await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
   await page
     .getByText("全局凭证", { exact: true })
@@ -147,18 +177,8 @@ try {
     (await page.evaluate(() => window.__credentialVault.calls)).at(-1).workspaceIdentity,
     "remote:project-a",
   );
-  await page.getByRole("button", { name: /feature\/one/ }).click();
-  await page.getByRole("button", { name: "关联到所选项目", exact: true }).click();
-  assert.equal(
-    (await page.evaluate(() => window.__credentialVault.calls)).at(-1).workspaceIdentity,
-    "/worktrees/one/sample",
-  );
   await page.getByRole("button", { name: /示例仓库/ }).click();
   await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
-  await page.getByRole("button", { name: /feature\/two/ }).click();
-  await page.getByText("该项目还没有关联凭证。", { exact: true }).waitFor();
-  await page.getByRole("button", { name: /feature\/one/ }).click();
-  await page.getByRole("button", { name: "从所选项目移除", exact: true }).click();
   await page.getByRole("button", { name: /项目 B/ }).click();
   await page.getByText("QA 数据库", { exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "关联到所选项目", exact: true }).count(), 1);
@@ -294,7 +314,7 @@ try {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   assert.deepEqual(errors, []);
   process.stdout.write(
-    `PASS: credential vault CRUD, secret redaction, password retention/rotation, 320px layout. Screenshots: ${artifacts}\n`,
+    `PASS: main-project-only navigation, worktree initial selection, unresolved read guard, orphan fallback, credential CRUD/sharing, secret redaction, 320px layout. Screenshots: ${artifacts}\n`,
   );
 } catch (error) {
   await page?.screenshot({ path: join(artifacts, "failure.png") }).catch(() => {});
